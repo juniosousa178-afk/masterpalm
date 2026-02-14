@@ -1,7 +1,7 @@
 "use client";
 
 import { useSiteConfig } from "@/contexts/SiteConfigContext";
-import { getMailtoHref } from "@/lib/urlUtils";
+import { getMailtoHref, getInstagramAppUrl } from "@/lib/urlUtils";
 
 export function ContactSection() {
   const config = useSiteConfig();
@@ -42,7 +42,7 @@ export function ContactSection() {
             E-mail
           </a>
           <a
-            href={config.INSTAGRAM_URL.startsWith("http") ? config.INSTAGRAM_URL : `https://instagram.com/${config.INSTAGRAM_URL.replace(/^@/, "")}`}
+            href={getInstagramAppUrl(config.INSTAGRAM_URL)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 px-6 py-4 border border-silver-500/50 text-silver-400 rounded-xl font-medium hover:bg-graphite-800 hover:text-white transition-colors"
