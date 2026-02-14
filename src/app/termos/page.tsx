@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { siteConfig } from "@/config/site";
+import { EmailDisplay } from "@/components/EmailDisplay";
 
 export const metadata: Metadata = {
   title: "Termos de Uso",
@@ -61,7 +61,7 @@ export default function TermosPage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-4">7. Suporte e contato</h2>
             <p>
-              Para suporte técnico, dúvidas ou reclamações, entre em contato: <a href={`mailto:${siteConfig.SUPPORT_EMAIL}`} className="text-accent-blue hover:underline">{siteConfig.SUPPORT_EMAIL}</a> ou pelo WhatsApp indicado no site.
+              Para suporte técnico, dúvidas ou reclamações, entre em contato: <EmailDisplay /> ou pelo WhatsApp indicado no site.
             </p>
           </section>
 

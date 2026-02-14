@@ -113,6 +113,18 @@ site/
 | `/politica-de-privacidade` | Política de Privacidade (LGPD) |
 | `/termos` | Termos de Uso |
 
+## Configuração dinâmica (Firestore)
+
+O site busca links e contatos do Firestore (`app_config/site_config`). Configure pelo APK:
+
+1. Faça login com **masterpalm@gmail.com**
+2. Menu → **Master** → **Configurar Site**
+3. Preencha e salve
+
+O site usa esses dados automaticamente. Se o Firestore não estiver configurado, usa os valores de `src/config/site.ts`.
+
+**Regra Firestore necessária:** O documento `app_config/site_config` deve ter leitura pública. A regra já foi adicionada em `firestore.rules`. Execute `firebase deploy --only firestore:rules` para aplicar.
+
 ## Personalização
 
 - **Favicon:** Substitua `public/favicon.svg` pelo seu ícone

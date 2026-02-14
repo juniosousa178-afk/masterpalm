@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { siteConfig } from "@/config/site";
+import { useSiteConfig } from "@/contexts/SiteConfigContext";
 
 const navLinks = [
   { href: "/#funcionalidades", label: "Funcionalidades" },
@@ -16,6 +17,7 @@ const navLinks = [
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const config = useSiteConfig();
 
   return (
     <header
@@ -63,7 +65,7 @@ export function Header() {
             </li>
             <li>
               <a
-                href={siteConfig.APP_WEB_URL}
+                href={config.APP_WEB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center px-4 py-2 border border-silver-500 text-silver-400 rounded-lg hover:bg-graphite-800 hover:text-white transition-colors font-medium text-sm"
@@ -126,7 +128,7 @@ export function Header() {
                 Baixar APK
               </Link>
               <a
-                href={siteConfig.APP_WEB_URL}
+                href={config.APP_WEB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full text-center py-3 border border-silver-500 text-silver-400 rounded-lg font-medium"

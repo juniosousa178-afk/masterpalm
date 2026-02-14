@@ -1,7 +1,10 @@
+"use client";
+
 import Link from "next/link";
-import { siteConfig } from "@/config/site";
+import { useSiteConfig } from "@/contexts/SiteConfigContext";
 
 export function CTASection() {
+  const config = useSiteConfig();
   return (
     <section
       id="download"
@@ -26,7 +29,7 @@ export function CTASection() {
             </svg>
           </Link>
           <a
-            href={siteConfig.APP_WEB_URL}
+            href={config.APP_WEB_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 px-8 py-4 border-2 border-silver-500/50 text-silver-400 rounded-xl font-semibold text-lg hover:bg-graphite-800 hover:text-white transition-colors"

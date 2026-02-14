@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { siteConfig } from "@/config/site";
+import { EmailDisplay } from "@/components/EmailDisplay";
 
 export const metadata: Metadata = {
   title: "Política de Privacidade",
@@ -73,7 +73,7 @@ export default function PoliticaPrivacidadePage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-4">6. Retenção e exclusão</h2>
             <p>
-              Os dados são mantidos enquanto o usuário utilizar o sistema e conforme exigências legais. Para solicitar exclusão, portabilidade ou correção de dados, entre em contato pelo e-mail: <a href={`mailto:${siteConfig.SUPPORT_EMAIL}`} className="text-accent-blue hover:underline">{siteConfig.SUPPORT_EMAIL}</a>.
+              Os dados são mantidos enquanto o usuário utilizar o sistema e conforme exigências legais. Para solicitar exclusão, portabilidade ou correção de dados, entre em contato pelo e-mail: <EmailDisplay />.
             </p>
           </section>
 
@@ -93,7 +93,7 @@ export default function PoliticaPrivacidadePage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-4">8. Contato do encarregado</h2>
             <p>
-              Para exercer seus direitos ou esclarecer dúvidas sobre esta política, entre em contato: <a href={`mailto:${siteConfig.SUPPORT_EMAIL}`} className="text-accent-blue hover:underline">{siteConfig.SUPPORT_EMAIL}</a>.
+              Para exercer seus direitos ou esclarecer dúvidas sobre esta política, entre em contato: <EmailDisplay />.
             </p>
           </section>
 

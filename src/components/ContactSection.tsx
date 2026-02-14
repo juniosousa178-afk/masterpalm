@@ -1,6 +1,9 @@
-import { siteConfig } from "@/config/site";
+"use client";
+
+import { useSiteConfig } from "@/contexts/SiteConfigContext";
 
 export function ContactSection() {
+  const config = useSiteConfig();
   return (
     <section
       id="contato"
@@ -17,7 +20,7 @@ export function ContactSection() {
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <a
-            href={siteConfig.SUPPORT_WHATSAPP_URL}
+            href={config.SUPPORT_WHATSAPP_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 px-6 py-4 bg-green-600 text-white rounded-xl font-medium hover:bg-green-500 transition-colors"
@@ -28,7 +31,7 @@ export function ContactSection() {
             WhatsApp
           </a>
           <a
-            href={`mailto:${siteConfig.SUPPORT_EMAIL}`}
+            href={`mailto:${config.SUPPORT_EMAIL}`}
             className="inline-flex items-center justify-center gap-2 px-6 py-4 border border-silver-500/50 text-silver-400 rounded-xl font-medium hover:bg-graphite-800 hover:text-white transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -37,7 +40,7 @@ export function ContactSection() {
             E-mail
           </a>
           <a
-            href={siteConfig.INSTAGRAM_URL}
+            href={config.INSTAGRAM_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 px-6 py-4 border border-silver-500/50 text-silver-400 rounded-xl font-medium hover:bg-graphite-800 hover:text-white transition-colors"

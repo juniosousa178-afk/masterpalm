@@ -1,7 +1,11 @@
+"use client";
+
 import Link from "next/link";
 import { siteConfig } from "@/config/site";
+import { useSiteConfig } from "@/contexts/SiteConfigContext";
 
 export function Footer() {
+  const config = useSiteConfig();
   const currentYear = new Date().getFullYear();
 
   return (
@@ -29,7 +33,7 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <a href={siteConfig.APP_WEB_URL} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm">
+                <a href={config.APP_WEB_URL} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm">
                   AppWeb
                 </a>
               </li>
@@ -49,17 +53,17 @@ export function Footer() {
             <h4 className="font-semibold text-white mb-4">Contato</h4>
             <ul className="space-y-2">
               <li>
-                <a href={`mailto:${siteConfig.SUPPORT_EMAIL}`} className="text-gray-400 hover:text-white text-sm">
-                  {siteConfig.SUPPORT_EMAIL}
+                <a href={`mailto:${config.SUPPORT_EMAIL}`} className="text-gray-400 hover:text-white text-sm">
+                  {config.SUPPORT_EMAIL}
                 </a>
               </li>
               <li>
-                <a href={siteConfig.SUPPORT_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm">
+                <a href={config.SUPPORT_WHATSAPP_URL} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm">
                   WhatsApp
                 </a>
               </li>
               <li>
-                <a href={siteConfig.INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm">
+                <a href={config.INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm">
                   Instagram
                 </a>
               </li>

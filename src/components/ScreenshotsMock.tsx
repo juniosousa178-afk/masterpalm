@@ -1,6 +1,10 @@
+"use client";
+
 import { siteConfig } from "@/config/site";
+import { useSiteConfig } from "@/contexts/SiteConfigContext";
 
 export function ScreenshotsMock() {
+  const config = useSiteConfig();
   return (
     <section
       className="py-20 px-4 sm:px-6 lg:px-8"
@@ -30,7 +34,7 @@ export function ScreenshotsMock() {
                 Perfeito para administradores no computador ou uso em múltiplos dispositivos.
               </p>
               <p className="mt-2 text-accent-blue text-sm font-medium">
-                → {siteConfig.APP_WEB_URL}
+                → {config.APP_WEB_URL}
               </p>
             </div>
           </div>

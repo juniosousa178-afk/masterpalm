@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { siteConfig } from "@/config/site";
+import { SiteConfigProvider } from "@/contexts/SiteConfigContext";
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -51,12 +52,14 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
       <body className={`${plusJakarta.variable} font-sans antialiased bg-graphite-950 text-gray-100 min-h-screen`}>
-        <Header />
-        <main id="main-content" role="main">
-          {children}
-        </main>
-        <Footer />
-        <FloatingCTA />
+        <SiteConfigProvider>
+          <Header />
+          <main id="main-content" role="main">
+            {children}
+          </main>
+          <Footer />
+          <FloatingCTA />
+        </SiteConfigProvider>
       </body>
     </html>
   );

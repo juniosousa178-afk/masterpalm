@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { siteConfig } from "@/config/site";
+import { useSiteConfig } from "@/contexts/SiteConfigContext";
 
 export function FloatingCTA() {
+  const config = useSiteConfig();
   return (
     <div
       className="fixed bottom-6 right-6 z-40 flex flex-col sm:flex-row gap-3"
@@ -11,7 +12,7 @@ export function FloatingCTA() {
       aria-label="Ações rápidas"
     >
       <a
-        href={siteConfig.APP_WEB_URL}
+        href={config.APP_WEB_URL}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 px-5 py-3 bg-graphite-800 border border-silver-500/50 text-white rounded-full shadow-soft hover:bg-graphite-700 transition-all font-medium text-sm"
