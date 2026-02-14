@@ -29,6 +29,9 @@ export function ScreenshotsMock() {
                 Acesse pelo navegador em qualquer dispositivo. Sem instalação, sempre atualizado.
                 Perfeito para administradores no computador ou uso em múltiplos dispositivos.
               </p>
+              <p className="mt-2 text-accent-blue text-sm font-medium">
+                → {siteConfig.APP_WEB_URL}
+              </p>
             </div>
           </div>
 

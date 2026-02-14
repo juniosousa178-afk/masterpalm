@@ -11,7 +11,7 @@ export const siteConfig = {
 
   // URLs principais
   APK_DOWNLOAD_URL: "https://SEU-LINK-AQUI/masterpalm.apk",
-  APP_WEB_URL: "https://mastepalm.com.br",
+  APP_WEB_URL: "https://app.mastepalm.com.br",
   SUPPORT_WHATSAPP_URL: "https://wa.me/55SEUNUMERO",
   INSTAGRAM_URL: "https://instagram.com/SEUINSTAGRAM",
   SUPPORT_EMAIL: "suporte@SEUDOMINIO.COM",
