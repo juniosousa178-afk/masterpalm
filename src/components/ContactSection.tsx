@@ -1,6 +1,7 @@
 "use client";
 
 import { useSiteConfig } from "@/contexts/SiteConfigContext";
+import { getMailtoHref } from "@/lib/urlUtils";
 
 export function ContactSection() {
   const config = useSiteConfig();
@@ -31,8 +32,9 @@ export function ContactSection() {
             WhatsApp
           </a>
           <a
-            href={`mailto:${config.SUPPORT_EMAIL}`}
+            href={getMailtoHref(config.SUPPORT_EMAIL)}
             className="inline-flex items-center justify-center gap-2 px-6 py-4 border border-silver-500/50 text-silver-400 rounded-xl font-medium hover:bg-graphite-800 hover:text-white transition-colors"
+            title={`Enviar e-mail para ${config.SUPPORT_EMAIL}`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -40,7 +42,7 @@ export function ContactSection() {
             E-mail
           </a>
           <a
-            href={config.INSTAGRAM_URL}
+            href={config.INSTAGRAM_URL.startsWith("http") ? config.INSTAGRAM_URL : `https://instagram.com/${config.INSTAGRAM_URL.replace(/^@/, "")}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 px-6 py-4 border border-silver-500/50 text-silver-400 rounded-xl font-medium hover:bg-graphite-800 hover:text-white transition-colors"

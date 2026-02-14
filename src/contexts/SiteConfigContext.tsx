@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { siteConfig as defaultConfig } from "@/config/site";
+import { normalizeInstagramUrl } from "@/lib/urlUtils";
 
 export type SiteConfigDynamic = {
   APK_DOWNLOAD_URL: string;
@@ -46,12 +47,14 @@ export function SiteConfigProvider({ children }: { children: React.ReactNode }) 
         const snap = await getDoc(docRef);
         if (snap.exists() && snap.data()) {
           const d = snap.data();
-          setConfig({
-            APK_DOWNLOAD_URL: (d.apkDownloadUrl ?? defaultDynamic.APK_DOWNLOAD_URL).toString(),
-            APP_WEB_URL: (d.appWebUrl ?? defaultDynamic.APP_WEB_URL).toString(),
-            SUPPORT_WHATSAPP_URL: (d.supportWhatsappUrl ?? defaultDynamic.SUPPORT_WHATSAPP_URL).toString(),
-            INSTAGRAM_URL: (d.instagramUrl ?? defaultDynamic.INSTAGRAM_URL).toString(),
-            SUPPORT_EMAIL: (d.supportEmail ?? defaultDynamic.SUPPORT_EMAIL).toString(),
+          const rawEmail = (d.supportEmail ?? defaultDynamic.SUPPORT_EMAIL).toString().trim();
+            const rawInstagram = (d.instagramUrl ?? defaultDynamic.INSTAGRAM_URL).toString().trim();
+            setConfig({
+            APK_DOWNLOAD_URL: (d.apkDownloadUrl ?? defaultDynamic.APK_DOWNLOAD_URL).toString().trim() || defaultDynamic.APK_DOWNLOAD_URL,
+            APP_WEB_URL: (d.appWebUrl ?? defaultDynamic.APP_WEB_URL).toString().trim() || defaultDynamic.APP_WEB_URL,
+            SUPPORT_WHATSAPP_URL: (d.supportWhatsappUrl ?? defaultDynamic.SUPPORT_WHATSAPP_URL).toString().trim() || defaultDynamic.SUPPORT_WHATSAPP_URL,
+            INSTAGRAM_URL: rawInstagram ? normalizeInstagramUrl(rawInstagram) : defaultDynamic.INSTAGRAM_URL,
+            SUPPORT_EMAIL: rawEmail && rawEmail.includes("@") ? rawEmail : defaultDynamic.SUPPORT_EMAIL,
             apkVersion: (d.apkVersion ?? defaultDynamic.apkVersion).toString(),
             apkSize: (d.apkSize ?? defaultDynamic.apkSize).toString(),
             apkReleaseDate: (d.apkReleaseDate ?? defaultDynamic.apkReleaseDate).toString(),

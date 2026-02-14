@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { siteConfig } from "@/config/site";
 import { useSiteConfig } from "@/contexts/SiteConfigContext";
+import { getMailtoHref } from "@/lib/urlUtils";
 
 export function Footer() {
   const config = useSiteConfig();
@@ -53,7 +54,7 @@ export function Footer() {
             <h4 className="font-semibold text-white mb-4">Contato</h4>
             <ul className="space-y-2">
               <li>
-                <a href={`mailto:${config.SUPPORT_EMAIL}`} className="text-gray-400 hover:text-white text-sm">
+                <a href={getMailtoHref(config.SUPPORT_EMAIL)} className="text-gray-400 hover:text-white text-sm">
                   {config.SUPPORT_EMAIL}
                 </a>
               </li>
@@ -63,7 +64,7 @@ export function Footer() {
                 </a>
               </li>
               <li>
-                <a href={config.INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm">
+                <a href={config.INSTAGRAM_URL.startsWith("http") ? config.INSTAGRAM_URL : `https://instagram.com/${config.INSTAGRAM_URL.replace(/^@/, "")}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm">
                   Instagram
                 </a>
               </li>
