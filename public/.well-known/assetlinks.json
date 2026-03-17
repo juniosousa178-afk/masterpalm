@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.masterpalm.app",
+      "sha256_cert_fingerprints": [
+        "53:CC:53:91:C2:59:92:DD:ED:F6:BB:6A:E2:30:7F:FF:FA:2B:B5:6C:50:BB:4B:C6:C1:F6:38:A6:9A:E5:BD:1D"
+      ]
+    }
+  }
+]

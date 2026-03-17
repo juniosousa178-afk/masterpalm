@@ -1,0 +1,2522 @@
+// lib/screens/produto_form_screen.dart
+
+import 'dart:async';
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:hive/hive.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../core/hive_box_names.dart';
+import '../models/produto.dart';
+import '../utils/moeda_input_formatter.dart';
+import '../utils/text_utils.dart';
+import '../services/catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
+import '../services/catalog_publish_service.dart';
+import '../services/limits_guard.dart';
+import '../services/produtos_firestore_service.dart';
+import '../services/produto_upsert_service.dart';
+import '../utils/ean13_generator.dart';
+import '../services/loja_id_service.dart';
+import '../services/upload_manager.dart';
+import '../services/ai_loja_service.dart';
+import '../services/ia_uso_limite_service.dart';
+import '../services/image_upload_service.dart';
+import '../services/catalog_thumbnail_service.dart';
+import 'barcode_scanner_screen.dart';
+
+// ------------------------------
+// FUNÇÃO PARA GERAR SLUG
+// ------------------------------
+String gerarSlug(String texto) {
+  return texto
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'-+'), '-')
+      .replaceAll(RegExp(r'^-|-$'), '');
+}
+
+class ProdutoFormScreen extends StatefulWidget {
+  final Produto? produto;
+  const ProdutoFormScreen({super.key, this.produto});
+
+  @override
+  State<ProdutoFormScreen> createState() => _ProdutoFormScreenState();
+}
+
+class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
+  final _form = GlobalKey<FormState>();
+
+  late Box<Produto> produtosBox;
+  late Box _configBox;
+  String? lojaId;
+  List<Map<String, dynamic>> _embalagensDisponiveis = [];
+
+  final _nome = TextEditingController();
+  final _quantidade = TextEditingController(text: '1');
+  final _estoqueMinimo = TextEditingController(text: '0');
+  final _custo = TextEditingController();
+  final _preco = TextEditingController();
+  final _categoria = TextEditingController();
+  final _subcategoria = TextEditingController();
+  final _descricao = TextEditingController();
+  final _peso = TextEditingController(text: '0');
+  /// Unidade do peso: 'g' (padrão) ou 'kg'
+  String _pesoUnidade = 'g';
+  final _codigoBarras = TextEditingController();
+  String _tipoEmbalagem = 'padrao';
+
+  /// Grade de variações: cada item tem {'tamanho': '18', 'cor': 'Rosa', 'qtd': '2'}
+  List<Map<String, String>> _gradeVariacoes = [
+    {'tamanho': '', 'cor': '', 'qtd': ''},
+  ];
+
+  /// Controllers das linhas de variação para garantir leitura correta ao salvar (tamanho, cor, qtd).
+  final List<Map<String, TextEditingController>> _variacaoControllers = [];
+
+  /// Preço por tamanho (ex: P=50, M=75, G=100). Chave = tamanho, valor = controller do preço.
+  final Map<String, TextEditingController> _precoPorTamanhoCtrl = {};
+
+  final _imagens = <String>[];
+  bool _publicar = false;
+  final UploadManager _uploader = UploadManager(maxConcurrent: 3);
+  bool _salvando = false;
+  bool _removendoImagem = false;
+  bool _sugerindoDescricao = false;
+
+  /// Produto existente encontrado por chave única (nome+categoria) - para modo "Atualizar"
+  Produto? _produtoExistenteAlvo;
+
+  // Marketplaces selecionados
+  final Set<String> _marketplacesSelecionados = {};
+
+  // Parcelamento
+  bool _divideSemJuros = false;
+  final _maxParcelasSemJuros = TextEditingController(text: '12');
+
+  // Desconto PIX (%)
+  final _percentualDescontoPix = TextEditingController(text: '0');
+
+  // Campos de promoção
+  bool _emPromocao = false;
+  String _tipoDesconto = 'percentual'; // 'percentual' ou 'fixo'
+  final _percentualPromo = TextEditingController();
+  final _valorPromo = TextEditingController();
+  DateTime? _dataInicioPromo;
+  DateTime? _dataFimPromo;
+
+  @override
+  void initState() {
+    super.initState();
+    _initLojaEBox();
+
+    final p = widget.produto;
+    if (p != null) {
+      _nome.text = p.nome;
+      _quantidade.text = '${p.quantidade}';
+      _estoqueMinimo.text = '${p.estoqueMinimo}';
+      _custo.text = MoedaInputFormatter.format(p.custoReal);
+      _preco.text = MoedaInputFormatter.format(p.precoFinal);
+      _categoria.text = p.categoria;
+      _subcategoria.text = p.subcategoria;
+      _descricao.text = p.descricao;
+      _peso.text = p.peso >= 1000 ? (p.peso / 1000).toStringAsFixed(2) : p.peso.toStringAsFixed(0);
+      _pesoUnidade = p.peso >= 1000 ? 'kg' : 'g';
+      _codigoBarras.text = p.codigoBarras;
+      _tipoEmbalagem = p.tipoEmbalagem;
+      _imagens.addAll(p.imagens);
+      _publicar = p.publicadoNoCatalogo;
+      _divideSemJuros = p.divideSemJuros;
+      _maxParcelasSemJuros.text = p.maxParcelasSemJuros.toString();
+      _percentualDescontoPix.text = (p.percentualDescontoPix > 0)
+          ? p.percentualDescontoPix.toStringAsFixed(1)
+          : '0';
+
+      // 🔹 Preenche grade de variações (tamanho + cor + quantidade)
+      if (p.variacoes != null && p.variacoes!.isNotEmpty) {
+        debugPrint('\n🔍 [DEBUG CARREGAR] Carregando variações do Firestore:');
+        debugPrint('  p.variacoes = ${p.variacoes}');
+
+        _gradeVariacoes = [];
+        for (final tamanhoEntry in p.variacoes!.entries) {
+          final tamanho = tamanhoEntry.key;
+          final mapaCores = tamanhoEntry.value;
+          if (mapaCores is Map) {
+            for (final corEntry in mapaCores.entries) {
+              final cor = corEntry.key;
+              final qtd = corEntry.value;
+              debugPrint('  ➜ Adicionando linha: $tamanho + $cor = $qtd');
+              _gradeVariacoes.add({
+                'tamanho': tamanho == 'sem-tamanho' ? '' : tamanho,
+                'cor': cor == 'sem-cor' ? '' : cor,
+                'qtd': qtd.toString(),
+              });
+            }
+          }
+        }
+        debugPrint('  Total de linhas carregadas: ${_gradeVariacoes.length}');
+
+        if (_gradeVariacoes.isEmpty) {
+          _gradeVariacoes.add({'tamanho': '', 'cor': '', 'qtd': ''});
+        }
+      } else if (p.estoquePorTamanho.isNotEmpty) {
+        // fallback: migra do sistema antigo
+        _gradeVariacoes = p.estoquePorTamanho.entries
+            .map((e) => {
+                  'tamanho': e.key,
+                  'cor': '',
+                  'qtd': e.value.toString(),
+                })
+            .toList();
+      } else if (p.tamanhos.isNotEmpty) {
+        // fallback mais antigo: só lista tamanhos sem quantidade
+        _gradeVariacoes = p.tamanhos
+            .map((t) => {'tamanho': t, 'cor': '', 'qtd': ''})
+            .toList();
+      }
+
+      // 🔹 Preenche campos de promoção
+      _emPromocao = p.emPromocao;
+      if (p.percentualPromo != null && p.percentualPromo! > 0) {
+        _tipoDesconto = 'percentual';
+        _percentualPromo.text = MoedaInputFormatter.format(p.percentualPromo!);
+      } else if (p.valorPromo != null && p.valorPromo! > 0) {
+        _tipoDesconto = 'fixo';
+        _valorPromo.text = MoedaInputFormatter.format(p.valorPromo!);
+      }
+      _dataInicioPromo = p.dataInicioPromo;
+      _dataFimPromo = p.dataFimPromo;
+
+      // 🔹 Preenche marketplaces selecionados
+      _marketplacesSelecionados.addAll(p.marketplaces);
+
+      // 🔹 Preenche preço por tamanho
+      if (p.precoPorTamanho != null && p.precoPorTamanho!.isNotEmpty) {
+        for (final e in p.precoPorTamanho!.entries) {
+          _precoPorTamanhoCtrl[e.key] = TextEditingController(
+            text: MoedaInputFormatter.format(e.value),
+          );
+        }
+      }
+    }
+    _initVariacaoControllers();
+  }
+
+  /// Retorna os tamanhos únicos da grade de variações.
+  Set<String> get _tamanhosUnicos {
+    final set = <String>{};
+    for (final c in _variacaoControllers) {
+      final t = (c['tamanho']?.text ?? '').trim();
+      if (t.isNotEmpty) set.add(t);
+    }
+    return set;
+  }
+
+  void _initPrecoPorTamanhoControllers() {
+    final tamanhos = _tamanhosUnicos;
+    for (final t in _precoPorTamanhoCtrl.keys.toList()) {
+      if (!tamanhos.contains(t)) {
+        _precoPorTamanhoCtrl[t]?.dispose();
+        _precoPorTamanhoCtrl.remove(t);
+      }
+    }
+    for (final t in tamanhos) {
+      if (!_precoPorTamanhoCtrl.containsKey(t)) {
+        _precoPorTamanhoCtrl[t] = TextEditingController();
+      }
+    }
+  }
+
+  void _initVariacaoControllers() {
+    for (final c in _variacaoControllers) {
+      c['tamanho']?.dispose();
+      c['cor']?.dispose();
+      c['qtd']?.dispose();
+    }
+    _variacaoControllers.clear();
+    for (final row in _gradeVariacoes) {
+      _variacaoControllers.add({
+        'tamanho': TextEditingController(text: row['tamanho'] ?? ''),
+        'cor': TextEditingController(text: row['cor'] ?? ''),
+        'qtd': TextEditingController(text: row['qtd'] ?? ''),
+      });
+    }
+    _initPrecoPorTamanhoControllers();
+  }
+
+  Future<void> _initLojaEBox() async {
+    try {
+      final id = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10));
+      lojaId = id;
+      if (id == null || id.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Não foi possível identificar a loja. Tente fazer login novamente.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          Navigator.of(context).maybePop();
+        }
+        return;
+      }
+      final nomeBox = HiveBoxNames.produtos(id);
+      if (Hive.isBoxOpen(nomeBox)) {
+        produtosBox = Hive.box<Produto>(nomeBox);
+      } else {
+        produtosBox = await Hive.openBox<Produto>(nomeBox);
+      }
+
+      // Carregar embalagens disponíveis
+      if (Hive.isBoxOpen('config')) {
+        _configBox = Hive.box('config');
+      } else {
+        _configBox = await Hive.openBox('config');
+      }
+
+      final rawEmbalagens = _configBox.get('embalagens');
+      if (rawEmbalagens is List && rawEmbalagens.isNotEmpty) {
+        final embalagensTemp = rawEmbalagens.map<Map<String, dynamic>>((e) {
+          if (e is Map) {
+            return {
+              'id': e['id']?.toString() ?? '',
+              'nome': e['nome']?.toString() ?? '',
+              'peso': (e['peso'] is num)
+                  ? (e['peso'] as num).toDouble()
+                  : double.tryParse('${e['peso']}') ?? 0.0,
+              'tamanho': (e['tamanho'] is num)
+                  ? (e['tamanho'] as num).toInt()
+                  : int.tryParse('${e['tamanho']}') ?? 0,
+            };
+          }
+          return {'id': '', 'nome': '', 'peso': 0.0, 'tamanho': 0};
+        }).toList();
+
+        // ✅ Remover duplicatas baseado no 'id'
+        final idsVistos = <String>{};
+        _embalagensDisponiveis = embalagensTemp.where((e) {
+          final id = e['id'].toString();
+          if (id.isEmpty || idsVistos.contains(id)) {
+            return false;
+          }
+          idsVistos.add(id);
+          return true;
+        }).toList();
+
+        // ✅ Se ficou vazia após remover duplicatas, usar padrão
+        if (_embalagensDisponiveis.isEmpty) {
+          _embalagensDisponiveis = [
+            {'id': 'padrao', 'nome': 'Padrão', 'peso': 50.0, 'tamanho': 1},
+          ];
+        }
+      } else {
+        // Padrão caso não tenha nada configurado
+        _embalagensDisponiveis = [
+          {'id': 'padrao', 'nome': 'Padrão', 'peso': 50.0, 'tamanho': 1},
+          {'id': 'pequena', 'nome': 'Pequena', 'peso': 100.0, 'tamanho': 2},
+          {'id': 'media', 'nome': 'Média', 'peso': 200.0, 'tamanho': 3},
+          {'id': 'grande', 'nome': 'Grande', 'peso': 350.0, 'tamanho': 4},
+        ];
+      }
+
+      // ✅ Validar se _tipoEmbalagem existe nas opções disponíveis
+      final idsDisponiveis = _embalagensDisponiveis.map((e) => e['id'].toString()).toSet();
+      if (!idsDisponiveis.contains(_tipoEmbalagem)) {
+        _tipoEmbalagem = _embalagensDisponiveis.first['id'].toString();
+      }
+
+      // Para novo produto: verificar se já existe ao mudar nome/categoria
+      if (widget.produto == null) {
+        _nome.addListener(_verificarProdutoExistente);
+        _categoria.addListener(_verificarProdutoExistente);
+        WidgetsBinding.instance.addPostFrameCallback((_) => _verificarProdutoExistente());
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao inicializar ProdutoForm (type=${e.runtimeType})');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao carregar loja: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// Peso em gramas (converte de kg se _pesoUnidade for 'kg').
+  double get _pesoEmGramas {
+    final v = double.tryParse(_peso.text.trim().replaceAll(',', '.')) ?? 0.0;
+    return _pesoUnidade == 'kg' ? v * 1000 : v;
+  }
+
+  void _verificarProdutoExistente() {
+    if (lojaId == null || widget.produto != null) return;
+    final nome = _nome.text.trim();
+    final cat = _categoria.text.trim();
+    if (nome.isEmpty) {
+      if (_produtoExistenteAlvo != null && mounted) {
+        setState(() => _produtoExistenteAlvo = null);
+      }
+      return;
+    }
+    final existente = findProdutoExistente(
+      produtosBox,
+      lojaId!,
+      nome: nome,
+      categoria: cat,
+    );
+    if (mounted && existente != _produtoExistenteAlvo) {
+      setState(() => _produtoExistenteAlvo = existente);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (widget.produto == null) {
+      _nome.removeListener(_verificarProdutoExistente);
+      _categoria.removeListener(_verificarProdutoExistente);
+    }
+    _nome.dispose();
+    _quantidade.dispose();
+    _estoqueMinimo.dispose();
+    _custo.dispose();
+    _preco.dispose();
+    _categoria.dispose();
+    _subcategoria.dispose();
+    _descricao.dispose();
+    _peso.dispose();
+    _codigoBarras.dispose();
+    for (final c in _variacaoControllers) {
+      c['tamanho']?.dispose();
+      c['cor']?.dispose();
+      c['qtd']?.dispose();
+    }
+    _variacaoControllers.clear();
+    for (final ctrl in _precoPorTamanhoCtrl.values) {
+      ctrl.dispose();
+    }
+    _precoPorTamanhoCtrl.clear();
+    _percentualPromo.dispose();
+    _valorPromo.dispose();
+    _percentualDescontoPix.dispose();
+    _maxParcelasSemJuros.dispose();
+    _uploader.dispose();
+    super.dispose();
+  }
+
+  // ------------------------------
+  // PICK DE IMAGENS
+  // ------------------------------
+  /// Web: blob URLs não funcionam no Android; fazer upload imediato para Firebase Storage.
+  Future<void> _pickImgs() async {
+    final x = await ImagePicker().pickMultiImage(imageQuality: 75);
+    if (x.isEmpty) return;
+    if (lojaId == null) return;
+    final guard = LimitsGuard();
+    final max = await guard.maxImagesPerProduct(null);
+    final slots = max - _imagens.length;
+    if (slots <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Limite de $max imagem(ns) por produto no plano Free. Faça upgrade para mais.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (kIsWeb) {
+      // Web: XFile.path retorna blob: URL que não funciona no Android; fazer upload agora
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enviando imagem...'), duration: Duration(seconds: 2)),
+        );
+      }
+      setState(() => _salvando = true);
+      try {
+        final urls = <String>[];
+        for (var i = 0; i < x.length && urls.length < slots; i++) {
+          final rawBytes = await x[i].readAsBytes().timeout(
+            const Duration(seconds: 15),
+            onTimeout: () => throw TimeoutException('Leitura da imagem demorou muito'),
+          );
+          // Redimensionar para 600x800 + JPEG 85% = upload ~15x mais rápido
+          final bytes = CatalogThumbnailService.generateJpegFromBytes(rawBytes) ??
+              CatalogThumbnailService.generateFromBytes(rawBytes) ??
+              rawBytes;
+          final url = await ImageUploadService.uploadImageFromBytes(
+            bytes: bytes,
+            folder: 'produtos',
+            lojaId: lojaId!,
+            extension: 'jpg',
+            contentType: 'image/jpeg',
+          ).timeout(
+            const Duration(seconds: 60),
+            onTimeout: () => throw TimeoutException('Upload da imagem ${i + 1} demorou muito'),
+          );
+          if (url != null) urls.add(url);
+        }
+        if (urls.isNotEmpty && mounted) {
+          setState(() => _imagens.addAll(urls));
+          if (widget.produto != null) {
+            await _persistirProdutoAtual(widget.produto!).timeout(
+              const Duration(seconds: 90),
+              onTimeout: () => throw TimeoutException('Sincronização após adicionar imagens demorou muito'),
+            );
+          }
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${urls.length} imagem(ns) adicionada(s)')),
+          );
+        }
+      } on TimeoutException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message ?? 'Operação demorou muito. Tente novamente.'), backgroundColor: Colors.orange),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao enviar imagem: $e'), backgroundColor: Colors.red),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _salvando = false);
+      }
+      return;
+    }
+
+    final paths = x.map((e) => e.path).toList();
+    final aAdicionar = paths.take(slots).toList();
+    setState(() => _imagens.addAll(aAdicionar));
+    if (widget.produto != null) await _persistirProdutoAtual(widget.produto!);
+  }
+
+  // ------------------------------
+  // ADICIONAR IMAGEM POR URL
+  // ------------------------------
+  Future<void> _addImgByUrl() async {
+    final ctrl = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Adicionar imagem por URL'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(hintText: 'https://...jpg'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            child: const Text('Adicionar'),
+          ),
+        ],
+      ),
+    );
+
+    if ((url ?? '').isNotEmpty && lojaId != null) {
+      final guard = LimitsGuard();
+      final pode = await guard.canAddImagemProduto(
+        lojaId!,
+        currentCount: _imagens.length,
+      );
+      if (!pode && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Limite de 1 imagem por produto no plano Free. Faça upgrade para mais.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      setState(() => _imagens.add(url!));
+      if (widget.produto != null) await _persistirProdutoAtual(widget.produto!);
+    }
+  }
+
+  /// Aplica estado atual do formulário ao produto e sincroniza Hive + Firestore.
+  /// Chamado ao salvar ou quando editar foto/variação (auto-persist).
+  Future<void> _persistirProdutoAtual(Produto p) async {
+    if (lojaId == null) return;
+    try {
+      final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
+      final custo = MoedaInputFormatter.parse(_custo.text);
+      final preco = MoedaInputFormatter.parse(_preco.text);
+      final Map<String, dynamic> variacoesMap = {};
+      final Set<String> tamanhosSet = {};
+      final Set<String> coresSet = {};
+      int quantidadeTotalVariacoes = 0;
+      for (int i = 0; i < _variacaoControllers.length; i++) {
+        final c = _variacaoControllers[i];
+        final tamanho = (c['tamanho']?.text ?? '').trim();
+        final cor = (c['cor']?.text ?? '').trim();
+        final qStr = (c['qtd']?.text ?? '').trim();
+        if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
+        final qtd = int.tryParse(qStr) ?? 0;
+        if (qtd <= 0) continue;
+        if (tamanho.isNotEmpty) tamanhosSet.add(tamanho);
+        if (cor.isNotEmpty) coresSet.add(cor);
+        final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
+        final corFinal = cor.isEmpty ? 'sem-cor' : cor;
+        if (!variacoesMap.containsKey(chaveTamanho)) variacoesMap[chaveTamanho] = <String, int>{};
+        (variacoesMap[chaveTamanho] as Map<String, int>)[corFinal] = qtd;
+        quantidadeTotalVariacoes += qtd;
+      }
+      final int quantidadeFinal = variacoesMap.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
+      final List<String> tamanhosList = tamanhosSet.toList();
+      final List<String> coresList = coresSet.toList();
+      final Map<String, int> estoqueMapa = {};
+      for (final t in variacoesMap.keys) {
+        if (t == 'sem-tamanho') continue;
+        final m = variacoesMap[t] as Map<String, int>;
+        estoqueMapa[t] = m.values.fold<int>(0, (a, b) => a + b);
+      }
+      final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
+      final maxParcelasSemJuros = (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
+      double? percentualPromo;
+      double? valorPromo;
+      if (_emPromocao) {
+        if (_tipoDesconto == 'percentual') {
+          percentualPromo = MoedaInputFormatter.parse(_percentualPromo.text);
+        } else {
+          valorPromo = MoedaInputFormatter.parse(_valorPromo.text);
+        }
+      }
+      p
+        ..nome = capitalizeWords(_nome.text.trim())
+        ..quantidade = quantidadeFinal
+        ..custoReal = custo
+        ..precoFinal = preco
+        ..precoUnitario = preco
+        ..categoria = capitalizeWords(_categoria.text.trim())
+        ..subcategoria = capitalizeWords(_subcategoria.text.trim())
+        ..descricao = _descricao.text.trim()
+        ..imagens = List.from(_imagens)
+        ..videoUrl = ''
+        ..publicadoNoCatalogo = _publicar
+        ..divideSemJuros = _divideSemJuros
+        ..percentualDescontoPix = percentualDescontoPix
+        ..maxParcelasSemJuros = maxParcelasSemJuros
+        ..slug = p.slug.isNotEmpty ? p.slug : '${lojaId!}-${gerarSlug(_nome.text.trim())}'
+        ..tamanhos = tamanhosList
+        ..estoquePorTamanho = estoqueMapa
+        ..lojaId = p.lojaId.isNotEmpty ? p.lojaId : lojaId!
+        ..emPromocao = _emPromocao
+        ..percentualPromo = percentualPromo
+        ..valorPromo = valorPromo
+        ..dataInicioPromo = _dataInicioPromo
+        ..dataFimPromo = _dataFimPromo
+        ..peso = _pesoEmGramas
+        ..codigoBarras = _codigoBarras.text.trim()
+        ..tipoEmbalagem = _tipoEmbalagem
+        ..cores = coresList
+        ..marketplaces = _marketplacesSelecionados.toList()
+        ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
+        ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0;
+      _initPrecoPorTamanhoControllers();
+      final precoPorTamanhoMap = <String, double>{};
+      for (final e in _precoPorTamanhoCtrl.entries) {
+        final v = MoedaInputFormatter.parse(e.value.text);
+        if (v > 0) precoPorTamanhoMap[e.key] = v;
+      }
+      p.precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
+      if (variacoesMap.isNotEmpty) p.recalcularQuantidadeTotal();
+      p.updatedAt = DateTime.now();
+      await p.save();
+      await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId)
+          .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
+      await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft)
+          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Catálogo demorou muito'));
+      await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live)
+          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Catálogo demorou muito'));
+      await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Alterações salvas localmente e na nuvem.')),
+        );
+      }
+    } on TimeoutException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Operação demorou. Tente novamente.'), backgroundColor: Colors.orange),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao salvar alterações: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _sugerirDescricaoComIa() async {
+    final nome = _nome.text.trim();
+    if (nome.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe o nome do produto para sugerir a descrição.')),
+      );
+      return;
+    }
+    final lojaId = await LojaIdService.get();
+    if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.descricao)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.descricao)), backgroundColor: Colors.orange.shade700),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _sugerindoDescricao = true);
+    try {
+      final descricao = await AiLojaService.sugerirDescricao(
+        nome: nome,
+        categoria: _categoria.text.trim().isEmpty ? null : _categoria.text.trim(),
+        subcategoria: _subcategoria.text.trim().isEmpty ? null : _subcategoria.text.trim(),
+      );
+      if (mounted) {
+        _descricao.text = descricao;
+        IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.descricao);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Descrição sugerida pela IA. Você pode editar o texto.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Não foi possível gerar sugestão: ${AiLojaService.messageForUser(e)}'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sugerindoDescricao = false);
+    }
+  }
+
+  bool _sugerindoIa = false;
+
+  Future<void> _sugerirTituloIa() async {
+    final nome = _nome.text.trim();
+    if (nome.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe o nome do produto.')));
+      return;
+    }
+    final lojaId = await LojaIdService.get();
+    if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)), backgroundColor: Colors.orange.shade700),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _sugerindoIa = true);
+    try {
+      final titulo = await AiLojaService.sugerirTitulo(
+        nome: nome,
+        categoria: _categoria.text.trim().isEmpty ? null : _categoria.text.trim(),
+      );
+      if (mounted) {
+        _nome.text = titulo;
+        IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Título sugerido pela IA.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AiLojaService.messageForUser(e)), backgroundColor: Colors.red.shade700),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sugerindoIa = false);
+    }
+  }
+
+  Future<void> _sugerirCategoriaIa() async {
+    final nome = _nome.text.trim();
+    if (nome.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe o nome do produto.')));
+      return;
+    }
+    final lojaId = await LojaIdService.get();
+    if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)), backgroundColor: Colors.orange.shade700),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _sugerindoIa = true);
+    try {
+      final out = await AiLojaService.sugerirCategoriaSubcategoria(
+        nome: nome,
+        descricao: _descricao.text.trim().isEmpty ? null : _descricao.text.trim(),
+      );
+      if (mounted) {
+        _categoria.text = out['categoria'] ?? _categoria.text;
+        _subcategoria.text = out['subcategoria'] ?? _subcategoria.text;
+        IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Categoria e subcategoria sugeridas. Tags: ${(out['tags'] as List?)?.join(", ") ?? ""}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AiLojaService.messageForUser(e)), backgroundColor: Colors.red.shade700),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sugerindoIa = false);
+    }
+  }
+
+  Future<void> _sugerirVariacoesDescricaoIa() async {
+    final nome = _nome.text.trim();
+    if (nome.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe o nome do produto.')),
+      );
+      return;
+    }
+    final lojaId = await LojaIdService.get();
+    if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)), backgroundColor: Colors.orange.shade700),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _sugerindoIa = true);
+    try {
+      final out = await AiLojaService.sugerirVariacoesDescricao(
+        nome: nome,
+        descricaoAtual: _descricao.text.trim().isEmpty ? null : _descricao.text.trim(),
+      );
+      if (!mounted) return;
+      IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
+      setState(() => _sugerindoIa = false);
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Variações de texto (IA)'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Feed/Catálogo', style: TextStyle(fontWeight: FontWeight.bold)),
+                SelectableText(out['paraFeed'] ?? ''),
+                const SizedBox(height: 12),
+                const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
+                SelectableText(out['paraWhatsApp'] ?? ''),
+                const SizedBox(height: 12),
+                const Text('Instagram', style: TextStyle(fontWeight: FontWeight.bold)),
+                SelectableText(out['paraInstagram'] ?? ''),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
+            FilledButton(
+              onPressed: () {
+                _descricao.text = out['paraFeed'] ?? _descricao.text;
+                Navigator.pop(ctx);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Descrição preenchida com versão Feed.')),
+                );
+              },
+              child: const Text('Usar Feed na descrição'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sugerindoIa = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AiLojaService.messageForUser(e)), backgroundColor: Colors.red.shade700),
+        );
+      }
+    }
+  }
+
+  Future<void> _sugerirLegendaInstagramIa() async {
+    final nome = _nome.text.trim();
+    if (nome.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe o nome do produto.')));
+      return;
+    }
+    final lojaId = await LojaIdService.get();
+    if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)), backgroundColor: Colors.orange.shade700),
+      );
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _sugerindoIa = true);
+    try {
+      final legenda = await AiLojaService.sugerirLegendaInstagram(
+        produtoNome: nome,
+        descricao: _descricao.text.trim().isEmpty ? null : _descricao.text.trim(),
+      );
+      if (!mounted) return;
+      IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
+      setState(() => _sugerindoIa = false);
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Legenda Instagram / Reels'),
+          content: SelectableText(legenda),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sugerindoIa = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AiLojaService.messageForUser(e)), backgroundColor: Colors.red.shade700),
+        );
+      }
+    }
+  }
+
+  // ------------------------------
+  // SALVAR PRODUTO (NOVO / EDIT)
+  // ------------------------------
+  Future<void> _salvar() async {
+    if (!_form.currentState!.validate()) return;
+    if (lojaId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Loja não carregada ainda. Tente novamente.')),
+      );
+      return;
+    }
+
+    setState(() => _salvando = true);
+
+    try {
+      final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
+      final custo = MoedaInputFormatter.parse(_custo.text);
+      final preco = MoedaInputFormatter.parse(_preco.text);
+
+      // 🔹 Processa variações a partir dos controllers (garante valores salvos)
+      debugPrint('\n🔍 [DEBUG SALVAR] Processando ${_variacaoControllers.length} linhas da grade:');
+      final Map<String, dynamic> variacoesMap = {};
+      final Set<String> tamanhosSet = {};
+      final Set<String> coresSet = {};
+      int quantidadeTotalVariacoes = 0;
+
+      for (int i = 0; i < _variacaoControllers.length; i++) {
+        final c = _variacaoControllers[i];
+        final tamanho = (c['tamanho']?.text ?? '').trim();
+        final cor = (c['cor']?.text ?? '').trim();
+        final qStr = (c['qtd']?.text ?? '').trim();
+
+        debugPrint('  Linha $i: tamanho="$tamanho" cor="$cor" qtd="$qStr"');
+
+        if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
+        final qtd = int.tryParse(qStr) ?? 0;
+        if (qtd <= 0) continue;
+
+        debugPrint('  ➜ Processando: $tamanho + $cor = $qtd');
+
+        if (tamanho.isNotEmpty) tamanhosSet.add(tamanho);
+        if (cor.isNotEmpty) coresSet.add(cor);
+
+        final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
+        final corFinal = cor.isEmpty ? 'sem-cor' : cor;
+        if (!variacoesMap.containsKey(chaveTamanho)) {
+          variacoesMap[chaveTamanho] = <String, int>{};
+        }
+        final mapaInterno = variacoesMap[chaveTamanho] as Map<String, int>;
+        mapaInterno[corFinal] = qtd;
+        quantidadeTotalVariacoes += qtd;
+      }
+
+      debugPrint('\n📊 [DEBUG SALVAR] Resultado final:');
+      debugPrint('  variacoesMap: $variacoesMap');
+      debugPrint('  Total de variações: $quantidadeTotalVariacoes un');
+
+      int quantidadeFinal = variacoesMap.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
+      List<String> tamanhosList = tamanhosSet.toList();
+      List<String> coresList = coresSet.toList();
+
+      // Mapa estoquePorTamanho para compatibilidade (soma por tamanho; ignora sem-tamanho)
+      final Map<String, int> estoqueMapa = {};
+      for (final tamanho in variacoesMap.keys) {
+        if (tamanho == 'sem-tamanho') continue;
+        final mapaInterno = variacoesMap[tamanho] as Map<String, int>;
+        final total = mapaInterno.values.fold<int>(0, (s, v) => s + v);
+        estoqueMapa[tamanho] = total;
+      }
+
+      final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
+      final maxParcelasSemJuros =
+          (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
+
+      _initPrecoPorTamanhoControllers();
+      final Map<String, double> precoPorTamanhoMap = {};
+      for (final e in _precoPorTamanhoCtrl.entries) {
+        final v = MoedaInputFormatter.parse(e.value.text);
+        if (v > 0) precoPorTamanhoMap[e.key] = v;
+      }
+
+      // 🔹 Calcula valores de promoção
+      double? percentualPromo;
+      double? valorPromo;
+      if (_emPromocao) {
+        if (_tipoDesconto == 'percentual') {
+          percentualPromo = MoedaInputFormatter.parse(_percentualPromo.text);
+        } else {
+          valorPromo = MoedaInputFormatter.parse(_valorPromo.text);
+        }
+      }
+
+      if (widget.produto == null) {
+        // NOVO PRODUTO - ou ATUALIZAR se já existir (evita duplicação)
+        final existente = _produtoExistenteAlvo ??
+            findProdutoExistente(
+              produtosBox,
+              lojaId!,
+              nome: capitalizeWords(_nome.text.trim()),
+              categoria: capitalizeWords(_categoria.text.trim()),
+            );
+
+        if (existente != null) {
+          // ATUALIZAR produto existente (evita duplicação)
+          existente
+            ..nome = capitalizeWords(_nome.text.trim())
+            ..quantidade = quantidadeFinal
+            ..custoReal = custo
+            ..precoFinal = preco
+            ..precoUnitario = preco
+            ..categoria = capitalizeWords(_categoria.text.trim())
+            ..subcategoria = capitalizeWords(_subcategoria.text.trim())
+            ..descricao = _descricao.text.trim()
+            ..imagens = List.from(_imagens)
+            ..publicadoNoCatalogo = _publicar
+            ..divideSemJuros = _divideSemJuros
+            ..percentualDescontoPix = percentualDescontoPix
+            ..maxParcelasSemJuros = maxParcelasSemJuros
+            ..tamanhos = tamanhosList
+            ..estoquePorTamanho = estoqueMapa
+            ..emPromocao = _emPromocao
+            ..percentualPromo = percentualPromo
+            ..valorPromo = valorPromo
+            ..dataInicioPromo = _dataInicioPromo
+            ..dataFimPromo = _dataFimPromo
+            ..peso = _pesoEmGramas
+            ..codigoBarras = _codigoBarras.text.trim()
+            ..tipoEmbalagem = _tipoEmbalagem
+            ..cores = coresList
+            ..marketplaces = _marketplacesSelecionados.toList()
+            ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
+            ..videoUrl = ''
+            ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
+            ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
+
+          if (variacoesMap.isNotEmpty) {
+            existente.recalcularQuantidadeTotal();
+          }
+
+          existente.updatedAt = DateTime.now();
+          await existente.save();
+          await ProdutosFirestoreService.syncProduto(existente, lojaId: lojaId)
+              .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
+          await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.draft, lojaIdOverride: lojaId)
+              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+          await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.live, lojaIdOverride: lojaId)
+              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+          await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        } else {
+          // 🔒 Limite free_limited: verifica antes de inserir
+          final guard = LimitsGuard();
+          final pode = await guard.canAddProduto(lojaId!);
+          if (!pode) {
+            setState(() => _salvando = false);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Limite de produtos atingido no plano Free. '
+                  'Faça upgrade para adicionar mais.',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            return;
+          }
+          // INSERIR novo produto
+          final novo = Produto(
+            nome: capitalizeWords(_nome.text.trim()),
+            quantidade: quantidadeFinal,
+            custoReal: custo,
+            precoFinal: preco,
+            precoUnitario: preco,
+            categoria: capitalizeWords(_categoria.text.trim()),
+            subcategoria: capitalizeWords(_subcategoria.text.trim()),
+            descricao: _descricao.text.trim(),
+            dataEntrada: DateTime.now(),
+            imagens: List.from(_imagens),
+            publicadoNoCatalogo: _publicar,
+            divideSemJuros: _divideSemJuros,
+            percentualDescontoPix: percentualDescontoPix,
+            maxParcelasSemJuros: maxParcelasSemJuros,
+            slug: '${lojaId!}-${gerarSlug(_nome.text.trim())}',
+            tamanhos: tamanhosList,
+            estoquePorTamanho: estoqueMapa,
+            frete: 0.0,
+            gastosFixos: 0.0,
+            gastosVariaveis: 0.0,
+            precoSugerido: 0.0,
+            lojaId: lojaId!,
+            emPromocao: _emPromocao,
+            percentualPromo: percentualPromo,
+            valorPromo: valorPromo,
+            dataInicioPromo: _dataInicioPromo,
+            dataFimPromo: _dataFimPromo,
+            peso: _pesoEmGramas,
+            tipoEmbalagem: _tipoEmbalagem,
+            codigoBarras: _codigoBarras.text.trim(),
+            cores: coresList,
+            marketplaces: _marketplacesSelecionados.toList(),
+            variacoes: variacoesMap.isNotEmpty ? variacoesMap : null,
+            videoUrl: '',
+            estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?? 0,
+            precoPorTamanho: precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null,
+            updatedAt: DateTime.now(),
+          );
+
+          await produtosBox.add(novo);
+          await ProdutosFirestoreService.syncProduto(novo, lojaId: lojaId)
+              .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
+          await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.draft, lojaIdOverride: lojaId)
+              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+          await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.live, lojaIdOverride: lojaId)
+              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+          await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        }
+      } else {
+        // EDITAR PRODUTO
+        final p = widget.produto!;
+        p
+          ..nome = capitalizeWords(_nome.text.trim())
+          ..quantidade = quantidadeFinal
+          ..custoReal = custo
+          ..precoFinal = preco
+          ..precoUnitario = preco
+          ..categoria = capitalizeWords(_categoria.text.trim())
+          ..subcategoria = capitalizeWords(_subcategoria.text.trim())
+          ..descricao = _descricao.text.trim()
+          ..imagens = List.from(_imagens)
+          ..videoUrl = ''
+          ..publicadoNoCatalogo = _publicar
+          ..divideSemJuros = _divideSemJuros
+          ..percentualDescontoPix = percentualDescontoPix
+          ..maxParcelasSemJuros = maxParcelasSemJuros
+          ..slug = p.slug.isNotEmpty
+              ? p.slug
+              : '${lojaId!}-${gerarSlug(_nome.text.trim())}'
+          ..tamanhos = tamanhosList
+          ..estoquePorTamanho = estoqueMapa
+          ..lojaId = p.lojaId.isNotEmpty ? p.lojaId : lojaId!
+          ..emPromocao = _emPromocao
+          ..percentualPromo = percentualPromo
+          ..valorPromo = valorPromo
+          ..dataInicioPromo = _dataInicioPromo
+          ..dataFimPromo = _dataFimPromo
+          ..peso = _pesoEmGramas
+          ..codigoBarras = _codigoBarras.text.trim()
+          ..tipoEmbalagem = _tipoEmbalagem
+          ..cores = coresList
+          ..marketplaces = _marketplacesSelecionados.toList()
+          ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
+          ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
+          ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
+
+        // 🔹 Recalcular quantidade total com base nas variações
+        if (variacoesMap.isNotEmpty) {
+          p.recalcularQuantidadeTotal();
+        }
+
+        p.updatedAt = DateTime.now();
+        await p.save();
+        await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId)
+            .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
+        await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft, lojaIdOverride: lojaId)
+            .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+        await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live, lojaIdOverride: lojaId)
+            .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+        await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _publicar
+                ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
+                : 'Produto salvo e sincronizado com Hive e Firestore.',
+          ),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } on TimeoutException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? 'Salvamento demorou muito. Tente novamente.'), backgroundColor: Colors.orange),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao salvar: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  // ------------------------------
+  // UI PRINCIPAL
+  // ------------------------------
+  @override
+  Widget build(BuildContext context) {
+    final isEdit = widget.produto != null;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final returnToVenda = args is Map && (args['returnToVenda'] == true);
+
+    // Enquanto não carregou a loja/box:
+    if (lojaId == null || !Hive.isBoxOpen(HiveBoxNames.produtos(lojaId!))) {
+      return const Scaffold(
+        body: _ProdutoFormLoadingBody(),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          isEdit
+              ? 'Editar Produto'
+              : (_produtoExistenteAlvo != null ? 'Atualizar Produto' : 'Novo Produto'),
+        ),
+        elevation: 0,
+        actions: returnToVenda
+            ? [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.shopping_cart, size: 18),
+                    label: const Text('Voltar para venda'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.green.shade700,
+                    ),
+                  ),
+                ),
+              ]
+            : null,
+      ),
+      body: AbsorbPointer(
+        absorbing: _salvando,
+        child: Stack(
+          children: [
+            Form(
+              key: _form,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // 📝 CARD: INFORMAÇÕES BÁSICAS
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  _buildSectionCard(
+                    title: 'Informações Básicas',
+                    icon: Icons.info_outline,
+                    iconColor: Colors.blue,
+                    children: [
+                      // Nome
+                      _buildTextField(
+                        controller: _nome,
+                        label: 'Nome do Produto *',
+                        icon: Icons.shopping_bag_outlined,
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Informe o nome'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Categoria e Subcategoria (autocomplete com sugestões existentes)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildCategoriaAutocomplete(
+                              controller: _categoria,
+                              label: 'Categoria',
+                              icon: Icons.category_outlined,
+                              opcoes: produtosBox.values
+                                  .map((p) => p.categoria.trim())
+                                  .where((s) => s.isNotEmpty)
+                                  .toSet()
+                                  .toList()
+                                ..sort(),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildCategoriaAutocomplete(
+                              controller: _subcategoria,
+                              label: 'Subcategoria',
+                              icon: Icons.label_outline,
+                              opcoes: produtosBox.values
+                                  .map((p) => p.subcategoria.trim())
+                                  .where((s) => s.isNotEmpty)
+                                  .toSet()
+                                  .toList()
+                                ..sort(),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Código de barras (opcional)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _codigoBarras,
+                              label: 'Código de barras (opcional)',
+                              icon: Icons.qr_code_outlined,
+                              helperText: 'EAN, GTIN ou código interno para busca e baixa no estoque',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 20),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton.filled(
+                                  tooltip: 'Gerar EAN-13',
+                                  icon: const Icon(Icons.add_circle_outline),
+                                  onPressed: () {
+                                    if (mounted) {
+                                      _codigoBarras.text = gerarEAN13();
+                                    }
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton.filled(
+                                  tooltip: 'Ler com câmera',
+                                  icon: const Icon(Icons.qr_code_scanner),
+                                  onPressed: () async {
+                                    final code = await BarcodeScannerScreen.scan(context);
+                                    if (code != null && code.isNotEmpty && mounted) {
+                                      _codigoBarras.text = code;
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Descrição
+                      _buildTextField(
+                        controller: _descricao,
+                        label: 'Descrição',
+                        icon: Icons.description_outlined,
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.tonalIcon(
+                          onPressed: _sugerindoDescricao ? null : _sugerirDescricaoComIa,
+                          icon: _sugerindoDescricao
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.auto_awesome, size: 20),
+                          label: Text(_sugerindoDescricao ? 'Gerando…' : 'Sugerir com IA'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.tonal(
+                        onPressed: _sugerindoIa ? null : _sugerirTituloIa,
+                        child: const Text('Título'),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: _sugerindoIa ? null : _sugerirCategoriaIa,
+                        child: const Text('Categoria'),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: _sugerindoIa ? null : _sugerirVariacoesDescricaoIa,
+                        child: const Text('Variações'),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: _sugerindoIa ? null : _sugerirLegendaInstagramIa,
+                        child: const Text('Legenda IG'),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // 💰 CARD: PREÇOS E ESTOQUE
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  _buildSectionCard(
+                    title: 'Preços e Estoque',
+                    icon: Icons.attach_money,
+                    iconColor: Colors.green,
+                    children: [
+                      // Custo e Preço de Venda
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _custo,
+                              label: 'Custo (R\$) *',
+                              icon: Icons.money_off_outlined,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [MoedaInputFormatter()],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _preco,
+                              label: 'Preço de Venda (R\$) *',
+                              icon: Icons.sell_outlined,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [MoedaInputFormatter()],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Quantidade Geral
+                      _buildTextField(
+                        controller: _quantidade,
+                        label: 'Quantidade em Estoque *',
+                        icon: Icons.inventory_outlined,
+                        keyboardType: TextInputType.number,
+                        helperText: 'Será recalculada se preencher tamanhos/cores',
+                      ),
+                      const SizedBox(height: 12),
+                      // Estoque mínimo (alerta no dashboard)
+                      _buildTextField(
+                        controller: _estoqueMinimo,
+                        label: 'Estoque mínimo (alerta)',
+                        icon: Icons.warning_amber_outlined,
+                        keyboardType: TextInputType.number,
+                        helperText: '0 = usa padrão 5. Quando estoque ≤ este valor, aparece no card "Estoque baixo" da home.',
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // 🎯 CARD: VARIAÇÕES (TAMANHO + COR)
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  _buildSectionCard(
+                    title: 'Variações (Tamanho + Cor)',
+                    icon: Icons.tune,
+                    iconColor: Colors.deepPurple,
+                    children: [
+                      const Text(
+                        'Adicione as variações do produto com tamanho, cor e quantidade em estoque.\n'
+                        'Exemplo: Blusa P Rosa: 1 unidade, Blusa M Preta: 3 unidades',
+                        style: TextStyle(fontSize: 13, color: Colors.black54),
+                      ),
+                      const SizedBox(height: 12),
+
+                      ..._variacaoControllers.asMap().entries.map((entry) {
+                        final i = entry.key;
+                        final c = entry.value;
+
+                        return Padding(
+                          key: ValueKey('var_$i'),
+                          padding: const EdgeInsets.only(bottom: 10.0),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: TextFormField(
+                                  controller: c['tamanho'],
+                                  decoration: InputDecoration(
+                                    labelText: 'Tamanho',
+                                    hintText: 'P, M, 36',
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 14,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                flex: 2,
+                                child: TextFormField(
+                                  controller: c['cor'],
+                                  decoration: InputDecoration(
+                                    labelText: 'Cor',
+                                    hintText: 'Rosa, Azul',
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 14,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                flex: 1,
+                                child: TextFormField(
+                                  controller: c['qtd'],
+                                  decoration: InputDecoration(
+                                    labelText: 'Qtd',
+                                    hintText: '0',
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 14,
+                                    ),
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ),
+                              if (_variacaoControllers.length > 1)
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                    onPressed: () async {
+                                    setState(() {
+                                      c['tamanho']?.dispose();
+                                      c['cor']?.dispose();
+                                      c['qtd']?.dispose();
+                                      _variacaoControllers.removeAt(i);
+                                      _gradeVariacoes.removeAt(i);
+                                      _initPrecoPorTamanhoControllers();
+                                    });
+                                    if (widget.produto != null) {
+                                      await _persistirProdutoAtual(widget.produto!);
+                                    }
+                                  },
+                                ),
+                            ],
+                          ),
+                        );
+                      }),
+
+                      // Preço por tamanho (quando há variações com tamanhos)
+                      if (_tamanhosUnicos.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _buildSectionCard(
+                          title: 'Preço por tamanho (opcional)',
+                          icon: Icons.payments_outlined,
+                          iconColor: Colors.green,
+                          children: [
+                            Text(
+                              'Se cada tamanho tiver valor diferente, informe abaixo. Ex: P=R\$50, M=R\$75, G=R\$100. No catálogo aparecerá "R\$ 50,00 até R\$ 100,00".',
+                              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: _precoPorTamanhoCtrl.entries.map((e) {
+                                return SizedBox(
+                                  width: 120,
+                                  child: TextFormField(
+                                    controller: e.value,
+                                    decoration: InputDecoration(
+                                      labelText: '${e.key} (R\$)',
+                                      hintText: '0,00',
+                                      filled: true,
+                                      fillColor: Colors.grey.shade50,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                    ),
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    inputFormatters: [MoedaInputFormatter()],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // Botão adicionar variação
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.add_circle_outline),
+                          label: const Text('Adicionar Variação'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.deepPurple,
+                          ),
+                          onPressed: () async {
+                            setState(() {
+                              _gradeVariacoes.add({'tamanho': '', 'cor': '', 'qtd': ''});
+                              _variacaoControllers.add({
+                                'tamanho': TextEditingController(),
+                                'cor': TextEditingController(),
+                                'qtd': TextEditingController(),
+                              });
+                              _initPrecoPorTamanhoControllers();
+                            });
+                            if (widget.produto != null) {
+                              await _persistirProdutoAtual(widget.produto!);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // 📦 CARD: PESO E EMBALAGEM
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  _buildSectionCard(
+                    title: 'Peso e Embalagem',
+                    icon: Icons.scale_outlined,
+                    iconColor: Colors.orange,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: _peso,
+                              label: _pesoUnidade == 'kg' ? 'Peso (kg)' : 'Peso (g)',
+                              icon: Icons.monitor_weight_outlined,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(value: 'g', label: Text('g'), icon: Icon(Icons.straighten, size: 18)),
+                              ButtonSegment(value: 'kg', label: Text('kg'), icon: Icon(Icons.scale, size: 18)),
+                            ],
+                            selected: {_pesoUnidade},
+                            onSelectionChanged: (Set<String> v) {
+                              if (v.isNotEmpty) {
+                                final novaUnidade = v.first;
+                                if (novaUnidade == _pesoUnidade) return;
+                                final valorAtual = double.tryParse(_peso.text.trim().replaceAll(',', '.')) ?? 0.0;
+                                setState(() {
+                                  _pesoUnidade = novaUnidade;
+                                  if (novaUnidade == 'kg') {
+                                    _peso.text = (valorAtual / 1000).toStringAsFixed(2);
+                                  } else {
+                                    _peso.text = (valorAtual * 1000).toStringAsFixed(0);
+                                  }
+                                });
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _tipoEmbalagem,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                labelText: 'Tipo de Embalagem',
+                                prefixIcon: const Icon(Icons.inventory_2_outlined),
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              items: _embalagensDisponiveis.map((e) {
+                                return DropdownMenuItem<String>(
+                                  value: e['id'].toString(),
+                                  child: Text(
+                                    '${e['nome']} (${e['peso']}g)',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (v) {
+                                if (v != null) {
+                                  setState(() => _tipoEmbalagem = v);
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // 🖼️ CARD: IMAGENS
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  _buildSectionCard(
+                    title: 'Imagens',
+                    icon: Icons.image_outlined,
+                    iconColor: Colors.teal,
+                    children: [
+                      if (_imagens.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: const Center(
+                            child: Column(
+                              children: [
+                                Icon(Icons.image_outlined, size: 48, color: Colors.grey),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Nenhuma imagem adicionada',
+                                  style: TextStyle(color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                      if (_imagens.isNotEmpty) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            'Arraste para reordenar. A primeira imagem é a capa do catálogo.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
+                        ),
+                        ReorderableListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          buildDefaultDragHandles: false,
+                          itemCount: _imagens.length,
+                          onReorder: (oldIndex, newIndex) {
+                            setState(() {
+                              if (newIndex > oldIndex) newIndex--;
+                              final src = _imagens.removeAt(oldIndex);
+                              _imagens.insert(newIndex, src);
+                            });
+                            if (widget.produto != null) {
+                              _persistirProdutoAtual(widget.produto!);
+                            }
+                          },
+                          itemBuilder: (context, i) {
+                            final src = _imagens[i];
+                            final isBlobOtherOrigin = kIsWeb && src.startsWith('blob:');
+                            final preview = isBlobOtherOrigin
+                                ? Container(
+                                    width: 100,
+                                    height: 100,
+                                    color: Colors.grey[300],
+                                    child: const Icon(Icons.broken_image),
+                                  )
+                                : (src.startsWith('http') || kIsWeb)
+                                    ? Image.network(
+                                        src,
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Image.file(
+                                        File(src),
+                                        width: 100,
+                                        height: 100,
+                                        fit: BoxFit.cover,
+                                      );
+                            return ReorderableDragStartListener(
+                              key: ValueKey('img_$i'),
+                              index: i,
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: i == 0 ? Colors.teal : Colors.grey.shade300,
+                                          width: i == 0 ? 3 : 2,
+                                        ),
+                                      ),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: preview,
+                                      ),
+                                    ),
+                                    if (i == 0)
+                                      Positioned(
+                                        left: 8,
+                                        top: 8,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.teal,
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Text('Capa', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ),
+                                    Positioned(
+                                      left: 8,
+                                      bottom: 8,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black54,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(Icons.drag_handle, color: Colors.white, size: 20),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: -8,
+                                      top: -8,
+                                      child: Container(
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: IconButton(
+                                          icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                          onPressed: _removendoImagem
+                                              ? null
+                                              : () async {
+                                                  setState(() {
+                                                    _removendoImagem = true;
+                                                    _imagens.removeAt(i);
+                                                  });
+                                                  try {
+                                                    if (widget.produto != null) {
+                                                      await _persistirProdutoAtual(widget.produto!);
+                                                    }
+                                                  } finally {
+                                                    if (mounted) {
+                                                      setState(() => _removendoImagem = false);
+                                                    }
+                                                  }
+                                                },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _pickImgs,
+                              icon: const Icon(Icons.photo_library_outlined),
+                              label: const Text('Galeria'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _addImgByUrl,
+                              icon: const Icon(Icons.link),
+                              label: const Text('URL'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // 🏷️ CARD: PROMOÇÕES
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  _buildSectionCard(
+                    title: 'Promoção',
+                    icon: Icons.local_offer_outlined,
+                    iconColor: Colors.deepOrange,
+                    trailing: Switch(
+                      value: _emPromocao,
+                      onChanged: (v) => setState(() => _emPromocao = v),
+                    ),
+                    children: [
+                      if (_emPromocao) ...[
+                        const Text(
+                          'Tipo de desconto',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: RadioListTile<String>(
+                                title: const Text('Percentual (%)'),
+                                value: 'percentual',
+                                // ignore: deprecated_member_use
+                                groupValue: _tipoDesconto,
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                // ignore: deprecated_member_use
+                                onChanged: (v) => setState(() {
+                                  _tipoDesconto = v!;
+                                  _valorPromo.clear();
+                                }),
+                              ),
+                            ),
+                            Expanded(
+                              child: RadioListTile<String>(
+                                title: const Text('Valor fixo (R\$)'),
+                                value: 'fixo',
+                                // ignore: deprecated_member_use
+                                groupValue: _tipoDesconto,
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                // ignore: deprecated_member_use
+                                onChanged: (v) => setState(() {
+                                  _tipoDesconto = v!;
+                                  _percentualPromo.clear();
+                                }),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 12),
+                        if (_tipoDesconto == 'percentual')
+                          _buildTextField(
+                            controller: _percentualPromo,
+                            label: 'Percentual de desconto (%)',
+                            icon: Icons.percent,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [MoedaInputFormatter()],
+                          ),
+
+                        if (_tipoDesconto == 'fixo')
+                          _buildTextField(
+                            controller: _valorPromo,
+                            label: 'Valor de desconto (R\$)',
+                            icon: Icons.attach_money,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [MoedaInputFormatter()],
+                          ),
+
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Período da promoção (opcional)',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () async {
+                                  final date = await showDatePicker(
+                                    context: context,
+                                    initialDate: _dataInicioPromo ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2030),
+                                  );
+                                  if (date != null) {
+                                    setState(() => _dataInicioPromo = date);
+                                  }
+                                },
+                                icon: const Icon(Icons.calendar_today, size: 16),
+                                label: Text(
+                                  _dataInicioPromo == null
+                                      ? 'Data início'
+                                      : '${_dataInicioPromo!.day}/${_dataInicioPromo!.month}/${_dataInicioPromo!.year}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () async {
+                                  final date = await showDatePicker(
+                                    context: context,
+                                    initialDate: _dataFimPromo ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2030),
+                                  );
+                                  if (date != null) {
+                                    setState(() => _dataFimPromo = date);
+                                  }
+                                },
+                                icon: const Icon(Icons.calendar_today, size: 16),
+                                label: Text(
+                                  _dataFimPromo == null
+                                      ? 'Data fim'
+                                      : '${_dataFimPromo!.day}/${_dataFimPromo!.month}/${_dataFimPromo!.year}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (_dataInicioPromo != null || _dataFimPromo != null) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () => setState(() {
+                                _dataInicioPromo = null;
+                                _dataFimPromo = null;
+                              }),
+                              icon: const Icon(Icons.clear, size: 16),
+                              label: const Text('Limpar datas'),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // 🏪 CARD: MARKETPLACES
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  _buildSectionCard(
+                    title: 'Marketplaces',
+                    icon: Icons.store_outlined,
+                    iconColor: Colors.indigo,
+                    children: [
+                      const Text(
+                        'Selecione em quais marketplaces este produto será publicado:',
+                        style: TextStyle(fontSize: 13, color: Colors.black54),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _buildMarketplaceChip('mercadolivre', 'Mercado Livre', Colors.yellow.shade700),
+                          _buildMarketplaceChip('shopee', 'Shopee', Colors.orange.shade700),
+                          _buildMarketplaceChip('tiktokshop', 'TikTok Shop', Colors.black),
+                          _buildMarketplaceChip('magazineluiza', 'Magazine Luiza', Colors.blue.shade700),
+                          _buildMarketplaceChip('amazon', 'Amazon', Colors.orange.shade900),
+                          _buildMarketplaceChip('americanas', 'Americanas', Colors.red.shade700),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // ✅ PUBLICAR NO CATÁLOGO
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: SwitchListTile(
+                      title: const Text(
+                        'Publicar no Catálogo',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: const Text(
+                        'O produto ficará visível para os clientes',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      secondary: const Icon(Icons.visibility_outlined, color: Colors.green),
+                      value: _publicar,
+                      onChanged: (v) => setState(() => _publicar = v),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // PARCELAMENTO SEM JUROS
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  SwitchListTile(
+                    title: const Text(
+                      'Dividir sem juros',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text(
+                      'Define parcelamento sem juros para este produto no catálogo.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    secondary: const Icon(Icons.credit_card, color: Colors.blue),
+                    value: _divideSemJuros,
+                    onChanged: (v) => setState(() => _divideSemJuros = v),
+                  ),
+
+                  if (_divideSemJuros) ...[
+                    const SizedBox(height: 8),
+                    ListTile(
+                      leading: const Icon(Icons.filter_9_plus, color: Colors.blue),
+                      title: const Text(
+                        'Até quantas vezes sem juros',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: const Text(
+                        'Esse limite será usado no checkout do Mercado Pago.',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      trailing: SizedBox(
+                        width: 90,
+                        child: TextFormField(
+                          controller: _maxParcelasSemJuros,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            suffixText: 'x',
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 12),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // DESCONTO NO PIX
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  ListTile(
+                    leading: const Icon(Icons.pix, color: Colors.green),
+                    title: const Text(
+                      'Desconto no PIX (%)',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: const Text(
+                      'Ex: 5% → R\$100 no cartão / R\$95 no PIX',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    trailing: SizedBox(
+                      width: 80,
+                      child: TextFormField(
+                        controller: _percentualDescontoPix,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          suffixText: '%',
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  // 💾 BOTÕES FINAIS
+                  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: _salvar,
+                          icon: const Icon(Icons.save_outlined),
+                          label: Text(
+                            _produtoExistenteAlvo != null
+                                ? 'Atualizar Produto'
+                                : (_publicar ? 'Salvar e Publicar' : 'Salvar Rascunho'),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.shade600,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.cancel_outlined),
+                          label: const Text('Cancelar'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+
+            if (_salvando)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withValues(alpha:0.3),
+                  child: const Center(
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text(
+                              'Salvando produto...',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    floatingActionButton: FloatingActionButton(
+      onPressed: _abrirMenuIaProduto,
+      tooltip: 'IA: descrição, título, categoria, variações, legenda',
+      backgroundColor: Colors.amber,
+      child: const Icon(Icons.auto_awesome, color: Colors.black87),
+    ),
+    );
+  }
+
+  void _abrirMenuIaProduto() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Sugestões com IA', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.description, color: Colors.blue),
+                title: const Text('Sugerir descrição'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _sugerirDescricaoComIa();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.title, color: Colors.green),
+                title: const Text('Sugerir título'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _sugerirTituloIa();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.category, color: Colors.orange),
+                title: const Text('Sugerir categoria e tags'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _sugerirCategoriaIa();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.format_quote, color: Colors.purple),
+                title: const Text('Variações (Feed, WhatsApp, Instagram)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _sugerirVariacoesDescricaoIa();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.pink),
+                title: const Text('Legenda Instagram / Reels'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _sugerirLegendaInstagramIa();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // WIDGETS AUXILIARES
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /// Widget para criar cards de seção
+  Widget _buildSectionCard({
+    required String title,
+    required IconData icon,
+    required Color iconColor,
+    required List<Widget> children,
+    Widget? trailing,
+  }) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: iconColor.withValues(alpha:0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, color: iconColor, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const Spacer(),
+                  trailing,
+                ],
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Autocomplete para categoria/subcategoria com sugestões existentes
+  Widget _buildCategoriaAutocomplete({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required List<String> opcoes,
+  }) {
+    return Autocomplete<String>(
+      initialValue: TextEditingValue(text: controller.text),
+      optionsBuilder: (textEditingValue) {
+        if (textEditingValue.text.isEmpty) {
+          return opcoes;
+        }
+        final lower = textEditingValue.text.toLowerCase();
+        return opcoes.where((s) => s.toLowerCase().contains(lower)).toList();
+      },
+      onSelected: (value) {
+        controller.text = value;
+        setState(() {});
+      },
+      fieldViewBuilder: (context, fieldController, focusNode, onSubmit) {
+        if (fieldController.text != controller.text) {
+          fieldController.text = controller.text;
+        }
+        return TextFormField(
+          controller: fieldController,
+          focusNode: focusNode,
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: Icon(icon),
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+            ),
+          ),
+          onChanged: (v) {
+            controller.text = v;
+            setState(() {});
+          },
+          onFieldSubmitted: (_) => onSubmit(),
+        );
+      },
+    );
+  }
+
+  /// Widget para criar text fields padronizados
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    IconData? icon,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+    String? helperText,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
+    return TextFormField(
+      controller: controller,
+      inputFormatters: inputFormatters,
+      decoration: InputDecoration(
+        labelText: label,
+        helperText: helperText,
+        prefixIcon: icon != null ? Icon(icon) : null,
+        filled: true,
+        fillColor: Colors.grey.shade50,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
+        ),
+      ),
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      validator: validator,
+    );
+  }
+
+  /// Widget helper para criar chip de marketplace
+  Widget _buildMarketplaceChip(String id, String label, Color color) {
+    final selecionado = _marketplacesSelecionados.contains(id);
+    return FilterChip(
+      label: Text(label),
+      selected: selecionado,
+      onSelected: (selected) {
+        setState(() {
+          if (selected) {
+            _marketplacesSelecionados.add(id);
+          } else {
+            _marketplacesSelecionados.remove(id);
+          }
+        });
+      },
+      selectedColor: color.withValues(alpha:0.2),
+      checkmarkColor: color,
+      backgroundColor: Colors.grey.shade100,
+      labelStyle: TextStyle(
+        color: selecionado ? color : Colors.black87,
+        fontWeight: selecionado ? FontWeight.bold : FontWeight.normal,
+      ),
+      side: BorderSide(
+        color: selecionado ? color : Colors.grey.shade400,
+        width: selecionado ? 2 : 1,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    );
+  }
+}
+
+/// Widget apenas visual: estado de carregamento da tela de formulário de produto.
+class _ProdutoFormLoadingBody extends StatelessWidget {
+  const _ProdutoFormLoadingBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
+}
+

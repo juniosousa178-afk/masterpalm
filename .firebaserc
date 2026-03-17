@@ -1,0 +1,20 @@
+{
+  "projects": {
+    "default": "masterpalm-58c46",
+    "prod": "masterpalm-58c46",
+    "masterpalm": "masterpalm-58c46"
+  },
+  "targets": {
+    "masterpalm-58c46": {
+      "hosting": {
+        "mastepalm": [
+          "mastepalm"
+        ],
+        "masterpalm-58c46": [
+          "masterpalm-58c46"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

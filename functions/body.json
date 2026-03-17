@@ -1,0 +1,29 @@
+{
+  "lojaId": "masterpalm",
+  "orderId": "teste-001",
+  "data": {
+    "customerName": "Cliente Teste",
+    "email": "cliente@teste.com",
+    "cpf": "12345678909",
+    "telefone": "11999999999",
+    "frete": {
+      "valor": 15.9,
+      "tipo": "SEDEX"
+    },
+    "items": [
+      {
+        "name": "Choker Coracao",
+        "qty": 1,
+        "price": 79.9,
+        "productId": "PROD001"
+      },
+      {
+        "name": "Brinco Argolinha",
+        "qty": 2,
+        "price": 39.9,
+        "productId": "PROD002"
+      }
+    ],
+    "status": "pending"
+  }
+}

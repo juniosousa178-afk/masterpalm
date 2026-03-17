@@ -1,0 +1,15 @@
+{
+  "parameters": {
+    "recaptcha_site_key": {
+      "defaultValue": {
+        "value": "6Ldz2esrAAAAAEXa0zdZlGPC7Bn4rnGX_jswYlTv"
+      },
+      "description": "Chave reCAPTCHA v3 para App Check (Web). Obtenha em https://www.google.com/recaptcha/admin",
+      "valueType": "STRING"
+    }
+  },
+  "version": {
+    "versionNumber": "1",
+    "isLegacy": false
+  }
+}

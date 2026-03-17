@@ -1,0 +1,21 @@
+POLÍTICA DE PRIVACIDADE - COMO USAR
+====================================
+
+O arquivo politica_privacidade.html está pronto para publicação.
+
+PASSO A PASSO:
+
+1. Hospedar no site mastepalm.com.br
+   - Exemplo de URL: https://mastepalm.com.br/privacidade
+   - Ou: https://www.mastepalm.com.br/politica-privacidade
+
+2. Na Play Console (Google Play):
+   - Vá em: Política do app > Política de privacidade
+   - Cole a URL (ex.: https://mastepalm.com.br/privacidade)
+
+3. Se não tiver site ainda:
+   - Use um serviço gratuito como GitHub Pages
+   - Ou crie uma página no Google Sites e use o link
+
+4. Atualize o e-mail de contato no HTML se necessário:
+   - Procure por "contato@mastepalm.com.br" e altere para o e-mail real de suporte

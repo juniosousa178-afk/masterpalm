@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the --base-href argument provided to flutter build.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+  <!-- Em /loja/xxx os assets devem vir da raiz (evita ServiceWorker/JS com MIME text/html) -->
+  <script>(function(){if(location.pathname.indexOf('/loja/')===0){var d=document,b=d.querySelector('base');if(b)b.href='/';}})();</script>
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <meta name="description" content="MasterPalm - Gerencie sua loja">
+  <meta name="version" content="1.0.44">
+
+  <!-- Force cache refresh -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="MasterPalm">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon: usar ícone da logo (Icon-192 já gerado pelo flutter_launcher_icons) -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/Icon-192.png"/>
+  <link rel="icon" type="image/png" href="icons/Icon-192.png"/>
+
+  <title>MasterPalm</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!--
+    Google Sign-In na Web: client_id é passado via código (Dart).
+    Evita meta google-signin-client_id: pode acionar inicialização legada e redirecionar
+    para Google antes da tela de login.
+  -->
+</head>
+<body>
+
+  <!-- App Check: reCAPTCHA v3 (chave via Remote Config). Para debug local, adicione:
+       <script>self.FIREBASE_APPCHECK_DEBUG_TOKEN=true;</script> e registre o token no Console. -->
+
+  <!-- Script principal do Flutter -->
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

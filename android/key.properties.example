@@ -1,0 +1,6 @@
+# Copie este arquivo para key.properties (não commitar key.properties)
+# Preencha com os dados do seu keystore de release.
+storePassword=SUA_SENHA
+keyPassword=SUA_SENHA
+keyAlias=masterpalm
+storeFile=release.keystore

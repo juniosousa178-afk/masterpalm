@@ -1,0 +1,6217 @@
+// lib/screens/loja_config_screen.dart
+// Configuração unificada da loja: identidade -> mídia -> tema -> fretes -> rodapé -> publicar
+// ✅ CORRIGIDO: Alinhado 100% com public_catalog_screen.dart
+
+import 'dart:async';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, FilteringTextInputFormatter;
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:hive/hive.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../core/hive_box_names.dart';
+import '../screens/public_catalog_screen.dart';
+import 'fretes_cupons_screen.dart';
+import '../utils/image_provider.dart';
+import '../services/store_resolver_facade.dart';
+import '../services/upload_manager.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import '../services/catalogo_sync_service.dart';
+import '../services/catalog_cache_service.dart';
+import '../services/limits_guard.dart';
+import '../services/sync_firestore_script.dart';
+import '../core/logger.dart';
+
+enum _LayoutPreset { masterPadrao, masterLuxo, darkClean }
+enum _MediaTab { desktop, mobile }
+enum _Pane {
+  identidade,
+  midias,
+  tema,
+  layout,
+  // fretes, cupons -> movidos para FretesCuponsScreen
+  menu,
+  dicas,
+  rodape,
+  financeiro,
+  publicar,
+}
+
+class LojaConfigScreen extends StatefulWidget {
+  const LojaConfigScreen({super.key});
+
+  @override
+  State<LojaConfigScreen> createState() => _LojaConfigScreenState();
+}
+
+class _LojaConfigScreenState extends State<LojaConfigScreen>
+    with TickerProviderStateMixin {
+  // Cores do tema moderno
+  static const Color _primaryColor = Color(0xFF6366F1);
+  static const Color _secondaryColor = Color(0xFF8B5CF6);
+  static const Color _successColor = Color(0xFF22C55E);
+  static const Color _warningColor = Color(0xFFF59E0B);
+  static const Color _errorColor = Color(0xFFEF4444);
+  static const Color _surfaceColor = Color(0xFFF8FAFC);
+
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  final UploadManager _uploader = UploadManager(maxConcurrent: 3);
+
+  // ✅ Timer para debounce do salvamento automático
+  Timer? _autoSaveTimer;
+
+  String _extFromName(String name) {
+    final i = name.lastIndexOf('.');
+    if (i == -1) return 'jpg';
+    final ext = name.substring(i + 1).toLowerCase();
+    return ext.isEmpty ? 'jpg' : ext;
+  }
+
+  String _activeStoreId() {
+    if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
+      throw StateError('Nenhuma loja ativa definida no LojaConfigScreen');
+    }
+    return _resolvedLojaId!;
+  }
+
+  // ---------------------------------
+  // ESTADO GERAL
+  // ---------------------------------
+  bool _carregando = true;
+  bool _salvando = false;
+  bool _sincronizando = false;
+  bool _erroCarregamento = false;
+  String _mensagemErro = '';
+  bool _offline = false;
+
+  late Box _configBox;
+  String? _slug;
+  String? _lojaId;
+  String? _resolvedLojaId;
+
+  _Pane _pane = _Pane.identidade;
+  _MediaTab _mediaTab = _MediaTab.desktop;
+  _LayoutPreset? _layoutPreset;
+
+  // Tutorial flutuante (somente na primeira configuração)
+  bool _mostrarTutorial = false;
+  int _tutorialPasso = 0;
+
+  // Campos com erro de validação (para destacar ao falhar Salvar)
+  final Set<String> _camposComErro = {};
+
+  // ---------------------------------
+  // CONTROLES BÁSICOS / IDENTIDADE
+  // ---------------------------------
+  final TextEditingController _nomeCtrl = TextEditingController();
+  final TextEditingController _slugCtrl = TextEditingController(); // ✅ SLUG AMIGÁVEL
+  final TextEditingController _linkCurtoCtrl = TextEditingController(); // ✅ LINK CURTO: /c/{linkCurto} → /loja/{slug}
+  final TextEditingController _subdominioMascaraCtrl = TextEditingController(); // ✅ MÁSCARA: nathypratasefolheados.masterpalm.com
+  final TextEditingController _subdominioDominioBaseCtrl = TextEditingController(text: 'mastepalm.com.br');
+  final TextEditingController _waCtrl = TextEditingController();
+  final TextEditingController _pedidoBaseCtrl = TextEditingController();
+
+  // ---------------------------------
+  // MÍDIAS (logo / banners)
+  // ---------------------------------
+  String? _logoUrlDesktop;
+  String? _logoUrlMobile;
+  List<String> _bannersDesktop = [];
+  List<String> _bannersMobile = [];
+  bool _logoDesktopAlterado = false;
+  bool _logoMobileAlterado = false;
+  bool _bannersDesktopAlterados = false;
+  bool _bannersMobileAlterados = false;
+
+  // Dimensões logo/banners
+  final TextEditingController _dLogoH = TextEditingController(text: '105');
+  final TextEditingController _dLogoW = TextEditingController(text: '327');
+  final TextEditingController _mLogoH = TextEditingController(text: '105');
+  final TextEditingController _mLogoW = TextEditingController(text: '327');
+
+  final TextEditingController _dBanH = TextEditingController(text: '256');
+  final TextEditingController _dBanW = TextEditingController(text: '1280');
+  final TextEditingController _mBanH = TextEditingController(text: '300');
+  final TextEditingController _mBanW = TextEditingController(text: '562');
+
+  // ---------------------------------
+  // TEMA / CORES (mantido para compatibilidade)
+  // ---------------------------------
+  Color _cFundo = const Color(0xFF050509);
+  Color _cCard = const Color(0xFF11111A);
+  Color _cTexto = Colors.white;
+  Color _cPrimaria = const Color(0xFF00A8FF);
+  Color _cBotaoTexto = Colors.white;
+  Color _cCabecalho = const Color(0xFF050509);
+
+  // Checkout
+  Color _cCarrinhoCard = const Color(0xFF11111A);
+  Color _cCarrinhoCampo = const Color(0xFF1E1E24);
+  Color _cCarrinhoTexto = Colors.white70;
+  Color _cCarrinhoLabel = Colors.white;
+  Color _cCarrinhoTotal = Colors.greenAccent;
+
+  // ✅ NOVO: Cores adicionais unificadas (uiColors expandido)
+  Color _cTextSecondary = const Color(0xFFB0B0B0);
+  Color _cCardTextPrimary = Colors.white;
+  Color _cCardTextSecondary = const Color(0xFFB0B0B0);
+  Color _cPriceHighlight = const Color(0xFF4ADE80);
+  Color _cDanger = const Color(0xFFEF4444);
+  Color _cFieldHint = const Color(0xFF6B7280);
+  Color _cFieldBorder = const Color(0xFF374151);
+  Color _cDivider = const Color(0xFF374151);
+  Color _cButtonSecondaryBg = Colors.transparent;
+  Color _cButtonSecondaryText = const Color(0xFF00A8FF);
+  Color _cButtonSecondaryBorder = const Color(0xFF00A8FF);
+  Color _cBadgeBackground = const Color(0xFF00A8FF).withValues(alpha:0.15);
+  Color _cBadgeText = const Color(0xFF00A8FF);
+  Color _cIcon = Colors.white;
+  Color _cShadow = Colors.black45;
+
+  // ✅ NOVO: Cores separadas do Cabeçalho
+  Color _cHeaderText = Colors.white;
+  Color _cHeaderIcon = Colors.white;
+  Color _cHeaderSearchBg = Colors.white10;
+  Color _cHeaderSearchText = Colors.white;
+  Color _cHeaderSearchHint = Colors.white70;
+
+  // ✅ NOVO: Cores separadas do Rodapé
+  Color _cFooterBackground = const Color(0xFF050509);
+  Color _cFooterText = Colors.white;
+  Color _cFooterTextSecondary = Colors.white70;
+  Color _cFooterIcon = Colors.white70;
+  Color _cFooterLink = const Color(0xFF00A8FF);
+  Color _cFooterDivider = Colors.white24;
+
+  // ✅ NOVO: Cores da tela Dicas e Informações
+  Color _cDicasBackground = const Color(0xFFF8F9FA);
+  Color _cDicasFooterBg = Colors.white;
+  Color _cDicasFooterText = Colors.black87;
+  Color _cDicasButtonBg = const Color(0xFF22C55E);
+  Color _cDicasButtonText = Colors.white;
+  Color _cDicasTopicPrimary = const Color(0xFF22C55E);
+
+  // Layout cards
+  int _gridDesktopCols = 4;
+  int _gridMobileCols = 2;
+  bool _cardShowShadow = true;
+  double _cardBorderRadius = 20;
+
+  // ---------------------------------
+  // FRETES
+  // ---------------------------------
+  String _freteProvider = 'manual';
+  final TextEditingController _melhorEnvioTokenCtrl = TextEditingController();
+  final TextEditingController _correiosUserCtrl = TextEditingController();
+  final TextEditingController _correiosSenhaCtrl = TextEditingController();
+  final TextEditingController _frenetTokenCtrl = TextEditingController();
+
+  final TextEditingController _freteNomeCtrl = TextEditingController();
+  final TextEditingController _freteValorCtrl = TextEditingController();
+  final List<Map<String, dynamic>> _fretes = [];
+
+  // ---------------------------------
+  // CUPONS
+  // ---------------------------------
+  final TextEditingController _cupomNomeCtrl = TextEditingController();
+  final TextEditingController _cupomValorCtrl = TextEditingController();
+  final List<Map<String, dynamic>> _cupons = [];
+
+  // ---------------------------------
+  // MENU & PÁGINAS
+  // ---------------------------------
+  bool _menuShowCategorias = true;
+  bool _menuShowEntrar = false;
+  bool _menuShowContato = true;
+  bool _menuShowSac = true;
+  bool _menuShowQuemSomos = true;
+  bool _menuShowDicas = true;
+  bool _showMobileMenuGrid = true;
+
+  /// Dicas e informações (cuidados, garantias, qualidade) – lista de mapas para o catálogo.
+  List<Map<String, dynamic>> _dicas = [];
+
+  final TextEditingController _quemSomosTituloCtrl =
+      TextEditingController(text: 'Quem somos');
+  final TextEditingController _quemSomosTextoCtrl = TextEditingController();
+
+  // ---------------------------------
+  // TAXAS FINANCEIRAS (Relatórios Financeiros e Financeiro & Metas)
+  // Valores padrão; usuário pode alterar em Loja Config > Taxas Financeiras
+  // ---------------------------------
+  final TextEditingController _taxaCartaoCtrl = TextEditingController(text: '5.0');
+  final TextEditingController _taxaMEICtrl = TextEditingController(text: '3.5');
+  final TextEditingController _custosFixosCtrl = TextEditingController(text: '10.0');
+  final TextEditingController _custoEmbalagemCtrl = TextEditingController(text: '3.0');
+
+  // SAC
+  final TextEditingController _sacWhatsappCtrl = TextEditingController();
+  final TextEditingController _sacEmailCtrl = TextEditingController();
+
+  // ---------------------------------
+  // RODAPÉ
+  // ---------------------------------
+  final List<String> _payments = [];
+  final TextEditingController _instagramCtrl = TextEditingController();
+  final TextEditingController _facebookCtrl = TextEditingController();
+  final TextEditingController _tiktokCtrl = TextEditingController();
+  final TextEditingController _telegramCtrl = TextEditingController();
+  final TextEditingController _kwaiCtrl = TextEditingController();
+  final TextEditingController _linkedinCtrl = TextEditingController();
+  final TextEditingController _emailRodapeCtrl = TextEditingController();
+  final TextEditingController _whatsappRodapeCtrl = TextEditingController();
+  final TextEditingController _sobreCtrl = TextEditingController();
+  final TextEditingController _trocasCtrl = TextEditingController();
+  final TextEditingController _loginCtrl = TextEditingController();
+  final TextEditingController _razaoCtrl = TextEditingController();
+  final TextEditingController _cnpjCtrl = TextEditingController();
+
+  // ---------------------------------
+  // CAMPANHAS E ROLETA (Sorteios)
+  // ---------------------------------
+  bool _campanhaAtiva = false;
+  bool _roletaAtiva = false;
+  String? _campanhaAtivaId;
+  String? _campanhaAtivaNome;
+
+  // ---------------------------------
+  // INIT / LOAD
+  // ---------------------------------
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
+    _animationController.forward();
+    _initConfig();
+    _verificarConectividade();
+    _setupAutoSaveListeners();
+  }
+
+  // ✅ Configura listeners para auto-save em todos os campos de texto
+  void _setupAutoSaveListeners() {
+    // Identidade
+    _nomeCtrl.addListener(_scheduleAutoSave);
+    _slugCtrl.addListener(_scheduleAutoSave);
+    _linkCurtoCtrl.addListener(_scheduleAutoSave);
+    _subdominioMascaraCtrl.addListener(_scheduleAutoSave);
+    _subdominioDominioBaseCtrl.addListener(_scheduleAutoSave);
+    _waCtrl.addListener(_scheduleAutoSave);
+    _pedidoBaseCtrl.addListener(_scheduleAutoSave);
+
+    // Dimensões de mídia
+    _dLogoH.addListener(_scheduleAutoSave);
+    _dLogoW.addListener(_scheduleAutoSave);
+    _mLogoH.addListener(_scheduleAutoSave);
+    _mLogoW.addListener(_scheduleAutoSave);
+    _dBanH.addListener(_scheduleAutoSave);
+    _dBanW.addListener(_scheduleAutoSave);
+    _mBanH.addListener(_scheduleAutoSave);
+    _mBanW.addListener(_scheduleAutoSave);
+
+    // Fretes e Cupons
+    _melhorEnvioTokenCtrl.addListener(_scheduleAutoSave);
+    _correiosUserCtrl.addListener(_scheduleAutoSave);
+    _correiosSenhaCtrl.addListener(_scheduleAutoSave);
+    _frenetTokenCtrl.addListener(_scheduleAutoSave);
+    _freteNomeCtrl.addListener(_scheduleAutoSave);
+    _freteValorCtrl.addListener(_scheduleAutoSave);
+    _cupomNomeCtrl.addListener(_scheduleAutoSave);
+    _cupomValorCtrl.addListener(_scheduleAutoSave);
+
+    // Menu e Páginas
+    _quemSomosTituloCtrl.addListener(_scheduleAutoSave);
+    _quemSomosTextoCtrl.addListener(_scheduleAutoSave);
+    _sacWhatsappCtrl.addListener(_scheduleAutoSave);
+    _sacEmailCtrl.addListener(_scheduleAutoSave);
+
+    // Rodapé
+    _instagramCtrl.addListener(_scheduleAutoSave);
+    _facebookCtrl.addListener(_scheduleAutoSave);
+    _tiktokCtrl.addListener(_scheduleAutoSave);
+    _telegramCtrl.addListener(_scheduleAutoSave);
+    _kwaiCtrl.addListener(_scheduleAutoSave);
+    _linkedinCtrl.addListener(_scheduleAutoSave);
+    _emailRodapeCtrl.addListener(_scheduleAutoSave);
+    _whatsappRodapeCtrl.addListener(_scheduleAutoSave);
+    _sobreCtrl.addListener(_scheduleAutoSave);
+    _trocasCtrl.addListener(_scheduleAutoSave);
+    _loginCtrl.addListener(_scheduleAutoSave);
+    _razaoCtrl.addListener(_scheduleAutoSave);
+    _cnpjCtrl.addListener(_scheduleAutoSave);
+  }
+
+  // ✅ Agenda auto-save com debounce de 2 segundos (sem validação - só ao clicar Salvar/Publicar)
+  void _scheduleAutoSave() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted && !_carregando) {
+        logD('💾 [AUTO-SAVE] Salvando alterações automaticamente...');
+        _salvarRascunho(validar: false);
+      }
+    });
+  }
+
+  Future<void> _initConfig() async {
+    try {
+      // 1) Descobre lojaId/slug usando StoreContext (FONTE ÚNICA)
+      final id = await StoreResolverFacade.resolveForAdminApp();
+      logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logD('🏪 [LOJA CONFIG] StoreResolverFacade.resolveForAdminApp() = $id');
+
+      // Mostra todas as fontes de loja
+      final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : null;
+      final config = Hive.isBoxOpen('config') ? Hive.box('config') : null;
+      logD('   sessao.store_id = ${sessao?.get('store_id')}');
+      logD('   config.store_id = ${config?.get('store_id')}');
+      logD('   FirebaseAuth.uid = ${FirebaseAuth.instance.currentUser?.uid}');
+      logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      if (id == null || id.trim().isEmpty) {
+        logD('❌ [LOJA CONFIG] Nenhuma loja ativa');
+        if (mounted) {
+          _snack(
+              'Nenhuma loja ativa. Faça login novamente (admin/vendedor) para carregar a loja.',
+              isError: true);
+          Navigator.of(context).maybePop();
+        }
+        return;
+      }
+
+      setState(() {
+        _lojaId = id.trim();
+        _slug = _lojaId;
+        _resolvedLojaId = _lojaId;
+      });
+
+      logD('✅ [LOJA CONFIG] Loja resolvida: $_lojaId');
+
+      // 2) Abre box Hive local
+      _configBox = await Hive.openBox(HiveBoxNames.lojaConfig(_lojaId!));
+
+      // 3) ✅ SEMPRE carrega do Firestore PRIMEIRO (fonte da verdade)
+      // Isso garante que logo e banner não sejam perdidos após flutter run
+      logD('📥 [LOJA CONFIG] Carregando configuração do Firestore...');
+      await _loadFromFirestore();
+
+      // 3.1) Carrega status de campanhas e roleta
+      await _carregarStatusCampanhasERoleta();
+
+      // 4) Fallback Hive: se mídia vazia, carregar rascunho completo do Hive
+      if (_isMidiaVazia()) {
+        logD('⚠️ [LOJA CONFIG] Mídia vazia, tentando rascunho local do Hive...');
+        final local = _configBox.get('draft_config');
+        if (local is Map) {
+          _applyConfigMap(Map<String, dynamic>.from(local));
+          logD('✅ [LOJA CONFIG] Mídia aplicada do Hive');
+        }
+      }
+      // 5) Complementar do Hive: sempre preenche campos vazios (null ou "") com dados locais
+      final local = _configBox.get('draft_config');
+      if (local is Map) {
+        final lm = Map<String, dynamic>.from(local);
+        final ld = (lm['media']?['desktop'] ?? lm) as Map?;
+        final lmobile = (lm['media']?['mobile'] ?? lm) as Map?;
+        final localLogoD = (ld?['logoUrl'] ?? lm['logoDesktopUrl'])?.toString().trim();
+        final localLogoM = (lmobile?['logoUrl'] ?? lm['logoMobileUrl'])?.toString().trim();
+        final bdRaw = ld?['banners'] ?? lm['bannersDesktop'];
+        final bmRaw = lmobile?['banners'] ?? lm['bannersMobile'];
+        final localBannersD = (bdRaw is List) ? bdRaw.map((e) => e.toString()).toList() : <String>[];
+        final localBannersM = (bmRaw is List) ? bmRaw.map((e) => e.toString()).toList() : <String>[];
+        final precisaLogoD = (_logoUrlDesktop ?? '').trim().isEmpty && (localLogoD ?? '').isNotEmpty;
+        final precisaLogoM = (_logoUrlMobile ?? '').trim().isEmpty && (localLogoM ?? '').isNotEmpty;
+        final precisaBd = _bannersDesktop.isEmpty && localBannersD.isNotEmpty;
+        final precisaBm = _bannersMobile.isEmpty && localBannersM.isNotEmpty;
+        if (precisaLogoD || precisaLogoM || precisaBd || precisaBm) {
+          logD('📥 [LOJA CONFIG] Complementando mídia com dados locais do Hive');
+          setState(() {
+            if (precisaLogoD && localLogoD != null) _logoUrlDesktop = localLogoD;
+            if (precisaLogoM && localLogoM != null) _logoUrlMobile = localLogoM;
+            if (precisaBd) _bannersDesktop = localBannersD;
+            if (precisaBm) _bannersMobile = localBannersM;
+          });
+        }
+      }
+    } catch (e, stack) {
+      logD('❌ Erro ao carregar config loja (type=${e.runtimeType})');
+      logD('Stack trace: $stack');
+      if (mounted) {
+        setState(() {
+          _erroCarregamento = true;
+          _mensagemErro = e.toString().replaceAll('Exception:', '').trim();
+          if (_mensagemErro.length > 80) _mensagemErro = '${_mensagemErro.substring(0, 80)}...';
+        });
+        _showModernSnackBar('Erro ao carregar: ${e.toString().split('\n').first}', isError: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _carregando = false);
+        _verificarTutorialPrimeiraVez();
+      }
+    }
+  }
+
+  static const _tutorialPassos = [
+    ('Identidade & Contato', 'Nome da loja, WhatsApp e configurações básicas de contato.', Icons.storefront_outlined),
+    ('Mídias & Banners', 'Logo e banners para desktop e mobile. Envie imagens para personalizar seu catálogo.', Icons.photo_library_outlined),
+    ('Tema & Cores', 'Defina as cores do catálogo, botões e fundo para combinar com sua marca.', Icons.palette_outlined),
+    ('Layout dos cards', 'Colunas, sombras e bordas dos cards de produto no catálogo.', Icons.dashboard_customize_outlined),
+    ('Menu & Páginas', 'Configure quais itens aparecem no menu: categorias, entrar, contato, SAC, Quem somos.', Icons.menu_open_outlined),
+    ('Dicas e informações', 'Cuidados, garantias e qualidade – página linkada no menu do catálogo.', Icons.lightbulb_outline),
+    ('Rodapé & Links', 'Redes sociais, políticas de troca, sobre a loja e informações legais.', Icons.view_day_outlined),
+    ('Taxas Financeiras', 'Configure taxas usadas em relatórios e metas financeiras.', Icons.percent_outlined),
+    ('Fretes & Cupons', 'Abra a tela dedicada para fretes e cupons de desconto.', Icons.local_shipping_outlined),
+    ('Publicar catálogo', 'Depois de configurar tudo, clique aqui para publicar e tornar seu catálogo visível online.', Icons.cloud_upload_outlined),
+  ];
+
+  Future<void> _verificarTutorialPrimeiraVez() async {
+    if (_carregando || !mounted) return;
+    try {
+      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+      final visto = cfg.get('tutorial_loja_config_visto') == true;
+      if (!visto && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _mostrarTutorial = true);
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _fecharTutorial() async {
+    setState(() {
+      _mostrarTutorial = false;
+      _tutorialPasso = 0;
+    });
+    try {
+      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+      await cfg.put('tutorial_loja_config_visto', true);
+    } catch (_) {}
+  }
+
+  Future<void> _verificarConectividade() async {
+    try {
+      final results = await Connectivity().checkConnectivity();
+      final online = results.any((r) =>
+          r == ConnectivityResult.wifi ||
+          r == ConnectivityResult.mobile ||
+          r == ConnectivityResult.ethernet);
+      if (mounted) setState(() => _offline = !online);
+    } catch (_) {}
+  }
+
+  Future<void> _retryCarregar() async {
+    setState(() {
+      _carregando = true;
+      _erroCarregamento = false;
+      _mensagemErro = '';
+    });
+    await _initConfig();
+  }
+
+  /// Carrega o status das campanhas e roleta do Firestore
+  Future<void> _carregarStatusCampanhasERoleta() async {
+    if (_resolvedLojaId == null) return;
+
+    try {
+      final lojaId = _resolvedLojaId!;
+      logD('🎰 [CONFIG] Carregando status de campanhas e roleta para: $lojaId');
+
+      // 1. Buscar campanhas ativas (limit para reduzir custo; suficiente para achar uma ativa)
+      final campanhasSnap = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('campanhas_sorteio')
+          .limit(50)
+          .get();
+
+      final now = DateTime.now();
+      Map<String, dynamic>? campanhaAtiva;
+
+      for (final doc in campanhasSnap.docs) {
+        final data = doc.data();
+        final isAtiva = data['ativa'] == true ||
+            data['status'] == 'aberta' ||
+            data['status'] == 'ativa';
+
+        if (!isAtiva) continue;
+
+        final dataInicio = (data['dataInicio'] as Timestamp?)?.toDate();
+        final dataFim = (data['dataFim'] as Timestamp?)?.toDate();
+
+        final dentroDoInicio = dataInicio == null ||
+            dataInicio.isBefore(now) ||
+            dataInicio.isAtSameMomentAs(now);
+        final dentroDoFim = dataFim == null || dataFim.isAfter(now);
+
+        if (dentroDoInicio && dentroDoFim) {
+          campanhaAtiva = {'id': doc.id, ...data};
+          break;
+        }
+      }
+
+      // 2. Buscar config da roleta
+      final roletaDoc = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('config')
+          .doc('roleta_sorte')
+          .get();
+
+      final roletaAtiva = roletaDoc.exists && roletaDoc.data()?['ativa'] == true;
+
+      if (mounted) {
+        setState(() {
+          _campanhaAtiva = campanhaAtiva != null;
+          _campanhaAtivaId = campanhaAtiva?['id'];
+          _campanhaAtivaNome = campanhaAtiva?['nome'] ?? campanhaAtiva?['titulo'];
+          _roletaAtiva = roletaAtiva;
+        });
+
+        logD('✅ [CONFIG] Campanha ativa: $_campanhaAtiva ($_campanhaAtivaNome)');
+        logD('✅ [CONFIG] Roleta ativa: $_roletaAtiva');
+      }
+    } catch (e) {
+      logD('⚠️ [CONFIG] Erro ao carregar status de campanhas/roleta (type=${e.runtimeType})');
+    }
+  }
+
+  /// Toggle para ativar/desativar campanha
+  Future<void> _toggleCampanhaAtiva(bool novoValor) async {
+    if (_campanhaAtivaId == null && novoValor) {
+      _snack('Nenhuma campanha cadastrada. Crie uma campanha primeiro na seção de Sorteios.');
+      return;
+    }
+
+    if (_campanhaAtivaId == null) return;
+
+    try {
+      setState(() => _salvando = true);
+
+      await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(_resolvedLojaId)
+          .collection('campanhas_sorteio')
+          .doc(_campanhaAtivaId)
+          .update({
+        'ativa': novoValor,
+        'status': novoValor ? 'aberta' : 'pausada',
+      });
+
+      setState(() {
+        _campanhaAtiva = novoValor;
+      });
+
+      _snack(novoValor
+          ? '✅ Campanha ativada! O banner aparecerá no catálogo.'
+          : '⏸️ Campanha desativada.');
+    } catch (e) {
+      _snack('Erro ao atualizar campanha: $e', isError: true);
+    } finally {
+      setState(() => _salvando = false);
+    }
+  }
+
+  /// Toggle para ativar/desativar roleta
+  Future<void> _toggleRoletaAtiva(bool novoValor) async {
+    try {
+      setState(() => _salvando = true);
+
+      await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(_resolvedLojaId)
+          .collection('config')
+          .doc('roleta_sorte')
+          .set({
+        'ativa': novoValor,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      setState(() {
+        _roletaAtiva = novoValor;
+      });
+
+      _snack(novoValor
+          ? '✅ Roleta ativada! Clientes poderão girar após compras.'
+          : '⏸️ Roleta desativada.');
+    } catch (e) {
+      _snack('Erro ao atualizar roleta: $e', isError: true);
+    } finally {
+      setState(() => _salvando = false);
+    }
+  }
+
+  int _parseIntCtrl(TextEditingController c, int fallback) {
+    final v = int.tryParse(c.text.trim());
+    return v ?? fallback;
+  }
+
+  double _parseDoubleCtrl(TextEditingController c, double fallback) {
+    final v = double.tryParse(c.text.trim().replaceAll(',', '.'));
+    return v ?? fallback;
+  }
+
+  int? _intFrom(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  Future<void> _loadFromFirestore() async {
+    if (_slug == null) return;
+
+    logD('🔍 [FIRESTORE] Buscando config em: lojas/$_slug/draft_config/config');
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(_slug)
+          .collection('draft_config')
+          .doc('config')
+          .get();
+
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        logD('✅ [FIRESTORE] draft_config encontrado! Aplicando...');
+        final converted = Map<String, dynamic>.from(data);
+        _applyConfigMap(converted);
+      } else {
+        logD('⚠️ [FIRESTORE] draft_config não encontrado');
+      }
+
+      // Doc da loja: pré-preenche nome/WhatsApp (cadastro inicial) e fallback de mídia
+      final lojaDoc = await FirebaseFirestore.instance.collection('lojas').doc(_slug).get();
+      if (lojaDoc.exists && lojaDoc.data() != null) {
+        final d = lojaDoc.data()!;
+        // Pré-preenche nome e WhatsApp quando vazios (ex.: primeiro acesso após onboarding)
+        final nomeLoja = (d['name'] ?? d['nome'] ?? d['nomeLoja'] ?? '').toString().trim();
+        final whatsE164 = (d['whatsappE164'] ?? d['whatsapp'] ?? '').toString().trim();
+        if (nomeLoja.isNotEmpty && _nomeCtrl.text.trim().isEmpty) {
+          setState(() => _nomeCtrl.text = nomeLoja);
+          logD('📝 [LOJA CONFIG] Nome da loja pré-preenchido com: $nomeLoja');
+        }
+        if (whatsE164.isNotEmpty && _waCtrl.text.trim().isEmpty) {
+          setState(() => _waCtrl.text = _extrairApenasDigitos(whatsE164));
+          logD('📝 [LOJA CONFIG] WhatsApp pré-preenchido');
+        }
+      }
+
+      // Fallback: se mídia vazia, usar doc da loja já carregado (config publicado)
+      if (_isMidiaVazia() && lojaDoc.exists && lojaDoc.data() != null) {
+        logD('📥 [FIRESTORE] Mídia vazia, tentando loja doc (config publicado)...');
+        final d = lojaDoc.data()!;
+          final media = d['media'] as Map<String, dynamic>?;
+          final desktop = media?['desktop'] as Map?;
+          final mobile = media?['mobile'] as Map?;
+          final logoD = (desktop?['logoUrl'] ?? d['logoDesktopUrl'])?.toString();
+          final logoM = (mobile?['logoUrl'] ?? d['logoMobileUrl'])?.toString();
+          final bd = (desktop?['banners'] ?? d['bannersDesktop']) as List?;
+          final bm = (mobile?['banners'] ?? d['bannersMobile']) as List?;
+          if ((logoD != null && logoD.isNotEmpty) || (logoM != null && logoM.isNotEmpty) ||
+              (bd != null && bd.isNotEmpty) || (bm != null && bm.isNotEmpty)) {
+            setState(() {
+              if ((_logoUrlDesktop == null || _logoUrlDesktop!.isEmpty) && logoD != null && logoD.isNotEmpty) _logoUrlDesktop = logoD;
+              if ((_logoUrlMobile == null || _logoUrlMobile!.isEmpty) && logoM != null && logoM.isNotEmpty) _logoUrlMobile = logoM;
+              if (_bannersDesktop.isEmpty && bd != null && bd.isNotEmpty) _bannersDesktop = bd.map((e) => e.toString()).toList();
+              if (_bannersMobile.isEmpty && bm != null && bm.isNotEmpty) _bannersMobile = bm.map((e) => e.toString()).toList();
+            });
+            logD('✅ [FIRESTORE] Mídia carregada do config publicado');
+          }
+      }
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        logD('⚠️ [FIRESTORE] Sem permissão - usando dados locais');
+      } else {
+        logD('❌ [FIRESTORE] Erro ao carregar (type=${e.runtimeType})');
+      }
+    } catch (e) {
+      logD('❌ [FIRESTORE] Erro inesperado (type=${e.runtimeType})');
+    }
+  }
+
+  bool _isMidiaVazia() {
+    final logoD = (_logoUrlDesktop ?? '').trim().isEmpty;
+    final logoM = (_logoUrlMobile ?? '').trim().isEmpty;
+    return logoD && logoM && _bannersDesktop.isEmpty && _bannersMobile.isEmpty;
+  }
+
+  /// Converte valor do Firestore para String (aceita String ou num, evita campo WhatsApp vazio quando salvo como número).
+  static String? _stringFromDynamic(dynamic v) {
+    if (v == null) return null;
+    if (v is String) return v;
+    if (v is num) return v.toString();
+    return v.toString();
+  }
+
+  void _applyConfigMap(Map<String, dynamic> data) {
+    setState(() {
+      _nomeCtrl.text = (data['nome'] as String?) ?? _nomeCtrl.text;
+      _slugCtrl.text = (data['slug'] as String?) ?? _slugCtrl.text; // ✅ CARREGAR SLUG
+    _linkCurtoCtrl.text = (data['linkCurto'] as String?) ?? _linkCurtoCtrl.text; // ✅ CARREGAR LINK CURTO
+      _subdominioMascaraCtrl.text = (data['subdominioMascara'] ?? data['subdominio_mascara'] ?? '').toString().trim();
+      _subdominioDominioBaseCtrl.text = (data['subdominioDominioBase'] ?? data['subdominio_dominio_base'] ?? 'mastepalm.com.br').toString().trim();
+      final waRaw = _stringFromDynamic(data['whatsapp']);
+      _waCtrl.text = waRaw == null ? _waCtrl.text : (waRaw.trim().isEmpty ? '' : _extrairApenasDigitos(waRaw));
+      _pedidoBaseCtrl.text =
+          (data['pedidoBaseUrl'] as String?) ?? _pedidoBaseCtrl.text;
+
+      // mídia - prioriza nova estrutura media.desktop/mobile, senão usa legado
+      final mediaRaw = data['media'];
+      final Map<String, dynamic> mediaData = mediaRaw is Map
+          ? Map<String, dynamic>.from(mediaRaw)
+          : {};
+      final desktopMediaRaw = mediaData['desktop'];
+      final Map<String, dynamic> desktopMedia = desktopMediaRaw is Map
+          ? Map<String, dynamic>.from(desktopMediaRaw)
+          : {};
+      final mobileMediaRaw = mediaData['mobile'];
+      final Map<String, dynamic> mobileMedia = mobileMediaRaw is Map
+          ? Map<String, dynamic>.from(mobileMediaRaw)
+          : {};
+
+      _logoUrlDesktop = (desktopMedia['logoUrl'] as String?) ??
+                        (data['logoDesktopUrl'] as String?);
+      _logoUrlMobile = (mobileMedia['logoUrl'] as String?) ??
+                       (data['logoMobileUrl'] as String?);
+
+      _bannersDesktop = (desktopMedia['banners'] as List?)?.map((e) => e.toString()).toList() ??
+                        (data['bannersDesktop'] as List?)?.map((e) => e.toString()).toList() ??
+                        [];
+      _bannersMobile = (mobileMedia['banners'] as List?)?.map((e) => e.toString()).toList() ??
+                       (data['bannersMobile'] as List?)?.map((e) => e.toString()).toList() ??
+                       [];
+
+      // dimensões logo/banners - prioriza nova estrutura
+      _dLogoH.text = (_intFrom(desktopMedia['logoH']) ??
+                      _intFrom(data['dLogoH']) ??
+                      int.tryParse(_dLogoH.text) ?? 105).toString();
+      _dLogoW.text = (_intFrom(desktopMedia['logoW']) ??
+                      _intFrom(data['dLogoW']) ??
+                      int.tryParse(_dLogoW.text) ?? 327).toString();
+      _mLogoH.text = (_intFrom(mobileMedia['logoH']) ??
+                      _intFrom(data['mLogoH']) ??
+                      int.tryParse(_mLogoH.text) ?? 105).toString();
+      _mLogoW.text = (_intFrom(mobileMedia['logoW']) ??
+                      _intFrom(data['mLogoW']) ??
+                      int.tryParse(_mLogoW.text) ?? 327).toString();
+
+      _dBanH.text = (_intFrom(desktopMedia['bannerH']) ??
+                     _intFrom(data['dBanH']) ??
+                     int.tryParse(_dBanH.text) ?? 256).toString();
+      _dBanW.text = (_intFrom(desktopMedia['bannerW']) ??
+                     _intFrom(data['dBanW']) ??
+                     int.tryParse(_dBanW.text) ?? 1280).toString();
+      _mBanH.text = (_intFrom(mobileMedia['bannerH']) ??
+                     _intFrom(data['mBanH']) ??
+                     int.tryParse(_mBanH.text) ?? 300).toString();
+      _mBanW.text = (_intFrom(mobileMedia['bannerW']) ??
+                     _intFrom(data['mBanW']) ??
+                     int.tryParse(_mBanW.text) ?? 562).toString();
+
+      // ✅ CORRIGIDO: Lê de 'theme' (mesma estrutura do public_catalog)
+      final themeRaw = data['theme'];
+      final Map<String, dynamic> theme = themeRaw is Map
+          ? Map<String, dynamic>.from(themeRaw)
+          : {};
+
+      // Função helper para converter cor (aceita int ou String hexadecimal)
+      int? colorToInt(dynamic v) {
+        if (v == null) return null;
+        if (v is int) return v;
+        if (v is String) {
+          final cleaned = v.replaceAll('#', '');
+          return int.tryParse(cleaned, radix: 16);
+        }
+        return null;
+      }
+
+      if (theme.isNotEmpty) {
+        final fundo = colorToInt(theme['fundo']);
+        final card = colorToInt(theme['card']);
+        final texto = colorToInt(theme['texto']);
+        final prim = colorToInt(theme['primaria']);
+        final botaoTxt = colorToInt(theme['botaoTexto']);
+        final cabecalho = colorToInt(theme['cabecalho']);
+        if (fundo != null) _cFundo = Color(fundo);
+        if (card != null) _cCard = Color(card);
+        if (texto != null) _cTexto = Color(texto);
+        if (prim != null) _cPrimaria = Color(prim);
+        if (botaoTxt != null) _cBotaoTexto = Color(botaoTxt);
+        if (cabecalho != null) _cCabecalho = Color(cabecalho);
+      }
+
+      // ✅ CORRIGIDO: Lê de 'checkoutTheme' (mesma estrutura do public_catalog)
+      final checkoutThemeRaw = data['checkoutTheme'];
+      final Map<String, dynamic> checkoutTheme = checkoutThemeRaw is Map
+          ? Map<String, dynamic>.from(checkoutThemeRaw)
+          : {};
+
+      final cCard = colorToInt(checkoutTheme['card']);
+      final cCampo = colorToInt(checkoutTheme['campo']);
+      final cTexto = colorToInt(checkoutTheme['texto']);
+      final cLabel = colorToInt(checkoutTheme['label']);
+      final cTotal = colorToInt(checkoutTheme['total']);
+
+      if (cCard != null) _cCarrinhoCard = Color(cCard);
+      if (cCampo != null) _cCarrinhoCampo = Color(cCampo);
+      if (cTexto != null) _cCarrinhoTexto = Color(cTexto);
+      if (cLabel != null) _cCarrinhoLabel = Color(cLabel);
+      if (cTotal != null) _cCarrinhoTotal = Color(cTotal);
+
+      // ✅ NOVO: Carrega uiColors (cores unificadas expandidas)
+      final uiColorsRaw = data['uiColors'];
+      final Map<String, dynamic> uiColors = uiColorsRaw is Map
+          ? Map<String, dynamic>.from(uiColorsRaw)
+          : {};
+
+      if (uiColors.isNotEmpty) {
+        final textSecondary = colorToInt(uiColors['textSecondary']);
+        final cardTextPrimary = colorToInt(uiColors['cardTextPrimary']);
+        final cardTextSecondary = colorToInt(uiColors['cardTextSecondary']);
+        final priceHighlight = colorToInt(uiColors['priceHighlight']);
+        final danger = colorToInt(uiColors['danger']);
+        final fieldHint = colorToInt(uiColors['fieldHint']);
+        final fieldBorder = colorToInt(uiColors['fieldBorder']);
+        final dividerColor = colorToInt(uiColors['dividerColor']);
+        final buttonSecondaryBg = colorToInt(uiColors['buttonSecondaryBg']);
+        final buttonSecondaryText = colorToInt(uiColors['buttonSecondaryText']);
+        final buttonSecondaryBorder = colorToInt(uiColors['buttonSecondaryBorder']);
+        final badgeBackground = colorToInt(uiColors['badgeBackground']);
+        final badgeText = colorToInt(uiColors['badgeText']);
+        final iconColor = colorToInt(uiColors['iconColor']);
+        final shadowColor = colorToInt(uiColors['shadowColor']);
+
+        if (textSecondary != null) _cTextSecondary = Color(textSecondary);
+        if (cardTextPrimary != null) _cCardTextPrimary = Color(cardTextPrimary);
+        if (cardTextSecondary != null) _cCardTextSecondary = Color(cardTextSecondary);
+        if (priceHighlight != null) _cPriceHighlight = Color(priceHighlight);
+        if (danger != null) _cDanger = Color(danger);
+        if (fieldHint != null) _cFieldHint = Color(fieldHint);
+        if (fieldBorder != null) _cFieldBorder = Color(fieldBorder);
+        if (dividerColor != null) _cDivider = Color(dividerColor);
+        if (buttonSecondaryBg != null) _cButtonSecondaryBg = Color(buttonSecondaryBg);
+        if (buttonSecondaryText != null) _cButtonSecondaryText = Color(buttonSecondaryText);
+        if (buttonSecondaryBorder != null) _cButtonSecondaryBorder = Color(buttonSecondaryBorder);
+        if (badgeBackground != null) _cBadgeBackground = Color(badgeBackground);
+        if (badgeText != null) _cBadgeText = Color(badgeText);
+        if (iconColor != null) _cIcon = Color(iconColor);
+        if (shadowColor != null) _cShadow = Color(shadowColor);
+      }
+
+      // ✅ NOVO: Carrega catalogHeaderColors (cores do cabeçalho)
+      final headerColorsRaw = data['catalogHeaderColors'];
+      final Map<String, dynamic> headerColors = headerColorsRaw is Map
+          ? Map<String, dynamic>.from(headerColorsRaw)
+          : {};
+
+      if (headerColors.isNotEmpty) {
+        final headerText = colorToInt(headerColors['text']);
+        final headerIcon = colorToInt(headerColors['icon']);
+        final searchBg = colorToInt(headerColors['searchBackground']);
+        final searchText = colorToInt(headerColors['searchText']);
+        final searchHint = colorToInt(headerColors['searchHint']);
+
+        if (headerText != null) _cHeaderText = Color(headerText);
+        if (headerIcon != null) _cHeaderIcon = Color(headerIcon);
+        if (searchBg != null) _cHeaderSearchBg = Color(searchBg);
+        if (searchText != null) _cHeaderSearchText = Color(searchText);
+        if (searchHint != null) _cHeaderSearchHint = Color(searchHint);
+      }
+
+      // ✅ NOVO: Carrega catalogFooterColors (cores do rodapé)
+      final footerColorsRaw = data['catalogFooterColors'];
+      final Map<String, dynamic> footerColors = footerColorsRaw is Map
+          ? Map<String, dynamic>.from(footerColorsRaw)
+          : {};
+
+      if (footerColors.isNotEmpty) {
+        final footerBg = colorToInt(footerColors['background']);
+        final footerText = colorToInt(footerColors['text']);
+        final footerTextSecondary = colorToInt(footerColors['textSecondary']);
+        final footerIcon = colorToInt(footerColors['icon']);
+        final footerLink = colorToInt(footerColors['link']);
+        final footerDivider = colorToInt(footerColors['divider']);
+
+        if (footerBg != null) _cFooterBackground = Color(footerBg);
+        if (footerText != null) _cFooterText = Color(footerText);
+        if (footerTextSecondary != null) _cFooterTextSecondary = Color(footerTextSecondary);
+        if (footerIcon != null) _cFooterIcon = Color(footerIcon);
+        if (footerLink != null) _cFooterLink = Color(footerLink);
+        if (footerDivider != null) _cFooterDivider = Color(footerDivider);
+      }
+
+      // ✅ NOVO: Carrega catalogDicasColors (cores da tela Dicas)
+      final dicasColorsRaw = data['catalogDicasColors'];
+      final Map<String, dynamic> dicasColors = dicasColorsRaw is Map
+          ? Map<String, dynamic>.from(dicasColorsRaw)
+          : {};
+
+      if (dicasColors.isNotEmpty) {
+        final dBg = colorToInt(dicasColors['background']);
+        final dFooterBg = colorToInt(dicasColors['footerBackground']);
+        final dFooterText = colorToInt(dicasColors['footerText']);
+        final dBtnBg = colorToInt(dicasColors['buttonBackground']);
+        final dBtnText = colorToInt(dicasColors['buttonText']);
+        final dTopic = colorToInt(dicasColors['topicPrimary']);
+
+        if (dBg != null) _cDicasBackground = Color(dBg);
+        if (dFooterBg != null) _cDicasFooterBg = Color(dFooterBg);
+        if (dFooterText != null) _cDicasFooterText = Color(dFooterText);
+        if (dBtnBg != null) _cDicasButtonBg = Color(dBtnBg);
+        if (dBtnText != null) _cDicasButtonText = Color(dBtnText);
+        if (dTopic != null) _cDicasTopicPrimary = Color(dTopic);
+      }
+
+      // === LAYOUT ================================================
+      _gridDesktopCols = (data['gridDesktopCols'] as int?) ?? _gridDesktopCols;
+      _gridMobileCols = (data['gridMobileCols'] as int?) ?? _gridMobileCols;
+      _cardShowShadow = (data['cardShowShadow'] as bool?) ?? _cardShowShadow;
+      _cardBorderRadius =
+          (data['cardBorderRadius'] as num?)?.toDouble() ?? _cardBorderRadius;
+
+      final presetStr = data['layoutPreset'] as String?;
+      if (presetStr != null) {
+        _layoutPreset = _presetFromString(presetStr);
+      }
+
+      // === FRETES ================================================
+      _freteProvider = (data['freteProvider'] as String?) ?? _freteProvider;
+
+      _melhorEnvioTokenCtrl.text =
+          (data['melhorEnvioToken'] as String?) ?? _melhorEnvioTokenCtrl.text;
+
+      _correiosUserCtrl.text =
+          (data['correiosUser'] as String?) ?? _correiosUserCtrl.text;
+
+      _correiosSenhaCtrl.text =
+          (data['correiosSenha'] as String?) ?? _correiosSenhaCtrl.text;
+
+      _frenetTokenCtrl.text =
+          (data['frenetToken'] as String?) ?? _frenetTokenCtrl.text;
+
+      _fretes
+        ..clear()
+        ..addAll(((data['fretes'] as List?) ?? [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e)));
+
+      // cupons
+      _cupons
+        ..clear()
+        ..addAll(((data['cupons'] as List?) ?? [])
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e)));
+
+      // menu
+      final menuRaw = data['menu'];
+      final Map<String, dynamic> menu = menuRaw is Map
+          ? Map<String, dynamic>.from(menuRaw)
+          : {};
+      _menuShowCategorias =
+          (menu['categorias'] as bool?) ?? _menuShowCategorias;
+      _menuShowEntrar = (menu['entrar'] as bool?) ?? _menuShowEntrar;
+      _menuShowContato = (menu['contato'] as bool?) ?? _menuShowContato;
+      _menuShowSac = (menu['sac'] as bool?) ?? _menuShowSac;
+      _menuShowQuemSomos =
+          (menu['quemSomos'] as bool?) ?? _menuShowQuemSomos;
+      _menuShowDicas = (menu['dicas'] as bool?) ?? _menuShowDicas;
+      _showMobileMenuGrid =
+          (menu['mobileMenuGrid'] as bool?) ?? _showMobileMenuGrid;
+
+      // dicas (lista de cuidados, garantias, qualidade etc.)
+      final dicasRaw = data['dicas'];
+      _dicas = [];
+      if (dicasRaw is List) {
+        for (final e in dicasRaw) {
+          if (e is Map) {
+            _dicas.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
+          }
+        }
+      }
+
+      // quem somos
+      final quemRaw = data['quemSomos'];
+      final Map<String, dynamic> quem = quemRaw is Map
+          ? Map<String, dynamic>.from(quemRaw)
+          : {};
+      _quemSomosTituloCtrl.text =
+          (quem['titulo'] as String?) ?? _quemSomosTituloCtrl.text;
+      _quemSomosTextoCtrl.text =
+          (quem['texto'] as String?) ?? _quemSomosTextoCtrl.text;
+
+      // SAC
+      final sacRaw = data['sac'];
+      final Map<String, dynamic> sac = sacRaw is Map
+          ? Map<String, dynamic>.from(sacRaw)
+          : {};
+      final sacWa = _stringFromDynamic(sac['whatsapp']);
+      _sacWhatsappCtrl.text = sacWa == null ? _sacWhatsappCtrl.text : (sacWa.trim().isEmpty ? '' : _extrairApenasDigitos(sacWa));
+      _sacEmailCtrl.text = (sac['email'] as String?) ?? _sacEmailCtrl.text;
+
+      // ✅ CORRIGIDO: Lê de 'rodape' (fonte principal) com fallback em 'links' (retrocompatibilidade)
+      final rodapeRaw = data['rodape'];
+      final Map<String, dynamic> rodape = rodapeRaw is Map
+          ? Map<String, dynamic>.from(rodapeRaw)
+          : {};
+      final linksRaw = data['links'];
+      final Map<String, dynamic> links = linksRaw is Map
+          ? Map<String, dynamic>.from(linksRaw)
+          : {};
+      _instagramCtrl.text =
+          (rodape['instagram'] as String?) ?? (links['instagram'] as String?) ?? _instagramCtrl.text;
+      _facebookCtrl.text =
+          (rodape['facebook'] as String?) ?? (links['facebook'] as String?) ?? _facebookCtrl.text;
+      _tiktokCtrl.text =
+          (rodape['tiktok'] as String?) ?? _tiktokCtrl.text;
+      _telegramCtrl.text =
+          (rodape['telegram'] as String?) ?? _telegramCtrl.text;
+      _kwaiCtrl.text =
+          (rodape['kwai'] as String?) ?? _kwaiCtrl.text;
+      _linkedinCtrl.text =
+          (rodape['linkedin'] as String?) ?? _linkedinCtrl.text;
+      _emailRodapeCtrl.text =
+          (rodape['email'] as String?) ?? _emailRodapeCtrl.text;
+      final rodapeWa = _stringFromDynamic(rodape['whatsapp']);
+      _whatsappRodapeCtrl.text = rodapeWa == null ? _whatsappRodapeCtrl.text : (rodapeWa.trim().isEmpty ? '' : _extrairApenasDigitos(rodapeWa));
+      _sobreCtrl.text = (rodape['sobre'] as String?) ?? (links['sobre'] as String?) ?? _sobreCtrl.text;
+      _trocasCtrl.text = (rodape['trocas'] as String?) ?? (links['trocas'] as String?) ?? _trocasCtrl.text;
+      _loginCtrl.text = (rodape['login'] as String?) ?? (links['login'] as String?) ?? _loginCtrl.text;
+      _razaoCtrl.text = (rodape['razao'] as String?) ?? _razaoCtrl.text;
+      _cnpjCtrl.text = (rodape['cnpj'] as String?) ?? _cnpjCtrl.text;
+
+      _payments
+        ..clear()
+        ..addAll(
+            ((rodape['payments'] as List?) ?? []).map((e) => e.toString()));
+
+      // Taxas financeiras (Relatórios Financeiros e Financeiro & Metas)
+      final taxasRaw = data['taxas'];
+      if (taxasRaw is Map) {
+        final taxas = Map<String, dynamic>.from(taxasRaw);
+        _taxaCartaoCtrl.text = (_doubleFrom(taxas['cartao']) ?? 5.0).toString();
+        _taxaMEICtrl.text = (_doubleFrom(taxas['mei']) ?? 3.5).toString();
+        _custosFixosCtrl.text = (_doubleFrom(taxas['custosFixos']) ?? 10.0).toString();
+        _custoEmbalagemCtrl.text = (_doubleFrom(taxas['embalagem']) ?? 3.0).toString();
+      }
+    });
+  }
+
+  double? _doubleFrom(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.replaceAll(',', '.'));
+    return null;
+  }
+
+  // ✅ ESTRUTURA ALINHADA COM PUBLIC_CATALOG
+  Map<String, dynamic> _buildConfigMap({required String storeId}) {
+    // ✅ SLUG AMIGÁVEL: Se não tiver slug configurado, gera automaticamente do nome
+    String slugFinal = _slugCtrl.text.trim();
+    if (slugFinal.isEmpty) {
+      slugFinal = _nomeCtrl.text.trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
+      if (slugFinal.isEmpty) slugFinal = storeId;
+    }
+
+    final pedidoBaseRaw = _pedidoBaseCtrl.text.trim();
+    final pedidoBaseUrl = pedidoBaseRaw.isEmpty
+        ? ''
+        : (pedidoBaseRaw.contains('://') ? pedidoBaseRaw : 'https://$pedidoBaseRaw');
+
+    final linkCurto = _linkCurtoCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+    final subMascara = _subdominioMascaraCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '');
+    final subDominio = _subdominioDominioBaseCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9.-]'), '');
+    return {
+      'slug': slugFinal, // ✅ SLUG AMIGÁVEL para URL pública
+      if (linkCurto.isNotEmpty) 'linkCurto': linkCurto, // ✅ Link curto: app.mastepalm.com.br/c/{linkCurto}
+      if (subMascara.isNotEmpty) 'subdominioMascara': subMascara,
+      if (subMascara.isNotEmpty) 'subdominioDominioBase': subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br',
+      'lojaId': storeId,
+      'nome': _nomeCtrl.text.trim(),
+      'whatsapp': () {
+        final t = _waCtrl.text.trim();
+        final digits = _extrairApenasDigitos(t);
+        return digits.isNotEmpty ? digits : t;
+      }(),
+      'pedidoBaseUrl': pedidoBaseUrl,
+      'layoutPreset':
+          _layoutPreset != null ? _presetToString(_layoutPreset!) : null,
+      
+      // ✅ CORRIGIDO: Salva em 'theme' (igual ao que o public_catalog lê)
+      // Salva como int (mais compatível e eficiente)
+      'theme': {
+        'fundo': _cFundo.toARGB32(),
+        'card': _cCard.toARGB32(),
+        'texto': _cTexto.toARGB32(),
+        'primaria': _cPrimaria.toARGB32(),
+        'botaoTexto': _cBotaoTexto.toARGB32(),
+        'cabecalho': _cCabecalho.toARGB32(),
+      },
+
+      // ✅ CORRIGIDO: Salva em 'checkoutTheme' (igual ao que o public_catalog lê)
+      'checkoutTheme': {
+        'card': _cCarrinhoCard.toARGB32(),
+        'campo': _cCarrinhoCampo.toARGB32(),
+        'texto': _cCarrinhoTexto.toARGB32(),
+        'label': _cCarrinhoLabel.toARGB32(),
+        'total': _cCarrinhoTotal.toARGB32(),
+      },
+
+      // ✅ NOVO: Cores unificadas do catálogo e checkout
+      'uiColors': {
+        'background': _cFundo.toARGB32(),
+        'cardBackground': _cCard.toARGB32(),
+        'textPrimary': _cTexto.toARGB32(),
+        'textSecondary': _cTextSecondary.toARGB32(),
+        'cardTextPrimary': _cCardTextPrimary.toARGB32(),
+        'cardTextSecondary': _cCardTextSecondary.toARGB32(),
+        'labelText': _cCarrinhoLabel.toARGB32(),
+        'priceHighlight': _cPriceHighlight.toARGB32(),
+        'danger': _cDanger.toARGB32(),
+        'fieldBackground': _cCarrinhoCampo.toARGB32(),
+        'fieldText': _cCarrinhoTexto.toARGB32(),
+        'fieldHint': _cFieldHint.toARGB32(),
+        'fieldBorder': _cFieldBorder.toARGB32(),
+        'dividerColor': _cDivider.toARGB32(),
+        'buttonPrimaryBg': _cPrimaria.toARGB32(),
+        'buttonPrimaryText': _cBotaoTexto.toARGB32(),
+        'buttonSecondaryBg': _cButtonSecondaryBg.toARGB32(),
+        'buttonSecondaryText': _cButtonSecondaryText.toARGB32(),
+        'buttonSecondaryBorder': _cButtonSecondaryBorder.toARGB32(),
+        'badgeBackground': _cBadgeBackground.toARGB32(),
+        'badgeText': _cBadgeText.toARGB32(),
+        'iconColor': _cIcon.toARGB32(),
+        'shadowColor': _cShadow.toARGB32(),
+      },
+
+      // ✅ NOVO: Cores do cabeçalho do catálogo
+      'catalogHeaderColors': {
+        'background': _cCabecalho.toARGB32(),
+        'text': _cHeaderText.toARGB32(),
+        'icon': _cHeaderIcon.toARGB32(),
+        'searchBackground': _cHeaderSearchBg.toARGB32(),
+        'searchText': _cHeaderSearchText.toARGB32(),
+        'searchHint': _cHeaderSearchHint.toARGB32(),
+      },
+
+      // ✅ NOVO: Cores do rodapé do catálogo
+      'catalogFooterColors': {
+        'background': _cFooterBackground.toARGB32(),
+        'text': _cFooterText.toARGB32(),
+        'textSecondary': _cFooterTextSecondary.toARGB32(),
+        'icon': _cFooterIcon.toARGB32(),
+        'link': _cFooterLink.toARGB32(),
+        'divider': _cFooterDivider.toARGB32(),
+      },
+
+      // ✅ NOVO: Cores da tela Dicas e Informações
+      'catalogDicasColors': {
+        'background': _cDicasBackground.toARGB32(),
+        'footerBackground': _cDicasFooterBg.toARGB32(),
+        'footerText': _cDicasFooterText.toARGB32(),
+        'buttonBackground': _cDicasButtonBg.toARGB32(),
+        'buttonText': _cDicasButtonText.toARGB32(),
+        'topicPrimary': _cDicasTopicPrimary.toARGB32(),
+      },
+      
+      'gridDesktopCols': _gridDesktopCols,
+      'gridMobileCols': _gridMobileCols,
+      'cardShowShadow': _cardShowShadow,
+      'cardBorderRadius': _cardBorderRadius,
+
+      // ✅ CORRIGIDO: Estrutura media.desktop / media.mobile (igual ao que o public_catalog lê)
+      'media': {
+        'desktop': {
+          'logoUrl': _logoUrlDesktop,
+          'banners': _bannersDesktop,
+          'logoH': _parseIntCtrl(_dLogoH, 105),
+          'logoW': _parseIntCtrl(_dLogoW, 327),
+          'bannerH': _parseIntCtrl(_dBanH, 256),
+          'bannerW': _parseIntCtrl(_dBanW, 1280),
+        },
+        'mobile': {
+          'logoUrl': _logoUrlMobile,
+          'banners': _bannersMobile,
+          'logoH': _parseIntCtrl(_mLogoH, 105),
+          'logoW': _parseIntCtrl(_mLogoW, 327),
+          'bannerH': _parseIntCtrl(_mBanH, 300),
+          'bannerW': _parseIntCtrl(_mBanW, 562),
+        },
+      },
+
+      // ✅ COMPAT: Mantém campos legados para retrocompatibilidade
+      'logoDesktopUrl': _logoUrlDesktop,
+      'logoMobileUrl': _logoUrlMobile,
+      'bannersDesktop': _bannersDesktop,
+      'bannersMobile': _bannersMobile,
+      'dLogoH': _parseIntCtrl(_dLogoH, 105),
+      'dLogoW': _parseIntCtrl(_dLogoW, 327),
+      'mLogoH': _parseIntCtrl(_mLogoH, 105),
+      'mLogoW': _parseIntCtrl(_mLogoW, 327),
+      'dBanH': _parseIntCtrl(_dBanH, 256),
+      'dBanW': _parseIntCtrl(_dBanW, 1280),
+      'mBanH': _parseIntCtrl(_mBanH, 300),
+      'mBanW': _parseIntCtrl(_mBanW, 562),
+      'freteProvider': _freteProvider,
+      'melhorEnvioToken': _melhorEnvioTokenCtrl.text.trim(),
+      'correiosUser': _correiosUserCtrl.text.trim(),
+      'correiosSenha': _correiosSenhaCtrl.text.trim(),
+      'frenetToken': _frenetTokenCtrl.text.trim(),
+      'fretes': _fretes,
+      'cupons': _cupons,
+      'menu': {
+        'categorias': _menuShowCategorias,
+        'entrar': _menuShowEntrar,
+        'contato': _menuShowContato,
+        'sac': _menuShowSac,
+        'quemSomos': _menuShowQuemSomos,
+        'dicas': _menuShowDicas,
+        'mobileMenuGrid': _showMobileMenuGrid,
+      },
+      'dicas': _dicas,
+      'quemSomos': {
+        'titulo': _quemSomosTituloCtrl.text.trim(),
+        'texto': _quemSomosTextoCtrl.text.trim(),
+      },
+      'sac': {
+        'whatsapp': _sacWhatsappCtrl.text.trim(),
+        'email': _sacEmailCtrl.text.trim(),
+      },
+      
+      // ✅ CORRIGIDO: Salva payments em 'rodape' (igual ao que o public_catalog lê)
+      'rodape': {
+        'instagram': _instagramCtrl.text.trim(),
+        'facebook': _facebookCtrl.text.trim(),
+        'tiktok': _tiktokCtrl.text.trim(),
+        'telegram': _telegramCtrl.text.trim(),
+        'kwai': _kwaiCtrl.text.trim(),
+        'linkedin': _linkedinCtrl.text.trim(),
+        'email': _emailRodapeCtrl.text.trim(),
+        'whatsapp': _whatsappRodapeCtrl.text.trim(),
+        'sobre': _sobreCtrl.text.trim(),
+        'trocas': _trocasCtrl.text.trim(),
+        'login': _loginCtrl.text.trim(),
+        'razao': _razaoCtrl.text.trim(),
+        'cnpj': _cnpjCtrl.text.trim(),
+        'payments': _payments,
+      },
+      // ✅ Sincronizado: 'links' espelha rodape para retrocompatibilidade (catálogo usa rodape com fallback em links)
+      'links': {
+        'instagram': _instagramCtrl.text.trim(),
+        'facebook': _facebookCtrl.text.trim(),
+        'sobre': _sobreCtrl.text.trim(),
+        'trocas': _trocasCtrl.text.trim(),
+        'login': _loginCtrl.text.trim(),
+      },
+
+      // Taxas usadas em Relatórios Financeiros e Financeiro & Metas (valores padrão; usuário pode alterar)
+      'taxas': {
+        'cartao': _parseDoubleCtrl(_taxaCartaoCtrl, 5.0),
+        'mei': _parseDoubleCtrl(_taxaMEICtrl, 3.5),
+        'custosFixos': _parseDoubleCtrl(_custosFixosCtrl, 10.0),
+        'embalagem': _parseDoubleCtrl(_custoEmbalagemCtrl, 3.0),
+      },
+    };
+  }
+
+  void _snack(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    _showModernSnackBar(msg, isError: isError);
+  }
+
+  /// Extrai apenas dígitos (0-9) do valor. Usado para normalizar WhatsApp.
+  static String _extrairApenasDigitos(String? v) {
+    if (v == null || v.isEmpty) return '';
+    // Remove tudo que não seja dígito ASCII (evita unicode, espaços especiais, etc)
+    return v.replaceAll(RegExp(r'[^0-9]'), '');
+  }
+
+  /// Valida WhatsApp E.164: aceita 10 a 15 dígitos (Brasil: 55+DDD+número).
+  /// Aceita formatação: 5511999999999, 55 11 99999-9999, +55 33 99994-5282, etc.
+  bool _validarWhatsApp(String? v) {
+    if (v == null || v.trim().isEmpty) return true;
+    final nums = _extrairApenasDigitos(v.trim());
+    return nums.length >= 10 && nums.length <= 15;
+  }
+
+  /// Valida URL (opcional - vazio é ok). Aceita URL sem esquema (ex: app.mastepalm.com.br/pedido).
+  bool _validarUrl(String? v) {
+    if (v == null || v.trim().isEmpty) return true;
+    final s = v.trim();
+    final toParse = s.contains('://') ? s : 'https://$s';
+    final uri = Uri.tryParse(toParse);
+    return uri != null && (uri.hasScheme && (uri.host.isNotEmpty || uri.hasAbsolutePath));
+  }
+
+  /// Valida e corrige dimensão (50-2000)
+  void _corrigirDimensao(TextEditingController c, {int min = 50, int max = 2000}) {
+    final v = int.tryParse(c.text.trim());
+    if (v != null && (v < min || v > max)) {
+      c.text = v.clamp(min, max).toString();
+    }
+  }
+
+  /// Retorna lista de erros e set de campos com erro
+  ({List<String> erros, Set<String> campos}) _validarAntesDeSalvar({bool incluirCampos = true}) {
+    final erros = <String>[];
+    final campos = <String>{};
+    if (!_validarWhatsApp(_waCtrl.text)) {
+      erros.add('WhatsApp do vendedor inválido. Use 10 a 15 dígitos (ex: 5533999998888).');
+      if (incluirCampos) campos.add('whatsapp');
+    }
+    if (!_validarWhatsApp(_sacWhatsappCtrl.text)) {
+      erros.add('WhatsApp do SAC inválido (se preenchido, use 10 a 15 dígitos).');
+      if (incluirCampos) campos.add('sac_whatsapp');
+    }
+    if (!_validarWhatsApp(_whatsappRodapeCtrl.text)) {
+      erros.add('WhatsApp do rodapé inválido (se preenchido, use 10 a 15 dígitos).');
+      if (incluirCampos) campos.add('whatsapp_rodape');
+    }
+    if (!_validarUrl(_pedidoBaseCtrl.text)) {
+      erros.add('URL de pedido inválida.');
+      if (incluirCampos) campos.add('pedido_base');
+    }
+    for (final c in [_dLogoH, _dLogoW, _mLogoH, _mLogoW, _dBanH, _dBanW, _mBanH, _mBanW]) {
+      _corrigirDimensao(c);
+    }
+    return (erros: erros, campos: campos);
+  }
+
+  void _limparErroCampo(String campo) {
+    if (_camposComErro.remove(campo)) setState(() {});
+  }
+
+  /// Validação extra antes de publicar (requisitos mínimos)
+  List<String>? _validarAntesDePublicar() {
+    final r = _validarAntesDeSalvar();
+    if (r.erros.isNotEmpty) return r.erros;
+    final avisos = <String>[];
+    if (_nomeCtrl.text.trim().isEmpty) {
+      avisos.add('Informe o nome da loja.');
+    }
+    if (_logoUrlDesktop == null && _logoUrlMobile == null) {
+      avisos.add('Adicione pelo menos uma logo (desktop ou mobile).');
+    }
+    return avisos.isEmpty ? null : avisos;
+  }
+
+  Future<bool> _syncAndValidateLojaAtiva() async {
+    final atual = (await StoreResolverFacade.resolveForAdminApp())?.trim();
+    if (atual == null || atual.isEmpty) {
+      _snack('Nenhuma loja ativa. Faça login novamente.', isError: true);
+      return false;
+    }
+
+    final esperado = atual;
+
+    if (_slug != esperado || _lojaId != esperado) {
+      logD('⚠️ Loja divergente! sincronizando sessão');
+
+      setState(() {
+        _lojaId = esperado;
+        _slug = esperado;
+        _resolvedLojaId = esperado;
+      });
+
+      _configBox = await Hive.openBox(HiveBoxNames.lojaConfig(esperado));
+
+      // Recarregar configurações do Firestore para a loja correta
+      await _loadFromFirestore();
+      setState(() {});
+    }
+
+    return true;
+  }
+
+  Future<void> _salvarRascunho({bool validar = true}) async {
+    if (_salvando) return;
+
+    if (!await _syncAndValidateLojaAtiva()) return;
+
+    if (validar) {
+      final r = _validarAntesDeSalvar();
+      if (r.erros.isNotEmpty) {
+        setState(() {
+          _camposComErro.clear();
+          _camposComErro.addAll(r.campos);
+          if (r.campos.contains('whatsapp') || r.campos.contains('pedido_base')) {
+            _pane = _Pane.identidade;
+          } else if (r.campos.contains('sac_whatsapp')) {
+            _pane = _Pane.menu;
+          } else if (r.campos.contains('whatsapp_rodape')) {
+            _pane = _Pane.rodape;
+          } else {
+            _pane = _Pane.identidade;
+          }
+        });
+        _snack(r.erros.first, isError: true);
+        return;
+      }
+      _camposComErro.clear();
+    }
+
+    final loja = _activeStoreId();
+
+    setState(() => _salvando = true);
+    try {
+      Map<String, dynamic> data = _buildConfigMap(storeId: loja);
+
+      // Preservar frete_config e cupons do draft atual (salvos na tela Fretes e Cupons)
+      try {
+        final draftSnap = await FirebaseFirestore.instance
+            .collection('lojas')
+            .doc(loja)
+            .collection('draft_config')
+            .doc('config')
+            .get();
+        if (draftSnap.exists && draftSnap.data() != null) {
+          final draft = draftSnap.data()!;
+          if (draft['frete_config'] != null) {
+            data = Map<String, dynamic>.from(data);
+            data['frete_config'] = draft['frete_config'];
+          }
+          if (draft['cupons'] != null) {
+            data = Map<String, dynamic>.from(data);
+            data['cupons'] = draft['cupons'];
+          }
+        }
+      } catch (_) {}
+
+      if (kDebugMode) {
+        logD('\n${"=" * 80}');
+        logD('💾💾💾 [CONFIG] SALVANDO RASCUNHO 💾💾💾');
+        logD('=' * 80);
+        logD('Loja: $loja');
+        logD('Logo Desktop: ${_logoUrlDesktop ?? "VAZIO"}');
+        logD('Logo Mobile: ${_logoUrlMobile ?? "VAZIO"}');
+        logD('Banners Desktop (${_bannersDesktop.length}): $_bannersDesktop');
+        logD('Banners Mobile (${_bannersMobile.length}): $_bannersMobile');
+        logD('-' * 80);
+        logD('Estrutura media no Map:');
+        logD('  media.desktop.logoUrl: ${data['media']?['desktop']?['logoUrl']}');
+        logD('  media.desktop.banners: ${data['media']?['desktop']?['banners']}');
+        logD('  media.mobile.logoUrl: ${data['media']?['mobile']?['logoUrl']}');
+        logD('  media.mobile.banners: ${data['media']?['mobile']?['banners']}');
+        logD('${'=' * 80}\n');
+      }
+
+      await _configBox.put('draft_config', data);
+      await _configBox.flush();
+
+      try {
+        final ref = FirebaseFirestore.instance
+            .collection('lojas')
+            .doc(loja)
+            .collection('draft_config')
+            .doc('config');
+
+        await ref.set(data, SetOptions(merge: true));
+
+        logD('✅ [CONFIG] Salvo no Firestore: lojas/$loja/draft_config/config');
+        _snack('Rascunho salvo com sucesso.');
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied') {
+          logD('⚠️ [CONFIG] Sem permissão para salvar no Firestore - mantido apenas localmente');
+          _snack('Rascunho salvo localmente (sem permissão para sincronizar online).');
+        } else {
+          rethrow;
+        }
+      }
+    } catch (e) {
+      logD('❌ [CONFIG] Erro ao salvar (type=${e.runtimeType})');
+      _snack('Erro ao salvar rascunho: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  Future<void> _sincronizarTudo() async {
+    if (_sincronizando) return;
+    setState(() => _sincronizando = true);
+    try {
+      final results = await SyncFirestoreScript.syncTudo();
+      if (!mounted) return;
+      if (results['success'] == true) {
+        final p = results['produtos'] as Map<String, int>? ?? {};
+        final c = results['clientes'] as Map<String, int>? ?? {};
+        _snack(
+          'Sincronizado: ${p['synced'] ?? 0} produtos, ${c['synced'] ?? 0} clientes',
+          isError: false,
+        );
+      } else {
+        final err = results['errors'] as List<dynamic>?;
+        _snack(err != null && err.isNotEmpty ? err.first.toString() : 'Erro na sincronização', isError: true);
+      }
+    } catch (e) {
+      if (mounted) _snack('Erro ao sincronizar: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _sincronizando = false);
+    }
+  }
+
+  Future<void> _publicarTudo() async {
+    if (_salvando) return;
+
+    if (!await _syncAndValidateLojaAtiva()) return;
+    if (!mounted) return;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.cloud_upload, color: _primaryColor, size: 28),
+            SizedBox(width: 12),
+            Text('Publicar catálogo?'),
+          ],
+        ),
+        content: const Text(
+          'As alterações serão publicadas e ficarão visíveis para seus clientes. '
+          'Deseja continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: _successColor),
+            child: const Text('Publicar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true || !mounted) return;
+
+    // Validação extra antes de publicar (nome, logo)
+    final avisosPublicar = _validarAntesDePublicar();
+    if (avisosPublicar != null && avisosPublicar.isNotEmpty && mounted) {
+      final continuar = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Atenção'),
+          content: Text(
+            'Recomendamos corrigir antes de publicar:\n\n${avisosPublicar.join('\n')}\n\nDeseja publicar mesmo assim?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Corrigir'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: _successColor),
+              child: const Text('Publicar mesmo assim'),
+            ),
+          ],
+        ),
+      );
+      if (continuar != true || !mounted) return;
+    }
+
+    final r = _validarAntesDeSalvar();
+    if (r.erros.isNotEmpty) {
+      setState(() {
+        _camposComErro.clear();
+        _camposComErro.addAll(r.campos);
+        if (r.campos.contains('whatsapp') || r.campos.contains('pedido_base')) {
+          _pane = _Pane.identidade;
+        } else if (r.campos.contains('sac_whatsapp')) {
+          _pane = _Pane.menu;
+        } else if (r.campos.contains('whatsapp_rodape')) {
+          _pane = _Pane.rodape;
+        } else {
+          _pane = _Pane.identidade;
+        }
+      });
+      _snack(r.erros.first, isError: true);
+      return;
+    }
+    final avisos = <String>[];
+    if (_nomeCtrl.text.trim().isEmpty) avisos.add('Informe o nome da loja.');
+    // ✅ Logo: exige só se nunca publicou (se já tem publicado, será preservado)
+    final temLogoForm = (_logoUrlDesktop ?? '').trim().isNotEmpty || (_logoUrlMobile ?? '').trim().isNotEmpty;
+    if (!temLogoForm) {
+      bool temLogoTemPublicada = false;
+      try {
+        final loja = _activeStoreId();
+        final liveSnap = await FirebaseFirestore.instance
+            .collection('lojas').doc(loja).collection('config').doc('config').get();
+        if (liveSnap.exists && liveSnap.data() != null) {
+          final live = liveSnap.data()!;
+          final ld = (live['logoDesktopUrl'] ?? live['media']?['desktop']?['logoUrl'])?.toString().trim();
+          final lm = (live['logoMobileUrl'] ?? live['media']?['mobile']?['logoUrl'])?.toString().trim();
+          temLogoTemPublicada = (ld != null && ld.isNotEmpty) || (lm != null && lm.isNotEmpty);
+        }
+      } catch (_) {}
+      if (!temLogoTemPublicada) avisos.add('Adicione pelo menos uma logo.');
+    }
+    if (avisos.isNotEmpty) {
+      _snack(avisos.first, isError: true);
+      return;
+    }
+
+    final loja = _activeStoreId();
+
+    setState(() => _salvando = true);
+
+    try {
+      final fs = FirebaseFirestore.instance;
+      final lojaDoc = fs.collection('lojas').doc(loja);
+
+      // 0) Lê o draft atual e mescla com nosso data para preservar frete_config, cupons, etc (salvos em Fretes e Cupons)
+      Map<String, dynamic> data = _buildConfigMap(storeId: loja);
+
+      // 0.1) ✅ Logo e banner: se não houver novo selecionado, preserva o último publicado
+      try {
+        final liveSnap = await lojaDoc.collection('config').doc('config').get();
+        if (liveSnap.exists && liveSnap.data() != null) {
+          final live = liveSnap.data()!;
+          data = Map<String, dynamic>.from(data);
+
+          final logoD = (_logoUrlDesktop ?? '').trim();
+          final logoM = (_logoUrlMobile ?? '').trim();
+          final banD = _bannersDesktop;
+          final banM = _bannersMobile;
+
+          if (logoD.isEmpty && !_logoDesktopAlterado) {
+            final prev = (live['logoDesktopUrl'] ?? live['media']?['desktop']?['logoUrl'])?.toString().trim();
+            if (prev != null && prev.isNotEmpty) {
+              data['logoDesktopUrl'] = prev;
+              data['media'] ??= {};
+              (data['media'] as Map)['desktop'] ??= {};
+              ((data['media'] as Map)['desktop'] as Map)['logoUrl'] = prev;
+            }
+          }
+          if (logoM.isEmpty && !_logoMobileAlterado) {
+            final prev = (live['logoMobileUrl'] ?? live['media']?['mobile']?['logoUrl'])?.toString().trim();
+            if (prev != null && prev.isNotEmpty) {
+              data['logoMobileUrl'] = prev;
+              data['media'] ??= {};
+              (data['media'] as Map)['mobile'] ??= {};
+              ((data['media'] as Map)['mobile'] as Map)['logoUrl'] = prev;
+            }
+          }
+          if (banD.isEmpty && !_bannersDesktopAlterados) {
+            final prev = (live['bannersDesktop'] ?? live['media']?['desktop']?['banners']);
+            if (prev is List && prev.isNotEmpty) {
+              final list = prev.map((e) => e.toString()).toList();
+              data['bannersDesktop'] = list;
+              data['media'] ??= {};
+              (data['media'] as Map)['desktop'] ??= {};
+              ((data['media'] as Map)['desktop'] as Map)['banners'] = list;
+            }
+          }
+          if (banM.isEmpty && !_bannersMobileAlterados) {
+            final prev = (live['bannersMobile'] ?? live['media']?['mobile']?['banners']);
+            if (prev is List && prev.isNotEmpty) {
+              final list = prev.map((e) => e.toString()).toList();
+              data['bannersMobile'] = list;
+              data['media'] ??= {};
+              (data['media'] as Map)['mobile'] ??= {};
+              ((data['media'] as Map)['mobile'] as Map)['banners'] = list;
+            }
+          }
+        }
+      } catch (_) {}
+
+      try {
+        final draftSnap = await lojaDoc.collection('draft_config').doc('config').get();
+        if (draftSnap.exists && draftSnap.data() != null) {
+          final draft = Map<String, dynamic>.from(draftSnap.data()!);
+          // Preserva frete_config (Melhor Envio, SuperFrete, etc) e cupons vindos de Fretes e Cupons
+          if (draft['frete_config'] != null) {
+            data = Map<String, dynamic>.from(data);
+            data['frete_config'] = draft['frete_config'];
+          }
+          if (draft['cupons'] != null) {
+            data = Map<String, dynamic>.from(data);
+            data['cupons'] = draft['cupons'];
+          }
+        }
+      } catch (_) {}
+
+      if (kDebugMode) {
+        logD('\n${"=" * 80}');
+        logD('🚀🚀🚀 [PUBLICAR] PUBLICANDO CATÁLOGO 🚀🚀🚀');
+        logD('=' * 80);
+        logD('LojaId: $loja');
+        logD('theme.primaria: ${data['theme']?['primaria']}');
+        if (data['theme']?['primaria'] != null) {
+          final color = data['theme']['primaria'] as int;
+          logD('Cor hex: #${color.toRadixString(16).padLeft(8, '0').toUpperCase()}');
+        }
+        logD('Destino: lojas/$loja/config/config');
+        logD('${'=' * 80}\n');
+      }
+
+      // 1) Garante rascunho
+      if (kDebugMode) logD('📝 Salvando em draft_config...');
+      await lojaDoc
+          .collection('draft_config')
+          .doc('config')
+          .set(data, SetOptions(merge: true));
+      if (kDebugMode) logD('✅ Draft salvo!');
+
+      // 1.1) Atualiza cache local para não perder mídia na próxima carga
+      await _configBox.put('draft_config', data);
+      await _configBox.flush();
+
+      // 2) Publica em config/config (LIVE)
+      if (kDebugMode) logD('🌐 Publicando em config (LIVE)...');
+      await lojaDoc
+          .collection('config')
+          .doc('config')
+          .set(data, SetOptions(merge: true));
+      if (kDebugMode) logD('✅ Config LIVE publicado!');
+
+      // 2.0) Invalida cache do catálogo no APK/Web para a próxima abertura usar config publicada
+      CatalogCacheService.invalidate(loja, preview: false);
+      if (kDebugMode) logD('🔄 [PUBLICAR] Cache do catálogo invalidado (APK/Web verá alterações na próxima abertura).');
+
+      // 2.1) Publica config/fretes para o FreteService (Melhor Envio, SuperFrete, etc.)
+      final fc = data['frete_config'] as Map<String, dynamic>?;
+      if (fc != null) {
+        try {
+          final cepO = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString().trim();
+          final pesoEmb = double.tryParse((fc['peso_embalagem'] ?? '50').toString()) ?? 50.0;
+          final fretesDoc = <String, dynamic>{
+            'provider': (fc['provider'] ?? 'manual').toString(),
+            'cepOrigem': cepO,
+            'pesoEmbalagem': pesoEmb,
+            'melhorEnvio': {'token': (fc['melhor_envio_token'] ?? '').toString().trim()},
+            'superfrete': {
+              'token': (fc['superfrete_token'] ?? '').toString().trim(),
+              'sandbox': fc['superfrete_sandbox'] == true,
+            },
+            'correios': {
+              'usuario': (fc['correios_user'] ?? '').toString().trim(),
+              'senha': (fc['correios_senha'] ?? '').toString().trim(),
+            },
+            'frenet': {'token': (fc['frenet_token'] ?? '').toString().trim()},
+            'manualFretes': (data['fretes'] is List) ? data['fretes'] as List : [],
+            'updatedAt': FieldValue.serverTimestamp(),
+          };
+          await lojaDoc.collection('config').doc('fretes').set(fretesDoc, SetOptions(merge: true));
+          if (kDebugMode) logD('✅ config/fretes publicado (catálogo/frete).');
+        } catch (e) {
+          if (kDebugMode) logD('⚠️ [PUBLICAR] config/fretes falhou (type=${e.runtimeType})');
+        }
+      }
+
+      // 3) Espelha no doc raiz (com slug amigável, link curto e máscara de subdomínio)
+      final slugFinal = data['slug'] ?? loja;
+      final linkCurto = (data['linkCurto'] ?? '').toString().trim().toLowerCase();
+      final subMascara = (data['subdominioMascara'] ?? '').toString().trim().toLowerCase();
+      final subDominio = (data['subdominioDominioBase'] ?? 'mastepalm.com.br').toString().trim().toLowerCase();
+      final updateData = <String, dynamic>{
+        'slug': slugFinal,
+        'lojaId': loja,
+        'nome': _nomeCtrl.text.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'publishedAt': FieldValue.serverTimestamp(),
+      };
+      if (linkCurto.isNotEmpty) updateData['linkCurto'] = linkCurto;
+      if (subMascara.isNotEmpty) {
+        updateData['subdominioMascara'] = subMascara;
+        updateData['subdominioDominioBase'] = subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br';
+      }
+      await lojaDoc.set(updateData, SetOptions(merge: true));
+
+      // 4) Publica produtos (LIVE)
+      logD('🚀 [PUBLICAR] Iniciando publicação de produtos para LIVE...');
+      await CatalogoSyncService.pushAllToLive(lojaIdOverride: loja);
+      logD('✅ [PUBLICAR] Produtos publicados com sucesso!');
+
+      // 5) IMPORTANTE: Atualizar Hive local com as configurações publicadas
+      // para evitar sobrescrita na próxima sincronização
+      logD('💾 [PUBLICAR] Atualizando cache local (Hive)...');
+      final configBox = Hive.box('config');
+      await configBox.put('theme_primaria', data['theme']?['primaria']);
+      await configBox.put('theme_fundo', data['theme']?['fundo']);
+      await configBox.put('theme_card', data['theme']?['card']);
+      await configBox.put('theme_texto', data['theme']?['texto']);
+      await configBox.put('theme_botaoTexto', data['theme']?['botaoTexto']);
+      logD('✅ [PUBLICAR] Cache local atualizado!');
+
+      if (mounted) {
+        setState(() {
+          _logoDesktopAlterado = false;
+          _logoMobileAlterado = false;
+          _bannersDesktopAlterados = false;
+          _bannersMobileAlterados = false;
+        });
+      }
+
+      _snack('Catálogo publicado! Alterações já estão no site e no app.');
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        logD('⚠️ [PUBLICAR] Sem permissão para publicar');
+        _snack('Sem permissão para publicar. Verifique se você é administrador da loja.', isError: true);
+      } else {
+        logD('❌ [PUBLICAR] Erro Firebase (type=${e.runtimeType})');
+        _snack('Erro ao publicar: ${e.message}', isError: true);
+      }
+    } catch (e) {
+      logD('❌ [PUBLICAR] Erro inesperado (type=${e.runtimeType})');
+      _snack('Erro ao publicar: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  // ================= PRESETS DE TEMA =================
+
+  _LayoutPreset? _presetFromString(String s) {
+    switch (s) {
+      case 'masterPadrao':
+        return _LayoutPreset.masterPadrao;
+      case 'masterLuxo':
+        return _LayoutPreset.masterLuxo;
+      case 'darkClean':
+        return _LayoutPreset.darkClean;
+    }
+    return null;
+  }
+
+  String _presetToString(_LayoutPreset p) {
+    switch (p) {
+      case _LayoutPreset.masterPadrao:
+        return 'masterPadrao';
+      case _LayoutPreset.masterLuxo:
+        return 'masterLuxo';
+      case _LayoutPreset.darkClean:
+        return 'darkClean';
+    }
+  }
+
+  void _applyPreset(_LayoutPreset preset) {
+    setState(() {
+      _layoutPreset = preset;
+      switch (preset) {
+        case _LayoutPreset.masterPadrao:
+          // Cores base
+          _cFundo = const Color(0xFF050509);
+          _cCard = const Color(0xFF11111A);
+          _cTexto = Colors.white;
+          _cPrimaria = const Color(0xFF00A8FF);
+          _cBotaoTexto = Colors.white;
+          _cCabecalho = const Color(0xFF050509);
+          // Cores expandidas
+          _cTextSecondary = const Color(0xFFB0B0B0);
+          _cCardTextPrimary = Colors.white;
+          _cCardTextSecondary = const Color(0xFFB0B0B0);
+          _cPriceHighlight = const Color(0xFF4ADE80);
+          _cDanger = const Color(0xFFEF4444);
+          _cFieldHint = const Color(0xFF6B7280);
+          _cFieldBorder = const Color(0xFF374151);
+          _cDivider = const Color(0xFF374151);
+          _cButtonSecondaryBg = Colors.transparent;
+          _cButtonSecondaryText = const Color(0xFF00A8FF);
+          _cButtonSecondaryBorder = const Color(0xFF00A8FF);
+          _cBadgeBackground = const Color(0xFF00A8FF).withValues(alpha:0.15);
+          _cBadgeText = const Color(0xFF00A8FF);
+          _cIcon = Colors.white;
+          _cShadow = Colors.black45;
+          // Cabeçalho
+          _cHeaderText = Colors.white;
+          _cHeaderIcon = Colors.white;
+          _cHeaderSearchBg = Colors.white10;
+          _cHeaderSearchText = Colors.white;
+          _cHeaderSearchHint = Colors.white70;
+          // Rodapé
+          _cFooterBackground = const Color(0xFF050509);
+          _cFooterText = Colors.white;
+          _cFooterTextSecondary = Colors.white70;
+          _cFooterIcon = Colors.white70;
+          _cFooterLink = const Color(0xFF00A8FF);
+          _cFooterDivider = Colors.white24;
+          // Carrinho
+          _cCarrinhoCard = const Color(0xFF11111A);
+          _cCarrinhoCampo = const Color(0xFF1E1E24);
+          _cCarrinhoTexto = Colors.white70;
+          _cCarrinhoLabel = Colors.white;
+          _cCarrinhoTotal = const Color(0xFF4ADE80);
+          break;
+
+        case _LayoutPreset.masterLuxo:
+          // Cores base
+          _cFundo = const Color(0xFF08080B);
+          _cCard = const Color(0xFF14141E);
+          _cTexto = const Color(0xFFF5F5F5);
+          _cPrimaria = const Color(0xFFFFD700);
+          _cBotaoTexto = Colors.black;
+          _cCabecalho = const Color(0xFF08080B);
+          // Cores expandidas
+          _cTextSecondary = const Color(0xFFD4D4D4);
+          _cCardTextPrimary = const Color(0xFFF5F5F5);
+          _cCardTextSecondary = const Color(0xFFD4D4D4);
+          _cPriceHighlight = const Color(0xFFFFD700);
+          _cDanger = const Color(0xFFDC2626);
+          _cFieldHint = const Color(0xFF9CA3AF);
+          _cFieldBorder = const Color(0xFF4B5563);
+          _cDivider = const Color(0xFF4B5563);
+          _cButtonSecondaryBg = Colors.transparent;
+          _cButtonSecondaryText = const Color(0xFFFFD700);
+          _cButtonSecondaryBorder = const Color(0xFFFFD700);
+          _cBadgeBackground = const Color(0xFFFFD700).withValues(alpha:0.15);
+          _cBadgeText = const Color(0xFFFFD700);
+          _cIcon = const Color(0xFFF5F5F5);
+          _cShadow = Colors.black54;
+          // Cabeçalho
+          _cHeaderText = const Color(0xFFF5F5F5);
+          _cHeaderIcon = const Color(0xFFFFD700);
+          _cHeaderSearchBg = Colors.white10;
+          _cHeaderSearchText = const Color(0xFFF5F5F5);
+          _cHeaderSearchHint = const Color(0xFFD4D4D4);
+          // Rodapé
+          _cFooterBackground = const Color(0xFF08080B);
+          _cFooterText = const Color(0xFFF5F5F5);
+          _cFooterTextSecondary = const Color(0xFFD4D4D4);
+          _cFooterIcon = const Color(0xFFFFD700);
+          _cFooterLink = const Color(0xFFFFD700);
+          _cFooterDivider = const Color(0xFF4B5563);
+          // Carrinho
+          _cCarrinhoCard = const Color(0xFF14141E);
+          _cCarrinhoCampo = const Color(0xFF1E1E24);
+          _cCarrinhoTexto = const Color(0xFFD4D4D4);
+          _cCarrinhoLabel = const Color(0xFFF5F5F5);
+          _cCarrinhoTotal = const Color(0xFFFFD700);
+          break;
+
+        case _LayoutPreset.darkClean:
+          // Cores base
+          _cFundo = const Color(0xFF101014);
+          _cCard = const Color(0xFF1E1E24);
+          _cTexto = Colors.white70;
+          _cPrimaria = const Color(0xFF00FFA3);
+          _cBotaoTexto = Colors.black;
+          _cCabecalho = const Color(0xFF101014);
+          // Cores expandidas
+          _cTextSecondary = const Color(0xFF9CA3AF);
+          _cCardTextPrimary = Colors.white70;
+          _cCardTextSecondary = const Color(0xFF9CA3AF);
+          _cPriceHighlight = const Color(0xFF00FFA3);
+          _cDanger = const Color(0xFFF87171);
+          _cFieldHint = const Color(0xFF6B7280);
+          _cFieldBorder = const Color(0xFF374151);
+          _cDivider = const Color(0xFF374151);
+          _cButtonSecondaryBg = Colors.transparent;
+          _cButtonSecondaryText = const Color(0xFF00FFA3);
+          _cButtonSecondaryBorder = const Color(0xFF00FFA3);
+          _cBadgeBackground = const Color(0xFF00FFA3).withValues(alpha:0.15);
+          _cBadgeText = const Color(0xFF00FFA3);
+          _cIcon = Colors.white70;
+          _cShadow = Colors.black38;
+          // Cabeçalho
+          _cHeaderText = Colors.white70;
+          _cHeaderIcon = const Color(0xFF00FFA3);
+          _cHeaderSearchBg = Colors.white10;
+          _cHeaderSearchText = Colors.white70;
+          _cHeaderSearchHint = const Color(0xFF9CA3AF);
+          // Rodapé
+          _cFooterBackground = const Color(0xFF101014);
+          _cFooterText = Colors.white70;
+          _cFooterTextSecondary = const Color(0xFF9CA3AF);
+          _cFooterIcon = const Color(0xFF00FFA3);
+          _cFooterLink = const Color(0xFF00FFA3);
+          _cFooterDivider = const Color(0xFF374151);
+          // Carrinho
+          _cCarrinhoCard = const Color(0xFF1E1E24);
+          _cCarrinhoCampo = const Color(0xFF262630);
+          _cCarrinhoTexto = const Color(0xFF9CA3AF);
+          _cCarrinhoLabel = Colors.white70;
+          _cCarrinhoTotal = const Color(0xFF00FFA3);
+          break;
+      }
+    });
+
+    _salvarRascunho(validar: false);
+  }
+
+  Future<void> _abrirPreviewCatalogo() async {
+    final lojaId = _activeStoreId();
+
+    if (!mounted) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PublicCatalogScreen(
+          lojaId: lojaId,
+          preview: true,
+        ),
+      ),
+    );
+  }
+
+  void _showModernSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? _errorColor : _successColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  // ================= UI PRINCIPAL =================
+
+  @override
+  Widget build(BuildContext context) {
+    if (_carregando && !_erroCarregamento) {
+      return Scaffold(
+        backgroundColor: _surfaceColor,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(color: _primaryColor),
+              const SizedBox(height: 16),
+              Text(
+                'Carregando configurações...',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_erroCarregamento) {
+      return Scaffold(
+        backgroundColor: _surfaceColor,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: _errorColor.withValues(alpha:0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.error_outline, size: 64, color: _errorColor),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Erro ao carregar configurações',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _mensagemErro.isNotEmpty ? _mensagemErro : 'Verifique sua conexão e tente novamente.',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                FilledButton.icon(
+                  onPressed: _retryCarregar,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Tentar novamente'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _primaryColor,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Voltar'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final publicBase =
+        (_configBox.get('public_base_url') ?? 'https://app.mastepalm.com.br')
+            .toString();
+
+    final lojaAtiva = _activeStoreId();
+
+    // ✅ USA SLUG AMIGÁVEL na URL pública (se disponível)
+    String slugParaUrl = _slugCtrl.text.trim();
+    if (slugParaUrl.isEmpty) {
+      // Fallback: gera slug do nome
+      slugParaUrl = _nomeCtrl.text.trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
+    }
+    if (slugParaUrl.isEmpty) {
+      slugParaUrl = lojaAtiva; // Último fallback: usa ID técnico
+    }
+
+    final linkCurto = _linkCurtoCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+    final urlPublica = linkCurto.isNotEmpty
+        ? '$publicBase/c/$linkCurto'
+        : '$publicBase/loja/$slugParaUrl';
+
+    final isWide = MediaQuery.of(context).size.width >= 980;
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: cs.surface,
+      body: Stack(
+        children: [
+          FadeTransition(
+        opacity: _fadeAnimation,
+        child: RefreshIndicator(
+          onRefresh: () async {
+            setState(() => _erroCarregamento = false);
+            await _verificarConectividade();
+            await _initConfig();
+          },
+          color: _primaryColor,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+            SliverAppBar(
+              expandedHeight: 140,
+              floating: false,
+              pinned: true,
+              backgroundColor: _primaryColor,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+              actions: [
+                if (_salvando)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 16),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  icon: Icon(Icons.save_outlined, color: isDark ? cs.primary : Colors.white),
+                  tooltip: 'Salvar',
+                  onPressed: _salvando ? null : _salvarRascunho,
+                ),
+                if (_sincronizando)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    ),
+                  )
+                else
+                  IconButton(
+                    icon: Icon(Icons.cloud_sync_outlined, color: isDark ? cs.primary : Colors.white),
+                    tooltip: 'Sincronizar dados',
+                    onPressed: _sincronizarTudo,
+                  ),
+                IconButton(
+                  icon: Icon(Icons.cloud_upload_outlined, color: isDark ? cs.primary : Colors.white),
+                  tooltip: 'Publicar (salva e publica)',
+                  onPressed: _salvando ? null : _publicarTudo,
+                ),
+                IconButton(
+                  icon: Icon(Icons.visibility_outlined, color: isDark ? cs.primary : Colors.white),
+                  tooltip: 'Pré-visualizar',
+                  onPressed: _salvando ? null : _abrirPreviewCatalogo,
+                ),
+                const SizedBox(width: 8),
+              ],
+              flexibleSpace: FlexibleSpaceBar(
+                background: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [_primaryColor, _secondaryColor],
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        right: -50,
+                        top: -50,
+                        child: Container(
+                          width: 200,
+                          height: 200,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha:0.1),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: -30,
+                        bottom: -30,
+                        child: Container(
+                          width: 140,
+                          height: 140,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha:0.1),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 20,
+                        right: 20,
+                        bottom: 16,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Configurações da Loja',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Personalize sua loja virtual',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha:0.9),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_offline)
+              SliverToBoxAdapter(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  color: _warningColor.withValues(alpha:0.15),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.wifi_off, color: _warningColor, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Sem conexão. As alterações serão salvas localmente e sincronizadas quando a conexão voltar.',
+                          style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _verificarConectividade,
+                        child: const Text('Verificar'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    // URL pública fixa no topo
+                    _buildUrlCard(urlPublica),
+                    const SizedBox(height: 12),
+                    _buildUrlCard(
+                      '$urlPublica?page=dicas',
+                      label: 'Link da tela Dicas e Informações',
+                      subtitle: 'Use este link para enviar somente a página de dicas ao cliente',
+                    ),
+                    const SizedBox(height: 16),
+                    _buildMenuDashboard(isWide),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        ),
+      ),
+          if (_mostrarTutorial) _buildTutorialOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTutorialOverlay() {
+    final passo = _tutorialPassos[_tutorialPasso];
+    final total = _tutorialPassos.length;
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 24,
+      child: Material(
+        elevation: 8,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _primaryColor.withValues(alpha:0.3)),
+            boxShadow: [
+              BoxShadow(
+                color: _primaryColor.withValues(alpha:0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _primaryColor.withValues(alpha:0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(passo.$3, color: _primaryColor, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          passo.$1,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          '${_tutorialPasso + 1} de $total',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                passo.$2,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[700],
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: _fecharTutorial,
+                    child: const Text('Pular tutorial'),
+                  ),
+                  const SizedBox(width: 8),
+                  if (_tutorialPasso < total - 1)
+                    FilledButton(
+                      onPressed: () => setState(() => _tutorialPasso++),
+                      child: const Text('Próximo'),
+                    )
+                  else
+                    FilledButton.icon(
+                      onPressed: _fecharTutorial,
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('Entendi'),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUrlCard(String urlPublica, {String? label, String? subtitle}) {
+    final displayLabel = label ?? 'URL pública da sua loja';
+    final displaySubtitle = subtitle;
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha:0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _primaryColor.withValues(alpha:0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                displaySubtitle != null ? Icons.lightbulb_outline : Icons.link,
+                color: _primaryColor,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayLabel,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (displaySubtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      displaySubtitle,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    urlPublica,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.copy, size: 18),
+              label: const Text('Copiar'),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: urlPublica));
+                _showModernSnackBar('URL copiada!');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMenuDashboard(bool isWide) {
+    final items = <Map<String, dynamic>>[
+      {
+        'pane': _Pane.identidade,
+        'label': 'Identidade & Contato',
+        'subtitle': 'Nome da loja, WhatsApp, configurações básicas',
+        'icon': Icons.storefront_outlined,
+      },
+      {
+        'pane': _Pane.midias,
+        'label': 'Mídias & Banners',
+        'subtitle': 'Logo e banners para desktop e mobile',
+        'icon': Icons.photo_library_outlined,
+      },
+      {
+        'pane': _Pane.tema,
+        'label': 'Tema & Cores',
+        'subtitle': 'Cores do catálogo e checkout',
+        'icon': Icons.palette_outlined,
+      },
+      {
+        'pane': _Pane.layout,
+        'label': 'Layout dos cards',
+        'subtitle': 'Colunas, sombras, bordas',
+        'icon': Icons.dashboard_customize_outlined,
+      },
+      {
+        'pane': _Pane.menu,
+        'label': 'Menu & Páginas',
+        'subtitle': 'Configurar navegação do catálogo',
+        'icon': Icons.menu_open_outlined,
+      },
+      {
+        'pane': _Pane.dicas,
+        'label': 'Dicas e informações',
+        'subtitle': 'Cuidados, garantias, qualidade – link no menu do catálogo',
+        'icon': Icons.lightbulb_outline,
+      },
+      {
+        'pane': _Pane.rodape,
+        'label': 'Rodapé & Links',
+        'subtitle': 'Redes sociais, políticas, sobre',
+        'icon': Icons.view_day_outlined,
+      },
+      {
+        'pane': _Pane.financeiro,
+        'label': 'Taxas Financeiras',
+        'subtitle': 'Relatórios Financeiros e Financeiro & Metas',
+        'icon': Icons.percent_outlined,
+      },
+      {
+        'pane': _Pane.publicar,
+        'label': 'Publicar catálogo',
+        'subtitle': 'Publicar alterações no site',
+        'icon': Icons.cloud_upload_outlined,
+      },
+    ];
+
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 0,
+      color: cs.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _primaryColor.withValues(alpha:0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.settings_outlined, color: _primaryColor, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Configurações da Loja',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: cs.onSurface,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Clique em cada item para expandir e configurar',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            // Link para Fretes & Cupons (tela dedicada)
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              elevation: 0,
+              color: cs.surfaceContainerHighest,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: _warningColor.withValues(alpha:0.5)),
+              ),
+              child: ListTile(
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: _warningColor.withValues(alpha:0.15),
+                  ),
+                  child: const Icon(Icons.local_shipping_outlined, color: _warningColor, size: 22),
+                ),
+                title: Text(
+                  'Fretes & Cupons',
+                  style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface),
+                ),
+                subtitle: Text(
+                  'Configurar fretes e cupons de desconto',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                ),
+                trailing: Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const FretesCuponsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            // Lista expansível
+            ...items.map((item) {
+              final pane = item['pane'] as _Pane;
+              final isExpanded = _pane == pane;
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                elevation: isExpanded ? 2 : 0,
+                color: cs.surfaceContainerHighest,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: isExpanded
+                        ? _primaryColor
+                        : cs.outlineVariant,
+                    width: isExpanded ? 2 : 1,
+                  ),
+                ),
+                child: ExpansionTile(
+                  key: ValueKey('config_pane_$pane'),
+                  initiallyExpanded: isExpanded,
+                  onExpansionChanged: (expanded) {
+                    if (expanded) {
+                      setState(() {
+                        _pane = pane;
+                      });
+                    }
+                  },
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: isExpanded
+                          ? _primaryColor
+                          : cs.surfaceContainerHigh,
+                    ),
+                    child: Icon(
+                      item['icon'] as IconData,
+                      color: isExpanded ? Colors.white : cs.onSurfaceVariant,
+                    ),
+                  ),
+                  title: Text(
+                    item['label'] as String,
+                    style: TextStyle(
+                      fontWeight: isExpanded ? FontWeight.w700 : FontWeight.w600,
+                      color: isExpanded ? _primaryColor : cs.onSurface,
+                    ),
+                  ),
+                  subtitle: Text(
+                    item['subtitle'] as String,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  children: [
+                    // Conteúdo do painel – Theme garante campos legíveis no modo escuro
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Theme(
+                        data: Theme.of(context).copyWith(
+                          inputDecorationTheme: InputDecorationTheme(
+                            filled: true,
+                            fillColor: cs.surface,
+                            labelStyle: TextStyle(color: cs.onSurfaceVariant),
+                            hintStyle: TextStyle(color: cs.onSurfaceVariant),
+                            helperStyle: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                            errorStyle: TextStyle(color: cs.error),
+                            prefixIconColor: cs.onSurfaceVariant,
+                            border: const OutlineInputBorder(),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: cs.outlineVariant),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: cs.primary, width: 2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            errorBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: cs.error, width: 2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                        child: switch (pane) {
+                          _Pane.identidade => _paneIdentidade(),
+                          _Pane.midias => _paneMidias(),
+                          _Pane.tema => _paneTema(),
+                          _Pane.layout => _paneLayout(),
+                          // fretes, cupons -> removidos (use FretesCuponsScreen)
+                          _Pane.menu => _paneMenu(),
+                          _Pane.dicas => _paneDicas(),
+                          _Pane.rodape => _paneRodape(),
+                          _Pane.financeiro => _paneFinanceiro(),
+                          _Pane.publicar => _panePublicar(),
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============== HELPERS TEMA (modo escuro: texto visível nos campos) ==============
+
+  /// Estilo do texto digitado nos campos – sempre contrasta com o fundo do tema.
+  TextStyle _fieldTextStyle(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return TextStyle(color: cs.onSurface, fontSize: 16);
+  }
+
+  /// InputDecoration com cores do tema para labels, hint e fundo legíveis no modo escuro.
+  InputDecoration _inputDecoration(
+    BuildContext context, {
+    required String labelText,
+    String? helperText,
+    int? helperMaxLines,
+    String? errorText,
+    Widget? prefixIcon,
+    InputBorder? errorBorder,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return InputDecoration(
+      labelText: labelText,
+      helperText: helperText,
+      helperMaxLines: helperMaxLines,
+      errorText: errorText,
+      prefixIcon: prefixIcon,
+      isDense: true,
+      filled: true,
+      fillColor: cs.surface,
+      labelStyle: TextStyle(color: cs.onSurfaceVariant),
+      hintStyle: TextStyle(color: cs.onSurfaceVariant),
+      helperStyle: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+      errorStyle: TextStyle(color: cs.error),
+      border: const OutlineInputBorder(),
+      errorBorder: errorBorder ??
+          OutlineInputBorder(
+            borderSide: BorderSide(color: cs.error, width: 2),
+            borderRadius: BorderRadius.circular(4),
+          ),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: cs.outlineVariant),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: cs.primary, width: 2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+    );
+  }
+
+  // ============== PANES ==============
+
+  Widget _panePublicar() {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        if (_salvando)
+          const LinearProgressIndicator(),
+
+        // ✨ Campanhas e Roleta
+        _Section(
+          title: 'Sorteios e Promoções',
+          child: Column(
+            children: [
+              // Toggle Campanha
+              Container(
+                decoration: BoxDecoration(
+                  color: _campanhaAtiva
+                      ? Colors.purple.shade50
+                      : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _campanhaAtiva
+                        ? Colors.purple.shade300
+                        : Colors.grey.shade300,
+                  ),
+                ),
+                child: SwitchListTile(
+                  value: _campanhaAtiva,
+                  onChanged: _salvando ? null : _toggleCampanhaAtiva,
+                  title: Row(
+                    children: [
+                      Icon(
+                        Icons.campaign,
+                        color: _campanhaAtiva ? Colors.purple : Colors.grey,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Campanha de Sorteio',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              _campanhaAtiva
+                                  ? 'Ativa: ${_campanhaAtivaNome ?? "Campanha"}'
+                                  : 'Nenhuma campanha ativa',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _campanhaAtiva
+                                    ? Colors.purple.shade700
+                                    : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Toggle Roleta
+              Container(
+                decoration: BoxDecoration(
+                  color: _roletaAtiva
+                      ? Colors.amber.shade50
+                      : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _roletaAtiva
+                        ? Colors.amber.shade300
+                        : Colors.grey.shade300,
+                  ),
+                ),
+                child: SwitchListTile(
+                  value: _roletaAtiva,
+                  onChanged: _salvando ? null : _toggleRoletaAtiva,
+                  title: Row(
+                    children: [
+                      Icon(
+                        Icons.casino,
+                        color: _roletaAtiva ? Colors.amber.shade700 : Colors.grey,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Roleta da Sorte',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                              _roletaAtiva
+                                  ? 'Ativa - clientes giram após compra'
+                                  : 'Desativada',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: _roletaAtiva
+                                    ? Colors.amber.shade700
+                                    : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Info box
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Configure campanhas e prêmios da roleta em Sorteios e Campanhas no menu principal.',
+                        style: TextStyle(
+                          color: Colors.blue.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        _Section(
+          title: 'Publicar Catálogo',
+          child: Column(
+            children: [
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  minimumSize: const Size(double.infinity, 56),
+                ),
+                onPressed: _salvando ? null : _publicarTudo,
+                icon: const Icon(Icons.publish, size: 28),
+                label: const Text(
+                  'PUBLICAR CATÁLOGO (TORNAR VISÍVEL)',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.purple.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.purple.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.purple.shade700),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Clique aqui para publicar suas alterações e torná-las visíveis no catálogo web!',
+                        style: TextStyle(
+                          color: Colors.purple.shade900,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 0,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Como funciona?',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '• Salvar rascunho grava localmente e em lojas/{store_id}/draft_config/config.\n'
+                  '• Publicar copia o rascunho para lojas/{store_id}/config/config e também espelha no doc raiz.\n'
+                  '• O Catálogo Web (LIVE) lê os dados publicados (config/config).',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _paneIdentidade() {
+    final cs = Theme.of(context).colorScheme;
+    return _Section(
+      title: 'Identidade & Contato',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Slug (URL): ${_activeStoreId()}',
+            style: TextStyle(fontWeight: FontWeight.bold, color: cs.onSurface),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _nomeCtrl,
+            style: _fieldTextStyle(context),
+            decoration: _inputDecoration(
+              context,
+              labelText: 'Nome da loja',
+              prefixIcon: const Icon(Icons.storefront_outlined),
+            ),
+            onChanged: (_) {
+              // Auto-gera slug do nome se slug estiver vazio
+              if (_slugCtrl.text.trim().isEmpty) {
+                final autoSlug = _nomeCtrl.text.trim()
+                    .toLowerCase()
+                    .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+                    .replaceAll(RegExp(r'^_+|_+$'), '');
+                setState(() => _slugCtrl.text = autoSlug);
+              }
+              _scheduleAutoSave();
+            },
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _slugCtrl,
+            style: _fieldTextStyle(context),
+            decoration: _inputDecoration(
+              context,
+              labelText: 'Slug (URL amigável)',
+              helperText: 'Ex.: nathy_pratas_e_folheados\nURL: ${_configBox.get('public_base_url') ?? 'https://app.mastepalm.com.br'}/loja/${_slugCtrl.text.isNotEmpty ? _slugCtrl.text : 'seu-slug'}',
+              helperMaxLines: 2,
+              prefixIcon: const Icon(Icons.link),
+            ),
+            onChanged: (value) {
+              // Sanitiza o slug em tempo real (apenas a-z, 0-9, _)
+              final sanitized = value
+                  .toLowerCase()
+                  .replaceAll(RegExp(r'[^a-z0-9_-]'), '_')
+                  .replaceAll(RegExp(r'_+'), '_')
+                  .replaceAll(RegExp(r'^_+|_+$'), '');
+              if (sanitized != value) {
+                _slugCtrl.value = TextEditingValue(
+                  text: sanitized,
+                  selection: TextSelection.collapsed(offset: sanitized.length),
+                );
+              }
+              setState(() {}); // Atualiza helper text
+              _scheduleAutoSave();
+            },
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _linkCurtoCtrl,
+            style: _fieldTextStyle(context),
+            decoration: _inputDecoration(
+              context,
+              labelText: 'Link curto (opcional)',
+              helperText: 'Ex.: nathy → app.mastepalm.com.br/c/nathy redireciona para seu catálogo',
+              helperMaxLines: 2,
+              prefixIcon: const Icon(Icons.short_text),
+            ),
+            onChanged: (value) {
+              final sanitized = value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+              if (sanitized != value) {
+                _linkCurtoCtrl.value = TextEditingValue(
+                  text: sanitized,
+                  selection: TextSelection.collapsed(offset: sanitized.length),
+                );
+              }
+              setState(() {});
+              _scheduleAutoSave();
+            },
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: 280,
+                child: TextField(
+                  controller: _subdominioMascaraCtrl,
+                  style: _fieldTextStyle(context),
+                  decoration: _inputDecoration(
+                    context,
+                    labelText: 'Subdomínio personalizado (opcional)',
+                    helperText: 'Ex.: nathypratasefolheados',
+                    helperMaxLines: 2,
+                    prefixIcon: const Icon(Icons.link),
+                  ),
+                  onChanged: (value) {
+                    final sanitized = value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '');
+                    if (sanitized != value) {
+                      _subdominioMascaraCtrl.value = TextEditingValue(
+                        text: sanitized,
+                        selection: TextSelection.collapsed(offset: sanitized.length),
+                      );
+                    }
+                    setState(() {});
+                    _scheduleAutoSave();
+                  },
+                ),
+              ),
+              SizedBox(
+                width: 220,
+                child: TextField(
+                  controller: _subdominioDominioBaseCtrl,
+                  style: _fieldTextStyle(context),
+                  decoration: _inputDecoration(
+                    context,
+                    labelText: 'Domínio base',
+                    helperText: 'Ex.: mastepalm.com.br',
+                    helperMaxLines: 2,
+                    prefixIcon: const Icon(Icons.domain),
+                  ),
+                  onChanged: (_) {
+                    setState(() {});
+                    _scheduleAutoSave();
+                  },
+                ),
+              ),
+            ],
+          ),
+          if (_subdominioMascaraCtrl.text.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Builder(
+              builder: (context) {
+                final m = _subdominioMascaraCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '');
+                final d = _subdominioDominioBaseCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9.-]'), '');
+                final dominio = d.isNotEmpty ? d : 'mastepalm.com.br';
+                return Text(
+                  'URL com máscara: https://$m.$dominio',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                );
+              },
+            ),
+          ],
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: 420,
+                child: TextField(
+                  controller: _waCtrl,
+                  style: _fieldTextStyle(context),
+                  onChanged: (_) {
+                    _limparErroCampo('whatsapp');
+                    _scheduleAutoSave();
+                  },
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9\s\-+()]')),
+                  ],
+                  decoration: _inputDecoration(
+                    context,
+                    labelText: 'WhatsApp do vendedor (E.164)',
+                    helperText: 'Ex.: 5533999998888 (10 a 15 dígitos)',
+                    errorText: _camposComErro.contains('whatsapp')
+                        ? 'Use 10 a 15 dígitos'
+                        : null,
+                    prefixIcon: const Icon(Icons.phone_iphone),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 520,
+                child: TextField(
+                  controller: _pedidoBaseCtrl,
+                  style: _fieldTextStyle(context),
+                  onChanged: (_) {
+                    _limparErroCampo('pedido_base');
+                    _scheduleAutoSave();
+                  },
+                  decoration: _inputDecoration(
+                    context,
+                    labelText: 'Link base do pedido',
+                    helperText: 'Ex.: https://app.mastepalm.com.br/pedido',
+                    errorText: _camposComErro.contains('pedido_base')
+                        ? 'URL inválida'
+                        : null,
+                    prefixIcon: const Icon(Icons.shopping_cart_checkout_outlined),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Essas informações alimentam o link de pedido no catálogo público e o botão de WhatsApp.',
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _paneMidias() {
+    InputDecoration dec(BuildContext context, String label) => _inputDecoration(context, labelText: label);
+
+    Widget dimRow({
+      required TextEditingController h,
+      required TextEditingController w,
+    }) =>
+        LayoutBuilder(builder: (context, c) {
+          final isNarrow = c.maxWidth < 420;
+          final row = Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: h,
+                  style: _fieldTextStyle(context),
+                  onChanged: (_) => _scheduleAutoSave(),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: dec(context, 'Altura (px)'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: w,
+                  style: _fieldTextStyle(context),
+                  onChanged: (_) => _scheduleAutoSave(),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: dec(context, 'Largura (px)'),
+                ),
+              ),
+            ],
+          );
+          if (!isNarrow) return row;
+          return Column(
+            children: [
+              TextField(
+                controller: h,
+                style: _fieldTextStyle(context),
+                onChanged: (_) => _scheduleAutoSave(),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: dec(context, 'Altura (px)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: w,
+                style: _fieldTextStyle(context),
+                onChanged: (_) => _scheduleAutoSave(),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: dec(context, 'Largura (px)'),
+              ),
+            ],
+          );
+        });
+
+    final isDesktop = _mediaTab == _MediaTab.desktop;
+
+    final logoUrl = isDesktop ? _logoUrlDesktop : _logoUrlMobile;
+    final banners = isDesktop ? _bannersDesktop : _bannersMobile;
+
+    return Column(
+      children: [
+        _Section(
+          title: 'Plataforma',
+          child: Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Desktop'),
+                selected: isDesktop,
+                onSelected: (_) =>
+                    setState(() => _mediaTab = _MediaTab.desktop),
+              ),
+              ChoiceChip(
+                label: const Text('Android / Mobile'),
+                selected: !isDesktop,
+                onSelected: (_) =>
+                    setState(() => _mediaTab = _MediaTab.mobile),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isDesktop
+                    ? 'Banner recomendado: 1280×256  |  Logo: 105×327 (A×L)'
+                    : 'Banner recomendado: 562×300  |  Logo: 105×327 (A×L)',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        _Section(
+          title: 'Logo',
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ElevatedButton.icon(
+                onPressed:
+                    _salvando ? null : () => _trocarLogo(desktop: isDesktop),
+                icon: const Icon(Icons.photo),
+                label: const Text('Enviar logo'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _salvando ||
+                        (logoUrl == null || logoUrl.isEmpty)
+                    ? null
+                    : () => _removerLogo(desktop: isDesktop),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Remover'),
+              ),
+            ],
+          ),
+          child: LayoutBuilder(builder: (context, c) {
+            final isNarrow = c.maxWidth < 640;
+            final preview = Container(
+              height: 64,
+              alignment: Alignment.centerLeft,
+              child: (logoUrl == null || logoUrl.isEmpty)
+                  ? const Text('Nenhuma logo enviada ainda')
+                  : Image(
+                      image: mpImageProvider(logoUrl),
+                      height: 64,
+                      fit: BoxFit.contain,
+                    ),
+            );
+
+            if (isNarrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  preview,
+                  const SizedBox(height: 12),
+                  dimRow(
+                    h: isDesktop ? _dLogoH : _mLogoH,
+                    w: isDesktop ? _dLogoW : _mLogoW,
+                  ),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: preview),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 360,
+                  child: dimRow(
+                    h: isDesktop ? _dLogoH : _mLogoH,
+                    w: isDesktop ? _dLogoW : _mLogoW,
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+
+        const SizedBox(height: 16),
+
+        _Section(
+          title: 'Banners',
+          action: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              SizedBox(
+                width: 260,
+                child: dimRow(
+                  h: isDesktop ? _dBanH : _mBanH,
+                  w: isDesktop ? _dBanW : _mBanW,
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: _salvando
+                    ? null
+                    : () => _adicionarBanners(desktop: isDesktop),
+                icon: const Icon(Icons.add_photo_alternate),
+                label: const Text('Adicionar'),
+              ),
+            ],
+          ),
+          child: banners.isEmpty
+              ? const Text(
+                  'Nenhum banner adicionado ainda. Envie pelo menos 1 para deixar seu catálogo mais profissional.',
+                  style: TextStyle(color: Colors.black54),
+                )
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: banners.map((url) {
+                      return SizedBox(
+                        height: 100,
+                        width: 180,
+                        child: Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image(
+                                image: mpImageProvider(url),
+                                height: 100,
+                                width: 180,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            Positioned(
+                              right: 4,
+                              top: 4,
+                              child: InkWell(
+                                onTap: _salvando
+                                    ? null
+                                    : () => _removerBanner(
+                                          desktop: isDesktop,
+                                          url: url,
+                                        ),
+                                child: const CircleAvatar(
+                                  radius: 12,
+                                  backgroundColor: Colors.black54,
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 14,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  // ============== PANE: TEMA ==============
+  Widget _paneTema() {
+    final maxHeight = MediaQuery.of(context).size.height * 0.65;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          children: [
+            _Section(
+              title: 'Presets de Layout (Master)',
+              child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _PresetChip(
+                label: 'Master Padrão',
+                description: 'Fundo escuro, azul neon, visual tech',
+                selected: _layoutPreset == _LayoutPreset.masterPadrao,
+                onTap: () => _applyPreset(_LayoutPreset.masterPadrao),
+              ),
+              _PresetChip(
+                label: 'Master Luxo',
+                description: 'Dourado, fundo escuro, cara de joalheria',
+                selected: _layoutPreset == _LayoutPreset.masterLuxo,
+                onTap: () => _applyPreset(_LayoutPreset.masterLuxo),
+              ),
+              _PresetChip(
+                label: 'Dark Clean',
+                description: 'Minimalista, verde neon, bem limpo',
+                selected: _layoutPreset == _LayoutPreset.darkClean,
+                onTap: () => _applyPreset(_LayoutPreset.darkClean),
+              ),
+            ],
+          ),
+        ),
+          const SizedBox(height: 12),
+
+          // ===== FUNDO E CARDS =====
+          _Section(
+          title: 'Fundo e Cards',
+          subtitle: 'Cores de fundo da página e dos cards de produto',
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _ColorPickerChip(
+                label: 'Fundo da página',
+                color: _cFundo,
+                onPick: (c) {
+                  setState(() => _cFundo = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Fundo dos cards',
+                color: _cCard,
+                onPick: (c) {
+                  setState(() => _cCard = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ===== PRODUTOS (Nome e Preço) =====
+        _Section(
+          title: 'Produtos – Nome e Preço',
+          subtitle: 'Cores do nome do produto e do valor (ex: R\$ 109,90)',
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _ColorPickerChip(
+                label: 'Nome do produto',
+                color: _cCardTextPrimary,
+                onPick: (c) {
+                  setState(() => _cCardTextPrimary = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Preço (valor)',
+                color: _cPriceHighlight,
+                onPick: (c) {
+                  setState(() => _cPriceHighlight = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ===== BOTÕES =====
+        _Section(
+          title: 'Botões',
+          subtitle: 'Cores dos botões Comprar, Ver e filtros de categoria',
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _ColorPickerChip(
+                label: 'Botão Comprar – fundo',
+                color: _cPrimaria,
+                onPick: (c) {
+                  setState(() => _cPrimaria = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Botão Comprar – texto',
+                color: _cBotaoTexto,
+                onPick: (c) {
+                  setState(() => _cBotaoTexto = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Botão Ver – fundo',
+                color: _cButtonSecondaryBg,
+                onPick: (c) {
+                  setState(() => _cButtonSecondaryBg = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Botão Ver – texto e borda',
+                color: _cButtonSecondaryText,
+                onPick: (c) {
+                  setState(() {
+                    _cButtonSecondaryText = c;
+                    _cButtonSecondaryBorder = c;
+                  });
+                  _salvarRascunho(validar: false);
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ===== TEXTOS GERAIS =====
+        _Section(
+          title: 'Textos Gerais',
+          subtitle: 'Textos da página, secundários, ícones e divisórias',
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _ColorPickerChip(
+                label: 'Texto principal',
+                color: _cTexto,
+                onPick: (c) {
+                  setState(() => _cTexto = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Texto secundário',
+                color: _cTextSecondary,
+                onPick: (c) {
+                  setState(() => _cTextSecondary = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Texto card secundário',
+                color: _cCardTextSecondary,
+                onPick: (c) {
+                  setState(() => _cCardTextSecondary = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Ícones',
+                color: _cIcon,
+                onPick: (c) {
+                  setState(() => _cIcon = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Divisórias',
+                color: _cDivider,
+                onPick: (c) {
+                  setState(() => _cDivider = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Sombras',
+                color: _cShadow,
+                onPick: (c) {
+                  setState(() => _cShadow = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Cor de perigo',
+                color: _cDanger,
+                onPick: (c) {
+                  setState(() => _cDanger = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ===== BADGES =====
+        _Section(
+          title: 'Badges e Chips',
+          subtitle: 'Selos, etiquetas e chips informativos',
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _ColorPickerChip(
+                label: 'Badge – fundo',
+                color: _cBadgeBackground,
+                onPick: (c) {
+                  setState(() => _cBadgeBackground = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Badge – texto',
+                color: _cBadgeText,
+                onPick: (c) {
+                  setState(() => _cBadgeText = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // ===== CABEÇALHO DO CATÁLOGO =====
+        _Section(
+          title: 'Cabeçalho do Catálogo',
+          subtitle: 'Menu, logo, busca e ícones do topo',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _ColorPickerChip(
+                    label: 'Fundo Cabeçalho',
+                    color: _cCabecalho,
+                    onPick: (c) {
+                      setState(() => _cCabecalho = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Texto Cabeçalho',
+                    color: _cHeaderText,
+                    onPick: (c) {
+                      setState(() => _cHeaderText = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Ícones Cabeçalho',
+                    color: _cHeaderIcon,
+                    onPick: (c) {
+                      setState(() => _cHeaderIcon = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Busca Fundo',
+                    color: _cHeaderSearchBg,
+                    onPick: (c) {
+                      setState(() => _cHeaderSearchBg = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Busca Texto',
+                    color: _cHeaderSearchText,
+                    onPick: (c) {
+                      setState(() => _cHeaderSearchText = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Busca Hint',
+                    color: _cHeaderSearchHint,
+                    onPick: (c) {
+                      setState(() => _cHeaderSearchHint = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Pré-visualização do cartão',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: _cFundo,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: _cCard,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 56,
+                              height: 56,
+                              decoration: BoxDecoration(
+                                color: _cPrimaria.withValues(alpha:0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Exemplo de joia',
+                                    style: TextStyle(
+                                      color: _cTexto,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Descrição breve do produto...',
+                                    style: TextStyle(
+                                      color: _cTexto.withValues(alpha:0.7),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'R\$ 129,90',
+                                        style: TextStyle(
+                                          color: _cPriceHighlight,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _cPrimaria,
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          'Ver detalhes',
+                                          style: TextStyle(
+                                            color: _cBotaoTexto,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // ===== CORES DO CARRINHO (CHECKOUT) =====
+        _Section(
+          title: 'Cores do Carrinho (checkout)',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _ColorPickerChip(
+                    label: 'Fundo do card',
+                    color: _cCarrinhoCard,
+                    onPick: (c) {
+                      setState(() => _cCarrinhoCard = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Campos (dropdown / input)',
+                    color: _cCarrinhoCampo,
+                    onPick: (c) {
+                      setState(() => _cCarrinhoCampo = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Texto dos campos',
+                    color: _cCarrinhoTexto,
+                    onPick: (c) {
+                      setState(() => _cCarrinhoTexto = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Rótulos (Entrega, Pagamento...)',
+                    color: _cCarrinhoLabel,
+                    onPick: (c) {
+                      setState(() => _cCarrinhoLabel = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Total a pagar',
+                    color: _cCarrinhoTotal,
+                    onPick: (c) {
+                      setState(() => _cCarrinhoTotal = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Campo Hint',
+                    color: _cFieldHint,
+                    onPick: (c) {
+                      setState(() => _cFieldHint = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Campo Borda',
+                    color: _cFieldBorder,
+                    onPick: (c) {
+                      setState(() => _cFieldBorder = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Pré-visualização do resumo do pedido',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+
+              // PREVIEW DO CARRINHO
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: _cFundo,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Cabeçalho
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _cPrimaria.withValues(alpha:0.18),
+                          ),
+                          child: Icon(
+                            Icons.receipt_long_outlined,
+                            size: 18,
+                            color: _cPrimaria,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Resumo do pedido',
+                          style: TextStyle(
+                            color: _cCarrinhoLabel,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            color: _cCarrinhoTotal,
+                          ),
+                          child: const Text(
+                            'Total R\$ 99,66',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Card interno
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _cCarrinhoCard,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Subtotal',
+                                style: TextStyle(
+                                  color: _cCarrinhoTexto.withValues(alpha:0.8),
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                'R\$ 99,66',
+                                style: TextStyle(
+                                  color: _cCarrinhoTexto,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Text(
+                                'Total a pagar',
+                                style: TextStyle(
+                                  color: _cCarrinhoLabel,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                'R\$ 99,66',
+                                style: TextStyle(
+                                  color: _cCarrinhoTotal,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Preview das linhas de Entrega / Pagamento / Cupom
+                    Text(
+                      'Entrega',
+                      style: TextStyle(
+                        color: _cCarrinhoLabel,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: _cCarrinhoCampo,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Retirada • R\$ 0,00',
+                        style: TextStyle(
+                          color: _cCarrinhoTexto,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Forma de pagamento',
+                      style: TextStyle(
+                        color: _cCarrinhoLabel,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: _cCarrinhoCampo,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'PIX',
+                        style: TextStyle(
+                          color: _cCarrinhoTexto,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Cupom de desconto',
+                      style: TextStyle(
+                        color: _cCarrinhoLabel,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: _cCarrinhoCampo,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Digite o cupom',
+                              style: TextStyle(
+                                color: _cCarrinhoTexto.withValues(alpha:0.7),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          height: 42,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _cPrimaria,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            'Aplicar',
+                            style: TextStyle(
+                              color: _cBotaoTexto,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // ===== CORES DO RODAPÉ DO CATÁLOGO =====
+        _Section(
+          title: 'Cores do Rodapé',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Personalize as cores da área de rodapé do catálogo',
+                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _ColorPickerChip(
+                    label: 'Fundo Rodapé',
+                    color: _cFooterBackground,
+                    onPick: (c) {
+                      setState(() => _cFooterBackground = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Texto Rodapé',
+                    color: _cFooterText,
+                    onPick: (c) {
+                      setState(() => _cFooterText = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Texto Secundário',
+                    color: _cFooterTextSecondary,
+                    onPick: (c) {
+                      setState(() => _cFooterTextSecondary = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Ícones Rodapé',
+                    color: _cFooterIcon,
+                    onPick: (c) {
+                      setState(() => _cFooterIcon = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Links Rodapé',
+                    color: _cFooterLink,
+                    onPick: (c) {
+                      setState(() => _cFooterLink = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  _ColorPickerChip(
+                    label: 'Divisórias Rodapé',
+                    color: _cFooterDivider,
+                    onPick: (c) {
+                      setState(() => _cFooterDivider = c);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Preview do rodapé
+              Text(
+                'Pré-visualização do rodapé',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _cFooterBackground,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Sobre a Loja',
+                      style: TextStyle(
+                        color: _cFooterText,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Texto de exemplo do rodapé...',
+                      style: TextStyle(
+                        color: _cFooterTextSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Divider(color: _cFooterDivider, height: 1),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.email_outlined, color: _cFooterIcon, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'contato@exemplo.com',
+                          style: TextStyle(color: _cFooterLink, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // ===== CORES DA TELA DICAS E INFORMAÇÕES =====
+        _Section(
+          title: 'Cores da tela Dicas e Informações',
+          subtitle: 'Fundo, rodapé, botões e etiqueta por tópico (Garantias, Cuidados, etc.)',
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _ColorPickerChip(
+                label: 'Fundo',
+                color: _cDicasBackground,
+                onPick: (c) {
+                  setState(() => _cDicasBackground = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Rodapé – fundo',
+                color: _cDicasFooterBg,
+                onPick: (c) {
+                  setState(() => _cDicasFooterBg = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Rodapé – texto',
+                color: _cDicasFooterText,
+                onPick: (c) {
+                  setState(() => _cDicasFooterText = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Botões',
+                color: _cDicasButtonBg,
+                onPick: (c) {
+                  setState(() => _cDicasButtonBg = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Texto dos botões',
+                color: _cDicasButtonText,
+                onPick: (c) {
+                  setState(() => _cDicasButtonText = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              _ColorPickerChip(
+                label: 'Por tópico (Garantias, Cuidados...)',
+                color: _cDicasTopicPrimary,
+                onPick: (c) {
+                  setState(() => _cDicasTopicPrimary = c);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+            ],
+          ),
+        ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============== PANE: LAYOUT & CARDS ==============
+  Widget _paneLayout() {
+    return Column(
+      children: [
+        _Section(
+          title: 'Grade de produtos (desktop x mobile)',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Defina quantos cards de produto aparecem por linha em cada dispositivo.',
+                style: TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 16),
+
+              Text(
+                'Desktop (navegador no PC)',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                initialValue: _gridDesktopCols,
+                items: const [2, 3, 4, 5, 6]
+                    .map(
+                      (v) => DropdownMenuItem<int>(
+                        value: v,
+                        child: Text('$v cards por linha'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _gridDesktopCols = v);
+                  _salvarRascunho(validar: false);
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Cards por linha (desktop)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              Text(
+                'Mobile (Android / iOS)',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                initialValue: _gridMobileCols,
+                items: const [1, 2, 3]
+                    .map(
+                      (v) => DropdownMenuItem<int>(
+                        value: v,
+                        child: Text('$v cards por linha'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _gridMobileCols = v);
+                  _salvarRascunho(validar: false);
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Cards por linha (mobile)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        _Section(
+          title: 'Estilo visual dos cards',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SwitchListTile(
+                title: const Text('Aplicar sombra nos cards'),
+                subtitle: const Text(
+                  'Deixe desativado para um visual mais clean/minimalista.',
+                ),
+                value: _cardShowShadow,
+                onChanged: (v) {
+                  setState(() => _cardShowShadow = v);
+                  _salvarRascunho(validar: false);
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Arredondamento das bordas',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Slider(
+                min: 4,
+                max: 32,
+                divisions: 7,
+                label: '${_cardBorderRadius.round()} px',
+                value: _cardBorderRadius,
+                onChanged: (v) {
+                  setState(() => _cardBorderRadius = v);
+                },
+                onChangeEnd: (_) => _salvarRascunho(validar: false),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Bordas atuais: ${_cardBorderRadius.toStringAsFixed(0)} px',
+                style: const TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+
+              Text(
+                'Pré-visualização rápida',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _cFundo,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Desktop ($_gridDesktopCols por linha)',
+                      style: TextStyle(
+                        color: _cTexto,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLayoutPreviewRow(
+                      cols: _gridDesktopCols,
+                      borderRadius: _cardBorderRadius,
+                      showShadow: _cardShowShadow,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Mobile ($_gridMobileCols por linha)',
+                      style: TextStyle(
+                        color: _cTexto,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildLayoutPreviewRow(
+                      cols: _gridMobileCols,
+                      borderRadius: _cardBorderRadius,
+                      showShadow: _cardShowShadow,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLayoutPreviewRow({
+    required int cols,
+    required double borderRadius,
+    required bool showShadow,
+  }) {
+    cols = cols.clamp(1, 6);
+    return Row(
+      children: List.generate(cols, (i) {
+        return Expanded(
+          child: Container(
+            margin: EdgeInsets.only(right: i == cols - 1 ? 0 : 8),
+            height: 64,
+            decoration: BoxDecoration(
+              color: _cCard,
+              borderRadius: BorderRadius.circular(borderRadius),
+              boxShadow: showShadow
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha:0.25),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
+                  : const [],
+            ),
+            child: Center(
+              child: Text(
+                'Card',
+                style: TextStyle(
+                  color: _cTexto.withValues(alpha:0.7),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  // ============== PANE: MENU & PÁGINAS ==============
+  Widget _paneMenu() {
+    return _Section(
+      title: 'Menu do catálogo & páginas internas',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Configure aqui os itens que irão aparecer no menu lateral do catálogo web: '
+            'categorias, entrar/cadastro, contato, SAC e a página "Quem somos".',
+            style: TextStyle(color: Colors.black54),
+          ),
+          const SizedBox(height: 16),
+
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('Mostrar "Categorias" no menu'),
+                  subtitle: const Text(
+                    'Lista de produtos por categoria (filtro visual).',
+                  ),
+                  value: _menuShowCategorias,
+                  onChanged: (v) {
+                    setState(() => _menuShowCategorias = v);
+                    _salvarRascunho(validar: false);
+                  },
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Mostrar botão "Entrar / Cadastro"'),
+                  subtitle: const Text(
+                    'No futuro poderá abrir a tela de cadastro/login.',
+                  ),
+                  value: _menuShowEntrar,
+                  onChanged: (v) {
+                    setState(() => _menuShowEntrar = v);
+                    _salvarRascunho(validar: false);
+                  },
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Mostrar atalho "Contato rápido"'),
+                  subtitle: const Text(
+                    'Usa o WhatsApp configurado na identidade da loja.',
+                  ),
+                  value: _menuShowContato,
+                  onChanged: (v) {
+                    setState(() => _menuShowContato = v);
+                    _salvarRascunho(validar: false);
+                  },
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Mostrar "SAC – Elogios, sugestões e críticas"'),
+                  value: _menuShowSac,
+                  onChanged: (v) {
+                    setState(() => _menuShowSac = v);
+                    _salvarRascunho(validar: false);
+                  },
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Mostrar página "Quem somos"'),
+                  value: _menuShowQuemSomos,
+                  onChanged: (v) {
+                    setState(() => _menuShowQuemSomos = v);
+                    _salvarRascunho(validar: false);
+                  },
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('Mostrar "Dicas e informações" no menu'),
+                  subtitle: const Text(
+                    'Cuidados, garantias, qualidade – configurável na seção "Dicas e informações".',
+                  ),
+                  value: _menuShowDicas,
+                  onChanged: (v) {
+                    setState(() => _menuShowDicas = v);
+                    _salvarRascunho(validar: false);
+                  },
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title: const Text('No celular, mostrar menu em cards na tela inicial'),
+                  subtitle: const Text(
+                    'Quando ativo, o catálogo mobile mostra um grid de atalhos.',
+                  ),
+                  value: _showMobileMenuGrid,
+                  onChanged: (v) {
+                    setState(() => _showMobileMenuGrid = v);
+                    _salvarRascunho(validar: false);
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Página "Quem somos"',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _quemSomosTituloCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'Título',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _quemSomosTextoCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      labelText: 'Texto de apresentação da loja',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                      helperText:
+                          'Esse texto aparecerá quando o cliente clicar em "Quem somos".',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'SAC – Elogios, sugestões e críticas',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sacWhatsappCtrl,
+                    onChanged: (_) {
+                      _limparErroCampo('sac_whatsapp');
+                      _scheduleAutoSave();
+                    },
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9\s\-+()]')),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: 'WhatsApp do SAC (opcional)',
+                      helperText:
+                          'Ex: 5533999999999 - Se vazio, será usado o mesmo WhatsApp do vendedor.',
+                      errorText: _camposComErro.contains('sac_whatsapp')
+                          ? 'Use 10 a 15 dígitos'
+                          : null,
+                      border: const OutlineInputBorder(),
+                      errorBorder: OutlineInputBorder(
+                        borderSide: const BorderSide(color: _errorColor, width: 2),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      prefixIcon: const Icon(Icons.chat),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sacEmailCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'E-mail do SAC (opcional)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Esses dados serão usados no menu do catálogo para o cliente enviar '
+                    'elogios, sugestões e reclamações.',
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============== PANE: DICAS E INFORMAÇÕES ==============
+  static const List<MapEntry<String, String>> _dicaTipos = [
+    MapEntry('garantias', 'Garantias'),
+    MapEntry('cuidados', 'Cuidados com o produto'),
+    MapEntry('qualidade', 'Informações de qualidade'),
+    MapEntry('informacoes', 'Informações gerais'),
+    MapEntry('outros', 'Outras informações'),
+  ];
+
+  Widget _paneDicas() {
+    return _Section(
+      title: 'Dicas, cuidados, garantias e qualidade',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Estas dicas aparecem no menu do catálogo e numa página dedicada. '
+            'O cliente pode ver cuidados com o produto, garantias, informações de qualidade etc. '
+            'Use o botão "Adicionar dica" e, em cada dica, opcionalmente um banner.',
+            style: TextStyle(color: Colors.black54),
+          ),
+          const SizedBox(height: 16),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _dicas.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final d = _dicas[index];
+              final titulo = (d['titulo'] ?? '').toString().trim();
+              final tipo = (d['tipo'] ?? 'informacoes').toString();
+              final tipoLabel = _dicaTipos.where((e) => e.key == tipo).map((e) => e.value).firstOrNull ?? tipo;
+              final bannerUrl = (d['bannerUrl'] ?? d['banner_url'] ?? '').toString().trim();
+              return Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: _primaryColor.withValues(alpha:0.3)),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  leading: bannerUrl.isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: SizedBox(
+                            width: 56,
+                            height: 56,
+                            child: Image(
+                              image: mpImageProvider(bannerUrl),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: _primaryColor),
+                            ),
+                          ),
+                        )
+                      : Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: _primaryColor.withValues(alpha:0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.lightbulb_outline, color: _primaryColor),
+                        ),
+                  title: Text(
+                    titulo.isEmpty ? '(Sem título)' : titulo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    tipoLabel,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () => _editarDica(context, index),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: _errorColor),
+                        onPressed: () {
+                          setState(() {
+                            _dicas.removeAt(index);
+                            _salvarRascunho(validar: false);
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => _adicionarDica(context),
+            icon: const Icon(Icons.add),
+            label: const Text('Adicionar dica'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _primaryColor,
+              side: const BorderSide(color: _primaryColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _adicionarDica(BuildContext context) async {
+    await _showDicaDialog(context, null);
+  }
+
+  Future<void> _editarDica(BuildContext context, int index) async {
+    if (index < 0 || index >= _dicas.length) return;
+    await _showDicaDialog(context, _dicas[index], index: index);
+  }
+
+  Future<void> _showDicaDialog(BuildContext context, Map<String, dynamic>? initial, {int? index}) async {
+    final tituloCtrl = TextEditingController(text: initial?['titulo']?.toString() ?? '');
+    final conteudoCtrl = TextEditingController(text: initial?['conteudo']?.toString() ?? '');
+    final bannerUrlCtrl = TextEditingController(text: initial?['bannerUrl'] ?? initial?['banner_url'] ?? '');
+    final ordemCtrl = TextEditingController(
+      text: '${(initial?['ordem'] is int) ? (initial!['ordem'] as int) : (int.tryParse('${initial?['ordem']}') ?? 0)}',
+    );
+    var tipo = (initial?['tipo'] ?? 'informacoes').toString().trim();
+    if (tipo.isEmpty) tipo = 'informacoes';
+    var ativo = (initial?['ativo'] as bool?) ?? true;
+
+    final updated = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: Text(index != null ? 'Editar dica' : 'Adicionar dica'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: tituloCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Título',
+                        hintText: 'Ex: Garantia de 90 dias',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: tipo,
+                      decoration: const InputDecoration(
+                        labelText: 'Tipo',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _dicaTipos
+                          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                          .toList(),
+                      onChanged: (v) => setDialogState(() => tipo = v ?? 'informacoes'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: conteudoCtrl,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        labelText: 'Conteúdo / texto',
+                        hintText: 'Texto que o cliente verá ao abrir a dica',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: bannerUrlCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'URL do banner (opcional)',
+                              hintText: 'Link ou importe da galeria',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final url = await _pickAndUploadDicaBanner();
+                            if (url != null && ctx.mounted) {
+                              setDialogState(() => bannerUrlCtrl.text = url);
+                            }
+                          },
+                          icon: const Icon(Icons.photo_library, size: 18),
+                          label: const Text('Galeria'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ex.: 562×180 (mobile) ou 1280×200 (desktop)',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: ordemCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Ordem',
+                              border: OutlineInputBorder(),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: SwitchListTile(
+                            title: const Text('Ativo'),
+                            value: ativo,
+                            onChanged: (v) => setDialogState(() => ativo = v),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final id = index != null && initial != null && (initial['id'] ?? '').toString().isNotEmpty
+                        ? (initial['id']!).toString()
+                        : DateTime.now().millisecondsSinceEpoch.toString();
+                    Navigator.pop(ctx, {
+                      'id': id,
+                      'titulo': tituloCtrl.text.trim(),
+                      'tipo': tipo,
+                      'conteudo': conteudoCtrl.text.trim(),
+                      'bannerUrl': bannerUrlCtrl.text.trim().isEmpty ? null : bannerUrlCtrl.text.trim(),
+                      'ordem': int.tryParse(ordemCtrl.text.trim()) ?? 0,
+                      'ativo': ativo,
+                    });
+                  },
+                  child: const Text('Salvar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (updated != null && mounted) {
+      setState(() {
+        if (index != null) {
+          _dicas[index] = updated;
+        } else {
+          _dicas.add(updated);
+        }
+        _salvarRascunho(validar: false);
+      });
+    }
+  }
+
+  // ============== PANE: TAXAS FINANCEIRAS ==============
+  Widget _paneFinanceiro() {
+    return _Section(
+      title: 'Taxas para Relatórios Financeiros e Financeiro & Metas',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Configure as taxas usadas nos cálculos de lucro e custos nos relatórios. '
+            'Os valores padrão são mantidos; altere apenas se necessário para sua loja.',
+            style: TextStyle(color: Colors.black54),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: _taxaCartaoCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Taxa de Cartão (%)',
+                      helperText: 'Aplicada sobre pagamentos em cartão (padrão: 5%)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.credit_card_outlined),
+                      suffixText: '%',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _taxaMEICtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Taxa MEI (%)',
+                      helperText: 'Imposto simplificado sobre o total (padrão: 3,5%)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.description_outlined),
+                      suffixText: '%',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _custosFixosCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Custos Fixos (%)',
+                      helperText: 'Luz, internet, aluguel etc. sobre o total (padrão: 10%)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.home_work_outlined),
+                      suffixText: '%',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _custoEmbalagemCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Custo de Embalagem por Item (R\$)',
+                      helperText: 'Valor fixo por item vendido (padrão: R\$ 3,00)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.inventory_2_outlined),
+                      prefixText: 'R\$ ',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Essas taxas são usadas nos cálculos de lucro líquido e custos '
+                    'nas telas Relatórios Financeiros e Financeiro & Metas. '
+                    'Salve as alterações para aplicá-las.',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _paneRodape() {
+    const allPayments = [
+      'mastercard',
+      'visa',
+      'hipercard',
+      'amex',
+      'diners',
+      'elo',
+      'pix',
+      'boleto',
+      'transfer',
+      'barcode',
+    ];
+
+    return Column(
+      children: [
+        _Section(
+          title: 'Formas de pagamento (bandeiras)',
+          child: Column(
+            children: allPayments.map((p) {
+              final selected = _payments.contains(p);
+              return CheckboxListTile(
+                title: Text(p.toUpperCase()),
+                value: selected,
+                onChanged: (v) {
+                  setState(() {
+                    if (v == true) {
+                      _payments.add(p);
+                    } else {
+                      _payments.remove(p);
+                    }
+                  });
+                  _salvarRascunho(validar: false);
+                },
+              );
+            }).toList(),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        _Section(
+          title: 'Links do Rodapé',
+          child: LayoutBuilder(builder: (context, c) {
+            final narrow = c.maxWidth < 700;
+            final firstRow = narrow
+                ? Column(
+                    children: [
+                      TextField(
+                        controller: _instagramCtrl,
+                        onChanged: (_) => _scheduleAutoSave(),
+                        decoration: const InputDecoration(
+                          labelText: 'Instagram (URL)',
+                          prefixIcon: Icon(Icons.camera_alt_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _facebookCtrl,
+                        onChanged: (_) => _scheduleAutoSave(),
+                        decoration: const InputDecoration(
+                          labelText: 'Facebook (URL)',
+                          prefixIcon: Icon(Icons.facebook_outlined),
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _instagramCtrl,
+                          onChanged: (_) => _scheduleAutoSave(),
+                          decoration: const InputDecoration(
+                            labelText: 'Instagram (URL)',
+                            prefixIcon: Icon(Icons.camera_alt_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _facebookCtrl,
+                          onChanged: (_) => _scheduleAutoSave(),
+                          decoration: const InputDecoration(
+                            labelText: 'Facebook (URL)',
+                            prefixIcon: Icon(Icons.facebook_outlined),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+
+            // New social media row
+            final newSocialRow = narrow
+                ? Column(
+                    children: [
+                      TextField(
+                        controller: _tiktokCtrl,
+                        onChanged: (_) => _scheduleAutoSave(),
+                        decoration: const InputDecoration(
+                          labelText: 'TikTok (URL)',
+                          prefixIcon: Icon(Icons.music_note),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _telegramCtrl,
+                        onChanged: (_) => _scheduleAutoSave(),
+                        decoration: const InputDecoration(
+                          labelText: 'Telegram (URL)',
+                          prefixIcon: Icon(Icons.send),
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _tiktokCtrl,
+                          onChanged: (_) => _scheduleAutoSave(),
+                          decoration: const InputDecoration(
+                            labelText: 'TikTok (URL)',
+                            prefixIcon: Icon(Icons.music_note),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _telegramCtrl,
+                          onChanged: (_) => _scheduleAutoSave(),
+                          decoration: const InputDecoration(
+                            labelText: 'Telegram (URL)',
+                            prefixIcon: Icon(Icons.send),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+
+            final thirdSocialRow = narrow
+                ? Column(
+                    children: [
+                      TextField(
+                        controller: _kwaiCtrl,
+                        onChanged: (_) => _scheduleAutoSave(),
+                        decoration: const InputDecoration(
+                          labelText: 'Kwai (URL)',
+                          prefixIcon: Icon(Icons.video_library),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _linkedinCtrl,
+                        onChanged: (_) => _scheduleAutoSave(),
+                        decoration: const InputDecoration(
+                          labelText: 'LinkedIn (URL)',
+                          prefixIcon: Icon(Icons.business),
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _kwaiCtrl,
+                          onChanged: (_) => _scheduleAutoSave(),
+                          decoration: const InputDecoration(
+                            labelText: 'Kwai (URL)',
+                            prefixIcon: Icon(Icons.video_library),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _linkedinCtrl,
+                          onChanged: (_) => _scheduleAutoSave(),
+                          decoration: const InputDecoration(
+                            labelText: 'LinkedIn (URL)',
+                            prefixIcon: Icon(Icons.business),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+
+            final secondRow = narrow
+                ? Column(
+                    children: [
+                      TextField(
+                        controller: _sobreCtrl,
+                        onChanged: (_) => _scheduleAutoSave(),
+                        decoration: const InputDecoration(
+                          labelText: 'Página "Sobre"',
+                          prefixIcon: Icon(Icons.info_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _trocasCtrl,
+                        onChanged: (_) => _scheduleAutoSave(),
+                        decoration: const InputDecoration(
+                          labelText: 'Trocas & devoluções',
+                          prefixIcon: Icon(Icons.receipt_long_outlined),
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _sobreCtrl,
+                          onChanged: (_) => _scheduleAutoSave(),
+                          decoration: const InputDecoration(
+                            labelText: 'Página "Sobre"',
+                            prefixIcon: Icon(Icons.info_outline),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _trocasCtrl,
+                          onChanged: (_) => _scheduleAutoSave(),
+                          decoration: const InputDecoration(
+                            labelText: 'Trocas & devoluções',
+                            prefixIcon: Icon(Icons.receipt_long_outlined),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+
+            // Email row
+            final emailRow = TextField(
+              controller: _emailRodapeCtrl,
+              onChanged: (_) => _scheduleAutoSave(),
+              decoration: const InputDecoration(
+                labelText: 'Email de contato',
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+            );
+
+            // WhatsApp row
+            final whatsappRow = TextField(
+              controller: _whatsappRodapeCtrl,
+              onChanged: (_) {
+                _limparErroCampo('whatsapp_rodape');
+                _scheduleAutoSave();
+              },
+              keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9\s\-+()]')),
+              ],
+              decoration: InputDecoration(
+                labelText: 'WhatsApp de contato',
+                prefixIcon: const Icon(Icons.phone_outlined),
+                helperText: 'Ex: 5533999999999',
+                helperStyle: const TextStyle(fontSize: 11),
+                errorText: _camposComErro.contains('whatsapp_rodape')
+                    ? 'Use 10 a 15 dígitos'
+                    : null,
+                errorBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: _errorColor, width: 2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            );
+
+            return Column(
+              children: [
+                firstRow,
+                const SizedBox(height: 10),
+                newSocialRow,
+                const SizedBox(height: 10),
+                thirdSocialRow,
+                const SizedBox(height: 10),
+                emailRow,
+                const SizedBox(height: 10),
+                whatsappRow,
+                const SizedBox(height: 10),
+                secondRow,
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _loginCtrl,
+                  onChanged: (_) => _scheduleAutoSave(),
+                  decoration: const InputDecoration(
+                    labelText: 'Link de login (opcional)',
+                    prefixIcon: Icon(Icons.lock_open_outlined),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+
+        const SizedBox(height: 16),
+
+        _Section(
+          title: 'Empresa no Rodapé',
+          child: LayoutBuilder(builder: (context, c) {
+            final narrow = c.maxWidth < 700;
+            if (narrow) {
+              return Column(
+                children: [
+                  TextField(
+                    controller: _razaoCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'Razão social',
+                      prefixIcon: Icon(Icons.business_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _cnpjCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'CNPJ',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _razaoCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'Razão social',
+                      prefixIcon: Icon(Icons.business_outlined),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _cnpjCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'CNPJ',
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+
+        const SizedBox(height: 16),
+
+        const Card(
+          elevation: 0,
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Como funciona?',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '• Salvar rascunho grava localmente e em lojas/{store_id}/draft_config/config.\n'
+                  '• Publicar copia o rascunho para lojas/{store_id}/config/config e também espelha no doc raiz.\n'
+                  '• O Catálogo Web lê os dados publicados (config/config).',
+                  style: TextStyle(color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // =================== MÍDIAS: UPLOAD BÁSICO ===================
+
+  Future<void> _trocarLogo({required bool desktop}) async {
+    String loja;
+    try {
+      loja = _activeStoreId();
+    } catch (_) {
+      _snack('Nenhuma loja ativa definida.', isError: true);
+      return;
+    }
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: kIsWeb,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final f = result.files.single;
+    final fileName = f.name.isNotEmpty ? f.name : 'logo.png';
+    final ext = _extFromName(fileName);
+
+    final storagePath =
+        'lojas/$loja/midias/${desktop ? 'logo_desktop' : 'logo_mobile'}.$ext';
+
+    setState(() => _salvando = true);
+
+    try {
+      UploadResult up;
+
+      if (kIsWeb) {
+        final bytes = f.bytes;
+        if (bytes == null) {
+          throw StateError(
+              'No web, FilePicker deve retornar bytes (withData: true).');
+        }
+
+        up = await _uploader.enqueueBytes(
+          UploadBytesRequest(
+            bytes: bytes,
+            storagePath: storagePath,
+            metadata: SettableMetadata(contentType: 'image/$ext'),
+          ),
+        );
+      } else {
+        up = await _uploader.enqueue(
+          UploadRequest(
+            platformFile: f,
+            storagePath: storagePath,
+            metadata: SettableMetadata(contentType: 'image/$ext'),
+          ),
+        );
+      }
+
+      setState(() {
+        if (desktop) {
+          _logoUrlDesktop = up.downloadUrl;
+          _logoDesktopAlterado = true;
+        } else {
+          _logoUrlMobile = up.downloadUrl;
+          _logoMobileAlterado = true;
+        }
+      });
+
+      await _salvarRascunho(validar: false);
+      _snack('Logo enviada com sucesso!');
+    } catch (e) {
+      _snack('Erro ao enviar logo: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  Future<void> _removerLogo({required bool desktop}) async {
+    await _syncAndValidateLojaAtiva();
+
+    final urlAtual = desktop ? _logoUrlDesktop : _logoUrlMobile;
+
+    setState(() {
+      if (desktop) {
+        _logoUrlDesktop = null;
+        _logoDesktopAlterado = true;
+      } else {
+        _logoUrlMobile = null;
+        _logoMobileAlterado = true;
+      }
+    });
+
+    try {
+      if (urlAtual != null && urlAtual.contains('firebasestorage.googleapis.com')) {
+        final ref = FirebaseStorage.instance.refFromURL(urlAtual);
+        await ref.delete();
+      }
+    } catch (_) {}
+
+    await _salvarRascunho(validar: false);
+    _snack('Logo removida.');
+  }
+
+  Future<void> _adicionarBanners({required bool desktop}) async {
+    String loja;
+    try {
+      loja = _activeStoreId();
+    } catch (_) {
+      _snack('Nenhuma loja ativa definida.', isError: true);
+      return;
+    }
+
+    final currentTotal = _bannersDesktop.length + _bannersMobile.length;
+    final guard = LimitsGuard();
+    final canAdd = await guard.canAddBanner(loja, currentTotalBanners: currentTotal);
+    if (!canAdd) {
+      final max = await guard.maxBanners(null);
+      _snack('Limite de $max banners atingido. Remova algum ou faça upgrade.', isError: true);
+      return;
+    }
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: true,
+      withData: kIsWeb,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final maxBanners = await guard.maxBanners(null);
+    final slotsLeft = maxBanners - currentTotal;
+    final filesToUpload = slotsLeft <= 0
+        ? <dynamic>[]
+        : (result.files.length <= slotsLeft ? result.files : result.files.take(slotsLeft).toList());
+    if (filesToUpload.isEmpty) {
+      _snack('Limite de $maxBanners banners atingido.', isError: true);
+      return;
+    }
+    if (filesToUpload.length < result.files.length) {
+      _snack('Limite de $maxBanners banners: adicionando ${filesToUpload.length} de ${result.files.length}.', isError: false);
+    }
+
+    setState(() => _salvando = true);
+
+    try {
+      final uploadedUrls = <String>[];
+
+      for (final f in filesToUpload) {
+        final fileName = f.name.isNotEmpty ? f.name : 'banner.png';
+        final ext = _extFromName(fileName);
+
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+
+        final storagePath =
+            'lojas/$loja/midias/banners/${desktop ? 'desktop' : 'mobile'}/$ts-$safeName';
+
+        UploadResult up;
+
+        if (kIsWeb) {
+          final bytes = f.bytes;
+          if (bytes == null) continue;
+
+          up = await _uploader.enqueueBytes(
+            UploadBytesRequest(
+              bytes: bytes,
+              storagePath: storagePath,
+              metadata: SettableMetadata(contentType: 'image/$ext'),
+            ),
+          );
+        } else {
+          up = await _uploader.enqueue(
+            UploadRequest(
+              platformFile: f,
+              storagePath: storagePath,
+              metadata: SettableMetadata(contentType: 'image/$ext'),
+            ),
+          );
+        }
+
+        uploadedUrls.add(up.downloadUrl);
+      }
+
+      setState(() {
+        if (desktop) {
+          _bannersDesktop.addAll(uploadedUrls);
+          _bannersDesktopAlterados = true;
+        } else {
+          _bannersMobile.addAll(uploadedUrls);
+          _bannersMobileAlterados = true;
+        }
+      });
+
+      await _salvarRascunho(validar: false);
+      _snack('Banners enviados: ${uploadedUrls.length}');
+    } catch (e) {
+      _snack('Erro ao enviar banners: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
+  }
+
+  /// Importa imagem da galeria para banner de dica; retorna URL ou null.
+  Future<String?> _pickAndUploadDicaBanner() async {
+    String loja;
+    try {
+      loja = _activeStoreId();
+    } catch (_) {
+      _snack('Nenhuma loja ativa definida.', isError: true);
+      return null;
+    }
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: kIsWeb,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    final f = result.files.first;
+    try {
+      final fileName = f.name.isNotEmpty ? f.name : 'banner.png';
+      final ext = _extFromName(fileName);
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final storagePath = 'lojas/$loja/midias/dicas/$ts-$safeName';
+      UploadResult up;
+      if (kIsWeb) {
+        final bytes = f.bytes;
+        if (bytes == null) return null;
+        up = await _uploader.enqueueBytes(
+          UploadBytesRequest(
+            bytes: bytes,
+            storagePath: storagePath,
+            metadata: SettableMetadata(contentType: 'image/$ext'),
+          ),
+        );
+      } else {
+        up = await _uploader.enqueue(
+          UploadRequest(
+            platformFile: f,
+            storagePath: storagePath,
+            metadata: SettableMetadata(contentType: 'image/$ext'),
+          ),
+        );
+      }
+      _snack('Banner importado.');
+      return up.downloadUrl;
+    } catch (e) {
+      _snack('Erro ao importar banner: $e', isError: true);
+      return null;
+    }
+  }
+
+  Future<void> _removerBanner({required bool desktop, required String url}) async {
+    await _syncAndValidateLojaAtiva();
+
+    setState(() {
+      if (desktop) {
+        _bannersDesktop.remove(url);
+        _bannersDesktopAlterados = true;
+      } else {
+        _bannersMobile.remove(url);
+        _bannersMobileAlterados = true;
+      }
+    });
+
+    try {
+      if (url.contains('firebasestorage.googleapis.com')) {
+        final ref = FirebaseStorage.instance.refFromURL(url);
+        await ref.delete();
+      }
+    } catch (_) {}
+
+    await _salvarRascunho(validar: false);
+  }
+
+  @override
+  void dispose() {
+    _autoSaveTimer?.cancel();
+    _uploader.dispose();
+    _nomeCtrl.dispose();
+    _slugCtrl.dispose();
+    _linkCurtoCtrl.dispose();
+    _subdominioMascaraCtrl.dispose();
+    _subdominioDominioBaseCtrl.dispose();
+    _waCtrl.dispose();
+    _pedidoBaseCtrl.dispose();
+    _dLogoH.dispose();
+    _dLogoW.dispose();
+    _mLogoH.dispose();
+    _mLogoW.dispose();
+    _dBanH.dispose();
+    _dBanW.dispose();
+    _mBanH.dispose();
+    _mBanW.dispose();
+    _melhorEnvioTokenCtrl.dispose();
+    _correiosUserCtrl.dispose();
+    _correiosSenhaCtrl.dispose();
+    _frenetTokenCtrl.dispose();
+    _freteNomeCtrl.dispose();
+    _freteValorCtrl.dispose();
+    _cupomNomeCtrl.dispose();
+    _cupomValorCtrl.dispose();
+    _quemSomosTituloCtrl.dispose();
+    _quemSomosTextoCtrl.dispose();
+    _sacWhatsappCtrl.dispose();
+    _sacEmailCtrl.dispose();
+    _taxaCartaoCtrl.dispose();
+    _taxaMEICtrl.dispose();
+    _custosFixosCtrl.dispose();
+    _custoEmbalagemCtrl.dispose();
+    _instagramCtrl.dispose();
+    _facebookCtrl.dispose();
+    _tiktokCtrl.dispose();
+    _telegramCtrl.dispose();
+    _kwaiCtrl.dispose();
+    _linkedinCtrl.dispose();
+    _emailRodapeCtrl.dispose();
+    _whatsappRodapeCtrl.dispose();
+    _sobreCtrl.dispose();
+    _trocasCtrl.dispose();
+    _loginCtrl.dispose();
+    _razaoCtrl.dispose();
+    _cnpjCtrl.dispose();
+    super.dispose();
+  }
+}
+  // ============== WIDGETS HELPER ==============
+
+class _Section extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Widget child;
+  final Widget? action;
+
+  const _Section({
+    required this.title,
+    this.subtitle,
+    required this.child,
+    this.action,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      elevation: 0,
+      color: cs.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle!,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (action != null)
+                  Flexible(
+                    child: action!,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PresetChip extends StatelessWidget {
+  final String label;
+  final String description;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PresetChip({
+    required this.label,
+    required this.description,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 280,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: selected ? Colors.blue.shade700 : Colors.grey.shade300,
+            width: selected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          color: selected ? Colors.blue.shade50 : Colors.white,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  selected ? Icons.check_circle : Icons.circle_outlined,
+                  color: selected ? Colors.blue.shade700 : Colors.grey.shade400,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: selected ? Colors.blue.shade700 : Colors.black87,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade600,
+                height: 1.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ColorPickerChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final ValueChanged<Color> onPick;
+
+  const _ColorPickerChip({
+    required this.label,
+    required this.color,
+    required this.onPick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _showColorPicker(context),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(10),
+          color: Colors.white,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: color,
+                border: Border.all(
+                  color: Colors.grey.shade400,
+                  width: 1.5,
+                ),
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha:0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  _colorToHex(color),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.edit_outlined,
+              size: 16,
+              color: Colors.grey.shade600,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _colorToHex(Color color) {
+    final hex = color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2);
+    return '#${hex.toUpperCase()}';
+  }
+
+  void _showColorPicker(BuildContext context) {
+    Color tempColor = color;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Escolher $label'),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: color,
+            onColorChanged: (c) => tempColor = c,
+            labelTypes: const [],
+            pickerAreaHeightPercent: 0.8,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              onPick(tempColor);
+              Navigator.of(context).pop();
+            },
+            child: const Text('Aplicar'),
+          ),
+        ],
+      ),
+    );
+  }
+}

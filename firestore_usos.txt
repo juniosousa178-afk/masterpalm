@@ -1,0 +1,19 @@
+﻿
+lib\main.dart:71:    await FirebaseFirestore.instance.collection('debug_check').add({
+lib\screens\admin_painel_web_screen.dart:30:    final snapshot = await FirebaseFirestore.instance.collection('vendas').get();
+lib\screens\cadastro_produto_screen.dart:45:    await FirebaseFirestore.instance
+lib\screens\cadastro_screen.dart:59:      await FirebaseFirestore.instance.collection('usuarios').doc(email).set({
+lib\screens\cadastro_usuario_screen.dart:74:    await FirebaseFirestore.instance.collection('usuarios').doc(novoUsuario.email).set({
+lib\screens\checkout_web_screen.dart:167:    await FirebaseFirestore.instance.collection('vendas').add(venda);
+lib\screens\login_screen.dart:70:        final snapshot = await FirebaseFirestore.instance.collection('usuarios').doc(email).get();
+lib\screens\permissoes_screen.dart:95:      await FirebaseFirestore.instance
+lib\screens\plano_screen.dart:47:          await FirebaseFirestore.instance.collection('usuarios').get();
+lib\screens\visualizar_permissoes_screen.dart:40:      final doc = await FirebaseFirestore.instance
+lib\services\catalogo_sync_service.dart:15:  static final _db = FirebaseFirestore.instance;
+lib\services\cloud_sync_service.dart:8:  static final _db = FirebaseFirestore.instance;
+lib\services\firestore_paths.dart:2:  static String lojaDoc(String lojaId) => 'lojas/$lojaId';
+lib\services\plano_service.dart:9:      await FirebaseFirestore.instance
+lib\services\produtos_service.dart:5:  final _db = FirebaseFirestore.instance;
+lib\services\temp_order_service.dart:4:  static final _col = FirebaseFirestore.instance.collection('pedidos_temp');
+
+

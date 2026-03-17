@@ -1,0 +1,70 @@
+{
+  "project_info": {
+    "project_number": "950139833317",
+    "project_id": "masterpalm-58c46",
+    "storage_bucket": "masterpalm-58c46.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:950139833317:android:01d76e9d022ae1851ebd0c",
+        "android_client_info": {
+          "package_name": "com.masterpalm.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "950139833317-51aolrcj042j34vvmrtqpmafrpqabs15.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.masterpalm.app",
+            "certificate_hash": "11e252353707c6c2cbd2f2dd7258f26d0e8da4fc"
+          }
+        },
+        {
+          "client_id": "950139833317-cjrntgmqa3umn010iv6v65rqfobr4cik.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.masterpalm.app",
+            "certificate_hash": "207f5b7b6f298d05d18d6ad9bc18e7c2e733874d"
+          }
+        },
+        {
+          "client_id": "950139833317-n2ags80h0fd4ii0p5s13jltvav5c0dfj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.masterpalm.app",
+            "certificate_hash": "120d3b9ed0ea8bd1d2649626758d27682622b627"
+          }
+        },
+        {
+          "client_id": "950139833317-39jck5ssgjcnfvllonr6ehmlrtqgmu4j.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1el5pCGqdP8RrWHZsHl5hUFcFqyp4B5U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "950139833317-39jck5ssgjcnfvllonr6ehmlrtqgmu4j.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "950139833317-3ms93ll8652so5t3hbp7g39ch2oa3uvi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.masterpalm"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

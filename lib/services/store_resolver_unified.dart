@@ -1,0 +1,342 @@
+// lib/services/store_resolver_unified.dart
+// =============================================================================
+// FONTE ÚNICA DE RESOLUÇÃO DE LOJA - Multi-Tenant Seguro
+// =============================================================================
+// Regras:
+// 1. PÁGINA PÚBLICA: SEMPRE por storeId da URL (NUNCA por usuário logado)
+// 2. PÁGINA ADMIN/DASHBOARD: SEMPRE por loja do usuário logado
+// 3. Case-sensitivity: Normalizar para lowercase e criar redirects
+// =============================================================================
+
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'package:hive/hive.dart';
+
+import '../core/logger.dart';
+import '../core/safe_cast.dart';
+import '../utils/last_route_observer.dart';
+import 'loja_id_service.dart';
+import 'store_resolver_service.dart';
+import 'store_context.dart';
+
+/// Contexto de resolução de loja
+enum StoreResolveContext {
+  /// Página pública (catálogo do cliente) - usa storeId da URL
+  publicCatalog,
+
+  /// Dashboard/Admin - usa loja do usuário logado
+  adminDashboard,
+}
+
+/// Resultado da resolução de loja
+class StoreResolveResult {
+  final bool success;
+  final String? storeId;
+  final String? canonicalStoreId; // ID canônico (após redirect se houver)
+  final String? errorMessage;
+  final bool needsRedirect;
+  final String? redirectTo;
+
+  StoreResolveResult._({
+    required this.success,
+    this.storeId,
+    this.canonicalStoreId,
+    this.errorMessage,
+    this.needsRedirect = false,
+    this.redirectTo,
+  });
+
+  factory StoreResolveResult.ok(String storeId, {String? canonicalId}) {
+    return StoreResolveResult._(
+      success: true,
+      storeId: storeId,
+      canonicalStoreId: canonicalId ?? storeId,
+    );
+  }
+
+  factory StoreResolveResult.redirect(String from, String to) {
+    return StoreResolveResult._(
+      success: true,
+      storeId: from,
+      canonicalStoreId: to,
+      needsRedirect: true,
+      redirectTo: to,
+    );
+  }
+
+  factory StoreResolveResult.error(String message) {
+    return StoreResolveResult._(
+      success: false,
+      errorMessage: message,
+    );
+  }
+}
+
+/// Serviço unificado de resolução de loja
+class StoreResolverUnified {
+  StoreResolverUnified._();
+
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  // ============================================================
+  // RESOLUÇÃO PRINCIPAL
+  // ============================================================
+
+  /// Resolve a loja baseado no contexto
+  ///
+  /// [context] - Contexto de uso (público ou admin)
+  /// [urlStoreId] - StoreId vindo da URL (apenas para contexto público)
+  static Future<StoreResolveResult> resolve({
+    required StoreResolveContext context,
+    String? urlStoreId,
+  }) async {
+    logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    logD('🔒 [STORE-RESOLVER-UNIFIED] Resolvendo loja');
+    logD('   Contexto: ${context.name}');
+    logD('   URL storeId: $urlStoreId');
+    logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    switch (context) {
+      case StoreResolveContext.publicCatalog:
+        return _resolvePublicCatalog(urlStoreId);
+
+      case StoreResolveContext.adminDashboard:
+        return _resolveAdminDashboard();
+    }
+  }
+
+  // ============================================================
+  // RESOLUÇÃO PÚBLICA (CATÁLOGO)
+  // ============================================================
+
+  /// Resolve loja para catálogo público
+  /// REGRA: SEMPRE usa storeId da URL, NUNCA do usuário logado
+  static Future<StoreResolveResult> _resolvePublicCatalog(String? urlStoreId) async {
+    final rawId = (urlStoreId ?? '').trim();
+
+    if (rawId.isEmpty) {
+      logD('❌ [STORE-RESOLVER] URL sem storeId - não pode usar catálogo público');
+      return StoreResolveResult.error(
+        'Nenhuma loja especificada na URL. Acesse: /loja/{id-da-loja}',
+      );
+    }
+
+    // Verificar se a loja existe no Firestore (timeout curto na web para não travar)
+    try {
+      const timeoutSeconds = 5;
+      final lojaDoc = await _db
+          .collection('lojas')
+          .doc(rawId)
+          .get()
+          .timeout(const Duration(seconds: timeoutSeconds));
+
+      if (lojaDoc.exists) {
+        final raw = lojaDoc.data();
+        final lojaData = asMap(raw);
+
+        // Verificar se há redirect configurado
+        final redirectTo = (lojaData['redirectTo'] ?? '').toString().trim();
+        if (redirectTo.isNotEmpty && redirectTo != rawId) {
+          logD('🔀 [STORE-RESOLVER] Loja $rawId redireciona para $redirectTo');
+          return StoreResolveResult.redirect(rawId, redirectTo);
+        }
+
+        logD('✅ [STORE-RESOLVER] Loja encontrada: $rawId');
+        return StoreResolveResult.ok(rawId);
+      }
+
+      // Loja não existe com esse ID exato
+      // Tentar buscar por case-insensitive (normalizado para lowercase)
+      final normalizedId = rawId.toLowerCase();
+      if (normalizedId != rawId) {
+        logD('🔍 [STORE-RESOLVER] Tentando buscar versão lowercase: $normalizedId');
+
+        final normalizedDoc = await _db
+            .collection('lojas')
+            .doc(normalizedId)
+            .get()
+            .timeout(const Duration(seconds: 5));
+        if (normalizedDoc.exists) {
+          logD('🔀 [STORE-RESOLVER] Encontrada versão lowercase, redirecionando');
+          return StoreResolveResult.redirect(rawId, normalizedId);
+        }
+      }
+
+      // Tentar buscar por slug
+      final slugResult = await _findBySlug(rawId);
+      if (slugResult != null) {
+        logD('🔀 [STORE-RESOLVER] Encontrado por slug: $slugResult');
+        return StoreResolveResult.redirect(rawId, slugResult);
+      }
+
+      logD('❌ [STORE-RESOLVER] Loja não encontrada: $rawId');
+      return StoreResolveResult.error(
+        'Loja "$rawId" não encontrada. Verifique o link.',
+      );
+    } on TimeoutException catch (_) {
+      logW('⚠️ [STORE-RESOLVER] Timeout ao buscar loja. Usando id da URL: $rawId');
+      return StoreResolveResult.ok(rawId);
+    } catch (e) {
+      // Qualquer erro (rede, Firestore indisponível, etc.): fallback com id da URL
+      // para o catálogo tentar abrir; se o id for inválido, a tela ficará vazia
+      final msg = e.toString().toLowerCase();
+      final isNetworkOrTimeout = msg.contains('timeout') ||
+          msg.contains('not completed') ||
+          msg.contains('connection') ||
+          msg.contains('backend') ||
+          msg.contains('unavailable') ||
+          msg.contains('offline');
+      if (isNetworkOrTimeout) {
+        logW('⚠️ [STORE-RESOLVER] Erro de rede/Firestore. Usando id da URL: $rawId');
+        return StoreResolveResult.ok(rawId);
+      }
+      logD('❌ [STORE-RESOLVER] Erro ao buscar loja (type=${e.runtimeType})');
+      return StoreResolveResult.error('Erro ao carregar loja: $e');
+    }
+  }
+
+  // ============================================================
+  // RESOLUÇÃO ADMIN (DASHBOARD)
+  // ============================================================
+
+  /// Resolve loja para dashboard/admin
+  /// REGRA: SEMPRE usa loja do usuário logado
+  static Future<StoreResolveResult> _resolveAdminDashboard() async {
+    try {
+      final storeId = await StoreResolverService.resolve();
+
+      if (storeId == null || storeId.trim().isEmpty) {
+        logD('❌ [STORE-RESOLVER] Usuário sem loja configurada');
+        return StoreResolveResult.error(
+          'Nenhuma loja configurada para este usuário.',
+        );
+      }
+
+      logD('✅ [STORE-RESOLVER] Loja do usuário: $storeId');
+      return StoreResolveResult.ok(storeId);
+    } catch (e) {
+      logD('❌ [STORE-RESOLVER] Erro ao resolver loja do usuário (type=${e.runtimeType})');
+      return StoreResolveResult.error('Erro ao carregar sua loja: $e');
+    }
+  }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  /// Busca loja por slug
+  static Future<String?> _findBySlug(String slug) async {
+    try {
+      final normalizedSlug = slug.toLowerCase().trim();
+
+      final query = await _db
+          .collection('lojas')
+          .where('slug', isEqualTo: normalizedSlug)
+          .limit(1)
+          .get()
+          .timeout(const Duration(seconds: 5));
+
+      if (query.docs.isNotEmpty) {
+        return query.docs.first.id;
+      }
+    } catch (e) {
+      logW('⚠️ [STORE-RESOLVER] Erro ao buscar por slug (type=${e.runtimeType})');
+    }
+    return null;
+  }
+
+  // ============================================================
+  // LIMPEZA COMPLETA DE CACHE (PARA LOGOUT)
+  // ============================================================
+
+  /// Limpa TODOS os caches de loja
+  /// DEVE ser chamado no logout para evitar mistura de dados entre usuários
+  static Future<void> clearAllCaches() async {
+    logD('🧹 [STORE-RESOLVER] Limpando TODOS os caches de loja...');
+
+    // 1. Limpar StoreResolverService
+    StoreResolverService.invalidate();
+    await StoreResolverService.clear();
+
+    // 2. Limpar StoreContext
+    StoreContext.invalidate();
+    await StoreContext.clear();
+
+    // 3. Limpar Hive boxes
+    try {
+      final sessao = Hive.isBoxOpen('sessao')
+          ? Hive.box('sessao')
+          : await Hive.openBox('sessao');
+      await sessao.delete('store_id');
+      await sessao.delete('usuario_logado');
+      await sessao.delete('tipo_usuario');
+      await sessao.delete('is_root');
+    } catch (e) {
+      logW('⚠️ [STORE-RESOLVER] Erro ao limpar sessao (type=${e.runtimeType})');
+    }
+
+    try {
+      final config = Hive.isBoxOpen('config')
+          ? Hive.box('config')
+          : await Hive.openBox('config');
+      await config.delete('store_id');
+      await config.delete('store_slug');
+      await config.delete('loja_slug');
+      await config.delete('last_loja_id');
+    } catch (e) {
+      logW('⚠️ [STORE-RESOLVER] Erro ao limpar config (type=${e.runtimeType})');
+    }
+
+    await LojaIdService.clear();
+    await LastRouteObserver.clearLastRoute();
+
+    logD('✅ [STORE-RESOLVER] Todos os caches limpos');
+  }
+
+  // ============================================================
+  // NORMALIZAÇÃO DE STORE ID
+  // ============================================================
+
+  /// Verifica se um storeId precisa de normalização e cria redirect se necessário
+  static Future<void> ensureNormalizedStoreId(String storeId) async {
+    final normalized = storeId.toLowerCase();
+
+    if (normalized == storeId) {
+      // Já está normalizado
+      return;
+    }
+
+    try {
+      // Verificar se o doc com case original existe
+      final originalDoc = await _db.collection('lojas').doc(storeId).get();
+      if (!originalDoc.exists) return;
+
+      // Verificar se já existe doc normalizado
+      final normalizedDoc = await _db.collection('lojas').doc(normalized).get();
+
+      if (!normalizedDoc.exists) {
+        // Criar doc normalizado com dados do original
+        final raw = originalDoc.data();
+        final data = asMap(raw);
+        data['lojaId'] = normalized;
+        data['id'] = normalized;
+        data['slug'] = normalized;
+        data['migratedFrom'] = storeId;
+        data['migratedAt'] = FieldValue.serverTimestamp();
+
+        await _db.collection('lojas').doc(normalized).set(data);
+        logD('✅ [STORE-RESOLVER] Criado doc normalizado: $normalized');
+      }
+
+      // Configurar redirect no doc original
+      await _db.collection('lojas').doc(storeId).update({
+        'redirectTo': normalized,
+      });
+      logD('✅ [STORE-RESOLVER] Redirect configurado: $storeId → $normalized');
+    } catch (e) {
+      logW('⚠️ [STORE-RESOLVER] Erro ao normalizar storeId (type=${e.runtimeType})');
+    }
+  }
+}

@@ -1,0 +1,106 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ====== Permissões ====== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Contatos (OBRIGATÓRIA para ContactsService / Permission.contacts) -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Opcional: apenas se você for CRIAR/EDITAR contatos no aparelho -->
+    <!-- <uses-permission android:name="android.permission.WRITE_CONTACTS" /> -->
+
+    <!-- Notificações (Android 13+) -->
+    <uses-permission
+        android:name="android.permission.POST_NOTIFICATIONS"
+        tools:targetApi="33" />
+
+    <!-- Câmera (para leitura de código de barras) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Ler imagens da GALERIA (para ImagePicker) -->
+    <!-- Android 13+ -->
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:targetApi="33" />
+    <!-- Android <= 12 (mantém compatibilidade) -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Remove AD_ID: app não usa anúncios; evita declaração obrigatória no Play Console -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+
+    <!-- VISIBILIDADE DE PACOTES: WhatsApp, Instagram, Facebook + intents https -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.facebook.katana" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="instagram" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="fb" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
+    <application
+        android:name="${applicationName}"
+        android:label="MasterPalm"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="false"
+        tools:targetApi="31">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode">
+
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
+            <!-- Launcher -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 🔗 App Links HTTPS -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Links do catálogo com pedido -->
+                <data android:scheme="https" android:host="mastepalm.com.br" />
+                <data android:scheme="https" android:host="mastepalm.com.br" android:pathPrefix="/c" />
+                <data android:scheme="https" android:host="mastepalm.com.br" android:pathPrefix="/pedido" />
+                <data android:scheme="https" android:host="www.mastepalm.com.br" />
+                <data android:scheme="https" android:host="www.mastepalm.com.br" android:pathPrefix="/c" />
+                <data android:scheme="https" android:host="www.mastepalm.com.br" android:pathPrefix="/pedido" />
+            </intent-filter>
+
+            <!-- Esquema customizado -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="mastepalm" android:host="pedido" />
+            </intent-filter>
+        </activity>
+
+        <meta-data android:name="flutterEmbedding" android:value="2" />
+    </application>
+</manifest>

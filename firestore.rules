@@ -1,0 +1,718 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================
+    // FUNÃ‡Ã•ES AUXILIARES
+    // =========================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Admin raiz por e-mail (programador com acesso total)
+    function isRootAdmin() {
+      return request.auth != null
+        && request.auth.token.email in [
+          "masterpalm26@gmail.com",
+          "masterpalm@gmail.com",
+          "admin@masterpalm.com"
+        ];
+    }
+
+    // Doc de usuÃ¡rio "legado" (coleÃ§Ã£o usuarios/{email})
+    function isSelfUserDoc(emailDocId) {
+      return isSignedIn()
+        && emailDocId == request.auth.token.email;
+    }
+
+    // Admin / Programador baseado na coleÃ§Ã£o "usuarios"
+    function isUserAdminTipo() {
+      return isSignedIn() && (
+        isRootAdmin() ||
+        (
+          exists(
+            /databases/$(database)/documents/usuarios/$(request.auth.token.email)
+          ) &&
+          get(
+            /databases/$(database)/documents/usuarios/$(request.auth.token.email)
+          ).data.tipo in ['admin', 'programador']
+        )
+      );
+    }
+
+    // âœ… NOVO: Admin / Programador baseado na coleÃ§Ã£o "users/{uid}"
+    function isUserAdminByUid() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'programador'];
+    }
+
+    function isAdminOrSystem() {
+      return isRootAdmin() || isUserAdminTipo() || isUserAdminByUid();
+    }
+
+    // Apenas programador ou root: telas de config geral (master, mestre). Admin NAO tem acesso.
+    function isProgramadorOrRoot() {
+      return isRootAdmin() ||
+        (
+          isSignedIn() &&
+          (
+            (exists(/databases/$(database)/documents/usuarios/$(request.auth.token.email))
+              && get(/databases/$(database)/documents/usuarios/$(request.auth.token.email)).data.tipo == 'programador')
+            || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+              && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'programador')
+          )
+        );
+    }
+
+    // âœ… NOVO: Verifica se Ã© vendedor da loja
+    function isSellerOfStore(lojaId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)).data.ativo == true;
+    }
+
+    // âœ… NOVO: Verifica se vendedor tem permissÃ£o especÃ­fica
+    function sellerHasPermission(lojaId, permissao) {
+      return isSellerOfStore(lojaId) &&
+        get(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)).data.permissoes[permissao] == true;
+    }
+
+    // âœ… NOVO: Verifica se pertence Ã  loja (admin ou vendedor)
+    function belongsToStore(lojaId) {
+      return isAdminOrSystem() || isOwnerOfStore(lojaId) || isSellerOfStore(lojaId) || userResolvedStoreMatches(lojaId);
+    }
+
+    // =========================
+    // VALIDAÃ‡Ã•ES PARA WRITES PÃšBLICOS (anti-abuso)
+    // =========================
+
+    function isValidClienteCreate() {
+      return request.resource.data.size() <= 25
+        && request.resource.data.nome is string
+        && request.resource.data.nome.size() >= 2
+        && request.resource.data.nome.size() <= 120
+        && request.resource.data.email is string
+        && request.resource.data.email.size() >= 5
+        && request.resource.data.email.size() <= 128;
+    }
+
+    function isValidPrePedidoCreate() {
+      return request.resource.data.size() <= 45
+        && request.resource.data.lojaId is string
+        && request.resource.data.lojaId.size() >= 1
+        && request.resource.data.lojaId.size() <= 64
+        && request.resource.data.cliente is map
+        && request.resource.data.cliente.email is string
+        && request.resource.data.itens is list
+        && request.resource.data.itens.size() >= 1
+        && request.resource.data.itens.size() <= 50
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.total <= 999999.99;
+    }
+
+    function isValidPedidoTempCreate() {
+      return request.resource.data.size() <= 35
+        && (!request.resource.data.keys().hasAny(['lojaId'])
+            || (request.resource.data.lojaId is string
+                && request.resource.data.lojaId.size() >= 1
+                && request.resource.data.lojaId.size() <= 64));
+    }
+
+    // Pedidos pendentes (catalogo): permite itens com itensComboComSelecao (combo + variacoes)
+    function isValidPedidoPendenteCreate() {
+      return request.resource.data.size() <= 65
+        && request.resource.data.tipo is string
+        && request.resource.data.cliente is map
+        && request.resource.data.cliente.email is string
+        && request.resource.data.itens is list
+        && request.resource.data.itens.size() >= 1
+        && request.resource.data.itens.size() <= 50
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.total <= 999999.99;
+    }
+
+    function isValidPedidoStatusPublicoWrite(lojaId) {
+      return request.resource.data.keys().hasOnly([
+          'pedidoId',
+          'lojaId',
+          'status',
+          'dataCriacao',
+          'dataAtualizacao',
+          'total',
+          'itensResumo',
+          'codigoRastreio',
+          'freteNome'
+        ])
+        && request.resource.data.pedidoId is string
+        && request.resource.data.pedidoId.size() >= 1
+        && request.resource.data.pedidoId.size() <= 128
+        && request.resource.data.lojaId is string
+        && request.resource.data.lojaId == lojaId
+        && request.resource.data.status is string
+        && request.resource.data.status.size() >= 1
+        && request.resource.data.status.size() <= 64
+        && request.resource.data.total is number
+        && request.resource.data.total >= 0
+        && request.resource.data.total <= 999999.99
+        && request.resource.data.itensResumo is list
+        && request.resource.data.itensResumo.size() <= 50
+        && (!request.resource.data.keys().hasAny(['codigoRastreio'])
+            || request.resource.data.codigoRastreio is string)
+        && (!request.resource.data.keys().hasAny(['freteNome'])
+            || request.resource.data.freteNome is string);
+    }
+
+    function isValidCupomClienteCreate() {
+      return request.resource.data.size() <= 25
+        && request.resource.data.clienteId is string
+        && request.resource.data.clienteId.size() >= 1
+        && request.resource.data.clienteId.size() <= 64
+        && request.resource.data.codigo is string
+        && request.resource.data.codigo.size() <= 32;
+    }
+
+    function isValidClienteCatalogoCupomCreate() {
+      return request.resource.data.size() <= 15
+        && request.resource.data.codigo is string
+        && request.resource.data.codigo.size() <= 32
+        && request.resource.data.tipo is string
+        && request.resource.data.valor is number;
+    }
+
+    function isValidParticipanteCreate() {
+      return request.resource.data.size() <= 30
+        && (request.resource.data.numeroSorte is string || request.resource.data.numero is string)
+        && ((request.resource.data.valorPedido is number && request.resource.data.valorPedido >= 0)
+            || (request.resource.data.valorCompra is number && request.resource.data.valorCompra >= 0));
+    }
+
+    // Carrinho abandonado (catalogo publico): create/update por cliente anonimo
+    function isValidCarrinhoAbandonadoWrite(lojaId) {
+      return request.resource.data.lojaId == lojaId
+        && request.resource.data.cartId is string
+        && request.resource.data.cartId.size() >= 1
+        && request.resource.data.cartId.size() <= 128
+        && request.resource.data.produtos is list
+        && request.resource.data.produtos.size() <= 50
+        && request.resource.data.size() <= 25;
+    }
+    function isValidCarrinhoAbandonadoUpdateOnly(lojaId) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'ultimoUpdate'])
+        && request.resource.data.lojaId == lojaId
+        && request.resource.data.status is string
+        && request.resource.data.status.size() <= 32;
+    }
+
+    // Pedidos: permite itens com itensComboComSelecao (combo + selecao de variacoes)
+    function isValidPedidoCreate() {
+      return request.resource.data.size() <= 55
+        && (
+          (request.resource.data.keys().hasAny(['items'])
+            && request.resource.data.items is list
+            && request.resource.data.items.size() >= 1
+            && request.resource.data.items.size() <= 50)
+          || (request.resource.data.keys().hasAny(['itens'])
+              && request.resource.data.itens is list
+              && request.resource.data.itens.size() >= 1
+              && request.resource.data.itens.size() <= 50)
+        );
+    }
+
+    function requestLojaIdMatchesPathIfPresent(lojaId) {
+      return !request.resource.data.keys().hasAny(['lojaId'])
+        || (
+          request.resource.data.lojaId is string
+          && request.resource.data.lojaId == lojaId
+        );
+    }
+
+    // Delete em temp: documento deve ter lojaId coerente com path (evita delete cruzado).
+    function resourceLojaIdMatchesPathIfPresent(lojaId) {
+      return !resource.data.keys().hasAny(['lojaId'])
+        || (
+          resource.data.lojaId is string
+          && resource.data.lojaId == lojaId
+        );
+    }
+
+    // =========================
+    // SISTEMA: rate limits e idempotÃªncia
+    // =========================
+    match /_rate_limits/{doc} {
+      allow read, write: if false;
+    }
+    match /_idempotency/{doc} {
+      allow read, write: if false;
+    }
+    match /_mp_webhook_processed/{doc} {
+      allow read, write: if false;
+    }
+
+    // =========================
+    // HEALTHCHECK / DEBUG
+    // =========================
+    match /_healthcheck/{doc} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /debug_check/{doc} {
+      allow read, write: if isAdminOrSystem();
+    }
+
+    // =========================
+    // LEGADO: usuarios/{email}
+    // =========================
+    match /usuarios/{emailDocId} {
+      allow read: if isSignedIn();
+      allow create, update, delete:
+        if isSelfUserDoc(emailDocId) || isAdminOrSystem();
+    }
+
+    // =========================
+    // PRINCIPAL: users/{uid} + subscriptions
+    // =========================
+    match /users/{userId} {
+      allow read, write:
+        if (isSignedIn() && request.auth.uid == userId)
+        || isAdminOrSystem();
+
+      match /subscriptions/{subId} {
+        allow read, write:
+          if (isSignedIn() && request.auth.uid == userId)
+          || isAdminOrSystem();
+      }
+    }
+
+    // Usuário é dono da loja (ownerUid)
+    function isOwnerOfStore(lojaId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/lojas/$(lojaId))
+        && get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid;
+    }
+
+    // Fallback: loja resolvida por users/{uid}.store_id (evita PERMISSION_DENIED quando ownerUid não foi setado)
+    function userResolvedStoreMatches(lojaId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.store_id == lojaId
+        && exists(/databases/$(database)/documents/lojas/$(lojaId))
+        && (
+          !get(/databases/$(database)/documents/lojas/$(lojaId)).data.keys().hasAny(['ownerUid'])
+          || get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid
+        );
+    }
+
+    // Criação da primeira loja: usuário logado cria loja onde ele é owner (conta nova Google/cadastro)
+    function canCreateFirstStore() {
+      return isSignedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerEmail == request.auth.token.email
+        && request.resource.data.size() <= 30;
+    }
+
+    // =========================
+    // LOJAS + SUBCOLEÃ‡Ã•ES
+    // =========================
+    match /lojas/{lojaId} {
+      // Leitura: público apenas para lojas publicadas (catálogo); demais exigem auth
+      allow read: if resource != null
+        && (!('published' in resource.data) || resource.data.published == true)
+        || isSignedIn();
+      allow create: if canCreateFirstStore() || isAdminOrSystem();
+      allow update, delete: if isAdminOrSystem();
+
+      // config (e config/payments): leitura sempre permitida (catálogo e app admin);
+      // get() em doc inexistente falhava com PERMISSION_DENIED quando allow read: if resource != null
+      match /config/{configId} {
+        allow read: if true;
+        allow create: if isAdminOrSystem()
+          || (isSignedIn() && isOwnerOfStore(lojaId));
+        allow update, delete: if isAdminOrSystem();
+      }
+
+      match /settings/{settingsId} {
+        allow read: if isAdminOrSystem();
+        allow write: if isAdminOrSystem();
+      }
+
+      match /draft_config/{draftId} {
+        allow read, write: if isAdminOrSystem();
+      }
+
+      // Rascunho: produtos (simples e combo) com imagens, itensCombo, variacoes
+      match /draft_produtos/{prodId} {
+        allow read, write: if isAdminOrSystem();
+      }
+
+      match /produtos_rascunho/{prodId} {
+        allow read, write: if isAdminOrSystem();
+      }
+
+      match /members/{memberId} {
+        allow read:
+          if isAdminOrSystem()
+          || (isSignedIn() && request.auth.uid == memberId);
+
+        // Conta nova: dono adiciona a si mesmo como member (owner)
+        allow create:
+          if isAdminOrSystem()
+          || (isSignedIn()
+              && request.auth.uid == memberId
+              && request.resource.data.role == 'owner'
+              && request.resource.data.email == request.auth.token.email
+              && exists(/databases/$(database)/documents/lojas/$(lojaId))
+              && get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid);
+        allow update, delete: if isAdminOrSystem();
+      }
+
+      match /vendedores/{vendedorId} {
+        allow read:
+          if isAdminOrSystem()
+          || (isSignedIn() && request.auth.uid == vendedorId);
+
+        allow create, update, delete: if isAdminOrSystem();
+      }
+
+      match /notificacoes/{notifId} {
+        allow read:
+          if isAdminOrSystem()
+          || (isSignedIn() && resource.data.destinatarioUid == request.auth.uid);
+
+        allow create: if isAdminOrSystem();
+
+        allow update:
+          if isAdminOrSystem()
+          || (isSignedIn()
+              && resource.data.destinatarioUid == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lida']));
+
+        allow delete: if isAdminOrSystem();
+      }
+
+      match /categorias/{catId} {
+        allow read: if resource != null;
+        allow create, update, delete: if isAdminOrSystem();
+
+        match /subcategoria/{subId} {
+          allow read: if resource != null;
+          allow create, update, delete: if isAdminOrSystem();
+        }
+      }
+
+      match /subcategorias/{subId} {
+        allow read: if resource != null;
+        allow create, update, delete: if isAdminOrSystem();
+      }
+
+      // Catalogo publico: produtos (simples e combo) com imagens, itensCombo, variacoes
+      match /produtos/{prodId} {
+        allow read: if resource != null;
+        allow create, update, delete: if isAdminOrSystem();
+      }
+
+      match /vendas/{vendaId} {
+        allow read: if isAdminOrSystem();
+        allow create: if isSignedIn();
+        allow update, delete: if isAdminOrSystem();
+      }
+
+      // clientes: admin/vendedor leem; catálogo usa CF getClienteCatalog (sem get público).
+      // list: só admin/vendedor OU limit 1 (login/cadastro por email — reduz vazamento).
+      match /clientes/{clienteId} {
+        allow get: if belongsToStore(lojaId);
+        allow list: if belongsToStore(lojaId) || request.query.limit <= 1;
+        allow create: if isValidClienteCreate();
+        allow update: if belongsToStore(lojaId)
+          || (request.resource.data.portalToken is string
+              && request.resource.data.portalToken == resource.data.portalToken
+              && request.resource.data.size() <= 30);
+        allow delete: if isAdminOrSystem();
+      }
+
+      match /clientes_portal/{portalToken} {
+        allow read: if resource != null;
+        allow create, update, delete: if belongsToStore(lojaId);
+
+        match /pedidos/{pedidoId} {
+          allow read: if resource != null;
+          allow create, update, delete: if belongsToStore(lojaId)
+            && isValidPedidoStatusPublicoWrite(lojaId);
+        }
+      }
+
+      match /clientes_catalogo/{email}/cupons/{cupomId} {
+        allow read: if resource != null;
+        allow create: if isValidClienteCatalogoCupomCreate();
+        allow update, delete: if isAdminOrSystem();
+      }
+
+      match /fornecedores/{fornecedorId} {
+        allow read, write: if isAdminOrSystem();
+      }
+
+      // Contador de uso diário da IA por loja (perguntas, descricao, financeiro)
+      match /ia_uso/{docId} {
+        allow read, write: if belongsToStore(lojaId);
+      }
+
+      // Estoque: dono da loja, admin ou vendedor (belongsToStore = admin | owner | seller)
+      match /estoque_produtos/{prodId} {
+        allow read, write: if belongsToStore(lojaId);
+      }
+
+      match /estoque_clientes/{clienteId} {
+        allow read, write: if belongsToStore(lojaId);
+
+        match /historico_compras/{compraId} {
+          allow read, write: if belongsToStore(lojaId);
+        }
+      }
+
+      match /estoque_fornecedores/{fornecedorId} {
+        allow read, write: if belongsToStore(lojaId);
+      }
+
+      // Vendas (Nova Venda): inclui combos com itensComboComSelecao
+      match /estoque_vendas/{vendaId} {
+        allow read, write: if belongsToStore(lojaId) || sellerHasPermission(lojaId, 'vendas');
+      }
+
+      match /fechamentos_mensais/{fechamentoId} {
+        allow read, write: if isAdminOrSystem();
+      }
+
+      match /notas_fiscais/{notaId} {
+        allow read, write: if belongsToStore(lojaId);
+      }
+
+      // Pedidos: catalogo finalizados com combos (itens.itensComboComSelecao)
+      match /pedidos/{pedidoId} {
+        allow create: if isValidPedidoCreate()
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow read, update, delete: if belongsToStore(lojaId);
+      }
+
+      // temp_orders, pedido_temp, pedidos_temp: fluxo deep-link legítimo.
+      // delete: exige lojaId do doc coerente com path (evita delete cruzado entre lojas).
+      match /temp_orders/{orderId} {
+        allow read: if resource != null;
+        allow create: if isValidPedidoTempCreate()
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow update: if request.resource.data.size() <= 35
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow delete: if resource != null && resourceLojaIdMatchesPathIfPresent(lojaId);
+      }
+
+      match /pedido_temp/{docId} {
+        allow read: if resource != null;
+        allow create: if isValidPedidoTempCreate()
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow update: if request.resource.data.size() <= 35
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow delete: if resource != null && resourceLojaIdMatchesPathIfPresent(lojaId);
+      }
+
+      match /pedidos_temp/{docId} {
+        allow read: if resource != null;
+        allow create: if isValidPedidoTempCreate()
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow update: if request.resource.data.size() <= 35
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow delete: if resource != null && resourceLojaIdMatchesPathIfPresent(lojaId);
+      }
+
+      match /payments/{payId} {
+        allow read, write: if isAdminOrSystem();
+      }
+
+      match /cupons/{cupomId} {
+        allow read: if resource != null;
+        allow create, update, delete: if isAdminOrSystem();
+      }
+
+      match /canais_publicos/{canalId} {
+        allow read: if resource != null;
+        allow write: if isAdminOrSystem();
+      }
+
+      match /canais/{canalId} {
+        allow read, write: if isAdminOrSystem();
+      }
+
+      match /campanhas_sorteio/{campanhaId} {
+        allow read: if resource != null;
+        allow create, update, delete: if belongsToStore(lojaId);
+
+        match /participantes/{participanteId} {
+          allow read: if resource != null;
+          allow create: if belongsToStore(lojaId) || isValidParticipanteCreate();
+          allow update, delete: if belongsToStore(lojaId);
+        }
+
+        match /historico_sorteios/{histId} {
+          allow read: if resource != null;
+          allow create, update, delete: if belongsToStore(lojaId);
+        }
+      }
+
+      match /numerosSorte/{docId} {
+        allow read, create, update, delete: if belongsToStore(lojaId);
+      }
+
+      match /campanhas_sorteio_config/{configDocId} {
+        allow read: if resource != null;
+        allow write: if isAdminOrSystem();
+      }
+
+      match /roleta_vendas/{vendaId} {
+        allow read: if isAdminOrSystem();
+        allow create: if isSignedIn();
+        allow update, delete: if isAdminOrSystem();
+      }
+
+      match /pre_pedidos/{pedidoId} {
+        allow read: if belongsToStore(lojaId);
+        allow create: if isValidPrePedidoCreate()
+          && request.resource.data.lojaId == lojaId;
+        allow update, delete: if isAdminOrSystem();
+      }
+
+      match /pedido_status_publico/{pedidoId} {
+        allow read: if resource != null;
+        allow create, update: if belongsToStore(lojaId)
+          && isValidPedidoStatusPublicoWrite(lojaId);
+        allow delete: if belongsToStore(lojaId);
+      }
+
+      match /pedidos_catalogo/{pedidoId} {
+        allow read, update, delete: if belongsToStore(lojaId);
+        allow create: if belongsToStore(lojaId)
+          && isValidPrePedidoCreate()
+          && request.resource.data.lojaId == lojaId;
+      }
+
+      match /cupons_clientes/{cupomId} {
+        allow read: if resource != null;
+        allow create: if isValidCupomClienteCreate();
+        allow update: if isAdminOrSystem();
+        allow delete: if isAdminOrSystem();
+      }
+
+      match /configuracoes/{configId} {
+        allow read: if isSignedIn();
+        allow write: if isAdminOrSystem();
+      }
+
+      match /comissoes_vendedores/{vendedorUid} {
+        allow read: if isSignedIn();
+        allow write: if isAdminOrSystem();
+      }
+
+      match /comissoes/{comissaoId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow update, delete: if isAdminOrSystem();
+      }
+
+      match /trackings/{trackingId} {
+        allow read: if resource != null;
+        allow create: if isSignedIn();
+        allow update: if isSignedIn();
+        allow delete: if isAdminOrSystem();
+      }
+
+      // Histórico de movimentação de estoque da loja
+      // Apenas admin do sistema ou vendedores da loja podem ler/escrever.
+      match /movimentacoes_estoque/{movId} {
+        allow read, write: if belongsToStore(lojaId);
+      }
+
+      // Pedidos pendentes: catalogo com combos (itens.itensComboComSelecao)
+      match /pedidos_pendentes/{pedidoId} {
+        allow read: if resource != null;
+        allow create: if isValidPedidoPendenteCreate()
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow update: if belongsToStore(lojaId)
+          && requestLojaIdMatchesPathIfPresent(lojaId);
+        allow delete: if isAdminOrSystem();
+      }
+
+      // METAS DE VENDEDORES (AJUSTADO)
+      match /metas/{metaId} {
+        allow read: if belongsToStore(lojaId);
+        allow write: if isAdminOrSystem();
+      }
+
+      // Motor de Crescimento IA - campanhas do lojista
+      match /motor_campanhas/{campanhaId} {
+        allow read, write: if belongsToStore(lojaId);
+      }
+
+      // Carrinhos abandonados do catalogo publico (cliente anonimo grava; loja le/deleta)
+      match /carrinhos_abandonados/{cartId} {
+        allow read: if resource != null;
+        allow create: if isValidCarrinhoAbandonadoWrite(lojaId);
+        allow update: if isValidCarrinhoAbandonadoWrite(lojaId)
+          || (resource != null && isValidCarrinhoAbandonadoUpdateOnly(lojaId));
+        allow delete: if belongsToStore(lojaId);
+      }
+    }
+
+    match /pedidos/{pedidoId} {
+      allow read, write: if isAdminOrSystem();
+    }
+
+    // pedidos_temp (root): legado deep-link; sem lojaId no path - mantido como está.
+    match /pedidos_temp/{pedidoTempId} {
+      allow read: if resource != null;
+      allow create: if isValidPedidoTempCreate();
+      allow update: if request.resource.data.size() <= 35;
+      allow delete: if resource != null;
+    }
+
+    match /vendas/{vendaId} {
+      allow read: if isAdminOrSystem();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdminOrSystem();
+    }
+
+    match /stores/{storeId} {
+      allow read: if resource != null;
+      match /products/{prodId} {
+        allow read: if resource != null;
+        allow create, update, delete: if isAdminOrSystem();
+      }
+    }
+
+    // app_config: site_config (publico); master_config e writes apenas programador/root (admin sem acesso)
+    match /app_config/{doc} {
+      allow read: if doc == 'site_config' || isProgramadorOrRoot();
+      allow write: if isProgramadorOrRoot();
+    }
+
+    // checkout_planos: update/delete apenas programador/root (config geral)
+    match /checkout_planos/{checkoutId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.userId ||
+        isProgramadorOrRoot()
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isProgramadorOrRoot();
+    }
+
+    // Índices server-side apenas (Cloud Functions Admin SDK). Cliente não acessa.
+    match /order_loja_index/{orderId} {
+      allow read, write: if false;
+    }
+    match /catalog_redirect_index/{short} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,38 @@
+# Flutter
+build/
+.dart_tool/
+.packages
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android
+android/.gradle/
+android/app/build/
+
+# iOS
+ios/Pods/
+
+# VSCode
+.vscode/
+
+# IntelliJ
+.idea/
+
+# Logs
+*.log
+
+# Node
+node_modules/
+
+# Temp
+*.tmp
+*.cache
+
+# Assinatura release (NUNCA commitar)
+**/key.properties
+**/*.jks
+
+# OAuth client secrets e credenciais sensíveis (nunca commitar)
+**/client_secret*.json
+functions/credentials/*.json

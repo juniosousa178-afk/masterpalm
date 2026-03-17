@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter run:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(dart run:*)",
+      "Bash(find:*)",
+      "Bash(xargs ls:*)",
+      "Bash(flutter build:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(flutter pub run build_runner build:*)",
+      "Bash(npm install)",
+      "Bash(ls:*)",
+      "Bash(node scripts/fix_junho_store.js:*)",
+      "Bash(node:*)",
+      "Bash(dir:*)",
+      "Bash(xargs:*)",
+      "Bash(findstr:*)",
+      "Bash(flutter clean:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(gsutil cors get:*)",
+      "Bash(firebase storage:rules:get:*)",
+      "Bash(gsutil cors set:*)",
+      "Bash(gcloud storage buckets list:*)",
+      "Bash(gcloud storage buckets update:*)",
+      "Bash(gcloud storage buckets describe:*)",
+      "Bash(keytool:*)"
+    ]
+  }
+}

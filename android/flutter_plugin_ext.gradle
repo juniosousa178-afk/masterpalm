@@ -1,0 +1,13 @@
+// Injeta ext.flutter nos plugins (ex: app_links) que esperam flutter.compileSdkVersion
+gradle.beforeProject { subproj ->
+    if (subproj.name != "app" && subproj != rootProject) {
+        subproj.ext.flutter = [
+            compileSdkVersion: 36,
+            minSdkVersion: 23,
+            targetSdkVersion: 35,
+            ndkVersion: "25.1.8937393",
+            versionCode: 1,
+            versionName: "1.0"
+        ]
+    }
+}

@@ -1,0 +1,1302 @@
+// lib/services/pre_pedido_service.dart
+
+import 'dart:async';
+import 'dart:math';
+import 'dart:convert';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../core/logger.dart';
+import '../repositories/cliente_portal_repository.dart';
+import '../repositories/pedido_repository.dart';
+import '../repositories/pedido_status_publico_repository.dart';
+import 'frete_service.dart';
+import 'notificacao_vendas_service.dart';
+import 'pedido_cliente_email_service.dart';
+import 'pedido_collection_resolver.dart';
+import 'indicacao_config_service.dart';
+import 'cupons_service.dart';
+import 'cliente_auth_service.dart';
+import 'pre_pedido_helpers.dart';
+
+/// Serviço para gerenciar pré-pedidos do catálogo
+/// Pré-pedidos são enviados via WhatsApp e aguardam confirmação do vendedor
+class PrePedidoService {
+  static final _firestore = FirebaseFirestore.instance;
+  static final _clientePortalRepository = ClientePortalRepository();
+  static final _pedidoRepository = PedidoRepository();
+  static final _pedidoStatusPublicoRepository = PedidoStatusPublicoRepository();
+
+  static CollectionReference<Map<String, dynamic>> _prePedidosRef(
+    String lojaId,
+  ) {
+    return _pedidoRepository.collectionRef(
+      flowType: PedidoFlowType.prePedidos,
+      lojaId: lojaId,
+    );
+  }
+
+  static String _gerarPortalToken() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(24, (_) => random.nextInt(256));
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
+  static Future<String?> _resolvePortalTokenForPedido({
+    required String lojaId,
+    required Map<String, dynamic> pedidoData,
+  }) async {
+    final cliente = pedidoData['cliente'];
+    final clienteMap =
+        cliente is Map ? Map<String, dynamic>.from(cliente) : <String, dynamic>{};
+    final clienteId = (clienteMap['id'] ?? '').toString().trim();
+    final email = (clienteMap['email'] ?? '').toString().trim().toLowerCase();
+    if (email.isEmpty) return null;
+
+    if (clienteId.isNotEmpty) {
+      final dados = await ClienteAuthService.getDadosCompletos(
+        lojaId: lojaId,
+        clienteId: clienteId,
+        email: email,
+      );
+      return (dados?['portalToken'] ?? '').toString().trim();
+    }
+
+    final snapshot = await _firestore
+        .collection('lojas')
+        .doc(lojaId)
+        .collection('clientes')
+        .where('email', isEqualTo: email)
+        .limit(1)
+        .get();
+    if (snapshot.docs.isEmpty) return null;
+
+    final doc = snapshot.docs.first;
+    final clienteData = doc.data();
+    var portalToken = (clienteData['portalToken'] ?? '').toString().trim();
+    if (portalToken.isEmpty) {
+      portalToken = _gerarPortalToken();
+      await doc.reference.update({'portalToken': portalToken});
+    }
+    return portalToken;
+  }
+
+  static Future<void> _saveClientePortalPedidoResumo({
+    required String lojaId,
+    required String pedidoId,
+    required Map<String, dynamic> pedidoData,
+    String? overrideStatus,
+  }) async {
+    final portalToken = await _resolvePortalTokenForPedido(
+      lojaId: lojaId,
+      pedidoData: pedidoData,
+    );
+    if (portalToken == null || portalToken.isEmpty) return;
+
+    final frete = pedidoData['frete'];
+    final freteMap = frete is Map ? Map<String, dynamic>.from(frete) : null;
+    final itens = (pedidoData['itens'] as List?) ?? const [];
+
+    await _clientePortalRepository.savePedidoResumo(
+      lojaId: lojaId,
+      portalToken: portalToken,
+      pedidoId: pedidoId,
+      data: {
+        'pedidoId': pedidoId,
+        'lojaId': lojaId,
+        'status': (overrideStatus ?? pedidoData['status'] ?? 'pendente').toString(),
+        'dataCriacao': pedidoData['dataCriacao'],
+        'dataAtualizacao': FieldValue.serverTimestamp(),
+        'total': (pedidoData['total'] as num?)?.toDouble() ?? 0.0,
+        'itensResumo': itens
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .map((item) => {
+                  'nome': (item['nome'] ?? '').toString(),
+                  'quantidade': (item['quantidade'] as num?)?.toInt() ?? 1,
+                })
+            .where((item) => (item['nome'] ?? '').toString().trim().isNotEmpty)
+            .toList(growable: false),
+        if ((pedidoData['codigoRastreio'] ?? '').toString().trim().isNotEmpty)
+          'codigoRastreio': pedidoData['codigoRastreio'],
+        if (((pedidoData['codigo_rastreio'] ?? '').toString().trim().isNotEmpty) &&
+            (pedidoData['codigoRastreio'] ?? '').toString().trim().isEmpty)
+          'codigoRastreio': pedidoData['codigo_rastreio'],
+        if (freteMap != null &&
+            (freteMap['nome'] ?? '').toString().trim().isNotEmpty)
+          'freteNome': freteMap['nome'],
+      },
+    );
+  }
+
+  static Future<void> _deleteClientePortalPedidoResumo({
+    required String lojaId,
+    required String pedidoId,
+    required Map<String, dynamic> pedidoData,
+  }) async {
+    final portalToken = await _resolvePortalTokenForPedido(
+      lojaId: lojaId,
+      pedidoData: pedidoData,
+    );
+    if (portalToken == null || portalToken.isEmpty) return;
+    await _clientePortalRepository.deletePedidoResumo(
+      lojaId: lojaId,
+      portalToken: portalToken,
+      pedidoId: pedidoId,
+    );
+  }
+
+  /// Cria um pré-pedido e retorna dados completos (id + conteúdo)
+  ///
+  /// Retorna Map com 'id' e todos os dados do pedido.
+  /// Usa os dados já montados para evitar leitura pós-criação (regras Firestore
+  /// permitem create público mas read apenas admin - catálogo web é anônimo).
+  static Future<Map<String, dynamic>?> criarPrePedido({
+    required String lojaId,
+    required Map<String, dynamic> customer,
+    required List<Map<String, dynamic>> items,
+    String?
+        clienteId, // ID do cliente logado (clientes collection) para rastreio no perfil
+    required Map<String, dynamic> entrega,
+    required String pagamento,
+    String observacao = '',
+    String? cupomCodigo,
+    double desconto = 0.0,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
+    String? premioRoletaDescricao,
+    String? vendedorRef, // ✅ ID do vendedor para comissão (vem do link ?ref=)
+    String? indicacaoClienteId, // ✅ ID do cliente que indicou (link ?indicacao=clienteId)
+    String?
+        origemCheckout, // 'whatsapp' quando finalizado por WhatsApp (para notificação específica)
+  }) async {
+    try {
+      // Calcular totais (aplica desconto PIX quando pagamento é PIX)
+      double subtotal = 0.0;
+      final itensList = <Map<String, dynamic>>[];
+      final isPix = pagamento.toUpperCase() == 'PIX';
+
+      for (final item in items) {
+        final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
+        final price = (item['preco'] as num?)?.toDouble() ??
+            (item['price'] as num?)?.toDouble() ??
+            0.0;
+        final pctPix =
+            (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
+        final precoEfetivo =
+            (isPix && pctPix > 0) ? price * (1 - pctPix / 100) : price;
+        final itemTotal = precoEfetivo * qty;
+        subtotal += itemTotal;
+
+        final storedItem = {
+          'id': item['id'] ?? item['produtosId'] ?? '',
+          'produtosId': item['produtosId'] ?? item['id'] ?? '',
+          'nome': item['nome'] ?? item['name'] ?? '',
+          'quantidade': qty,
+          'precoUnitario': precoEfetivo,
+          'tamanho': item['tamanho'] ?? item['size'] ?? '',
+          'cor': item['cor'] ?? item['color'] ?? '',
+          'imagem': item['imageUrl'] ?? item['url_foto'] ?? item['image'] ?? '',
+          'slug': item['slug'] ?? '',
+          'total': itemTotal,
+        };
+        if (item['itensComboComSelecao'] is List) {
+          storedItem['itensComboComSelecao'] = item['itensComboComSelecao'];
+        }
+        itensList.add(storedItem);
+      }
+
+      final freteGratis = entrega['freteGratis'] == true;
+      final freteValor = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
+      final total = subtotal + (freteGratis ? 0 : freteValor) - desconto;
+
+      // Criar documento do pré-pedido
+      final prePedidoData = {
+        'lojaId': lojaId,
+        'tipo': 'catalogo_web',
+        'status': 'pendente', // pendente | confirmado | cancelado
+
+        // Cliente (email em lowercase para queries no perfil)
+        'cliente': {
+          'nome': customer['nome'] ?? '',
+          'cpf': customer['cpf'] ?? '',
+          'email': (customer['email'] ?? '').toString().toLowerCase().trim(),
+          'telefone': customer['telefone'] ?? '',
+          'endereco': customer['endereco'] ?? {},
+          'enderecoFormatado': customer['enderecoFormatado'] ?? '',
+          if (clienteId != null && clienteId.isNotEmpty) 'id': clienteId,
+        },
+
+        // Itens
+        'itens': itensList,
+
+        // Valores
+        'subtotal': subtotal,
+        'frete': {
+          'nome': entrega['nome'] ?? 'Entrega',
+          'valor': freteValor,
+          'gratis': freteGratis,
+          'tipo': entrega['tipo'] ?? '',
+          if (entrega['plataforma'] != null) 'plataforma': entrega['plataforma'],
+        },
+        'cupom': cupomCodigo != null
+            ? {
+                'codigo': cupomCodigo,
+                'desconto': desconto,
+              }
+            : null,
+        'total': total,
+
+        // Pagamento
+        'pagamento': pagamento,
+        'statusPagamento': determinarStatusPagamento(
+            pagamento), // pendente | aprovado | rejeitado
+        'observacao': observacao,
+
+        // ✅ Prêmio da Roleta (se houver)
+        'premioRoleta': premioRoletaDescricao != null ||
+                cupomRoletaCodigo != null
+            ? {
+                'descricao': premioRoletaDescricao ?? '',
+                'tipo': determinarTipoPremio(premioRoletaDescricao,
+                    cupomRoletaCodigo, cupomRoletaDesconto),
+                'valor': cupomRoletaDesconto ?? 0.0,
+                'codigo': cupomRoletaCodigo,
+                'status': 'pendente', // pendente | ativo | usado
+                'dataGanho': FieldValue.serverTimestamp(),
+                'dataAtivacao':
+                    null, // será preenchido após confirmação de pagamento
+                'valido': false, // só fica true após confirmação de pagamento
+              }
+            : null,
+
+        // ✅ Vendedor (para comissão - link com ?ref=vendedorId)
+        'vendedorRef': vendedorRef,
+        'temComissao': vendedorRef != null && vendedorRef.isNotEmpty,
+
+        // ✅ Indicação (quem indicou este cliente - link ?indicacao=clienteId)
+        'indicacaoClienteId': indicacaoClienteId,
+
+        // Metadata
+        'dataCriacao': FieldValue.serverTimestamp(),
+        'dataAtualizacao': FieldValue.serverTimestamp(),
+        'origem': 'catalogo_web',
+        'vendaId': null, // Será preenchido quando confirmar
+        if (origemCheckout != null && origemCheckout.isNotEmpty)
+          'origemCheckout': origemCheckout,
+      };
+
+      // ✅ SALVAR/ATUALIZAR CLIENTE AUTOMATICAMENTE
+      await _salvarOuAtualizarCliente(
+        lojaId: lojaId,
+        customer: customer,
+        pedidoId: null, // Será preenchido abaixo
+        total: total,
+      );
+
+      // Salvar no Firestore
+      final docRef = await _pedidoRepository.createPedido(
+        flowType: PedidoFlowType.prePedidos,
+        lojaId: lojaId,
+        data: prePedidoData,
+      );
+
+      logD('✅ Pré-pedido criado: ${docRef.id}');
+
+      // Notificação admin é criada pela Cloud Function onPrePedidoCreated (funciona na web e no APK)
+
+      // ✅ Atualizar endereço na coleção clientes para "Usar último endereço" (catálogo web/APK)
+      try {
+        final email = (customer['email'] ?? '').toString().trim().toLowerCase();
+        if (email.isNotEmpty) {
+          if (clienteId != null && clienteId.isNotEmpty) {
+            await _firestore
+                .collection('lojas')
+                .doc(lojaId)
+                .collection('clientes')
+                .doc(clienteId)
+                .update({
+              'endereco': customer['endereco'] ?? {},
+              'enderecoFormatado': customer['enderecoFormatado'] ?? '',
+              'email': email,
+            });
+            logD(
+                '✅ [PRE-PEDIDO] Endereço atualizado no perfil do cliente (clienteId)');
+          } else {
+            // Sem login: atualizar por email para "último endereço" funcionar quando logar depois
+            final snap = await _firestore
+                .collection('lojas')
+                .doc(lojaId)
+                .collection('clientes')
+                .where('email', isEqualTo: email)
+                .limit(1)
+                .get();
+            if (snap.docs.isNotEmpty) {
+              await snap.docs.first.reference.update({
+                'endereco': customer['endereco'] ?? {},
+                'enderecoFormatado': customer['enderecoFormatado'] ?? '',
+                'email': email,
+              });
+              logD(
+                  '✅ [PRE-PEDIDO] Endereço atualizado no perfil do cliente (por email)');
+            }
+          }
+        }
+      } catch (e) {
+        logW(
+            '⚠️ [PRE-PEDIDO] Erro ao atualizar endereço do cliente (não bloqueia) (type=${e.runtimeType})');
+      }
+
+      // ✅ Programa de indicação: destinatário ganha cupom na primeira compra; remetente ganha cupom que só ativa após o destinatário usar o dele
+      if (indicacaoClienteId != null &&
+          indicacaoClienteId.isNotEmpty &&
+          clienteId != null &&
+          clienteId.isNotEmpty) {
+        try {
+          final cfg = await IndicacaoConfigService.getConfig(lojaId);
+          if (cfg.ativo) {
+            // Só cria cupons na primeira compra do destinatário por este indicador
+            final jaRecebeu = await _firestore
+                .collection('lojas')
+                .doc(lojaId)
+                .collection('cupons_clientes')
+                .where('clienteId', isEqualTo: clienteId)
+                .where('indicadorId', isEqualTo: indicacaoClienteId)
+                .limit(1)
+                .get();
+            if (jaRecebeu.docs.isNotEmpty) {
+              logD('✅ [INDICAÇÃO] Destinatário já recebeu cupom desta indicação; não duplica.');
+            } else {
+              final refDoc = await _firestore
+                  .collection('lojas')
+                  .doc(lojaId)
+                  .collection('clientes')
+                  .doc(indicacaoClienteId)
+                  .get();
+              final refData = refDoc.data() ?? {};
+              final res = await CuponsService.criarCuponsIndicacao(
+              lojaId: lojaId,
+              clienteAmigoId: clienteId,
+              clienteAmigoNome: (customer['nome'] ?? '').toString(),
+              clienteAmigoEmail: (customer['email'] ?? '').toString(),
+              clienteAmigoWhatsApp: (customer['telefone'] ?? '').toString(),
+              clienteIndicadorId: indicacaoClienteId,
+              clienteIndicadorNome: (refData['nome'] ?? '').toString(),
+              clienteIndicadorEmail: (refData['email'] ?? '').toString(),
+              clienteIndicadorWhatsApp: (refData['telefone'] ?? refData['whatsapp'] ?? '').toString(),
+              tipoDesconto: cfg.tipo,
+              valorDesconto: cfg.valor,
+              validadeDias: cfg.validadeDias,
+            );
+              if (res != null) {
+                logD('✅ [INDICAÇÃO] Cupons criados (1ª compra): amigo ${res['codigoAmigo']}; remetente ativa quando amigo usar.');
+              }
+            }
+          }
+        } catch (e) {
+          logW('⚠️ [PRE-PEDIDO] Erro ao criar cupons de indicação (não bloqueia): $e');
+        }
+      }
+
+      // ✅ ATUALIZAR HISTÓRICO DO CLIENTE COM ID DO PEDIDO
+      await _adicionarPedidoAoHistoricoCliente(
+        lojaId: lojaId,
+        customer: customer,
+        pedidoId: docRef.id,
+        total: total,
+      );
+
+      // 🎯 CRIAR PRÉ-PEDIDO NA PLATAFORMA DE FRETE (Melhor Envio, etc - em background)
+      final plataforma = (entrega['plataforma'] ?? '').toString().trim();
+      final deveCriarNaPlataforma = plataforma.isNotEmpty &&
+          plataforma != 'manual' &&
+          (entrega['tipo'] != null && entrega['tipo'].toString().isNotEmpty);
+      if (deveCriarNaPlataforma) {
+        logD(
+            '📦 [PRÉ-PEDIDO] Criando pedido na plataforma de frete: $plataforma');
+
+        unawaited(
+          (() async {
+            try {
+              final resultadoFrete =
+                  await FreteService.criarPrePedidoNaPlataforma(
+                lojaId: lojaId,
+                pedido: {
+                  'id': docRef.id,
+                  'itens': itensList,
+                  'subtotal': subtotal,
+                  'total': total,
+                },
+                cliente: {
+                  'nome': customer['nome'],
+                  'cpf': customer['cpf'],
+                  'email': customer['email'],
+                  'telefone': customer['telefone'],
+                  'endereco': customer['endereco'],
+                },
+                freteSelecionado: entrega,
+              );
+
+              if (resultadoFrete != null && resultadoFrete['success'] == true) {
+                logD(
+                    '✅ [PRÉ-PEDIDO] Pedido adicionado ao carrinho da plataforma!');
+                logD('   Plataforma: ${resultadoFrete['plataforma']}');
+                logD('   ID: ${resultadoFrete['cart_id']}');
+
+                await docRef.update({
+                  'plataformaFrete': {
+                    'plataforma': resultadoFrete['plataforma'],
+                    'cart_id': resultadoFrete['cart_id'],
+                    'protocol': resultadoFrete['protocol'],
+                    'message': resultadoFrete['message'],
+                    'instrucoes': resultadoFrete['instrucoes'],
+                    'criadoEm': FieldValue.serverTimestamp(),
+                  }
+                });
+              } else {
+                logD(
+                    '⚠️  [PRÉ-PEDIDO] Não foi possível criar na plataforma de frete');
+                final err = resultadoFrete?['error'];
+                final inst = resultadoFrete?['instrucoes'];
+                if ((err != null || inst != null) && resultadoFrete != null) {
+                  await docRef.update({
+                    'plataformaFrete': {
+                      'plataforma': resultadoFrete['plataforma'] ?? 'melhor_envio',
+                      'success': false,
+                      'error': err,
+                      'instrucoes': inst ?? 'Crie o envio manualmente em melhorenvio.com.br/painel/carrinho',
+                      'criadoEm': FieldValue.serverTimestamp(),
+                    }
+                  });
+                }
+              }
+            } catch (e, st) {
+              logE(
+                  '❌ [PRÉ-PEDIDO] Erro ao criar na plataforma de frete (type=${e.runtimeType})', error: e, st: st);
+              // Não falhar o pedido se a criação no frete falhar
+            }
+          })(),
+        );
+      }
+
+      // Email ao cliente: pedido recebido (em background, não bloqueia)
+      final emailCliente =
+          (customer['email'] ?? '').toString().trim().toLowerCase();
+      if (emailCliente.isNotEmpty) {
+        unawaited((() async {
+          try {
+            final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
+            final lojaData = lojaDoc.data();
+            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
+            final logoUrl = _extrairLogoUrl(lojaData);
+            await PedidoClienteEmailService.enviarPedidoRecebido(
+              clienteEmail: emailCliente,
+              clienteNome: (customer['nome'] ?? 'Cliente').toString(),
+              pedidoId: docRef.id,
+              total: total,
+              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
+              logoUrl: logoUrl,
+            );
+          } catch (e) {
+            logW('⚠️ [PRE-PEDIDO] Erro ao enviar email pedido recebido (type=${e.runtimeType})');
+          }
+        })());
+      }
+
+      // Email ao admin/vendedor: novo pedido (remetente MasterPalm)
+      unawaited((() async {
+        try {
+          final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
+          if (!lojaDoc.exists) {
+            logW('⚠️ [PRE-PEDIDO] Loja não existe, não envia email admin');
+            return;
+          }
+          final lojaData = lojaDoc.data() ?? {};
+          // ownerEmail, adminEmail ou owner.email (quando owner é Map)
+          var adminEmail = (lojaData['ownerEmail'] ?? lojaData['adminEmail'] ?? '').toString().trim();
+          if (adminEmail.isEmpty) {
+            final owner = lojaData['owner'];
+            if (owner is Map && owner['email'] != null) {
+              adminEmail = owner['email'].toString().trim();
+            }
+          }
+          if (adminEmail.isEmpty) {
+            logW('⚠️ [PRE-PEDIDO] Loja sem ownerEmail/adminEmail/owner.email, não envia email admin');
+            return;
+          }
+
+          final codigo = docRef.id.length >= 8
+              ? docRef.id.substring(0, 8).toUpperCase()
+              : docRef.id.toUpperCase();
+          final endereco = customer['endereco'] as Map<String, dynamic>?;
+          final cep = endereco?['cep'] ?? endereco?['postalCode'] ?? '';
+
+          await PedidoClienteEmailService.enviarNovoPedidoParaAdmin(
+            adminEmail: adminEmail,
+            clienteNome: (customer['nome'] ?? 'Cliente').toString(),
+            pedidoId: docRef.id,
+            codigoPedido: codigo,
+            itens: itensList,
+            total: total,
+            pagamento: pagamento,
+            statusPagamento: determinarStatusPagamento(pagamento) == 'pendente'
+                ? 'Pagamento pendente'
+                : 'Aprovado',
+            entregaNome: (entrega['nome'] ?? 'Entrega').toString(),
+            enderecoFormatado: (customer['enderecoFormatado'] ?? '').toString().trim().isEmpty
+                ? null
+                : (customer['enderecoFormatado'] ?? '').toString(),
+            cep: cep.toString().trim().isEmpty ? null : cep.toString(),
+            dataCriacao: DateTime.now(),
+          );
+        } catch (e) {
+          logW('⚠️ [PRE-PEDIDO] Erro ao enviar email novo pedido para admin (type=${e.runtimeType})');
+        }
+      })());
+
+      // Retorna dados completos (evita buscarPrePedido - regras não permitem read público)
+      return {
+        'id': docRef.id,
+        ...prePedidoData,
+      };
+    } catch (e, st) {
+      logE('❌ Erro ao criar pré-pedido (type=${e.runtimeType})', error: e, st: st);
+      return null;
+    }
+  }
+
+  /// Busca um pré-pedido pelo ID (requer permissão admin no Firestore)
+  static Future<Map<String, dynamic>?> buscarPrePedido({
+    required String lojaId,
+    required String prePedidoId,
+  }) async {
+    try {
+      final doc = await _prePedidosRef(lojaId).doc(prePedidoId).get();
+
+      if (!doc.exists) {
+        logW('⚠️ Pré-pedido não encontrado: $prePedidoId');
+        return null;
+      }
+
+      return {
+        'id': doc.id,
+        ...doc.data() as Map<String, dynamic>,
+      };
+    } catch (e, st) {
+      logE('❌ Erro ao buscar pré-pedido (type=${e.runtimeType})', error: e, st: st);
+      return null;
+    }
+  }
+
+  /// Lista todos os pré-pedidos pendentes de uma loja
+  static Stream<List<Map<String, dynamic>>> streamPrePedidosPendentes({
+    required String lojaId,
+  }) {
+    return _pedidoRepository
+        .streamPedidos(
+          flowType: PedidoFlowType.prePedidos,
+          lojaId: lojaId,
+          buildQuery: (query) => query
+              .where('status', isEqualTo: 'pendente')
+              .orderBy('dataCriacao', descending: true),
+        )
+        .asBroadcastStream();
+  }
+
+  /// Lista todos os pré-pedidos de uma loja (com filtros opcionais)
+  static Stream<List<Map<String, dynamic>>> streamPrePedidos({
+    required String lojaId,
+    String?
+        status, // null ou 'todos' = todos, 'pendente', 'confirmado', 'cancelado'
+    int limit = 50,
+  }) {
+    Query<Map<String, dynamic>> query = _prePedidosRef(lojaId);
+
+    // Se status é 'todos' ou null, mostrar todos os pedidos
+    // Caso contrário, filtrar pelo status específico
+    if (status != null && status != 'todos') {
+      query = query.where('status', isEqualTo: status);
+    }
+
+    query = query.orderBy('dataCriacao', descending: true).limit(limit);
+
+    return query.snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return {
+          'id': doc.id,
+          ...doc.data(),
+        };
+      }).toList();
+    }).asBroadcastStream();
+  }
+
+  /// Confirma um pré-pedido e cria a venda
+  ///
+  /// Retorna o vendaId criado
+  /// ✅ ATUALIZADO: Notifica vendedor se houver vendedorRef
+  static Future<String?> confirmarPrePedido({
+    required String lojaId,
+    required String prePedidoId,
+    required String vendaId, // ID da venda criada pelo vendedor
+    double valorVenda = 0.0,
+    double valorComissao = 0.0,
+  }) async {
+    try {
+      // ✅ Buscar dados do pré-pedido antes de deletar (para notificação)
+      final prePedidoDoc = await _prePedidosRef(lojaId).doc(prePedidoId).get();
+
+      final prePedidoData = prePedidoDoc.data();
+      final vendedorRef = prePedidoData?['vendedorRef'] as String?;
+      final clienteData = prePedidoData?['cliente'] as Map?;
+      final clienteNome =
+          (clienteData)?['nome'] ?? 'Cliente';
+      final clienteEmail =
+          ((clienteData)?['email'] ?? '').toString().trim().toLowerCase();
+
+      // Atualizar status para 'confirmado' e salvar vendaId (mantém doc para rastreio: embalando → enviado → entregue)
+      await _pedidoRepository.updatePedido(
+        flowType: PedidoFlowType.prePedidos,
+        lojaId: lojaId,
+        pedidoId: prePedidoId,
+        data: {
+        'status': 'confirmado',
+        'vendaId': vendaId,
+        'dataAtualizacao': FieldValue.serverTimestamp(),
+        },
+      );
+
+      logD('✅ Pré-pedido confirmado: $prePedidoId → Venda: $vendaId');
+
+      // Indicação: ativar cupons do remetente quando a venda é confirmada pelo admin
+      await CuponsService.ativarCuponsIndicacaoPorPedidoConfirmado(
+        lojaId: lojaId,
+        pedidoId: prePedidoId,
+      );
+
+      // ✅ NOTIFICAR VENDEDOR SE HOUVER
+      if (vendedorRef != null && vendedorRef.isNotEmpty) {
+        try {
+          final vendedorDoc = await _firestore
+              .collection('lojas')
+              .doc(lojaId)
+              .collection('vendedores')
+              .doc(vendedorRef)
+              .get();
+
+          final vendedorEmail = vendedorDoc.data()?['email'] ?? '';
+
+          await NotificacaoVendasService().notificarVendedorVendaConfirmada(
+            storeId: lojaId,
+            vendedorUid: vendedorRef,
+            vendedorEmail: vendedorEmail,
+            pedidoId: prePedidoId,
+            vendaId: vendaId,
+            clienteNome: clienteNome,
+            valorVenda: valorVenda,
+            valorComissao: valorComissao,
+          );
+        } catch (e) {
+          logW('⚠️ [CONFIRMAR] Erro ao notificar vendedor (type=${e.runtimeType})');
+        }
+      }
+
+      // Email ao cliente: pedido confirmado (remetente = nome da loja)
+      if (clienteEmail.isNotEmpty) {
+        unawaited((() async {
+          try {
+            final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
+            final lojaData = lojaDoc.data();
+            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
+            final logoUrl = _extrairLogoUrl(lojaData);
+            await PedidoClienteEmailService.enviarAtualizacaoStatus(
+              clienteEmail: clienteEmail,
+              clienteNome: clienteNome,
+              pedidoId: prePedidoId,
+              novoStatus: 'confirmado',
+              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
+              logoUrl: logoUrl,
+            );
+          } catch (e) {
+            logW('⚠️ [CONFIRMAR] Erro ao enviar email de confirmação ao cliente (type=${e.runtimeType})');
+          }
+        })());
+      }
+
+      return vendaId;
+    } catch (e, st) {
+      logE('❌ Erro ao confirmar pré-pedido (type=${e.runtimeType})', error: e, st: st);
+      return null;
+    }
+  }
+
+  /// Cancela um pré-pedido
+  /// ✅ ATUALIZADO: Notifica vendedor se houver vendedorRef
+  static Future<bool> cancelarPrePedido({
+    required String lojaId,
+    required String prePedidoId,
+    String? motivo,
+  }) async {
+    try {
+      // ✅ Buscar dados do pré-pedido antes de deletar (para notificação)
+      final prePedidoDoc = await _prePedidosRef(lojaId).doc(prePedidoId).get();
+
+      final prePedidoData = prePedidoDoc.data();
+      final vendedorRef = prePedidoData?['vendedorRef'] as String?;
+      final clienteData = prePedidoData?['cliente'] as Map?;
+      final clienteNome =
+          (clienteData)?['nome'] ?? 'Cliente';
+      final clienteEmail =
+          ((clienteData)?['email'] ?? '').toString().trim().toLowerCase();
+
+      // Mantém um espelho público sanitizado mesmo quando o pré-pedido privado é removido.
+      try {
+        if (prePedidoData != null) {
+          await _pedidoStatusPublicoRepository.saveFromPedidoPrivado(
+            lojaId: lojaId,
+            pedidoId: prePedidoId,
+            pedidoData: Map<String, dynamic>.from(prePedidoData),
+            overrideStatus: 'cancelado',
+            overrideDataAtualizacao: FieldValue.serverTimestamp(),
+          );
+          await _saveClientePortalPedidoResumo(
+            lojaId: lojaId,
+            pedidoId: prePedidoId,
+            pedidoData: Map<String, dynamic>.from(prePedidoData),
+            overrideStatus: 'cancelado',
+          );
+        }
+      } catch (e) {
+        logW(
+          '⚠️ [CANCELAR] Erro ao atualizar pedido_status_publico (não bloqueia) (type=${e.runtimeType})',
+        );
+      }
+
+      // Email ao cliente: pedido cancelado (antes de deletar)
+      if (clienteEmail.isNotEmpty) {
+        unawaited((() async {
+          try {
+            final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
+            final lojaData = lojaDoc.data();
+            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
+            final logoUrl = _extrairLogoUrl(lojaData);
+            await PedidoClienteEmailService.enviarAtualizacaoStatus(
+              clienteEmail: clienteEmail,
+              clienteNome: clienteNome,
+              pedidoId: prePedidoId,
+              novoStatus: 'cancelado',
+              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
+              logoUrl: logoUrl,
+            );
+          } catch (e) {
+            logW('⚠️ [CANCELAR] Erro ao enviar email de cancelamento ao cliente (type=${e.runtimeType})');
+          }
+        })());
+      }
+
+      // Deletar o documento ao invés de apenas marcar como cancelado
+      await _pedidoRepository.deletePedido(
+        flowType: PedidoFlowType.prePedidos,
+        lojaId: lojaId,
+        pedidoId: prePedidoId,
+      );
+
+      logD('✅ Pré-pedido deletado: $prePedidoId');
+
+      // ✅ NOTIFICAR VENDEDOR SE HOUVER
+      if (vendedorRef != null && vendedorRef.isNotEmpty) {
+        try {
+          final vendedorDoc = await _firestore
+              .collection('lojas')
+              .doc(lojaId)
+              .collection('vendedores')
+              .doc(vendedorRef)
+              .get();
+
+          final vendedorEmail = vendedorDoc.data()?['email'] ?? '';
+
+          await NotificacaoVendasService().notificarVendedorVendaCancelada(
+            storeId: lojaId,
+            vendedorUid: vendedorRef,
+            vendedorEmail: vendedorEmail,
+            pedidoId: prePedidoId,
+            clienteNome: clienteNome,
+            motivo: motivo,
+          );
+        } catch (e) {
+          logW('⚠️ [CANCELAR] Erro ao notificar vendedor (type=${e.runtimeType})');
+        }
+      }
+
+      return true;
+    } catch (e, st) {
+      logE('❌ Erro ao cancelar pré-pedido (type=${e.runtimeType})', error: e, st: st);
+      return false;
+    }
+  }
+
+  /// Exclui um pré-pedido finalizado (entregue/cancelado) - para limpar testes
+  static Future<bool> excluirPrePedido({
+    required String lojaId,
+    required String prePedidoId,
+  }) async {
+    try {
+      Map<String, dynamic>? prePedidoData;
+      try {
+        prePedidoData = await _pedidoRepository.getPedidoById(
+          flowType: PedidoFlowType.prePedidos,
+          lojaId: lojaId,
+          pedidoId: prePedidoId,
+        );
+      } catch (e) {
+        logW(
+          '⚠️ [EXCLUIR] Falha ao buscar pré-pedido antes de excluir (clientes_portal pode ficar órfão): '
+          'lojaId=$lojaId prePedidoId=$prePedidoId (type=${e.runtimeType})',
+        );
+      }
+
+      await _pedidoRepository.deletePedido(
+        flowType: PedidoFlowType.prePedidos,
+        lojaId: lojaId,
+        pedidoId: prePedidoId,
+      );
+
+      logD('✅ Pré-pedido excluído: $prePedidoId');
+
+      try {
+        await _pedidoStatusPublicoRepository.deleteByPedidoId(
+          lojaId: lojaId,
+          pedidoId: prePedidoId,
+        );
+        if (prePedidoData != null) {
+          await _deleteClientePortalPedidoResumo(
+            lojaId: lojaId,
+            pedidoId: prePedidoId,
+            pedidoData: Map<String, dynamic>.from(prePedidoData),
+          );
+        }
+      } catch (e) {
+        logW(
+          '⚠️ [EXCLUIR] Erro ao remover pedido_status_publico (não bloqueia) (type=${e.runtimeType})',
+        );
+      }
+
+      return true;
+    } catch (e, st) {
+      logE('❌ Erro ao excluir pré-pedido (type=${e.runtimeType})', error: e, st: st);
+      return false;
+    }
+  }
+
+  /// Atualiza o status de um pré-pedido.
+  /// Envia email ao cliente com a atualização (e código de rastreio se enviado).
+  static Future<bool> atualizarStatus({
+    required String lojaId,
+    required String prePedidoId,
+    required String novoStatus,
+    Map<String, dynamic>? extraUpdates,
+    bool enviarEmailCliente = true,
+  }) async {
+    try {
+      final updates = <String, dynamic>{
+        'status': novoStatus,
+        'dataAtualizacao': FieldValue.serverTimestamp(),
+      };
+      if (extraUpdates != null && extraUpdates.isNotEmpty) {
+        updates.addAll(extraUpdates);
+      }
+      await _pedidoRepository.updatePedido(
+        flowType: PedidoFlowType.prePedidos,
+        lojaId: lojaId,
+        pedidoId: prePedidoId,
+        data: updates,
+      );
+
+      logD(
+          '✅ Status do pré-pedido $prePedidoId atualizado para: $novoStatus');
+
+      // Email ao cliente a cada atualização de status (embalando, enviado, entregue)
+      if (enviarEmailCliente) {
+        unawaited((() async {
+          try {
+            final doc = await _prePedidosRef(lojaId).doc(prePedidoId).get();
+            if (!doc.exists) return;
+            final data = doc.data() ?? {};
+            final cliente = data['cliente'] as Map<String, dynamic>?;
+            final email =
+                (cliente?['email'] ?? '').toString().trim().toLowerCase();
+            if (email.isEmpty) return;
+
+            final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
+            final lojaData = lojaDoc.data();
+            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
+            final logoUrl = _extrairLogoUrl(lojaData);
+            final codigoRastreio = extraUpdates?['codigoRastreio']?.toString();
+
+            await PedidoClienteEmailService.enviarAtualizacaoStatus(
+              clienteEmail: email,
+              clienteNome: (cliente?['nome'] ?? 'Cliente').toString(),
+              pedidoId: prePedidoId,
+              novoStatus: novoStatus,
+              codigoRastreio: codigoRastreio?.trim().isEmpty == true
+                  ? null
+                  : codigoRastreio,
+              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
+              logoUrl: logoUrl,
+            );
+            } catch (e) {
+            logW(
+                '⚠️ [PRE-PEDIDO] Erro ao enviar email de atualização (não bloqueia) (type=${e.runtimeType})');
+          }
+        })());
+      }
+
+      return true;
+    } catch (e, st) {
+      logE('❌ Erro ao atualizar status (type=${e.runtimeType})', error: e, st: st);
+      return false;
+    }
+  }
+
+  /// Conta pré-pedidos pendentes
+  static Future<int> contarPendentes({required String lojaId}) async {
+    try {
+      final snapshot = await _prePedidosRef(lojaId)
+          .where('status', isEqualTo: 'pendente')
+          .count()
+          .get();
+
+      return snapshot.count ?? 0;
+    } catch (e, st) {
+      logE('❌ Erro ao contar pré-pedidos (type=${e.runtimeType})', error: e, st: st);
+      return 0;
+    }
+  }
+
+  /// Gera URL pública para visualizar o pré-pedido
+  ///
+  /// Usa HTTPS para ser clicável no WhatsApp
+  /// Exemplo: https://app.mastepalm.com.br/c/nathy-pratas-e-folheados?pedido=abc123
+  ///
+  /// O AndroidManifest está configurado para interceptar esses links e abrir no app
+  static String gerarUrlPedido({
+    required String prePedidoId,
+    required String lojaId,
+    String baseUrl = 'https://app.mastepalm.com.br',
+    bool useCustomScheme = false, // ✅ HTTPS por padrão para ser clicável
+  }) {
+    if (useCustomScheme) {
+      // Custom scheme - só funciona se app estiver instalado
+      return 'masterpalm://pedido/$prePedidoId?loja=$lojaId';
+    } else {
+      // HTTPS - clicável no WhatsApp e abre no app se instalado
+      return '$baseUrl/c/$lojaId?pedido=$prePedidoId';
+    }
+  }
+
+  /// Determina o status do pagamento com base no método selecionado
+  ///
+  static String? _extrairLogoUrl(Map<String, dynamic>? lojaData) {
+    if (lojaData == null) return null;
+    final lm = (lojaData['logoMobileUrl'] ?? '').toString().trim();
+    if (lm.isNotEmpty) return lm;
+    final ld = (lojaData['logoDesktopUrl'] ?? '').toString().trim();
+    if (ld.isNotEmpty) return ld;
+    final media = lojaData['media'];
+    if (media is Map) {
+      final mobile = media['mobile'];
+      if (mobile is Map) {
+        final mUrl = (mobile['logoUrl'] ?? '').toString().trim();
+        if (mUrl.isNotEmpty) return mUrl;
+      }
+      final desktop = media['desktop'];
+      if (desktop is Map) {
+        final dUrl = (desktop['logoUrl'] ?? '').toString().trim();
+        if (dUrl.isNotEmpty) return dUrl;
+      }
+    }
+    return null;
+  }
+
+  /// Formata os dados do pré-pedido para exibição
+  static String formatarParaWhatsApp({
+    required Map<String, dynamic> prePedido,
+    required String lojaId,
+    String baseUrl = 'https://app.mastepalm.com.br',
+    String? lojaSlug,
+  }) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('🛍️ Novo pedido');
+    buffer.writeln('');
+
+    // Itens
+    final itens = (prePedido['itens'] as List?) ?? [];
+    for (final item in itens) {
+      final nome = item['nome'] ?? '';
+      final qty = item['quantidade'] ?? 1;
+      final preco = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
+      final tamanho = (item['tamanho'] ?? '').toString().trim();
+      final cor = (item['cor'] ?? '').toString().trim(); // ✅ ADICIONADO: cor
+
+      // Montar descrição com variações
+      final variacoes = <String>[];
+      if (tamanho.isNotEmpty) variacoes.add('Tam: $tamanho');
+      if (cor.isNotEmpty) variacoes.add('Cor: $cor');
+
+      if (variacoes.isNotEmpty) {
+        buffer.write('${qty}x $nome (${variacoes.join(', ')})');
+      } else {
+        buffer.write('${qty}x $nome');
+      }
+
+      final totalItem = preco * qty;
+      buffer.writeln(
+          ' – R\$ ${formatarValor(totalItem)}'); // ✅ CORRIGIDO: mostrar total do item (preco * qtd)
+    }
+
+    buffer.writeln('');
+
+    // Valores
+    final subtotal = (prePedido['subtotal'] as num?)?.toDouble() ?? 0.0;
+    final frete = prePedido['frete'] as Map<String, dynamic>?;
+    final freteNome = frete?['nome'] ?? 'Entrega';
+    final freteValor = (frete?['valor'] as num?)?.toDouble() ?? 0.0;
+    final freteGratis = frete?['gratis'] == true;
+    final total = (prePedido['total'] as num?)?.toDouble() ?? 0.0;
+
+    buffer.writeln('Subtotal: R\$ ${formatarValor(subtotal)}');
+
+    if (freteGratis) {
+      buffer.writeln('Entrega: $freteNome – R\$ 0,00');
+    } else {
+      buffer.writeln('Entrega: $freteNome – R\$ ${formatarValor(freteValor)}');
+    }
+
+    // Cupom (se houver)
+    final cupom = prePedido['cupom'] as Map<String, dynamic>?;
+    if (cupom != null) {
+      final desconto = (cupom['desconto'] as num?)?.toDouble() ?? 0.0;
+      if (desconto > 0) {
+        buffer.writeln('Desconto: -R\$ ${formatarValor(desconto)}');
+      }
+    }
+
+    buffer.writeln('Total: R\$ ${formatarValor(total)}');
+
+    // Pagamento
+    final pagamento = prePedido['pagamento'] ?? '';
+    buffer.writeln('Pagamento: $pagamento');
+    buffer.writeln('');
+
+    // Cliente
+    final cliente = prePedido['cliente'] as Map<String, dynamic>?;
+    if (cliente != null) {
+      buffer.writeln('Cliente: ${cliente['nome'] ?? ''}');
+      final tel = (cliente['telefone'] ?? '').toString();
+      if (tel.isNotEmpty) {
+        buffer.writeln('Tel.: $tel');
+      }
+      final endereco = cliente['enderecoFormatado']?.toString() ?? '';
+      if (endereco.isNotEmpty) {
+        buffer.writeln('Endereço: $endereco');
+      }
+    }
+
+    // ✅ Prêmio da Roleta (se houver)
+    final premioRoleta = prePedido['premioRoleta'] as Map<String, dynamic>?;
+    if (premioRoleta != null) {
+      final tipo = premioRoleta['tipo']?.toString() ?? '';
+      final descricao = premioRoleta['descricao']?.toString() ?? '';
+
+      buffer.writeln('');
+      buffer.writeln('🎁 PRÊMIO DA ROLETA:');
+
+      if (tipo == 'brinde' && descricao.isNotEmpty) {
+        buffer.writeln('   Brinde: $descricao');
+        buffer.writeln('   ⚠️ Será entregue junto com o pedido');
+      } else if (tipo == 'desconto') {
+        final valor = (premioRoleta['valor'] as num?)?.toDouble() ?? 0.0;
+        buffer.writeln('   Cupom de $valor% OFF');
+        buffer.writeln(
+            '   ⚠️ Válido para a próxima compra após pagamento confirmado');
+      } else if (tipo == 'frete_gratis') {
+        buffer.writeln('   Frete Grátis');
+        buffer.writeln(
+            '   ⚠️ Válido para a próxima compra após pagamento confirmado');
+      }
+    }
+
+    // Observações
+    final obs = (prePedido['observacao'] ?? '').toString().trim();
+    if (obs.isNotEmpty) {
+      buffer.writeln('');
+      buffer.writeln('📝 Observações: $obs');
+    }
+
+    buffer.writeln('');
+
+    // Link do pedido - usa HTTPS para ser clicável no WhatsApp
+    final prePedidoId = prePedido['id'] ?? '';
+    if (prePedidoId.isNotEmpty) {
+      final url = gerarUrlPedido(
+        prePedidoId: prePedidoId,
+        lojaId: lojaId,
+        baseUrl: baseUrl,
+        useCustomScheme: false, // ✅ HTTPS para ser clicável
+      );
+      buffer.writeln('🔗 Ver pedido: $url');
+    }
+
+    return buffer.toString();
+  }
+
+  /// Formata valor monetário
+
+  // ✅ Salva ou atualiza cliente automaticamente
+  /// Cria ou atualiza um cliente do catálogo na coleção de clientes da loja
+  static Future<void> _salvarOuAtualizarCliente({
+    required String lojaId,
+    required Map<String, dynamic> customer,
+    String? pedidoId,
+    required double total,
+  }) async {
+    try {
+      final telefone = (customer['telefone'] ?? '')
+          .toString()
+          .replaceAll(RegExp(r'[^0-9]'), '');
+
+      if (telefone.isEmpty) {
+        logD(
+            '⚠️ [CLIENTE-AUTO-SAVE] Telefone vazio, não foi possível salvar cliente');
+        return;
+      }
+
+      // Gerar ID único baseado no telefone
+      final clienteId = telefone;
+
+      // Verificar se cliente já existe
+      final clienteRef = _firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('estoque_clientes')
+          .doc(clienteId);
+
+      final clienteDoc = await clienteRef.get();
+      final clienteExiste = clienteDoc.exists;
+
+      if (clienteExiste) {
+        // Cliente existe - atualizar informações
+        logD(
+            '🔄 [CLIENTE-AUTO-SAVE] Cliente já existe, atualizando dados...');
+
+        final dados = clienteDoc.data() ?? {};
+
+        await clienteRef.update({
+          'nome': customer['nome'] ?? dados['nome'],
+          'email': customer['email'] ?? dados['email'],
+          'cpf': customer['cpf'] ?? dados['cpf'],
+          'endereco': customer['endereco'] ?? dados['endereco'],
+          'enderecoFormatado':
+              customer['enderecoFormatado'] ?? dados['enderecoFormatado'],
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        logD(
+            '✅ [CLIENTE-AUTO-SAVE] Cliente atualizado: ${customer['nome']}');
+      } else {
+        // Cliente novo - criar
+        logD('📝 [CLIENTE-AUTO-SAVE] Criando novo cliente...');
+
+        final clienteData = {
+          'id': clienteId,
+          'lojaId': lojaId,
+          'nome': customer['nome'] ?? '',
+          'telefone': customer['telefone'] ?? '',
+          'email': customer['email'] ?? '',
+          'cpf': customer['cpf'] ?? '',
+          'endereco': customer['endereco'] ?? {},
+          'enderecoFormatado': customer['enderecoFormatado'] ?? '',
+          'instagram': '',
+          'cep': (customer['endereco'] as Map?)?['cep'] ?? '',
+          'cidade': (customer['endereco'] as Map?)?['cidade'] ?? '',
+          'avatarUrl': null,
+
+          // Histórico de compras
+          'historicoCompras': [],
+          'totalCompras': 0.0,
+          'quantidadeCompras': 0,
+
+          // Metadata
+          'origem': 'catalogo_web',
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        await clienteRef.set(clienteData);
+
+        logD(
+            '✅ [CLIENTE-AUTO-SAVE] Novo cliente criado: ${customer['nome']}');
+      }
+    } catch (e, st) {
+      logE('❌ [CLIENTE-AUTO-SAVE] Erro ao salvar cliente (type=${e.runtimeType})', error: e, st: st);
+    }
+  }
+
+  // ✅ Adiciona pedido ao histórico do cliente
+  /// Registra um pedido no histórico de compras do cliente
+  static Future<void> _adicionarPedidoAoHistoricoCliente({
+    required String lojaId,
+    required Map<String, dynamic> customer,
+    required String pedidoId,
+    required double total,
+  }) async {
+    try {
+      final telefone = (customer['telefone'] ?? '')
+          .toString()
+          .replaceAll(RegExp(r'[^0-9]'), '');
+
+      if (telefone.isEmpty) return;
+
+      final clienteId = telefone;
+
+      final clienteRef = _firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('estoque_clientes')
+          .doc(clienteId);
+
+      final clienteDoc = await clienteRef.get();
+      if (!clienteDoc.exists) return;
+
+      final dados = clienteDoc.data() ?? {};
+      final historicoAtual =
+          (dados['historicoCompras'] as List?)?.cast<Map<String, dynamic>>() ??
+              [];
+      final totalComprasAtual =
+          (dados['totalCompras'] as num?)?.toDouble() ?? 0.0;
+      final quantidadeComprasAtual = (dados['quantidadeCompras'] as int?) ?? 0;
+
+      // Adicionar novo pedido ao histórico
+      historicoAtual.add({
+        'pedidoId': pedidoId,
+        'data': FieldValue.serverTimestamp(),
+        'total': total,
+        'status': 'pendente', // pendente | confirmado | cancelado
+      });
+
+      await clienteRef.update({
+        'historicoCompras': historicoAtual,
+        'totalCompras': totalComprasAtual + total,
+        'quantidadeCompras': quantidadeComprasAtual + 1,
+        'ultimaCompra': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      logD(
+          '✅ [CLIENTE-AUTO-SAVE] Pedido $pedidoId adicionado ao histórico do cliente');
+    } catch (e, st) {
+      logE(
+          '❌ [CLIENTE-AUTO-SAVE] Erro ao adicionar pedido ao histórico (type=${e.runtimeType})', error: e, st: st);
+    }
+  }
+}

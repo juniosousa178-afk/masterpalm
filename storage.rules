@@ -1,0 +1,59 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Admin raiz (compatível com firestore.rules)
+    function isRootAdmin() {
+      return request.auth != null
+        && request.auth.token.email in [
+          "masterpalm26@gmail.com",
+          "masterpalm@gmail.com",
+          "admin@masterpalm.com"
+        ];
+    }
+
+    // Usuário pertence à loja: store_id, owner/admin, member ou vendedor
+    function belongsToStore(lojaId) {
+      return request.auth != null && (
+        isRootAdmin()
+        || (firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+            && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('store_id', '') == lojaId)
+        || (firestore.exists(/databases/(default)/documents/lojas/$(lojaId))
+            && (firestore.get(/databases/(default)/documents/lojas/$(lojaId)).data.get('ownerUid', '') == request.auth.uid
+                || firestore.get(/databases/(default)/documents/lojas/$(lojaId)).data.get('adminUid', '') == request.auth.uid))
+        || firestore.exists(/databases/(default)/documents/lojas/$(lojaId)/members/$(request.auth.uid))
+        || (firestore.exists(/databases/(default)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid))
+            && firestore.get(/databases/(default)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)).data.get('ativo', false) == true)
+      );
+    }
+
+    // 🔓 Leitura pública de logo/banners (catálogo)
+    // 🔒 Escrita: apenas quem pertence à loja (store_id, owner, member ou vendedor)
+    match /lojas/{lojaId}/logos/{fileName} {
+      allow read: if true;
+      allow write: if belongsToStore(lojaId);
+    }
+    match /lojas/{lojaId}/banners/{fileName} {
+      allow read: if true;
+      allow write: if belongsToStore(lojaId);
+    }
+
+    // 🔓 Leitura pública de imagens de produtos (catálogo público)
+    // 🔒 Escrita: apenas quem pertence à loja
+    match /lojas/{lojaId}/produtos/{allImages=**} {
+      allow read: if true;
+      allow write: if belongsToStore(lojaId);
+    }
+
+    // 🔓 Leitura pública de mídias (logos, banners, produtos)
+    // 🔒 Escrita: apenas quem pertence à loja
+    match /lojas/{lojaId}/midias/{allMedia=**} {
+      allow read: if true;
+      allow write: if belongsToStore(lojaId);
+    }
+
+    // 🔒 Demais arquivos: somente usuários logados (ex: _healthcheck)
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

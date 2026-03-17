@@ -1,0 +1,8 @@
+﻿
+lib\firebase_options.dart:49:    storageBucket: 'masterpalm-58c46.firebasestorage.app',
+lib\main.dart:82:    final ref = FirebaseStorage.instance.ref('debug_check.txt');
+lib\screens\cadastro_produto_screen.dart:31:      final ref = FirebaseStorage.instance.ref('produtos/${widget.idLoja}/$nomeArquivo');
+lib\services\catalogo_sync_service.dart:16:  static final _storage = FirebaseStorage.instance;
+lib\services\cloud_sync_service.dart:9:  static final _st = FirebaseStorage.instance;
+
+

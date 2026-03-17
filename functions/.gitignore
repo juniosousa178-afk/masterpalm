@@ -1,0 +1,41 @@
+# Node
+node_modules/
+*.local
+
+# Firebase / credenciais
+masterpalm-service-account.json
+.firebase/
+.firebaserc
+
+# Flutter / Dart
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+
+# APK / builds
+*.apk
+*.aab
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Temporários
+tmp*/
+nul
+# Node
+node_modules/
+
+# Windows reserved / lixo
+nul
+nul/
+NUL
+NUL/
+
+# Builds
+build/
+*.apk
+*.aab

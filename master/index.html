@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MasterPalm • Download do App</title>
+  <meta name="description" content="Baixe o app MasterPalm para Android. Subdomínios (loja.seudominio) abrem o catálogo da loja." />
+  <meta name="robots" content="index,follow" />
+  <style>
+    :root{
+      --bg:#0b0b0b; --card:#121212; --text:#f2f2f2;
+      --muted:#b8b8b8; --primary:#00A8FF; --accent:#00FFA3;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 600px at 70% 10%, #0e1b22 0%, #0b0b0b 50%, #000 100%);
+      color:var(--text); font:400 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+    .card{
+      width:100%; max-width:680px; background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:28px;
+      box-shadow:0 10px 40px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .brand{display:flex; align-items:center; gap:12px; margin-bottom:6px}
+    .logo{
+      width:42px;height:42px;border-radius:10px; background:linear-gradient(135deg, var(--primary), var(--accent));
+      display:inline-flex; align-items:center; justify-content:center; color:#000; font-weight:900; letter-spacing:.5px;
+    }
+    h1{margin:0 0 6px; font-size:28px; font-weight:800}
+    p{margin:0 0 16px; color:var(--muted)}
+    .cta{
+      display:flex; flex-wrap:wrap; gap:12px; margin-top:18px
+    }
+    .btn{
+      appearance:none; border:0; border-radius:12px; padding:14px 18px; font-weight:700; cursor:pointer;
+      transition:transform .06s ease, box-shadow .2s ease, opacity .2s ease; text-decoration:none; display:inline-flex; align-items:center; gap:10px
+    }
+    .btn-primary{
+      color:#001019; background:linear-gradient(135deg, var(--primary), #57d2ff);
+      box-shadow:0 10px 26px rgba(0,168,255,.35)
+    }
+    .btn-primary:hover{transform:translateY(-1px)}
+    .btn-ghost{
+      color:var(--text); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12)
+    }
+    .row{display:flex; gap:16px; flex-wrap:wrap}
+    .col{flex:1 1 250px}
+    .box{
+      background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+      border-radius:14px; padding:16px
+    }
+    code, .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace}
+    .hint{color:#9ad6ff}
+    .foot{margin-top:18px; color:#a8a8a8; font-size:13px}
+    .ok{color:#67f2b4}
+    .warn{color:#ffd37a}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <div class="logo">MP</div>
+      <div>
+        <h1>MasterPalm • Android</h1>
+        <p>Baixe o app oficial para Android. Os <strong>subdomínios</strong> (ex.: <span class="mono">minhaloja.mastepalm.com.br</span>) abrem o <strong>catálogo da loja</strong>.</p>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col box">
+        <h3 style="margin-top:0">Download do APK</h3>
+        <p>Use o botão abaixo para instalar manualmente no Android.</p>
+        <!-- 🔽 botão de download do APK -->
+        <a class="btn btn-primary" href="/apk/masterpalm.apk" download>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 20h14v-2H5v2Zm7-18L5.33 8.67h4.84V16h3.66V8.67h4.84L12 2Z"/></svg>
+          Baixar APK (Android)
+        </a>
+        <div id="apkStatus" class="foot">Verificando arquivo…</div>
+      </div>
+
+      <div class="col box">
+        <h3 style="margin-top:0">Como acessar o catálogo</h3>
+        <p>O catálogo web abre pelo seu subdomínio:</p>
+        <p class="hint mono">https://<strong>minhaloja</strong>.mastepalm.com.br</p>
+        <p style="margin:10px 0 0">Na dúvida, peça ao suporte para criar/associar o seu subdomínio.</p>
+        <a class="btn btn-ghost" href="https://wa.me/55<<SEU_NUMERO_AQUI>>?text=Olá!%20Quero%20meu%20subdom%C3%ADnio%20no%20MasterPalm." target="_blank" rel="noopener">
+          Falar com o suporte (WhatsApp)
+        </a>
+      </div>
+    </div>
+
+    <div class="foot">Dica: após publicar um novo APK, limpe o cache do navegador (Ctrl+F5) se o botão não atualizar.</div>
+  </main>
+
+  <script>
+    // Checa se o APK está no ar (HEAD). Opcional, só para feedback visual.
+    (function(){
+      const el = document.getElementById('apkStatus');
+      if(!el) return;
+      fetch('/apk/masterpalm.apk', { method: 'HEAD' })
+        .then(r => {
+          if (r.ok) {
+            el.innerHTML = '✔ <span class="ok">APK disponível</span> — pronto para baixar.';
+          } else {
+            el.innerHTML = '⚠ <span class="warn">APK ainda não enviado</span>. Gere e publique o arquivo primeiro.';
+          }
+        })
+        .catch(() => {
+          el.innerHTML = '⚠ <span class="warn">Não consegui verificar o APK</span>. Se já publicou, tente atualizar a página.';
+        });
+    })();
+  </script>
+</body>
+</html>
