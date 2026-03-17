@@ -28,33 +28,27 @@ import '../services/catalog_cache_service.dart';
 import '../services/catalog_recent_service.dart';
 import '../services/catalog_share_service.dart';
 import '../services/catalog_visitas_service.dart';
-import '../services/carrinho_abandonado_service.dart';
-import 'package:uuid/uuid.dart';
 
 import '../utils/instagram_launcher.dart';
 import '../utils/pix_brcode.dart';
-import 'package:master_palm/widgets/pix_qr_dialog.dart';
+import '../widgets/pix_qr_dialog.dart';
 import 'public_catalog/catalog_helpers.dart';
 import 'public_catalog/catalog_config_service.dart';
 import '../utils/safe_parse.dart';
 import 'public_catalog/catalog_theme_extension.dart';
 import 'public_catalog/widgets/catalog_banner_carousel.dart';
-import 'public_catalog/widgets/catalog_premium_categories_section.dart';
-import 'public_catalog/widgets/catalog_premium_cta_whatsapp.dart';
 import 'public_catalog/widgets/catalog_config_error_state.dart';
 import 'public_catalog/widgets/catalog_config_loading_state.dart';
 import 'public_catalog/widgets/catalog_empty_products_state.dart';
 import 'public_catalog/widgets/catalog_error_loja_state.dart';
-import 'package:master_palm/screens/public_catalog/widgets/catalog_footer.dart';
+import 'public_catalog/widgets/catalog_footer.dart';
 import 'public_catalog/widgets/catalog_loading_state.dart';
 import 'public_catalog/widgets/catalog_search_filters_bar.dart';
 import 'public_catalog/widgets/catalog_products_grid_sliver.dart';
 import 'public_catalog/widgets/catalog_recent_section_sliver.dart';
-import 'public_catalog/widgets/catalog_premium_section_sliver.dart';
 import 'public_catalog/widgets/catalog_skeleton_grid.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
-import '../catalogo_ia/widgets/catalog_chat_widget.dart';
 import '../core/logger.dart';
 
 // ===================================================================
@@ -76,12 +70,6 @@ class PublicCatalogScreen extends StatefulWidget {
   /// ✅ Página inicial ao abrir (ex: ?page=dicas no link do catálogo)
   final String? initialPage;
 
-  /// ✅ ID do carrinho para recuperação (ex: ?cart=ID no link)
-  final String? initialCartId;
-
-  /// ✅ ID ou slug do produto para abrir direto (ex: link campanha ?produto=ID)
-  final String? initialProdutoId;
-
   const PublicCatalogScreen({
     super.key,
     required this.lojaId,
@@ -89,8 +77,6 @@ class PublicCatalogScreen extends StatefulWidget {
     this.vendedorRef,
     this.indicacaoClienteRef,
     this.initialPage,
-    this.initialCartId,
-    this.initialProdutoId,
   });
 
   @override
@@ -142,9 +128,8 @@ List<Map<String, dynamic>> _processDocsToProducts(
             somaEstoqueTam += qtd;
           }
         });
-        if (estoquePorTamanho.isNotEmpty && somaEstoqueTam > 0) {
+        if (estoquePorTamanho.isNotEmpty && somaEstoqueTam > 0)
           quantidadeTotal = somaEstoqueTam;
-        }
       }
 
       Map<String, int>? estoquePorCor;
@@ -259,13 +244,11 @@ List<Map<String, dynamic>> _processDocsToProducts(
         final now = DateTime.now();
         bool promocaoAtiva = true;
         final dataInicio = m['dataInicioPromo'];
-        if (dataInicio is Timestamp && now.isBefore(dataInicio.toDate())) {
+        if (dataInicio is Timestamp && now.isBefore(dataInicio.toDate()))
           promocaoAtiva = false;
-        }
         final dataFim = m['dataFimPromo'];
-        if (dataFim is Timestamp && now.isAfter(dataFim.toDate())) {
+        if (dataFim is Timestamp && now.isAfter(dataFim.toDate()))
           promocaoAtiva = false;
-        }
         if (promocaoAtiva) {
           final percentualPromo = (m['percentualPromo'] is num)
               ? (m['percentualPromo'] as num).toDouble()
@@ -530,10 +513,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _mostrarEstoqueNoCatalogo = false;
   bool _mostrarQuantidadeNoCatalogo = false;
   bool _openedInitialPage = false;
-  bool _initialProdutoIdApplied = false;
-  /// ID do carrinho na collection carrinhos_abandonados (para recuperar no checkout).
-  String? _cartIdForAbandonado;
-  static const String _keyCartIdAbandonado = 'catalog_abandonado_cart_id';
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   static const String _keyModoEscuro = 'catalog_dark_mode';
   static const String _keyMostrarEstoqueCatalogo = 'mostrar_estoque_catalogo';
@@ -593,8 +572,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _loadingLojaId = false;
           _resolvedLojaId = null;
         });
-      }
-      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -760,12 +737,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (cliente != null && lojaSessao == lid && lid != null) {
       final cid = cliente['clienteId']?.toString();
       final email = cliente['email']?.toString().trim() ?? '';
-      if (mounted) {
-        setState(() {
-          _clienteId = cid;
-          _clienteEmail = email;
-        });
-      }
+      if (mounted) setState(() {
+        _clienteId = cid;
+        _clienteEmail = email;
+      });
       await _loadFavoritos();
       await _loadCarrinho();
     } else if (mounted) {
@@ -790,8 +765,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                  'Não foi possível carregar o carrinho. Verifique sua conexão e tente novamente.'),
+              content: Text('Não foi possível carregar o carrinho. Verifique sua conexão e tente novamente.'),
               duration: Duration(seconds: 4),
             ),
           );
@@ -805,21 +779,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       _ultimoPrePedidoData = null;
       setState(() {});
     }
-  }
-
-  /// Carrega carrinho a partir do link de recuperação (?cart=ID).
-  Future<void> _loadCarrinhoRecuperacao(String lojaId, String cartId) async {
-    try {
-      final items = await CarrinhoAbandonadoService.getCarrinhoPorId(lojaId, cartId);
-      if (items == null || items.isEmpty || !mounted) return;
-      setState(() {
-        _cart.clear();
-        _cart.addAll(items);
-        _cartIdForAbandonado = cartId;
-        _ultimoPrePedidoId = null;
-        _ultimoPrePedidoData = null;
-      });
-    } catch (_) {}
   }
 
   Future<void> _saveCarrinho() async {
@@ -839,22 +798,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _freteGratisRoleta = false;
   }
 
-  /// Limpa carrinho após checkout bem-sucedido e marca recuperado em carrinhos_abandonados.
-  void _limparCarrinhoAposCheckout() {
-    final lid = _resolvedLojaId;
-    final cartId = _cartIdForAbandonado;
-    if (lid != null && cartId != null) {
-      CarrinhoAbandonadoService.recuperarCarrinho(lid, cartId);
-    }
-    setState(() {
-      _cart.clear();
-      _cartIdForAbandonado = null;
-      _ultimoPrePedidoId = null;
-      _ultimoPrePedidoData = null;
-      _resetRoletaState();
-    });
-  }
-
   Future<void> _loadFavoritos() async {
     final lid = _resolvedLojaId;
     final cid = _clienteId;
@@ -868,8 +811,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                  'Não foi possível carregar favoritos. Verifique sua conexão e tente novamente.'),
+              content: Text('Não foi possível carregar favoritos. Verifique sua conexão e tente novamente.'),
               duration: Duration(seconds: 4),
             ),
           );
@@ -964,8 +906,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   Future<void> _resolveLojaId() async {
     try {
       final widgetId = widget.lojaId.trim();
-      logD('━━━ [CATALOGO-STORE] _resolveLojaId INÍCIO ━━━');
-      logD('[CATALOGO-CONTEXT] widget.lojaId=$widgetId preview=${widget.preview}');
 
       // Link muito curto (ex: /loja/r) geralmente é incompleto ou truncado
       if (widgetId.length < 3) {
@@ -1032,15 +972,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadRecentIds();
         _loadClienteAndFavoritos();
-        if (widget.initialCartId != null && _resolvedLojaId != null) {
-          _loadCarrinhoRecuperacao(_resolvedLojaId!, widget.initialCartId!);
-        }
         if (!widget.preview &&
             _resolvedLojaId != null &&
             _resolvedLojaId!.isNotEmpty) {
           CatalogVisitasService.incrementarVisita(_resolvedLojaId!);
         }
-        logD('[CATALOGO-STORE] lojaId FINAL (público): $_resolvedLojaId origem=resolveForPublicCatalog');
+        logD('✅ [CATÁLOGO] lojaId FINAL (público): $_resolvedLojaId');
       } else {
         // ════════════════════════════════════════════════════════════
         // CONTEXTO ADMIN/PREVIEW: Usa loja do usuário logado
@@ -1075,15 +1012,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadRecentIds();
         _loadClienteAndFavoritos();
-        if (widget.initialCartId != null && _resolvedLojaId != null) {
-          _loadCarrinhoRecuperacao(_resolvedLojaId!, widget.initialCartId!);
-        }
         if (!widget.preview &&
             _resolvedLojaId != null &&
             _resolvedLojaId!.isNotEmpty) {
           CatalogVisitasService.incrementarVisita(_resolvedLojaId!);
         }
-        logD('[CATALOGO-STORE] lojaId FINAL (admin/preview): $_resolvedLojaId origem=resolveForAdminDashboard');
+        logD('✅ [CATÁLOGO] lojaId FINAL (admin): $_resolvedLojaId');
       }
 
       logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1104,7 +1038,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
   }
 
-  /// Usar apenas após a guarda do build (_resolvedLojaId não null e não vazio).
   String get lojaId {
     if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
       throw StateError('lojaId ainda não foi resolvido');
@@ -1113,7 +1046,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   }
 
   void _snack(String msg) {
-    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg)),
     );
@@ -1133,11 +1065,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Row(
+              Row(
                 children: [
                   Icon(Icons.card_giftcard, color: _successColor, size: 28),
-                  SizedBox(width: 12),
-                  Expanded(
+                  const SizedBox(width: 12),
+                  const Expanded(
                     child: Text(
                       'Indicar amigo',
                       style:
@@ -1222,32 +1154,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       _ultimoPrePedidoData = null;
     });
     _saveCarrinho();
-    _persistirCarrinhoAbandonado();
-  }
-
-  /// Persiste carrinho em carrinhos_abandonados (fire-and-forget).
-  Future<void> _persistirCarrinhoAbandonado() async {
-    final lid = _resolvedLojaId;
-    if (lid == null || lid.isEmpty || _cart.isEmpty) return;
-    try {
-      String? cartId = _cartIdForAbandonado;
-      if (cartId == null || cartId.isEmpty) {
-        final prefs = await SharedPreferences.getInstance();
-        cartId = prefs.getString('${_keyCartIdAbandonado}_$lid');
-        if (cartId == null || cartId.isEmpty) {
-          cartId = const Uuid().v4();
-          await prefs.setString('${_keyCartIdAbandonado}_$lid', cartId);
-        }
-        if (mounted) setState(() => _cartIdForAbandonado = cartId);
-      }
-      await CarrinhoAbandonadoService.registrarCarrinho(
-        lojaId: lid,
-        cartId: cartId,
-        produtos: List<Map<String, dynamic>>.from(_cart),
-        clienteNome: _clienteEmail ?? '',
-        clienteTelefone: '',
-      );
-    } catch (_) {}
   }
 
   // Flag para evitar spam de log de permission-denied
@@ -1262,7 +1168,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final configRef = baseRef.collection(cfgCol).doc('config');
     final paymentsRef = baseRef.collection(cfgCol).doc('payments');
 
-    logD('[CATALOGO-CONFIG] lojas/$lojaId/${widget.preview ? "draft_config" : "config"}/config');
+    logD('═══════════════════════════════════════════════════════════');
+    logD('🔥 [CATÁLOGO] CONFIGURAÇÃO');
+    logD('   Loja: $lojaId');
     logD(
         '   Modo: ${widget.preview ? "PREVIEW (rascunho)" : "PRODUÇÃO (publicado)"}');
     logD('   Caminho: lojas/$lojaId/$cfgCol/config');
@@ -1605,7 +1513,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       }
     } catch (_) {}
 
-    if (!mounted) return;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1680,12 +1587,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         String? premioRoletaDescricao,
                         void Function(String message)? showErrorInCart,
                       }) async {
-                        final messenger = ScaffoldMessenger.of(Navigator.of(ctx).context);
                         void showErr(String msg) {
                           if (showErrorInCart != null) {
                             showErrorInCart(msg);
                           } else {
-                            messenger.showSnackBar(SnackBar(content: Text(msg)));
+                            ScaffoldMessenger.of(Navigator.of(ctx).context)
+                                .showSnackBar(SnackBar(content: Text(msg)));
                           }
                         }
 
@@ -1720,7 +1627,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           txid: vendaId ?? '***',
                         );
                         if (ctx.mounted) {
-                          _limparCarrinhoAposCheckout();
+                          setState(() {
+                            _cart.clear();
+                            _resetRoletaState();
+                          });
                           _saveCarrinho();
                           showPixQrDialog(
                             context: ctx,
@@ -1730,6 +1640,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           );
                           if (showErrorInCart == null) {
                             if (!ctx.mounted) return;
+                            // ignore: use_build_context_synchronously
+                            final messenger =
+                                ScaffoldMessenger.of(Navigator.of(ctx).context);
                             messenger.showSnackBar(
                               const SnackBar(
                                   content: Text(
@@ -1906,7 +1819,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         await _openWhatsappSimple(
                             whatsappVendedor, msg + cupomMsg);
                         if (mounted) {
-                          _limparCarrinhoAposCheckout();
+                          setState(() {
+                            _cart.clear();
+                            _resetRoletaState();
+                            _ultimoPrePedidoId = null;
+                            _ultimoPrePedidoData = null;
+                          });
                         }
                         _saveCarrinho();
                         await onSuccess?.call(prePedidoVal['id']?.toString());
@@ -1932,7 +1850,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                 await _openWhatsappSimple(whatsappVendedor, msg);
                 if (mounted) {
-                  _limparCarrinhoAposCheckout();
+                  setState(() {
+                    _cart.clear();
+                    _resetRoletaState();
+                    _ultimoPrePedidoId = null;
+                    _ultimoPrePedidoData = null;
+                  });
                 }
                 _saveCarrinho();
                 await onSuccess?.call(prePedidoVal['id']?.toString());
@@ -2253,7 +2176,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   final uri = Uri.tryParse(initPoint);
                   if (uri != null) {
                     if (mounted) {
-                      _limparCarrinhoAposCheckout();
+                      setState(() {
+                        _cart.clear();
+                        _resetRoletaState();
+                        _ultimoPrePedidoId = null;
+                        _ultimoPrePedidoData = null;
+                      });
                     }
                     _saveCarrinho();
                     final ok = await _launchPaymentUrl(uri);
@@ -2277,7 +2205,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   final uri = Uri.tryParse(ticketUrl);
                   if (uri != null) {
                     if (mounted) {
-                      _limparCarrinhoAposCheckout();
+                      setState(() {
+                        _cart.clear();
+                        _resetRoletaState();
+                        _ultimoPrePedidoId = null;
+                        _ultimoPrePedidoData = null;
+                      });
                     }
                     _saveCarrinho();
                     final ok = await _launchPaymentUrl(uri);
@@ -2299,7 +2232,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 // Se tiver QR Code, mostrar dialog PIX
                 if (qrCode != null && qrCode.isNotEmpty) {
                   if (mounted) {
-                    _limparCarrinhoAposCheckout();
+                    setState(() {
+                      _cart.clear();
+                      _resetRoletaState();
+                      _ultimoPrePedidoId = null;
+                      _ultimoPrePedidoData = null;
+                    });
                   }
                   _saveCarrinho();
                   if (!mounted) return;
@@ -2597,8 +2535,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               : colorFromTheme('card', const Color(0xFF020617));
           final textColor = uiColorsMap.isNotEmpty
               ? colorFromUiColors('textPrimary',
-                  colorFromTheme('texto', Colors.white.withValues(alpha:0.95)))
-              : colorFromTheme('texto', Colors.white.withValues(alpha:0.95));
+                  colorFromTheme('texto', Colors.white.withOpacity(0.95)))
+              : colorFromTheme('texto', Colors.white.withOpacity(0.95));
           final btnTextColor = uiColorsMap.isNotEmpty
               ? colorFromUiColors('buttonPrimaryText',
                   colorFromTheme('botaoTexto', Colors.white))
@@ -2686,8 +2624,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   colorFromCheckoutTheme('total', const Color(0xFF22C55E)))
               : colorFromCheckoutTheme('total', const Color(0xFF22C55E));
           final checkoutFieldBorder = uiColorsMap.isNotEmpty
-              ? colorFromUiColors('fieldBorder', Colors.white.withValues(alpha:0.25))
-              : Colors.white.withValues(alpha:0.25);
+              ? colorFromUiColors('fieldBorder', Colors.white.withOpacity(0.25))
+              : Colors.white.withOpacity(0.25);
 
           // ===== Cores de nome e preço do produto =====
           final productNameColor = cardTextPrimary;
@@ -3108,12 +3046,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 }
                 final categoriasMenu = categoriasSet.toList()..sort();
 
-                // Layout premium (feature flag)
-                final usePremiumLayout =
-                    safeBool(cfg['catalog_premium_layout'], false);
-                final slogan =
-                    (cfg['slogan'] ?? cfg['frase'] ?? '').toString().trim();
-
                 // =================== MENU & PÁGINAS ===================
                 // Lê configurações do menu (quais itens mostrar/ocultar)
                 final menuRaw = cfg['menu'];
@@ -3361,7 +3293,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               Icons.subdirectory_arrow_right,
                                               size: 18,
                                               color: primaryColor
-                                                  .withValues(alpha:0.7)),
+                                                  .withOpacity(0.7)),
                                           title: Text(
                                             sub,
                                             style: TextStyle(
@@ -3423,10 +3355,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       subtitle: const Text('Ver meu perfil'),
                                       onTap: () async {
                                         Navigator.pop(context);
-                                        // ✅ Usar SEMPRE loja do catálogo atual (nunca ClienteAuthService.getLojaId
-                                        // que pode ser de outra loja em sessão anterior)
-                                        final lojaIdPerfil =
-                                            _resolvedLojaId ?? widget.lojaId;
+                                        final lojaIdSessao =
+                                            await ClienteAuthService
+                                                .getLojaId();
+                                        final lojaIdPerfil = lojaIdSessao ??
+                                            _resolvedLojaId ??
+                                            widget.lojaId;
                                         if (!context.mounted) return;
                                         Navigator.push(
                                           context,
@@ -3443,7 +3377,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                     ),
                                     if (indicacaoAtivo && clienteId.isNotEmpty)
                                       ListTile(
-                                        leading: const Icon(Icons.card_giftcard,
+                                        leading: Icon(Icons.card_giftcard,
                                             color: _successColor),
                                         title: const Text('Indicar amigo'),
                                         subtitle: const Text(
@@ -3873,20 +3807,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           ],
                         ),
 
-                        if (usePremiumLayout && slogan.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              slogan,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: headerTextColor.withValues(alpha:0.9),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
                         const SizedBox(height: 10),
 
                         // ======= BARRA DE PESQUISA + CATEGORIAS (mobile; desktop = sidebar) =======
@@ -4132,9 +4052,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               asDateTime(a['dataCriacao']);
                                           final dtB =
                                               asDateTime(b['dataCriacao']);
-                                          if (dtA == null && dtB == null) {
+                                          if (dtA == null && dtB == null)
                                             return 0;
-                                          }
                                           if (dtA == null) return 1;
                                           if (dtB == null) return -1;
                                           return dtB.compareTo(dtA);
@@ -4167,39 +4086,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           .take(_produtosPorPagina)
                                           .toList();
 
-                                      // Link campanha: direcionar para o produto (?produto=ID)
-                                      if (widget.initialProdutoId != null &&
-                                          widget.initialProdutoId!.trim().isNotEmpty &&
-                                          !_initialProdutoIdApplied &&
-                                          listaOrdenada.isNotEmpty) {
-                                        final pid = widget.initialProdutoId!.trim();
-                                        int index = -1;
-                                        for (var i = 0; i < listaOrdenada.length; i++) {
-                                          final p = listaOrdenada[i];
-                                          final pId = (p['id'] ?? '').toString().trim();
-                                          final pSlug = (p['slug'] ?? '').toString().trim();
-                                          if (pId == pid || pSlug == pid) {
-                                            index = i;
-                                            break;
-                                          }
-                                        }
-                                        if (index >= 0) {
-                                          final pageForProduct = (index / _produtosPorPagina).floor().clamp(0, totalPaginas - 1);
-                                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                                            if (!mounted) return;
-                                            _currentPageNotifier.value = pageForProduct;
-                                            _initialProdutoIdApplied = true;
-                                            setState(() {});
-                                          });
-                                        } else {
-                                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                                            if (!mounted) return;
-                                            _initialProdutoIdApplied = true;
-                                            setState(() {});
-                                          });
-                                        }
-                                      }
-
                                       final scrollBody = CustomScrollView(
                                         controller: _catalogScrollController,
                                         cacheExtent: 800,
@@ -4214,37 +4100,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   CatalogBannerCarousel(
                                                     banners: banners,
                                                     height: bannerH,
-                                                    premium: usePremiumLayout,
                                                   ),
                                                 const SizedBox(height: 16),
 
                                                 // ✨ BANNER DE CAMPANHAS
-                                                if (usePremiumLayout)
-                                                  Container(
-                                                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                                                    decoration: BoxDecoration(
-                                                      borderRadius: BorderRadius.circular(14),
-                                                      border: Border.all(
-                                                        color: primaryColor.withValues(alpha:0.35),
-                                                        width: 1,
-                                                      ),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: Colors.black.withValues(alpha:0.06),
-                                                          blurRadius: 12,
-                                                          offset: const Offset(0, 4),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    child: ClipRRect(
-                                                      borderRadius: BorderRadius.circular(14),
-                                                      child: CampanhaBannerWidget(
-                                                          lojaId: lojaId),
-                                                    ),
-                                                  )
-                                                else
-                                                  CampanhaBannerWidget(
-                                                      lojaId: lojaId),
+                                                CampanhaBannerWidget(
+                                                    lojaId: lojaId),
                                               ],
                                             ),
                                           ),
@@ -4257,32 +4118,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           else if (listaOrdenada.isEmpty)
                                             const CatalogEmptyProductsState()
                                           else ...[
-                                            // Categorias em destaque (layout premium)
-                                            if (usePremiumLayout &&
-                                                categoriasMenu.isNotEmpty)
-                                              SliverToBoxAdapter(
-                                                child: CatalogPremiumCategoriesSection(
-                                                  categorias: categoriasMenu,
-                                                  selectedCategory: _selectedCategory,
-                                                  textColor: textColor,
-                                                  primaryColor: primaryColor,
-                                                  cardColor: cardColor,
-                                                  onCategoryTap: (cat) {
-                                                    setState(() {
-                                                      _selectedCategory = cat;
-                                                      _selectedSubcategory = null;
-                                                      _currentPageNotifier.value = 0;
-                                                    });
-                                                  },
-                                                  onClearCategory: () {
-                                                    setState(() {
-                                                      _selectedCategory = null;
-                                                      _selectedSubcategory = null;
-                                                      _currentPageNotifier.value = 0;
-                                                    });
-                                                  },
-                                                ),
-                                              ),
                                             // Ordenação (filtros) - linha separada da paginação para evitar sobreposição
                                             SliverToBoxAdapter(
                                               child: CatalogSortFiltersSection(
@@ -4321,168 +4156,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 },
                                               ),
                                             ),
-                                            // ✨ FASE 2: Novidades (dataCriacao) e Em promoção – layout premium
-                                            if (usePremiumLayout)
-                                              buildCatalogPremiumSectionSliver(
-                                                title: 'Novidades',
-                                                products: () {
-                                                  final comData = produtos
-                                                      .where((p) =>
-                                                          p['dataCriacao'] !=
-                                                              null)
-                                                      .toList();
-                                                  comData.sort((a, b) {
-                                                    final da = a['dataCriacao']
-                                                        as DateTime?;
-                                                    final db = b['dataCriacao']
-                                                        as DateTime?;
-                                                    if (da == null ||
-                                                        db == null) {
-                                                      return 0;
-                                                    }
-                                                    return db
-                                                        .compareTo(da);
-                                                  });
-                                                  return comData.take(8).toList();
-                                                }(),
-                                                todosProdutos: produtos,
-                                                lojaId: lojaId,
-                                                onAdd: _addToCart,
-                                                onProductViewed:
-                                                    _onProductViewed,
-                                                onToggleFavorito:
-                                                    _toggleFavorito,
-                                                onAbrirLoginParaFavorito:
-                                                    _abrirLoginParaFavorito,
-                                                onAbrirCarrinho: () =>
-                                                    _openCartSheet(
-                                                  fretes: fretes,
-                                                  cupons: cupons,
-                                                  primary: primaryColor,
-                                                  buttonText: btnTextColor,
-                                                  textColor: textColor,
-                                                  cardColor: cardColor,
-                                                  checkoutCardColor:
-                                                      checkoutCardColor,
-                                                  checkoutFieldBg:
-                                                      checkoutFieldBg,
-                                                  checkoutFieldBorder:
-                                                      checkoutFieldBorder,
-                                                  checkoutFieldTextColor:
-                                                      checkoutFieldTextColor,
-                                                  checkoutLabelColor:
-                                                      checkoutLabelColor,
-                                                  checkoutTotalColor:
-                                                      checkoutTotalColor,
-                                                  productNameColor:
-                                                      productNameColor,
-                                                  productPriceColor:
-                                                      productPriceColor,
-                                                  whatsappVendedor:
-                                                      whatsappVendedor,
-                                                  lojaNome: lojaNome,
-                                                  paymentAsset: paymentAssets,
-                                                  paymentCodes: paymentCodes,
-                                                  instagramUrl: instagramUrl,
-                                                  facebookUrl: facebookUrl,
-                                                  empresaRazao: empresaRazao,
-                                                  empresaCnpj: empresaCnpj,
-                                                  checkoutGateway:
-                                                      checkoutGateway,
-                                                  checkoutButtonLabel:
-                                                      checkoutButtonLabel,
-                                                  pixKey: pixKey,
-                                                  freightToken: freightToken,
-                                                ),
-                                                clienteId: _clienteId,
-                                                favoritosIds: _favoritosIds,
-                                                mostrarEstoqueNoCatalogo:
-                                                    _mostrarEstoqueNoCatalogo,
-                                                mostrarQuantidadeNoCatalogo:
-                                                    mostrarQuantidadeNoCatalogo,
-                                                cardBorderRadius:
-                                                    cardBorderRadius,
-                                                cardShowShadow: cardShowShadow,
-                                                prazoEntregaTexto:
-                                                    prazoEntregaTexto,
-                                                jurosParcelamento:
-                                                    jurosParcelamento,
-                                                maxParcelas: maxParcelasClamped,
-                                                textColor: textColor,
-                                              ),
-                                            if (usePremiumLayout)
-                                              buildCatalogPremiumSectionSliver(
-                                                title: 'Em promoção',
-                                                products: produtos
-                                                    .where((p) =>
-                                                        p['emPromocao'] == true)
-                                                    .take(8)
-                                                    .toList(),
-                                                todosProdutos: produtos,
-                                                lojaId: lojaId,
-                                                onAdd: _addToCart,
-                                                onProductViewed:
-                                                    _onProductViewed,
-                                                onToggleFavorito:
-                                                    _toggleFavorito,
-                                                onAbrirLoginParaFavorito:
-                                                    _abrirLoginParaFavorito,
-                                                onAbrirCarrinho: () =>
-                                                    _openCartSheet(
-                                                  fretes: fretes,
-                                                  cupons: cupons,
-                                                  primary: primaryColor,
-                                                  buttonText: btnTextColor,
-                                                  textColor: textColor,
-                                                  cardColor: cardColor,
-                                                  checkoutCardColor:
-                                                      checkoutCardColor,
-                                                  checkoutFieldBg:
-                                                      checkoutFieldBg,
-                                                  checkoutFieldBorder:
-                                                      checkoutFieldBorder,
-                                                  checkoutFieldTextColor:
-                                                      checkoutFieldTextColor,
-                                                  checkoutLabelColor:
-                                                      checkoutLabelColor,
-                                                  checkoutTotalColor:
-                                                      checkoutTotalColor,
-                                                  productNameColor:
-                                                      productNameColor,
-                                                  productPriceColor:
-                                                      productPriceColor,
-                                                  whatsappVendedor:
-                                                      whatsappVendedor,
-                                                  lojaNome: lojaNome,
-                                                  paymentAsset: paymentAssets,
-                                                  paymentCodes: paymentCodes,
-                                                  instagramUrl: instagramUrl,
-                                                  facebookUrl: facebookUrl,
-                                                  empresaRazao: empresaRazao,
-                                                  empresaCnpj: empresaCnpj,
-                                                  checkoutGateway:
-                                                      checkoutGateway,
-                                                  checkoutButtonLabel:
-                                                      checkoutButtonLabel,
-                                                  pixKey: pixKey,
-                                                  freightToken: freightToken,
-                                                ),
-                                                clienteId: _clienteId,
-                                                favoritosIds: _favoritosIds,
-                                                mostrarEstoqueNoCatalogo:
-                                                    _mostrarEstoqueNoCatalogo,
-                                                mostrarQuantidadeNoCatalogo:
-                                                    mostrarQuantidadeNoCatalogo,
-                                                cardBorderRadius:
-                                                    cardBorderRadius,
-                                                cardShowShadow: cardShowShadow,
-                                                prazoEntregaTexto:
-                                                    prazoEntregaTexto,
-                                                jurosParcelamento:
-                                                    jurosParcelamento,
-                                                maxParcelas: maxParcelasClamped,
-                                                textColor: textColor,
-                                              ),
                                             if (_recentIds.isNotEmpty)
                                               buildCatalogRecentSectionSliver(
                                                 recentProducts: () {
@@ -4630,13 +4303,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               maxParcelas: maxParcelasClamped,
                                               imageCacheWidth: 360,
                                               imageCacheHeight: 480,
-                                              catalogShareUrl:
-                                                  CatalogShareService
-                                                      .buildUrlWithParams(
+                                              catalogShareUrl: CatalogShareService.buildUrlWithParams(
                                                 '$_baseUrlCatalogo/$lojaId',
                                                 ref: widget.vendedorRef,
-                                                indicacao:
-                                                    widget.indicacaoClienteRef,
+                                                indicacao: widget.indicacaoClienteRef,
                                               ),
                                             ),
                                             // Paginação: Anterior | Página X de Y | Próxima (sempre visível)
@@ -4727,11 +4397,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               ),
                                               decoration: BoxDecoration(
                                                 color:
-                                                    cardColor.withValues(alpha:0.4),
+                                                    cardColor.withOpacity(0.4),
                                                 border: Border(
                                                   right: BorderSide(
                                                     color: textColor
-                                                        .withValues(alpha:0.12),
+                                                        .withOpacity(0.12),
                                                     width: 1,
                                                   ),
                                                 ),
@@ -4753,7 +4423,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             FontWeight.w600,
                                                         letterSpacing: 0.8,
                                                         color: textColor
-                                                            .withValues(alpha:0.7),
+                                                            .withOpacity(0.7),
                                                       ),
                                                     ),
                                                   ),
@@ -4830,13 +4500,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           ),
                         ],
                       ),
-                      if (usePremiumLayout)
-                        CatalogPremiumCtaWhatsapp(
-                          whatsappUrl: whatsappUrl.trim().isNotEmpty
-                              ? whatsappUrl
-                              : atendimentoWhatsapp,
-                          primaryColor: primaryColor,
-                        ),
                       ValueListenableBuilder<double>(
                         valueListenable: _scrollOffsetNotifier,
                         builder: (context, offset, _) {
@@ -4848,7 +4511,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             bottom: _cart.isEmpty ? 24 : 88,
                             child: Material(
                               elevation: 4,
-                              color: primaryColor.withValues(alpha:0.9),
+                              color: primaryColor.withOpacity(0.9),
                               borderRadius: BorderRadius.circular(28),
                               child: InkWell(
                                 onTap: () => _catalogScrollController.animateTo(
@@ -4866,11 +4529,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             ),
                           );
                         },
-                      ),
-                      CatalogChatWidget(
-                        produtos: produtos,
-                        habilitado: safeBool(cfg['catalogo_ia_habilitado'], false),
-                        whatsappUrl: whatsappUrl.trim().isNotEmpty ? whatsappUrl : atendimentoWhatsapp,
                       ),
                     ],
                   ),
