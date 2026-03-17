@@ -36,3 +36,7 @@ node_modules/
 # OAuth client secrets e credenciais sensíveis (nunca commitar)
 **/client_secret*.json
 functions/credentials/*.json
+google-services.json
+GoogleService-Info.plist
+firebase-adminsdk*.json
+serviceAccountKey.json
