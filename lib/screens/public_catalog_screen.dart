@@ -70,6 +70,12 @@ class PublicCatalogScreen extends StatefulWidget {
   /// ✅ Página inicial ao abrir (ex: ?page=dicas no link do catálogo)
   final String? initialPage;
 
+  /// ✅ ID do carrinho para recuperação (ex: ?cart=ID no link)
+  final String? initialCartId;
+
+  /// ✅ ID ou slug do produto para abrir direto (ex: link campanha ?produto=ID)
+  final String? initialProdutoId;
+
   const PublicCatalogScreen({
     super.key,
     required this.lojaId,
@@ -77,6 +83,8 @@ class PublicCatalogScreen extends StatefulWidget {
     this.vendedorRef,
     this.indicacaoClienteRef,
     this.initialPage,
+    this.initialCartId,
+    this.initialProdutoId,
   });
 
   @override
