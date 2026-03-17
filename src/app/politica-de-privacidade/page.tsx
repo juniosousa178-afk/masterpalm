@@ -77,6 +77,21 @@ export default function PoliticaPrivacidadePage() {
             </p>
           </section>
 
+          <section id="exclusao-conta">
+            <h2 className="text-xl font-semibold text-white mb-4">Solicitação de exclusão de conta e dados</h2>
+            <p>
+              O <strong>MasterPalm</strong> oferece a seus usuários o direito de solicitar a exclusão da conta e dos dados pessoais.
+            </p>
+            <p className="font-medium text-gray-300 mt-4">Como solicitar:</p>
+            <ol className="list-decimal list-inside space-y-2 mt-2">
+              <li>Envie um e-mail para <EmailDisplay /> com o assunto &quot;Exclusão de conta MasterPalm&quot;.</li>
+              <li>Informe o endereço de e-mail vinculado à sua conta.</li>
+              <li>A equipe confirmará o recebimento em até 48 horas e processará a exclusão em até 30 dias.</li>
+            </ol>
+            <p className="mt-4"><strong className="text-gray-300">Dados excluídos:</strong> dados de cadastro (nome, e-mail, telefone), dados da loja e configurações associadas à sua conta.</p>
+            <p><strong className="text-gray-300">Dados mantidos:</strong> informações necessárias para obrigações legais, fiscais ou contábeis (ex.: registros de vendas exigidos por lei) podem ser mantidas pelo período legal aplicável.</p>
+          </section>
+
           <section>
             <h2 className="text-xl font-semibold text-white mb-4">7. Direitos do titular (LGPD)</h2>
             <p>Em conformidade com a LGPD, você tem direito a:</p>

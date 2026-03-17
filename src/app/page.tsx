@@ -1,5 +1,6 @@
 import { Hero } from "@/components/Hero";
 import { FeaturesGrid } from "@/components/FeaturesGrid";
+import { AppScreenshotsSection } from "@/components/AppScreenshotsSection";
 import { ScreenshotsMock } from "@/components/ScreenshotsMock";
 import { CTASection } from "@/components/CTASection";
 import { FAQ } from "@/components/FAQ";
@@ -13,6 +14,7 @@ export default function HomePage() {
     <>
       <Hero />
       <FeaturesGrid />
+      <AppScreenshotsSection />
       <ScreenshotsMock />
       <DepoimentosSection />
       <CTASection />

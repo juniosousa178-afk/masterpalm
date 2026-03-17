@@ -7,7 +7,7 @@ const firebaseConfig = {
   messagingSenderId: "950139833317",
   projectId: "masterpalm-58c46",
   authDomain: "masterpalm-58c46.firebaseapp.com",
-  storageBucket: "masterpalm-58c46.appspot.com",
+  storageBucket: "masterpalm-58c46.firebasestorage.app",
   measurementId: "G-0F0ZRT1S6G",
 };
 

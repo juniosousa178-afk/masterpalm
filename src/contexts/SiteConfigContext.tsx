@@ -8,6 +8,7 @@ import { normalizeInstagramUrl } from "@/lib/urlUtils";
 
 export type SiteConfigDynamic = {
   APK_DOWNLOAD_URL: string;
+  PLAY_STORE_URL: string;
   APP_WEB_URL: string;
   SUPPORT_WHATSAPP_URL: string;
   INSTAGRAM_URL: string;
@@ -19,6 +20,7 @@ export type SiteConfigDynamic = {
 
 const defaultDynamic: SiteConfigDynamic = {
   APK_DOWNLOAD_URL: defaultConfig.APK_DOWNLOAD_URL,
+  PLAY_STORE_URL: (defaultConfig as { PLAY_STORE_URL?: string }).PLAY_STORE_URL ?? "https://play.google.com/store/apps/details?id=com.masterpalm.app",
   APP_WEB_URL: defaultConfig.APP_WEB_URL,
   SUPPORT_WHATSAPP_URL: defaultConfig.SUPPORT_WHATSAPP_URL,
   INSTAGRAM_URL: defaultConfig.INSTAGRAM_URL,
@@ -51,6 +53,7 @@ export function SiteConfigProvider({ children }: { children: React.ReactNode }) 
             const rawInstagram = (d.instagramUrl ?? defaultDynamic.INSTAGRAM_URL).toString().trim();
             setConfig({
             APK_DOWNLOAD_URL: (d.apkDownloadUrl ?? defaultDynamic.APK_DOWNLOAD_URL).toString().trim() || defaultDynamic.APK_DOWNLOAD_URL,
+            PLAY_STORE_URL: (d.playStoreUrl ?? defaultDynamic.PLAY_STORE_URL).toString().trim() || defaultDynamic.PLAY_STORE_URL,
             APP_WEB_URL: (d.appWebUrl ?? defaultDynamic.APP_WEB_URL).toString().trim() || defaultDynamic.APP_WEB_URL,
             SUPPORT_WHATSAPP_URL: (d.supportWhatsappUrl ?? defaultDynamic.SUPPORT_WHATSAPP_URL).toString().trim() || defaultDynamic.SUPPORT_WHATSAPP_URL,
             INSTAGRAM_URL: rawInstagram ? normalizeInstagramUrl(rawInstagram) : defaultDynamic.INSTAGRAM_URL,

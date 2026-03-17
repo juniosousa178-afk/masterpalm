@@ -17,7 +17,7 @@
    - `APK_DOWNLOAD_URL` — link real do APK (quando tiver)
    - `SUPPORT_WHATSAPP_URL` — ex: `https://wa.me/5511999999999`
    - `INSTAGRAM_URL` — ex: `https://instagram.com/masterpalm`
-   - `SUPPORT_EMAIL` — ex: `suporte@masterpalm.com.br`
+   - `SUPPORT_EMAIL` — ex: `suporte@mastepalm.com.br`
 
 ### Passo 3: Deploy via Vercel (com GitHub)
 1. Crie um repositório no GitHub:
@@ -48,7 +48,7 @@
 
 ### Passo 4: Usar seu próprio domínio (opcional)
 1. Na Vercel, abra o projeto → **Settings** → **Domains**
-2. Adicione seu domínio (ex: `www.masterpalm.com.br`)
+2. Adicione seu domínio (ex: `www.mastepalm.com.br`)
 3. Siga as instruções para configurar DNS no seu provedor (Registro.br, GoDaddy, etc.)
 
 ---
@@ -71,8 +71,9 @@ vercel login
 ### Passo 3: Publicar
 ```bash
 cd c:\Users\Pichau\apk_nathy\temp_naty\site
-vercel
+npx vercel
 ```
+*(Se `vercel` não for reconhecido, use sempre `npx vercel` — não é preciso instalar globalmente.)*
 
 Responda às perguntas:
 - **Set up and deploy?** → `Y`
@@ -85,7 +86,7 @@ O site será publicado e você receberá um link como `masterpalm-site-xxx.verce
 
 ### Passo 4: Publicar em produção
 ```bash
-vercel --prod
+npx vercel --prod
 ```
 Isso publica na URL principal do projeto.
 
