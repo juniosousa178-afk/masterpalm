@@ -1,6 +1,6 @@
 // lib/screens/cadastro_catalogo_screen.dart
 
-import 'dart:io';
+import 'dart:io' as io if (dart.library.html) 'package:master_palm/utils/io_stub.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
@@ -37,7 +37,7 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
   final categoriaController = TextEditingController();
   final subcategoriaController = TextEditingController();
 
-  final List<File> midiasSelecionadas = [];
+  final List<io.File> midiasSelecionadas = [];
 
   late String lojaId;
 
@@ -82,7 +82,9 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
 
       if (!kIsWeb) {
         midiasSelecionadas.addAll(
-          p.imagens.map((path) => File(path)).where((f) => f.existsSync()),
+          p.imagens
+              .map((path) => io.File(path))
+              .where((f) => f.existsSync()),
         );
       }
     }
@@ -101,7 +103,7 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
       midiasSelecionadas.addAll(
         resultado.files
             .where((f) => f.path != null)
-            .map((f) => File(f.path!))
+            .map((f) => io.File(f.path!))
             .where((f) => f.existsSync()),
       );
     });

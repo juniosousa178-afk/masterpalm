@@ -1,7 +1,7 @@
 // lib/screens/produto_form_screen.dart
 
 import 'dart:async';
-import 'dart:io' show File;
+import 'dart:io' as io if (dart.library.html) 'package:master_palm/utils/io_stub.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1785,7 +1785,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                         fit: BoxFit.cover,
                                       )
                                     : Image.file(
-                                        File(src),
+                                        io.File(src),
                                         width: 100,
                                         height: 100,
                                         fit: BoxFit.cover,

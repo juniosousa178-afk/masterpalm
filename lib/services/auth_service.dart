@@ -1,5 +1,6 @@
 // lib/services/auth_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
@@ -135,9 +136,21 @@ class AuthService extends ChangeNotifier {
         await user.updateDisplayName(nome);
         // Força renovação do token para que Firestore tenha email no token (evita permission-denied)
         await user.getIdToken(true);
-        // Verificação por e-mail (gratuita, Firebase)
-        await user.sendEmailVerification();
-        debugPrint('[AUTH] E-mail de verificação enviado para $mail');
+        // Verificação por e-mail (universal: gera link via backend + SMTP).
+        // Fallback: usa o método padrão do Firebase Auth se a callable falhar.
+        try {
+          final functions =
+              FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+          final callable = functions.httpsCallable('enviarEmailVerificacao');
+          await callable.call(<String, dynamic>{'email': mail});
+          debugPrint('[AUTH] E-mail de verificação enviado via callable para $mail');
+        } catch (e, st) {
+          debugPrint(
+            '[AUTH] Falha ao enviar via callable (type=${e.runtimeType}). Fallback para sendEmailVerification. error=$e\n$st',
+          );
+          await user.sendEmailVerification();
+          debugPrint('[AUTH] E-mail de verificação enviado via Firebase para $mail');
+        }
       }
 
       // Grava dados do admin no Firestore

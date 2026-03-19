@@ -5,8 +5,8 @@ import 'package:hive/hive.dart';
 
 import '../../themes/app_colors.dart';
 import '../../services/cliente_auth_service.dart';
-import 'cadastro_screen_cliente.dart';
-import 'redefinir_senha_cliente_screen.dart';
+import 'package:master_palm/screens/auth/cadastro_screen_cliente.dart';
+import 'package:master_palm/screens/auth/redefinir_senha_cliente_screen.dart';
 
 /// Tela de Login EXCLUSIVA para clientes do cat�logo
 /// N�O afeta o login do aplicativo da loja

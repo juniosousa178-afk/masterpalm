@@ -1,24 +1,24 @@
-// lib/screens/onboarding_app_screen.dart
-// Onboarding do app (primeiro uso) ñ 3 telas, n„o mistura lojas.
+Ôªø// lib/screens/onboarding_app_screen.dart
+// Onboarding
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const String _keyOnboardingDone = 'onboarding_app_done';
 
-/// Retorna true se o onboarding j· foi exibido.
+/// Retorna true se o onboarding j√° foi exibido.
 Future<bool> isOnboardingAppDone() async {
   final prefs = await SharedPreferences.getInstance();
   return prefs.getBool(_keyOnboardingDone) ?? false;
 }
 
-/// Marca onboarding como concluÌdo (chamar ao finalizar ou "J· conheÁo").
+/// Marca onboarding como conclu√≠do (chamar ao finalizar ou "J√° conhe√ßo").
 Future<void> setOnboardingAppDone() async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setBool(_keyOnboardingDone, true);
 }
 
-/// Tela de onboarding (3 p·ginas). Ao concluir, marca flag e chama [onDone].
+/// Tela de onboarding (3 p√°ginas). Ao concluir, marca flag e chama [onDone].
 class OnboardingAppScreen extends StatefulWidget {
   final VoidCallback onDone;
 
@@ -36,19 +36,19 @@ class _OnboardingAppScreenState extends State<OnboardingAppScreen> {
     {
       'icon': Icons.inventory_2,
       'title': 'Cadastre seus produtos',
-      'subtitle': 'Adicione fotos, preÁos e estoque. Tudo fica salvo na sua loja e sincroniza quando tiver internet.',
+      'subtitle': 'Adicione fotos, pre√ßos e estoque. Tudo fica salvo na sua loja e sincroniza quando tiver internet.',
       'color': Color(0xFF6366F1),
     },
     {
       'icon': Icons.point_of_sale,
       'title': 'Registre suas vendas',
-      'subtitle': 'FaÁa vendas r·pido pelo celular. HistÛrico de clientes e vendas sempre separado por loja.',
+      'subtitle': 'Fa√ßa vendas r√°pido pelo celular. Hist√≥rico de clientes e vendas sempre separado por loja.',
       'color': Color(0xFF22C55E),
     },
     {
       'icon': Icons.analytics_outlined,
       'title': 'Acompanhe resultados',
-      'subtitle': 'Veja vendas do dia, produtos em falta e metas. RelatÛrios e gr·ficos para decidir melhor.',
+      'subtitle': 'Veja vendas do dia, produtos em falta e metas. Relat√≥rios e gr√°ficos para decidir melhor.',
       'color': Color(0xFFF59E0B),
     },
   ];
@@ -81,7 +81,7 @@ class _OnboardingAppScreenState extends State<OnboardingAppScreen> {
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: _finish,
-                child: Text('J· conheÁo', style: TextStyle(color: theme.colorScheme.primary)),
+                child: Text('J√° conhe√ßo', style: TextStyle(color: theme.colorScheme.primary)),
               ),
             ),
             Expanded(
@@ -165,7 +165,7 @@ class _OnboardingAppScreenState extends State<OnboardingAppScreen> {
                       _finish();
                     }
                   },
-                  child: Text(_currentPage < _pages.length - 1 ? 'PrÛximo' : 'ComeÁar'),
+                  child: Text(_currentPage < _pages.length - 1 ? 'Pr√≥ximo' : 'Come√ßar'),
                 ),
               ),
             ),

@@ -1,12 +1,10 @@
-// lib/screens/cliente_login_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../themes/app_colors.dart';
 import '../services/cliente_web_service.dart';
 
-/// Tela de login/cadastro para clientes do catálogo web
+/// Tela de login/cadastro para clientes do catï¿½logo web
 class ClienteLoginScreen extends StatefulWidget {
   final String lojaId;
   final String lojaNome;
@@ -152,7 +150,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Faça login para acompanhar seus pedidos e usar cupons de desconto',
+                        'Faï¿½a login para acompanhar seus pedidos e usar cupons de desconto',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurface.withValues(alpha:0.6),
                           height: 1.4,
@@ -161,7 +159,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                       ),
                       const SizedBox(height: 32),
 
-                      // Card do formulário
+                      // Card do formulï¿½rio
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
@@ -181,7 +179,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                             _buildTextField(
                               controller: _nomeController,
                               label: 'Nome completo *',
-                              hint: 'João da Silva',
+                              hint: 'Joï¿½o da Silva',
                               icon: Icons.person_outline_rounded,
                               textCapitalization: TextCapitalization.words,
                               autofillHints: const [AutofillHints.name],
@@ -202,7 +200,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                               autofillHints: const [AutofillHints.email],
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) return 'Digite seu email';
-                                if (!RegExp(_emailRegex).hasMatch(value.trim())) return 'Email inválido';
+                                if (!RegExp(_emailRegex).hasMatch(value.trim())) return 'Email invï¿½lido';
                                 return null;
                               },
                             ),
@@ -233,7 +231,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) return null;
                                 final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-                                if (digits.length != 11) return 'CPF deve ter 11 dígitos';
+                                if (digits.length != 11) return 'CPF deve ter 11 dï¿½gitos';
                                 return null;
                               },
                             ),
@@ -294,7 +292,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Usamos seu email apenas para identificação. Sem spam!',
+                                'Usamos seu email apenas para identificaï¿½ï¿½o. Sem spam!',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurface.withValues(alpha:0.8),
                                   height: 1.3,

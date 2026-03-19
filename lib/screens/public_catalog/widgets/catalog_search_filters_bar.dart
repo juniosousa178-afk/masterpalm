@@ -1,5 +1,5 @@
 // lib/screens/public_catalog/widgets/catalog_search_filters_bar.dart
-// Barra de busca, filtros de categoria/subcategoria, ordena��o e chips (UI extra�da de public_catalog_screen.dart)
+// Barra de busca, filtros de categoria/subcategoria, ordenação e chips (UI extraída de public_catalog_screen.dart)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -425,7 +425,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
   }
 }
 
-/// Linha de chips de ordena��o e filtros (nome, novidade, pre�o, em estoque, faixa de pre�o) + pagina��o.
+/// Linha de chips de ordenação e filtros (nome, novidade, preço, em estoque, faixa de preço) + paginação.
 class CatalogSortFiltersSection extends StatelessWidget {
   final String ordenacaoProdutos;
   final bool apenasEmEstoque;

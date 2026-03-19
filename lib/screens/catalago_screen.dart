@@ -13,7 +13,7 @@ import '../models/produto_catalogo.dart';
 import '../models/catalogo_config.dart';
 import '../models/cliente_web.dart';
 import '../services/cliente_web_service.dart';
-import 'cliente_login_screen.dart';
+import 'package:master_palm/screens/cliente_login_screen.dart';
 import 'cliente_perfil_screen.dart';
 
 class CartItem {

@@ -10,6 +10,18 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
+import { AsyncLocalStorage } from "node:async_hooks";
+import {
+  validateWhatsAppPostBody,
+  validateWhatsAppChangeValue,
+  validateTextMessage,
+} from "./src/whatsapp_agent/webhookSecurityValidator.js";
+import { resolveWhatsAppStoreByPhoneNumberId } from "./src/whatsapp_agent/channelResolverIndex.js";
+import { buildMinimalFactualContext } from "./src/whatsapp_agent/minimalFactualContextBuilder.js";
+import { isAlreadyProcessed } from "./src/whatsapp_agent/messageDeduper.js";
+import { logWhatsAppWebhook } from "./src/whatsapp_agent/requestSafeLogger.js";
+import { loadState, saveState } from "./src/whatsapp_agent/conversationStateStore.js";
+import { resolveImplicitReference } from "./src/whatsapp_agent/implicitReferenceResolver.js";
 
 /** Lazy: evita getFirestore() antes de initializeApp() no deploy/analyze */
 function getDb() {
@@ -38,6 +50,20 @@ async function fetchWithTimeout(url, opts = {}, timeoutMs = 15000) {
 }
 
 const VERIFY_TOKEN = "masterpalm_verify_2026";
+
+/** Intents de produto que usam query para searchProducts (FASE 3: merge com estado) */
+const PRODUCT_INTENTS = new Set([
+  "PRODUCT_PRICE",
+  "PRODUCT_STOCK",
+  "PRODUCT_SIZE",
+  "PRODUCT_COLOR",
+  "PRODUCT_PHOTO",
+  "PRODUCT_DESCRIPTION",
+]);
+
+// Captura opcional (scope por request) dos produtos retornados por searchProducts
+// para permitir atualização de estado (FASE 4) sem alterar textos do rule-based.
+const productCaptureStorage = new AsyncLocalStorage();
 
 // ============================================================================
 // HELPERS - Classificação de Intents
@@ -126,7 +152,7 @@ async function searchProducts(lojaId, query) {
       return [];
     }
 
-    const productsRef = db
+    const productsRef = getDb()
       .collection("lojas")
       .doc(lojaId)
       .collection("produtos");
@@ -165,7 +191,19 @@ async function searchProducts(lojaId, query) {
 
     // Ordenar por score
     results.sort((a, b) => b.score - a.score);
-    return results.slice(0, 5); // Top 5
+    const top = results.slice(0, 5); // Top 5
+
+    // Captura opcional dos produtos retornados
+    const store = productCaptureStorage.getStore();
+    if (store && typeof store.captureFn === "function") {
+      try {
+        store.captureFn(top);
+      } catch (_) {
+        // nunca impedir o fluxo do bot
+      }
+    }
+
+    return top;
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
     return [];
@@ -413,7 +451,7 @@ async function findLojaByChannel(channel, channelId) {
     const lojasSnapshot = await getDb().collection("lojas").get();
 
     for (const lojaDoc of lojasSnapshot.docs) {
-      const canalDoc = await db
+      const canalDoc = await getDb()
         .collection("lojas")
         .doc(lojaDoc.id)
         .collection("canais")
@@ -453,9 +491,10 @@ async function findLojaByChannel(channel, channelId) {
 export const webhookWhatsApp = onRequest(
   { timeoutSeconds: 30, memory: "256MiB" },
   async (req, res) => {
-  console.log("📥 WhatsApp Webhook:", req.method, req.query, req.body);
+  // Log seguro: sem req.body (Lote 1)
+  logWhatsAppWebhook(req.method);
 
-  // GET: Verificação do webhook
+  // GET: Verificação do webhook (inalterado)
   if (req.method === "GET") {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
@@ -470,53 +509,154 @@ export const webhookWhatsApp = onRequest(
     }
   }
 
-  // POST: Processar mensagem
+  // POST: Processar mensagem (endurecido Lote 1)
   if (req.method === "POST") {
     const body = req.body;
 
     try {
-      // Processar entries
+      const postValidation = validateWhatsAppPostBody(body);
+      if (!postValidation.valid) {
+        logWhatsAppWebhook("POST", { event: "rejected", reason: postValidation.reason });
+        return res.sendStatus(200);
+      }
+      if (postValidation.reason === "no entries") {
+        return res.sendStatus(200);
+      }
+
       if (body.object === "whatsapp_business_account") {
         for (const entry of body.entry || []) {
           for (const change of entry.changes || []) {
             if (change.field === "messages") {
               const value = change.value;
-              const phoneNumberId = value.metadata?.phone_number_id;
+              const valueValidation = validateWhatsAppChangeValue(value);
+              if (!valueValidation.valid) continue;
+              const phoneNumberId = valueValidation.phoneNumberId;
 
-              // Buscar loja
-              const lojaInfo = await findLojaByChannel("whatsapp", phoneNumberId);
+              // Resolução sem varredura, com fallback defensivo
+              let lojaInfo = await resolveWhatsAppStoreByPhoneNumberId(getDb, phoneNumberId);
               if (!lojaInfo) {
-                console.warn("⚠️ Loja não encontrada para phone_number_id:", phoneNumberId);
+                lojaInfo = await findLojaByChannel("whatsapp", phoneNumberId);
+              }
+              if (!lojaInfo) {
+                logWhatsAppWebhook("POST", { phoneNumberId, event: "loja_not_found" });
                 continue;
               }
 
               const { lojaId, config } = lojaInfo;
 
-              // Processar mensagens
               for (const message of value.messages || []) {
-                if (message.type === "text") {
-                  const from = message.from;
-                  const messageText = message.text.body;
+                const msgValidation = validateTextMessage(message);
+                if (!msgValidation.valid) continue;
 
-                  console.log(`📨 Mensagem de ${from}: ${messageText}`);
+                const { from, messageText, messageId } = msgValidation;
+                let effectiveMessageText = messageText;
 
-                  // Classificar intent
-                  const intent = classifyIntent(messageText);
-                  console.log("🎯 Intent:", intent);
-
-                  // Compor resposta
-                  const responseText = await composeResponse(lojaId, intent, messageText);
-
-                  // Enviar resposta
-                  await sendWhatsAppMessage(
-                    phoneNumberId,
-                    config.access_token,
-                    from,
-                    responseText
-                  );
-
-                  console.log("✅ Resposta enviada para", from);
+                if (messageId && isAlreadyProcessed(messageId)) {
+                  logWhatsAppWebhook("POST", { phoneNumberId, from, messageId, event: "skipped_duplicate" });
+                  continue;
                 }
+
+                let state = null;
+                try {
+                  state = await loadState(getDb, lojaId, from);
+                } catch (_) {
+                  state = null;
+                }
+
+                // Referencia implícita (FASE 4), sem IA e sem obrigar estado.
+                let implicitResolved = false;
+                let resolvedImplicitProduct = null;
+                try {
+                  const implicit = resolveImplicitReference(effectiveMessageText, state);
+                  if (implicit?.resolved && implicit?.rewrittenQuery) {
+                    implicitResolved = true;
+                    resolvedImplicitProduct = implicit.product || null;
+                    effectiveMessageText = implicit.rewrittenQuery;
+                  }
+                } catch (_) {
+                  // falha silenciosa: segue fluxo normal (Lote 1 + FASE 3)
+                }
+
+                let intent = classifyIntent(effectiveMessageText);
+
+                // Se era referência implícita, reaproveita o último intent de produto (sem mudar textos do bot).
+                if (
+                  implicitResolved &&
+                  state?.lastIntent &&
+                  PRODUCT_INTENTS.has(state.lastIntent)
+                ) {
+                  intent = {
+                    ...intent,
+                    intent: state.lastIntent,
+                    query: effectiveMessageText,
+                  };
+                }
+
+                // Merge de query (FASE 3) apenas quando NÃO for referência implícita
+                if (
+                  !implicitResolved &&
+                  state?.lastQuery &&
+                  PRODUCT_INTENTS.has(intent?.intent) &&
+                  intent?.query
+                ) {
+                  const mergedQuery = (state.lastQuery + " " + (intent.query || "").trim()).trim().slice(0, 120);
+                  if (mergedQuery.length > 0) {
+                    intent = { ...intent, query: mergedQuery };
+                  }
+                }
+
+                buildMinimalFactualContext(lojaId, intent, effectiveMessageText);
+
+                let capturedProducts = null;
+                const responseText = await productCaptureStorage.run(
+                  {
+                    captureFn: (products) => {
+                      capturedProducts = products;
+                    },
+                  },
+                  async () => composeResponse(lojaId, intent, effectiveMessageText)
+                );
+
+                await sendWhatsAppMessage(
+                  phoneNumberId,
+                  config.access_token,
+                  from,
+                  responseText
+                );
+
+                if (from) {
+                  const lastProducts =
+                    Array.isArray(capturedProducts) && capturedProducts.length > 0
+                      ? capturedProducts
+                          .slice(0, 5)
+                          .map((p) => ({ id: p?.id, nome: p?.nome, preco: p?.preco }))
+                      : undefined;
+                  const lastSelectedProduct =
+                    implicitResolved && resolvedImplicitProduct
+                      ? {
+                          id: resolvedImplicitProduct?.id,
+                          nome: resolvedImplicitProduct?.nome,
+                          preco: resolvedImplicitProduct?.preco,
+                        }
+                      : undefined;
+
+                  await saveState(getDb, lojaId, from, {
+                    lastIntent: intent?.intent || "UNKNOWN",
+                    lastQuery: PRODUCT_INTENTS.has(intent?.intent) && intent?.query
+                      ? String(intent.query).trim().slice(0, 120)
+                      : null,
+                    lastProducts,
+                    lastSelectedProduct,
+                  });
+                }
+
+                logWhatsAppWebhook("POST", {
+                  phoneNumberId,
+                  from,
+                  messageId,
+                  intentType: intent?.intent,
+                  event: "processed",
+                });
               }
             }
           }

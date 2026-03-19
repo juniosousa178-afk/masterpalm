@@ -20,7 +20,7 @@ import '../services/catalogo_venda_service.dart';
 import '../services/pre_pedido_service.dart';
 import '../services/mercadopago_service.dart';
 import 'auth/login_screen_cliente.dart';
-import 'auth/cadastro_screen_cliente.dart';
+import 'package:master_palm/screens/auth/cadastro_screen_cliente.dart';
 import 'auth/perfil_cliente_screen_novo.dart';
 import '../services/cliente_auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +33,7 @@ import '../utils/instagram_launcher.dart';
 import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart';
 import 'public_catalog/catalog_helpers.dart';
+import 'public_catalog/catalog_estoque_helper.dart';
 import 'public_catalog/catalog_config_service.dart';
 import '../utils/safe_parse.dart';
 import 'public_catalog/catalog_theme_extension.dart';
@@ -111,73 +112,22 @@ List<Map<String, dynamic>> _processDocsToProducts(
           m['catalog_ativo'] == false);
       if (!exibirCatalogo) continue;
 
-      final estoqueRaw = m['estoque'] ??
-          m['estoqueAtual'] ??
-          m['qtd_estoque'] ??
-          m['quantidade'] ??
-          m['estoque_disponivel'];
-      int estoqueBase = 0;
-      if (estoqueRaw is num) {
-        estoqueBase = estoqueRaw.toInt();
-      } else if (estoqueRaw is String) {
-        estoqueBase = int.tryParse(estoqueRaw) ?? 0;
-      }
+      final tipoEarly =
+          (m['tipoProduto'] ?? m['tipo'] ?? 'simples').toString();
+      final itensComboEarly = m['itensCombo'];
+      final isComboEarly = tipoEarly == 'combo' ||
+          (itensComboEarly is List && itensComboEarly.isNotEmpty);
 
-      int quantidadeTotal = estoqueBase;
-      Map<String, int>? estoquePorTamanho;
-      final estoqueTamRaw = m['estoquePorTamanho'];
-      if (estoqueTamRaw is Map) {
-        estoquePorTamanho = {};
-        int somaEstoqueTam = 0;
-        estoqueTamRaw.forEach((key, value) {
-          final qtd = (value is int) ? value : int.tryParse('$value') ?? 0;
-          if (qtd > 0) {
-            estoquePorTamanho![key.toString()] = qtd;
-            somaEstoqueTam += qtd;
-          }
-        });
-        if (estoquePorTamanho.isNotEmpty && somaEstoqueTam > 0)
-          quantidadeTotal = somaEstoqueTam;
-      }
+      final stock = CatalogEstoqueHelper.processStockFromFirestoreMap(
+        m,
+        isCombo: isComboEarly,
+      );
+      if (!stock.incluirNoCatalogo) continue;
 
-      Map<String, int>? estoquePorCor;
-      Map<String, dynamic>? variacoes;
-      final variacoesRaw = m['variacoes'];
-      if (variacoesRaw is Map && variacoesRaw.isNotEmpty) {
-        variacoes = asMapDeep(variacoesRaw);
-        int somaVariacoes = 0;
-        variacoesRaw.forEach((tamanho, cores) {
-          if (cores is Map) {
-            cores.forEach((cor, qtd) {
-              final q = (qtd is int) ? qtd : int.tryParse('$qtd') ?? 0;
-              if (q > 0) somaVariacoes += q;
-            });
-          }
-        });
-        if (somaVariacoes > 0) quantidadeTotal = somaVariacoes;
-      }
-
-      if (variacoes == null) {
-        final estoqueCorRaw = m['estoquePorCor'];
-        if (estoqueCorRaw is Map) {
-          estoquePorCor = {};
-          int somaEstoqueCor = 0;
-          estoqueCorRaw.forEach((key, value) {
-            final qtd = (value is int) ? value : int.tryParse('$value') ?? 0;
-            if (qtd > 0) {
-              estoquePorCor![key.toString()] = qtd;
-              somaEstoqueCor += qtd;
-            }
-          });
-          if (estoquePorCor.isNotEmpty &&
-              somaEstoqueCor > 0 &&
-              estoquePorTamanho == null) {
-            quantidadeTotal = somaEstoqueCor;
-          }
-        }
-      }
-
-      if (quantidadeTotal <= 0) continue;
+      final quantidadeTotal = stock.quantidadeTotal;
+      final estoquePorTamanho = stock.estoquePorTamanho;
+      final estoquePorCor = stock.estoquePorCor;
+      final variacoes = stock.variacoes;
 
       final nome = (m['nome'] ?? m['name'] ?? '').toString();
       final desc = (m['descricao_curta'] ?? m['descricao'] ?? '').toString();
@@ -1150,14 +1100,58 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _saveCarrinho();
   }
 
-  void _addToCart(Map<String, dynamic> item) {
+  void _addToCart(
+    Map<String, dynamic> item,
+    List<Map<String, dynamic>> catalogProducts,
+  ) {
     if (kDebugMode) {
       logD(
           '📦 [_addToCart] Item: ${item['nome']} tam:${item['tamanho']} cor:${item['cor']}');
     }
 
+    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
+    final tam = (item['tamanho'] ?? '').toString().trim();
+    final cor = (item['cor'] ?? '').toString().trim();
+    final addQty = CatalogEstoqueHelper.parseCartItemQuantidade(item['quantidade']);
+    final comboRaw = item['itensComboComSelecao'];
+    final isComboLine =
+        comboRaw is List && comboRaw.isNotEmpty;
+
+    if (!isComboLine && id.isNotEmpty) {
+      final p = CatalogEstoqueHelper.findProductInList(catalogProducts, id);
+      if (p != null) {
+        final avail =
+            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor);
+        final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
+        var already = 0;
+        for (final e in _cart) {
+          if (CatalogEstoqueHelper.cartLineIdentity(e) == lineKey) {
+            already +=
+                CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
+          }
+        }
+        if (already + addQty > avail) {
+          _snack(avail <= 0
+              ? 'Produto esgotado nesta variação.'
+              : 'Estoque insuficiente. Disponível: $avail un.');
+          return;
+        }
+      }
+    }
+
     setState(() {
-      _cart.add(item);
+      final key = CatalogEstoqueHelper.cartLineIdentity(item);
+      final idx = _cart.indexWhere(
+          (e) => CatalogEstoqueHelper.cartLineIdentity(e) == key);
+      if (idx >= 0) {
+        final cur =
+            CatalogEstoqueHelper.parseCartItemQuantidade(_cart[idx]['quantidade']);
+        _cart[idx]['quantidade'] = cur + addQty;
+      } else {
+        final copy = Map<String, dynamic>.from(item);
+        copy['quantidade'] = addQty;
+        _cart.add(copy);
+      }
       _ultimoPrePedidoId = null;
       _ultimoPrePedidoData = null;
     });
@@ -3035,13 +3029,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         .trim();
 
                 // 🔢 qtde de itens no carrinho (para badge do ícone)
-                final cartCount =
-                    _cart.fold<int>(0, (s, e) => s + safeInt(e['quantidade']));
+                final cartCount = _cart.fold<int>(
+                    0,
+                    (s, e) =>
+                        s +
+                        CatalogEstoqueHelper.parseCartItemQuantidade(
+                            e['quantidade']));
 
-                // Mostrar quantidade no catálogo (config Firestore tem prioridade; fallback = prefs)
+                // Mostrar quantidade / estoque no catálogo (Firestore > prefs)
                 final mostrarQuantidadeNoCatalogo =
                     cfg['mostrarQuantidadeNoCatalogo'] as bool? ??
                         _mostrarQuantidadeNoCatalogo;
+                final mostrarEstoqueNoCatalogo =
+                    cfg['mostrarEstoqueNoCatalogo'] as bool? ??
+                        _mostrarEstoqueNoCatalogo;
 
                 // categorias únicas para o menu lateral
                 // Compatibilidade: lê tanto 'categoria' quanto 'categoriaId'
@@ -3992,9 +3993,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                         final matchPrecoMax =
                                             _precoMax == null ||
                                                 preco <= _precoMax!;
-                                        final qtd = safeInt(p['quantidade']);
                                         final matchEstoque =
-                                            !_apenasEmEstoque || qtd > 0;
+                                            !_apenasEmEstoque ||
+                                                CatalogEstoqueHelper
+                                                    .produtoPassaFiltroApenasEmEstoque(
+                                                        p);
                                         return matchText &&
                                             matchCat &&
                                             matchSubcat &&
@@ -4180,7 +4183,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 }(),
                                                 todosProdutos: produtos,
                                                 lojaId: lojaId,
-                                                onAdd: _addToCart,
+                                                onAdd: (it) =>
+                                                    _addToCart(it, produtos),
                                                 onProductViewed:
                                                     _onProductViewed,
                                                 onToggleFavorito:
@@ -4230,7 +4234,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 clienteId: _clienteId,
                                                 favoritosIds: _favoritosIds,
                                                 mostrarEstoqueNoCatalogo:
-                                                    _mostrarEstoqueNoCatalogo,
+                                                    mostrarEstoqueNoCatalogo,
                                                 mostrarQuantidadeNoCatalogo:
                                                     mostrarQuantidadeNoCatalogo,
                                                 cardBorderRadius:
@@ -4250,7 +4254,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               isDesktop: isDesktopBody,
                                               desktopCols: gridDesktopCols,
                                               mobileCols: gridMobileCols,
-                                              onAdd: _addToCart,
+                                              onAdd: (it) =>
+                                                  _addToCart(it, produtos),
                                               onProductViewed: _onProductViewed,
                                               onToggleFavorito: _toggleFavorito,
                                               onAbrirLoginParaFavorito:
@@ -4298,7 +4303,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               clienteId: _clienteId,
                                               favoritosIds: _favoritosIds,
                                               mostrarEstoqueNoCatalogo:
-                                                  _mostrarEstoqueNoCatalogo,
+                                                  mostrarEstoqueNoCatalogo,
                                               mostrarQuantidadeNoCatalogo:
                                                   mostrarQuantidadeNoCatalogo,
                                               cardBorderRadius:

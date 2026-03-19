@@ -14,6 +14,7 @@ import 'package:hive/hive.dart';
 
 import '../core/loja_id_adapter.dart';
 import '../core/logger.dart';
+import 'public_store_link_helper.dart';
 
 class StoreResolverService {
   StoreResolverService._();
@@ -61,9 +62,19 @@ class StoreResolverService {
         currentUid = FirebaseAuth.instance.currentUser?.uid;
       } catch (_) {}
       if (currentUid == null) {
-        // ✅ NÃO usar Hive quando auth é null: store_id pode ser de outra conta (troca no mesmo navegador).
-        // Retornar null para forçar login e evitar contaminação.
-        logW('[STORE_RESOLVE] source=none lojaId=null (auth null após espera, não usar Hive)');
+        // WEB: Auth pode atrasar na restauração. Como fallback seguro, usar store_id do Hive
+        // somente quando houver principal de sessão e candidate válido (sem placeholders).
+        if (kIsWeb) {
+          final safeFromHive = await _safeHiveFallbackWhenAuthNull();
+          if (safeFromHive != null && safeFromHive.isNotEmpty) {
+            logD('[STORE_RESOLVE] source=hive_auth_pending lojaId=$safeFromHive');
+            _cache = safeFromHive;
+            _cachedUid = null;
+            return safeFromHive;
+          }
+        }
+        // Se não conseguiu fallback seguro, mantém null.
+        logW('[STORE_RESOLVE] source=none lojaId=null (auth null após espera)');
         return null;
       }
       logD('[STORE_RESOLVE] Auth pronto, uid=$currentUid');
@@ -134,7 +145,15 @@ class StoreResolverService {
         final Box sessao = Hive.isBoxOpen('sessao')
             ? Hive.box('sessao')
             : await Hive.openBox('sessao');
-        final cachedUser = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+        final cachedUserEmail = (sessao.get('usuario_logado_email') ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        final cachedUserLegacy = (sessao.get('usuario_logado') ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        final cachedUser = cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
         if (currentEmail.isNotEmpty &&
             cachedUser.isNotEmpty &&
             currentEmail == cachedUser) {
@@ -396,6 +415,47 @@ class StoreResolverService {
       await config.put('last_loja_id', storeId);
     } catch (e, st) {
       logE('⚠️ [STORE-RESOLVER] Erro ao persistir (type=${e.runtimeType})', error: e, st: st);
+    }
+  }
+
+  /// Fallback seguro para WEB quando auth ainda não está pronto.
+  /// Regras:
+  /// - principal de sessão obrigatório (usuario_logado_email ou usuario_logado)
+  /// - store_id obrigatório e válido (não placeholder)
+  static Future<String?> _safeHiveFallbackWhenAuthNull() async {
+    try {
+      final sessao = await _openBox('sessao');
+      final cfg = await _openBox('config');
+
+      final principalEmail = (sessao.get('usuario_logado_email') ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final principalLegacy = (sessao.get('usuario_logado') ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final principal = principalEmail.isNotEmpty ? principalEmail : principalLegacy;
+      if (principal.isEmpty) {
+        logW('[STORE_RESOLVE] hive fallback negado: principal vazio');
+        return null;
+      }
+
+      final fromSessao = normalizeFromBox(sessao);
+      final fromConfig = normalizeFromBox(cfg);
+      final candidate = (fromSessao != null && fromSessao.trim().isNotEmpty)
+          ? fromSessao.trim()
+          : (fromConfig ?? '').trim();
+      if (candidate.isEmpty || !isValidForPublicLink(candidate) || _isPlaceholder(candidate)) {
+        logW('[STORE_RESOLVE] hive fallback negado: candidate inválido ($candidate)');
+        return null;
+      }
+
+      logD('[STORE_RESOLVE] hive fallback aceito (auth pendente): principal=$principal candidate=$candidate');
+      return candidate;
+    } catch (e, st) {
+      logE('[STORE_RESOLVE] hive fallback erro (type=${e.runtimeType})', error: e, st: st);
+      return null;
     }
   }
 

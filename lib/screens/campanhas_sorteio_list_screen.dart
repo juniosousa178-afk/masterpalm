@@ -91,15 +91,15 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
     );
   }
 
-  /// Exclui uma campanha após confirmação
+  /// Exclui uma campanha ap?s confirma??o
   Future<void> _excluirCampanha(String campanhaId, String nomeCampanha) async {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Excluir campanha?'),
         content: Text(
-          'A campanha "$nomeCampanha" será excluída permanentemente.\n\n'
-          'Participantes e histórico de sorteios serão removidos. Esta ação não pode ser desfeita.',
+          'A campanha "$nomeCampanha" ser? exclu?da permanentemente.\n\n'
+          'Participantes e hist?rico de sorteios ser?o removidos. Esta a??o n?o pode ser desfeita.',
         ),
         actions: [
           TextButton(
@@ -123,7 +123,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
           .collection('campanhas_sorteio')
           .doc(campanhaId);
 
-      // Excluir subcoleções primeiro (participantes, historico_sorteios)
+      // Excluir subcole??es primeiro (participantes, historico_sorteios)
       final participantesSnap = await campanhaRef.collection('participantes').get();
       for (final doc in participantesSnap.docs) {
         await doc.reference.delete();
@@ -134,7 +134,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
       }
 
       await campanhaRef.delete();
-      _showModernSnackBar('Campanha excluída com sucesso!');
+      _showModernSnackBar('Campanha exclu?da com sucesso!');
       if (mounted) setState(() {});
     } catch (e) {
       _showModernSnackBar('Erro ao excluir campanha: $e', isError: true);
@@ -149,7 +149,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
         builder: (ctx) => AlertDialog(
           title: const Text('Desativar campanha?'),
           content: Text(
-            'A campanha "$nomeCampanha" será pausada. Os participantes já cadastrados permanecem. Deseja continuar?',
+            'A campanha "$nomeCampanha" ser? pausada. Os participantes j? cadastrados permanecem. Deseja continuar?',
           ),
           actions: [
             TextButton(
@@ -202,7 +202,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 children: [
                   Icon(Icons.wifi_off, size: 18, color: _warningColor),
                   SizedBox(width: 8),
-                  Text('Sem conexão', style: TextStyle(color: _warningColor, fontWeight: FontWeight.w600)),
+                  Text('Sem conex?o', style: TextStyle(color: _warningColor, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -441,7 +441,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                         controller: _buscaController,
                         onChanged: (v) => setState(() => _busca = v),
                         decoration: InputDecoration(
-                          hintText: 'Buscar por nome ou descrição...',
+                          hintText: 'Buscar por nome ou descri??o...',
                           prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
                           suffixIcon: _busca.isNotEmpty
                               ? IconButton(
@@ -564,13 +564,13 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
   }
 
   String _formatarData(dynamic ts) {
-    if (ts == null) return '—';
+    if (ts == null) return '?';
     if (ts is DateTime) return DateFormat('dd/MM/yyyy').format(ts);
     if (ts is Timestamp) return DateFormat('dd/MM/yyyy').format(ts.toDate());
-    return '—';
+    return '?';
   }
 
-  /// Diálogo com instruções para gravar a tela (Opção 1: abrir gravação do sistema).
+  /// Di?logo com instru??es para gravar a tela (Op??o 1: abrir grava??o do sistema).
   void _mostrarDialogGravarSorteio(
     BuildContext context, {
     required String lojaId,
@@ -596,14 +596,14 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               SizedBox(height: 12),
-              Text('1. Toque em "Abrir configurações" para acessar as configurações do aparelho.'),
+              Text('1. Toque em "Abrir configura??es" para acessar as configura??es do aparelho.'),
               SizedBox(height: 6),
-              Text('2. Em muitos celulares, a gravação de tela fica na barra de notificações (arraste de cima para baixo) — procure por "Gravar tela" ou "Screen record".'),
+              Text('2. Em muitos celulares, a grava??o de tela fica na barra de notifica??es (arraste de cima para baixo) ? procure por "Gravar tela" ou "Screen record".'),
               SizedBox(height: 6),
-              Text('3. Toque em "Abrir Roleta" abaixo, inicie a gravação do sistema e depois gire a roleta.'),
+              Text('3. Toque em "Abrir Roleta" abaixo, inicie a grava??o do sistema e depois gire a roleta.'),
               SizedBox(height: 12),
               Text(
-                'Assim o vídeo mostra o sorteio real, sem parecer combinado.',
+                'Assim o v?deo mostra o sorteio real, sem parecer combinado.',
                 style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54),
               ),
             ],
@@ -623,10 +623,10 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                   );
                   await intent.launch();
                 } catch (_) {}
-                // Mantém o diálogo aberto para o usuário voltar e tocar em "Abrir Roleta"
+                // Mant?m o di?logo aberto para o usu?rio voltar e tocar em "Abrir Roleta"
               },
               icon: const Icon(Icons.settings, size: 20),
-              label: const Text('Abrir configurações'),
+              label: const Text('Abrir configura??es'),
             ),
           FilledButton.icon(
             onPressed: () {
@@ -885,7 +885,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 Expanded(
                   child: _buildActionButton(
                     icon: Icons.history,
-                    label: 'Histórico',
+                    label: 'Hist?rico',
                     color: _warningColor,
                     onTap: () {
                       Navigator.push(
@@ -913,7 +913,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
               ],
             ),
           ),
-          // Botão para gravar vídeo do sorteio (instruções + abrir configurações do sistema + Roleta)
+          // Bot?o para gravar v?deo do sorteio (instru??es + abrir configura??es do sistema + Roleta)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: Material(

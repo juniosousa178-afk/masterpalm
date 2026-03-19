@@ -1,15 +1,15 @@
 // lib/widgets/pix_qr_dialog.dart
-// Dialog para exibir QR Code PIX com valor e opção de copiar.
+// Dialog para exibir QR Code PIX com valor e op??o de copiar.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
-/// Exibe um dialog com QR Code PIX, valor e botão para copiar o código.
+/// Exibe um dialog com QR Code PIX, valor e bot?o para copiar o c?digo.
 ///
 /// [pixPayload] - String PIX Copia e Cola (BR Code) ou do Mercado Pago
-/// [valor] - Valor em reais para exibição
-/// [pedidoId] - ID do pedido para referência (opcional)
+/// [valor] - Valor em reais para exibi??o
+/// [pedidoId] - ID do pedido para refer?ncia (opcional)
 void showPixQrDialog({
   required BuildContext context,
   required String pixPayload,
@@ -32,7 +32,7 @@ void showPixQrDialog({
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Escaneie o QR Code com o app do seu banco. O valor já vem preenchido.',
+              'Escaneie o QR Code com o app do seu banco. O valor j? vem preenchido.',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
               textAlign: TextAlign.center,
             ),
@@ -91,12 +91,12 @@ void showPixQrDialog({
               width: double.infinity,
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.copy, size: 18),
-                label: const Text('Copiar código PIX'),
+                label: const Text('Copiar c?digo PIX'),
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: pixPayload));
                   ScaffoldMessenger.of(ctx).showSnackBar(
                     const SnackBar(
-                      content: Text('Código PIX copiado! Cole no app do seu banco.'),
+                      content: Text('C?digo PIX copiado! Cole no app do seu banco.'),
                       backgroundColor: Colors.green,
                     ),
                   );

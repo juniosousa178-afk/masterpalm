@@ -1,5 +1,5 @@
 // lib/screens/public_catalog/widgets/catalog_skeleton_grid.dart
-// Skeleton de grid de produtos durante loading (extra�do de public_catalog_screen.dart)
+// Skeleton de grid de produtos durante loading (extraído de public_catalog_screen.dart)
 
 import 'package:flutter/material.dart';
 

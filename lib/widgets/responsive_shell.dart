@@ -19,12 +19,12 @@ class ResponsiveShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Mobile: só retorna o body (drawer é controlado pelo Scaffold)
+    // Mobile: sï¿½ retorna o body (drawer ï¿½ controlado pelo Scaffold)
     if (!kIsWeb || isMobile(context) || sidebar == null) {
       return body;
     }
 
-    // Desktop/Tablet web: sidebar fixa + conteúdo (usa tema para modo escuro)
+    // Desktop/Tablet web: sidebar fixa + conteï¿½do (usa tema para modo escuro)
     final surfaceColor = Theme.of(context).colorScheme.surface;
     final effectiveSidebarColor = sidebarColor == Colors.white ? surfaceColor : sidebarColor;
 
@@ -39,7 +39,7 @@ class ResponsiveShell extends StatelessWidget {
             child: sidebar!,
           ),
         ),
-        // Conteúdo principal
+        // Conteï¿½do principal
         Expanded(child: body),
       ],
     );

@@ -24,6 +24,10 @@ class CatalogProductDetailsSheet extends StatelessWidget {
   final List<String> imagens;
   final int quantidade;
   final Map<String, int>? estoquePorTamanho;
+  /// Cores com quantidade (ex.: sem tamanho ou híbrido).
+  final Map<String, int>? estoquePorCor;
+  /// Mapa tamanho → cor → quantidade (ou preço aninhado).
+  final Map<String, dynamic>? variacoes;
   final String? prazoEntrega;
   final double percentualDescontoPix;
   /// Itens que compõem o kit/combo – exibidos na seção "Produtos do kit"
@@ -49,6 +53,8 @@ class CatalogProductDetailsSheet extends StatelessWidget {
     required this.imagens,
     required this.quantidade,
     this.estoquePorTamanho,
+    this.estoquePorCor,
+    this.variacoes,
     this.catalogShareUrl,
     this.prazoEntrega,
     this.percentualDescontoPix = 0.0,
@@ -65,6 +71,16 @@ class CatalogProductDetailsSheet extends StatelessWidget {
       (priceMin! - priceMax!).abs() > 0.001;
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  static int _qtdVar(dynamic v) {
+    if (v is Map && v.containsKey('qtd')) {
+      final q = v['qtd'];
+      if (q is num) return q.toInt();
+    }
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('$v') ?? 0;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -292,7 +308,115 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                         );
                       }).toList(),
                     ),
-                  ] else ...[
+                  ],
+                  if (variacoes != null &&
+                      variacoes!.isNotEmpty &&
+                      (estoquePorTamanho == null ||
+                          estoquePorTamanho!.isEmpty)) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Estoque por variação',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...variacoes!.entries.map((e) {
+                      if (e.value is! Map) return const SizedBox.shrink();
+                      final m = e.value as Map;
+                      final label = e.key.toString() == 'sem-tamanho'
+                          ? 'Cor (sem tamanho)'
+                          : 'Tamanho: ${e.key}';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: m.entries.map((ce) {
+                                final q = _qtdVar(ce.value);
+                                return Chip(
+                                  label: Text(
+                                    '${ce.key}: ${q > 0 ? '$q un.' : '0'}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: q > 0
+                                          ? Colors.green[800]
+                                          : Colors.grey,
+                                    ),
+                                  ),
+                                  backgroundColor: q > 0
+                                      ? Colors.green.withValues(alpha:0.08)
+                                      : Colors.grey.withValues(alpha:0.12),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                  if (estoquePorCor != null &&
+                      estoquePorCor!.isNotEmpty &&
+                      (estoquePorTamanho == null ||
+                          estoquePorTamanho!.isEmpty) &&
+                      (variacoes == null || variacoes!.isEmpty)) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Estoque por cor',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: estoquePorCor!.entries.map((entry) {
+                        final qtd = entry.value;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: qtd > 0
+                                ? Colors.green.withValues(alpha:0.1)
+                                : Colors.red.withValues(alpha:0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: qtd > 0
+                                  ? Colors.green[700]!
+                                  : Colors.red[700]!,
+                            ),
+                          ),
+                          child: Text(
+                            '${entry.key}: ${qtd > 0 ? '$qtd un.' : 'esgotado'}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: qtd > 0
+                                  ? Colors.green[800]
+                                  : Colors.red[700],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                  if ((estoquePorTamanho == null ||
+                          estoquePorTamanho!.isEmpty) &&
+                      (variacoes == null || variacoes!.isEmpty) &&
+                      (estoquePorCor == null || estoquePorCor!.isEmpty)) ...[
                     Row(
                       children: [
                         Icon(

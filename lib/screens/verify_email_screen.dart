@@ -1,6 +1,7 @@
 // lib/screens/verify_email_screen.dart
 // Tela de verificação de e-mail (antifraude - sem custo)
 import 'package:flutter/material.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../widgets/neon_button.dart';
@@ -78,7 +79,24 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         });
         return;
       }
-      await user.sendEmailVerification();
+      final email = user.email;
+      if (email == null || email.trim().isEmpty) {
+        throw StateError('E-mail do usuário não disponível.');
+      }
+
+      // Verificação universal: gera o link via backend + envia via SMTP.
+      // Fallback para o método padrão do Firebase caso a callable falhe.
+      try {
+        final functions =
+            FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+        final callable = functions.httpsCallable('enviarEmailVerificacao');
+        await callable.call(<String, dynamic>{'email': email});
+      } catch (e, st) {
+        debugPrint(
+          '[VERIFY_EMAIL] Falha ao reenviar via callable (type=${e.runtimeType}). Fallback para sendEmailVerification. error=$e\n$st',
+        );
+        await user.sendEmailVerification();
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

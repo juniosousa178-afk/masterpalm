@@ -5,8 +5,8 @@ import '../../themes/app_colors.dart';
 import '../../services/cliente_auth_service.dart';
 import 'login_screen_cliente.dart';
 
-/// Tela de Cadastro EXCLUSIVA para clientes do catálogo
-/// NÃO afeta o login do aplicativo da loja
+/// Tela de Cadastro EXCLUSIVA para clientes do catï¿½logo
+/// Nï¿½O afeta o login do aplicativo da loja
 class CadastroScreenCliente extends StatefulWidget {
   final String lojaId;
 
@@ -153,7 +153,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                       ),
                       const SizedBox(height: 32),
 
-                      // Card do formulário
+                      // Card do formulï¿½rio
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
@@ -228,7 +228,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) return 'Digite seu email';
-                                if (!RegExp(_emailRegex).hasMatch(value.trim())) return 'Email inválido';
+                                if (!RegExp(_emailRegex).hasMatch(value.trim())) return 'Email invï¿½lido';
                                 return null;
                               },
                             ),
@@ -265,7 +265,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                               autofillHints: const [AutofillHints.newPassword],
                               decoration: InputDecoration(
                                 labelText: 'Senha',
-                                hintText: '••••••••',
+                                hintText: 'ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½',
                                 prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
                                 filled: true,
                                 fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
@@ -294,7 +294,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                                 if (value == null || value.isEmpty) return 'Digite uma senha';
                                 if (value.length < 8) return 'Senha deve ter pelo menos 8 caracteres';
                                 if (!RegExp(r'[A-Za-z]').hasMatch(value)) return 'Senha deve conter letras';
-                                if (!RegExp(r'[0-9]').hasMatch(value)) return 'Senha deve conter números';
+                                if (!RegExp(r'[0-9]').hasMatch(value)) return 'Senha deve conter nï¿½meros';
                                 return null;
                               },
                             ),
@@ -305,7 +305,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                               autofillHints: const [AutofillHints.newPassword],
                               decoration: InputDecoration(
                                 labelText: 'Confirmar Senha',
-                                hintText: '••••••••',
+                                hintText: 'ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½',
                                 prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
                                 filled: true,
                                 fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
@@ -332,7 +332,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                               ),
                               validator: (value) {
                                 if (value == null || value.isEmpty) return 'Confirme sua senha';
-                                if (value != _senhaController.text) return 'As senhas nÃ£o conferem';
+                                if (value != _senhaController.text) return 'As senhas nï¿½o conferem';
                                 return null;
                               },
                             ),
@@ -393,7 +393,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Seus dados são protegidos e usados apenas para sua conta.',
+                                'Seus dados sï¿½o protegidos e usados apenas para sua conta.',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurface.withValues(alpha:0.8),
                                   height: 1.3,
@@ -413,7 +413,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                           );
                         },
                         child: Text(
-                          'Já tem conta? Faça login',
+                          'Jï¿½ tem conta? Faï¿½a login',
                           style: TextStyle(
                             color: theme.primaryColor,
                             fontSize: 15,

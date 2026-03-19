@@ -1,7 +1,7 @@
 // lib/screens/clientes_screen.dart
 import 'dart:async';
 
-import 'dart:io';
+import 'dart:io' as io if (dart.library.html) 'package:master_palm/utils/io_stub.dart';
 import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
@@ -447,12 +447,12 @@ class _ClientesScreenState extends State<ClientesScreen>
     if (kIsWeb) return null; // No web, avatars não são salvos localmente
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final avatarsDir = Directory(p.join(dir.path, 'avatars'));
+      final avatarsDir = io.Directory(p.join(dir.path, 'avatars'));
       if (!await avatarsDir.exists()) {
         await avatarsDir.create(recursive: true);
       }
 
-      final file = File(p.join(avatarsDir.path, '$telefoneE164.jpg'));
+      final file = io.File(p.join(avatarsDir.path, '$telefoneE164.jpg'));
       await file.writeAsBytes(bytes, flush: true);
       return file.path;
     } catch (_) {
@@ -1022,7 +1022,10 @@ class _ClientesScreenState extends State<ClientesScreen>
       if (mounted) setState(() => _importando = true);
 
       final picked = result.files.first;
-      final fileBytes = picked.bytes ?? (picked.path != null && !kIsWeb ? await File(picked.path!).readAsBytes() : null);
+      final fileBytes = picked.bytes ??
+          (picked.path != null && !kIsWeb
+              ? await io.File(picked.path!).readAsBytes()
+              : null);
       if (fileBytes == null) {
         if (mounted) setState(() => _importando = false);
         return;
@@ -2298,7 +2301,7 @@ class _ClientesScreenState extends State<ClientesScreen>
   }
 
   Widget _buildClienteCard(Cliente cliente) {
-    final hasAvatar = !kIsWeb && cliente.avatarPath != null && File(cliente.avatarPath!).existsSync();
+    final hasAvatar = !kIsWeb && cliente.avatarPath != null && io.File(cliente.avatarPath!).existsSync();
     final compras = _vendasDoCliente(cliente).length;
 
     return Container(
@@ -2327,7 +2330,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                 hasAvatar
                     ? CircleAvatar(
                         radius: 26,
-                        backgroundImage: FileImage(File(cliente.avatarPath!)),
+                        backgroundImage: FileImage(io.File(cliente.avatarPath!)),
                       )
                     : CircleAvatar(
                         radius: 26,

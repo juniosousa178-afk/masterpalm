@@ -25,6 +25,7 @@ import '../../../widgets/selecionar_cupom_modal.dart';
 import '../../../widgets/roleta_web_widget_v3.dart';
 import '../../auth/login_screen_cliente.dart';
 import 'catalog_image_placeholder.dart';
+import '../catalog_estoque_helper.dart';
 
 // ==================== CARRINHO (BottomSheet) ====================
 
@@ -211,8 +212,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         (s, e) {
           final price = (e['preco'] as num?)?.toDouble() ??
               0.0; // ✅ CORRIGIDO: 'preco' em vez de 'price'
-          final qty = (e['quantidade'] as int?) ??
-              1; // ✅ CORRIGIDO: 'quantidade' em vez de 'qty'
+          final qty =
+              CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
           return s + price * qty;
         },
       );
@@ -222,7 +223,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         0.0,
         (s, e) {
           final price = (e['preco'] as num?)?.toDouble() ?? 0.0;
-          final qty = (e['quantidade'] as int?) ?? 1;
+          final qty =
+              CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
           final pctPix =
               (e['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
           final precoEfetivo = pctPix > 0 ? price * (1 - pctPix / 100) : price;
@@ -1148,7 +1150,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
     for (final item in items) {
       final qty =
-          (item['quantidade'] as int?) ?? 1; // ✅ CORRIGIDO: 'quantidade'
+          CatalogEstoqueHelper.parseCartItemQuantidade(item['quantidade']);
       final peso = (item['peso'] as num?)?.toDouble() ?? 0.0;
       final tipoEmb = item['tipoEmbalagem'] as String? ?? 'padrao';
 
@@ -1531,7 +1533,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       double valorTotal = 0.0;
       for (final item in widget.items) {
         final qty =
-            (item['quantidade'] as int?) ?? 1; // ✅ CORRIGIDO: 'quantidade'
+            CatalogEstoqueHelper.parseCartItemQuantidade(item['quantidade']);
         final price =
             (item['preco'] as num?)?.toDouble() ?? 0.0; // ✅ CORRIGIDO: 'preco'
         valorTotal += price * qty;
@@ -1862,8 +1864,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     fixedImageUrl = imagensRaw.first.toString();
                   }
 
-                  final qty = (item['quantidade'] as int?) ??
-                      1; // ✅ CORRIGIDO: 'quantidade'
+                  final qty = CatalogEstoqueHelper.parseCartItemQuantidade(
+                      item['quantidade']);
                   final price = (item['preco'] as num?)?.toDouble() ??
                       0.0; // ✅ CORRIGIDO: 'preco'
                   final pctPix =

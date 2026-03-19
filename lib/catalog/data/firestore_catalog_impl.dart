@@ -5,6 +5,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../screens/public_catalog/catalog_estoque_helper.dart';
 import '../../core/feature_flags.dart';
 import '../../core/logger.dart';
 import '../../core/safe_cast.dart';
@@ -67,70 +68,20 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
       if (m['publicadoNoCatalogo'] == false || m['publicarNoCatalogo'] == false) continue;
       if (m['exibir_no_catalogo'] == false || m['ocultar_catalogo'] == true || m['catalog_ativo'] == false) continue;
 
-      final estoqueRaw = m['estoque'] ?? m['estoqueAtual'] ?? m['qtd_estoque'] ?? m['quantidade'] ?? m['estoque_disponivel'];
-      int estoqueBase = 0;
-      if (estoqueRaw is num) {
-        estoqueBase = estoqueRaw.toInt();
-      } else if (estoqueRaw is String) {
-        estoqueBase = int.tryParse(estoqueRaw) ?? 0;
-      }
-
-      int quantidadeTotal = estoqueBase;
-      Map<String, int>? estoquePorTamanho;
-      final estoqueTamRaw = m['estoquePorTamanho'];
-      if (estoqueTamRaw is Map) {
-        estoquePorTamanho = {};
-        int somaEstoqueTam = 0;
-        estoqueTamRaw.forEach((key, value) {
-          final qtd = (value is int) ? value : int.tryParse('$value') ?? 0;
-          if (qtd > 0) {
-            estoquePorTamanho![key.toString()] = qtd;
-            somaEstoqueTam += qtd;
-          }
-        });
-        if (estoquePorTamanho.isNotEmpty && somaEstoqueTam > 0) quantidadeTotal = somaEstoqueTam;
-      }
-
-      Map<String, int>? estoquePorCor;
-      Map<String, dynamic>? variacoes;
-      final variacoesRaw = m['variacoes'];
-      if (variacoesRaw is Map && variacoesRaw.isNotEmpty) {
-        variacoes = asMapDeep(variacoesRaw);
-        int somaVariacoes = 0;
-        variacoesRaw.forEach((tamanho, cores) {
-          if (cores is Map) {
-            cores.forEach((cor, qtd) {
-              final q = (qtd is int) ? qtd : int.tryParse('$qtd') ?? 0;
-              if (q > 0) somaVariacoes += q;
-            });
-          }
-        });
-        if (somaVariacoes > 0) quantidadeTotal = somaVariacoes;
-      }
-      if (m['estoquePorCor'] is Map) {
-        final estoqueCorRaw = asMap(m['estoquePorCor']);
-        estoquePorCor = {};
-        int somaEstoqueCor = 0;
-        estoqueCorRaw.forEach((key, value) {
-          final qtd = (value is int) ? value : int.tryParse('$value') ?? 0;
-          if (qtd > 0) {
-            estoquePorCor![key.toString()] = qtd;
-            somaEstoqueCor += qtd;
-          }
-        });
-        if (estoquePorCor.isNotEmpty && somaEstoqueCor > 0 && estoquePorTamanho == null && variacoes == null) quantidadeTotal = somaEstoqueCor;
-      }
-      if (variacoes != null && variacoes.containsKey('sem-tamanho') && variacoes['sem-tamanho'] is Map) {
-        final semTam = variacoes['sem-tamanho'] as Map;
-        estoquePorCor ??= {};
-        semTam.forEach((key, value) {
-          final qtd = (value is int) ? value : int.tryParse('$value') ?? 0;
-          if (qtd > 0) estoquePorCor![key.toString()] = qtd;
-        });
-      }
-      final isCombo = m['tipoProduto'] == 'combo';
-      if (quantidadeTotal <= 0 && !isCombo) continue;
-      if (isCombo && quantidadeTotal <= 0) quantidadeTotal = 1;
+      final tipoEarly =
+          (m['tipoProduto'] ?? m['tipo'] ?? 'simples').toString();
+      final itensComboEarly = m['itensCombo'];
+      final isComboEarly = tipoEarly == 'combo' ||
+          (itensComboEarly is List && itensComboEarly.isNotEmpty);
+      final stock = CatalogEstoqueHelper.processStockFromFirestoreMap(
+        m,
+        isCombo: isComboEarly,
+      );
+      if (!stock.incluirNoCatalogo) continue;
+      final quantidadeTotal = stock.quantidadeTotal;
+      final estoquePorTamanho = stock.estoquePorTamanho;
+      final estoquePorCor = stock.estoquePorCor;
+      final variacoes = stock.variacoes;
 
       final nome = (m['nome'] ?? m['name'] ?? '').toString();
       final desc = (m['descricao_curta'] ?? m['descricao'] ?? '').toString();
@@ -228,6 +179,9 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
         'maxParcelasSemJuros': (m['maxParcelasSemJuros'] is num) ? (m['maxParcelasSemJuros'] as num).toInt() : 12,
         'percentualDescontoPix': (m['percentualDescontoPix'] is num) ? (m['percentualDescontoPix'] as num).toDouble() : 0.0,
         'videoUrl': (m['videoUrl'] ?? '').toString().trim(),
+        'tipoProduto': (m['tipoProduto'] ?? m['tipo'] ?? 'simples').toString(),
+        if (m['itensCombo'] is List && (m['itensCombo'] as List).isNotEmpty)
+          'itensCombo': m['itensCombo'],
       });
     }
     return produtos;

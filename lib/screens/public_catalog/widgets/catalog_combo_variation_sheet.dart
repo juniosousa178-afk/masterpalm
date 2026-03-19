@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/safe_parse.dart' show safeDouble, safeBool, safeInt, safeListString, safeStr;
 import '../../../core/safe_cast.dart' show asMap, asMapDeep;
+import '../catalog_estoque_helper.dart';
 
 /// Abre o sheet de seleção de variações do combo e, ao confirmar, chama [onAdd] com o item do carrinho (inclui [itensComboComSelecao]).
 void showCatalogComboVariationSheet({
@@ -113,10 +114,26 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
   /// Preço de um produto para a seleção atual (tamanho/cor). Usa precoPorTamanho ou preço base.
   double _precoDoProdutoParaSelecao(Map<String, dynamic> p, String tamanho, String cor) {
     final base = safeDouble(p['preco']);
-    if (tamanho.trim().isEmpty) return base;
+    final tam = tamanho.trim();
+    final c = cor.trim();
+    final variacoes = asMapDeep(p['variacoes']);
+    if (tam.isNotEmpty && variacoes.isNotEmpty && variacoes[tam] is Map) {
+      final mapa = variacoes[tam] as Map;
+      if (c.isNotEmpty && mapa[c] != null) {
+        final pv = mapa[c];
+        if (pv is Map && pv['preco'] is num) return (pv['preco'] as num).toDouble();
+      }
+    }
+    if ((tam.isEmpty || tam == 'sem-tamanho') &&
+        variacoes['sem-tamanho'] is Map &&
+        c.isNotEmpty) {
+      final st = variacoes['sem-tamanho'] as Map;
+      final pv = st[c];
+      if (pv is Map && pv['preco'] is num) return (pv['preco'] as num).toDouble();
+    }
     final ppt = p['precoPorTamanho'];
-    if (ppt is Map && ppt.isNotEmpty) {
-      final v = ppt[tamanho];
+    if (ppt is Map && ppt.isNotEmpty && tam.isNotEmpty) {
+      final v = ppt[tam];
       if (v is num) return v.toDouble();
     }
     return base;
@@ -167,19 +184,36 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
 
       final variacoes = asMapDeep(p['variacoes']);
       final estoquePorTamanho = asMap(p['estoquePorTamanho']);
-      final temTamanhos = estoquePorTamanho.isNotEmpty || (variacoes.isNotEmpty && variacoes.keys.isNotEmpty);
-
-      if (!temTamanhos) continue;
-
-      final tam = (_selecoes[i]['tamanho'] ?? '').trim();
-      if (tam.isEmpty) return false;
-
-      if (variacoes.isNotEmpty && variacoes.containsKey(tam)) {
-        final mapaCor = variacoes[tam];
-        if (mapaCor is Map && mapaCor.isNotEmpty) {
-          final cor = (_selecoes[i]['cor'] ?? '').trim();
-          if (cor.isEmpty) return false;
+      final estoquePorCor = asMap(p['estoquePorCor']);
+      var temTamanhos = estoquePorTamanho.isNotEmpty;
+      if (!temTamanhos && variacoes.isNotEmpty) {
+        for (final e in variacoes.entries) {
+          if (e.key == 'sem-tamanho') continue;
+          if (e.value is Map && (e.value as Map).isNotEmpty) {
+            temTamanhos = true;
+            break;
+          }
         }
+      }
+      final semTamMap = variacoes['sem-tamanho'];
+      final temSoCorPorSemTamanho =
+          semTamMap is Map ? semTamMap.isNotEmpty : false;
+      final temSoCorPorMapa =
+          !temTamanhos && !temSoCorPorSemTamanho && estoquePorCor.isNotEmpty;
+
+      if (temTamanhos) {
+        final tam = (_selecoes[i]['tamanho'] ?? '').trim();
+        if (tam.isEmpty) return false;
+        if (variacoes.containsKey(tam)) {
+          final mapaCor = variacoes[tam];
+          if (mapaCor is Map && mapaCor.isNotEmpty) {
+            final cor = (_selecoes[i]['cor'] ?? '').trim();
+            if (cor.isEmpty) return false;
+          }
+        }
+      } else if (temSoCorPorSemTamanho || temSoCorPorMapa) {
+        final cor = (_selecoes[i]['cor'] ?? '').trim();
+        if (cor.isEmpty) return false;
       }
     }
     return _qtd >= 1;
@@ -217,6 +251,33 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
   }
 
   void _confirmar() {
+    for (var i = 0; i < _itensCombo.length; i++) {
+      final item = _itensCombo[i];
+      final p = _produtoParaItem(item);
+      final nomeItem = (item['nome'] ?? '').toString();
+      final qtdBase = (item['quantidade'] is num)
+          ? (item['quantidade'] as num).toInt()
+          : 1;
+      final need = qtdBase * _qtd;
+      if (p != null) {
+        final tam = (_selecoes[i]['tamanho'] ?? '').trim();
+        final cor = (_selecoes[i]['cor'] ?? '').trim();
+        final avail =
+            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor);
+        if (avail < need) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(avail <= 0
+                  ? 'Sem estoque: $nomeItem'
+                  : 'Estoque insuficiente para $nomeItem (disponível: $avail).'),
+            ),
+          );
+          return;
+        }
+      }
+    }
+
     final preco = _precoFinalUnidade;
     final img = safeListString(widget.comboProduct['imagens']).isNotEmpty
         ? safeListString(widget.comboProduct['imagens']).first
@@ -329,6 +390,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                       }
                       if (variacoes.isNotEmpty) {
                         for (final e in variacoes.entries) {
+                          if (e.key.toString() == 'sem-tamanho') continue;
                           if (e.value is Map) {
                             int total = 0;
                             for (final v in (e.value as Map).values) {
@@ -340,8 +402,19 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                           }
                         }
                         temTamanhos = tamanhosDisponiveis.isNotEmpty;
+                        if (!temTamanhos &&
+                            variacoes['sem-tamanho'] is Map) {
+                          final sm = variacoes['sem-tamanho'] as Map;
+                          sm.forEach((k, v) {
+                            final q = v is num ? v.truncate() : 0;
+                            if (q > 0) {
+                              coresDisponiveis[k.toString()] = q;
+                            }
+                          });
+                        }
                         final tamSel = _selecoes[i]['tamanho'] ?? '';
                         if (tamSel.isNotEmpty && variacoes.containsKey(tamSel)) {
+                          coresDisponiveis.clear();
                           final mapa = variacoes[tamSel];
                           if (mapa is Map) {
                             mapa.forEach((k, v) {
@@ -373,6 +446,15 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                           }
                           temTamanhos = tamanhosDisponiveis.isNotEmpty;
                         }
+                      }
+                      if (!temTamanhos && coresDisponiveis.isEmpty) {
+                        final ec = asMap(p['estoquePorCor']);
+                        ec.forEach((k, v) {
+                          final q = v is num ? v.truncate() : 0;
+                          if (q > 0) {
+                            coresDisponiveis[k.toString()] = q;
+                          }
+                        });
                       }
                     }
 
@@ -451,10 +533,10 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                               ),
                             ] else ...[
                               const SizedBox(height: 14),
+                              if (temTamanhos) ...[
                               Text('Tamanho', style: labelStyle),
                               const SizedBox(height: 8),
-                              if (temTamanhos)
-                                Wrap(
+                              Wrap(
                                   spacing: 10,
                                   runSpacing: 10,
                                   children: tamanhosDisponiveis.entries.map((e) {
@@ -485,18 +567,25 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                     );
                                   }).toList(),
-                                )
-                              else
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: theme.dividerColor.withValues(alpha:0.3),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    'Único (sem variação)',
-                                    style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withValues(alpha:0.7)),
-                                  ),
+                                ),
+                              ] else if (coresDisponiveis.isEmpty)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Tamanho', style: labelStyle),
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                      decoration: BoxDecoration(
+                                        color: theme.dividerColor.withValues(alpha:0.3),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        'Único (sem variação)',
+                                        style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withValues(alpha:0.7)),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               if (coresDisponiveis.isNotEmpty) ...[
                                 const SizedBox(height: 14),

@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../themes/app_colors.dart';
 import '../../services/cliente_auth_service.dart';
 
-/// Tela para redefinir senha do cliente do catálogo (esqueci a senha).
-/// Fluxo: informar email ? receber código por email ? informar código + nova senha.
+/// Tela para redefinir senha do cliente do catï¿½logo (esqueci a senha).
+/// Fluxo: informar email ? receber cï¿½digo por email ? informar cï¿½digo + nova senha.
 class RedefinirSenhaClienteScreen extends StatefulWidget {
   final String lojaId;
 
@@ -66,7 +66,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
   Future<void> _enviarCodigo() async {
     final email = _emailController.text.trim();
     if (email.isEmpty || !RegExp(_emailRegex).hasMatch(email)) {
-      _showSnackBar('Digite um email válido.', isError: true);
+      _showSnackBar('Digite um email vï¿½lido.', isError: true);
       return;
     }
 
@@ -83,10 +83,10 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
           _codigoEnviado = true;
           _carregando = false;
         });
-        _showSnackBar('Código enviado para seu email. Verifique sua caixa de entrada.', isSuccess: true);
+        _showSnackBar('Cï¿½digo enviado para seu email. Verifique sua caixa de entrada.', isSuccess: true);
       } else {
         setState(() => _carregando = false);
-        _showSnackBar(resultado['error'] ?? 'Erro ao enviar código.', isError: true);
+        _showSnackBar(resultado['error'] ?? 'Erro ao enviar cï¿½digo.', isError: true);
       }
     } catch (e) {
       if (mounted) {
@@ -103,7 +103,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
     final confirmar = _confirmarSenhaController.text;
 
     if (codigo.length != 6) {
-      _showSnackBar('O código deve ter 6 dígitos.', isError: true);
+      _showSnackBar('O cï¿½digo deve ter 6 dï¿½gitos.', isError: true);
       return;
     }
     if (novaSenha.length < 8) {
@@ -111,7 +111,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
       return;
     }
     if (novaSenha != confirmar) {
-      _showSnackBar('As senhas nÃ£o conferem.', isError: true);
+      _showSnackBar('As senhas nï¿½o conferem.', isError: true);
       return;
     }
 
@@ -127,7 +127,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
 
       setState(() => _carregando = false);
       if (resultado['success'] == true) {
-        _showSnackBar('Senha alterada com sucesso! Faça login com a nova senha.', isSuccess: true);
+        _showSnackBar('Senha alterada com sucesso! Faï¿½a login com a nova senha.', isSuccess: true);
         Navigator.of(context).pop();
       } else {
         _showSnackBar(resultado['error'] ?? 'Erro ao redefinir senha.', isError: true);
@@ -171,15 +171,15 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    _codigoEnviado ? 'Digite o código e a nova senha' : 'Esqueceu sua senha?',
+                    _codigoEnviado ? 'Digite o cï¿½digo e a nova senha' : 'Esqueceu sua senha?',
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     _codigoEnviado
-                        ? 'Enviamos um código de 6 dígitos para seu email.'
-                        : 'Informe seu email e enviaremos um código para redefinir.',
+                        ? 'Enviamos um cï¿½digo de 6 dï¿½gitos para seu email.'
+                        : 'Informe seu email e enviaremos um cï¿½digo para redefinir.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha:0.7),
                       height: 1.4,
@@ -217,7 +217,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                           ),
                           validator: (v) {
                             if (v == null || v.trim().isEmpty) return 'Digite seu email';
-                            if (!RegExp(_emailRegex).hasMatch(v.trim())) return 'Email inválido';
+                            if (!RegExp(_emailRegex).hasMatch(v.trim())) return 'Email invï¿½lido';
                             return null;
                           },
                         ),
@@ -238,7 +238,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                                       width: 22,
                                       child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                                     )
-                                  : const Text('Enviar código'),
+                                  : const Text('Enviar cï¿½digo'),
                             ),
                           ),
                         ],
@@ -249,7 +249,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                             keyboardType: TextInputType.number,
                             maxLength: 6,
                             decoration: InputDecoration(
-                              labelText: 'Código de 6 dígitos',
+                              labelText: 'Cï¿½digo de 6 dï¿½gitos',
                               prefixIcon: const Icon(Icons.pin_rounded, size: 22),
                               filled: true,
                               fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),

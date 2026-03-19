@@ -2465,6 +2465,113 @@ export const solicitarRedefinicaoSenhaCatalogo = onCall(
   }
 );
 
+// ============================== VERIFICAÇÃO DE E-MAIL (QUALQUER DOMÍNIO) ==============================
+/**
+ * Callable: enviar e-mail de verificação para qualquer provedor (Hotmail/Gmail/Outlook etc).
+ * Motivo: o envio padrão do Firebase pode ter entregabilidade diferente por provedor.
+ * Aqui geramos o link via Admin SDK e enviamos via SMTP já usado no projeto.
+ */
+export const enviarEmailVerificacao = onCall(
+  { timeoutSeconds: 25, memory: "256MiB", secrets: [S_SMTP_EMAIL, S_SMTP_PASSWORD] },
+  async (request) => {
+    try {
+      const identifier = getCallableIdentifier(request);
+      await checkRateLimit("enviarEmailVerificacao", identifier);
+
+      const { email } = request.data || {};
+      const emailNorm = (email || "").toString().trim().toLowerCase();
+      if (!emailNorm) {
+        throw new HttpsError("invalid-argument", "Informe o e-mail.");
+      }
+
+      // Segurança: se estiver autenticado, rejeita disparos para outro e-mail.
+      const authedEmail = (request.auth?.token?.email || "")
+        .toString()
+        .trim()
+        .toLowerCase();
+      if (request.auth?.uid && authedEmail && authedEmail !== emailNorm) {
+        throw new HttpsError("permission-denied", "O e-mail não corresponde ao usuário autenticado.");
+      }
+
+      console.log(
+        `[enviarEmailVerificacao] chamado email=${emailNorm} authUid=${request.auth?.uid || "none"} authEmail=${authedEmail || "none"}`
+      );
+
+      const verificationLink = await admin
+        .auth()
+        .generateEmailVerificationLink(emailNorm);
+
+      // Não logar o link completo (token sensível). Log apenas o host.
+      try {
+        const host = new URL(verificationLink).host;
+        console.log(`[enviarEmailVerificacao] link gerado host=${host}`);
+      } catch (_) {
+        console.log(`[enviarEmailVerificacao] link gerado (host desconhecido)`);
+      }
+
+      const smtpUser = ((await S_SMTP_EMAIL.value()) || process.env.SMTP_EMAIL || "").trim();
+      const smtpPass = ((await S_SMTP_PASSWORD.value()) || process.env.SMTP_PASSWORD || "").trim();
+      if (!smtpUser || !smtpPass) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Envio de email não configurado no servidor. Entre em contato com o administrador."
+        );
+      }
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: smtpUser, pass: smtpPass },
+      });
+
+      const assunto = "Confirme seu e-mail - MasterPalm";
+      const corpoTexto =
+        `Olá!\n\n` +
+        `Para confirmar seu e-mail, clique no link abaixo:\n${verificationLink}\n\n` +
+        `Se você não solicitou este cadastro, ignore este e-mail.\n\n` +
+        `Atenciosamente,\nMasterPalm`;
+
+      const corpoHtml = `
+<!DOCTYPE html>
+<html>
+  <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333; line-height: 1.5;">
+    <div style="margin: 18px 0;">
+      <p>Olá!</p>
+      <p>Para confirmar seu e-mail, clique no botão abaixo:</p>
+      <p>
+        <a href="${verificationLink}"
+           style="display: inline-block; padding: 10px 16px; background:#6366F1; color:#fff; text-decoration:none; border-radius:6px;">
+          Confirmar e-mail
+        </a>
+      </p>
+      <p style="margin-top:18px;">
+        Se o botão não funcionar, copie e cole o link no navegador:
+        <br/>
+        <code style="word-break: break-all;">${verificationLink}</code>
+      </p>
+      <p>Se você não solicitou este cadastro, ignore este e-mail.</p>
+      <p>Atenciosamente,<br/>MasterPalm</p>
+    </div>
+  </body>
+</html>`;
+
+      await transporter.sendMail({
+        from: `"MasterPalm" <${smtpUser}>`,
+        to: emailNorm,
+        subject: assunto,
+        text: corpoTexto,
+        html: corpoHtml,
+      });
+
+      console.log(`[enviarEmailVerificacao] sendMail OK destinatario=${emailNorm}`);
+      return { success: true };
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[enviarEmailVerificacao] error:", err?.message || err, err?.stack || "");
+      throw new HttpsError("internal", err?.message || "Falha ao enviar e-mail de verificação.");
+    }
+  }
+);
+
 // ============================== IA LOJA (Descrição + Dicas) ==============================
 // Usa Gemini (grátis) por padrão; OpenAI (ChatGPT, pago) se quiser. GEMINI: aistudio.google.com/app/apikey
 

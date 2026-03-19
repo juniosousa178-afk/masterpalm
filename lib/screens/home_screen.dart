@@ -11,7 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/hive_box_names.dart';
 import '../services/permissao_service.dart';
 import '../widgets/vendedor_aguarde_widget.dart';
-import '../widgets/responsive_shell.dart';
+import 'package:master_palm/widgets/responsive_shell.dart';
 import '../utils/responsive.dart';
 import '../screens/admin_login.dart';
 import '../screens/relatorio_financeiro_screen.dart';
@@ -86,7 +86,7 @@ import '../motor_crescimento_automacoes/screens/campanhas_sugeridas_screen.dart'
 import '../core/logger.dart';
 import '../services/public_store_link_helper.dart';
 import '../utils/home_store_context_helper.dart';
-import 'home/widgets/web_landing_plan_card.dart';
+import '../screens/home/widgets/web_landing_plan_card.dart';
 import '../main.dart' show navigatorKey;
 
 class HomeScreen extends StatefulWidget {

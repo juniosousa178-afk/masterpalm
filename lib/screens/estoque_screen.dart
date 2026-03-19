@@ -7,7 +7,7 @@
 // - Integração com marketplaces
 // - Estatísticas completas
 
-import 'dart:io' show File, Directory;
+import 'dart:io' as io if (dart.library.html) 'package:master_palm/utils/io_stub.dart';
 import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert' show latin1, utf8;
@@ -1193,6 +1193,23 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                     setModalState(() => mostrarEstoque = value);
                     final navigator = Navigator.of(context);
                     await prefs.setBool(keyEstoque, value);
+                    try {
+                      final ref =
+                          FirebaseFirestore.instance.collection('lojas').doc(lojaId);
+                      await ref.collection('draft_config').doc('config').set(
+                            {'mostrarEstoqueNoCatalogo': value},
+                            SetOptions(merge: true),
+                          );
+                      await ref.collection('config').doc('config').set(
+                            {'mostrarEstoqueNoCatalogo': value},
+                            SetOptions(merge: true),
+                          );
+                    } catch (e, st) {
+                      logE(
+                          '[ESTOQUE] Erro ao gravar mostrarEstoqueNoCatalogo no Firestore',
+                          error: e,
+                          st: st);
+                    }
                     if (mounted) {
                       _showSnackBar(value ? 'Selo de estoque ativado' : 'Selo de estoque desativado');
                       navigator.pop();
@@ -2805,8 +2822,8 @@ Future<List<Map<String, dynamic>>> _parsePdfSafe(Uint8List bytes) async {
   if (kIsWeb) throw "Importação de PDF não está disponível no navegador. Use arquivo Excel (.xlsx) ou CSV.";
 
   try {
-    final tmp = File(
-      '${Directory.systemTemp.path}/masterpalm_import_${DateTime.now().millisecondsSinceEpoch}.pdf',
+    final tmp = io.File(
+      '${io.Directory.systemTemp.path}/masterpalm_import_${DateTime.now().millisecondsSinceEpoch}.pdf',
     );
     await tmp.writeAsBytes(bytes, flush: true);
 
@@ -2916,7 +2933,7 @@ Future<Uint8List> _readPickedFileBytes(PlatformFile file) async {
 
   final p = file.path;
   if (p != null && p.trim().isNotEmpty) {
-    return await File(p).readAsBytes();
+    return await io.File(p).readAsBytes();
   }
 
   throw "Não foi possível ler o arquivo (bytes/path/stream nulos).";
@@ -4287,7 +4304,7 @@ String _formatGradeTexto(Produto p) {
                                   ? const AssetImage('assets/images/placeholder.png')
                                   : (thumb.startsWith('http') || kIsWeb)
                                       ? NetworkImage(thumb) as ImageProvider
-                                      : FileImage(File(thumb)) as ImageProvider,
+                                      : FileImage(io.File(thumb)) as ImageProvider,
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Container(
                                 color: avatarColor.withValues(alpha:0.1),

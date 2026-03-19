@@ -78,12 +78,22 @@ class LojaIdService extends ChangeNotifier {
     // 2) Hive fallback: só usar se currentUser coincide com usuario_logado (evita contaminação)
     try {
       final current = FirebaseAuth.instance.currentUser;
-      if (current == null) return null;
+      if (current == null) {
+        if (kIsWeb) {
+          final webFallback = await _resolveSafeWebHiveFallback(authEmail: '');
+          if (webFallback != null && webFallback.isNotEmpty) return webFallback;
+        }
+        return null;
+      }
 
       final Box sessao = Hive.isBoxOpen('sessao')
           ? Hive.box('sessao')
           : await Hive.openBox('sessao');
-      final cachedUser = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final cachedUserEmail =
+          (sessao.get('usuario_logado_email') ?? '').toString().trim().toLowerCase();
+      final cachedUserLegacy =
+          (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final cachedUser = cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
       final currentEmail = (current.email ?? '').trim().toLowerCase();
       if (cachedUser.isEmpty || currentEmail != cachedUser) return null;
 
@@ -103,7 +113,11 @@ class LojaIdService extends ChangeNotifier {
       final Box sessao = Hive.isBoxOpen('sessao')
           ? Hive.box('sessao')
           : await Hive.openBox('sessao');
-      final cachedUser = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final cachedUserEmail =
+          (sessao.get('usuario_logado_email') ?? '').toString().trim().toLowerCase();
+      final cachedUserLegacy =
+          (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final cachedUser = cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
       final currentEmail = (current.email ?? '').trim().toLowerCase();
       if (cachedUser.isEmpty || currentEmail != cachedUser) return null;
 
@@ -205,8 +219,84 @@ class LojaIdService extends ChangeNotifier {
       }
     }
 
+    // Fallback final (WEB): se StoreResolver falhar por atraso do FirebaseAuth,
+    // devolver store_id já persistido em Hive para evitar erro fatal
+    // "Não foi possível carregar a loja" em Vendas/Clientes.
+    if (kIsWeb) {
+      try {
+        final authEmail =
+            FirebaseAuth.instance.currentUser?.email?.trim().toLowerCase() ?? '';
+        final webFallback = await _resolveSafeWebHiveFallback(authEmail: authEmail);
+        if (webFallback != null && webFallback.isNotEmpty) return webFallback;
+      } catch (e, st) {
+        logE('[STORE_SCREEN] Falha no fallback final WEB (type=${e.runtimeType})', error: e, st: st);
+      }
+    }
+
     logW('[STORE_SCREEN] lojaId não resolvido (null)');
     return null;
+  }
+
+  /// Fallback seguro para WEB usando Hive:
+  /// - aceita apenas store_id válido (sem placeholder)
+  /// - exige principal de sessão (usuario_logado_email/usuario_logado)
+  /// - se authEmail vier preenchido, exige compatibilidade exata
+  static Future<String?> _resolveSafeWebHiveFallback({
+    required String authEmail,
+  }) async {
+    final sessaoBox = Hive.isBoxOpen('sessao')
+        ? Hive.box('sessao')
+        : await Hive.openBox('sessao');
+    final cfgBox = Hive.isBoxOpen('config')
+        ? Hive.box('config')
+        : await Hive.openBox('config');
+
+    final cachedUserEmail =
+        (sessaoBox.get('usuario_logado_email', defaultValue: '') ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+    final cachedUserLegacy =
+        (sessaoBox.get('usuario_logado', defaultValue: '') ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+    final cachedPrincipal =
+        cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
+
+    final cachedStoreId = normalizeFromBox(sessaoBox) ?? '';
+    final cachedStoreIdCfg = normalizeFromBox(cfgBox) ?? '';
+    final candidate = cachedStoreId.isNotEmpty ? cachedStoreId : cachedStoreIdCfg;
+
+    logW(
+      '[STORE_SCREEN] WEB safe fallback: authEmail=${authEmail.isNotEmpty ? authEmail : "null"} cachedPrincipal=${cachedPrincipal.isNotEmpty ? cachedPrincipal : "null"} candidate=$candidate',
+    );
+
+    if (candidate.isEmpty || !isValidForPublicLink(candidate)) {
+      logW('[STORE_SCREEN] Fallback WEB negado: candidate inválido');
+      return null;
+    }
+
+    if (authEmail.isNotEmpty) {
+      if (cachedPrincipal.isEmpty) {
+        logW('[STORE_SCREEN] Fallback WEB negado: cachedPrincipal vazio com auth pronto');
+        return null;
+      }
+      if (authEmail != cachedPrincipal) {
+        logW('[STORE_SCREEN] Fallback WEB negado: authEmail != cachedPrincipal');
+        return null;
+      }
+      logD('[STORE_SCREEN] Fallback WEB aceito: storeId=$candidate');
+      return candidate;
+    }
+
+    if (cachedPrincipal.isEmpty) {
+      logW('[STORE_SCREEN] Fallback WEB negado: auth pendente e cachedPrincipal vazio');
+      return null;
+    }
+
+    logD('[STORE_SCREEN] Fallback WEB aceito (auth pendente): storeId=$candidate');
+    return candidate;
   }
 
   static Future<String> ensureOrThrow() async {

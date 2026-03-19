@@ -1,6 +1,4 @@
 // lib/widgets/empty_state_cta.dart
-// Estado vazio com CTA – reutilizável em estoque, clientes, vendas.
-
 import 'package:flutter/material.dart';
 
 class EmptyStateCta extends StatelessWidget {

@@ -256,6 +256,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
           imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
           quantidade: widget.quantidade,
           estoquePorTamanho: widget.estoquePorTamanho,
+          estoquePorCor: widget.estoquePorCor,
+          variacoes: widget.variacoes,
           catalogShareUrl: widget.catalogShareUrl,
           prazoEntrega: widget.prazoEntrega,
           percentualDescontoPix: widget.percentualDescontoPix,

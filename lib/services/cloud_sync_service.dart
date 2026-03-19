@@ -2,7 +2,7 @@
 // Serviço responsável por sincronizar dados da loja (perfil, produtos, fotos)
 // com Firebase Firestore e Firebase Storage, sempre usando o storeId atual.
 
-import 'dart:io' show File;
+import 'dart:io' as io if (dart.library.html) 'package:master_palm/utils/io_stub.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
@@ -99,7 +99,7 @@ class CloudSyncService {
 
     // Arquivo local — Mobile only
     if (!kIsWeb) {
-      final file = File(value);
+      final file = io.File(value);
       if (file.existsSync()) {
         final baseName = p.basename(value);
         final filename =

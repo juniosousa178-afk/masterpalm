@@ -95,7 +95,7 @@ class _HistoricoClienteDetalheScreenState extends State<HistoricoClienteDetalheS
                 } catch (_) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Não foi possível abrir o discador.')),
+                      const SnackBar(content: Text('N?o foi poss?vel abrir o discador.')),
                     );
                   }
                 }
@@ -112,7 +112,7 @@ class _HistoricoClienteDetalheScreenState extends State<HistoricoClienteDetalheS
                 } catch (_) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Não foi possível abrir o WhatsApp.')),
+                      const SnackBar(content: Text('N?o foi poss?vel abrir o WhatsApp.')),
                     );
                   }
                 }
@@ -253,7 +253,7 @@ class _CompraCard extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          // Seções (igual vendas_screen)
+          // Se??es (igual vendas_screen)
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -323,7 +323,7 @@ class _CompraCard extends StatelessWidget {
                 ]),
                 if (venda.observacao.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  _buildDetailSection('Observação', [
+                  _buildDetailSection('Observa??o', [
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: SelectableText(
