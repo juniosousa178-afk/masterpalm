@@ -48,6 +48,7 @@ import 'public_catalog/widgets/catalog_search_filters_bar.dart';
 import 'public_catalog/widgets/catalog_products_grid_sliver.dart';
 import 'public_catalog/widgets/catalog_recent_section_sliver.dart';
 import 'public_catalog/widgets/catalog_skeleton_grid.dart';
+import 'public_catalog/widgets/catalog_minimalist_widgets.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import '../core/logger.dart';
@@ -3036,6 +3037,35 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         CatalogEstoqueHelper.parseCartItemQuantidade(
                             e['quantidade']));
 
+                final layoutCatalogo =
+                    (cfg['layoutCatalogo'] ?? cfg['layout_catalogo'] ?? 'padrao')
+                        .toString()
+                        .trim()
+                        .toLowerCase();
+                final bool useMinimalLayout =
+                    layoutCatalogo == 'minimalista_nuvemshop';
+                final promoBarCfg = mpMapDyn(cfg['promoBar']);
+                final minimalSearchCfg = mpMapDyn(cfg['minimalSearch']);
+                final categoryVisualsCfg = mpMapDyn(cfg['categoryVisuals']);
+                final heroBannerCfg = mpMapDyn(cfg['heroBanner']);
+                final minimalGridCfg = mpMapDyn(cfg['minimalProductGrid']);
+
+                TextAlign parseTextAlign(dynamic raw, TextAlign fallback) {
+                  final v = (raw ?? '').toString().trim().toLowerCase();
+                  switch (v) {
+                    case 'left':
+                      return TextAlign.left;
+                    case 'right':
+                      return TextAlign.right;
+                    case 'center':
+                      return TextAlign.center;
+                    case 'justify':
+                      return TextAlign.justify;
+                    default:
+                      return fallback;
+                  }
+                }
+
                 // Mostrar quantidade / estoque no catálogo (Firestore > prefs)
                 final mostrarQuantidadeNoCatalogo =
                     cfg['mostrarQuantidadeNoCatalogo'] as bool? ??
@@ -3047,11 +3077,18 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 // categorias únicas para o menu lateral
                 // Compatibilidade: lê tanto 'categoria' quanto 'categoriaId'
                 final categoriasSet = <String>{};
+                final categoryAliasesByName = <String, Set<String>>{};
                 for (final p in produtos) {
                   final c = (p['categoria'] ?? p['categoriaId'] ?? '')
                       .toString()
                       .trim();
-                  if (c.isNotEmpty) categoriasSet.add(c);
+                  if (c.isNotEmpty) {
+                    categoriasSet.add(c);
+                    final aliases = categoryAliasesByName.putIfAbsent(c, () => <String>{});
+                    final cid = (p['categoriaId'] ?? '').toString().trim();
+                    if (cid.isNotEmpty) aliases.add(cid);
+                    aliases.add(c.toLowerCase());
+                  }
                 }
                 final categoriasMenu = categoriasSet.toList()..sort();
 
@@ -3607,13 +3644,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     backgroundColor: headerColor,
                     elevation: 0,
                     // Altura dinâmica: desktop maior; mobile inalterado
-                    toolbarHeight: isDesktop
-                        ? (categoriasMenu.isEmpty
-                            ? 140
-                            : (_selectedCategory != null ? 236 : 186))
-                        : (categoriasMenu.isEmpty
-                            ? 120
-                            : (_selectedCategory != null ? 216 : 166)),
+                    toolbarHeight: useMinimalLayout
+                        ? (isDesktop ? 100 : 88)
+                        : (isDesktop
+                            ? (categoriasMenu.isEmpty
+                                ? 140
+                                : (_selectedCategory != null ? 236 : 186))
+                            : (categoriasMenu.isEmpty
+                                ? 120
+                                : (_selectedCategory != null ? 216 : 166))),
                     titleSpacing: 0,
                     automaticallyImplyLeading: false,
                     title: Column(
@@ -3823,7 +3862,24 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           controller: _searchController,
                           headerSearchText: headerSearchText,
                           headerSearchHint: headerSearchHint,
-                          headerSearchBg: headerSearchBg,
+                          headerSearchBg: useMinimalLayout
+                              ? (readColorFromCfg(minimalSearchCfg['background']) ??
+                                  Colors.white)
+                              : headerSearchBg,
+                          hintText: (minimalSearchCfg['placeholder'] ??
+                                  'O que voce esta procurando?')
+                              .toString(),
+                          iconOnRight: useMinimalLayout,
+                          borderColor: useMinimalLayout
+                              ? (readColorFromCfg(minimalSearchCfg['borderColor']) ??
+                                  Colors.black12)
+                              : null,
+                          borderRadius: useMinimalLayout
+                              ? safeDouble(minimalSearchCfg['radius'], 10)
+                              : 12,
+                          height: useMinimalLayout
+                              ? safeDouble(minimalSearchCfg['height'], 44)
+                              : 40,
                           onChanged: _debouncedSearchUpdate,
                           onClear: () {
                             _searchDebounce?.cancel();
@@ -3832,7 +3888,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             _currentPageNotifier.value = 0;
                           },
                         ),
-                        if (!isDesktop)
+                        if (!isDesktop && !useMinimalLayout)
                           CatalogCategorySubcategoryFilters(
                             categoriasMenu: categoriasMenu,
                             selectedCategory: _selectedCategory,
@@ -3913,6 +3969,31 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     children: [
                       Column(
                         children: [
+                          CatalogPromoBar(
+                            enabled: useMinimalLayout &&
+                                safeBool(promoBarCfg['enabled'], false),
+                            text: (promoBarCfg['text'] ?? '').toString(),
+                            backgroundColor: readColorFromCfg(
+                                    promoBarCfg['backgroundColor']) ??
+                                const Color(0xFFFF4F96),
+                            textColor:
+                                readColorFromCfg(promoBarCfg['textColor']) ??
+                                    Colors.white,
+                            icon: safeBool(promoBarCfg['showIcon'], false)
+                                ? Icons.local_offer_outlined
+                                : null,
+                            height: safeDouble(promoBarCfg['height'], 34),
+                            textAlign: parseTextAlign(
+                                promoBarCfg['alignment'], TextAlign.center),
+                            bold: safeBool(promoBarCfg['bold'], true),
+                            onTap: () {
+                              final link = (promoBarCfg['link'] ?? '')
+                                  .toString()
+                                  .trim();
+                              if (link.isEmpty) return;
+                              _openUrl(link);
+                            },
+                          ),
                           if (_isOffline)
                             Container(
                               width: double.infinity,
@@ -4112,6 +4193,97 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     banners: banners,
                                                     height: bannerH,
                                                   ),
+                                                if (useMinimalLayout)
+                                                  CatalogMinimalCategoryImageStrip(
+                                                    categories: categoriasMenu,
+                                                    selectedCategory:
+                                                        _selectedCategory,
+                                                    categoryVisuals:
+                                                        categoryVisualsCfg,
+                                                    categoryAliasesByName:
+                                                        categoryAliasesByName,
+                                                    onSelect: (cat) {
+                                                      setState(() {
+                                                        _selectedCategory = cat;
+                                                        _selectedSubcategory =
+                                                            null;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                    },
+                                                    onClear: () {
+                                                      setState(() {
+                                                        _selectedCategory = null;
+                                                        _selectedSubcategory =
+                                                            null;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                    },
+                                                    textColor: textColor,
+                                                    fallbackBg: cardColor,
+                                                  ),
+                                                if (useMinimalLayout)
+                                                  CatalogMinimalHeroBanner(
+                                                    enabled: safeBool(
+                                                        heroBannerCfg['enabled'],
+                                                        false),
+                                                    title: (heroBannerCfg[
+                                                                'title'] ??
+                                                            '')
+                                                        .toString(),
+                                                    subtitle: (heroBannerCfg[
+                                                                'subtitle'] ??
+                                                            '')
+                                                        .toString(),
+                                                    buttonText:
+                                                        (heroBannerCfg[
+                                                                    'buttonText'] ??
+                                                                '')
+                                                            .toString(),
+                                                    imageUrl: (isDesktop
+                                                                ? heroBannerCfg[
+                                                                    'image']
+                                                                : heroBannerCfg[
+                                                                    'mobileImage']) ??
+                                                            heroBannerCfg[
+                                                                'image'] ??
+                                                            '',
+                                                    textColor: readColorFromCfg(
+                                                            heroBannerCfg[
+                                                                'textColor']) ??
+                                                        Colors.white,
+                                                    buttonColor:
+                                                        readColorFromCfg(
+                                                                heroBannerCfg[
+                                                                    'buttonColor']) ??
+                                                            primaryColor,
+                                                    backgroundColor:
+                                                        readColorFromCfg(
+                                                                heroBannerCfg[
+                                                                    'backgroundColor']) ??
+                                                            cardColor,
+                                                    height: safeDouble(
+                                                        heroBannerCfg['height'],
+                                                        isDesktop ? 210 : 164),
+                                                    borderRadius: safeDouble(
+                                                        heroBannerCfg[
+                                                            'borderRadius'],
+                                                        18),
+                                                    overlayOpacity: safeDouble(
+                                                        heroBannerCfg[
+                                                            'overlayOpacity'],
+                                                        0.16),
+                                                    onTap: () {
+                                                      final link = (heroBannerCfg[
+                                                                  'buttonLink'] ??
+                                                              '')
+                                                          .toString()
+                                                          .trim();
+                                                      if (link.isEmpty) return;
+                                                      _openUrl(link);
+                                                    },
+                                                  ),
                                                 const SizedBox(height: 16),
 
                                                 // ✨ BANNER DE CAMPANHAS
@@ -4307,15 +4479,48 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               mostrarQuantidadeNoCatalogo:
                                                   mostrarQuantidadeNoCatalogo,
                                               cardBorderRadius:
-                                                  cardBorderRadius,
-                                              cardShowShadow: cardShowShadow,
+                                                  useMinimalLayout
+                                                      ? safeDouble(
+                                                          minimalGridCfg[
+                                                              'cardBorderRadius'],
+                                                          cardBorderRadius)
+                                                      : cardBorderRadius,
+                                              cardShowShadow: useMinimalLayout
+                                                  ? safeBool(
+                                                      minimalGridCfg[
+                                                          'cardShowShadow'],
+                                                      false)
+                                                  : cardShowShadow,
                                               prazoEntregaTexto:
                                                   prazoEntregaTexto,
                                               jurosParcelamento:
                                                   jurosParcelamento,
                                               maxParcelas: maxParcelasClamped,
-                                              imageCacheWidth: 360,
-                                              imageCacheHeight: 480,
+                                              imageCacheWidth: useMinimalLayout
+                                                  ? safeInt(minimalGridCfg[
+                                                      'imageCacheWidth'], 640)
+                                                  : 360,
+                                              imageCacheHeight: useMinimalLayout
+                                                  ? safeInt(minimalGridCfg[
+                                                      'imageCacheHeight'], 860)
+                                                  : 480,
+                                              childAspectRatio: useMinimalLayout
+                                                  ? safeDouble(minimalGridCfg[
+                                                      'aspectRatio'], 0.52)
+                                                  : 0.38,
+                                              mainAxisSpacing: useMinimalLayout
+                                                  ? safeDouble(minimalGridCfg[
+                                                      'mainAxisSpacing'], 14)
+                                                  : 16,
+                                              crossAxisSpacing: useMinimalLayout
+                                                  ? safeDouble(minimalGridCfg[
+                                                      'crossAxisSpacing'], 12)
+                                                  : 16,
+                                              padding: useMinimalLayout
+                                                  ? const EdgeInsets.fromLTRB(
+                                                      12, 0, 12, 24)
+                                                  : const EdgeInsets.fromLTRB(
+                                                      12, 0, 12, 24),
                                               catalogShareUrl: CatalogShareService.buildUrlWithParams(
                                                 '$_baseUrlCatalogo/$lojaId',
                                                 ref: widget.vendedorRef,

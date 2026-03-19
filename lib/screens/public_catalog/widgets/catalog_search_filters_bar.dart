@@ -10,6 +10,11 @@ class CatalogSearchBar extends StatelessWidget {
   final Color headerSearchText;
   final Color headerSearchHint;
   final Color headerSearchBg;
+  final String hintText;
+  final bool iconOnRight;
+  final Color? borderColor;
+  final double borderRadius;
+  final double height;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
 
@@ -19,6 +24,11 @@ class CatalogSearchBar extends StatelessWidget {
     required this.headerSearchText,
     required this.headerSearchHint,
     required this.headerSearchBg,
+    this.hintText = 'Buscar produtos...',
+    this.iconOnRight = false,
+    this.borderColor,
+    this.borderRadius = 12,
+    this.height = 40,
     required this.onChanged,
     required this.onClear,
   });
@@ -28,7 +38,7 @@ class CatalogSearchBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: SizedBox(
-        height: 40,
+        height: height,
         child: TextField(
           style: TextStyle(color: headerSearchText),
           textAlignVertical: TextAlignVertical.center,
@@ -39,24 +49,29 @@ class CatalogSearchBar extends StatelessWidget {
               horizontal: 12,
               vertical: 0,
             ),
-            hintText: 'Buscar produtos...',
+            hintText: hintText,
             hintStyle: TextStyle(color: headerSearchHint),
             filled: true,
             fillColor: headerSearchBg,
-            prefixIcon: Icon(
-              Icons.search,
-              color: headerSearchHint,
-            ),
+            prefixIcon: iconOnRight
+                ? null
+                : Icon(
+                    Icons.search,
+                    color: headerSearchHint,
+                  ),
             suffixIcon: ValueListenableBuilder<TextEditingValue>(
               valueListenable: controller,
               builder: (context, value, _) {
-                if (value.text.isEmpty) {
-                  return const SizedBox.shrink();
+                if (value.text.isNotEmpty) {
+                  return IconButton(
+                    icon: Icon(Icons.clear, size: 20, color: headerSearchHint),
+                    onPressed: onClear,
+                  );
                 }
-                return IconButton(
-                  icon: Icon(Icons.clear, size: 20, color: headerSearchHint),
-                  onPressed: onClear,
-                );
+                if (iconOnRight) {
+                  return Icon(Icons.search, color: headerSearchHint, size: 20);
+                }
+                return const SizedBox.shrink();
               },
             ),
             prefixIconConstraints: const BoxConstraints(
@@ -64,8 +79,22 @@ class CatalogSearchBar extends StatelessWidget {
               minHeight: 36,
             ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
+              borderRadius: BorderRadius.circular(borderRadius),
+              borderSide: borderColor == null
+                  ? BorderSide.none
+                  : BorderSide(color: borderColor!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(borderRadius),
+              borderSide: borderColor == null
+                  ? BorderSide.none
+                  : BorderSide(color: borderColor!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(borderRadius),
+              borderSide: borderColor == null
+                  ? BorderSide.none
+                  : BorderSide(color: borderColor!),
             ),
           ),
           onChanged: onChanged,

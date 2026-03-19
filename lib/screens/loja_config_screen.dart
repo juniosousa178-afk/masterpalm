@@ -203,6 +203,28 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   int _gridMobileCols = 2;
   bool _cardShowShadow = true;
   double _cardBorderRadius = 20;
+  String _layoutCatalogo = 'padrao';
+
+  bool _promoBarEnabled = false;
+  final TextEditingController _promoBarTextCtrl = TextEditingController();
+  final TextEditingController _promoBarLinkCtrl = TextEditingController();
+  Color _promoBarBg = const Color(0xFFFF4F96);
+  Color _promoBarText = Colors.white;
+
+  final TextEditingController _minimalSearchPlaceholderCtrl =
+      TextEditingController(text: 'O que voce esta procurando?');
+
+  bool _heroBannerEnabled = false;
+  final TextEditingController _heroBannerTitleCtrl = TextEditingController();
+  final TextEditingController _heroBannerSubtitleCtrl = TextEditingController();
+  final TextEditingController _heroBannerButtonTextCtrl = TextEditingController();
+  final TextEditingController _heroBannerButtonLinkCtrl = TextEditingController();
+  final TextEditingController _heroBannerImageCtrl = TextEditingController();
+  final TextEditingController _heroBannerMobileImageCtrl = TextEditingController();
+
+  final TextEditingController _catImgModaCtrl = TextEditingController();
+  final TextEditingController _catImgCalcadosCtrl = TextEditingController();
+  final TextEditingController _catImgBolsasCtrl = TextEditingController();
 
   // ---------------------------------
   // FRETES
@@ -320,6 +342,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _dBanW.addListener(_scheduleAutoSave);
     _mBanH.addListener(_scheduleAutoSave);
     _mBanW.addListener(_scheduleAutoSave);
+    _promoBarTextCtrl.addListener(_scheduleAutoSave);
+    _promoBarLinkCtrl.addListener(_scheduleAutoSave);
+    _minimalSearchPlaceholderCtrl.addListener(_scheduleAutoSave);
+    _heroBannerTitleCtrl.addListener(_scheduleAutoSave);
+    _heroBannerSubtitleCtrl.addListener(_scheduleAutoSave);
+    _heroBannerButtonTextCtrl.addListener(_scheduleAutoSave);
+    _heroBannerButtonLinkCtrl.addListener(_scheduleAutoSave);
+    _heroBannerImageCtrl.addListener(_scheduleAutoSave);
+    _heroBannerMobileImageCtrl.addListener(_scheduleAutoSave);
+    _catImgModaCtrl.addListener(_scheduleAutoSave);
+    _catImgCalcadosCtrl.addListener(_scheduleAutoSave);
+    _catImgBolsasCtrl.addListener(_scheduleAutoSave);
 
     // Fretes e Cupons
     _melhorEnvioTokenCtrl.addListener(_scheduleAutoSave);
@@ -981,6 +1015,62 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _cardShowShadow = (data['cardShowShadow'] as bool?) ?? _cardShowShadow;
       _cardBorderRadius =
           (data['cardBorderRadius'] as num?)?.toDouble() ?? _cardBorderRadius;
+      _layoutCatalogo = (data['layoutCatalogo'] ?? data['layout_catalogo'] ?? 'padrao')
+          .toString()
+          .trim()
+          .toLowerCase();
+
+      final promoBarRaw = data['promoBar'];
+      final promoBar = promoBarRaw is Map
+          ? Map<String, dynamic>.from(promoBarRaw)
+          : <String, dynamic>{};
+      _promoBarEnabled = (promoBar['enabled'] as bool?) ?? _promoBarEnabled;
+      _promoBarTextCtrl.text =
+          (promoBar['text'] ?? _promoBarTextCtrl.text).toString();
+      _promoBarLinkCtrl.text =
+          (promoBar['link'] ?? _promoBarLinkCtrl.text).toString();
+      final promoBg = colorToInt(promoBar['backgroundColor']);
+      final promoText = colorToInt(promoBar['textColor']);
+      if (promoBg != null) _promoBarBg = Color(promoBg);
+      if (promoText != null) _promoBarText = Color(promoText);
+
+      final minimalSearchRaw = data['minimalSearch'];
+      final minimalSearch = minimalSearchRaw is Map
+          ? Map<String, dynamic>.from(minimalSearchRaw)
+          : <String, dynamic>{};
+      _minimalSearchPlaceholderCtrl.text =
+          (minimalSearch['placeholder'] ?? _minimalSearchPlaceholderCtrl.text)
+              .toString();
+
+      final heroBannerRaw = data['heroBanner'];
+      final heroBanner = heroBannerRaw is Map
+          ? Map<String, dynamic>.from(heroBannerRaw)
+          : <String, dynamic>{};
+      _heroBannerEnabled = (heroBanner['enabled'] as bool?) ?? _heroBannerEnabled;
+      _heroBannerTitleCtrl.text =
+          (heroBanner['title'] ?? _heroBannerTitleCtrl.text).toString();
+      _heroBannerSubtitleCtrl.text =
+          (heroBanner['subtitle'] ?? _heroBannerSubtitleCtrl.text).toString();
+      _heroBannerButtonTextCtrl.text =
+          (heroBanner['buttonText'] ?? _heroBannerButtonTextCtrl.text).toString();
+      _heroBannerButtonLinkCtrl.text =
+          (heroBanner['buttonLink'] ?? _heroBannerButtonLinkCtrl.text).toString();
+      _heroBannerImageCtrl.text =
+          (heroBanner['image'] ?? _heroBannerImageCtrl.text).toString();
+      _heroBannerMobileImageCtrl.text =
+          (heroBanner['mobileImage'] ?? _heroBannerMobileImageCtrl.text).toString();
+
+      final catVisualRaw = data['categoryVisuals'];
+      final catVisual = catVisualRaw is Map
+          ? Map<String, dynamic>.from(catVisualRaw)
+          : <String, dynamic>{};
+      final catImgsRaw = catVisual['images'];
+      final catImgs = catImgsRaw is Map
+          ? Map<String, dynamic>.from(catImgsRaw)
+          : <String, dynamic>{};
+      _catImgModaCtrl.text = (catImgs['Moda'] ?? '').toString();
+      _catImgCalcadosCtrl.text = (catImgs['Calcados'] ?? '').toString();
+      _catImgBolsasCtrl.text = (catImgs['Bolsas'] ?? '').toString();
 
       final presetStr = data['layoutPreset'] as String?;
       if (presetStr != null) {
@@ -1233,6 +1323,65 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       'gridMobileCols': _gridMobileCols,
       'cardShowShadow': _cardShowShadow,
       'cardBorderRadius': _cardBorderRadius,
+      'layoutCatalogo': _layoutCatalogo,
+      'promoBar': {
+        'enabled': _promoBarEnabled,
+        'text': _promoBarTextCtrl.text.trim(),
+        'backgroundColor': _promoBarBg.toARGB32(),
+        'textColor': _promoBarText.toARGB32(),
+        'link': _promoBarLinkCtrl.text.trim(),
+        'height': 34,
+        'alignment': 'center',
+        'bold': true,
+      },
+      'minimalSearch': {
+        'placeholder': _minimalSearchPlaceholderCtrl.text.trim().isEmpty
+            ? 'O que voce esta procurando?'
+            : _minimalSearchPlaceholderCtrl.text.trim(),
+        'height': 44,
+        'radius': 10,
+        'background': Colors.white.toARGB32(),
+        'borderColor': const Color(0x1A000000).toARGB32(),
+      },
+      'heroBanner': {
+        'enabled': _heroBannerEnabled,
+        'title': _heroBannerTitleCtrl.text.trim(),
+        'subtitle': _heroBannerSubtitleCtrl.text.trim(),
+        'buttonText': _heroBannerButtonTextCtrl.text.trim(),
+        'buttonLink': _heroBannerButtonLinkCtrl.text.trim(),
+        'image': _heroBannerImageCtrl.text.trim(),
+        'mobileImage': _heroBannerMobileImageCtrl.text.trim(),
+        'height': 180,
+        'borderRadius': 18,
+        'overlayOpacity': 0.16,
+        'textColor': Colors.white.toARGB32(),
+        'buttonColor': _cPrimaria.toARGB32(),
+        'backgroundColor': _cCard.toARGB32(),
+      },
+      'categoryVisuals': {
+        'showTitle': true,
+        'shape': 'circle',
+        'imageSize': 76,
+        'spacing': 12,
+        'images': {
+          if (_catImgModaCtrl.text.trim().isNotEmpty)
+            'Moda': _catImgModaCtrl.text.trim(),
+          if (_catImgCalcadosCtrl.text.trim().isNotEmpty)
+            'Calcados': _catImgCalcadosCtrl.text.trim(),
+          if (_catImgBolsasCtrl.text.trim().isNotEmpty)
+            'Bolsas': _catImgBolsasCtrl.text.trim(),
+        },
+        'imagesById': const <String, String>{},
+      },
+      'minimalProductGrid': {
+        'aspectRatio': 0.56,
+        'mainAxisSpacing': 16,
+        'crossAxisSpacing': 12,
+        'imageCacheWidth': 640,
+        'imageCacheHeight': 860,
+        'cardShowShadow': false,
+        'cardBorderRadius': 16,
+      },
 
       // ✅ CORRIGIDO: Estrutura media.desktop / media.mobile (igual ao que o public_catalog lê)
       'media': {
@@ -4448,6 +4597,193 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     return Column(
       children: [
         _Section(
+          title: 'Layout do catalogo publico',
+          subtitle: 'O padrao atual continua igual; o novo layout entra apenas quando selecionado.',
+          child: Column(
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: _layoutCatalogo,
+                items: const [
+                  DropdownMenuItem(value: 'padrao', child: Text('Padrao atual (retrocompativel)')),
+                  DropdownMenuItem(value: 'minimalista_nuvemshop', child: Text('Minimalista estilo Nuvemshop')),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _layoutCatalogo = v);
+                  _salvarRascunho(validar: false);
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Opcao de layout',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 14),
+              SwitchListTile(
+                value: _promoBarEnabled,
+                onChanged: (v) {
+                  setState(() => _promoBarEnabled = v);
+                  _salvarRascunho(validar: false);
+                },
+                title: const Text('Barra promocional superior'),
+                contentPadding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _promoBarTextCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Texto da barra promocional',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _promoBarLinkCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Link opcional da barra',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ColorPickerChip(
+                      label: 'Cor fundo promo',
+                      color: _promoBarBg,
+                      onPick: (c) {
+                        setState(() => _promoBarBg = c);
+                        _salvarRascunho(validar: false);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _ColorPickerChip(
+                      label: 'Cor texto promo',
+                      color: _promoBarText,
+                      onPick: (c) {
+                        setState(() => _promoBarText = c);
+                        _salvarRascunho(validar: false);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _minimalSearchPlaceholderCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Placeholder da busca (layout minimalista)',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                value: _heroBannerEnabled,
+                onChanged: (v) {
+                  setState(() => _heroBannerEnabled = v);
+                  _salvarRascunho(validar: false);
+                },
+                title: const Text('Banner/letreiro superior'),
+                contentPadding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _heroBannerTitleCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Titulo do banner',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _heroBannerSubtitleCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Subtitulo do banner',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _heroBannerImageCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Imagem banner (desktop)',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _heroBannerMobileImageCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Imagem banner (mobile)',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _heroBannerButtonTextCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Texto do botao do banner',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _heroBannerButtonLinkCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Link do botao do banner',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 12),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Imagens de categorias (atalhos):',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _catImgModaCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Categoria Moda - URL da imagem',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _catImgCalcadosCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Categoria Calcados - URL da imagem',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _catImgBolsasCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Categoria Bolsas - URL da imagem',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Section(
           title: 'Grade de produtos (desktop x mobile)',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -5927,6 +6263,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _dBanW.dispose();
     _mBanH.dispose();
     _mBanW.dispose();
+    _promoBarTextCtrl.dispose();
+    _promoBarLinkCtrl.dispose();
+    _minimalSearchPlaceholderCtrl.dispose();
+    _heroBannerTitleCtrl.dispose();
+    _heroBannerSubtitleCtrl.dispose();
+    _heroBannerButtonTextCtrl.dispose();
+    _heroBannerButtonLinkCtrl.dispose();
+    _heroBannerImageCtrl.dispose();
+    _heroBannerMobileImageCtrl.dispose();
+    _catImgModaCtrl.dispose();
+    _catImgCalcadosCtrl.dispose();
+    _catImgBolsasCtrl.dispose();
     _melhorEnvioTokenCtrl.dispose();
     _correiosUserCtrl.dispose();
     _correiosSenhaCtrl.dispose();

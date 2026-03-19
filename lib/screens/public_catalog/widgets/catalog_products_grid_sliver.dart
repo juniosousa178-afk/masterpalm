@@ -31,6 +31,10 @@ Widget buildCatalogProductsGridSliver({
   required int maxParcelas,
   int imageCacheWidth = 360,
   int imageCacheHeight = 480,
+  double childAspectRatio = 0.38,
+  double mainAxisSpacing = 16,
+  double crossAxisSpacing = 16,
+  EdgeInsets padding = const EdgeInsets.fromLTRB(12, 0, 12, 24),
   bool isDesktop = false,
   int desktopCols = 4,
   int mobileCols = 2,
@@ -41,12 +45,12 @@ Widget buildCatalogProductsGridSliver({
   final cols = isDesktop ? desktopCols : mobileCols;
   final gridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
     crossAxisCount: cols,
-    mainAxisSpacing: 16,
-    crossAxisSpacing: 16,
-    childAspectRatio: 0.38,
+    mainAxisSpacing: mainAxisSpacing,
+    crossAxisSpacing: crossAxisSpacing,
+    childAspectRatio: childAspectRatio,
   );
   return SliverPadding(
-    padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+    padding: padding,
     sliver: SliverGrid(
       gridDelegate: gridDelegate,
       delegate: SliverChildBuilderDelegate(
