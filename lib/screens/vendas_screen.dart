@@ -1738,7 +1738,7 @@ class _VendasScreenState extends State<VendasScreen>
 
     if (!mounted) return;
 
-    showModalBottomSheet(
+    final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -1761,6 +1761,10 @@ class _VendasScreenState extends State<VendasScreen>
         },
       ),
     );
+    if (!mounted) return;
+    if (result == true) {
+      _showSnackBar('Venda finalizada com sucesso');
+    }
   }
 
   Future<void> _confirmarExclusao(Venda venda) async {

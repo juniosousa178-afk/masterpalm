@@ -515,6 +515,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final titleLineHeight = 1.2;
     final titleBlockHeight =
         (titleSize * titleLineHeight * 2) + (widget.compact ? 1.0 : 2.0);
+    final parcelamentoTexto = _buildParcelamentoTexto();
+    final hasParcelamento = parcelamentoTexto.trim().isNotEmpty;
 
     return MouseRegion(
       onEnter: (_) {
@@ -759,9 +761,9 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               children: [
                                 if (widget.percentualDescontoPix > 0) ...[
                                   Expanded(
-                                    flex: 11,
+                                    flex: hasParcelamento ? 11 : 20,
                                     child: Text(
-                                      'PIX R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))}',
+                                      'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off',
                                       style: TextStyle(
                                         color: Colors.green[700],
                                         fontSize: pixFontSize,
@@ -772,25 +774,27 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  SizedBox(width: widget.compact ? 4 : 6),
+                                  if (hasParcelamento)
+                                    SizedBox(width: widget.compact ? 4 : 6),
                                 ],
-                                Expanded(
-                                  flex: widget.percentualDescontoPix > 0 ? 9 : 20,
-                                  child: Text(
-                                    _buildParcelamentoTexto(),
-                                    textAlign: widget.percentualDescontoPix > 0
-                                        ? TextAlign.right
-                                        : TextAlign.left,
-                                    style: TextStyle(
-                                      color: Colors.grey[600],
-                                      fontSize: parcelFontSize,
-                                      fontWeight: FontWeight.w500,
-                                      height: 1.1,
+                                if (hasParcelamento)
+                                  Expanded(
+                                    flex: widget.percentualDescontoPix > 0 ? 9 : 20,
+                                    child: Text(
+                                      parcelamentoTexto,
+                                      textAlign: widget.percentualDescontoPix > 0
+                                          ? TextAlign.right
+                                          : TextAlign.left,
+                                      style: TextStyle(
+                                        color: Colors.grey[600],
+                                        fontSize: parcelFontSize,
+                                        fontWeight: FontWeight.w500,
+                                        height: 1.1,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ),
                               ],
                             ),
                         ],

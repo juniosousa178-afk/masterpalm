@@ -1239,7 +1239,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       if (!mounted) return;
       if (ok) {
         onVendaFinalizadaRef();
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(true);
       }
     } catch (e, stackTrace) {
       if (!mounted) return;
