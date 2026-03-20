@@ -150,7 +150,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
       children: [
           const SizedBox(height: 10),
           SizedBox(
-            height: 36,
+            height: 38,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -165,7 +165,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                       label: Text(
                         'Todos',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: isSelected
                               ? FontWeight.w600
                               : FontWeight.normal,
@@ -197,7 +197,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                     label: Text(
                       cat,
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 13,
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.normal,
                         color: isSelected ? Colors.white : textColor,
@@ -243,7 +243,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
               return Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: SizedBox(
-                  height: 48,
+                  height: 52,
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -312,7 +312,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                               Text(
                                 selectedCategory!,
                                 style: TextStyle(
-                                  fontSize: 10,
+                                  fontSize: 11,
                                   color: isSelected
                                       ? Colors.white70
                                       : textColor,
@@ -323,7 +323,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                               Text(
                                 subcat,
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                   color: isSelected ? Colors.white : textColor,
                                 ),
@@ -443,7 +443,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: isSubcategory ? 12 : 13,
+              fontSize: isSubcategory ? 13 : 14,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               color: isSelected ? primaryColor : textColor,
             ),

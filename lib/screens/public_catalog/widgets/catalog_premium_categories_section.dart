@@ -43,7 +43,7 @@ class CatalogPremiumCategoriesSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 40,
+            height: 42,
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
@@ -113,7 +113,7 @@ class _CategoryChip extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
               color: selected ? Colors.white : textColor,
             ),

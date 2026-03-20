@@ -247,7 +247,7 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
     }
 
     return SizedBox(
-      height: showTitle ? imageSize + 34 : imageSize + 12,
+      height: showTitle ? imageSize + 38 : imageSize + 12,
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         scrollDirection: Axis.horizontal,
@@ -347,7 +347,8 @@ class _CategoryItem extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: textColor,
-                  fontSize: 10.5,
+                  fontSize: 11.5,
+                  height: 1.15,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),

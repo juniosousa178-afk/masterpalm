@@ -3360,7 +3360,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           title: Text(
                                             sub,
                                             style: TextStyle(
-                                              fontSize: 13,
+                                              fontSize: 14,
                                               color: subcatColor,
                                             ),
                                           ),
