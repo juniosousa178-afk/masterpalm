@@ -505,6 +505,16 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
       contentVPad = (contentVPad - 1.0).clamp(0.0, 999.0);
     }
     final spacingAfterTitle = widget.compact ? (is360 ? 1.0 : 2.0) : 4.0;
+    final parcelFontSize = widget.minimalLayout
+        ? 10.5
+        : (widget.compact ? 8.0 : 9.0);
+    final pixFontSize = widget.minimalLayout
+        ? 10.5
+        : (widget.compact ? 8.0 : 9.0);
+    final afterPriceGap = widget.compact ? 1.0 : 2.0;
+    final titleLineHeight = 1.2;
+    final titleBlockHeight =
+        (titleSize * titleLineHeight * 2) + (widget.compact ? 1.0 : 2.0);
 
     return MouseRegion(
       onEnter: (_) {
@@ -680,17 +690,23 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.start,
                         children: [
-                          Text(
-                              widget.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: widget.minimalLayout ? FontWeight.w500 : FontWeight.w600,
-                                fontSize: titleSize,
-                                color: productNameColor,
-                                height: 1.2,
+                          SizedBox(
+                            height: titleBlockHeight,
+                            child: Align(
+                              alignment: Alignment.topLeft,
+                              child: Text(
+                                widget.name,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: widget.minimalLayout ? FontWeight.w500 : FontWeight.w600,
+                                  fontSize: titleSize,
+                                  color: productNameColor,
+                                  height: titleLineHeight,
+                                ),
                               ),
                             ),
+                          ),
                             SizedBox(height: spacingAfterTitle),
                             if (_temFaixaPreco)
                               Text(
@@ -700,6 +716,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                   fontSize: priceSize,
                                   fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               )
                             else if (widget.emPromocao && widget.precoOriginal != null)
                               Row(
@@ -720,6 +738,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                       fontSize: priceSize,
                                       fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               )
@@ -731,27 +751,48 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                   fontSize: priceSize,
                                   fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                 ),
-                              ),
-                            Text(
-                              _buildParcelamentoTexto(),
-                              style: TextStyle(
-                                color: Colors.grey[500],
-                                fontSize: widget.minimalLayout ? 10 : (widget.compact ? 7 : 8),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (widget.percentualDescontoPix > 0)
-                              Text(
-                                'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off',
-                                style: TextStyle(
-                                  color: Colors.green[700],
-                                  fontSize: widget.minimalLayout ? 10 : (widget.compact ? 7 : 8),
-                                  fontWeight: FontWeight.w600,
-                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
+                            SizedBox(height: afterPriceGap),
+                            Row(
+                              children: [
+                                if (widget.percentualDescontoPix > 0) ...[
+                                  Expanded(
+                                    flex: 11,
+                                    child: Text(
+                                      'PIX R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))}',
+                                      style: TextStyle(
+                                        color: Colors.green[700],
+                                        fontSize: pixFontSize,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.1,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  SizedBox(width: widget.compact ? 4 : 6),
+                                ],
+                                Expanded(
+                                  flex: widget.percentualDescontoPix > 0 ? 9 : 20,
+                                  child: Text(
+                                    _buildParcelamentoTexto(),
+                                    textAlign: widget.percentualDescontoPix > 0
+                                        ? TextAlign.right
+                                        : TextAlign.left,
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: parcelFontSize,
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.1,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                         ],
                       ),
                     ),
