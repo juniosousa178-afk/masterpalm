@@ -22,7 +22,7 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
   final _vendedorService = VendedorService();
   List<VendedorPerfil> _vendedores = [];
   bool _carregando = true;
-  String• _storeId;
+  String? _storeId;
 
   @override
   void initState() {
@@ -53,7 +53,7 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: isError • _errorColor : isWarning • _warningColor : _successColor,
+        backgroundColor: isError ? _errorColor : isWarning ? _warningColor : _successColor,
       ),
     );
   }
@@ -70,9 +70,9 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
         elevation: 0,
       ),
       body: _carregando
-          • const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : _vendedores.isEmpty
-              • _buildEmptyState()
+              ? _buildEmptyState()
               : _buildLista(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _abrirCadastroVendedor(),
@@ -150,9 +150,9 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
                 children: [
                   // Avatar
                   CircleAvatar(
-                    backgroundColor: vendedor.ativo • _primaryColor : Colors.grey,
+                    backgroundColor: vendedor.ativo ? _primaryColor : Colors.grey,
                     child: Text(
-                      vendedor.nome.isNotEmpty • vendedor.nome[0].toUpperCase() : 'V',
+                      vendedor.nome.isNotEmpty ? vendedor.nome[0].toUpperCase() : 'V',
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -183,13 +183,13 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: vendedor.ativo • _successColor.withValues(alpha:0.1) : _errorColor.withValues(alpha:0.1),
+                      color: vendedor.ativo ? _successColor.withValues(alpha:0.1) : _errorColor.withValues(alpha:0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      vendedor.ativo • 'Ativo' : 'Inativo',
+                      vendedor.ativo ? 'Ativo' : 'Inativo',
                       style: TextStyle(
-                        color: vendedor.ativo • _successColor : _errorColor,
+                        color: vendedor.ativo ? _successColor : _errorColor,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -254,12 +254,12 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
                   TextButton.icon(
                     onPressed: () => _alterarStatus(vendedor),
                     icon: Icon(
-                      vendedor.ativo • Icons.block : Icons.check_circle,
+                      vendedor.ativo ? Icons.block : Icons.check_circle,
                       size: 18,
                     ),
-                    label: Text(vendedor.ativo • 'Desativar' : 'Ativar'),
+                    label: Text(vendedor.ativo ? 'Desativar' : 'Ativar'),
                     style: TextButton.styleFrom(
-                      foregroundColor: vendedor.ativo • _errorColor : _successColor,
+                      foregroundColor: vendedor.ativo ? _errorColor : _successColor,
                     ),
                   ),
                 ],
@@ -279,7 +279,7 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
       'clientes': 'Clientes',
       'historico_cliente': 'Histórico',
     };
-    return traducoes[key] ?• key;
+    return traducoes[key] ?? key;
   }
 
   Future<void> _abrirPermissoes(VendedorPerfil vendedor) async {
@@ -314,10 +314,10 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(vendedor.ativo • 'Desativar vendedor?' : 'Ativar vendedor?'),
+        title: Text(vendedor.ativo ? 'Desativar vendedor?' : 'Ativar vendedor?'),
         content: Text(
           vendedor.ativo
-              • 'O vendedor não poderá mais acessar o sistema.'
+              ? 'O vendedor não poderá mais acessar o sistema.'
               : 'O vendedor poderá acessar o sistema novamente.',
         ),
         actions: [
@@ -328,9 +328,9 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: vendedor.ativo • _errorColor : _successColor,
+              backgroundColor: vendedor.ativo ? _errorColor : _successColor,
             ),
-            child: Text(vendedor.ativo • 'Desativar' : 'Ativar'),
+            child: Text(vendedor.ativo ? 'Desativar' : 'Ativar'),
           ),
         ],
       ),
@@ -345,7 +345,7 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
     );
 
     if (ok) {
-      _snack(vendedor.ativo • 'Vendedor desativado' : 'Vendedor ativado');
+      _snack(vendedor.ativo ? 'Vendedor desativado' : 'Vendedor ativado');
       await _carregarDados();
     } else {
       _snack('Erro ao alterar status', isError: true);
@@ -408,7 +408,7 @@ class _PermissoesSheetState extends State<_PermissoesSheet> {
               CircleAvatar(
                 backgroundColor: const Color(0xFF6366F1),
                 child: Text(
-                  widget.vendedor.nome.isNotEmpty • widget.vendedor.nome[0].toUpperCase() : 'V',
+                  widget.vendedor.nome.isNotEmpty ? widget.vendedor.nome[0].toUpperCase() : 'V',
                   style: const TextStyle(color: Colors.white),
                 ),
               ),
@@ -440,7 +440,7 @@ class _PermissoesSheetState extends State<_PermissoesSheet> {
           ..._permissoesLiberaveis.map((p) {
             final key = p['key'] as String;
             return SwitchListTile(
-              value: _permissoes[key] ?• false,
+              value: _permissoes[key] ?? false,
               onChanged: (v) => setState(() => _permissoes[key] = v),
               title: Text(p['label'] as String),
               subtitle: Text(

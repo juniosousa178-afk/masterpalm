@@ -38,7 +38,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   bool _loadingGratis = false;
   bool _loadingMensal = false;
   bool _loadingAnual = false;
-  PlanInfo• _plan;
+  PlanInfo? _plan;
   bool _mpConfigurado = false;
 
   bool get _isRoot {
@@ -105,7 +105,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
 
   void _mostrarErroMpNaoConfigurado() {
     final msg = _isRootAdmin
-        • 'Configure o Mercado Pago em Configurações Master (menu lateral) para receber pagamentos de planos.'
+        ? 'Configure o Mercado Pago em Configurações Master (menu lateral) para receber pagamentos de planos.'
         : 'O Mercado Pago ainda não foi configurado. Entre em contato com o administrador para assinar um plano.';
     showDialog(
       context: context,
@@ -184,8 +184,8 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
 
     try {
       final config = await MasterConfigService.loadMasterConfig();
-      accessTokenCtrl.text = config.mercadoPagoAccessToken ?• '';
-      publicKeyCtrl.text = config.mercadoPagoPublicKey ?• '';
+      accessTokenCtrl.text = config.mercadoPagoAccessToken ?? '';
+      publicKeyCtrl.text = config.mercadoPagoPublicKey ?? '';
     } catch (_) {}
 
     if (!mounted) return;
@@ -236,7 +236,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                       labelStyle: const TextStyle(color: Colors.white70),
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(showToken • Icons.visibility_off : Icons.visibility, color: Colors.white54, size: 20),
+                        icon: Icon(showToken ? Icons.visibility_off : Icons.visibility, color: Colors.white54, size: 20),
                         onPressed: () => setDialogState(() => showToken = !showToken),
                       ),
                     ),
@@ -257,7 +257,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: testing || saving
-                              • null
+                              ? null
                               : () async {
                                   final token = accessTokenCtrl.text.trim();
                                   if (token.isEmpty) {
@@ -272,15 +272,15 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                                   if (!ctx.mounted) return;
                                   ScaffoldMessenger.of(ctx).showSnackBar(
                                     SnackBar(
-                                      content: Text(ok • 'Conexão OK!' : 'Falha na conexão. Verifique o token.'),
-                                      backgroundColor: ok • Colors.green : Colors.red,
+                                      content: Text(ok ? 'Conexão OK!' : 'Falha na conexão. Verifique o token.'),
+                                      backgroundColor: ok ? Colors.green : Colors.red,
                                     ),
                                   );
                                 },
                           icon: testing
-                              • const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: _fluorGreen))
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: _fluorGreen))
                               : const Icon(Icons.wifi_tethering, size: 18, color: _fluorGreen),
-                          label: Text(testing • 'Testando...' : 'Testar'),
+                          label: Text(testing ? 'Testando...' : 'Testar'),
                           style: OutlinedButton.styleFrom(foregroundColor: _fluorGreen, side: const BorderSide(color: _fluorGreen)),
                         ),
                       ),
@@ -289,7 +289,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                         flex: 2,
                         child: ElevatedButton.icon(
                           onPressed: testing || saving
-                              • null
+                              ? null
                               : () async {
                                   final token = accessTokenCtrl.text.trim();
                                   final publicKey = publicKeyCtrl.text.trim();
@@ -301,7 +301,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                                   }
                                   setDialogState(() => saving = true);
                                   try {
-                                    final email = FirebaseAuth.instance.currentUser?.email ?• 'programador';
+                                    final email = FirebaseAuth.instance.currentUser?.email ?? 'programador';
                                     await MasterConfigService.updateMercadoPagoKeys(
                                       accessToken: token,
                                       publicKey: publicKey,
@@ -324,9 +324,9 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                                   }
                                 },
                           icon: saving
-                              • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                               : const Icon(Icons.save, size: 18),
-                          label: Text(saving • 'Salvando...' : 'Salvar'),
+                          label: Text(saving ? 'Salvando...' : 'Salvar'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _fluorGreen,
                             foregroundColor: Colors.black,
@@ -382,7 +382,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                       ),
                       Text(
                         _isRoot
-                            • 'Configure para receber pagamentos de planos mensais e anuais.'
+                            ? 'Configure para receber pagamentos de planos mensais e anuais.'
                             : 'Assinaturas pagas indisponíveis. Contate o administrador.',
                         style: const TextStyle(color: Colors.white54, fontSize: 13),
                       ),
@@ -457,7 +457,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         Navigator.pushReplacementNamed(context, '/login');
         return;
       }
-      final email = (user.email ?• '').trim().toLowerCase();
+      final email = (user.email ?? '').trim().toLowerCase();
 
       final p = await _svc.fetchCurrentPlan(uid: user.uid, email: email);
 
@@ -486,7 +486,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     try {
       await _svc.activateFreeTrial90d(
         uid: user.uid,
-        email: (user.email ?• '').trim().toLowerCase(),
+        email: (user.email ?? '').trim().toLowerCase(),
       );
 
       if (!mounted) return;
@@ -638,9 +638,9 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     );
   }
 
-  Widget _header(PlanInfo• plan) {
+  Widget _header(PlanInfo? plan) {
     String statusLabel = 'Sem plano';
-    String• expiresText;
+    String? expiresText;
 
     if (plan != null) {
       statusLabel = _traduzirPlanId(plan.planId);
@@ -658,9 +658,9 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         final d = plan.currentPeriodEnd!;
         expiresText =
             'Válido até ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
-        final days = plan.daysLeft ?• 0;
+        final days = plan.daysLeft ?? 0;
         if (days > 0) {
-          expiresText += ' • $days dias restantes';
+          expiresText += ' ? $days dias restantes';
         }
       }
     }
@@ -731,7 +731,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                 foregroundColor: _fluorGreen,
                 side: const BorderSide(color: _fluorGreen),
               ),
-              onPressed: _loading • null : _load,
+              onPressed: _loading ? null : _load,
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Atualizar'),
             ),
@@ -760,7 +760,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) {
     final canShowFree =
-        _plan == null • true : (_plan!.trialUsed == false && _plan!.manualOverride == false);
+        _plan == null ? true : (_plan!.trialUsed == false && _plan!.manualOverride == false);
 
     final cards = <Widget>[
       if (canShowFree)
@@ -791,8 +791,8 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
           'Catálogo completo, relatórios e backup',
           'Suporte',
         ],
-        buttonLabel: _mpConfigurado • 'Assinar mensal' : 'Mercado Pago não configurado',
-        onPressed: _mpConfigurado • _assinarMensal : () async => _mostrarErroMpNaoConfigurado(),
+        buttonLabel: _mpConfigurado ? 'Assinar mensal' : 'Mercado Pago não configurado',
+        onPressed: _mpConfigurado ? _assinarMensal : () async => _mostrarErroMpNaoConfigurado(),
         isLoading: _loadingMensal,
         isCurrent: _isPlanoAtual('mensal'),
       ),
@@ -801,15 +801,15 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         title: 'Plano Anual',
         subtitle: 'Mais barato no ano',
         price: '${_fmtBRL(_priceAnual)} / ano',
-        economiaText: _economiaAnual > 0 • 'Economize ${_fmtBRL(_economiaAnual)} no ano' : null,
+        economiaText: _economiaAnual > 0 ? 'Economize ${_fmtBRL(_economiaAnual)} no ano' : null,
         bullets: const [
           'Tudo do mensal',
           'Benefícios extras',
           'Melhor custo-benefício',
           'Suporte prioritário',
         ],
-        buttonLabel: _mpConfigurado • 'Assinar anual' : 'Mercado Pago não configurado',
-        onPressed: _mpConfigurado • _assinarAnual : () async => _mostrarErroMpNaoConfigurado(),
+        buttonLabel: _mpConfigurado ? 'Assinar anual' : 'Mercado Pago não configurado',
+        onPressed: _mpConfigurado ? _assinarAnual : () async => _mostrarErroMpNaoConfigurado(),
         isLoading: _loadingAnual,
         isCurrent: _isPlanoAtual('anual'),
       ),
@@ -823,13 +823,13 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         actions: [
           IconButton(
             tooltip: 'Atualizar',
-            onPressed: _loading • null : _load,
+            onPressed: _loading ? null : _load,
             icon: const Icon(Icons.refresh),
           ),
         ],
       ),
       body: _loading
-          • const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -872,7 +872,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                       return GridView.count(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: constraints.maxWidth >= 900 • 3 : 2,
+                        crossAxisCount: constraints.maxWidth >= 900 ? 3 : 2,
                         mainAxisSpacing: 16,
                         crossAxisSpacing: 16,
                         childAspectRatio: 0.75,
@@ -902,7 +902,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     required Future<void> Function() onPressed,
     bool isLoading = false,
     bool isCurrent = false,
-    String• economiaText,
+    String? economiaText,
   }) {
     return Semantics(
       button: true,
@@ -912,7 +912,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side: isCurrent
-              • const BorderSide(color: _fluorGreen, width: 2)
+              ? const BorderSide(color: _fluorGreen, width: 2)
               : BorderSide.none,
         ),
         elevation: 8,
@@ -990,7 +990,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('• ', style: TextStyle(color: Colors.white70)),
+                        const Text('? ', style: TextStyle(color: Colors.white70)),
                         Expanded(
                           child: Text(
                             b,
@@ -1013,9 +1013,9 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: isLoading • null : () => onPressed(),
+                  onPressed: isLoading ? null : () => onPressed(),
                   child: isLoading
-                      • const SizedBox(
+                      ? const SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(

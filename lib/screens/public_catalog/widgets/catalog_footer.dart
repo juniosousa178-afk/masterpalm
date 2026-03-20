@@ -5,10 +5,10 @@ import 'catalog_section_title.dart';
 class CatalogFooter extends StatelessWidget {
   final Color bg;
   final Color textColor;
-  final Color• textSecondaryColor;
-  final Color• iconColor;
-  final Color• linkColor;
-  final Color• dividerColor;
+  final Color? textSecondaryColor;
+  final Color? iconColor;
+  final Color? linkColor;
+  final Color? dividerColor;
   final String lojaNome;
   final String instagramUrl;
   final String facebookUrl;
@@ -66,13 +66,13 @@ class CatalogFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = textSecondaryColor ?• textColor.withValues(alpha: 0.65);
-    final icons = iconColor ?• textColor;
-    final linksColor = linkColor ?• textColor;
-    final divider = dividerColor ?• textColor.withValues(alpha: 0.22);
+    final muted = textSecondaryColor ?? textColor.withValues(alpha: 0.65);
+    final icons = iconColor ?? textColor;
+    final linksColor = linkColor ?? textColor;
+    final divider = dividerColor ?? textColor.withValues(alpha: 0.22);
     final safeLinks = links.where((m) {
-      final label = (m['label'] ?• '').trim();
-      final url = (m['url'] ?• '').trim();
+      final label = (m['label'] ?? '').trim();
+      final url = (m['url'] ?? '').trim();
       return label.isNotEmpty && url.isNotEmpty;
     }).toList();
 
@@ -127,14 +127,14 @@ class CatalogFooter extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             atendimentoWhatsapp.trim().isEmpty
-                • '(WhatsApp nao configurado)'
+                ? '(WhatsApp nao configurado)'
                 : atendimentoWhatsapp,
             style: TextStyle(color: textColor, fontSize: 14),
           ),
           const SizedBox(height: 8),
           ElevatedButton.icon(
             onPressed:
-                atendimentoWhatsapp.trim().isEmpty • null : onOpenWhatsapp,
+                atendimentoWhatsapp.trim().isEmpty ? null : onOpenWhatsapp,
             icon: const Icon(Icons.message_outlined),
             label: const Text('Conversar no WhatsApp'),
           ),
@@ -155,7 +155,7 @@ class CatalogFooter extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: asset == null
-                    • Text(code.toUpperCase(), style: TextStyle(color: muted))
+                    ? Text(code.toUpperCase(), style: TextStyle(color: muted))
                     : Image.asset(asset, height: 22, fit: BoxFit.contain),
               );
             }).toList(),
@@ -165,8 +165,8 @@ class CatalogFooter extends StatelessWidget {
             CatalogSectionTitle('Perguntas frequentes', color: muted),
             const SizedBox(height: 8),
             ...faqItems.take(3).map((faq) {
-              final pergunta = (faq['pergunta'] ?• '').trim();
-              final resposta = (faq['resposta'] ?• '').trim();
+              final pergunta = (faq['pergunta'] ?? '').trim();
+              final resposta = (faq['resposta'] ?? '').trim();
               if (pergunta.isEmpty) return const SizedBox.shrink();
               return ExpansionTile(
                 tilePadding: EdgeInsets.zero,
@@ -226,8 +226,8 @@ class CatalogFooter extends StatelessWidget {
           ],
           const SizedBox(height: 14),
           Text(
-            '${(empresaRazao.isNotEmpty • empresaRazao : lojaNome).toUpperCase()}'
-            '${empresaCnpj.isNotEmpty • ' - CNPJ: $empresaCnpj' : ''}',
+            '${(empresaRazao.isNotEmpty ? empresaRazao : lojaNome).toUpperCase()}'
+            '${empresaCnpj.isNotEmpty ? ' - CNPJ: $empresaCnpj' : ''}',
             textAlign: TextAlign.center,
             style: TextStyle(color: muted, fontSize: 12),
           ),
@@ -239,11 +239,11 @@ class CatalogFooter extends StatelessWidget {
   Widget _icon(IconData icon, String rawUrl, Color color, {bool isWhatsapp = false}) {
     final url = rawUrl.trim();
     return Opacity(
-      opacity: url.isEmpty • 0.35 : 1,
+      opacity: url.isEmpty ? 0.35 : 1,
       child: IconButton(
         icon: Icon(icon, size: 24, color: color),
         onPressed: url.isEmpty
-            • null
+            ? null
             : () {
                 if (isWhatsapp) {
                   final cleanPhone = url.replaceAll(RegExp(r'[^\d]'), '');

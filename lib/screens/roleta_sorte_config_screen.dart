@@ -56,9 +56,9 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
         final data = doc.data()!;
         setState(() {
           _ativa = data['ativa'] == true;
-          _valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?• 0.0;
-          _frequenciaPremio = data['frequenciaPremio'] as int• ?• 10;
-          _premios = List<Map<String, dynamic>>.from(data['premios'] ?• []);
+          _valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?? 0.0;
+          _frequenciaPremio = data['frequenciaPremio'] as int? ?? 10;
+          _premios = List<Map<String, dynamic>>.from(data['premios'] ?? []);
 
           _valorMinimoController.text = MoedaInputFormatter.format(_valorMinimo);
           _frequenciaController.text = _frequenciaPremio.toString();
@@ -87,7 +87,7 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
   Future<void> _salvarConfig() async {
     try {
       final valorMinimo = MoedaInputFormatter.parse(_valorMinimoController.text);
-      final frequencia = int.tryParse(_frequenciaController.text) ?• 10;
+      final frequencia = int.tryParse(_frequenciaController.text) ?? 10;
 
       if (valorMinimo < 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -201,7 +201,7 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                         ),
                         style: const TextStyle(color: Colors.white),
                         keyboardType: TextInputType.number,
-                        onChanged: (v) => valor = double.tryParse(v) ?• 0.0,
+                        onChanged: (v) => valor = double.tryParse(v) ?? 0.0,
                       ),
                     const SizedBox(height: 16),
                     TextField(
@@ -217,7 +217,7 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                       style: const TextStyle(color: Colors.white),
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      onChanged: (v) => quantidadeMaxima = int.tryParse(v) ?• 0,
+                      onChanged: (v) => quantidadeMaxima = int.tryParse(v) ?? 0,
                     ),
                     const SizedBox(height: 16),
                     TextField(
@@ -234,7 +234,7 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                       style: const TextStyle(color: Colors.white),
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      onChanged: (v) => diasValidade = int.tryParse(v) ?• 30,
+                      onChanged: (v) => diasValidade = int.tryParse(v) ?? 30,
                     ),
                   ],
                 ),
@@ -303,13 +303,13 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
 
   void _editarPremio(int index) {
     final premio = Map<String, dynamic>.from(_premios[index]);
-    final labelCtrl = TextEditingController(text: premio['label']?.toString() ?• '');
+    final labelCtrl = TextEditingController(text: premio['label']?.toString() ?? '');
     final valorCtrl = TextEditingController(
-      text: premio['tipo'] == 'desconto' • (premio['valor']?.toString() ?• '0') : '',
+      text: premio['tipo'] == 'desconto' ? (premio['valor']?.toString() ?? '0') : '',
     );
-    String tipo = premio['tipo']?.toString() ?• 'desconto';
-    int quantidadeMaxima = premio['quantidadeMaxima'] as int• ?• 0;
-    int diasValidade = premio['diasValidade'] as int• ?• 30;
+    String tipo = premio['tipo']?.toString() ?? 'desconto';
+    int quantidadeMaxima = premio['quantidadeMaxima'] as int? ?? 0;
+    int diasValidade = premio['diasValidade'] as int? ?? 30;
 
     showDialog(
       context: context,
@@ -360,7 +360,7 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                     ),
                     style: const TextStyle(color: Colors.white),
                     keyboardType: TextInputType.number,
-                    onChanged: (v) => premio['valor'] = double.tryParse(v) ?• 0.0,
+                    onChanged: (v) => premio['valor'] = double.tryParse(v) ?? 0.0,
                   ),
               ],
             ),
@@ -374,7 +374,7 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
               onPressed: () {
                 premio['label'] = labelCtrl.text;
                 premio['tipo'] = tipo;
-                premio['valor'] = tipo == 'desconto' • (double.tryParse(valorCtrl.text) ?• 0.0) : 0.0;
+                premio['valor'] = tipo == 'desconto' ? (double.tryParse(valorCtrl.text) ?? 0.0) : 0.0;
                 premio['quantidadeMaxima'] = quantidadeMaxima;
                 premio['diasValidade'] = diasValidade;
                 setState(() => _premios[index] = premio);
@@ -425,8 +425,8 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                   style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  _ativa • 'Ativa - clientes podem girar após finalizar compra' : 'Inativa',
-                  style: TextStyle(color: _ativa • Colors.greenAccent : Colors.white54),
+                  _ativa ? 'Ativa - clientes podem girar após finalizar compra' : 'Inativa',
+                  style: TextStyle(color: _ativa ? Colors.greenAccent : Colors.white54),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -535,8 +535,8 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
             else
               ...List.generate(_premios.length, (index) {
                 final premio = _premios[index];
-                final qtdMax = premio['quantidadeMaxima'] as int• ?• 0;
-                final qtdUsada = premio['quantidadeUsada'] as int• ?• 0;
+                final qtdMax = premio['quantidadeMaxima'] as int? ?? 0;
+                final qtdUsada = premio['quantidadeUsada'] as int? ?? 0;
                 final esgotado = qtdMax > 0 && qtdUsada >= qtdMax;
 
                 return Card(
@@ -546,19 +546,19 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                   child: ListTile(
                     leading: Icon(
                       premio['tipo'] == 'desconto'
-                          • Icons.discount
+                          ? Icons.discount
                           : premio['tipo'] == 'frete_gratis'
-                              • Icons.local_shipping
+                              ? Icons.local_shipping
                               : premio['tipo'] == 'brinde'
-                                  • Icons.card_giftcard
+                                  ? Icons.card_giftcard
                                   : Icons.close,
-                      color: esgotado • Colors.grey : Colors.greenAccent,
+                      color: esgotado ? Colors.grey : Colors.greenAccent,
                     ),
                     title: Text(
                       premio['label'],
                       style: TextStyle(
-                        color: esgotado • Colors.grey : Colors.white,
-                        decoration: esgotado • TextDecoration.lineThrough : null,
+                        color: esgotado ? Colors.grey : Colors.white,
+                        decoration: esgotado ? TextDecoration.lineThrough : null,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -568,14 +568,14 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                       children: [
                         Text(
                           premio['tipo'] == 'desconto'
-                              • 'Desconto de ${premio['valor']}%'
+                              ? 'Desconto de ${premio['valor']}%'
                               : premio['tipo'] == 'frete_gratis'
-                                  • 'Frete grátis'
+                                  ? 'Frete grátis'
                                   : premio['tipo'] == 'brinde'
-                                      • 'Brinde'
+                                      ? 'Brinde'
                                       : 'Tente novamente',
                           style: TextStyle(
-                            color: esgotado • Colors.grey : Colors.white54,
+                            color: esgotado ? Colors.grey : Colors.white54,
                             fontSize: 12,
                           ),
                         ),
@@ -584,10 +584,10 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
                               esgotado
-                                  • '🚫 ESGOTADO ($qtdUsada/$qtdMax)'
+                                  ? '🚫 ESGOTADO ($qtdUsada/$qtdMax)'
                                   : '📊 Usados: $qtdUsada/$qtdMax',
                               style: TextStyle(
-                                color: esgotado • Colors.redAccent : Colors.orangeAccent,
+                                color: esgotado ? Colors.redAccent : Colors.orangeAccent,
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                               ),

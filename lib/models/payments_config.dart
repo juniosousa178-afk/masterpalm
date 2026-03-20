@@ -1,11 +1,11 @@
 // lib/models/payments_config.dart
 class MpGatewayConfig {
-  final String• publicKey;
-  final String• token;
+  final String? publicKey;
+  final String? token;
 
   const MpGatewayConfig({this.publicKey, this.token});
 
-  factory MpGatewayConfig.fromMap(Map<String, dynamic>• map) {
+  factory MpGatewayConfig.fromMap(Map<String, dynamic>? map) {
     map ??= const {};
     return MpGatewayConfig(
       publicKey: map['publicKey'] as String?,
@@ -22,12 +22,12 @@ class MpGatewayConfig {
 }
 
 class PagSeguroGatewayConfig {
-  final String• publicKey;
-  final String• token;
+  final String? publicKey;
+  final String? token;
 
   const PagSeguroGatewayConfig({this.publicKey, this.token});
 
-  factory PagSeguroGatewayConfig.fromMap(Map<String, dynamic>• map) {
+  factory PagSeguroGatewayConfig.fromMap(Map<String, dynamic>? map) {
     map ??= const {};
     return PagSeguroGatewayConfig(
       publicKey: map['publicKey'] as String?,
@@ -44,12 +44,12 @@ class PagSeguroGatewayConfig {
 }
 
 class TonGatewayConfig {
-  final String• clientId;
-  final String• clientSecret;
+  final String? clientId;
+  final String? clientSecret;
 
   const TonGatewayConfig({this.clientId, this.clientSecret});
 
-  factory TonGatewayConfig.fromMap(Map<String, dynamic>• map) {
+  factory TonGatewayConfig.fromMap(Map<String, dynamic>? map) {
     map ??= const {};
     return TonGatewayConfig(
       clientId: map['clientId'] as String?,
@@ -66,12 +66,12 @@ class TonGatewayConfig {
 }
 
 class InfinitePayGatewayConfig {
-  final String• merchantId;
-  final String• apiKey;
+  final String? merchantId;
+  final String? apiKey;
 
   const InfinitePayGatewayConfig({this.merchantId, this.apiKey});
 
-  factory InfinitePayGatewayConfig.fromMap(Map<String, dynamic>• map) {
+  factory InfinitePayGatewayConfig.fromMap(Map<String, dynamic>? map) {
     map ??= const {};
     return InfinitePayGatewayConfig(
       merchantId: map['merchantId'] as String?,
@@ -102,7 +102,7 @@ class PaymentsConfig {
     required this.defaultGateway,
   });
 
-  factory PaymentsConfig.fromMap(Map<String, dynamic>• map) {
+  factory PaymentsConfig.fromMap(Map<String, dynamic>? map) {
     map ??= const {};
     return PaymentsConfig(
       mp: MpGatewayConfig.fromMap(map['mp'] as Map<String, dynamic>?),
@@ -114,7 +114,7 @@ class PaymentsConfig {
         map['infinitepay'] as Map<String, dynamic>?,
       ),
       defaultGateway:
-          (map['defaultGateway'] as String?)?.toLowerCase() ?• 'mp',
+          (map['defaultGateway'] as String?)?.toLowerCase() ?? 'mp',
     );
   }
 
@@ -129,18 +129,18 @@ class PaymentsConfig {
   }
 
   PaymentsConfig copyWith({
-    MpGatewayConfig• mp,
-    PagSeguroGatewayConfig• pagseguro,
-    TonGatewayConfig• ton,
-    InfinitePayGatewayConfig• infinitepay,
-    String• defaultGateway,
+    MpGatewayConfig? mp,
+    PagSeguroGatewayConfig? pagseguro,
+    TonGatewayConfig? ton,
+    InfinitePayGatewayConfig? infinitepay,
+    String? defaultGateway,
   }) {
     return PaymentsConfig(
-      mp: mp ?• this.mp,
-      pagseguro: pagseguro ?• this.pagseguro,
-      ton: ton ?• this.ton,
-      infinitepay: infinitepay ?• this.infinitepay,
-      defaultGateway: defaultGateway ?• this.defaultGateway,
+      mp: mp ?? this.mp,
+      pagseguro: pagseguro ?? this.pagseguro,
+      ton: ton ?? this.ton,
+      infinitepay: infinitepay ?? this.infinitepay,
+      defaultGateway: defaultGateway ?? this.defaultGateway,
     );
   }
 

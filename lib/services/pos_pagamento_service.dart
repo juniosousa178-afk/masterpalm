@@ -50,8 +50,8 @@ class PosPagamentoService {
     required List<Map<String, dynamic>> items,
     required double valorTotal,
     required String formaPagamento,
-    String• cupomRoletaCodigo,
-    double• cupomRoletaDesconto,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
   }) async {
     try {
       debugPrint(
@@ -121,8 +121,8 @@ class PosPagamentoService {
       // 3.1. Registrar número na campanha ativa (mesmo fluxo da nova venda)
       await SorteioNumeroService.registrarNumeroEmCampanhas(
         lojaId: lojaId,
-        clienteNome: customer['nome']?.toString() ?• 'Cliente',
-        clienteId: customer['id']?.toString() ?• customer['clienteId']?.toString(),
+        clienteNome: customer['nome']?.toString() ?? 'Cliente',
+        clienteId: customer['id']?.toString() ?? customer['clienteId']?.toString(),
         valorCompra: valorTotal,
         dataCompra: DateTime.now(),
         numeroSorte: numeroSorte,
@@ -204,7 +204,7 @@ class PosPagamentoService {
       // FASE 3: Box por loja (HiveBoxNames.vendas(lojaId)) — lojaId já recebido no fluxo
       final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
       final key = int.tryParse(vendaId);
-      final venda = key != null • vendasBox.get(key) : vendasBox.get(vendaId);
+      final venda = key != null ? vendasBox.get(key) : vendasBox.get(vendaId);
       if (venda != null) {
         venda.observacao = '${venda.observacao}\n[PAGO em ${DateTime.now()}]';
         await venda.save();
@@ -223,11 +223,11 @@ class PosPagamentoService {
     final txItems = <Map<String, dynamic>>[];
     for (final item in items) {
       final productId = item['productId']?.toString();
-      final qty = (item['qty'] as int?) ?• (item['quantidade'] as int?) ?• 1;
+      final qty = (item['qty'] as int?) ?? (item['quantidade'] as int?) ?? 1;
 
       if (productId == null || productId.isEmpty) {
         debugPrint(
-          '⚠️ [ESTOQUE_BAIXA] Item sem productId, pulando baixa de estoque. lojaId=$lojaId, nome=${item['name'] ?• item['nome']}',
+          '⚠️ [ESTOQUE_BAIXA] Item sem productId, pulando baixa de estoque. lojaId=$lojaId, nome=${item['name'] ?? item['nome']}',
         );
         continue;
       }
@@ -235,10 +235,10 @@ class PosPagamentoService {
 
       txItems.add({
         'productId': productId,
-        'nome': item['name'] ?• item['nome'] ?• '',
+        'nome': item['name'] ?? item['nome'] ?? '',
         'quantidade': qty,
-        'tamanho': (item['tamanho'] ?• item['size'] ?• '').toString().trim(),
-        'cor': (item['cor'] ?• item['color'] ?• '').toString().trim(),
+        'tamanho': (item['tamanho'] ?? item['size'] ?? '').toString().trim(),
+        'cor': (item['cor'] ?? item['color'] ?? '').toString().trim(),
       });
     }
 
@@ -344,14 +344,14 @@ class PosPagamentoService {
     required String vendaId,
     required Map<String, dynamic> customer,
     required String numeroSorte,
-    String• cupomRoletaCodigo,
-    double• cupomRoletaDesconto,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
     required double valorTotal,
   }) async {
     try {
       final email = customer['email']?.toString();
       final telefone = customer['telefone']?.toString();
-      final nome = customer['nome']?.toString() ?• 'Cliente';
+      final nome = customer['nome']?.toString() ?? 'Cliente';
 
       // Buscar configurações da loja
       final lojaDoc = await FirebaseFirestore.instance
@@ -365,7 +365,7 @@ class PosPagamentoService {
       }
 
       final lojaData = lojaDoc.data()!;
-      final lojaNome = lojaData['nome']?.toString() ?• 'Loja';
+      final lojaNome = lojaData['nome']?.toString() ?? 'Loja';
 
       // Enviar Email
       if (email != null && email.isNotEmpty) {
@@ -410,8 +410,8 @@ class PosPagamentoService {
     required String nome,
     required String lojaNome,
     required String numeroSorte,
-    String• cupomRoletaCodigo,
-    double• cupomRoletaDesconto,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
     required double valorTotal,
   }) async {
     try {
@@ -452,8 +452,8 @@ class PosPagamentoService {
     required String nome,
     required String lojaNome,
     required String numeroSorte,
-    String• cupomRoletaCodigo,
-    double• cupomRoletaDesconto,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
     required double valorTotal,
   }) {
     final temCupom = cupomRoletaCodigo != null && cupomRoletaCodigo.isNotEmpty;
@@ -496,7 +496,7 @@ class PosPagamentoService {
 
       <p>Seu número da sorte foi registrado e você está concorrendo a prêmios incríveis. Fique de olho no sorteio!</p>
 
-      ${temCupom • '''
+      ${temCupom ? '''
       <div class="cupom">
         <h3 style="margin: 0 0 10px 0; color: #856404;">🎁 Você também ganhou na Roleta da Sorte!</h3>
         <p style="margin: 5px 0; color: #856404;">Cupom de desconto de <strong>${cupomRoletaDesconto?.toStringAsFixed(0)}%</strong> para sua próxima compra:</p>
@@ -531,8 +531,8 @@ class PosPagamentoService {
     required String nome,
     required String lojaNome,
     required String numeroSorte,
-    String• cupomRoletaCodigo,
-    double• cupomRoletaDesconto,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
     required double valorTotal,
   }) async {
     try {
@@ -550,21 +550,21 @@ class PosPagamentoService {
 
         if (pedido != null) {
           final numeroPedido = pedido['id'].toString();
-          final cliente = pedido['cliente'] as Map<String, dynamic>• ?• {};
-          final itens = (pedido['itens'] as List<dynamic>?) ?• [];
-          final formaPagamento = (pedido['pagamento'] ?• '') as String;
-          final total = (pedido['total'] as num?)?.toDouble() ?• valorTotal;
-          final endereco = (cliente['enderecoFormatado'] ?• cliente['endereco'] ?• '') as String;
+          final cliente = pedido['cliente'] as Map<String, dynamic>? ?? {};
+          final itens = (pedido['itens'] as List<dynamic>?) ?? [];
+          final formaPagamento = (pedido['pagamento'] ?? '') as String;
+          final total = (pedido['total'] as num?)?.toDouble() ?? valorTotal;
+          final endereco = (cliente['enderecoFormatado'] ?? cliente['endereco'] ?? '') as String;
 
           final itensLinhas = itens.map<String>((e) {
             final map = e as Map<String, dynamic>;
-            final qtd = (map['quantidade'] as num?)?.toInt() ?• 1;
-            final nomeItem = (map['nome'] ?• map['name'] ?• '') as String;
+            final qtd = (map['quantidade'] as num?)?.toInt() ?? 1;
+            final nomeItem = (map['nome'] ?? map['name'] ?? '') as String;
             return '➡ ${qtd}x $nomeItem';
           }).join('\n');
 
           const tempoEntregaPadrao = '45 - 60min';
-          final formaPagamentoExibir = formaPagamento.isEmpty • 'Não informado' : formaPagamento;
+          final formaPagamentoExibir = formaPagamento.isEmpty ? 'Não informado' : formaPagamento;
 
           mensagem = '''
 Olá $nome, aqui é o atendente virtual da *${lojaNome.toUpperCase()}*.
@@ -581,14 +581,14 @@ $itensLinhas
 
 *Tempo de entrega:* $tempoEntregaPadrao
 
-*Local de entrega:* ${endereco.isEmpty • 'Não informado' : endereco}
+*Local de entrega:* ${endereco.isEmpty ? 'Não informado' : endereco}
 
 *Total do pedido:* R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}
 
 ---
 🎲 *Seu Número da Sorte:* *$numeroSorte*
 ✅ Você está participando da nossa promoção!
-${temCupom • '''
+${temCupom ? '''
 🎁 *Cupom da Roleta:* *$cupomRoletaCodigo* (${cupomRoletaDesconto?.toStringAsFixed(0)}% OFF) - Válido por 60 dias.
 ''' : ''}
 Obrigado por comprar conosco! 💜
@@ -612,7 +612,7 @@ Obrigado por sua compra na *$lojaNome*!
 
 ✅ Você está participando da nossa promoção!
 
-${temCupom • '''
+${temCupom ? '''
 🎁 *Você também ganhou na Roleta da Sorte!*
 
 Cupom de *${cupomRoletaDesconto?.toStringAsFixed(0)}% OFF* para sua próxima compra:
@@ -676,7 +676,7 @@ Obrigado por comprar conosco! 💜
         return;
       }
 
-      final pedidoData = (await pedidoRef.get()).data() ?• {};
+      final pedidoData = (await pedidoRef.get()).data() ?? {};
       final premioRoleta = pedidoData['premioRoleta'] as Map<String, dynamic>?;
 
       if (premioRoleta == null) {
@@ -684,7 +684,7 @@ Obrigado por comprar conosco! 💜
         return;
       }
 
-      final tipo = premioRoleta['tipo']?.toString() ?• 'nenhum';
+      final tipo = premioRoleta['tipo']?.toString() ?? 'nenhum';
 
       if (tipo == 'nenhum') {
         debugPrint('ℹ️ Prêmio é do tipo "nenhum", não requer ativação');
@@ -701,8 +701,8 @@ Obrigado por comprar conosco! 💜
       // ✅ Se for cupom ou frete grátis, salvar no estoque_clientes (por telefone) e no perfil do catálogo (por email)
       if (tipo == 'desconto' || tipo == 'frete_gratis') {
         final clienteData = pedidoData['cliente'] as Map<String, dynamic>?;
-        final telefone = (clienteData?['telefone'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-        final email = (clienteData?['email'] ?• '').toString().trim().toLowerCase();
+        final telefone = (clienteData?['telefone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+        final email = (clienteData?['email'] ?? '').toString().trim().toLowerCase();
 
         if (telefone.isNotEmpty) {
           // 1) estoque_clientes (por telefone)
@@ -720,7 +720,7 @@ Obrigado por comprar conosco! 💜
                 {
                   'codigo': premioRoleta['codigo'],
                   'tipo': tipo,
-                  'valor': premioRoleta['valor'] ?• 0.0,
+                  'valor': premioRoleta['valor'] ?? 0.0,
                   'descricao': premioRoleta['descricao'],
                   'dataGanho': premioRoleta['dataGanho'],
                   'dataAtivacao': FieldValue.serverTimestamp(),
@@ -736,7 +736,7 @@ Obrigado por comprar conosco! 💜
 
         // 2) Perfil do cliente no catálogo (clientes_catalogo por email) – para aparecer em "Meus Cupons"
         if (email.isNotEmpty) {
-          final codigo = (premioRoleta['codigo'] ?• '').toString();
+          final codigo = (premioRoleta['codigo'] ?? '').toString();
           if (codigo.isNotEmpty) {
             final dataExpiracao = DateTime.now().add(const Duration(days: 60));
             await firestore
@@ -748,9 +748,9 @@ Obrigado por comprar conosco! 💜
                 .doc(codigo)
                 .set({
               'codigo': codigo,
-              'descricao': premioRoleta['descricao'] ?• '',
+              'descricao': premioRoleta['descricao'] ?? '',
               'tipo': tipo,
-              'valor': (premioRoleta['valor'] as num?)?.toDouble() ?• 0.0,
+              'valor': (premioRoleta['valor'] as num?)?.toDouble() ?? 0.0,
               'dataGanho': premioRoleta['dataGanho'],
               'dataExpiracao': Timestamp.fromDate(dataExpiracao),
               'usado': false,

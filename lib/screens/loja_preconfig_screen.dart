@@ -68,7 +68,7 @@ class _LojaPreconfigScreenState extends State<LojaPreconfigScreen> {
             ),
             const SizedBox(height: 16),
             loading
-                • const CircularProgressIndicator()
+                ? const CircularProgressIndicator()
                 : NeonButton(
                     label: 'Concluir configurações',
                     secondary: true,

@@ -27,19 +27,19 @@ class NotificacaoPedidoListener extends StatefulWidget {
 }
 
 class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
-  Stream<List<NotificacaoVenda>>• _stream;
+  Stream<List<NotificacaoVenda>>? _stream;
   final Set<String> _idsVistos = {};
   bool _inicializado = false;
   bool _primeiraCarga =
       true; // Evita mostrar notificações antigas ao abrir o app
   DateTime?
       _horarioAberturaApp; // Só mostrar notificações criadas após abrir o app
-  Timer• _retryTimer;
-  Timer• _pollTimer;
-  StreamSubscription<User?>• _authSub;
+  Timer? _retryTimer;
+  Timer? _pollTimer;
+  StreamSubscription<User?>? _authSub;
   int _retryCount = 0;
-  String• _uid;
-  String• _storeId;
+  String? _uid;
+  String? _storeId;
   static const int _maxRetries = 20; // ~40s no APK até store_id estar na sessão
 
   /// ✅ Multi-loja: LojaIdService primeiro, Hive apenas fallback offline
@@ -120,7 +120,7 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
   void initState() {
     super.initState();
     // Ao trocar de conta: cancelar stream da loja anterior (evita PERMISSION_DENIED em lojas/master)
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((User• user) {
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((User? user) {
       final newUid = user?.uid;
       if (_uid != null && _uid != newUid) {
         _resetParaNovaConta();
@@ -200,7 +200,7 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
     // Adicionar ao centro de notificações (badge na barra) — por loja
     NotificacaoCentroService().add(
       titulo: n.titulo,
-      corpo: '${n.mensagem.split('\n').first}${n.valor != null • ' • R\$ ${n.valor!.toStringAsFixed(2).replaceAll('.', ',')}' : ''}',
+      corpo: '${n.mensagem.split('\n').first}${n.valor != null ? ' ? R\$ ${n.valor!.toStringAsFixed(2).replaceAll('.', ',')}' : ''}',
       tipo: TipoNotificacaoCentro.novoPedido,
       acaoRota: '/pedidos',
       acaoArgs: {'lojaId': n.storeId, 'pedidoId': n.pedidoId},
@@ -208,7 +208,7 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
     );
 
     final valorStr = n.valor != null
-        • 'R\$ ${n.valor!.toStringAsFixed(2).replaceAll('.', ',')}'
+        ? 'R\$ ${n.valor!.toStringAsFixed(2).replaceAll('.', ',')}'
         : '';
     final storeId = n.storeId;
 
@@ -231,7 +231,7 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
                   ),
                   if (valorStr.isNotEmpty)
                     Text(
-                      '$valorStr • ${n.mensagem.split('\n').first}',
+                      '$valorStr ? ${n.mensagem.split('\n').first}',
                       style: const TextStyle(fontSize: 13),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

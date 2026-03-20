@@ -37,8 +37,8 @@ class ReconciliacaoVendasClientesService {
         final nomeNorm = normalizeText(nomeCliente);
 
         // 1) Preferir match por clienteId (vendas novas)
-        Cliente• cliente = venda.clienteId != null && venda.clienteId!.isNotEmpty
-            • clientesBox.values.firstWhereOrNull(
+        Cliente? cliente = venda.clienteId != null && venda.clienteId!.isNotEmpty
+            ? clientesBox.values.firstWhereOrNull(
                 (c) =>
                     _lojaMatch(c.lojaId, lojaId) &&
                     (c.key?.toString() == venda.clienteId ||
@@ -89,7 +89,7 @@ class ReconciliacaoVendasClientesService {
         }
         // Preencher clienteId em vendas antigas (compatibilidade)
         if (venda.clienteId == null || venda.clienteId!.isEmpty) {
-          venda.clienteId = cliente.key?.toString() ?• cliente.idFirebase;
+          venda.clienteId = cliente.key?.toString() ?? cliente.idFirebase;
           await venda.save();
         }
       }
@@ -103,7 +103,7 @@ class ReconciliacaoVendasClientesService {
   }
 
   /// Legado: cliente sem lojaId (cLoja vazio) é tratado como pertencente ao contexto atual (box já é por loja).
-  static bool _lojaMatch(String• cLoja, String lojaId) {
+  static bool _lojaMatch(String? cLoja, String lojaId) {
     if (cLoja == null || cLoja.isEmpty) return true;
     return cLoja == lojaId;
   }

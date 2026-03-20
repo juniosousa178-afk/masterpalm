@@ -35,7 +35,7 @@ class HomeIntelligentSection extends StatelessWidget {
       future: MotorCrescimentoOrchestrator.carregarPainel(lojaIdInterno),
       builder: (context, snap) {
         final totalOportunidades = snap.hasData
-            • (snap.data!.totalProdutosParados + snap.data!.totalEstoqueBaixo)
+            ? (snap.data!.totalProdutosParados + snap.data!.totalEstoqueBaixo)
             : 0;
         final temOportunidades = totalOportunidades > 0;
 
@@ -63,7 +63,7 @@ class HomeIntelligentSection extends StatelessWidget {
                       icon: Icons.rocket_launch_outlined,
                       label: 'Motor de Crescimento',
                       subtitle: 'Oportunidades e campanhas',
-                      badge: temOportunidades • totalOportunidades : null,
+                      badge: temOportunidades ? totalOportunidades : null,
                       color: _primaryColor,
                       onTap: () => Navigator.push(
                         context,
@@ -79,7 +79,7 @@ class HomeIntelligentSection extends StatelessWidget {
                       icon: Icons.auto_awesome_motion,
                       label: 'Campanhas',
                       subtitle: 'Ative com um clique',
-                      badge: temOportunidades • totalOportunidades : null,
+                      badge: temOportunidades ? totalOportunidades : null,
                       color: _warningColor,
                       onTap: () => Navigator.push(
                         context,
@@ -130,7 +130,7 @@ class _IntelligentCard extends StatelessWidget {
   final IconData icon;
   final String label;
   final String subtitle;
-  final int• badge;
+  final int? badge;
   final Color color;
   final VoidCallback onTap;
 

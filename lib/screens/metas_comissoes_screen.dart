@@ -44,15 +44,15 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
   late TabController _tabController;
 
-  String• _lojaId;
+  String? _lojaId;
   String _usuarioLogado = '';
   bool _isAdmin = false;
   bool _carregando = true;
-  String• _erro;
+  String? _erro;
 
   // Metas (vendedor)
-  Meta• _metaAtual;
-  Box<Meta>• _metasBox;
+  Meta? _metaAtual;
+  Box<Meta>? _metasBox;
 
   // Período selecionado
   DateTime _inicioMes = DateTime.now();
@@ -60,9 +60,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   String _periodoSelecionado = 'mes';
 
   // Dados
-  ComissaoConfig• _config;
+  ComissaoConfig? _config;
   List<ResumoComissaoVendedor> _resumosVendedores = [];
-  ResumoComissaoVendedor• _meuResumo;
+  ResumoComissaoVendedor? _meuResumo;
   List<ComissaoVenda> _minhasComissoes = [];
 
   // UI
@@ -76,7 +76,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   bool _ordenacaoDescendente = true;
   String _buscaVendedor = '';
   String _filtroStatusComissao = 'todas'; // todas | pendentes | pagas | estornadas
-  String• _erroTrackingDias;
+  String? _erroTrackingDias;
 
   @override
   void initState() {
@@ -144,8 +144,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
       // Buscar dados do usuário
       final sessaoBox = await Hive.openBox('sessao');
-      final tipoUsuario = sessaoBox.get('tipo_usuario') as String• ?• 'vendedor';
-      _usuarioLogado = (sessaoBox.get('usuario_logado') ?• '').toString().trim().toLowerCase();
+      final tipoUsuario = sessaoBox.get('tipo_usuario') as String? ?? 'vendedor';
+      _usuarioLogado = (sessaoBox.get('usuario_logado') ?? '').toString().trim().toLowerCase();
       _isAdmin = tipoUsuario == 'admin' || tipoUsuario == 'programador';
 
       // Buscar metas (vendedor): abrir box e sincronizar do Firestore para aparecer em qualquer dispositivo
@@ -161,7 +161,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             }
           }
           final mesRef = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
-          _metaAtual = _metasBox!.get('${mesRef}_$_usuarioLogado') ?• _metasBox!.get('${mesRef}_GERAL');
+          _metaAtual = _metasBox!.get('${mesRef}_$_usuarioLogado') ?? _metasBox!.get('${mesRef}_GERAL');
         } catch (_) {
           _metaAtual = null;
         }
@@ -211,8 +211,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   }
 
   void _abrirSugestoesIa() {
-    final meta = _metaAtual?.metaMensal ?• 0;
-    final realizado = _meuResumo?.totalVendas ?• 0;
+    final meta = _metaAtual?.metaMensal ?? 0;
+    final realizado = _meuResumo?.totalVendas ?? 0;
     final falta = (meta - realizado).clamp(0.0, double.infinity);
     final periodo = '${_inicioMes.day}/${_inicioMes.month}/${_inicioMes.year} a ${_fimMes.day}/${_fimMes.month}/${_fimMes.year}';
     final resumo = 'Período: $periodo. Meta do mês: ${_formatoMoeda.format(meta)}. '
@@ -245,7 +245,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
           ],
         ),
         bottom: _isAdmin
-            • TabBar(
+            ? TabBar(
                 controller: _tabController,
                 indicatorColor: _primaryColor,
                 labelColor: _primaryColor,
@@ -259,12 +259,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         actions: [
           IconButton(
             icon: const Icon(Icons.auto_awesome),
-            onPressed: _carregando • null : _abrirSugestoesIa,
+            onPressed: _carregando ? null : _abrirSugestoesIa,
             tooltip: 'Sugestões com IA',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _carregando • null : _carregarDados,
+            onPressed: _carregando ? null : _carregarDados,
           ),
         ],
       ),
@@ -289,11 +289,11 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
                 child: _carregando
-                    • _buildSkeletonLoading()
+                    ? _buildSkeletonLoading()
                     : _erro != null
-                        • _buildErroWidget()
+                        ? _buildErroWidget()
                         : _isAdmin
-                            • TabBarView(
+                            ? TabBarView(
                                 controller: _tabController,
                                 children: [
                                   _buildVisaoGeralAdmin(),
@@ -343,7 +343,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _periodoSelecionado == 'hoje',
             onSelected: (_) => _definirPeriodo('hoje'),
             selectedColor: _primaryColor.withValues(alpha:0.3),
-            labelStyle: TextStyle(color: _periodoSelecionado == 'hoje' • _primaryColor : Colors.white),
+            labelStyle: TextStyle(color: _periodoSelecionado == 'hoje' ? _primaryColor : Colors.white),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
@@ -351,7 +351,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _periodoSelecionado == 'semana',
             onSelected: (_) => _definirPeriodo('semana'),
             selectedColor: _primaryColor.withValues(alpha:0.3),
-            labelStyle: TextStyle(color: _periodoSelecionado == 'semana' • _primaryColor : Colors.white),
+            labelStyle: TextStyle(color: _periodoSelecionado == 'semana' ? _primaryColor : Colors.white),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
@@ -359,7 +359,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _periodoSelecionado == 'mes',
             onSelected: (_) => _definirPeriodo('mes'),
             selectedColor: _primaryColor.withValues(alpha:0.3),
-            labelStyle: TextStyle(color: _periodoSelecionado == 'mes' • _primaryColor : Colors.white),
+            labelStyle: TextStyle(color: _periodoSelecionado == 'mes' ? _primaryColor : Colors.white),
           ),
         ],
       ),
@@ -396,7 +396,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              _erro ?• 'Erro desconhecido',
+              _erro ?? 'Erro desconhecido',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade500),
             ),
@@ -511,8 +511,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
   Widget _buildMetaCard() {
     final meta = _metaAtual!.metaMensal;
-    final realizado = _meuResumo?.totalVendas ?• 0;
-    final percentual = meta > 0 • (realizado / meta * 100).clamp(0.0, 200.0) : 0.0;
+    final realizado = _meuResumo?.totalVendas ?? 0;
+    final percentual = meta > 0 ? (realizado / meta * 100).clamp(0.0, 200.0) : 0.0;
 
     return _buildCard(
       child: Padding(
@@ -532,7 +532,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 ),
                 Text(
                   '${percentual.toStringAsFixed(0)}%',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: percentual >= 100 • _successColor : _warningColor),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: percentual >= 100 ? _successColor : _warningColor),
                 ),
               ],
             ),
@@ -543,7 +543,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 value: (percentual / 100).clamp(0.0, 1.0),
                 minHeight: 8,
                 backgroundColor: Colors.grey.shade800,
-                color: percentual >= 100 • _successColor : _primaryColor,
+                color: percentual >= 100 ? _successColor : _primaryColor,
               ),
             ),
             const SizedBox(height: 8),
@@ -697,7 +697,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _filtroStatusComissao == 'todas',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'todas'),
             selectedColor: _primaryColor.withValues(alpha:0.3),
-            labelStyle: TextStyle(color: _filtroStatusComissao == 'todas' • _primaryColor : Colors.grey.shade400),
+            labelStyle: TextStyle(color: _filtroStatusComissao == 'todas' ? _primaryColor : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
           ChoiceChip(
@@ -705,7 +705,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _filtroStatusComissao == 'pendentes',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'pendentes'),
             selectedColor: _primaryColor.withValues(alpha:0.3),
-            labelStyle: TextStyle(color: _filtroStatusComissao == 'pendentes' • _primaryColor : Colors.grey.shade400),
+            labelStyle: TextStyle(color: _filtroStatusComissao == 'pendentes' ? _primaryColor : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
           ChoiceChip(
@@ -713,7 +713,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _filtroStatusComissao == 'pagas',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'pagas'),
             selectedColor: _primaryColor.withValues(alpha:0.3),
-            labelStyle: TextStyle(color: _filtroStatusComissao == 'pagas' • _primaryColor : Colors.grey.shade400),
+            labelStyle: TextStyle(color: _filtroStatusComissao == 'pagas' ? _primaryColor : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
           ChoiceChip(
@@ -721,7 +721,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _filtroStatusComissao == 'estornadas',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'estornadas'),
             selectedColor: _primaryColor.withValues(alpha:0.3),
-            labelStyle: TextStyle(color: _filtroStatusComissao == 'estornadas' • _primaryColor : Colors.grey.shade400),
+            labelStyle: TextStyle(color: _filtroStatusComissao == 'estornadas' ? _primaryColor : Colors.grey.shade400),
           ),
         ],
       ),
@@ -769,7 +769,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 const SizedBox(height: 8),
                 Text(
                   _filtroStatusComissao == 'todas'
-                      • 'Compartilhe o catálogo com clientes para começar a ganhar comissões nas vendas.'
+                      ? 'Compartilhe o catálogo com clientes para começar a ganhar comissões nas vendas.'
                       : 'Tente outro filtro ou período.',
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
                   textAlign: TextAlign.center,
@@ -1008,11 +1008,11 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                   children: [
                     const Text('Vendedores', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                     TextButton.icon(
-                      onPressed: _sincronizando • null : _sincronizarVendedores,
+                      onPressed: _sincronizando ? null : _sincronizarVendedores,
                       icon: _sincronizando
-                          • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _primaryColor))
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _primaryColor))
                           : const Icon(Icons.sync, size: 18, color: _primaryColor),
-                      label: Text(_sincronizando • 'Sincronizando...' : 'Sincronizar', style: const TextStyle(color: _primaryColor)),
+                      label: Text(_sincronizando ? 'Sincronizando...' : 'Sincronizar', style: const TextStyle(color: _primaryColor)),
                     ),
                   ],
                 ),
@@ -1025,7 +1025,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                     hintStyle: TextStyle(color: Colors.grey.shade500),
                     prefixIcon: Icon(Icons.search, color: Colors.grey.shade500),
                     suffixIcon: _buscaVendedor.isNotEmpty
-                        • IconButton(
+                        ? IconButton(
                             icon: const Icon(Icons.clear, size: 20),
                             onPressed: () {
                               _buscaVendedorController.clear();
@@ -1050,9 +1050,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                       ChoiceChip(label: const Text('Por comissão'), selected: _ordenacaoVendedores == 'comissao', onSelected: (_) => setState(() => _ordenacaoVendedores = 'comissao'), selectedColor: _primaryColor.withValues(alpha:0.3)),
                       const SizedBox(width: 6),
                       Tooltip(
-                        message: _ordenacaoDescendente • 'Maior primeiro (clique para inverter)' : 'Menor primeiro (clique para inverter)',
+                        message: _ordenacaoDescendente ? 'Maior primeiro (clique para inverter)' : 'Menor primeiro (clique para inverter)',
                         child: IconButton(
-                          icon: Icon(_ordenacaoDescendente • Icons.arrow_downward : Icons.arrow_upward, color: _primaryColor, size: 20),
+                          icon: Icon(_ordenacaoDescendente ? Icons.arrow_downward : Icons.arrow_upward, color: _primaryColor, size: 20),
                           onPressed: () => setState(() => _ordenacaoDescendente = !_ordenacaoDescendente),
                         ),
                       ),
@@ -1082,15 +1082,15 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         leading: CircleAvatar(
           backgroundColor: _primaryColor.withValues(alpha:0.2),
           child: Text(
-            (resumo.vendedorNome ?• 'V')[0].toUpperCase(),
+            (resumo.vendedorNome ?? 'V')[0].toUpperCase(),
             style: const TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
           ),
         ),
         title: Text(
-          resumo.vendedorNome ?• 'Vendedor',
+          resumo.vendedorNome ?? 'Vendedor',
           style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        subtitle: Text(resumo.vendedorEmail ?• '', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+        subtitle: Text(resumo.vendedorEmail ?? '', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -1100,7 +1100,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
               style: const TextStyle(fontWeight: FontWeight.bold, color: _successColor),
             ),
             Text(
-              '${resumo.percentualComissao?.toStringAsFixed(1) ?• _config?.comissaoGlobalPercent.toStringAsFixed(1) ?• "5.0"}%',
+              '${resumo.percentualComissao?.toStringAsFixed(1) ?? _config?.comissaoGlobalPercent.toStringAsFixed(1) ?? "5.0"}%',
               style: const TextStyle(fontSize: 12, color: _warningColor),
             ),
           ],
@@ -1310,10 +1310,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                       controller: _trackingDiasController,
                       onChanged: (value) {
                         final parsed = int.tryParse(value);
-                        String• erro;
+                        String? erro;
                         if (parsed == null || parsed < 1 || parsed > 365) {
                           erro = parsed == null || value.isEmpty
-                              • null
+                              ? null
                               : 'Informe entre 1 e 365 dias';
                         }
                         setState(() {
@@ -1335,9 +1335,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _salvando • null : _salvarConfiguracoes,
-              icon: _salvando • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
-              label: Text(_salvando • 'Salvando...' : 'Salvar Configurações'),
+              onPressed: _salvando ? null : _salvarConfiguracoes,
+              icon: _salvando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
+              label: Text(_salvando ? 'Salvando...' : 'Salvar Configurações'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _primaryColor,
                 foregroundColor: Colors.white,
@@ -1353,7 +1353,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
     );
   }
 
-  Widget _buildSwitchTile(String title, String subtitle, bool value, ValueChanged<bool> onChanged, {String• tooltip}) {
+  Widget _buildSwitchTile(String title, String subtitle, bool value, ValueChanged<bool> onChanged, {String? tooltip}) {
     final tile = SwitchListTile(
       title: Text(title, style: const TextStyle(color: Colors.white)),
       subtitle: Text(subtitle, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
@@ -1396,17 +1396,17 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   List<ResumoComissaoVendedor> get _resumosVendedoresFiltrados {
     var list = _resumosVendedores.where((r) {
       if (_buscaVendedor.isEmpty) return true;
-      final nome = (r.vendedorNome ?• '').toLowerCase();
-      final email = (r.vendedorEmail ?• '').toLowerCase();
+      final nome = (r.vendedorNome ?? '').toLowerCase();
+      final email = (r.vendedorEmail ?? '').toLowerCase();
       final busca = _buscaVendedor.toLowerCase();
       return nome.contains(busca) || email.contains(busca);
     }).toList();
-    final mult = _ordenacaoDescendente • 1 : -1;
+    final mult = _ordenacaoDescendente ? 1 : -1;
     list = List.from(list)
       ..sort((a, b) {
         int cmp;
         if (_ordenacaoVendedores == 'nome') {
-          cmp = (a.vendedorNome ?• '').compareTo(b.vendedorNome ?• '');
+          cmp = (a.vendedorNome ?? '').compareTo(b.vendedorNome ?? '');
         } else if (_ordenacaoVendedores == 'comissao') {
           cmp = b.totalComissoes.compareTo(a.totalComissoes);
         } else {
@@ -1495,8 +1495,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text(r.vendedorNome ?• 'Vendedor', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                        pw.Text(r.vendedorEmail ?• '', style: const pw.TextStyle(fontSize: 9)),
+                        pw.Text(r.vendedorNome ?? 'Vendedor', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        pw.Text(r.vendedorEmail ?? '', style: const pw.TextStyle(fontSize: 9)),
                       ],
                     ),
                   ),
@@ -1562,8 +1562,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(sucesso • 'Configurações salvas!' : 'Erro ao salvar configurações'),
-            backgroundColor: sucesso • _successColor : _dangerColor,
+            content: Text(sucesso ? 'Configurações salvas!' : 'Erro ao salvar configurações'),
+            backgroundColor: sucesso ? _successColor : _dangerColor,
           ),
         );
       }
@@ -1576,7 +1576,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
   Future<void> _editarComissaoVendedor(ResumoComissaoVendedor resumo) async {
     final controller = TextEditingController(
-      text: (resumo.percentualComissao ?• _config?.comissaoGlobalPercent ?• 5).toStringAsFixed(1),
+      text: (resumo.percentualComissao ?? _config?.comissaoGlobalPercent ?? 5).toStringAsFixed(1),
     );
 
     final confirmado = await showDialog<bool>(
@@ -1655,7 +1655,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       await ComissaoConfigService.atualizarPercentualVendedor(
         lojaId: _lojaId!,
         vendedorUid: resumo.vendedorUid,
-        comissaoPercentual: valorFinal == -1.0 • null : valorFinal,
+        comissaoPercentual: valorFinal == -1.0 ? null : valorFinal,
       );
       await _carregarDados();
     }
@@ -1725,7 +1725,7 @@ class _SugestoesIaMetasScreen extends StatefulWidget {
 
 class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
   final _perguntaCtrl = TextEditingController();
-  String• _resposta;
+  String? _resposta;
   bool _enviando = false;
   static const _primaryColor = Color(0xFF00A8FF);
   static const _cardColor = Color(0xFF12121A);
@@ -1736,8 +1736,8 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
     super.dispose();
   }
 
-  Future<void> _enviar(String• perguntaFixa) async {
-    final pergunta = perguntaFixa ?• _perguntaCtrl.text.trim();
+  Future<void> _enviar(String? perguntaFixa) async {
+    final pergunta = perguntaFixa ?? _perguntaCtrl.text.trim();
     if (pergunta.isEmpty || _enviando) return;
     final lojaId = await LojaIdService.get();
     if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
@@ -1777,11 +1777,11 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _enviando • null : () => _enviar(null),
+        onPressed: _enviando ? null : () => _enviar(null),
         tooltip: 'Enviar pergunta',
         backgroundColor: _primaryColor,
         child: _enviando
-            • const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.send, color: Colors.white),
       ),
       body: Scrollbar(
@@ -1798,7 +1798,7 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             FilledButton.tonalIcon(
-              onPressed: _enviando • null : () => _enviar('O que fazer para bater a meta• Dê sugestões práticas.'),
+              onPressed: _enviando ? null : () => _enviar('O que fazer para bater a meta? Dê sugestões práticas.'),
               icon: const Icon(Icons.flag),
               label: const Text('O que fazer para bater a meta?'),
               style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
@@ -1817,9 +1817,9 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _enviando • null : () => _enviar(null),
-              icon: _enviando • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-              label: Text(_enviando • 'Analisando…' : 'Enviar'),
+              onPressed: _enviando ? null : () => _enviar(null),
+              icon: _enviando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+              label: Text(_enviando ? 'Analisando…' : 'Enviar'),
               style: FilledButton.styleFrom(backgroundColor: _primaryColor),
             ),
             if (_resposta != null) ...[

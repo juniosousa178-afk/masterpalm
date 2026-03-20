@@ -18,7 +18,7 @@ class Web {
   static void addPopState(void Function(html.PopStateEvent) h) =>
       html.window.onPopState.listen(h);
 
-  static HtmlWindowBase• open(String url, String name) =>
+  static HtmlWindowBase? open(String url, String name) =>
       html.window.open(url, name);
 
   static String locationHref() => html.window.location.href;
@@ -36,7 +36,7 @@ class Web {
     if (el != null) el.content = hex;
   }
 
-  static String• querySelectorContent(String selector) {
+  static String? querySelectorContent(String selector) {
     final el = html.document.querySelector(selector);
     if (el is html.MetaElement) return el.content;
     if (el is html.LinkElement) return el.href;
@@ -81,11 +81,11 @@ class Web {
       sendData: jsonBody,
       requestHeaders: {'Content-Type': 'application/json'},
     );
-    return resp.responseText ?• '{}';
+    return resp.responseText ?? '{}';
   }
 
   /// Navega na janela previamente aberta (evita bloqueio de pop-up).
-  static void navigateInOpened(HtmlWindowBase• win, String url) {
+  static void navigateInOpened(HtmlWindowBase? win, String url) {
     try {
       if (win != null) {
         win.location.href = url;

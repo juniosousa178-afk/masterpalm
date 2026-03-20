@@ -28,9 +28,9 @@ class ConfigPagamentosSimplesScreen extends StatefulWidget {
 class _ConfigPagamentosSimplesScreenState
     extends State<ConfigPagamentosSimplesScreen>
     with WidgetsBindingObserver {
-  String• _lojaId;
+  String? _lojaId;
   bool _carregando = true;
-  String• _erro;
+  String? _erro;
   bool _salvando = false;
   bool _sincronizando = false;
   bool _publicando = false;
@@ -47,14 +47,14 @@ class _ConfigPagamentosSimplesScreenState
 
   // Estado dos gateways
   bool _mpConectado = false;
-  String• _mpEmail;
+  String? _mpEmail;
   String _gatewayAtivo = 'whatsapp';
   bool _pagseguroConectado = false;
-  String• _pagseguroEmail;
+  String? _pagseguroEmail;
   bool _tonConectado = false;
-  String• _tonId;
+  String? _tonId;
   bool _infinitepayConectado = false;
-  String• _infinitepayMerchantId;
+  String? _infinitepayMerchantId;
 
   @override
   void initState() {
@@ -98,7 +98,7 @@ class _ConfigPagamentosSimplesScreenState
         setState(() => _offline = offline);
       }
 
-      String• storeId = (await LojaIdService.get())?.trim();
+      String? storeId = (await LojaIdService.get())?.trim();
       if (storeId == null || storeId.isEmpty) {
         final box = await Hive.openBox('config');
         storeId = box.get('store_id')?.toString().trim();
@@ -117,32 +117,32 @@ class _ConfigPagamentosSimplesScreenState
       // Carregar configurações existentes
       final doc = await PagamentosService.paymentsDoc(storeId).get();
       if (doc.exists) {
-        final data = doc.data() ?• {};
+        final data = doc.data() ?? {};
 
         // Mercado Pago
-        final mp = data['mp'] as Map<String, dynamic>• ?• {};
+        final mp = data['mp'] as Map<String, dynamic>? ?? {};
         _mpConectado = mp['connected'] == true;
         _mpEmail = mp['email']?.toString();
 
         // PagSeguro
-        final pagseguro = data['pagseguro'] as Map<String, dynamic>• ?• {};
-        _pagseguroConectado = (pagseguro['token']?.toString() ?• '').isNotEmpty;
+        final pagseguro = data['pagseguro'] as Map<String, dynamic>? ?? {};
+        _pagseguroConectado = (pagseguro['token']?.toString() ?? '').isNotEmpty;
         _pagseguroEmail = pagseguro['seller_id']?.toString();
 
         // Ton
-        final ton = data['ton'] as Map<String, dynamic>• ?• {};
-        _tonConectado = (ton['client_id']?.toString() ?• '').isNotEmpty;
+        final ton = data['ton'] as Map<String, dynamic>? ?? {};
+        _tonConectado = (ton['client_id']?.toString() ?? '').isNotEmpty;
         _tonId = ton['client_id']?.toString();
 
         // InfinitePay (Firestore usa 'infinitpay')
-        final infinit = data['infinitpay'] as Map<String, dynamic>• ?• {};
-        _infinitepayConectado = (infinit['api_key']?.toString() ?• '').isNotEmpty;
+        final infinit = data['infinitpay'] as Map<String, dynamic>? ?? {};
+        _infinitepayConectado = (infinit['api_key']?.toString() ?? '').isNotEmpty;
         _infinitepayMerchantId = infinit['merchant_id']?.toString();
 
         // Checkout
-        final checkout = data['checkout'] as Map<String, dynamic>• ?• {};
-        _gatewayAtivo = checkout['gateway']?.toString() ?• 'whatsapp';
-        _pixKeyCtrl.text = checkout['pixKey']?.toString() ?• '';
+        final checkout = data['checkout'] as Map<String, dynamic>? ?? {};
+        _gatewayAtivo = checkout['gateway']?.toString() ?? 'whatsapp';
+        _pixKeyCtrl.text = checkout['pixKey']?.toString() ?? '';
       }
 
       _gatewayAtivoOriginal = _gatewayAtivo;
@@ -279,7 +279,7 @@ class _ConfigPagamentosSimplesScreenState
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Mercado Pago conectado! ${info?['email'] ?• ''}',
+                  'Mercado Pago conectado! ${info?['email'] ?? ''}',
                 ),
               ),
             ],
@@ -345,7 +345,7 @@ class _ConfigPagamentosSimplesScreenState
   }
 
   /// Detecta o tipo da chave PIX para exibição.
-  String• _detectarTipoChavePix(String key) {
+  String? _detectarTipoChavePix(String key) {
     final k = key.trim();
     if (k.isEmpty) return null;
     if (k.contains('@')) return 'E-mail';
@@ -413,10 +413,10 @@ class _ConfigPagamentosSimplesScreenState
         SnackBar(
           content: Text(
             ok
-                • (msgs.isEmpty • 'Conexões OK' : msgs.join(' | '))
+                ? (msgs.isEmpty ? 'Conexões OK' : msgs.join(' | '))
                 : 'Nenhuma conexão ativa ou válida',
           ),
-          backgroundColor: ok • Colors.green : Colors.orange,
+          backgroundColor: ok ? Colors.green : Colors.orange,
         ),
       );
     } catch (e) {
@@ -528,7 +528,7 @@ class _ConfigPagamentosSimplesScreenState
               ),
             ),
           TextButton.icon(
-            onPressed: (_salvando || _sincronizando || _publicando) • null : () async {
+            onPressed: (_salvando || _sincronizando || _publicando) ? null : () async {
               HapticFeedback.selectionClick();
               final messenger = ScaffoldMessenger.of(context);
               setState(() => _salvando = true);
@@ -549,12 +549,12 @@ class _ConfigPagamentosSimplesScreenState
             label: const Text('Salvar'),
           ),
           TextButton.icon(
-            onPressed: (_salvando || _sincronizando || _publicando) • null : _sincronizarTudo,
+            onPressed: (_salvando || _sincronizando || _publicando) ? null : _sincronizarTudo,
             icon: const Icon(Icons.cloud_sync_outlined),
             label: const Text('Sincronizar'),
           ),
           TextButton.icon(
-            onPressed: (_salvando || _sincronizando || _publicando) • null : _publicarCatalogo,
+            onPressed: (_salvando || _sincronizando || _publicando) ? null : _publicarCatalogo,
             icon: const Icon(Icons.cloud_upload_outlined),
             label: const Text('Publicar'),
           ),
@@ -648,13 +648,13 @@ class _ConfigPagamentosSimplesScreenState
             // ===== BOTÃO SALVAR =====
           Semantics(
             button: true,
-            label: _salvando • 'Salvando configurações' : 'Salvar configurações',
+            label: _salvando ? 'Salvando configurações' : 'Salvar configurações',
             child: SizedBox(
               width: double.infinity,
               height: 50,
               child: ElevatedButton.icon(
                 icon: _salvando
-                    • const SizedBox(
+                    ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
@@ -663,13 +663,13 @@ class _ConfigPagamentosSimplesScreenState
                         ),
                       )
                     : const Icon(Icons.save),
-                label: Text(_salvando • 'Salvando...' : 'Salvar Configurações'),
+                label: Text(_salvando ? 'Salvando...' : 'Salvar Configurações'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   foregroundColor: Colors.white,
                 ),
                 onPressed: _salvando
-                    • null
+                    ? null
                     : () async {
                         HapticFeedback.mediumImpact();
                         final messenger = ScaffoldMessenger.of(context);
@@ -781,8 +781,8 @@ class _ConfigPagamentosSimplesScreenState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: _mpConectado • Colors.green : Colors.grey.shade300,
-          width: _mpConectado • 2 : 1,
+          color: _mpConectado ? Colors.green : Colors.grey.shade300,
+          width: _mpConectado ? 2 : 1,
         ),
       ),
       child: Padding(
@@ -823,10 +823,10 @@ class _ConfigPagamentosSimplesScreenState
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         child: Text(
-                          _mpConectado • 'Conectado' : 'Não conectado',
+                          _mpConectado ? 'Conectado' : 'Não conectado',
                           key: ValueKey(_mpConectado),
                           style: TextStyle(
-                            color: _mpConectado • Colors.green : Colors.grey,
+                            color: _mpConectado ? Colors.green : Colors.grey,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -835,8 +835,8 @@ class _ConfigPagamentosSimplesScreenState
                   ),
                 ),
                 Icon(
-                  _mpConectado • Icons.check_circle : Icons.radio_button_off,
-                  color: _mpConectado • Colors.green : Colors.grey,
+                  _mpConectado ? Icons.check_circle : Icons.radio_button_off,
+                  color: _mpConectado ? Colors.green : Colors.grey,
                   size: 28,
                 ),
               ],
@@ -890,7 +890,7 @@ class _ConfigPagamentosSimplesScreenState
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      icon: const Icon(kIsWeb • Icons.refresh : Icons.vpn_key, size: 18),
+                      icon: const Icon(kIsWeb ? Icons.refresh : Icons.vpn_key, size: 18),
                       label: const Text('Reconectar'),
                       onPressed: () {
                         HapticFeedback.mediumImpact();
@@ -913,10 +913,10 @@ class _ConfigPagamentosSimplesScreenState
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      icon: const Icon(kIsWeb • Icons.link : Icons.vpn_key),
+                      icon: const Icon(kIsWeb ? Icons.link : Icons.vpn_key),
                       label: const Text(
                         kIsWeb
-                            • 'Conectar com Mercado Pago'
+                            ? 'Conectar com Mercado Pago'
                             : 'Conectar com Access Token',
                       ),
                       style: ElevatedButton.styleFrom(
@@ -938,11 +938,11 @@ class _ConfigPagamentosSimplesScreenState
                   Center(
                     child: TextButton(
                       onPressed: kIsWeb
-                          • () => _mostrarConectarComToken()
+                          ? () => _mostrarConectarComToken()
                           : _conectarMercadoPagoOAuth,
                       child: Text(
                         kIsWeb
-                            • 'Ou conectar com token manual'
+                            ? 'Ou conectar com token manual'
                             : 'Ou conectar via navegador (OAuth)',
                         style: TextStyle(
                           fontSize: 12,
@@ -995,7 +995,7 @@ class _ConfigPagamentosSimplesScreenState
       cor: const Color(0xFF00D4AA),
       icone: Icons.point_of_sale,
       conectado: _tonConectado,
-      infoConectado: _tonId != null • 'ID: ${_tonId!.length > 12 • '${_tonId!.substring(0, 12)}...' : _tonId}' : null,
+      infoConectado: _tonId != null ? 'ID: ${_tonId!.length > 12 ? '${_tonId!.substring(0, 12)}...' : _tonId}' : null,
       onConectar: _conectarTon,
       onDesconectar: _desconectarTon,
       linkPainel: 'https://www.ton.com.br/desenvolvedores',
@@ -1022,7 +1022,7 @@ class _ConfigPagamentosSimplesScreenState
     required Color cor,
     required IconData icone,
     required bool conectado,
-    String• infoConectado,
+    String? infoConectado,
     required VoidCallback onConectar,
     required VoidCallback onDesconectar,
     required String linkPainel,
@@ -1033,8 +1033,8 @@ class _ConfigPagamentosSimplesScreenState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: conectado • Colors.green : Colors.grey.shade300,
-          width: conectado • 2 : 1,
+          color: conectado ? Colors.green : Colors.grey.shade300,
+          width: conectado ? 2 : 1,
         ),
       ),
       child: Padding(
@@ -1067,10 +1067,10 @@ class _ConfigPagamentosSimplesScreenState
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 300),
                         child: Text(
-                          conectado • 'Conectado' : 'Não conectado',
+                          conectado ? 'Conectado' : 'Não conectado',
                           key: ValueKey(conectado),
                           style: TextStyle(
-                            color: conectado • Colors.green : Colors.grey,
+                            color: conectado ? Colors.green : Colors.grey,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -1079,8 +1079,8 @@ class _ConfigPagamentosSimplesScreenState
                   ),
                 ),
                 Icon(
-                  conectado • Icons.check_circle : Icons.radio_button_off,
-                  color: conectado • Colors.green : Colors.grey,
+                  conectado ? Icons.check_circle : Icons.radio_button_off,
+                  color: conectado ? Colors.green : Colors.grey,
                   size: 28,
                 ),
               ],
@@ -1197,7 +1197,7 @@ class _ConfigPagamentosSimplesScreenState
         );
         return;
       }
-      final sellerId = result['seller_id']?.trim() ?• '';
+      final sellerId = result['seller_id']?.trim() ?? '';
       await PagamentosService.salvarGatewayConfig(
         lojaId: _lojaId!,
         gateway: 'pagseguro',
@@ -1208,7 +1208,7 @@ class _ConfigPagamentosSimplesScreenState
       );
       setState(() {
         _pagseguroConectado = true;
-        _pagseguroEmail = sellerId.isNotEmpty • sellerId : null;
+        _pagseguroEmail = sellerId.isNotEmpty ? sellerId : null;
         if (!_mpConectado) _gatewayAtivo = 'pagseguro';
       });
       await _salvarCheckout();
@@ -1288,7 +1288,7 @@ class _ConfigPagamentosSimplesScreenState
       setState(() {
         _tonConectado = true;
         final id = clientId.trim();
-        _tonId = id.length > 8 • '${id.substring(0, 8)}...' : id;
+        _tonId = id.length > 8 ? '${id.substring(0, 8)}...' : id;
         if (!_mpConectado && !_pagseguroConectado) _gatewayAtivo = 'ton';
       });
       await _salvarCheckout();
@@ -1352,7 +1352,7 @@ class _ConfigPagamentosSimplesScreenState
         );
         return;
       }
-      final merchantId = result['merchant_id']?.trim() ?• '';
+      final merchantId = result['merchant_id']?.trim() ?? '';
       await PagamentosService.salvarGatewayConfig(
         lojaId: _lojaId!,
         gateway: 'infinitpay',
@@ -1363,7 +1363,7 @@ class _ConfigPagamentosSimplesScreenState
       );
       setState(() {
         _infinitepayConectado = true;
-        _infinitepayMerchantId = merchantId.isNotEmpty • merchantId : null;
+        _infinitepayMerchantId = merchantId.isNotEmpty ? merchantId : null;
         if (!_mpConectado && !_pagseguroConectado && !_tonConectado) {
           _gatewayAtivo = 'infinitepay';
         }
@@ -1526,19 +1526,19 @@ class _ConfigPagamentosSimplesScreenState
                                   content: Row(
                                     children: [
                                       Icon(
-                                        valido • Icons.check_circle : Icons.warning,
+                                        valido ? Icons.check_circle : Icons.warning,
                                         color: Colors.white,
                                         size: 20,
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
                                         valido
-                                            • 'Chave PIX válida (${_detectarTipoChavePix(texto) ?• "desconhecido"})'
+                                            ? 'Chave PIX válida (${_detectarTipoChavePix(texto) ?? "desconhecido"})'
                                             : 'Chave PIX pode ser inválida',
                                       ),
                                     ],
                                   ),
-                                  backgroundColor: valido • Colors.green : Colors.orange,
+                                  backgroundColor: valido ? Colors.green : Colors.orange,
                                   duration: const Duration(seconds: 2),
                                 ),
                               );
@@ -1679,17 +1679,17 @@ class _ConfigPagamentosSimplesScreenState
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: selecionado • color.withValues(alpha:0.1) : Colors.grey.shade100,
+          color: selecionado ? color.withValues(alpha:0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selecionado • color : Colors.grey.shade300,
-            width: selecionado • 2 : 1,
+            color: selecionado ? color : Colors.grey.shade300,
+            width: selecionado ? 2 : 1,
           ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: selecionado • color : Colors.grey, size: 20),
+            Icon(icon, color: selecionado ? color : Colors.grey, size: 20),
             const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1698,7 +1698,7 @@ class _ConfigPagamentosSimplesScreenState
                   label,
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: selecionado • color : Colors.grey[700],
+                    color: selecionado ? color : Colors.grey[700],
                   ),
                 ),
                 Text(
@@ -1823,7 +1823,7 @@ class _ConfigPagamentosSimplesScreenState
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: destaque • Colors.blue : Colors.grey[200],
+            color: destaque ? Colors.blue : Colors.grey[200],
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -1831,7 +1831,7 @@ class _ConfigPagamentosSimplesScreenState
               '$numero',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: destaque • Colors.white : Colors.black,
+                color: destaque ? Colors.white : Colors.black,
               ),
             ),
           ),
@@ -1842,7 +1842,7 @@ class _ConfigPagamentosSimplesScreenState
             texto,
             style: TextStyle(
               fontSize: 15,
-              fontWeight: destaque • FontWeight.bold : FontWeight.normal,
+              fontWeight: destaque ? FontWeight.bold : FontWeight.normal,
             ),
           ),
         ),
@@ -1857,11 +1857,11 @@ class _ConfigPagamentosSimplesScreenState
       final results = await SyncFirestoreScript.syncTudo();
       if (!mounted) return;
       if (results['success'] == true) {
-        final p = results['produtos'] as Map<String, int>• ?• {};
-        final c = results['clientes'] as Map<String, int>• ?• {};
+        final p = results['produtos'] as Map<String, int>? ?? {};
+        final c = results['clientes'] as Map<String, int>? ?? {};
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Sincronizado: ${p['synced'] ?• 0} produtos, ${c['synced'] ?• 0} clientes'),
+            content: Text('Sincronizado: ${p['synced'] ?? 0} produtos, ${c['synced'] ?? 0} clientes'),
             backgroundColor: Colors.green,
           ),
         );
@@ -1869,7 +1869,7 @@ class _ConfigPagamentosSimplesScreenState
         final err = results['errors'] as List<dynamic>?;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(err != null && err.isNotEmpty • err.first.toString() : 'Erro na sincronização'),
+            content: Text(err != null && err.isNotEmpty ? err.first.toString() : 'Erro na sincronização'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1945,9 +1945,9 @@ class _ConfigPagamentosSimplesScreenState
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               Text(
-                '• WhatsApp: Cliente faz pedido via WhatsApp\n'
-                '• Mercado Pago: Pagamento online integrado\n'
-                '• PIX Manual: Mostra sua chave para o cliente copiar',
+                '? WhatsApp: Cliente faz pedido via WhatsApp\n'
+                '? Mercado Pago: Pagamento online integrado\n'
+                '? PIX Manual: Mostra sua chave para o cliente copiar',
               ),
             ],
           ),
@@ -2009,7 +2009,7 @@ class _DialogConectarMPState extends State<_DialogConectarMP> {
                   children: [
                     IconButton(
                       icon: Icon(
-                        _mostrarToken • Icons.visibility_off : Icons.visibility,
+                        _mostrarToken ? Icons.visibility_off : Icons.visibility,
                       ),
                       onPressed: () {
                         setState(() => _mostrarToken = !_mostrarToken);
@@ -2134,7 +2134,7 @@ class _DialogConectarPagSeguroState extends State<_DialogConectarPagSeguro> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: Icon(_mostrarToken • Icons.visibility_off : Icons.visibility),
+                      icon: Icon(_mostrarToken ? Icons.visibility_off : Icons.visibility),
                       onPressed: () => setState(() => _mostrarToken = !_mostrarToken),
                     ),
                     IconButton(
@@ -2274,7 +2274,7 @@ class _DialogConectarTonState extends State<_DialogConectarTon> {
                 border: const OutlineInputBorder(),
                 prefixIcon: const Icon(Icons.lock),
                 suffixIcon: IconButton(
-                  icon: Icon(_mostrarSecret • Icons.visibility_off : Icons.visibility),
+                  icon: Icon(_mostrarSecret ? Icons.visibility_off : Icons.visibility),
                   onPressed: () => setState(() => _mostrarSecret = !_mostrarSecret),
                 ),
               ),
@@ -2384,7 +2384,7 @@ class _DialogConectarInfinitePayState extends State<_DialogConectarInfinitePay> 
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: Icon(_mostrarApiKey • Icons.visibility_off : Icons.visibility),
+                      icon: Icon(_mostrarApiKey ? Icons.visibility_off : Icons.visibility),
                       onPressed: () => setState(() => _mostrarApiKey = !_mostrarApiKey),
                     ),
                     IconButton(

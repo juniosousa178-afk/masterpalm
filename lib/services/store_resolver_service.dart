@@ -19,8 +19,8 @@ import 'public_store_link_helper.dart';
 class StoreResolverService {
   StoreResolverService._();
 
-  static String• _cache;
-  static String• _cachedUid;
+  static String? _cache;
+  static String? _cachedUid;
   static bool _authListenerRegistered = false;
 
   // ================================================================
@@ -32,7 +32,7 @@ class StoreResolverService {
 
   /// Placeholders que NUNCA devem ser retornados (catálogo/link inválidos).
   static const _placeholdersInvalidos = {'minha-loja', 'minha_loja', 'masterpalm'};
-  static bool _isPlaceholder(String• s) =>
+  static bool _isPlaceholder(String? s) =>
       s != null && _placeholdersInvalidos.contains(s.trim().toLowerCase());
 
   /// Resolve a loja FIXA do usuário
@@ -47,10 +47,10 @@ class StoreResolverService {
   static Future<String?> resolve() async {
     logD('[STORE_RESOLVE] origem=StoreResolverService.resolve inicio');
     final user0 = FirebaseAuth.instance.currentUser;
-    logD('[STORE_RESOLVE] auth uid=${user0?.uid ?• "null"} email=${user0?.email ?• "null"}');
+    logD('[STORE_RESOLVE] auth uid=${user0?.uid ?? "null"} email=${user0?.email ?? "null"}');
     try {
-      final sessao = Hive.isBoxOpen('sessao') • Hive.box('sessao') : await Hive.openBox('sessao');
-      final cfg = Hive.isBoxOpen('config') • Hive.box('config') : await Hive.openBox('config');
+      final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
+      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
       logD('[STORE_RESOLVE] sessao.store_id=${sessao.get("store_id")} config.store_id=${cfg.get("store_id")} usuario_logado_email=${sessao.get("usuario_logado_email")} usuario_logado=${sessao.get("usuario_logado")}');
     } catch (e) {
       logW('[STORE_RESOLVE] leitura inicial de sessao/config falhou (type=${e.runtimeType})');
@@ -60,7 +60,7 @@ class StoreResolverService {
 
     var currentUid = FirebaseAuth.instance.currentUser?.uid;
     // Web: Auth pode demorar a restaurar sessão (persistência); aguardar mais tempo
-    const authWaitSeconds = kIsWeb • 15 : 5;
+    const authWaitSeconds = kIsWeb ? 15 : 5;
     if (currentUid == null) {
       logD('[STORE_RESOLVE] currentUser null, aguardando auth (até ${authWaitSeconds}s)...');
       try {
@@ -97,7 +97,7 @@ class StoreResolverService {
       return _cache;
     }
 
-    String• lojaFixa;
+    String? lojaFixa;
     String resolvedSource = 'none';
 
     // ✅ 1) Cache em memória (já logado acima como "Cache: $_cache")
@@ -152,19 +152,19 @@ class StoreResolverService {
     // No Web, IndexedDB é compartilhado; validar sempre que usuario_logado coincide.
     if (lojaFixa == null) {
       try {
-        final currentEmail = (FirebaseAuth.instance.currentUser?.email ?• '').trim().toLowerCase();
+        final currentEmail = (FirebaseAuth.instance.currentUser?.email ?? '').trim().toLowerCase();
         final Box sessao = Hive.isBoxOpen('sessao')
-            • Hive.box('sessao')
+            ? Hive.box('sessao')
             : await Hive.openBox('sessao');
-        final cachedUserEmail = (sessao.get('usuario_logado_email') ?• '')
+        final cachedUserEmail = (sessao.get('usuario_logado_email') ?? '')
             .toString()
             .trim()
             .toLowerCase();
-        final cachedUserLegacy = (sessao.get('usuario_logado') ?• '')
+        final cachedUserLegacy = (sessao.get('usuario_logado') ?? '')
             .toString()
             .trim()
             .toLowerCase();
-        final cachedUser = cachedUserEmail.isNotEmpty • cachedUserEmail : cachedUserLegacy;
+        final cachedUser = cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
         if (currentEmail.isNotEmpty &&
             cachedUser.isNotEmpty &&
             currentEmail == cachedUser) {
@@ -177,7 +177,7 @@ class StoreResolverService {
         }
         if (lojaFixa == null) {
           final Box cfg = Hive.isBoxOpen('config')
-              • Hive.box('config')
+              ? Hive.box('config')
               : await Hive.openBox('config');
           if (currentEmail.isNotEmpty && cachedUser.isNotEmpty && currentEmail == cachedUser) {
             final rawId = normalizeFromBox(cfg);
@@ -195,7 +195,7 @@ class StoreResolverService {
 
     // ✅ 6) Slug baseado no email (fallback) — loja única por usuário, sem colisão
     if (lojaFixa == null) {
-      final email = FirebaseAuth.instance.currentUser?.email ?• '';
+      final email = FirebaseAuth.instance.currentUser?.email ?? '';
       lojaFixa = await _resolveUniqueSlug(email, currentUid);
       resolvedSource = 'slug_fallback';
       logD('[STORE_RESOLVE] source=slug_fallback lojaId=$lojaFixa');
@@ -235,7 +235,7 @@ class StoreResolverService {
     // Remove hífens no início e fim
     slug = slug.replaceAll(RegExp(r'^-+|-+$'), '');
 
-    return slug.isEmpty • 'loja-$uid' : slug;
+    return slug.isEmpty ? 'loja-$uid' : slug;
   }
 
   /// Resolve slug único: se a loja já existe e é de outro dono, usa base-1, base-2, ...
@@ -300,7 +300,7 @@ class StoreResolverService {
         final email = FirebaseAuth.instance.currentUser?.email?.toLowerCase().trim();
         await lojaDoc.collection('members').doc(uid).set({
           'role': 'owner',
-          'email': email ?• '',
+          'email': email ?? '',
           'joinedAt': FieldValue.serverTimestamp(),
         });
 
@@ -392,7 +392,7 @@ class StoreResolverService {
   static void _ensureAuthListener() {
     if (_authListenerRegistered) return;
 
-    FirebaseAuth.instance.authStateChanges().listen((User• user) {
+    FirebaseAuth.instance.authStateChanges().listen((User? user) {
       final currentUid = user?.uid;
       // Só limpar cache quando trocar para OUTRO usuário (uid diferente).
       // Não limpar quando user == null: no Web o Auth pode emitir null brevemente
@@ -413,7 +413,7 @@ class StoreResolverService {
   // ================================================================
 
   static Future<Box> _openBox(String name) async {
-    return Hive.isBoxOpen(name) • Hive.box(name) : await Hive.openBox(name);
+    return Hive.isBoxOpen(name) ? Hive.box(name) : await Hive.openBox(name);
   }
 
   static Future<void> _persist(String storeId) async {
@@ -438,15 +438,15 @@ class StoreResolverService {
       final sessao = await _openBox('sessao');
       final cfg = await _openBox('config');
 
-      final principalEmail = (sessao.get('usuario_logado_email') ?• '')
+      final principalEmail = (sessao.get('usuario_logado_email') ?? '')
           .toString()
           .trim()
           .toLowerCase();
-      final principalLegacy = (sessao.get('usuario_logado') ?• '')
+      final principalLegacy = (sessao.get('usuario_logado') ?? '')
           .toString()
           .trim()
           .toLowerCase();
-      final principal = principalEmail.isNotEmpty • principalEmail : principalLegacy;
+      final principal = principalEmail.isNotEmpty ? principalEmail : principalLegacy;
       if (principal.isEmpty) {
         logW('[STORE_RESOLVE] hive fallback negado: principal vazio');
         return null;
@@ -455,8 +455,8 @@ class StoreResolverService {
       final fromSessao = normalizeFromBox(sessao);
       final fromConfig = normalizeFromBox(cfg);
       final candidate = (fromSessao != null && fromSessao.trim().isNotEmpty)
-          • fromSessao.trim()
-          : (fromConfig ?• '').trim();
+          ? fromSessao.trim()
+          : (fromConfig ?? '').trim();
       if (candidate.isEmpty || !isValidForPublicLink(candidate) || _isPlaceholder(candidate)) {
         logW('[STORE_RESOLVE] hive fallback negado: candidate inválido ($candidate)');
         return null;

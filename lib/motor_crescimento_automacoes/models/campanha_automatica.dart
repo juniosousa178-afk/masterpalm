@@ -21,7 +21,7 @@ class CampanhaAutomatica {
   final String textoPromocional;
   final String status;
   final DateTime criadoEm;
-  final DateTime• executadoEm;
+  final DateTime? executadoEm;
   final String origemOportunidade;
   final PrioridadeCampanha prioridade;
 

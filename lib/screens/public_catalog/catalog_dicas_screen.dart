@@ -21,7 +21,7 @@ const Map<String, String> kTiposDicaLabels = {
 String labelForTipo(String tipo) {
   final fromMap = kTiposDicaLabels[tipo];
   if (fromMap != null) return fromMap;
-  return tipo.trim().isNotEmpty • tipo : 'Informação';
+  return tipo.trim().isNotEmpty ? tipo : 'Informação';
 }
 
 /// Uma dica (item da lista) – campos vindos do Firestore/config.
@@ -30,7 +30,7 @@ class DicaItem {
   final String titulo;
   final String tipo;
   final String conteudo;
-  final String• bannerUrl;
+  final String? bannerUrl;
   final int ordem;
   final bool ativo;
 
@@ -46,11 +46,11 @@ class DicaItem {
 
   static DicaItem fromMap(Map<String, dynamic> m) {
     return DicaItem(
-      id: (m['id'] ?• '').toString().trim().isEmpty • DateTime.now().millisecondsSinceEpoch.toString() : (m['id'] ?• '').toString(),
-      titulo: (m['titulo'] ?• '').toString().trim(),
-      tipo: (m['tipo'] ?• 'informacoes').toString().trim().isEmpty • 'informacoes' : (m['tipo'] ?• 'informacoes').toString(),
-      conteudo: (m['conteudo'] ?• '').toString().trim(),
-      bannerUrl: (m['bannerUrl'] ?• m['banner_url'] ?• '').toString().trim().isEmpty • null : (m['bannerUrl'] ?• m['banner_url']).toString().trim(),
+      id: (m['id'] ?? '').toString().trim().isEmpty ? DateTime.now().millisecondsSinceEpoch.toString() : (m['id'] ?? '').toString(),
+      titulo: (m['titulo'] ?? '').toString().trim(),
+      tipo: (m['tipo'] ?? 'informacoes').toString().trim().isEmpty ? 'informacoes' : (m['tipo'] ?? 'informacoes').toString(),
+      conteudo: (m['conteudo'] ?? '').toString().trim(),
+      bannerUrl: (m['bannerUrl'] ?? m['banner_url'] ?? '').toString().trim().isEmpty ? null : (m['bannerUrl'] ?? m['banner_url']).toString().trim(),
       ordem: safeInt(m['ordem'], 0),
       ativo: safeBool(m['ativo'], true),
     );
@@ -59,9 +59,9 @@ class DicaItem {
 
 /// Dados de contato para o rodapé (WhatsApp, Instagram, Facebook).
 class DicasContactInfo {
-  final String• whatsappNumber;
-  final String• instagramUrl;
-  final String• facebookUrl;
+  final String? whatsappNumber;
+  final String? instagramUrl;
+  final String? facebookUrl;
 
   const DicasContactInfo({
     this.whatsappNumber,
@@ -94,17 +94,17 @@ class CatalogDicasScreen extends StatelessWidget {
   final String lojaId;
   final String lojaNome;
   final List<DicaItem> dicas;
-  final Color• primaryColor;
-  final DicasContactInfo• contactInfo;
+  final Color? primaryColor;
+  final DicasContactInfo? contactInfo;
   /// Logo do catálogo (um pouco maior na tela de dicas)
-  final String• logoUrl;
+  final String? logoUrl;
   /// Altura da logo (ex.: 80 mobile, 90 desktop vs 60/72 do catálogo)
   final double logoHeight;
   /// Altura dos banners das dicas (mesmas proporções do catálogo)
   final double bannerHeightCard;
   final double bannerHeightDetail;
   /// Cores editáveis em Loja Config
-  final CatalogDicasColors• dicasColors;
+  final CatalogDicasColors? dicasColors;
 
   const CatalogDicasScreen({
     super.key,
@@ -123,8 +123,8 @@ class CatalogDicasScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = dicasColors ?• const CatalogDicasColors();
-    final primary = primaryColor ?• theme.colorScheme.primary;
+    final colors = dicasColors ?? const CatalogDicasColors();
+    final primary = primaryColor ?? theme.colorScheme.primary;
     final btnBg = colors.buttonBackground;
     final btnText = colors.buttonText;
     final list = dicas.where((d) => d.ativo && d.titulo.isNotEmpty).toList()
@@ -132,12 +132,12 @@ class CatalogDicasScreen extends StatelessWidget {
 
     final showLogo = logoUrl != null && logoUrl!.isNotEmpty;
     return Scaffold(
-      backgroundColor: theme.brightness == Brightness.dark • theme.scaffoldBackgroundColor : colors.background,
+      backgroundColor: theme.brightness == Brightness.dark ? theme.scaffoldBackgroundColor : colors.background,
       appBar: AppBar(
-        toolbarHeight: showLogo • logoHeight + 32 : null,
+        toolbarHeight: showLogo ? logoHeight + 32 : null,
         titleSpacing: 0,
         title: showLogo
-            • Padding(
+            ? Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: SizedBox(
                   height: logoHeight,
@@ -162,7 +162,7 @@ class CatalogDicasScreen extends StatelessWidget {
         centerTitle: true,
       ),
       body: list.isEmpty
-          • Center(
+          ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
@@ -219,7 +219,7 @@ class CatalogDicasScreen extends StatelessWidget {
   }
 
   void _openDetail(BuildContext context, DicaItem dica, Color primary) {
-    final colors = dicasColors ?• const CatalogDicasColors();
+    final colors = dicasColors ?? const CatalogDicasColors();
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (ctx) => _DicaDetailScreen(
@@ -245,7 +245,7 @@ class _DicasFooter extends StatelessWidget {
   final Color buttonText;
   final Color footerBg;
   final Color footerText;
-  final DicasContactInfo• contactInfo;
+  final DicasContactInfo? contactInfo;
   final VoidCallback onIrParaCatalogo;
 
   const _DicasFooter({
@@ -257,32 +257,32 @@ class _DicasFooter extends StatelessWidget {
     required this.onIrParaCatalogo,
   });
 
-  static String _digitsOnly(String• v) {
+  static String _digitsOnly(String? v) {
     if (v == null || v.isEmpty) return '';
     return v.replaceAll(RegExp(r'[^0-9]'), '');
   }
 
-  Future<void> _openWhatsApp(BuildContext context, String• number) async {
+  Future<void> _openWhatsApp(BuildContext context, String? number) async {
     final digits = _digitsOnly(number);
     if (digits.isEmpty) return;
     final url = Uri.parse('https://wa.me/$digits');
     if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
-  Future<void> _openInstagram(BuildContext context, String• url) async {
-    final u = (url ?• '').trim();
+  Future<void> _openInstagram(BuildContext context, String? url) async {
+    final u = (url ?? '').trim();
     if (u.isEmpty) return;
     final opened = await openInstagramInApp(u);
     if (!opened && context.mounted) {
-      final uri = Uri.parse(u.contains('://') • u : 'https://instagram.com/$u');
+      final uri = Uri.parse(u.contains('://') ? u : 'https://instagram.com/$u');
       if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
 
-  Future<void> _openFacebook(BuildContext context, String• url) async {
-    final u = (url ?• '').trim();
+  Future<void> _openFacebook(BuildContext context, String? url) async {
+    final u = (url ?? '').trim();
     if (u.isEmpty) return;
-    final uri = Uri.parse(u.contains('://') • u : 'https://facebook.com/$u');
+    final uri = Uri.parse(u.contains('://') ? u : 'https://facebook.com/$u');
     if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
@@ -290,15 +290,15 @@ class _DicasFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final hasContact = contactInfo != null &&
-        ((contactInfo!.whatsappNumber ?• '').trim().isNotEmpty ||
-            (contactInfo!.instagramUrl ?• '').trim().isNotEmpty ||
-            (contactInfo!.facebookUrl ?• '').trim().isNotEmpty);
+        ((contactInfo!.whatsappNumber ?? '').trim().isNotEmpty ||
+            (contactInfo!.instagramUrl ?? '').trim().isNotEmpty ||
+            (contactInfo!.facebookUrl ?? '').trim().isNotEmpty);
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       decoration: BoxDecoration(
-        color: theme.brightness == Brightness.dark • theme.cardColor : footerBg,
+        color: theme.brightness == Brightness.dark ? theme.cardColor : footerBg,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha:0.06),
@@ -336,7 +336,7 @@ class _DicasFooter extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if ((contactInfo!.whatsappNumber ?• '').trim().isNotEmpty)
+                  if ((contactInfo!.whatsappNumber ?? '').trim().isNotEmpty)
                     IconButton.filled(
                       onPressed: () => _openWhatsApp(context, contactInfo!.whatsappNumber),
                       icon: const Icon(Icons.chat, color: Colors.white, size: 22),
@@ -345,8 +345,8 @@ class _DicasFooter extends StatelessWidget {
                         padding: const EdgeInsets.all(12),
                       ),
                     ),
-                  if ((contactInfo!.whatsappNumber ?• '').trim().isNotEmpty && (contactInfo!.instagramUrl ?• '').trim().isNotEmpty) const SizedBox(width: 12),
-                  if ((contactInfo!.instagramUrl ?• '').trim().isNotEmpty)
+                  if ((contactInfo!.whatsappNumber ?? '').trim().isNotEmpty && (contactInfo!.instagramUrl ?? '').trim().isNotEmpty) const SizedBox(width: 12),
+                  if ((contactInfo!.instagramUrl ?? '').trim().isNotEmpty)
                     IconButton.filled(
                       onPressed: () => _openInstagram(context, contactInfo!.instagramUrl),
                       icon: const Icon(Icons.camera_alt, color: Colors.white, size: 22),
@@ -355,8 +355,8 @@ class _DicasFooter extends StatelessWidget {
                         padding: const EdgeInsets.all(12),
                       ),
                     ),
-                  if ((contactInfo!.instagramUrl ?• '').trim().isNotEmpty && (contactInfo!.facebookUrl ?• '').trim().isNotEmpty) const SizedBox(width: 12),
-                  if ((contactInfo!.facebookUrl ?• '').trim().isNotEmpty)
+                  if ((contactInfo!.instagramUrl ?? '').trim().isNotEmpty && (contactInfo!.facebookUrl ?? '').trim().isNotEmpty) const SizedBox(width: 12),
+                  if ((contactInfo!.facebookUrl ?? '').trim().isNotEmpty)
                     IconButton.filled(
                       onPressed: () => _openFacebook(context, contactInfo!.facebookUrl),
                       icon: const Icon(Icons.facebook, color: Colors.white, size: 22),
@@ -395,7 +395,7 @@ class _DicaCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 20),
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: theme.brightness == Brightness.dark • theme.cardColor : Colors.white,
+      color: theme.brightness == Brightness.dark ? theme.cardColor : Colors.white,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
@@ -496,7 +496,7 @@ class _DicaDetailScreen extends StatelessWidget {
   final Color buttonText;
   final Color footerBg;
   final Color footerText;
-  final DicasContactInfo• contactInfo;
+  final DicasContactInfo? contactInfo;
 
   const _DicaDetailScreen({
     required this.dica,
@@ -517,7 +517,7 @@ class _DicaDetailScreen extends StatelessWidget {
     final content = dica.conteudo.trim();
 
     return Scaffold(
-      backgroundColor: theme.brightness == Brightness.dark • theme.scaffoldBackgroundColor : const Color(0xFFF8F9FA),
+      backgroundColor: theme.brightness == Brightness.dark ? theme.scaffoldBackgroundColor : const Color(0xFFF8F9FA),
       appBar: AppBar(
         title: Text(
           lojaNome,

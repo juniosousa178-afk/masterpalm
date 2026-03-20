@@ -17,11 +17,11 @@ class MercadoPagoService {
     required String titulo,
     required double valor,
     required int quantidade,
-    int• maxInstallments,
-    String• descricao,
-    String• externalReference,
-    Map<String, dynamic>• payer,
-    Map<String, dynamic>• backUrls,
+    int? maxInstallments,
+    String? descricao,
+    String? externalReference,
+    Map<String, dynamic>? payer,
+    Map<String, dynamic>? backUrls,
   }) async {
     try {
       final response = await HttpClientHelper.post(
@@ -34,7 +34,7 @@ class MercadoPagoService {
           'items': [
             {
               'title': titulo,
-              'description': descricao ?• titulo,
+              'description': descricao ?? titulo,
               'quantity': quantidade,
               'currency_id': 'BRL',
               'unit_price': valor,
@@ -42,7 +42,7 @@ class MercadoPagoService {
           ],
           if (externalReference != null) 'external_reference': externalReference,
           if (payer != null) 'payer': payer,
-          'back_urls': backUrls ?• {
+          'back_urls': backUrls ?? {
             'success': 'https://app.mastepalm.com.br/pagamento/sucesso',
             'failure': 'https://app.mastepalm.com.br/pagamento/falha',
             'pending': 'https://app.mastepalm.com.br/pagamento/pendente',
@@ -83,9 +83,9 @@ class MercadoPagoService {
     required String accessToken,
     required double valor,
     required String descricao,
-    String• email,
-    String• cpf,
-    String• externalReference,
+    String? email,
+    String? cpf,
+    String? externalReference,
   }) async {
     try {
       final response = await HttpClientHelper.post(
@@ -101,7 +101,7 @@ class MercadoPagoService {
           'payment_method_id': 'pix',
           if (externalReference != null) 'external_reference': externalReference,
           'payer': {
-            'email': email ?• 'cliente@mastepalm.com.br', // Email obrigatório
+            'email': email ?? 'cliente@mastepalm.com.br', // Email obrigatório
             if (cpf != null && cpf.isNotEmpty)
               'identification': {
                 'type': 'CPF',

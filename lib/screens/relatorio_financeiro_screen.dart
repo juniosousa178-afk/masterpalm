@@ -48,11 +48,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
   bool _isOffline = false;
   bool _fechandoMes = false;
   bool _exportandoPdf = false;
-  String• _ultimoErroSync;
+  String? _ultimoErroSync;
   bool _erroSyncDispensado = false;
   String _ordenacaoFech = 'recente'; // recente | antigo | valor_maior | valor_menor
-  DateTime• _periodoInicio;
-  DateTime• _periodoFim;
+  DateTime? _periodoInicio;
+  DateTime? _periodoFim;
 
   @override
   void initState() {
@@ -142,7 +142,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     try {
       final now = DateTime.now();
       final mesAnterior = now.month == 1
-          • DateTime(now.year - 1, 12)
+          ? DateTime(now.year - 1, 12)
           : DateTime(now.year, now.month - 1);
       final anoAnt = mesAnterior.year;
       final mesAnt = mesAnterior.month;
@@ -192,7 +192,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         content: Row(
           children: [
             Icon(
-              isError • Icons.error_outline : Icons.check_circle_outline,
+              isError ? Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -200,7 +200,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError • _errorColor : _successColor,
+        backgroundColor: isError ? _errorColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -357,21 +357,21 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     final now = DateTime.now();
     final ini = await showDatePicker(
       context: context,
-      initialDate: _periodoInicio ?• now,
+      initialDate: _periodoInicio ?? now,
       firstDate: DateTime(2020),
       lastDate: now,
     );
     if (ini == null || !mounted) return;
     final fim = await showDatePicker(
       context: context,
-      initialDate: _periodoFim ?• ini,
+      initialDate: _periodoFim ?? ini,
       firstDate: ini,
       lastDate: now,
     );
     if (fim != null && mounted) {
       setState(() {
         _periodoInicio = ini;
-        _periodoFim = fim.isBefore(ini) • ini : fim;
+        _periodoFim = fim.isBefore(ini) ? ini : fim;
       });
     }
   }
@@ -779,7 +779,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     final temVendasAno = ano.venda > 0 || ano.custo > 0 || ano.taxas > 0;
 
     final periodoCustom = _periodoInicio != null && _periodoFim != null
-        • _agregarPeriodo((v) => !v.data.isBefore(_periodoInicio!) && !v.data.isAfter(_periodoFim!))
+        ? _agregarPeriodo((v) => !v.data.isBefore(_periodoInicio!) && !v.data.isAfter(_periodoFim!))
         : null;
 
     return ListView(
@@ -790,15 +790,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _exportandoPdf • null : _exportarPdf,
+                onPressed: _exportandoPdf ? null : _exportarPdf,
                 icon: _exportandoPdf
-                    • const SizedBox(
+                    ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.picture_as_pdf, size: 18),
-                label: Text(_exportandoPdf • 'Exportando...' : 'Exportar PDF'),
+                label: Text(_exportandoPdf ? 'Exportando...' : 'Exportar PDF'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _primaryColor,
                   side: const BorderSide(color: _primaryColor),
@@ -808,9 +808,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _periodoInicio != null • () => setState(() { _periodoInicio = null; _periodoFim = null; }) : _selecionarPeriodo,
-                icon: Icon(_periodoInicio != null • Icons.clear : Icons.date_range, size: 18),
-                label: Text(_periodoInicio == null • 'Período' : 'Limpar período'),
+                onPressed: _periodoInicio != null ? () => setState(() { _periodoInicio = null; _periodoFim = null; }) : _selecionarPeriodo,
+                icon: Icon(_periodoInicio != null ? Icons.clear : Icons.date_range, size: 18),
+                label: Text(_periodoInicio == null ? 'Período' : 'Limpar período'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _primaryColor,
                   side: const BorderSide(color: _primaryColor),
@@ -828,7 +828,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           ),
           const SizedBox(height: 12),
           periodoCustom != null && (periodoCustom.venda > 0 || periodoCustom.custo > 0)
-              • _buildResumoCard(
+              ? _buildResumoCard(
                   venda: periodoCustom.venda,
                   custo: periodoCustom.custo,
                   taxas: periodoCustom.taxas,
@@ -857,7 +857,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         _buildSectionTitle(Icons.today, 'Hoje', subtitle: DateFormat('dd/MM/yyyy').format(hoje)),
         const SizedBox(height: 12),
         temVendasDia
-            • _buildResumoCard(
+            ? _buildResumoCard(
                 venda: dia.venda,
                 custo: dia.custo,
                 taxas: dia.taxas,
@@ -874,13 +874,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         _buildSectionTitle(Icons.calendar_today, 'Este Mês'),
         const SizedBox(height: 12),
         temVendasMes
-            • _buildResumoCard(
+            ? _buildResumoCard(
                 venda: mes.venda,
                 custo: mes.custo,
                 taxas: mes.taxas,
                 lucro: mes.lucro,
                 color: _secondaryColor,
-                comparacao: mesAnterior.venda > 0 • ((mes.venda - mesAnterior.venda) / mesAnterior.venda * 100) : null,
+                comparacao: mesAnterior.venda > 0 ? ((mes.venda - mesAnterior.venda) / mesAnterior.venda * 100) : null,
                 onTap: () => _mostrarDetalhesVendas((v) => _isSameMonth(v.data, hoje)),
               )
             : _buildEmptyPeriodCard('Nenhuma venda este mês', _secondaryColor),
@@ -891,7 +891,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         _buildSectionTitle(Icons.calendar_month, 'Este Ano'),
         const SizedBox(height: 12),
         temVendasAno
-            • _buildResumoCard(
+            ? _buildResumoCard(
                 venda: ano.venda,
                 custo: ano.custo,
                 taxas: ano.taxas,
@@ -936,7 +936,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     );
   }
 
-  Widget _buildSectionTitle(IconData icon, String title, {String• subtitle}) {
+  Widget _buildSectionTitle(IconData icon, String title, {String? subtitle}) {
     return Row(
       children: [
         Container(
@@ -1096,7 +1096,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     required Color color,
     required double total,
   }) {
-    final percentage = total > 0 • (value / total * 100) : 0.0;
+    final percentage = total > 0 ? (value / total * 100) : 0.0;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -1166,10 +1166,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     required double taxas,
     required double lucro,
     required Color color,
-    double• comparacao,
-    VoidCallback• onTap,
+    double? comparacao,
+    VoidCallback? onTap,
   }) {
-    final margem = venda > 0 • (lucro / venda * 100) : 0.0;
+    final margem = venda > 0 ? (lucro / venda * 100) : 0.0;
     final child = Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1249,7 +1249,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: lucro >= 0 • _successColor.withValues(alpha:0.1) : _errorColor.withValues(alpha:0.1),
+              color: lucro >= 0 ? _successColor.withValues(alpha:0.1) : _errorColor.withValues(alpha:0.1),
               borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(16),
                 bottomRight: Radius.circular(16),
@@ -1263,8 +1263,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                     Row(
                       children: [
                         Icon(
-                          lucro >= 0 • Icons.trending_up : Icons.trending_down,
-                          color: lucro >= 0 • _successColor : _errorColor,
+                          lucro >= 0 ? Icons.trending_up : Icons.trending_down,
+                          color: lucro >= 0 ? _successColor : _errorColor,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -1272,7 +1272,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
-                            color: lucro >= 0 • _successColor : _errorColor,
+                            color: lucro >= 0 ? _successColor : _errorColor,
                           ),
                         ),
                       ],
@@ -1282,7 +1282,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 20,
-                        color: lucro >= 0 • _successColor : _errorColor,
+                        color: lucro >= 0 ? _successColor : _errorColor,
                       ),
                     ),
                   ],
@@ -1308,16 +1308,16 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                   Row(
                     children: [
                       Icon(
-                        comparacao >= 0 • Icons.arrow_upward : Icons.arrow_downward,
+                        comparacao >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
                         size: 14,
-                        color: comparacao >= 0 • _successColor : _errorColor,
+                        color: comparacao >= 0 ? _successColor : _errorColor,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${comparacao >= 0 • '+' : ''}${comparacao.toStringAsFixed(1)}% vs mês anterior',
+                        '${comparacao >= 0 ? '+' : ''}${comparacao.toStringAsFixed(1)}% vs mês anterior',
                         style: TextStyle(
                           fontSize: 12,
-                          color: comparacao >= 0 • _successColor : _errorColor,
+                          color: comparacao >= 0 ? _successColor : _errorColor,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -1388,7 +1388,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                       hintText: 'Pesquisar (MM/AAAA)',
                       prefixIcon: const Icon(Icons.search, color: _primaryColor),
                       suffixIcon: _filtroFechController.text.isNotEmpty
-                          • IconButton(
+                          ? IconButton(
                               icon: const Icon(Icons.clear, size: 20),
                               onPressed: () {
                                 _filtroFechController.clear();
@@ -1423,15 +1423,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
               ),
               const SizedBox(width: 8),
               ElevatedButton.icon(
-                onPressed: _fechandoMes • null : _fecharMesAtual,
+                onPressed: _fechandoMes ? null : _fecharMesAtual,
                 icon: _fechandoMes
-                    • const SizedBox(
+                    ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : const Icon(Icons.refresh, size: 20),
-                label: Text(_fechandoMes • 'Fechando...' : 'Fechar Mês'),
+                label: Text(_fechandoMes ? 'Fechando...' : 'Fechar Mês'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _successColor,
                   foregroundColor: Colors.white,
@@ -1616,7 +1616,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isHighlight • color.withValues(alpha:0.1) : _surfaceColor,
+        color: isHighlight ? color.withValues(alpha:0.1) : _surfaceColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1635,7 +1635,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: isHighlight • color : Colors.grey.shade800,
+              color: isHighlight ? color : Colors.grey.shade800,
             ),
           ),
         ],

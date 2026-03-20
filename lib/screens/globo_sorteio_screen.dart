@@ -22,7 +22,7 @@ class GloboSorteioScreenWrapper extends StatefulWidget {
 
 class _GloboSorteioScreenWrapperState extends State<GloboSorteioScreenWrapper> {
   bool _resolving = true;
-  GloboSorteioParams• _params;
+  GloboSorteioParams? _params;
 
   @override
   void initState() {
@@ -103,14 +103,14 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
   Set<String> _numerosSet = {};
 
   bool _carregandoNumeros = true;
-  String• _erroCarregar;
+  String? _erroCarregar;
 
   // Estado do sorteio
   int _rodada = 1; // 1, 2, 3 => sem número existente | 4 => número existente
   bool _sorteioFinalizado = false;
 
   // Número alvo da rodada (5 dígitos)
-  String• _numeroAlvo;
+  String? _numeroAlvo;
   int _digitoIndex = 0; // 0..4
   final List<int?> _digitosVisiveis = List<int?>.filled(5, null);
 
@@ -118,7 +118,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
   double _roletaAngle = 0.0;
   int _digitoAtualNaRoleta = 0;
   bool _girando = false;
-  Timer• _timerDigit;
+  Timer? _timerDigit;
 
   @override
   void initState() {
@@ -180,7 +180,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     return n.toString();
   }
 
-  /// Para rodadas 1,2,3 • garante número que NÃO existe
+  /// Para rodadas 1, 2 e 3, garante número que NÃO existe.
   String _gerarNumeroQueNaoExiste() {
     if (_numerosSet.length >= 90000) {
       // caso teórico: todos ocupados
@@ -193,7 +193,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     }
   }
 
-  /// Para rodada 4 • seleciona um número EXISTENTE de forma aleatória
+  /// Para a rodada 4, seleciona um número EXISTENTE de forma aleatória.
   String _escolherNumeroExistente() {
     if (_todosNumeros.isEmpty) {
       throw Exception(
@@ -226,10 +226,10 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     if (_digitoIndex == 0 && _numeroAlvo == null) {
       try {
         if (_rodada <= 3) {
-          // 1º, 2º, 3º resultados • número que NÃO existe
+          // 1º, 2º e 3º resultados: número que NÃO existe.
           _numeroAlvo = _gerarNumeroQueNaoExiste();
         } else {
-          // 4º resultado • número que EXISTE
+          // 4º resultado: número que EXISTE.
           _numeroAlvo = _escolherNumeroExistente();
         }
       } catch (e) {
@@ -330,17 +330,17 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     final rodadaAtual = _rodada;
 
     if (rodadaAtual <= 3) {
-      // Garantimos que ele NÃO existe, então • só mostrar "quase lá"
+      // Garantimos que ele NÃO existe, então só mostramos "quase lá".
       await _mostrarDialogResultado(
         titulo: 'Tentativa $rodadaAtual',
-        mensagem: '?• Quase lá!\n\n'
+        mensagem: 'Quase lá!\n\n'
             'Número $numero não foi premiado.\n\n'
             'Continue girando!',
         vencedor: null,
         isVencedorFinal: false,
       );
     } else {
-      // Rodada 4 • número existente • busca vencedor REAL (mesma lista do Histórico)
+      // Rodada 4: número existente. Busca o vencedor real (mesma lista do Histórico).
       final participantes = await NumeroSorteService.getParticipantesParaSorteio(
         widget.lojaId,
         widget.campanhaId,
@@ -349,7 +349,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
       // Buscar o(s) participante(s) com esse número (aleatório entre múltiplos, se houver)
       final candidatos = participantes.where((p) => p['numeroSorte'] == numero).toList();
       candidatos.shuffle(_rand);
-      final vencedorEncontrado = candidatos.isNotEmpty • candidatos.first : null;
+      final vencedorEncontrado = candidatos.isNotEmpty ? candidatos.first : null;
 
       if (vencedorEncontrado != null) {
         // Marcar como sorteado
@@ -364,11 +364,11 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
 
         await _mostrarDialogResultado(
           titulo: 'TEMOS UM VENCEDOR!',
-          mensagem: '?• Número: $numero\n\n'
-              '?• Cliente: ${vencedorEncontrado['clienteNome'] ?• 'Desconhecido'}\n'
-              '?• Email: ${vencedorEncontrado['clienteEmail'] ?• '-'}\n'
-              '?• Telefone: ${vencedorEncontrado['clienteTelefone'] ?• '-'}\n'
-              '?• Valor da Compra: R\$ ${(vencedorEncontrado['valorPedido'] as num?)?.toStringAsFixed(2) ?• '-'}',
+          mensagem: 'Número: $numero\n\n'
+              'Cliente: ${vencedorEncontrado['clienteNome'] ?? 'Desconhecido'}\n'
+              'Email: ${vencedorEncontrado['clienteEmail'] ?? '-'}\n'
+              'Telefone: ${vencedorEncontrado['clienteTelefone'] ?? '-'}\n'
+              'Valor da compra: R\$ ${(vencedorEncontrado['valorPedido'] as num?)?.toStringAsFixed(2) ?? '-'}',
           vencedor: vencedorEncontrado,
           isVencedorFinal: true,
         );
@@ -401,7 +401,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
   Future<void> _mostrarDialogResultado({
     required String titulo,
     required String mensagem,
-    Map<String, dynamic>• vencedor,
+    Map<String, dynamic>? vencedor,
     bool isVencedorFinal = false,
   }) async {
     if (!mounted) return;
@@ -417,7 +417,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
         title: Row(
           children: [
             if (isVencedorFinal)
-              const Text('?• ', style: TextStyle(fontSize: 24)),
+              const Text('🎯 ', style: TextStyle(fontSize: 24)),
             Expanded(
               child: Text(
                 titulo,
@@ -464,7 +464,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              isVencedorFinal • 'Fechar' : 'Continuar',
+              isVencedorFinal ? 'Fechar' : 'Continuar',
               style: const TextStyle(color: Colors.greenAccent),
             ),
           ),
@@ -475,9 +475,9 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
 
   /// Abre WhatsApp com mensagem de parabéns para o vencedor
   Future<void> _abrirWhatsAppVencedor(Map<String, dynamic> vencedor) async {
-    final telefone = vencedor['clienteTelefone']?.toString() ?• '';
-    final nome = vencedor['clienteNome']?.toString() ?• 'Cliente';
-    final numero = vencedor['numeroSorte']?.toString() ?• '';
+    final telefone = vencedor['clienteTelefone']?.toString() ?? '';
+    final nome = vencedor['clienteNome']?.toString() ?? 'Cliente';
+    final numero = vencedor['numeroSorte']?.toString() ?? '';
 
     // Limpar telefone - manter apenas números
     String telefoneLimpo = telefone.replaceAll(RegExp(r'[^\d]'), '');
@@ -488,15 +488,15 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     }
 
     final mensagem = '''
-?• *PARABÉNS, ${nome.split(' ').first}!* ??
+🎉 *PARABÉNS, ${nome.split(' ').first}!* 🎉
 
 Você foi o GRANDE VENCEDOR do nosso sorteio!
 
-?• *Número premiado:* $numero
+🏆 *Número premiado:* $numero
 
 Entre em contato conosco para retirar seu prêmio!
 
-?• Obrigado por participar!
+✨ Obrigado por participar!
 ''';
 
     final url = 'https://wa.me/$telefoneLimpo?text=${Uri.encodeComponent(mensagem)}';
@@ -539,9 +539,9 @@ Entre em contato conosco para retirar seu prêmio!
         'participanteId': vencedor['id'],
         'data': FieldValue.serverTimestamp(),
       });
-      logD('• Histórico de sorteio salvo');
+      logD('? Histórico de sorteio salvo');
     } catch (e, st) {
-      logE('• Erro ao salvar histórico (type=${e.runtimeType})', error: e, st: st);
+      logE('? Erro ao salvar histórico (type=${e.runtimeType})', error: e, st: st);
     }
   }
 
@@ -560,11 +560,11 @@ Entre em contato conosco para retirar seu prêmio!
         title: const Text('Roleta do Sorteio'),
       ),
       body: _carregandoNumeros
-          • const Center(
+          ? const Center(
               child: CircularProgressIndicator(color: Colors.greenAccent),
             )
           : _erroCarregar != null
-              • Center(
+              ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
@@ -621,14 +621,14 @@ Entre em contato conosco para retirar seu prêmio!
 
                         const SizedBox(height: 16),
 
-                        // Texto de status • igual em todas as 4 rodadas (evita parecer combinado)
+                        // Texto de status igual em todas as 4 rodadas (evita parecer combinado).
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
                             _sorteioFinalizado
-                                • 'Sorteio finalizado!\nO vencedor foi revelado.'
+                                ? 'Sorteio finalizado!\nO vencedor foi revelado.'
                                 : _todosNumeros.isEmpty
-                                    • 'Nenhum participante cadastrado ainda.\nAguarde vendas com números da sorte.'
+                                    ? 'Nenhum participante cadastrado ainda.\nAguarde vendas com números da sorte.'
                                     : 'Gire a roleta para revelar o número!',
                             textAlign: TextAlign.center,
                             style: const TextStyle(
@@ -651,14 +651,14 @@ Entre em contato conosco para retirar seu prêmio!
 
                         const SizedBox(height: 32),
 
-                        // Botão de sortear dígito • mesmo texto e cor em todas as 4 rodadas
+                        // Botão de sortear dígito com mesmo texto e cor em todas as 4 rodadas.
                         ElevatedButton(
                           onPressed: (_sorteioFinalizado || _girando || _todosNumeros.isEmpty)
-                              • null
+                              ? null
                               : _onPressSortearDigito,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _sorteioFinalizado || _todosNumeros.isEmpty
-                                • Colors.grey
+                                ? Colors.grey
                                 : Colors.greenAccent,
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(
@@ -673,13 +673,13 @@ Entre em contato conosco para retirar seu prêmio!
                           ),
                           child: Text(
                             _todosNumeros.isEmpty
-                                • 'Sem participantes'
+                                ? 'Sem participantes'
                                 : _sorteioFinalizado
-                                    • 'Sorteio encerrado'
+                                    ? 'Sorteio encerrado'
                                     : _girando
-                                        • 'Girando...'
+                                        ? 'Girando...'
                                         : _digitoIndex == 0
-                                            • 'Girar Roleta'
+                                            ? 'Girar Roleta'
                                             : 'Próximo dígito',
                             style: const TextStyle(
                               fontSize: 20,
@@ -734,7 +734,7 @@ Entre em contato conosco para retirar seu prêmio!
               ),
             ),
 
-            // "Cursor" fixo • círculo central com número atual
+            // "Cursor" fixo: círculo central com número atual.
             Container(
               width: 100,
               height: 100,
@@ -768,7 +768,7 @@ Entre em contato conosco para retirar seu prêmio!
               ),
             ),
 
-            // Pequeno indicador discreto no topo (não • seta, • só um marcador)
+            // Pequeno indicador discreto no topo (não é seta, é só um marcador).
             Positioned(
               top: 12,
               child: Container(
@@ -809,11 +809,11 @@ Entre em contato conosco para retirar seu prêmio!
             color: const Color(0xFF10121A),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: ativo • Colors.greenAccent : Colors.white24,
+              color: ativo ? Colors.greenAccent : Colors.white24,
               width: 2,
             ),
             boxShadow: ativo
-                • [
+                ? [
                     BoxShadow(
                       color: Colors.greenAccent.withValues(alpha:0.6),
                       blurRadius: 12,
@@ -824,11 +824,11 @@ Entre em contato conosco para retirar seu prêmio!
           ),
           alignment: Alignment.center,
           child: Text(
-            d?.toString() ?• '-',
+            d?.toString() ?? '-',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
-              color: d == null • Colors.white30 : Colors.white,
+              color: d == null ? Colors.white30 : Colors.white,
             ),
           ),
         );
@@ -838,7 +838,7 @@ Entre em contato conosco para retirar seu prêmio!
 }
 
 // ============================================================
-// PAINTER DA ROLETA • ESTILO CASSINO
+// PAINTER DA ROLETA - ESTILO CASSINO
 // ============================================================
 
 class _RoletaCassinoPainter extends CustomPainter {
@@ -864,7 +864,7 @@ class _RoletaCassinoPainter extends CustomPainter {
       } else {
         final isEven = i % 2 == 0;
         baseColor = isEven
-            • Colors.red.shade600
+            ? Colors.red.shade600
             : const Color(0xFF1A1C24); // "preto" da roleta
       }
 
@@ -903,7 +903,7 @@ class _RoletaCassinoPainter extends CustomPainter {
       textPainter.text = TextSpan(
         text: i.toString(),
         style: TextStyle(
-          color: i == 0 • Colors.black : Colors.white,
+          color: i == 0 ? Colors.black : Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 18,
         ),

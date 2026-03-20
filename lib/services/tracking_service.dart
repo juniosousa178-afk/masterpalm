@@ -35,9 +35,9 @@ class TrackingService {
   ///
   /// Retorna o link completo com parâmetros de tracking
   static Future<TrackingLinkResult> gerarLinkCatalogoComTracking({
-    String• lojaId,
-    String• clienteTelefone,
-    String• clienteNome,
+    String? lojaId,
+    String? clienteTelefone,
+    String? clienteNome,
     String origem = 'whatsapp',
   }) async {
     try {
@@ -47,7 +47,7 @@ class TrackingService {
       }
 
       // Resolver loja
-      final resolvedLojaId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
+      final resolvedLojaId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (resolvedLojaId == null || resolvedLojaId.isEmpty) {
         return TrackingLinkResult.erro('Loja não encontrada');
       }
@@ -58,14 +58,14 @@ class TrackingService {
           .doc(user.email)
           .get();
 
-      String vendedorNome = user.displayName ?• user.email ?• 'Vendedor';
+      String vendedorNome = user.displayName ?? user.email ?? 'Vendedor';
       if (vendedorDoc.exists) {
-        vendedorNome = vendedorDoc.data()?['nome'] ?• vendedorNome;
+        vendedorNome = vendedorDoc.data()?['nome'] ?? vendedorNome;
       }
 
       // Buscar configuração de tracking
       final config = await ComissaoConfigService.getConfig(resolvedLojaId);
-      final expiracaoDias = config?.trackingExpiracaoDias ?• 7;
+      final expiracaoDias = config?.trackingExpiracaoDias ?? 7;
 
       // Gerar ID único e token
       final trackingId = _gerarTrackingId();
@@ -79,7 +79,7 @@ class TrackingService {
         trackingId: trackingId,
         lojaId: resolvedLojaId,
         vendedorUid: user.uid,
-        vendedorEmail: user.email ?• '',
+        vendedorEmail: user.email ?? '',
         vendedorNome: vendedorNome,
         token: token,
         clienteTelefone: clienteTelefone,
@@ -117,8 +117,8 @@ class TrackingService {
   /// Compartilha o link do catálogo no WhatsApp
   static Future<bool> compartilharNoWhatsApp({
     required String link,
-    String• mensagemPersonalizada,
-    String• telefoneDestino,
+    String? mensagemPersonalizada,
+    String? telefoneDestino,
   }) async {
     try {
       final mensagem = mensagemPersonalizada ??
@@ -152,7 +152,7 @@ class TrackingService {
   /// Compartilha usando o sistema de compartilhamento nativo
   static Future<void> compartilharNativo({
     required String link,
-    String• mensagemPersonalizada,
+    String? mensagemPersonalizada,
   }) async {
     final mensagem = mensagemPersonalizada ??
         'Confira nosso catálogo de produtos: $link';
@@ -236,13 +236,13 @@ class TrackingService {
   /// Usado quando há múltiplos trackings (last-click attribution)
   static Future<VendaTracking?> buscarTrackingMaisRecente({
     required String lojaId,
-    String• deviceId,
-    String• clienteTelefone,
+    String? deviceId,
+    String? clienteTelefone,
   }) async {
     try {
       // Buscar configuração para saber a regra de atribuição
       final config = await ComissaoConfigService.getConfig(lojaId);
-      final regraAtribuicao = config?.regraAtribuicao ?• 'ultimo_clique';
+      final regraAtribuicao = config?.regraAtribuicao ?? 'ultimo_clique';
 
       Query query = _db
           .collection('lojas')
@@ -351,8 +351,8 @@ class TrackingService {
   static Future<int> contarTrackingsConvertidos({
     required String lojaId,
     required String vendedorUid,
-    DateTime• inicio,
-    DateTime• fim,
+    DateTime? inicio,
+    DateTime? fim,
   }) async {
     try {
       Query query = _db
@@ -370,7 +370,7 @@ class TrackingService {
       }
 
       final snapshot = await query.count().get();
-      return snapshot.count ?• 0;
+      return snapshot.count ?? 0;
     } catch (e) {
       debugPrint('❌ [TRACKING] Erro ao contar trackings (type=${e.runtimeType})');
       return 0;
@@ -401,9 +401,9 @@ class TrackingService {
 /// Resultado da geração de link de tracking
 class TrackingLinkResult {
   final bool sucesso;
-  final String• link;
-  final VendaTracking• tracking;
-  final String• mensagemErro;
+  final String? link;
+  final VendaTracking? tracking;
+  final String? mensagemErro;
 
   TrackingLinkResult._({
     required this.sucesso,

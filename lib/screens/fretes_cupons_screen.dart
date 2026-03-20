@@ -20,7 +20,7 @@ import 'carrinhos_abandonados_screen.dart';
 import '../models/cupom.dart';
 
 class FretesCuponsScreen extends StatefulWidget {
-  final String• slug;
+  final String? slug;
 
   const FretesCuponsScreen({super.key, this.slug});
 
@@ -41,7 +41,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
   late Box _config;
   late Box configPerStore;
 
-  String• _slug;
+  String? _slug;
   bool _salvando = false;
 
   // FRETES
@@ -80,7 +80,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     {'id': 'media', 'nome': 'Média', 'peso': 200.0, 'tamanho': 3, 'altura': 20.0, 'largura': 25.0, 'comprimento': 30.0},
     {'id': 'grande', 'nome': 'Grande', 'peso': 350.0, 'tamanho': 4, 'altura': 25.0, 'largura': 30.0, 'comprimento': 40.0},
   ];
-  int• _editandoEmbalagemIdx;
+  int? _editandoEmbalagemIdx;
   final TextEditingController _embalagemNomeCtrl = TextEditingController();
   final TextEditingController _embalagemPesoCtrl = TextEditingController();
   final TextEditingController _embalagemTamanhoCtrl = TextEditingController();
@@ -143,13 +143,13 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
   Future<void> _bootstrap() async {
     final sessao = Hive.box('sessao');
-    String• slugSessao =
+    String? slugSessao =
         (sessao.get('store_id') as String?)?.trim().toLowerCase();
 
     // StoreResolver primeiro (mesma lógica da loja modelo); widget.slug e sessao são fallbacks
     final initialSlug = (await StoreResolverFacade.resolveForAdminApp()) ??
         widget.slug ??
-        (slugSessao != null && slugSessao.isNotEmpty • slugSessao : _emailPrefix());
+        (slugSessao != null && slugSessao.isNotEmpty ? slugSessao : _emailPrefix());
 
     _slug = initialSlug;
 
@@ -174,27 +174,27 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         ..clear()
         ..addAll(rawFretes.map<Map<String, dynamic>>((e) {
           final m = (e is Map)
-              • e.map((k, v) => MapEntry(k.toString(), v))
+              ? e.map((k, v) => MapEntry(k.toString(), v))
               : <String, dynamic>{};
-          final nome = (m['nome'] ?• '').toString();
+          final nome = (m['nome'] ?? '').toString();
           final val = (m['valor'] is num)
-              • (m['valor'] as num).toDouble()
-              : double.tryParse('${m['valor']}') ?• 0.0;
+              ? (m['valor'] as num).toDouble()
+              : double.tryParse('${m['valor']}') ?? 0.0;
           return {'nome': nome, 'valor': val};
         }));
     }
 
-    _freteProvider = (_config.get('frete_provider') ?• 'manual').toString();
-    _cepOrigemCtrl.text = (_config.get('frete_cep_origem') ?• '').toString();
+    _freteProvider = (_config.get('frete_provider') ?? 'manual').toString();
+    _cepOrigemCtrl.text = (_config.get('frete_cep_origem') ?? '').toString();
     _melhorEnvioTokenCtrl.text =
-        (_config.get('frete_melhor_envio_token') ?• '').toString();
+        (_config.get('frete_melhor_envio_token') ?? '').toString();
     _correiosUserCtrl.text =
-        (_config.get('frete_correios_user') ?• '').toString();
+        (_config.get('frete_correios_user') ?? '').toString();
     _correiosSenhaCtrl.text =
-        (_config.get('frete_correios_senha') ?• '').toString();
-    _frenetTokenCtrl.text = (_config.get('frete_frenet_token') ?• '').toString();
+        (_config.get('frete_correios_senha') ?? '').toString();
+    _frenetTokenCtrl.text = (_config.get('frete_frenet_token') ?? '').toString();
     _superFreteTokenCtrl.text =
-        (_config.get('frete_superfrete_token') ?• '').toString();
+        (_config.get('frete_superfrete_token') ?? '').toString();
 
     final rawEmbalagens = _config.get('embalagens');
     if (rawEmbalagens is List && rawEmbalagens.isNotEmpty) {
@@ -202,13 +202,13 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         if (e is Map) {
           final m = e.map((k, v) => MapEntry(k.toString(), v));
           return {
-            'id': m['id']?.toString() ?• '',
-            'nome': m['nome']?.toString() ?• '',
-            'peso': (m['peso'] is num) • (m['peso'] as num).toDouble() : double.tryParse('${m['peso']}') ?• 0.0,
-            'tamanho': (m['tamanho'] is num) • (m['tamanho'] as num).toInt() : int.tryParse('${m['tamanho']}') ?• 0,
-            'altura': (m['altura'] is num) • (m['altura'] as num).toDouble() : double.tryParse('${m['altura']}') ?• 0.0,
-            'largura': (m['largura'] is num) • (m['largura'] as num).toDouble() : double.tryParse('${m['largura']}') ?• 0.0,
-            'comprimento': (m['comprimento'] is num) • (m['comprimento'] as num).toDouble() : double.tryParse('${m['comprimento']}') ?• 0.0,
+            'id': m['id']?.toString() ?? '',
+            'nome': m['nome']?.toString() ?? '',
+            'peso': (m['peso'] is num) ? (m['peso'] as num).toDouble() : double.tryParse('${m['peso']}') ?? 0.0,
+            'tamanho': (m['tamanho'] is num) ? (m['tamanho'] as num).toInt() : int.tryParse('${m['tamanho']}') ?? 0,
+            'altura': (m['altura'] is num) ? (m['altura'] as num).toDouble() : double.tryParse('${m['altura']}') ?? 0.0,
+            'largura': (m['largura'] is num) ? (m['largura'] as num).toDouble() : double.tryParse('${m['largura']}') ?? 0.0,
+            'comprimento': (m['comprimento'] is num) ? (m['comprimento'] as num).toDouble() : double.tryParse('${m['comprimento']}') ?? 0.0,
           };
         }
         return {'id': '', 'nome': '', 'peso': 0.0, 'tamanho': 0, 'altura': 0.0, 'largura': 0.0, 'comprimento': 0.0};
@@ -231,7 +231,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         setState(() {
           _indicacaoAtivo = cfg.ativo;
           _indicacaoTipo = cfg.tipo;
-          _indicacaoValorCtrl.text = cfg.valor.toStringAsFixed(cfg.tipo == 'percentual' • 0 : 2);
+          _indicacaoValorCtrl.text = cfg.valor.toStringAsFixed(cfg.tipo == 'percentual' ? 0 : 2);
           _indicacaoValidadeCtrl.text = '${cfg.validadeDias}';
         });
       }
@@ -242,8 +242,8 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     if (_slug == null) return;
     setState(() => _indicacaoSalvando = true);
     try {
-      final valor = double.tryParse(_indicacaoValorCtrl.text.replaceAll(',', '.')) ?• 10.0;
-      final dias = int.tryParse(_indicacaoValidadeCtrl.text) ?• 60;
+      final valor = double.tryParse(_indicacaoValorCtrl.text.replaceAll(',', '.')) ?? 10.0;
+      final dias = int.tryParse(_indicacaoValidadeCtrl.text) ?? 60;
       await IndicacaoConfigService.setConfig(
         _slug!,
         IndicacaoConfig(
@@ -277,7 +277,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     if (_slug == null) return;
     setState(() => _carrinhoAbandonadoSalvando = true);
     try {
-      final horas = int.tryParse(_carrinhoAbandonadoHorasCtrl.text) ?• 24;
+      final horas = int.tryParse(_carrinhoAbandonadoHorasCtrl.text) ?? 24;
       await CarrinhoAbandonadoService.setConfig(
         _slug!,
         CarrinhoAbandonadoConfig(
@@ -304,34 +304,34 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           .get();
 
       if (!snap.exists) return;
-      final data = snap.data() ?• {};
+      final data = snap.data() ?? {};
 
       final Map<String, dynamic> config =
-          (data['config'] as Map<String, dynamic>?) ?• <String, dynamic>{};
+          (data['config'] as Map<String, dynamic>?) ?? <String, dynamic>{};
       final itensRaw = data['itens'];
 
       setState(() {
-        _freteProvider = (config['provider'] ?• 'manual').toString();
-        _cepOrigemCtrl.text = (config['cep_origem'] ?• '').toString();
+        _freteProvider = (config['provider'] ?? 'manual').toString();
+        _cepOrigemCtrl.text = (config['cep_origem'] ?? '').toString();
         _melhorEnvioTokenCtrl.text =
-            (config['melhor_envio_token'] ?• '').toString();
-        _correiosUserCtrl.text = (config['correios_user'] ?• '').toString();
-        _correiosSenhaCtrl.text = (config['correios_senha'] ?• '').toString();
-        _frenetTokenCtrl.text = (config['frenet_token'] ?• '').toString();
+            (config['melhor_envio_token'] ?? '').toString();
+        _correiosUserCtrl.text = (config['correios_user'] ?? '').toString();
+        _correiosSenhaCtrl.text = (config['correios_senha'] ?? '').toString();
+        _frenetTokenCtrl.text = (config['frenet_token'] ?? '').toString();
         _superFreteTokenCtrl.text =
-            (config['superfrete_token'] ?• '').toString();
+            (config['superfrete_token'] ?? '').toString();
 
         _fretes
           ..clear()
           ..addAll(
-            (itensRaw is List • itensRaw : const [])
+            (itensRaw is List ? itensRaw : const [])
                 .whereType<Map>()
                 .map<Map<String, dynamic>>((e) {
               final m = Map<String, dynamic>.from(e);
-              final nome = (m['nome'] ?• '').toString();
+              final nome = (m['nome'] ?? '').toString();
               final val = (m['valor'] is num)
-                  • (m['valor'] as num).toDouble()
-                  : double.tryParse('${m['valor']}') ?• 0.0;
+                  ? (m['valor'] as num).toDouble()
+                  : double.tryParse('${m['valor']}') ?? 0.0;
               return {'nome': nome, 'valor': val};
             }),
           );
@@ -342,7 +342,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
   }
 
   String _emailPrefix() {
-    final email = FirebaseAuth.instance.currentUser?.email ?• 'minha-loja';
+    final email = FirebaseAuth.instance.currentUser?.email ?? 'minha-loja';
     return email.split('@').first;
   }
 
@@ -357,9 +357,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
   Future<void> _upsertLojaFirestoreDraft({
     required Map<String, dynamic> partial,
-    String• lojaIdOverride,
+    String? lojaIdOverride,
   }) async {
-    final id = lojaIdOverride ?• _slug;
+    final id = lojaIdOverride ?? _slug;
     if (id == null || id.isEmpty) return;
     final base = FirebaseFirestore.instance.collection('lojas').doc(id);
 
@@ -386,9 +386,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         content: Text(s),
         behavior: SnackBarBehavior.floating,
         backgroundColor: s.startsWith('✅')
-            • _successColor
+            ? _successColor
             : s.startsWith('❌')
-                • _errorColor
+                ? _errorColor
                 : null,
       ),
     );
@@ -417,7 +417,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final nome = data['firstname'] ?• 'Usuário';
+        final nome = data['firstname'] ?? 'Usuário';
         _snack('✅ Conectado com sucesso! Bem-vindo, $nome');
       } else if (response.statusCode == 401) {
         _snack('❌ Token inválido ou expirado');
@@ -566,8 +566,8 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           final msgErroMatch =
               RegExp(r'<MsgErro>(.*?)</MsgErro>').firstMatch(body);
 
-          final codigoErro = erroMatch?.group(1) ?• '?';
-          final msgErro = msgErroMatch?.group(1) ?• 'Erro desconhecido';
+          final codigoErro = erroMatch?.group(1) ?? '?';
+          final msgErro = msgErroMatch?.group(1) ?? 'Erro desconhecido';
 
           _snack('❌ Erro $codigoErro: $msgErro');
         } else {
@@ -583,7 +583,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
   // ========= SALVAR FRETES =========
   Future<void> _salvarFretesECupons() async {
-    final lojaId = await StoreResolverFacade.resolveForAdminApp() ?• _slug;
+    final lojaId = await StoreResolverFacade.resolveForAdminApp() ?? _slug;
     if (lojaId == null || lojaId.isEmpty) {
       _snack('❌ Loja atual não definida. Faça login e tente novamente.');
       return;
@@ -594,10 +594,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       await _putConfig(
         'fretes',
         _fretes.map((f) {
-          final nome = (f['nome'] ?• '').toString();
+          final nome = (f['nome'] ?? '').toString();
           final val = (f['valor'] is num)
-              • (f['valor'] as num).toDouble()
-              : double.tryParse('${f['valor']}') ?• 0.0;
+              ? (f['valor'] as num).toDouble()
+              : double.tryParse('${f['valor']}') ?? 0.0;
           return {'nome': nome, 'valor': val};
         }).toList(),
       );
@@ -620,26 +620,26 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         final base = FirebaseFirestore.instance.collection('lojas').doc(lojaId);
 
         final pesoEmb = _embalagens.isNotEmpty && _embalagens.first['peso'] != null
-            • ((_embalagens.first['peso'] as num).toDouble())
+            ? ((_embalagens.first['peso'] as num).toDouble())
             : 50.0;
         final fretesDoc = {
           'provider': _freteProvider,
           'cepOrigem': _cepOrigemCtrl.text.trim(),
           'pesoEmbalagem': pesoEmb,
           'embalagens': _embalagens.map((e) => {
-            'id': (e['id'] ?• '').toString(),
-            'nome': (e['nome'] ?• '').toString(),
-            'peso': (e['peso'] is num) • (e['peso'] as num).toDouble() : double.tryParse('${e['peso']}') ?• 0.0,
-            'tamanho': (e['tamanho'] is num) • (e['tamanho'] as num).toInt() : int.tryParse('${e['tamanho']}') ?• 1,
-            'altura': (e['altura'] is num) • (e['altura'] as num).toDouble() : double.tryParse('${e['altura']}') ?• 0.0,
-            'largura': (e['largura'] is num) • (e['largura'] as num).toDouble() : double.tryParse('${e['largura']}') ?• 0.0,
-            'comprimento': (e['comprimento'] is num) • (e['comprimento'] as num).toDouble() : double.tryParse('${e['comprimento']}') ?• 0.0,
+            'id': (e['id'] ?? '').toString(),
+            'nome': (e['nome'] ?? '').toString(),
+            'peso': (e['peso'] is num) ? (e['peso'] as num).toDouble() : double.tryParse('${e['peso']}') ?? 0.0,
+            'tamanho': (e['tamanho'] is num) ? (e['tamanho'] as num).toInt() : int.tryParse('${e['tamanho']}') ?? 1,
+            'altura': (e['altura'] is num) ? (e['altura'] as num).toDouble() : double.tryParse('${e['altura']}') ?? 0.0,
+            'largura': (e['largura'] is num) ? (e['largura'] as num).toDouble() : double.tryParse('${e['largura']}') ?? 0.0,
+            'comprimento': (e['comprimento'] is num) ? (e['comprimento'] as num).toDouble() : double.tryParse('${e['comprimento']}') ?? 0.0,
           }).toList(),
           'manualFretes': _fretes.map((f) {
-            final nome = (f['nome'] ?• '').toString();
+            final nome = (f['nome'] ?? '').toString();
             final val = (f['valor'] is num)
-                • (f['valor'] as num).toDouble()
-                : double.tryParse('${f['valor']}') ?• 0.0;
+                ? (f['valor'] as num).toDouble()
+                : double.tryParse('${f['valor']}') ?? 0.0;
             return {'nome': nome, 'valor': val};
           }).toList(),
           'melhorEnvio': {
@@ -668,7 +668,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
       final parcial = {
         'fretes': List<Map<String, dynamic>>.from(
-          _config.get('fretes') ?• const [],
+          _config.get('fretes') ?? const [],
         ),
         'frete_config': {
           'provider': _freteProvider,
@@ -783,9 +783,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: _salvando • null : _salvarFretesECupons,
+                  onPressed: _salvando ? null : _salvarFretesECupons,
                   icon: _salvando
-                      • const SizedBox(
+                      ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
@@ -949,9 +949,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               const SizedBox(height: 12),
               const Text(
                 '📦 O que faz:\n'
-                '• Compara fretes de Correios, Jadlog, Azul Cargo e mais\n'
-                '• Mostra o melhor preço automaticamente\n'
-                '• Rastreamento integrado\n\n'
+                '? Compara fretes de Correios, Jadlog, Azul Cargo e mais\n'
+                '? Mostra o melhor preço automaticamente\n'
+                '? Rastreamento integrado\n\n'
                 '🔧 Como configurar:\n'
                 '1. Cadastre-se em melhorenvio.com.br\n'
                 '2. Acesse: Configurações → Token de API\n'
@@ -1045,9 +1045,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               const SizedBox(height: 12),
               const Text(
                 '⚡ O que faz:\n'
-                '• Comparação rápida de fretes em tempo real\n'
-                '• Múltiplas transportadoras\n'
-                '• API simples e eficiente\n\n'
+                '? Comparação rápida de fretes em tempo real\n'
+                '? Múltiplas transportadoras\n'
+                '? API simples e eficiente\n\n'
                 '🔧 Como configurar:\n'
                 '1. Cadastre-se em superfrete.com\n'
                 '2. Acesse: Configurações → API\n'
@@ -1141,9 +1141,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               const SizedBox(height: 12),
               const Text(
                 '🚚 O que faz:\n'
-                '• Integração com múltiplas transportadoras\n'
-                '• Cálculo baseado em tabelas de frete\n'
-                '• Suporte a diferentes modalidades\n\n'
+                '? Integração com múltiplas transportadoras\n'
+                '? Cálculo baseado em tabelas de frete\n'
+                '? Suporte a diferentes modalidades\n\n'
                 '🔧 Como configurar:\n'
                 '1. Cadastre-se em frenet.com.br\n'
                 '2. Configure suas transportadoras\n'
@@ -1237,15 +1237,15 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               const SizedBox(height: 12),
               const Text(
                 '📮 O que faz:\n'
-                '• Usa PAC e SEDEX diretamente dos Correios\n'
-                '• Preços do seu contrato empresarial\n'
-                '• Rastreamento nativo\n\n'
+                '? Usa PAC e SEDEX diretamente dos Correios\n'
+                '? Preços do seu contrato empresarial\n'
+                '? Rastreamento nativo\n\n'
                 '🔧 Como configurar:\n'
                 '1. Tenha um contrato com os Correios\n'
                 '2. Acesse correios.com.br e faça login\n'
                 '3. Obtenha seu código de usuário e senha\n'
                 '4. Preencha abaixo e teste\n\n'
-                '⚠️ Sem contrato• Use Melhor Envio ou SuperFrete',
+                '⚠️ Sem contrato? Use Melhor Envio ou SuperFrete',
                 style: TextStyle(fontSize: 14, height: 1.6),
               ),
             ],
@@ -1453,7 +1453,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
   String _descricaoPrioridadeEmbalagem(int tamanho) {
     if (_embalagens.isEmpty) return '';
-    final maxT = _embalagens.map((e) => (e['tamanho'] is num) • (e['tamanho'] as num).toInt() : 0).fold(0, (a, b) => a > b • a : b);
+    final maxT = _embalagens.map((e) => (e['tamanho'] is num) ? (e['tamanho'] as num).toInt() : 0).fold(0, (a, b) => a > b ? a : b);
     if (tamanho == 1) return 'menor';
     if (tamanho == maxT) return 'maior';
     return 'intermediária';
@@ -1591,11 +1591,11 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
             FilledButton.icon(
               onPressed: () {
                 final nome = _embalagemNomeCtrl.text.trim();
-                final peso = double.tryParse(_embalagemPesoCtrl.text.trim()) ?• 0.0;
-                final tamanho = int.tryParse(_embalagemTamanhoCtrl.text.trim()) ?• 0;
-                final altura = double.tryParse(_embalagemAlturaCtrl.text.trim()) ?• 0.0;
-                final largura = double.tryParse(_embalagemLarguraCtrl.text.trim()) ?• 0.0;
-                final comprimento = double.tryParse(_embalagemComprimentoCtrl.text.trim()) ?• 0.0;
+                final peso = double.tryParse(_embalagemPesoCtrl.text.trim()) ?? 0.0;
+                final tamanho = int.tryParse(_embalagemTamanhoCtrl.text.trim()) ?? 0;
+                final altura = double.tryParse(_embalagemAlturaCtrl.text.trim()) ?? 0.0;
+                final largura = double.tryParse(_embalagemLarguraCtrl.text.trim()) ?? 0.0;
+                final comprimento = double.tryParse(_embalagemComprimentoCtrl.text.trim()) ?? 0.0;
                 if (nome.isEmpty || peso <= 0 || tamanho <= 0) {
                   _snack('Preencha nome, peso e prioridade da embalagem.');
                   return;
@@ -1608,7 +1608,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 if (_editandoEmbalagemIdx != null) {
                   setState(() {
                     _embalagens[_editandoEmbalagemIdx!] = {
-                      'id': _embalagens[_editandoEmbalagemIdx!]['id'] ?• id,
+                      'id': _embalagens[_editandoEmbalagemIdx!]['id'] ?? id,
                       'nome': nome,
                       'peso': peso,
                       'tamanho': tamanho,
@@ -1635,7 +1635,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                     });
                   });
                 }
-                _embalagens.sort((a, b) => ((a['tamanho'] as num?)?.toInt() ?• 0).compareTo((b['tamanho'] as num?)?.toInt() ?• 0));
+                _embalagens.sort((a, b) => ((a['tamanho'] as num?)?.toInt() ?? 0).compareTo((b['tamanho'] as num?)?.toInt() ?? 0));
                 _embalagemNomeCtrl.clear();
                 _embalagemPesoCtrl.clear();
                 _embalagemTamanhoCtrl.clear();
@@ -1644,8 +1644,8 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 _embalagemComprimentoCtrl.clear();
                 _salvarFretesECupons();
               },
-              icon: Icon(_editandoEmbalagemIdx != null • Icons.save : Icons.add),
-              label: Text(_editandoEmbalagemIdx != null • 'Salvar embalagem' : 'Adicionar embalagem'),
+              icon: Icon(_editandoEmbalagemIdx != null ? Icons.save : Icons.add),
+              label: Text(_editandoEmbalagemIdx != null ? 'Salvar embalagem' : 'Adicionar embalagem'),
               style: FilledButton.styleFrom(
                 backgroundColor: _successColor,
                 foregroundColor: Colors.white,
@@ -1669,10 +1669,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               ..._embalagens.asMap().entries.map((entry) {
                 final i = entry.key;
                 final e = entry.value;
-                final altura = (e['altura'] as num?)?.toDouble() ?• 0.0;
-                final largura = (e['largura'] as num?)?.toDouble() ?• 0.0;
-                final comprimento = (e['comprimento'] as num?)?.toDouble() ?• 0.0;
-                final tam = (e['tamanho'] as num?)?.toInt() ?• 0;
+                final altura = (e['altura'] as num?)?.toDouble() ?? 0.0;
+                final largura = (e['largura'] as num?)?.toDouble() ?? 0.0;
+                final comprimento = (e['comprimento'] as num?)?.toDouble() ?? 0.0;
+                final tam = (e['tamanho'] as num?)?.toInt() ?? 0;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   elevation: 0,
@@ -1703,12 +1703,12 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                           onPressed: () {
                             setState(() {
                               _editandoEmbalagemIdx = i;
-                              _embalagemNomeCtrl.text = e['nome']?.toString() ?• '';
-                              _embalagemPesoCtrl.text = (e['peso'] as num?)?.toString() ?• '';
-                              _embalagemTamanhoCtrl.text = (e['tamanho'] as num?)?.toString() ?• '';
-                              _embalagemAlturaCtrl.text = (e['altura'] as num?)?.toString() ?• '';
-                              _embalagemLarguraCtrl.text = (e['largura'] as num?)?.toString() ?• '';
-                              _embalagemComprimentoCtrl.text = (e['comprimento'] as num?)?.toString() ?• '';
+                              _embalagemNomeCtrl.text = e['nome']?.toString() ?? '';
+                              _embalagemPesoCtrl.text = (e['peso'] as num?)?.toString() ?? '';
+                              _embalagemTamanhoCtrl.text = (e['tamanho'] as num?)?.toString() ?? '';
+                              _embalagemAlturaCtrl.text = (e['altura'] as num?)?.toString() ?? '';
+                              _embalagemLarguraCtrl.text = (e['largura'] as num?)?.toString() ?? '';
+                              _embalagemComprimentoCtrl.text = (e['comprimento'] as num?)?.toString() ?? '';
                             });
                           },
                         ),
@@ -1817,7 +1817,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           );
         }
 
-        final cupons = snapshot.data ?• [];
+        final cupons = snapshot.data ?? [];
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -1888,7 +1888,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                       DropdownMenuItem(value: 'percentual', child: Text('Percentual (%)')),
                       DropdownMenuItem(value: 'valor', child: Text('Valor fixo (R\$)')),
                     ],
-                    onChanged: (v) => setState(() => _indicacaoTipo = v ?• 'percentual'),
+                    onChanged: (v) => setState(() => _indicacaoTipo = v ?? 'percentual'),
                   ),
                 ],
               ),
@@ -1899,7 +1899,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   controller: _indicacaoValorCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: InputDecoration(
-                    labelText: _indicacaoTipo == 'percentual' • 'Valor (%)' : 'Valor (R\$)',
+                    labelText: _indicacaoTipo == 'percentual' ? 'Valor (%)' : 'Valor (R\$)',
                     border: const OutlineInputBorder(),
                     isDense: true,
                   ),
@@ -1920,11 +1920,11 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: _indicacaoSalvando • null : _salvarIndicacaoConfig,
+                onPressed: _indicacaoSalvando ? null : _salvarIndicacaoConfig,
                 icon: _indicacaoSalvando
-                    • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.save, size: 20),
-                label: Text(_indicacaoSalvando • 'Salvando...' : 'Salvar indicação'),
+                label: Text(_indicacaoSalvando ? 'Salvando...' : 'Salvar indicação'),
                 style: ElevatedButton.styleFrom(backgroundColor: _successColor, foregroundColor: Colors.white),
               ),
             ],
@@ -1997,17 +1997,17 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
             Row(
               children: [
                 ElevatedButton.icon(
-                  onPressed: _carrinhoAbandonadoSalvando • null : _salvarCarrinhoAbandonadoConfig,
+                  onPressed: _carrinhoAbandonadoSalvando ? null : _salvarCarrinhoAbandonadoConfig,
                   icon: _carrinhoAbandonadoSalvando
-                      • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.save, size: 20),
-                  label: Text(_carrinhoAbandonadoSalvando • 'Salvando...' : 'Salvar'),
+                  label: Text(_carrinhoAbandonadoSalvando ? 'Salvando...' : 'Salvar'),
                   style: ElevatedButton.styleFrom(backgroundColor: _warningColor, foregroundColor: Colors.white),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
                   onPressed: _slug == null
-                      • null
+                      ? null
                       : () {
                           Navigator.push(
                             context,
@@ -2172,7 +2172,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
   Widget _buildCupomCard(Cupom cupom) {
     final desconto = cupom.tipo == 'percentual'
-        • '${cupom.valor.toStringAsFixed(0)}%'
+        ? '${cupom.valor.toStringAsFixed(0)}%'
         : 'R\$ ${cupom.valor.toStringAsFixed(2)}';
 
     Color tagColor = _primaryColor;
@@ -2199,7 +2199,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: cupom.ativo • tagColor.withValues(alpha:0.3) : Colors.grey.shade300,
+          color: cupom.ativo ? tagColor.withValues(alpha:0.3) : Colors.grey.shade300,
           width: 1,
         ),
       ),
@@ -2214,13 +2214,13 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: cupom.ativo
-                        • tagColor.withValues(alpha:0.1)
+                        ? tagColor.withValues(alpha:0.1)
                         : Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
                     tagIcon,
-                    color: cupom.ativo • tagColor : Colors.grey,
+                    color: cupom.ativo ? tagColor : Colors.grey,
                     size: 20,
                   ),
                 ),
@@ -2330,10 +2330,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                       child: Row(
                         children: [
                           Icon(cupom.ativo
-                              • Icons.visibility_off
+                              ? Icons.visibility_off
                               : Icons.visibility),
                           const SizedBox(width: 12),
-                          Text(cupom.ativo • 'Desativar' : 'Ativar'),
+                          Text(cupom.ativo ? 'Desativar' : 'Ativar'),
                         ],
                       ),
                     ),
@@ -2517,12 +2517,12 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                           ),
                           decoration: InputDecoration(
                             labelText: tipo == 'percentual'
-                                • 'Valor (%)'
+                                ? 'Valor (%)'
                                 : 'Valor (R\$)',
-                            hintText: tipo == 'percentual' • '10' : '50.00',
+                            hintText: tipo == 'percentual' ? '10' : '50.00',
                             prefixIcon: Icon(
                               tipo == 'percentual'
-                                  • Icons.percent
+                                  ? Icons.percent
                                   : Icons.attach_money,
                             ),
                             border: OutlineInputBorder(
@@ -2625,7 +2625,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     if (result == true && _slug != null) {
       final codigo = codigoCtrl.text.trim().toUpperCase();
       final nome = nomeCtrl.text.trim();
-      final valor = double.tryParse(valorCtrl.text.trim()) ?• 0.0;
+      final valor = double.tryParse(valorCtrl.text.trim()) ?? 0.0;
       final valorMinimo =
           double.tryParse(valorMinimoCtrl.text.trim());
 
@@ -2665,7 +2665,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           .doc(cupom.id)
           .update({'ativo': !cupom.ativo});
 
-      _snack(cupom.ativo • '✅ Cupom desativado' : '✅ Cupom ativado');
+      _snack(cupom.ativo ? '✅ Cupom desativado' : '✅ Cupom ativado');
     } catch (e) {
       _snack('❌ Erro ao atualizar cupom: $e');
     }

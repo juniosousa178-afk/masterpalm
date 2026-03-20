@@ -39,11 +39,11 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
 
   final TextEditingController _filtroController = TextEditingController();
 
-  String• lojaId;
+  String? lojaId;
   bool _erroResolucaoLoja = false;
 
-  DateTime• dataInicial;
-  DateTime• dataFinal;
+  DateTime? dataInicial;
+  DateTime? dataFinal;
   String ordenacaoClientes = 'alfabetica'; // alfabetica | alfabetica_desc | data
 
   bool _carregando = true;
@@ -131,7 +131,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
   Future<void> _selecionarDataInicial() async {
     final data = await showDatePicker(
       context: context,
-      initialDate: dataInicial ?• DateTime.now(),
+      initialDate: dataInicial ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
     );
@@ -141,7 +141,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
   Future<void> _selecionarDataFinal() async {
     final data = await showDatePicker(
       context: context,
-      initialDate: dataFinal ?• DateTime.now(),
+      initialDate: dataFinal ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
     );
@@ -209,7 +209,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
 
   Widget _buildChipPeriodo(String label, String periodo) {
     final hoje = DateTime.now();
-    DateTime• inicioEsperado;
+    DateTime? inicioEsperado;
     switch (periodo) {
       case 'hoje':
         inicioEsperado = DateTime(hoje.year, hoje.month, hoje.day);
@@ -299,10 +299,10 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
     if (clientesUnicos.isNotEmpty && vendas.isNotEmpty) {
       if (ordenacaoClientes == 'data') {
         clientesUnicos.sort((a, b) {
-          final vendasA = porCliente[a] ?• [];
-          final vendasB = porCliente[b] ?• [];
-          final dataA = vendasA.isNotEmpty • vendasA.first.data : DateTime(2000);
-          final dataB = vendasB.isNotEmpty • vendasB.first.data : DateTime(2000);
+          final vendasA = porCliente[a] ?? [];
+          final vendasB = porCliente[b] ?? [];
+          final dataA = vendasA.isNotEmpty ? vendasA.first.data : DateTime(2000);
+          final dataB = vendasB.isNotEmpty ? vendasB.first.data : DateTime(2000);
           return dataB.compareTo(dataA); // mais recente primeiro
         });
       } else if (ordenacaoClientes == 'alfabetica_desc') {
@@ -344,7 +344,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
             icon: const Icon(Icons.download),
             tooltip: 'Exportar para Excel',
             onPressed: vendas.isEmpty
-                • null
+                ? null
                 : () => exportarParaExcelComDialog(context, vendas),
           ),
         ],
@@ -393,20 +393,20 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
                         icon: Icon(
                           Icons.calendar_today,
                           size: 16,
-                          color: dataInicial != null • _primaryColor : Colors.grey,
+                          color: dataInicial != null ? _primaryColor : Colors.grey,
                         ),
                         label: Text(
                           dataInicial == null
-                              • 'Data inicial'
+                              ? 'Data inicial'
                               : DateFormat('dd/MM/yy').format(dataInicial!),
                           style: TextStyle(
-                            color: dataInicial != null • _primaryColor : Colors.grey[600],
+                            color: dataInicial != null ? _primaryColor : Colors.grey[600],
                           ),
                         ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           side: BorderSide(
-                            color: dataInicial != null • _primaryColor : Colors.grey.shade300,
+                            color: dataInicial != null ? _primaryColor : Colors.grey.shade300,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -424,20 +424,20 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
                         icon: Icon(
                           Icons.calendar_today,
                           size: 16,
-                          color: dataFinal != null • _primaryColor : Colors.grey,
+                          color: dataFinal != null ? _primaryColor : Colors.grey,
                         ),
                         label: Text(
                           dataFinal == null
-                              • 'Data final'
+                              ? 'Data final'
                               : DateFormat('dd/MM/yy').format(dataFinal!),
                           style: TextStyle(
-                            color: dataFinal != null • _primaryColor : Colors.grey[600],
+                            color: dataFinal != null ? _primaryColor : Colors.grey[600],
                           ),
                         ),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           side: BorderSide(
-                            color: dataFinal != null • _primaryColor : Colors.grey.shade300,
+                            color: dataFinal != null ? _primaryColor : Colors.grey.shade300,
                           ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
@@ -518,7 +518,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
             child: RefreshIndicator(
               onRefresh: _init,
               child: clientesUnicos.isEmpty
-                  • ListView(
+                  ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
                         SizedBox(height: MediaQuery.of(context).size.height * 0.15),
@@ -540,7 +540,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
                         const SizedBox(height: 8),
                         Text(
                           dataInicial != null || dataFinal != null
-                              • 'Tente outro período ou ajuste os filtros'
+                              ? 'Tente outro período ou ajuste os filtros'
                               : 'As vendas aparecerão aqui',
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 14, color: Colors.grey[500]),
@@ -553,7 +553,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
                       itemCount: clientesUnicos.length,
                     itemBuilder: (context, index) {
                       final chave = clientesUnicos[index];
-                      final vendasCliente = porCliente[chave] ?• [];
+                      final vendasCliente = porCliente[chave] ?? [];
                       final nomeCliente = vendasCliente.first.clienteNome;
                       final totalGasto = vendasCliente.fold<double>(
                         0, (s, v) => s + v.total,

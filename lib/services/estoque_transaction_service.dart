@@ -19,10 +19,10 @@ import 'catalog_cache_service.dart';
 class EstoqueTransactionResult {
   final String produtoId;
   final String produtoNome;
-  final String• produtoSlug;
+  final String? produtoSlug;
   final int quantidadeDebitada;
-  final Map<String, dynamic>• variacoesAtualizadas;
-  final Map<String, int>• estoquePorTamanhoAtualizado;
+  final Map<String, dynamic>? variacoesAtualizadas;
+  final Map<String, int>? estoquePorTamanhoAtualizado;
   final int quantidadeTotalAtualizada;
 
   EstoqueTransactionResult({
@@ -55,9 +55,9 @@ class EstoqueTransactionService {
   static Future<EstoqueTransactionResult> baixarEstoqueTransaction({
     required String lojaId,
     required int quantidade,
-    String• produtoId,
-    String• slug,
-    String• nome,
+    String? produtoId,
+    String? slug,
+    String? nome,
     String tamanho = '',
     String cor = '',
   }) async {
@@ -71,7 +71,7 @@ class EstoqueTransactionService {
     final produtoRef = await _resolverProdutoRef(lojaId: lojaId, produtoId: produtoId, slug: slug, nome: nome);
     if (produtoRef == null) {
       throw Exception(
-        'Produto não encontrado no servidor: ${produtoId ?• slug ?• nome}. '
+        'Produto não encontrado no servidor: ${produtoId ?? slug ?? nome}. '
         'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
       );
     }
@@ -81,21 +81,21 @@ class EstoqueTransactionService {
 
       if (!produtoSnap.exists) {
         throw Exception(
-          'Produto não encontrado no servidor: ${produtoId ?• slug ?• nome}. '
+          'Produto não encontrado no servidor: ${produtoId ?? slug ?? nome}. '
           'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
         );
       }
 
       final data = produtoSnap.data()!;
       final docId = produtoSnap.reference.id;
-      final produtoNome = (data['nome'] ?• '').toString();
+      final produtoNome = (data['nome'] ?? '').toString();
 
       final variacoesRaw = data['variacoes'] as Map<String, dynamic>?;
       final estoquePorTamanhoRaw = data['estoquePorTamanho'];
-      final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?• 0;
+      final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?? 0;
 
       final variacoes = variacoesRaw != null
-          • Map<String, dynamic>.from(variacoesRaw)
+          ? Map<String, dynamic>.from(variacoesRaw)
           : <String, dynamic>{};
       final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
@@ -137,8 +137,8 @@ class EstoqueTransactionService {
         }
 
         int disponivel;
-      Map<String, dynamic>• novasVariacoes;
-      Map<String, int>• novoEstoquePorTamanho;
+      Map<String, dynamic>? novasVariacoes;
+      Map<String, int>? novoEstoquePorTamanho;
       int novaQuantidadeTotal;
 
       if (temVariacaoSoloCor && corTrim.isNotEmpty) {
@@ -149,7 +149,7 @@ class EstoqueTransactionService {
           );
         }
         final mapa = Map<String, dynamic>.from(mapaCor);
-        disponivel = (mapa[corTrim] as num?)?.toInt() ?• 0;
+        disponivel = (mapa[corTrim] as num?)?.toInt() ?? 0;
         if (disponivel < quantidade) {
           throw Exception(
             'Estoque insuficiente para "$produtoNome" na cor $corTrim. '
@@ -163,19 +163,19 @@ class EstoqueTransactionService {
         if (mapa.isEmpty) novasVariacoes.remove('sem-tamanho');
         novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
       } else if (usaVariacoes && tam.isNotEmpty) {
-        final chaveCor = corTrim.isEmpty • 'sem-cor' : corTrim;
+        final chaveCor = corTrim.isEmpty ? 'sem-cor' : corTrim;
         final mapaTamanho = variacoes[tam];
         if (mapaTamanho == null || mapaTamanho is! Map) {
           throw Exception(
-            'Estoque insuficiente para "$produtoNome" no tamanho $tam${corTrim.isEmpty • '' : ' - cor $corTrim'}. '
+            'Estoque insuficiente para "$produtoNome" no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}. '
             'Disponível: 0, solicitado: $quantidade.',
           );
         }
         final mapaCor = Map<String, dynamic>.from(mapaTamanho);
-        disponivel = (mapaCor[chaveCor] as num?)?.toInt() ?• 0;
+        disponivel = (mapaCor[chaveCor] as num?)?.toInt() ?? 0;
         if (disponivel < quantidade) {
           throw Exception(
-            'Estoque insuficiente para "$produtoNome" no tamanho $tam${corTrim.isEmpty • '' : ' - cor $corTrim'}. '
+            'Estoque insuficiente para "$produtoNome" no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}. '
             'Disponível: $disponivel, solicitado: $quantidade.',
           );
         }
@@ -186,7 +186,7 @@ class EstoqueTransactionService {
         if (mapaCor.isEmpty) novasVariacoes.remove(tam);
         novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
       } else if (temEstoquePorTamanho && tam.isNotEmpty) {
-        disponivel = estoquePorTamanho[tam] ?• 0;
+        disponivel = estoquePorTamanho[tam] ?? 0;
 
         if (disponivel < quantidade) {
           throw Exception(
@@ -243,11 +243,11 @@ class EstoqueTransactionService {
 
       debugPrint('[ESTOQUE-TX] ✅ Baixa atômica: $produtoNome -$quantidade');
 
-      final slugVal = (data['slug'] ?• '').toString().trim();
+      final slugVal = (data['slug'] ?? '').toString().trim();
       return EstoqueTransactionResult(
         produtoId: docId,
         produtoNome: produtoNome,
-        produtoSlug: slugVal.isNotEmpty • slugVal : null,
+        produtoSlug: slugVal.isNotEmpty ? slugVal : null,
         quantidadeDebitada: quantidade,
         variacoesAtualizadas: novasVariacoes,
         estoquePorTamanhoAtualizado: novoEstoquePorTamanho,
@@ -266,7 +266,7 @@ class EstoqueTransactionService {
     if (data is Map<String, int>) return data;
     if (data is Map) {
       return data.map(
-          (key, value) => MapEntry(key.toString(), (value as num?)?.toInt() ?• 0));
+          (key, value) => MapEntry(key.toString(), (value as num?)?.toInt() ?? 0));
     }
     return {};
   }
@@ -275,9 +275,9 @@ class EstoqueTransactionService {
   /// Ordem: 1) productId, 2) slug, 3) nome. Loga [PRODUTO_ID] ou [PRODUTO_FALLBACK].
   static Future<DocumentReference<Map<String, dynamic>>?> _resolverProdutoRef({
     required String lojaId,
-    String• produtoId,
-    String• slug,
-    String• nome,
+    String? produtoId,
+    String? slug,
+    String? nome,
   }) async {
     final col = _db.collection('lojas').doc(lojaId).collection(FSPaths.estoqueProdutosCol);
 
@@ -369,7 +369,7 @@ class EstoqueTransactionService {
     for (final mapaTamanho in variacoes.values) {
       if (mapaTamanho is Map) {
         for (final qtd in mapaTamanho.values) {
-          total += (qtd as num?)?.toInt() ?• 0;
+          total += (qtd as num?)?.toInt() ?? 0;
         }
       }
     }
@@ -401,9 +401,9 @@ class EstoqueTransactionService {
           item['produtosId']?.toString() ??
           item['id']?.toString();
       final slug = item['slug']?.toString();
-      final nome = (item['nome'] ?• item['name'] ?• '').toString();
-      final tamanho = (item['tamanho'] ?• item['size'] ?• '').toString().trim();
-      final cor = (item['cor'] ?• item['color'] ?• '').toString().trim();
+      final nome = (item['nome'] ?? item['name'] ?? '').toString();
+      final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
+      final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
 
       if (quantidade <= 0) continue;
 
@@ -415,7 +415,7 @@ class EstoqueTransactionService {
       );
       if (ref == null) {
         throw Exception(
-          'Produto não encontrado no servidor: ${produtoId ?• slug ?• nome}. '
+          'Produto não encontrado no servidor: ${produtoId ?? slug ?? nome}. '
           'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
         );
       }
@@ -424,7 +424,7 @@ class EstoqueTransactionService {
 
     return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
       // FASE 1: Todas as leituras antes de qualquer escrita (regra do Firestore)
-      final updates = <({DocumentReference<Map<String, dynamic>> ref, DocumentReference<Map<String, dynamic>>• estoqueRef, Map<String, dynamic> updateData, EstoqueTransactionResult result})>[];
+      final updates = <({DocumentReference<Map<String, dynamic>> ref, DocumentReference<Map<String, dynamic>>? estoqueRef, Map<String, dynamic> updateData, EstoqueTransactionResult result})>[];
 
       for (final resolved in resolvedItems) {
         final produtoSnap = await transaction.get(resolved.ref);
@@ -438,7 +438,7 @@ class EstoqueTransactionService {
 
         final data = produtoSnap.data()!;
         final docId = produtoSnap.reference.id;
-        final produtoNome = (data['nome'] ?• '').toString();
+        final produtoNome = (data['nome'] ?? '').toString();
         final quantidade = resolved.quantidade;
         final tamanho = resolved.tamanho;
         final cor = resolved.cor;
@@ -447,7 +447,7 @@ class EstoqueTransactionService {
         final estoquePorTamanhoRaw = data['estoquePorTamanho'];
 
         final variacoes = variacoesRaw != null
-            • Map<String, dynamic>.from(variacoesRaw)
+            ? Map<String, dynamic>.from(variacoesRaw)
             : <String, dynamic>{};
         final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
@@ -487,8 +487,8 @@ class EstoqueTransactionService {
           );
         }
 
-        Map<String, dynamic>• novasVariacoes;
-        Map<String, int>• novoEstoquePorTamanho;
+        Map<String, dynamic>? novasVariacoes;
+        Map<String, int>? novoEstoquePorTamanho;
         int novaQuantidadeTotal;
 
         if (temVariacaoSoloCor && cor.isNotEmpty) {
@@ -499,7 +499,7 @@ class EstoqueTransactionService {
             );
           }
           final mapa = Map<String, dynamic>.from(mapaCor);
-          final disponivel = (mapa[cor] as num?)?.toInt() ?• 0;
+          final disponivel = (mapa[cor] as num?)?.toInt() ?? 0;
           if (disponivel < quantidade) {
             throw Exception(
               'Estoque insuficiente para "$produtoNome" na cor $cor. '
@@ -513,19 +513,19 @@ class EstoqueTransactionService {
           if (mapa.isEmpty) novasVariacoes.remove('sem-tamanho');
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (usaVariacoes && tamanho.isNotEmpty) {
-          final chaveCor = cor.isEmpty • 'sem-cor' : cor;
+          final chaveCor = cor.isEmpty ? 'sem-cor' : cor;
           final mapaTamanho = variacoes[tamanho];
           if (mapaTamanho == null || mapaTamanho is! Map) {
             throw Exception(
-              'Estoque insuficiente para "$produtoNome" no tamanho $tamanho${cor.isEmpty • '' : ' - cor $cor'}. '
+              'Estoque insuficiente para "$produtoNome" no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}. '
               'Disponível: 0, solicitado: $quantidade.',
             );
           }
           final mapaCor = Map<String, dynamic>.from(mapaTamanho);
-          final disponivel = (mapaCor[chaveCor] as num?)?.toInt() ?• 0;
+          final disponivel = (mapaCor[chaveCor] as num?)?.toInt() ?? 0;
           if (disponivel < quantidade) {
             throw Exception(
-              'Estoque insuficiente para "$produtoNome" no tamanho $tamanho${cor.isEmpty • '' : ' - cor $cor'}. '
+              'Estoque insuficiente para "$produtoNome" no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}. '
               'Disponível: $disponivel, solicitado: $quantidade.',
             );
           }
@@ -536,7 +536,7 @@ class EstoqueTransactionService {
           if (mapaCor.isEmpty) novasVariacoes.remove(tamanho);
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
-          final disponivel = estoquePorTamanho[tamanho] ?• 0;
+          final disponivel = estoquePorTamanho[tamanho] ?? 0;
 
           if (disponivel < quantidade) {
             throw Exception(
@@ -554,7 +554,7 @@ class EstoqueTransactionService {
           novaQuantidadeTotal =
               novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
         } else {
-          final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?• 0;
+          final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?? 0;
 
           if (quantidadeTotal < quantidade) {
             throw Exception(
@@ -583,7 +583,7 @@ class EstoqueTransactionService {
             .collection(FSPaths.estoqueProdutosCol)
             .doc(docId);
 
-        final slugVal = (data['slug'] ?• '').toString().trim();
+        final slugVal = (data['slug'] ?? '').toString().trim();
         updates.add((
           ref: resolved.ref,
           estoqueRef: estoqueRef,
@@ -591,7 +591,7 @@ class EstoqueTransactionService {
           result: EstoqueTransactionResult(
             produtoId: docId,
             produtoNome: produtoNome,
-            produtoSlug: slugVal.isNotEmpty • slugVal : null,
+            produtoSlug: slugVal.isNotEmpty ? slugVal : null,
             quantidadeDebitada: quantidade,
             variacoesAtualizadas: novasVariacoes,
             estoquePorTamanhoAtualizado: novoEstoquePorTamanho,
@@ -631,7 +631,7 @@ class EstoqueTransactionService {
     for (final r in results) {
       if (r.quantidadeTotalAtualizada > 0) continue;
       final idsToTry = <String>[
-        if (r.produtoSlug?.trim().isNotEmpty ?• false) r.produtoSlug!.trim(),
+        if (r.produtoSlug?.trim().isNotEmpty ?? false) r.produtoSlug!.trim(),
         r.produtoId,
       ].where((s) => s.isNotEmpty).toSet().toList();
       for (final docId in idsToTry) {
@@ -660,7 +660,7 @@ class EstoqueTransactionService {
     String tamanho = '',
     String cor = '',
   }) async {
-    Produto• produto;
+    Produto? produto;
     final idOk = result.produtoId.isNotEmpty;
     final slugOk = result.produtoSlug != null && result.produtoSlug!.trim().isNotEmpty;
     final nomeOk = result.produtoNome.trim().isNotEmpty;

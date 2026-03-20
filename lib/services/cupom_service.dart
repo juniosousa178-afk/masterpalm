@@ -89,8 +89,8 @@ class CupomService {
 
   /// Lista cupons válidos do cliente
   static Future<List<CupomPremio>> listarCuponsValidos({
-    String• lojaId,
-    String• clienteEmail,
+    String? lojaId,
+    String? clienteEmail,
   }) async {
     try {
       final box = await Hive.openBox<CupomPremio>('cupons_premio');
@@ -111,8 +111,8 @@ class CupomService {
 
   /// Lista todos os cupons (válidos e inválidos)
   static Future<List<CupomPremio>> listarTodosCupons({
-    String• lojaId,
-    String• clienteEmail,
+    String? lojaId,
+    String? clienteEmail,
   }) async {
     try {
       final box = await Hive.openBox<CupomPremio>('cupons_premio');

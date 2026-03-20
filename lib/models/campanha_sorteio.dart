@@ -5,12 +5,12 @@ class CampanhaSorteio {
   final String id;
   final String lojaId;
   final String titulo;
-  final String• descricao;
+  final String? descricao;
   final double valorMinimo; // valor mínimo da compra para ganhar número
   final String status; // "aberta", "encerrada"
-  final DateTime• dataInicio;
-  final DateTime• dataFim;
-  final String• premioDescricao;
+  final DateTime? dataInicio;
+  final DateTime? dataFim;
+  final String? premioDescricao;
 
   // ✅ NOVO: Controle de frequência de prêmios
   final int frequenciaPremio; // A cada X vendas, 1 sai premiada (ex: 10)
@@ -37,21 +37,21 @@ class CampanhaSorteio {
   });
 
   factory CampanhaSorteio.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?• {};
+    final data = doc.data() ?? {};
     return CampanhaSorteio(
       id: doc.id,
-      lojaId: data['lojaId'] as String• ?• '',
-      titulo: data['titulo'] as String• ?• data['name'] as String• ?• 'Campanha',
+      lojaId: data['lojaId'] as String? ?? '',
+      titulo: data['titulo'] as String? ?? data['name'] as String? ?? 'Campanha',
       descricao: data['descricao'] as String?,
-      valorMinimo: (data['valorMinimo'] as num?)?.toDouble() ?• 0.0,
-      status: data['status'] as String• ?• 'aberta',
+      valorMinimo: (data['valorMinimo'] as num?)?.toDouble() ?? 0.0,
+      status: data['status'] as String? ?? 'aberta',
       dataInicio: (data['dataInicio'] as Timestamp?)?.toDate(),
       dataFim: (data['dataFim'] as Timestamp?)?.toDate(),
       premioDescricao: data['premioDescricao'] as String?,
-      frequenciaPremio: data['frequenciaPremio'] as int• ?• 10,
-      totalVendas: data['totalVendas'] as int• ?• 0,
-      vendasDesdePremio: data['vendasDesdePremio'] as int• ?• 0,
-      premios: List<Map<String, dynamic>>.from(data['premios'] ?• []),
+      frequenciaPremio: data['frequenciaPremio'] as int? ?? 10,
+      totalVendas: data['totalVendas'] as int? ?? 0,
+      vendasDesdePremio: data['vendasDesdePremio'] as int? ?? 0,
+      premios: List<Map<String, dynamic>>.from(data['premios'] ?? []),
     );
   }
 
@@ -62,8 +62,8 @@ class CampanhaSorteio {
       'descricao': descricao,
       'valorMinimo': valorMinimo,
       'status': status,
-      'dataInicio': dataInicio != null • Timestamp.fromDate(dataInicio!) : null,
-      'dataFim': dataFim != null • Timestamp.fromDate(dataFim!) : null,
+      'dataInicio': dataInicio != null ? Timestamp.fromDate(dataInicio!) : null,
+      'dataFim': dataFim != null ? Timestamp.fromDate(dataFim!) : null,
       'premioDescricao': premioDescricao,
       'frequenciaPremio': frequenciaPremio,
       'totalVendas': totalVendas,
@@ -91,7 +91,7 @@ class CampanhaSorteio {
       premioDescricao: premioDescricao,
       frequenciaPremio: frequenciaPremio,
       totalVendas: totalVendas + 1,
-      vendasDesdePremio: premiada • 0 : vendasDesdePremio + 1,
+      vendasDesdePremio: premiada ? 0 : vendasDesdePremio + 1,
       premios: premios,
     );
   }
@@ -102,9 +102,9 @@ class TicketSorteio {
   final String campanhaId;
   final String lojaId;
   final String numero; // "53827"
-  final String• clienteId;
-  final String• clienteNome;
-  final String• vendaId;
+  final String? clienteId;
+  final String? clienteNome;
+  final String? vendaId;
   final DateTime createdAt;
 
   TicketSorteio({
@@ -119,16 +119,16 @@ class TicketSorteio {
   });
 
   factory TicketSorteio.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?• {};
+    final data = doc.data() ?? {};
     return TicketSorteio(
       id: doc.id,
-      campanhaId: data['campanhaId'] as String• ?• '',
-      lojaId: data['lojaId'] as String• ?• '',
-      numero: data['numero'] as String• ?• '',
+      campanhaId: data['campanhaId'] as String? ?? '',
+      lojaId: data['lojaId'] as String? ?? '',
+      numero: data['numero'] as String? ?? '',
       clienteId: data['clienteId'] as String?,
       clienteNome: data['clienteNome'] as String?,
       vendaId: data['vendaId'] as String?,
-      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?• DateTime.now(),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 

@@ -26,7 +26,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
   late Box<NotaFiscal> notasBox;
   late Box<Venda> vendasBox;
 
-  String• lojaId;
+  String? lojaId;
   bool _carregando = true;
   bool _erroResolucaoLoja = false;
   String _filtroStatus = 'todas';
@@ -305,7 +305,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               // Lista
               Expanded(
                 child: vendasSemNota.isEmpty
-                    • Center(
+                    ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
@@ -468,16 +468,16 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
 
     final cpfCnpjController = TextEditingController();
     final enderecoController = TextEditingController(
-      text: cliente?.endereco ?• '',
+      text: cliente?.endereco ?? '',
     );
     final cidadeController = TextEditingController(
-      text: cliente?.cidade ?• '',
+      text: cliente?.cidade ?? '',
     );
     final estadoController = TextEditingController(
       text: 'SP',
     );
     final cepController = TextEditingController(
-      text: cliente?.cep ?• '',
+      text: cliente?.cep ?? '',
     );
     final observacoesController = TextEditingController();
 
@@ -728,7 +728,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
     if (confirmed != true) return;
 
     // Criar itens da nota a partir da venda
-    final itens = (venda.itens ?• []).map((item) {
+    final itens = (venda.itens ?? []).map((item) {
       return NotaFiscalItem(
         produtoNome: item.produtoNome,
         quantidade: item.quantidade,
@@ -751,13 +751,13 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
       clienteNome: venda.clienteNome,
       clienteCpfCnpj: cpfCnpjController.text,
       clienteEndereco:
-          enderecoController.text.isEmpty • null : enderecoController.text,
+          enderecoController.text.isEmpty ? null : enderecoController.text,
       clienteCidade:
-          cidadeController.text.isEmpty • null : cidadeController.text,
+          cidadeController.text.isEmpty ? null : cidadeController.text,
       clienteEstado: estadoController.text.isEmpty
-          • null
+          ? null
           : estadoController.text.toUpperCase(),
-      clienteCep: cepController.text.isEmpty • null : cepController.text,
+      clienteCep: cepController.text.isEmpty ? null : cepController.text,
       valorTotal: venda.total,
       valorProdutos: venda.preco,
       valorFrete: venda.frete,
@@ -766,7 +766,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
       lojaId: lojaId!,
       vendaId: venda.idFirebase,
       observacoes:
-          observacoesController.text.isEmpty • null : observacoesController.text,
+          observacoesController.text.isEmpty ? null : observacoesController.text,
     );
 
     await notasBox.add(nota);
@@ -843,9 +843,9 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
     required String hint,
     required IconData icon,
     bool required = false,
-    int• maxLength,
+    int? maxLength,
     int maxLines = 1,
-    TextInputType• keyboardType,
+    TextInputType? keyboardType,
   }) {
     return TextField(
       controller: controller,
@@ -853,7 +853,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
       maxLines: maxLines,
       keyboardType: keyboardType,
       decoration: InputDecoration(
-        labelText: required • '$label *' : label,
+        labelText: required ? '$label *' : label,
         hintText: hint,
         prefixIcon: Icon(icon, color: _primaryColor),
         filled: true,
@@ -1055,9 +1055,9 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildInfoRow('Chave', resultado['chaveAcesso'] ?• 'N/A'),
-              _buildInfoRow('Protocolo', resultado['protocolo'] ?• 'N/A'),
-              _buildInfoRow('Status', resultado['status'] ?• 'N/A'),
+              _buildInfoRow('Chave', resultado['chaveAcesso'] ?? 'N/A'),
+              _buildInfoRow('Protocolo', resultado['protocolo'] ?? 'N/A'),
+              _buildInfoRow('Status', resultado['status'] ?? 'N/A'),
             ],
           ),
           actions: [
@@ -1280,7 +1280,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               hintText: 'Buscar por cliente ou número...',
               prefixIcon: const Icon(Icons.search, color: _primaryColor),
               suffixIcon: _buscaClienteController.text.isNotEmpty
-                  • IconButton(
+                  ? IconButton(
                       icon: const Icon(Icons.clear, size: 20),
                       onPressed: () {
                         _buscaClienteController.clear();
@@ -1335,7 +1335,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                       ],
                       onChanged: (value) {
                         setState(() {
-                          _filtroStatus = value ?• 'todas';
+                          _filtroStatus = value ?? 'todas';
                         });
                       },
                     ),
@@ -1419,7 +1419,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
           Text(
             value,
             style: TextStyle(
-              fontSize: isLarge • 14 : 20,
+              fontSize: isLarge ? 14 : 20,
               fontWeight: FontWeight.bold,
               color: color,
             ),
@@ -1954,10 +1954,10 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               ),
               subtitle: Text(
                 _modoProducao
-                    • 'NFe será emitida oficialmente na SEFAZ'
+                    ? 'NFe será emitida oficialmente na SEFAZ'
                     : 'NFe será emitida em HOMOLOGAÇÃO (teste)',
                 style: TextStyle(
-                  color: _modoProducao • _successColor : _warningColor,
+                  color: _modoProducao ? _successColor : _warningColor,
                 ),
               ),
               value: _modoProducao,

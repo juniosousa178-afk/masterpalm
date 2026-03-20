@@ -14,7 +14,7 @@ class ClienteWebService {
   static const String _keyClienteId = 'cliente_web_id';
   static const String _keyLojaId = 'cliente_web_loja_id';
 
-  static DateTime• _pedidoDataCriacao(Map<String, dynamic> pedido) {
+  static DateTime? _pedidoDataCriacao(Map<String, dynamic> pedido) {
     for (final key in const ['dataCriacao', 'criadoEm', 'createdAt']) {
       final value = pedido[key];
       if (value is Timestamp) return value.toDate();
@@ -66,8 +66,8 @@ class ClienteWebService {
     required String lojaId,
     required String nome,
     required String email,
-    String• telefone,
-    String• cpf,
+    String? telefone,
+    String? cpf,
   }) async {
     try {
       // Buscar cliente existente pelo email
@@ -156,16 +156,16 @@ class ClienteWebService {
   static Future<bool> atualizarPerfil({
     required String lojaId,
     required String clienteId,
-    String• nome,
-    String• telefone,
-    String• cpf,
-    String• cep,
-    String• endereco,
-    String• numero,
-    String• complemento,
-    String• bairro,
-    String• cidade,
-    String• estado,
+    String? nome,
+    String? telefone,
+    String? cpf,
+    String? cep,
+    String? endereco,
+    String? numero,
+    String? complemento,
+    String? bairro,
+    String? cidade,
+    String? estado,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -209,7 +209,7 @@ class ClienteWebService {
     required String codigo,
     required double desconto,
     required DateTime dataExpiracao,
-    String• origem,
+    String? origem,
   }) async {
     try {
       final cliente = await _db
@@ -222,7 +222,7 @@ class ClienteWebService {
       if (!cliente.exists) return false;
 
       final cupons = List<Map<String, dynamic>>.from(
-        cliente.data()?['cupons'] ?• []
+        cliente.data()?['cupons'] ?? []
       );
 
       // Verifica se cupom já existe
@@ -272,7 +272,7 @@ class ClienteWebService {
       if (!cliente.exists) return false;
 
       final cupons = List<Map<String, dynamic>>.from(
-        cliente.data()?['cupons'] ?• []
+        cliente.data()?['cupons'] ?? []
       );
 
       // Encontra e marca cupom como usado

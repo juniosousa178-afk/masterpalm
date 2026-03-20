@@ -95,7 +95,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
     setState(() => _temPermissao = permitido);
   }
 
-  String _norm(String• s) => (s ?• '').toLowerCase().trim();
+  String _norm(String? s) => (s ?? '').toLowerCase().trim();
 
   List<Produto> _filtrarProdutos() {
     final lista = _box.values.toList();
@@ -189,7 +189,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
 
           // Remover do catálogo
           final slug = produto.slug.isNotEmpty
-              • produto.slug
+              ? produto.slug
               : CatalogoSyncService.slugify(produto.nome);
 
           try {
@@ -209,7 +209,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
         _modoSelecao = false;
       });
 
-      _showSuccess('$sucesso produto(s) excluído(s)${erro > 0 • ' ($erro erro(s))' : ''}');
+      _showSuccess('$sucesso produto(s) excluído(s)${erro > 0 ? ' ($erro erro(s))' : ''}');
     } catch (e) {
       _showError('Erro ao excluir: $e');
     } finally {
@@ -251,7 +251,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
         _modoSelecao = false;
       });
 
-      _showSuccess('$sucesso produto(s) adicionado(s) ao catálogo${erro > 0 • ' ($erro erro(s))' : ''}');
+      _showSuccess('$sucesso produto(s) adicionado(s) ao catálogo${erro > 0 ? ' ($erro erro(s))' : ''}');
     } catch (e) {
       _showError('Erro: $e');
     } finally {
@@ -305,7 +305,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
 
     if (confirmar != true || !mounted) return;
 
-    final valor = int.tryParse(controller.text.trim()) ?• 0;
+    final valor = int.tryParse(controller.text.trim()) ?? 0;
     if (valor < 0) {
       _showError('Use um valor ≥ 0');
       return;
@@ -344,7 +344,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
         _modoSelecao = false;
       });
 
-      _showSuccess('Estoque mínimo aplicado a $sucesso produto(s)${erro > 0 • ' ($erro erro(s))' : ''}');
+      _showSuccess('Estoque mínimo aplicado a $sucesso produto(s)${erro > 0 ? ' ($erro erro(s))' : ''}');
     } catch (e) {
       _showError('Erro: $e');
     } finally {
@@ -370,7 +370,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
           if (produto == null) continue;
 
           final slug = produto.slug.isNotEmpty
-              • produto.slug
+              ? produto.slug
               : CatalogoSyncService.slugify(produto.nome);
 
           await CatalogoSyncService.removeBySlug(slug, target: SyncTarget.live);
@@ -387,7 +387,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
         _modoSelecao = false;
       });
 
-      _showSuccess('$sucesso produto(s) removido(s) do catálogo${erro > 0 • ' ($erro erro(s))' : ''}');
+      _showSuccess('$sucesso produto(s) removido(s) do catálogo${erro > 0 ? ' ($erro erro(s))' : ''}');
     } catch (e) {
       _showError('Erro: $e');
     } finally {
@@ -432,15 +432,15 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
     });
 
     if (resultado['success'] == true) {
-      final sincr = resultado['sincronizados'] ?• 0;
-      final total = resultado['total'] ?• 0;
+      final sincr = resultado['sincronizados'] ?? 0;
+      final total = resultado['total'] ?? 0;
       if (total == 0) {
         _showError('Nenhum produto no Firestore. Publique no catálogo antes.');
       } else {
         _showSuccess('$marketplace: $sincr de $total produto(s) sincronizados');
       }
     } else {
-      _showError(resultado['error']?.toString() ?• 'Erro ao sincronizar');
+      _showError(resultado['error']?.toString() ?? 'Erro ao sincronizar');
     }
   }
 
@@ -725,7 +725,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
         foregroundColor: Colors.white,
         elevation: 0,
         title: _modoSelecao
-            • Text('${_produtosSelecionados.length} selecionado(s)')
+            ? Text('${_produtosSelecionados.length} selecionado(s)')
             : const Text(
                 'Estoque',
                 style: TextStyle(fontWeight: FontWeight.bold),
@@ -734,7 +734,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
           if (_modoSelecao) ...[
             IconButton(
               icon: Icon(
-                todosSelecionados • Icons.check_box : Icons.check_box_outline_blank,
+                todosSelecionados ? Icons.check_box : Icons.check_box_outline_blank,
               ),
               onPressed: _selecionarTodos,
               tooltip: 'Selecionar todos',
@@ -774,7 +774,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
                 hintText: 'Buscar produtos...',
                 prefixIcon: const Icon(Icons.search, color: _primaryColor),
                 suffixIcon: _pesquisaController.text.isNotEmpty
-                    • IconButton(
+                    ? IconButton(
                         icon: const Icon(Icons.clear),
                         onPressed: () {
                           _pesquisaController.clear();
@@ -797,7 +797,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
           // Lista de produtos
           Expanded(
             child: produtos.isEmpty
-                • _buildEmptyState()
+                ? _buildEmptyState()
                 : ListView.separated(
                     padding: const EdgeInsets.all(16),
                     itemCount: produtos.length,
@@ -808,7 +808,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
                         (k) => _box.get(k) == produto,
                         orElse: () => null,
                       );
-                      final keyStr = key?.toString() ?• '';
+                      final keyStr = key?.toString() ?? '';
                       final selecionado = _produtosSelecionados.contains(keyStr);
 
                       return _buildProdutoCard(produto, keyStr, selecionado);
@@ -820,11 +820,11 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
         ),
       ),
       floatingActionButton: _modoSelecao && _produtosSelecionados.isNotEmpty
-          • FloatingActionButton.extended(
-              onPressed: _processando • null : _mostrarMenuAcoes,
+          ? FloatingActionButton.extended(
+              onPressed: _processando ? null : _mostrarMenuAcoes,
               backgroundColor: _primaryColor,
               icon: _processando
-                  • const SizedBox(
+                  ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
@@ -833,7 +833,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
                       ),
                     )
                   : const Icon(Icons.flash_on),
-              label: Text(_processando • 'Processando...' : 'Ações'),
+              label: Text(_processando ? 'Processando...' : 'Ações'),
             )
           : null,
     );
@@ -848,7 +848,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
           const SizedBox(height: 16),
           Text(
             _pesquisaController.text.isEmpty
-                • 'Nenhum produto no estoque'
+                ? 'Nenhum produto no estoque'
                 : 'Nenhum produto encontrado',
             style: TextStyle(
               fontSize: 18,
@@ -859,7 +859,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
           const SizedBox(height: 8),
           Text(
             _pesquisaController.text.isEmpty
-                • 'Adicione seu primeiro produto'
+                ? 'Adicione seu primeiro produto'
                 : 'Tente outra busca',
             style: TextStyle(color: Colors.grey[500]),
           ),
@@ -871,10 +871,10 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
   Widget _buildProdutoCard(Produto produto, String key, bool selecionado) {
     return InkWell(
       onTap: _modoSelecao
-          • () => _toggleSelecaoProduto(key)
+          ? () => _toggleSelecaoProduto(key)
           : () => _abrirForm(produto: produto),
       onLongPress: !_modoSelecao
-          • () {
+          ? () {
               setState(() => _modoSelecao = true);
               _toggleSelecaoProduto(key);
             }
@@ -885,8 +885,8 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selecionado • _primaryColor : Colors.grey[200]!,
-            width: selecionado • 2 : 1,
+            color: selecionado ? _primaryColor : Colors.grey[200]!,
+            width: selecionado ? 2 : 1,
           ),
           boxShadow: [
             if (selecionado)
@@ -914,15 +914,15 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
                   width: 24,
                   height: 24,
                   decoration: BoxDecoration(
-                    color: selecionado • _primaryColor : Colors.transparent,
+                    color: selecionado ? _primaryColor : Colors.transparent,
                     border: Border.all(
-                      color: selecionado • _primaryColor : Colors.grey,
+                      color: selecionado ? _primaryColor : Colors.grey,
                       width: 2,
                     ),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: selecionado
-                      • const Icon(Icons.check, size: 16, color: Colors.white)
+                      ? const Icon(Icons.check, size: 16, color: Colors.white)
                       : null,
                 )
               else if (produto.imagens.isNotEmpty)
@@ -934,7 +934,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
                     borderRadius: BorderRadius.circular(8),
                     image: DecorationImage(
                       image: (kIsWeb && produto.imagens.first.startsWith('blob:'))
-                          • const AssetImage('assets/images/placeholder.png') as ImageProvider
+                          ? const AssetImage('assets/images/placeholder.png') as ImageProvider
                           : NetworkImage(produto.imagens.first) as ImageProvider,
                       fit: BoxFit.cover,
                     ),
@@ -1021,7 +1021,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
     );
   }
 
-  Future<void> _abrirForm({Produto• produto}) async {
+  Future<void> _abrirForm({Produto? produto}) async {
     final ok = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => ProdutoFormScreen(produto: produto)),

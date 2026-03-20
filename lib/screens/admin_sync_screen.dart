@@ -24,11 +24,11 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
   bool _syncingTudo = false;
   bool _syncingProdutos = false;
 
-  String• _resultVendas;
-  String• _resultClientes;
-  String• _resultFornecedores;
-  String• _resultTudo;
-  String• _resultProdutos;
+  String? _resultVendas;
+  String? _resultClientes;
+  String? _resultFornecedores;
+  String? _resultTudo;
+  String? _resultProdutos;
 
   Future<void> _syncVendas() async {
     setState(() {
@@ -54,7 +54,7 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
       await VendasFirestoreService.syncTodasVendas(boxName: boxName);
 
       final msg = queueResult.processed > 0 || queueResult.failed > 0
-          • '✅ Vendas sincronizadas!\nFila: ${queueResult.processed} processados, ${queueResult.failed} falhas. Pendentes: $pendentesApos'
+          ? '✅ Vendas sincronizadas!\nFila: ${queueResult.processed} processados, ${queueResult.failed} falhas. Pendentes: $pendentesApos'
           : '✅ Vendas sincronizadas com sucesso!';
       setState(() {
         _resultVendas = msg;
@@ -150,22 +150,22 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
         final categorias = results['categorias'] as Map<String, int>;
         final fornecedores = results['fornecedores'] as Map<String, int>;
 
-        final vendasErros = vendas['errors'] ?• 0;
+        final vendasErros = vendas['errors'] ?? 0;
         final titulo = vendasErros > 0
-            • '✅ Sincronização concluída ($vendasErros venda(s) falharam — verifique a conexão e tente sincronizar vendas novamente)'
+            ? '✅ Sincronização concluída ($vendasErros venda(s) falharam — verifique a conexão e tente sincronizar vendas novamente)'
             : '✅ Sincronização completa!';
 
         final filaLinha = queueResult.processed > 0 || queueResult.failed > 0 || pendentesApos > 0
-            • 'Fila: ${queueResult.processed} ok, ${queueResult.failed} falhas. Pendentes: $pendentesApos\n'
+            ? 'Fila: ${queueResult.processed} ok, ${queueResult.failed} falhas. Pendentes: $pendentesApos\n'
             : '';
         setState(() {
           _resultTudo = '$titulo\n'
               '$filaLinha'
-              'Produtos: ${produtos['synced']}/${produtos['synced']! + (produtos['errors'] ?• 0)}\n'
-              'Clientes: ${clientes['synced']}/${clientes['synced']! + (clientes['errors'] ?• 0)}\n'
-              'Vendas: ${vendas['synced']}/${vendas['synced']! + (vendas['errors'] ?• 0)}\n'
-              'Categorias: ${categorias['synced']}/${categorias['synced']! + (categorias['errors'] ?• 0)}\n'
-              'Fornecedores: ${fornecedores['synced']}/${fornecedores['synced']! + (fornecedores['errors'] ?• 0)}';
+              'Produtos: ${produtos['synced']}/${produtos['synced']! + (produtos['errors'] ?? 0)}\n'
+              'Clientes: ${clientes['synced']}/${clientes['synced']! + (clientes['errors'] ?? 0)}\n'
+              'Vendas: ${vendas['synced']}/${vendas['synced']! + (vendas['errors'] ?? 0)}\n'
+              'Categorias: ${categorias['synced']}/${categorias['synced']! + (categorias['errors'] ?? 0)}\n'
+              'Fornecedores: ${fornecedores['synced']}/${fornecedores['synced']! + (fornecedores['errors'] ?? 0)}';
           _syncingTudo = false;
         });
       } else {
@@ -210,7 +210,7 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         bottom: (_syncingTudo || _syncingVendas || _syncingClientes || _syncingFornecedores || _syncingProdutos)
-            • const PreferredSize(
+            ? const PreferredSize(
                 preferredSize: Size.fromHeight(4),
                 child: LinearProgressIndicator(color: Colors.white),
               )
@@ -242,9 +242,9 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
                     'Use esta funcionalidade para:',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  Text('• Migração inicial de dados'),
-                  Text('• Backup dos dados no cloud'),
-                  Text('• Sincronizar com outros dispositivos'),
+                  Text('? Migração inicial de dados'),
+                  Text('? Backup dos dados no cloud'),
+                  Text('? Sincronizar com outros dispositivos'),
                 ],
               ),
             ),
@@ -254,9 +254,9 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
 
           // Sincronizar COMPLETO (novo método)
           ElevatedButton.icon(
-            onPressed: _syncingTudo • null : _syncTudoCompleto,
+            onPressed: _syncingTudo ? null : _syncTudoCompleto,
             icon: _syncingTudo
-                • const SizedBox(
+                ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
@@ -265,7 +265,7 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
                     ),
                   )
                 : const Icon(Icons.cloud_sync),
-            label: Text(_syncingTudo • 'Sincronizando...' : 'Sincronizar tudo'),
+            label: Text(_syncingTudo ? 'Sincronizando...' : 'Sincronizar tudo'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.deepPurple,
               foregroundColor: Colors.white,
@@ -280,7 +280,7 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: _resultTudo!.startsWith('✅')
-                    • Colors.green.shade50
+                    ? Colors.green.shade50
                     : Colors.red.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -288,7 +288,7 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
                 _resultTudo!,
                 style: TextStyle(
                   color: _resultTudo!.startsWith('✅')
-                      • Colors.green.shade900
+                      ? Colors.green.shade900
                       : Colors.red.shade900,
                   fontSize: 13,
                 ),
@@ -359,7 +359,7 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
     required IconData icon,
     required Color iconColor,
     required bool syncing,
-    required String• result,
+    required String? result,
     required VoidCallback onSync,
   }) {
     return Card(
@@ -384,9 +384,9 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: syncing • null : onSync,
+                  onPressed: syncing ? null : onSync,
                   icon: syncing
-                      • const SizedBox(
+                      ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
@@ -395,7 +395,7 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
                           ),
                         )
                       : const Icon(Icons.cloud_upload, size: 16),
-                  label: Text(syncing • 'Sincronizando...' : 'Sincronizar'),
+                  label: Text(syncing ? 'Sincronizando...' : 'Sincronizar'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: iconColor,
                     foregroundColor: Colors.white,
@@ -409,15 +409,15 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: result.startsWith('✅')
-                      • Colors.green.shade50
+                      ? Colors.green.shade50
                       : Colors.red.shade50,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   children: [
                     Icon(
-                      result.startsWith('✅') • Icons.check_circle : Icons.error,
-                      color: result.startsWith('✅') • Colors.green : Colors.red,
+                      result.startsWith('✅') ? Icons.check_circle : Icons.error,
+                      color: result.startsWith('✅') ? Colors.green : Colors.red,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
@@ -426,7 +426,7 @@ class _AdminSyncScreenState extends State<AdminSyncScreen> {
                         result,
                         style: TextStyle(
                           color: result.startsWith('✅')
-                              • Colors.green.shade900
+                              ? Colors.green.shade900
                               : Colors.red.shade900,
                           fontSize: 13,
                         ),

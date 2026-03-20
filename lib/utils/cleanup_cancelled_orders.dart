@@ -52,7 +52,7 @@ Future<void> cleanupOldOrders(String lojaId, {int daysToKeep = 30}) async {
     int deletados = 0;
     for (final doc in snapshot.docs) {
       final data = doc.data();
-      final status = data['status'] ?• '';
+      final status = data['status'] ?? '';
 
       // Não deletar pedidos pendentes
       if (status != 'pendente') {

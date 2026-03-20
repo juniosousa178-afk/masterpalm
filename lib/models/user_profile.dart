@@ -9,7 +9,7 @@ class UserProfile {
   final String uid;
   final String email;
   final String role;
-  final String• storeId;
+  final String? storeId;
   final bool isRoot;
   final String sourceCollection;
   final Map<String, dynamic> raw;
@@ -21,8 +21,8 @@ class UserProfile {
     this.storeId,
     required this.isRoot,
     required this.sourceCollection,
-    Map<String, dynamic>• raw,
-  }) : raw = raw ?• const {};
+    Map<String, dynamic>? raw,
+  }) : raw = raw ?? const {};
 
   /// Role não vazio (trim).
   bool get hasValidRole => role.trim().isNotEmpty;
@@ -36,15 +36,15 @@ class UserProfile {
 
   /// Extrai role de um mapa (mesma ordem de fallback do app).
   static String _roleFromMap(Map<String, dynamic> d) {
-    final v = d[kRole] ?• d[kTipo] ?• d[kTipoUsuario] ?• d[kUserType] ?• 'vendedor';
+    final v = d[kRole] ?? d[kTipo] ?? d[kTipoUsuario] ?? d[kUserType] ?? 'vendedor';
     return v.toString().trim().toLowerCase();
   }
 
   /// Extrai storeId de um mapa (mesma ordem de fallback do app).
-  static String• _storeIdFromMap(Map<String, dynamic> d) {
-    final v = d[kStoreId] ?• d[kStoreIdCamel] ?• d[kOwnerStoreId] ?• d[kLojaId] ?• d[kLojaIdCamel];
+  static String? _storeIdFromMap(Map<String, dynamic> d) {
+    final v = d[kStoreId] ?? d[kStoreIdCamel] ?? d[kOwnerStoreId] ?? d[kLojaId] ?? d[kLojaIdCamel];
     final s = v?.toString().trim();
-    return (s == null || s.isEmpty) • null : s;
+    return (s == null || s.isEmpty) ? null : s;
   }
 
   factory UserProfile.fromMap({
@@ -59,7 +59,7 @@ class UserProfile {
     return UserProfile(
       uid: uid,
       email: email,
-      role: role.isEmpty • 'vendedor' : role,
+      role: role.isEmpty ? 'vendedor' : role,
       storeId: storeId,
       isRoot: isRoot,
       sourceCollection: sourceCollection,

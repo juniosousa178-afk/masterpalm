@@ -41,7 +41,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
   final _whatsappAccessTokenController = TextEditingController();
   final _whatsappTemplateNameController = TextEditingController();
   bool _whatsappEnabled = false;
-  String• _whatsappStatus;
+  String? _whatsappStatus;
   bool _whatsappTokenVisible = false;
 
   // === Instagram ===
@@ -49,14 +49,14 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
   final _instagramPageIdController = TextEditingController();
   final _instagramPageAccessTokenController = TextEditingController();
   bool _instagramEnabled = false;
-  String• _instagramStatus;
+  String? _instagramStatus;
   bool _instagramTokenVisible = false;
 
   // === Messenger ===
   final _messengerPageIdController = TextEditingController();
   final _messengerPageAccessTokenController = TextEditingController();
   bool _messengerEnabled = false;
-  String• _messengerStatus;
+  String? _messengerStatus;
   bool _messengerTokenVisible = false;
 
   @override
@@ -107,24 +107,24 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
         if (whatsappDoc.exists) {
           final data = whatsappDoc.data()!;
           setState(() {
-            _whatsappEnabled = data['enabled'] ?• false;
-            _whatsappPhoneNumberIdController.text = data['phone_number_id'] ?• '';
+            _whatsappEnabled = data['enabled'] ?? false;
+            _whatsappPhoneNumberIdController.text = data['phone_number_id'] ?? '';
             _whatsappBusinessAccountIdController.text =
-                data['business_account_id'] ?• '';
-            _whatsappAccessTokenController.text = data['access_token'] ?• '';
+                data['business_account_id'] ?? '';
+            _whatsappAccessTokenController.text = data['access_token'] ?? '';
             _whatsappTemplateNameController.text =
-                data['messageTemplates']?['outside24h_template_name'] ?• '';
+                data['messageTemplates']?['outside24h_template_name'] ?? '';
           });
         }
       } on FirebaseException catch (e) {
         if (e.code == 'permission-denied') {
-          debugPrint('?• Sem permissão para ler WhatsApp config - continuando...');
+          debugPrint('?? Sem permissão para ler WhatsApp config - continuando...');
           setState(() => _whatsappStatus = 'Sem permissão para visualizar');
         } else {
-          debugPrint('• Erro ao carregar WhatsApp: ${e.message}');
+          debugPrint('Erro ao carregar WhatsApp: ${e.message}');
         }
       } catch (e) {
-        debugPrint('• Erro inesperado ao carregar WhatsApp (type=${e.runtimeType})');
+        debugPrint('Erro inesperado ao carregar WhatsApp (type=${e.runtimeType})');
       }
 
       // Carregar Instagram
@@ -139,23 +139,23 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
         if (instagramDoc.exists) {
           final data = instagramDoc.data()!;
           setState(() {
-            _instagramEnabled = data['enabled'] ?• false;
+            _instagramEnabled = data['enabled'] ?? false;
             _instagramBusinessAccountIdController.text =
-                data['ig_business_account_id'] ?• '';
-            _instagramPageIdController.text = data['page_id'] ?• '';
+                data['ig_business_account_id'] ?? '';
+            _instagramPageIdController.text = data['page_id'] ?? '';
             _instagramPageAccessTokenController.text =
-                data['page_access_token'] ?• '';
+                data['page_access_token'] ?? '';
           });
         }
       } on FirebaseException catch (e) {
         if (e.code == 'permission-denied') {
-          debugPrint('?• Sem permissão para ler Instagram config - continuando...');
+          debugPrint('?? Sem permissão para ler Instagram config - continuando...');
           setState(() => _instagramStatus = 'Sem permissão para visualizar');
         } else {
-          debugPrint('• Erro ao carregar Instagram: ${e.message}');
+          debugPrint('Erro ao carregar Instagram: ${e.message}');
         }
       } catch (e) {
-        debugPrint('• Erro inesperado ao carregar Instagram (type=${e.runtimeType})');
+        debugPrint('Erro inesperado ao carregar Instagram (type=${e.runtimeType})');
       }
 
       // Carregar Messenger
@@ -170,25 +170,25 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
         if (messengerDoc.exists) {
           final data = messengerDoc.data()!;
           setState(() {
-            _messengerEnabled = data['enabled'] ?• false;
-            _messengerPageIdController.text = data['page_id'] ?• '';
+            _messengerEnabled = data['enabled'] ?? false;
+            _messengerPageIdController.text = data['page_id'] ?? '';
             _messengerPageAccessTokenController.text =
-                data['page_access_token'] ?• '';
+                data['page_access_token'] ?? '';
           });
         }
       } on FirebaseException catch (e) {
         if (e.code == 'permission-denied') {
-          debugPrint('?• Sem permissão para ler Messenger config - continuando...');
+          debugPrint('?? Sem permissão para ler Messenger config - continuando...');
           setState(() => _messengerStatus = 'Sem permissão para visualizar');
         } else {
-          debugPrint('• Erro ao carregar Messenger: ${e.message}');
+          debugPrint('Erro ao carregar Messenger: ${e.message}');
         }
       } catch (e) {
-        debugPrint('• Erro inesperado ao carregar Messenger (type=${e.runtimeType})');
+        debugPrint('Erro inesperado ao carregar Messenger (type=${e.runtimeType})');
       }
     } catch (e) {
-      debugPrint('• Erro geral ao carregar configs (type=${e.runtimeType})');
-      // Não mostrar erro ao usuário se • apenas falta de permissão individual
+      debugPrint('Erro geral ao carregar configurações (type=${e.runtimeType})');
+      // Não mostrar erro ao usuário se for apenas falta de permissão individual
     } finally {
       setState(() => _isLoading = false);
     }
@@ -227,13 +227,13 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       });
 
       setState(() {
-        _whatsappStatus = '• Configuração salva com sucesso!';
+        _whatsappStatus = '✅ Configuração salva com sucesso!';
       });
 
       _showSuccess('WhatsApp configurado com sucesso!');
     } catch (e) {
       setState(() {
-        _whatsappStatus = '• Erro ao salvar: $e';
+        _whatsappStatus = '❌ Erro ao salvar: $e';
       });
       _showError('Erro ao salvar: $e');
     } finally {
@@ -254,7 +254,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       final url = Uri.parse(
           'https://graph.facebook.com/v18.0/$phoneNumberId?fields=verified_name,display_phone_number');
 
-      debugPrint('?• Testando WhatsApp: $url');
+      debugPrint('🔎 Testando WhatsApp: $url');
 
       final response = await http.get(
         url,
@@ -264,19 +264,19 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
         },
       );
 
-      debugPrint('?• Response: ${response.statusCode} - ${response.body}');
+      debugPrint('🔎 Resposta: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         setState(() {
-          _whatsappStatus = '• Conexão OK! Credenciais válidas.';
+          _whatsappStatus = '✅ Conexão OK! Credenciais válidas.';
         });
         _showSuccess('Conexão estabelecida com sucesso!');
       } else {
         final body = response.body;
-        String• errorMsg;
+        String? errorMsg;
         try {
           final error = jsonDecode(body) as Map<String, dynamic>;
-          errorMsg = error['error']?['message'] ?• body;
+          errorMsg = error['error']?['message'] ?? body;
         } catch (_) {
           errorMsg = body;
         }
@@ -284,7 +284,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       }
     } catch (e) {
       setState(() {
-        _whatsappStatus = '• Falha: $e';
+        _whatsappStatus = '❌ Falha: $e';
       });
       _showError('Erro na conexão: $e');
     } finally {
@@ -294,15 +294,15 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
 
   bool _validateWhatsAppFields() {
     if (_whatsappPhoneNumberIdController.text.trim().isEmpty) {
-      _showError('Phone Number ID • obrigatório');
+      _showError('Phone Number ID é obrigatório');
       return false;
     }
     if (_whatsappBusinessAccountIdController.text.trim().isEmpty) {
-      _showError('Business Account ID • obrigatório');
+      _showError('Business Account ID é obrigatório');
       return false;
     }
     if (_whatsappAccessTokenController.text.trim().isEmpty) {
-      _showError('Access Token • obrigatório');
+      _showError('Access Token é obrigatório');
       return false;
     }
     return true;
@@ -337,13 +337,13 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       });
 
       setState(() {
-        _instagramStatus = '• Configuração salva com sucesso!';
+        _instagramStatus = '✅ Configuração salva com sucesso!';
       });
 
       _showSuccess('Instagram configurado com sucesso!');
     } catch (e) {
       setState(() {
-        _instagramStatus = '• Erro ao salvar: $e';
+        _instagramStatus = '❌ Erro ao salvar: $e';
       });
       _showError('Erro ao salvar: $e');
     } finally {
@@ -363,26 +363,26 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       final url = Uri.parse(
           'https://graph.facebook.com/v18.0/$pageId?fields=name,access_token');
 
-      debugPrint('?• Testando Instagram: $url');
+      debugPrint('🔎 Testando Instagram: $url');
 
       final response = await http.get(
         url,
         headers: {'Authorization': 'Bearer $accessToken'},
       );
 
-      debugPrint('?• Response: ${response.statusCode} - ${response.body}');
+      debugPrint('🔎 Resposta: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         setState(() {
-          _instagramStatus = '• Conexão OK! Credenciais válidas.';
+          _instagramStatus = '✅ Conexão OK! Credenciais válidas.';
         });
         _showSuccess('Conexão estabelecida com sucesso!');
       } else {
         final body = response.body;
-        String• errorMsg;
+        String? errorMsg;
         try {
           final error = jsonDecode(body) as Map<String, dynamic>;
-          errorMsg = error['error']?['message'] ?• body;
+          errorMsg = error['error']?['message'] ?? body;
         } catch (_) {
           errorMsg = body;
         }
@@ -390,7 +390,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       }
     } catch (e) {
       setState(() {
-        _instagramStatus = '• Falha: $e';
+        _instagramStatus = '❌ Falha: $e';
       });
       _showError('Erro na conexão: $e');
     } finally {
@@ -410,26 +410,26 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       final url = Uri.parse(
           'https://graph.facebook.com/v18.0/$pageId?fields=name,access_token');
 
-      debugPrint('?• Testando Messenger: $url');
+      debugPrint('🔎 Testando Messenger: $url');
 
       final response = await http.get(
         url,
         headers: {'Authorization': 'Bearer $accessToken'},
       );
 
-      debugPrint('?• Response: ${response.statusCode} - ${response.body}');
+      debugPrint('🔎 Resposta: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         setState(() {
-          _messengerStatus = '• Conexão OK! Credenciais válidas.';
+          _messengerStatus = '✅ Conexão OK! Credenciais válidas.';
         });
         _showSuccess('Conexão estabelecida com sucesso!');
       } else {
         final body = response.body;
-        String• errorMsg;
+        String? errorMsg;
         try {
           final error = jsonDecode(body) as Map<String, dynamic>;
-          errorMsg = error['error']?['message'] ?• body;
+          errorMsg = error['error']?['message'] ?? body;
         } catch (_) {
           errorMsg = body;
         }
@@ -437,7 +437,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       }
     } catch (e) {
       setState(() {
-        _messengerStatus = '• Falha: $e';
+        _messengerStatus = '❌ Falha: $e';
       });
       _showError('Erro na conexão: $e');
     } finally {
@@ -447,15 +447,15 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
 
   bool _validateInstagramFields() {
     if (_instagramBusinessAccountIdController.text.trim().isEmpty) {
-      _showError('Instagram Business Account ID • obrigatório');
+      _showError('Instagram Business Account ID é obrigatório');
       return false;
     }
     if (_instagramPageIdController.text.trim().isEmpty) {
-      _showError('Page ID • obrigatório');
+      _showError('Page ID é obrigatório');
       return false;
     }
     if (_instagramPageAccessTokenController.text.trim().isEmpty) {
-      _showError('Page Access Token • obrigatório');
+      _showError('Page Access Token é obrigatório');
       return false;
     }
     return true;
@@ -488,13 +488,13 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
       });
 
       setState(() {
-        _messengerStatus = '• Configuração salva com sucesso!';
+        _messengerStatus = '✅ Configuração salva com sucesso!';
       });
 
       _showSuccess('Messenger configurado com sucesso!');
     } catch (e) {
       setState(() {
-        _messengerStatus = '• Erro ao salvar: $e';
+        _messengerStatus = '❌ Erro ao salvar: $e';
       });
       _showError('Erro ao salvar: $e');
     } finally {
@@ -504,11 +504,11 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
 
   bool _validateMessengerFields() {
     if (_messengerPageIdController.text.trim().isEmpty) {
-      _showError('Page ID • obrigatório');
+      _showError('Page ID é obrigatório');
       return false;
     }
     if (_messengerPageAccessTokenController.text.trim().isEmpty) {
-      _showError('Page Access Token • obrigatório');
+      _showError('Page Access Token é obrigatório');
       return false;
     }
     return true;
@@ -602,7 +602,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
         ],
       ),
       body: _isLoading
-          • const Center(child: CircularProgressIndicator(color: _primaryColor))
+          ? const Center(child: CircularProgressIndicator(color: _primaryColor))
           : TabBarView(
               controller: _tabController,
               children: [
@@ -705,7 +705,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
                       icon: Icons.attach_money,
                       title: 'Modelo SaaS',
                       content:
-                          'Você conecta seus próprios tokens e paga os custos diretamente • Meta. O MasterPalm fornece apenas a plataforma de automação.',
+                          'Você conecta seus próprios tokens e paga os custos diretamente à Meta. O MasterPalm fornece apenas a plataforma de automação.',
                     ),
                     const SizedBox(height: 20),
                     _buildHelpSection(
@@ -811,7 +811,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
         'Crie uma Página no Facebook',
         'Acesse Meta Developers',
         'No mesmo app, adicione Messenger',
-        'Conecte • página criada',
+        'Conecte à página criada',
         'Configure o Webhook URL',
         'Inscreva nos eventos: messages',
         'Copie Page ID',

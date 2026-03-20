@@ -27,12 +27,12 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
   static const _updatedBy = 'masterpalm26@gmail.com';
   static const _sessionTimeoutMinutes = 5;
 
-  MasterConfig• _config;
+  MasterConfig? _config;
   bool _loading = true;
-  String• _loadError;
+  String? _loadError;
   bool _savingMercadoPago = false;
   bool _savingAccess = false;
-  String• _savingRevokeEmail;
+  String? _savingRevokeEmail;
   bool _savingSwitch = false;
   bool _showAccessToken = false;
   bool _testingMp = false;
@@ -44,7 +44,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
   final _bulkEmailsController = TextEditingController();
   bool _savingBulk = false;
   String _appVersion = '1.0.0';
-  Timer• _sessionTimer;
+  Timer? _sessionTimer;
 
   final _mpAccessTokenController = TextEditingController();
   final _mpPublicKeyController = TextEditingController();
@@ -113,8 +113,8 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
       setState(() {
         _config = config;
         _loadError = null;
-        _mpAccessTokenController.text = config.mercadoPagoAccessToken ?• '';
-        _mpPublicKeyController.text = config.mercadoPagoPublicKey ?• '';
+        _mpAccessTokenController.text = config.mercadoPagoAccessToken ?? '';
+        _mpPublicKeyController.text = config.mercadoPagoPublicKey ?? '';
         _maintenanceMode = maintenance;
         _maintenanceMessageController.text = message;
         _featureFlags['catalogoWeb'] = catalogo;
@@ -517,7 +517,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
       },
       child: Scaffold(
         backgroundColor: Theme.of(context).brightness == Brightness.dark
-            • null
+            ? null
             : AppColors.background,
         appBar: AppBar(
         title: const Text('Configurações Master'),
@@ -596,15 +596,15 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                 ),
                 _buildStatChip(
                   'Manutenção',
-                  _maintenanceMode • 'Ativo' : 'Inativo',
+                  _maintenanceMode ? 'Ativo' : 'Inativo',
                   Icons.build,
-                  _maintenanceMode • const Color(0xFFF59E0B) : const Color(0xFF22C55E),
+                  _maintenanceMode ? const Color(0xFFF59E0B) : const Color(0xFF22C55E),
                 ),
                 _buildStatChip(
                   'Mercado Pago',
-                  _config!.mercadoPagoAccessToken != null • 'OK' : 'Não config',
+                  _config!.mercadoPagoAccessToken != null ? 'OK' : 'Não config',
                   Icons.payment,
-                  _config!.mercadoPagoAccessToken != null • const Color(0xFF22C55E) : Colors.grey,
+                  _config!.mercadoPagoAccessToken != null ? const Color(0xFF22C55E) : Colors.grey,
                 ),
                 _buildStatChip(
                   'Versão',
@@ -736,7 +736,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                 helperText: 'Token de acesso para receber pagamentos',
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _showAccessToken • Icons.visibility_off : Icons.visibility,
+                    _showAccessToken ? Icons.visibility_off : Icons.visibility,
                     size: 22,
                   ),
                   onPressed: () => setState(() => _showAccessToken = !_showAccessToken),
@@ -758,15 +758,15 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _testingMp • null : _testMercadoPagoConnection,
+                    onPressed: _testingMp ? null : _testMercadoPagoConnection,
                     icon: _testingMp
-                        • const SizedBox(
+                        ? const SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.wifi_tethering),
-                    label: Text(_testingMp • 'Testando...' : 'Testar conexão'),
+                    label: Text(_testingMp ? 'Testando...' : 'Testar conexão'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
                       side: const BorderSide(color: AppColors.primary),
@@ -779,9 +779,9 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                   child: SizedBox(
                     height: 48,
                     child: ElevatedButton.icon(
-                      onPressed: _savingMercadoPago • null : _saveMercadoPagoKeys,
+                      onPressed: _savingMercadoPago ? null : _saveMercadoPagoKeys,
                 icon: _savingMercadoPago
-                    • const SizedBox(
+                    ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
@@ -790,7 +790,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                         ),
                       )
                     : const Icon(Icons.save),
-                      label: Text(_savingMercadoPago • 'Salvando...' : 'Salvar'),
+                      label: Text(_savingMercadoPago ? 'Salvando...' : 'Salvar'),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         backgroundColor: AppColors.primary,
@@ -844,14 +844,14 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: _savingMaintenance • null : () async {
+                onPressed: _savingMaintenance ? null : () async {
                   setState(() => _savingMaintenance = true);
                   _resetSessionTimer();
                   try {
                     await MasterConfigService.setMaintenanceMode(
                       enabled: _maintenanceMode,
                       message: _maintenanceMessageController.text.trim().isEmpty
-                          • null
+                          ? null
                           : _maintenanceMessageController.text.trim(),
                       updatedBy: _updatedBy,
                     );
@@ -876,7 +876,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
               title: const Text('Ativar modo manutenção'),
               value: _maintenanceMode,
               onChanged: _savingMaintenance
-                  • null
+                  ? null
                   : (value) async {
                       setState(() => _savingMaintenance = true);
                       _resetSessionTimer();
@@ -884,12 +884,12 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                         await MasterConfigService.setMaintenanceMode(
                           enabled: value,
                           message: _maintenanceMessageController.text.trim().isEmpty
-                              • null
+                              ? null
                               : _maintenanceMessageController.text.trim(),
                           updatedBy: _updatedBy,
                         );
                         await _loadConfig();
-                        _showSuccess(value • 'Modo manutenção ativado' : 'Modo manutenção desativado');
+                        _showSuccess(value ? 'Modo manutenção ativado' : 'Modo manutenção desativado');
                       } catch (e) {
                         _showError('Erro: $e');
                       } finally {
@@ -956,9 +956,9 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
-                  onPressed: _savingAccess • null : _grantUnlimitedAccess,
+                  onPressed: _savingAccess ? null : _grantUnlimitedAccess,
                   icon: _savingAccess
-                      • const SizedBox(
+                      ? const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(
@@ -967,7 +967,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                           ),
                         )
                       : const Icon(Icons.add),
-                  label: Text(_savingAccess • '...' : 'Adicionar'),
+                  label: Text(_savingAccess ? '...' : 'Adicionar'),
                   style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
                 ),
               ],
@@ -987,15 +987,15 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: _savingBulk • null : _grantBulkUnlimitedAccess,
+                onPressed: _savingBulk ? null : _grantBulkUnlimitedAccess,
                 icon: _savingBulk
-                    • const SizedBox(
+                    ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.add_circle_outline),
-                label: Text(_savingBulk • 'Adicionando...' : 'Adicionar todos'),
+                label: Text(_savingBulk ? 'Adicionando...' : 'Adicionar todos'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.primary,
                   side: const BorderSide(color: AppColors.primary),
@@ -1009,7 +1009,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
               builder: (_) {
                 final list = _config!.usersWithUnlimitedAccess;
                 final filtered = _searchAccess.isEmpty
-                    • list
+                    ? list
                     : list.where((e) => e.toLowerCase().contains(_searchAccess)).toList();
                 if (filtered.isEmpty) {
                   return Padding(
@@ -1017,7 +1017,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                     child: Center(
                       child: Text(
                         list.isEmpty
-                            • 'Nenhum usuário com acesso ilimitado'
+                            ? 'Nenhum usuário com acesso ilimitado'
                             : 'Nenhum resultado para "$_searchAccess"',
                         style: const TextStyle(color: Colors.grey),
                       ),
@@ -1032,7 +1032,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                     title: Text(email),
                     subtitle: const Text('Acesso ilimitado'),
                     trailing: _savingRevokeEmail == email
-                        • const SizedBox(
+                        ? const SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(strokeWidth: 2),
@@ -1040,7 +1040,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                         : IconButton(
                             icon: const Icon(Icons.delete, color: Colors.red),
                             onPressed: _savingRevokeEmail != null
-                                • null
+                                ? null
                                 : () => _revokeUnlimitedAccess(email),
                           ),
                   )).toList(),
@@ -1089,15 +1089,15 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             Align(
               alignment: Alignment.centerRight,
               child: ElevatedButton.icon(
-                onPressed: _savingSupportPhone • null : _saveSupportPhone,
+                onPressed: _savingSupportPhone ? null : _saveSupportPhone,
                 icon: _savingSupportPhone
-                    • const SizedBox(
+                    ? const SizedBox(
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.save, size: 18),
-                label: Text(_savingSupportPhone • 'Salvando...' : 'Salvar telefone'),
+                label: Text(_savingSupportPhone ? 'Salvando...' : 'Salvar telefone'),
               ),
             ),
             const Divider(height: 24),
@@ -1108,7 +1108,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
               ),
               value: _config!.requirePlanForNewUsers,
               onChanged: _savingSwitch
-                  • null
+                  ? null
                   : (value) async {
                       setState(() => _savingSwitch = true);
                       _resetSessionTimer();
@@ -1118,7 +1118,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                           updated,
                           updatedBy: _updatedBy,
                           auditAction: 'Exigir plano alterado',
-                          auditDetails: value • 'Sim' : 'Não',
+                          auditDetails: value ? 'Sim' : 'Não',
                         );
                         await _loadConfig();
                         _showSuccess('Configuração atualizada');
@@ -1163,17 +1163,17 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             SwitchListTile(
               title: const Text('Catálogo Web'),
               subtitle: const Text('Página de catálogo para clientes'),
-              value: _featureFlags['catalogoWeb'] ?• true,
+              value: _featureFlags['catalogoWeb'] ?? true,
               onChanged: _savingFeatureFlags
-                  • null
+                  ? null
                   : (v) => _toggleFeatureFlag('catalogoWeb', v),
             ),
             SwitchListTile(
               title: const Text('Cupons'),
               subtitle: const Text('Sistema de cupons de desconto'),
-              value: _featureFlags['cupons'] ?• true,
+              value: _featureFlags['cupons'] ?? true,
               onChanged: _savingFeatureFlags
-                  • null
+                  ? null
                   : (v) => _toggleFeatureFlag('cupons', v),
             ),
           ],
@@ -1290,16 +1290,16 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                       content: SizedBox(
                         width: double.maxFinite,
                         child: log.isEmpty
-                            • const Text('Nenhum registro')
+                            ? const Text('Nenhum registro')
                             : ListView.builder(
                                 shrinkWrap: true,
                                 itemCount: log.length,
                                 itemBuilder: (_, i) {
                                   final e = log[i];
                                   final ts = e['timestamp'] as String?;
-                                  final action = e['action'] as String• ?• '';
-                                  final user = e['user'] as String• ?• '';
-                                  final details = e['details'] as String• ?• '';
+                                  final action = e['action'] as String? ?? '';
+                                  final user = e['user'] as String? ?? '';
+                                  final details = e['details'] as String? ?? '';
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: Column(
@@ -1315,7 +1315,7 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                                         if (details.isNotEmpty)
                                           Text(details, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                                         Text(
-                                          '$user • ${ts != null • ts.substring(0, 16).replaceAll('T', ' ') : ''}',
+                                          '$user ? ${ts != null ? ts.substring(0, 16).replaceAll('T', ' ') : ''}',
                                           style: TextStyle(color: Colors.grey[500], fontSize: 11),
                                         ),
                                       ],
@@ -1369,15 +1369,15 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             const SizedBox(height: 16),
             _buildInfoRow('Versão do app', _appVersion),
             _buildInfoRow('Última atualização',
-                _config!.lastUpdated != null • _formatDate(_config!.lastUpdated!) : 'N/A'),
-            _buildInfoRow('Atualizado por', _config!.updatedBy ?• 'Sistema'),
+                _config!.lastUpdated != null ? _formatDate(_config!.lastUpdated!) : 'N/A'),
+            _buildInfoRow('Atualizado por', _config!.updatedBy ?? 'Sistema'),
             _buildInfoRow('Usuários com acesso ilimitado',
                 _config!.usersWithUnlimitedAccess.length.toString()),
             _buildInfoRow(
               'Mercado Pago configurado',
-              _config!.mercadoPagoAccessToken != null • 'Sim' : 'Não',
+              _config!.mercadoPagoAccessToken != null ? 'Sim' : 'Não',
             ),
-            _buildInfoRow('Modo manutenção', _maintenanceMode • 'Ativo' : 'Inativo'),
+            _buildInfoRow('Modo manutenção', _maintenanceMode ? 'Ativo' : 'Inativo'),
           ],
         ),
       ),

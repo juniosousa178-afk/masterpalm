@@ -9,7 +9,7 @@ import '../core/logger.dart';
 
 /// Exceção lançada quando [lojaId] é inválido (null ou vazio).
 class InvalidLojaIdException implements Exception {
-  final String• lojaId;
+  final String? lojaId;
   final String context;
 
   InvalidLojaIdException({this.lojaId, this.context = ''});
@@ -28,8 +28,8 @@ class StoreAccessGuard {
 
   /// Exige que [lojaId] seja não nulo e não vazio.
   /// Retorna o valor trimado. Lança [InvalidLojaIdException] se inválido.
-  static String requireLojaId(String• lojaId, {String context = ''}) {
-    final trimmed = lojaId?.trim() ?• '';
+  static String requireLojaId(String? lojaId, {String context = ''}) {
+    final trimmed = lojaId?.trim() ?? '';
     if (trimmed.isEmpty) {
       throw InvalidLojaIdException(lojaId: lojaId, context: context);
     }
@@ -37,9 +37,9 @@ class StoreAccessGuard {
   }
 
   /// Retorna [lojaId] se válido (não vazio), ou null.
-  static String• validateLojaId(String• lojaId) {
+  static String? validateLojaId(String? lojaId) {
     final t = lojaId?.trim();
-    return (t != null && t.isNotEmpty) • t : null;
+    return (t != null && t.isNotEmpty) ? t : null;
   }
 
   /// Chame antes de abrir/usar uma box por loja (ex.: produtos_lojaId).

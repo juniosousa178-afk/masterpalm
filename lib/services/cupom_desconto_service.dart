@@ -28,11 +28,11 @@ class CupomDescontoService {
     bool freteGratis = false,
     bool usoUnico = false,
     bool usoUnicoGlobal = false,
-    String• clienteId,
-    DateTime• dataInicio,
-    DateTime• dataFim,
-    double• valorMinimo,
-    int• qtdMaximaUsos,
+    String? clienteId,
+    DateTime? dataInicio,
+    DateTime? dataFim,
+    double? valorMinimo,
+    int? qtdMaximaUsos,
   }) async {
     try {
       // Validar código único
@@ -84,7 +84,7 @@ class CupomDescontoService {
     required String clienteId,
     required String clienteNome,
     required double valor,
-    String• motivoDevolucao,
+    String? motivoDevolucao,
   }) async {
     final codigo = 'VALE${DateTime.now().millisecondsSinceEpoch}';
 
@@ -127,7 +127,7 @@ class CupomDescontoService {
   Stream<List<Cupom>> listarDisponiveis(String lojaId, String clienteId) {
     // StreamController para controlar erros de permissão
     final controller = StreamController<List<Cupom>>();
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>• subscription;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subscription;
 
     void startListening() {
       subscription = _firestore
@@ -224,7 +224,7 @@ class CupomDescontoService {
   /// Retorna stream vazio se não tiver permissão (sem crashar)
   Stream<List<Cupom>> listarTodos(String lojaId) {
     final controller = StreamController<List<Cupom>>();
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>• subscription;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subscription;
 
     void startListening() {
       subscription = _firestore

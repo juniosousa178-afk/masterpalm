@@ -10,13 +10,13 @@ import '../catalog_helpers.dart';
 
 class CatalogImagePlaceholder extends StatelessWidget {
   final String url;
-  final double• height;
-  final double• width;
-  final BorderRadius• radius;
+  final double? height;
+  final double? width;
+  final BorderRadius? radius;
   final BoxFit fit;
   /// Tamanho em pixels para cache. Web: 900 para qualidade; mobile: 600.
-  final int• cacheWidth;
-  final int• cacheHeight;
+  final int? cacheWidth;
+  final int? cacheHeight;
 
   const CatalogImagePlaceholder({
     super.key,
@@ -32,10 +32,10 @@ class CatalogImagePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Web: 900px para qualidade; mobile: 600px para boa nitidez no iPhone
-    final cw = cacheWidth ?• (kIsWeb • 900 : 600);
-    final ch = cacheHeight ?• (kIsWeb • 900 : 600);
+    final cw = cacheWidth ?? (kIsWeb ? 900 : 600);
+    final ch = cacheHeight ?? (kIsWeb ? 900 : 600);
     final img = (url.isEmpty || !isValidHttpUrl(url))
-        • Container(
+        ? Container(
             color: Colors.black26,
             child: const Center(
               child: Icon(

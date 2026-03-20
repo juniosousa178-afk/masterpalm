@@ -31,11 +31,11 @@ class LojaConfig {
       };
 
   factory LojaConfig.fromMap(Map<String, dynamic> m) => LojaConfig(
-        nome: (m['nome'] ?• '').toString(),
-        slug: (m['slug'] ?• '').toString(),
-        whatsapp: (m['whatsapp'] ?• '').toString(),
-        urlPublica: (m['urlPublica'] ?• '').toString(),
-        pedidoBaseUrl: (m['pedidoBaseUrl'] ?• '').toString(),
+        nome: (m['nome'] ?? '').toString(),
+        slug: (m['slug'] ?? '').toString(),
+        whatsapp: (m['whatsapp'] ?? '').toString(),
+        urlPublica: (m['urlPublica'] ?? '').toString(),
+        pedidoBaseUrl: (m['pedidoBaseUrl'] ?? '').toString(),
       );
 }
 
@@ -128,14 +128,14 @@ class LojaConfigService {
   static Future<LojaConfig> upsert({
     required String nome,
     required String whatsapp,
-    String• slugDesejado,
+    String? slugDesejado,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
-    final ownerUid = user?.uid ?• 'anon';
-    final ownerEmail = user?.email ?• '';
+    final ownerUid = user?.uid ?? 'anon';
+    final ownerEmail = user?.email ?? '';
 
     // 1) Tenta pegar slug atual do Hive (store_slug / loja_slug / loja_id)
-    String• slug = await currentLojaId();
+    String? slug = await currentLojaId();
 
     // 2) Se ainda não achou, tenta buscar loja do ownerUid no Firestore
     if (slug == null || slug.isEmpty) {
@@ -152,12 +152,12 @@ class LojaConfigService {
 
     // 3) Se ainda assim não existe loja, AGORA sim cria um slug novo
     if (slug == null || slug.isEmpty) {
-      final baseDesejado = (slugDesejado?.isNotEmpty ?• false)
-          • slugDesejado!
+      final baseDesejado = (slugDesejado?.isNotEmpty ?? false)
+          ? slugDesejado!
           : (nome.isNotEmpty
-              • nome
+              ? nome
               : (ownerEmail.isNotEmpty
-                  • ownerEmail.split('@').first
+                  ? ownerEmail.split('@').first
                   : 'minha-loja'));
 
       slug = await ensureUniqueSlug(baseDesejado);

@@ -15,7 +15,7 @@ const Color _successColor = Color(0xFF22C55E);
 const Color _backgroundColor = Color(0xFFF8FAFC);
 
 class CarrinhosAbandonadosScreen extends StatefulWidget {
-  final String• lojaId;
+  final String? lojaId;
 
   const CarrinhosAbandonadosScreen({this.lojaId, super.key});
 
@@ -26,7 +26,7 @@ class CarrinhosAbandonadosScreen extends StatefulWidget {
 class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen> {
   bool _loading = true;
   bool _erroResolucaoLoja = false;
-  String• _lojaId;
+  String? _lojaId;
   List<CarrinhoAbandonadoItem> _lista = [];
   List<CarrinhoAbandonadoCatalogoItem> _listaCatalogo = [];
   int _horasAbandono = 24;
@@ -35,9 +35,9 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
   /// Mensagem sugerida pela IA por cartId (catálogo). Quando null, usa mensagem fixa.
   final Map<String, String> _mensagemSugeridaPorCartId = {};
   /// CartId para o qual a IA está carregando (evita múltiplos toques).
-  String• _loadingIaCartId;
+  String? _loadingIaCartId;
   /// Métricas de recuperação do catálogo (abandonados / recuperados).
-  MetricasRecuperacaoCatalogo• _metricasCatalogo;
+  MetricasRecuperacaoCatalogo? _metricasCatalogo;
 
   @override
   void initState() {
@@ -46,7 +46,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
   }
 
   Future<void> _init() async {
-    String• id = (widget.lojaId != null && widget.lojaId!.trim().isNotEmpty) • widget.lojaId : null;
+    String? id = (widget.lojaId != null && widget.lojaId!.trim().isNotEmpty) ? widget.lojaId : null;
     id ??= await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10));
     if (!mounted) return;
     if (id == null || id.trim().isEmpty || !isValidForPublicLink(id)) {
@@ -90,7 +90,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
     try {
       final doc = await FirebaseFirestore.instance.collection('lojas').doc(_lojaId).get();
       final d = doc.data();
-      lojaNome = (d?['nome_loja'] ?• d?['nomeLoja'] ?• d?['nome'] ?• '').toString().trim();
+      lojaNome = (d?['nome_loja'] ?? d?['nomeLoja'] ?? d?['nome'] ?? '').toString().trim();
     } catch (_) {}
     if (mounted) {
       setState(() {
@@ -116,8 +116,8 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
       setState(() => _enviando = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ok • 'E-mail enviado para ${item.email}' : 'Falha ao enviar e-mail'),
-          backgroundColor: ok • _successColor : Colors.red,
+          content: Text(ok ? 'E-mail enviado para ${item.email}' : 'Falha ao enviar e-mail'),
+          backgroundColor: ok ? _successColor : Colors.red,
         ),
       );
       if (ok) _carregar();
@@ -135,10 +135,10 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
   }
 
   String _mensagemAtualCatalogo(CarrinhoAbandonadoCatalogoItem item) {
-    final link = (_lojaId != null • buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId) : null) ?• '';
+    final link = (_lojaId != null ? buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId) : null) ?? '';
     return _mensagemSugeridaPorCartId[item.cartId] ??
         CarrinhoAbandonadoService.mensagemWhatsAppRecuperacao(
-          _lojaNome.isNotEmpty • _lojaNome : 'Loja',
+          _lojaNome.isNotEmpty ? _lojaNome : 'Loja',
           link,
         );
   }
@@ -148,7 +148,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
     final link = buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId);
     if (link == null) return;
     setState(() => _loadingIaCartId = item.cartId);
-    final nomeLoja = _lojaNome.isNotEmpty • _lojaNome : 'Loja';
+    final nomeLoja = _lojaNome.isNotEmpty ? _lojaNome : 'Loja';
     final msg = await CarrinhoAbandonadoService.sugerirMensagemRecuperacaoCatalogo(
       nomeLoja: nomeLoja,
       linkRecuperacao: link,
@@ -164,14 +164,14 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
     }
   }
 
-  Future<void> _abrirWhatsAppCatalogo(CarrinhoAbandonadoCatalogoItem item, {String• mensagem}) async {
+  Future<void> _abrirWhatsAppCatalogo(CarrinhoAbandonadoCatalogoItem item, {String? mensagem}) async {
     if (_lojaId == null) return;
     final link = buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId);
     if (link == null) return;
-    final msg = mensagem ?• _mensagemAtualCatalogo(item);
+    final msg = mensagem ?? _mensagemAtualCatalogo(item);
     await CarrinhoAbandonadoService.abrirWhatsAppRecuperacaoCatalogo(
-      telefone: item.clienteTelefone.isNotEmpty • item.clienteTelefone : '5511999999999',
-      nomeLoja: _lojaNome.isNotEmpty • _lojaNome : 'Loja',
+      telefone: item.clienteTelefone.isNotEmpty ? item.clienteTelefone : '5511999999999',
+      nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : 'Loja',
       linkRecuperacao: link,
       mensagem: msg,
     );
@@ -258,14 +258,14 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loading • null : _carregar,
+            onPressed: _loading ? null : _carregar,
           ),
         ],
       ),
       body: _loading
-          • const Center(child: CircularProgressIndicator(color: _primaryColor))
+          ? const Center(child: CircularProgressIndicator(color: _primaryColor))
           : _lista.isEmpty && _listaCatalogo.isEmpty
-              • Center(
+              ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -300,7 +300,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                         ),
                         ..._lista.map((item) {
                           final ultimaStr = item.ultimaAtualizacao != null
-                              • DateFormat('dd/MM/yyyy HH:mm').format(item.ultimaAtualizacao!)
+                              ? DateFormat('dd/MM/yyyy HH:mm').format(item.ultimaAtualizacao!)
                               : '—';
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -315,7 +315,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                       CircleAvatar(
                                         backgroundColor: _primaryColor.withValues(alpha:0.2),
                                         child: Text(
-                                          item.nome.isNotEmpty • item.nome[0].toUpperCase() : '?',
+                                          item.nome.isNotEmpty ? item.nome[0].toUpperCase() : '?',
                                           style: const TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),
                                         ),
                                       ),
@@ -353,8 +353,8 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                       if (item.email.trim().isNotEmpty)
                                         Expanded(
                                           child: OutlinedButton.icon(
-                                            onPressed: _enviando • null : () => _enviarEmail(item),
-                                            icon: _enviando • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.email_outlined, size: 18),
+                                            onPressed: _enviando ? null : () => _enviarEmail(item),
+                                            icon: _enviando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.email_outlined, size: 18),
                                             label: const Text('Enviar e-mail'),
                                             style: OutlinedButton.styleFrom(foregroundColor: _primaryColor),
                                           ),
@@ -419,9 +419,9 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                           ),
                         ),
                         ..._listaCatalogo.map((item) {
-                          final link = (_lojaId != null • buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId) : null) ?• '';
+                          final link = (_lojaId != null ? buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId) : null) ?? '';
                           final ultimaStr = item.ultimoUpdate != null
-                              • DateFormat('dd/MM/yyyy HH:mm').format(item.ultimoUpdate!)
+                              ? DateFormat('dd/MM/yyyy HH:mm').format(item.ultimoUpdate!)
                               : '—';
                           final mensagemAtual = _mensagemAtualCatalogo(item);
                           final loadingIa = _loadingIaCartId == item.cartId;
@@ -438,7 +438,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                       CircleAvatar(
                                         backgroundColor: _primaryColor.withValues(alpha:0.2),
                                         child: Text(
-                                          item.clienteNome.isNotEmpty • item.clienteNome[0].toUpperCase() : '?',
+                                          item.clienteNome.isNotEmpty ? item.clienteNome[0].toUpperCase() : '?',
                                           style: const TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),
                                         ),
                                       ),
@@ -448,7 +448,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              item.clienteNome.isEmpty • 'Cliente (sem nome)' : item.clienteNome,
+                                              item.clienteNome.isEmpty ? 'Cliente (sem nome)' : item.clienteNome,
                                               style: const TextStyle(fontWeight: FontWeight.w600),
                                             ),
                                             if (item.clienteTelefone.isNotEmpty)
@@ -482,7 +482,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                       children: [
                                         Text(
                                           _mensagemSugeridaPorCartId.containsKey(item.cartId)
-                                              • 'Mensagem sugerida (IA)'
+                                              ? 'Mensagem sugerida (IA)'
                                               : 'Mensagem para envio',
                                           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
                                         ),
@@ -495,11 +495,11 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                   Row(
                                     children: [
                                       OutlinedButton.icon(
-                                        onPressed: loadingIa • null : () => _sugerirMensagemIaCatalogo(item),
+                                        onPressed: loadingIa ? null : () => _sugerirMensagemIaCatalogo(item),
                                         icon: loadingIa
-                                            • const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                                             : const Icon(Icons.auto_awesome, size: 18),
-                                        label: Text(loadingIa • 'Gerando…' : 'Sugerir com IA'),
+                                        label: Text(loadingIa ? 'Gerando…' : 'Sugerir com IA'),
                                         style: OutlinedButton.styleFrom(foregroundColor: _primaryColor),
                                       ),
                                       const SizedBox(width: 8),

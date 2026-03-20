@@ -4,9 +4,9 @@
 import '../../core/safe_cast.dart';
 
 double _parseNum(dynamic v) =>
-    v is num • v.toDouble() : (double.tryParse('$v'.replaceAll(',', '.')) ?• 0.0);
+    v is num ? v.toDouble() : (double.tryParse('$v'.replaceAll(',', '.')) ?? 0.0);
 
-double• _parseNumOrNull(dynamic v) {
+double? _parseNumOrNull(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
   final n = double.tryParse('$v'.replaceAll(',', '.'));
@@ -25,7 +25,7 @@ List<Map<String, dynamic>> parseFretes(Map<String, dynamic> cfg) {
 
   void addFreteFromCfg(Map<String, dynamic> m) {
 
-    final nome = (m['nome'] ?• m['label'] ?• m['titulo'] ?• m['servico'] ?• '')
+    final nome = (m['nome'] ?? m['label'] ?? m['titulo'] ?? m['servico'] ?? '')
         .toString()
         .trim();
     if (nome.isEmpty) return;
@@ -33,10 +33,10 @@ List<Map<String, dynamic>> parseFretes(Map<String, dynamic> cfg) {
     final ativo = m['ativo'] != false;
     if (!ativo) return;
 
-    final prazo = (m['prazo'] ?• m['deadline'] ?• '').toString();
+    final prazo = (m['prazo'] ?? m['deadline'] ?? '').toString();
 
     String tipoFrete =
-        (m['tipo'] ?• m['provider'] ?• '').toString().toLowerCase().trim();
+        (m['tipo'] ?? m['provider'] ?? '').toString().toLowerCase().trim();
     if (tipoFrete.isEmpty) tipoFrete = 'manual';
 
     // cfg['fretes'] é sempre lista MANUAL da loja – nunca marcar como API
@@ -46,7 +46,7 @@ List<Map<String, dynamic>> parseFretes(Map<String, dynamic> cfg) {
 
     fretes.add({
       'nome': nome,
-      'valor': freteGratisCfg • 0.0 : val,
+      'valor': freteGratisCfg ? 0.0 : val,
       'prazo': prazo,
       'tipo': tipoFrete,
       'plataforma': 'manual',
@@ -121,7 +121,7 @@ List<Map<String, dynamic>> parseCupons(Map<String, dynamic> cfg) {
     final m = asMap(e);
     if (m.isEmpty) continue;
 
-    final codigo = (m['codigo'] ?• m['code'] ?• m['nome'] ?• '')
+    final codigo = (m['codigo'] ?? m['code'] ?? m['nome'] ?? '')
         .toString()
         .toUpperCase()
         .trim();
@@ -129,7 +129,7 @@ List<Map<String, dynamic>> parseCupons(Map<String, dynamic> cfg) {
 
     final ativo = m['ativo'] != false;
 
-    final rawTipo = (m['tipo'] ?• 'percent').toString().toLowerCase();
+    final rawTipo = (m['tipo'] ?? 'percent').toString().toLowerCase();
     String tipoNorm;
     switch (rawTipo) {
       case 'percent':
@@ -157,12 +157,12 @@ List<Map<String, dynamic>> parseCupons(Map<String, dynamic> cfg) {
     if (dataFim != null && now.isAfter(dataFim)) {
       continue;
     }
-    final validade = asDateTime(m['validade'] ?• m['dataValidade']);
+    final validade = asDateTime(m['validade'] ?? m['dataValidade']);
     if (validade != null && now.isAfter(validade)) {
       continue;
     }
 
-    final aplicarEm = (m['aplicarEm'] ?• 'produtos').toString();
+    final aplicarEm = (m['aplicarEm'] ?? 'produtos').toString();
     final freteGratis = m['freteGratis'] == true;
 
     cupons.add({
@@ -172,10 +172,10 @@ List<Map<String, dynamic>> parseCupons(Map<String, dynamic> cfg) {
       'valor': valor,
       'aplicarEm': aplicarEm,
       'freteGratis': freteGratis,
-      'valorMinimo': _parseNumOrNull(m['valorMinimo'] ?• m['valor_minimo']),
+      'valorMinimo': _parseNumOrNull(m['valorMinimo'] ?? m['valor_minimo']),
       'dataFim': asDateTime(m['dataFim']),
-      'validade': asDateTime(m['validade'] ?• m['dataValidade']),
-      'dataValidade': asDateTime(m['dataValidade'] ?• m['validade']),
+      'validade': asDateTime(m['validade'] ?? m['dataValidade']),
+      'dataValidade': asDateTime(m['dataValidade'] ?? m['validade']),
     });
   }
 
@@ -192,9 +192,9 @@ class CatalogMediaConfig {
   final List<String> banners;
   final double bannerH;
   /// Cor da logo no tema claro (hex int, ex. 0xFF212121). Se null, usa padrão escuro.
-  final int• logoColorClaro;
+  final int? logoColorClaro;
   /// Cor da logo no tema escuro (hex int, ex. 0xFFFFFFFF). Se null, sem filtro (logo original).
-  final int• logoColorEscuro;
+  final int? logoColorEscuro;
 
   const CatalogMediaConfig({
     required this.logoUrl,
@@ -205,12 +205,12 @@ class CatalogMediaConfig {
   });
 }
 
-int• _parseColorInt(dynamic v) {
+int? _parseColorInt(dynamic v) {
   if (v == null) return null;
   if (v is int) return v;
   final s = v.toString().trim();
   if (s.isEmpty) return null;
-  final hex = s.startsWith('#') • s.substring(1) : s;
+  final hex = s.startsWith('#') ? s.substring(1) : s;
   return int.tryParse(hex, radix: 16);
 }
 
@@ -227,16 +227,16 @@ String _firstNonEmpty(List<dynamic> candidates) {
 CatalogMediaConfig parseMedia(Map<String, dynamic> cfg, {required bool isWide}) {
   final Map<String, dynamic> media = asMap(cfg['media']);
 
-  final platformKey = isWide • 'desktop' : 'mobile';
+  final platformKey = isWide ? 'desktop' : 'mobile';
   final Map<String, dynamic> mediaDesktop = asMap(media['desktop']);
   final Map<String, dynamic> mediaMobile = asMap(media['mobile']);
 
-  final mediaPlat = platformKey == 'desktop' • mediaDesktop : mediaMobile;
+  final mediaPlat = platformKey == 'desktop' ? mediaDesktop : mediaMobile;
 
   final logoUrl = _firstNonEmpty([
     mediaPlat['logoUrl'],
     mediaPlat['logo'],
-    platformKey == 'mobile' • cfg['logoMobileUrl'] : cfg['logoDesktopUrl'],
+    platformKey == 'mobile' ? cfg['logoMobileUrl'] : cfg['logoDesktopUrl'],
     cfg['logoMobileUrl'],
     cfg['logoDesktopUrl'],
     cfg['logo_mobile'],
@@ -251,8 +251,8 @@ CatalogMediaConfig parseMedia(Map<String, dynamic> cfg, {required bool isWide}) 
 
   final bannerHRaw = mediaPlat['bannerH'];
   final bannerH = (bannerHRaw is num)
-      • bannerHRaw.toDouble()
-      : (double.tryParse('$bannerHRaw') ?• (isWide • 260.0 : 220.0));
+      ? bannerHRaw.toDouble()
+      : (double.tryParse('$bannerHRaw') ?? (isWide ? 260.0 : 220.0));
 
   final banners = <String>[];
   final mediaBanners = mediaPlat['banners'];
@@ -260,7 +260,7 @@ CatalogMediaConfig parseMedia(Map<String, dynamic> cfg, {required bool isWide}) 
     banners.addAll(mediaBanners.map((e) => e.toString()));
   } else {
     final specificBanners =
-        platformKey == 'mobile' • cfg['bannersMobile'] : cfg['bannersDesktop'];
+        platformKey == 'mobile' ? cfg['bannersMobile'] : cfg['bannersDesktop'];
     if (specificBanners is List && specificBanners.isNotEmpty) {
       banners.addAll(specificBanners.map((e) => e.toString()));
     } else {
@@ -279,8 +279,8 @@ CatalogMediaConfig parseMedia(Map<String, dynamic> cfg, {required bool isWide}) 
     }
   }
 
-  final logoColorClaro = _parseColorInt(media['logoColorClaro'] ?• mediaPlat['logoColorClaro'] ?• cfg['logoColorClaro']);
-  final logoColorEscuro = _parseColorInt(media['logoColorEscuro'] ?• mediaPlat['logoColorEscuro'] ?• cfg['logoColorEscuro']);
+  final logoColorClaro = _parseColorInt(media['logoColorClaro'] ?? mediaPlat['logoColorClaro'] ?? cfg['logoColorClaro']);
+  final logoColorEscuro = _parseColorInt(media['logoColorEscuro'] ?? mediaPlat['logoColorEscuro'] ?? cfg['logoColorEscuro']);
 
   return CatalogMediaConfig(
     logoUrl: logoUrl,
@@ -319,12 +319,12 @@ VideoCarouselConfig parseVideoCarousel(Map<String, dynamic> cfg) {
   final enabled = cfg['videoCarouselEnabled'] == true;
   final urlsRaw = cfg['videoCarouselUrls'];
   final urls = (urlsRaw is List)
-      • urlsRaw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty && s.startsWith('http')).take(3).toList()
+      ? urlsRaw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty && s.startsWith('http')).take(3).toList()
       : <String>[];
-  final shapeStr = (cfg['productVideoShape'] ?• cfg['videoCarouselShape'] ?• 'circle').toString().toLowerCase();
-  final productVideoShape = shapeStr == 'square' • 'square' : 'circle';
-  final carouselShapeStr = (cfg['videoCarouselShape'] ?• 'circle').toString().toLowerCase();
-  final videoCarouselShape = carouselShapeStr == 'square' • 'square' : 'circle';
+  final shapeStr = (cfg['productVideoShape'] ?? cfg['videoCarouselShape'] ?? 'circle').toString().toLowerCase();
+  final productVideoShape = shapeStr == 'square' ? 'square' : 'circle';
+  final carouselShapeStr = (cfg['videoCarouselShape'] ?? 'circle').toString().toLowerCase();
+  final videoCarouselShape = carouselShapeStr == 'square' ? 'square' : 'circle';
   return VideoCarouselConfig(
     enabled: enabled && urls.isNotEmpty,
     urls: urls,

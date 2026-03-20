@@ -148,21 +148,21 @@ class PermissaoService {
     if (tipo == 'vendedor') {
       final permissoesDinamicas = await _carregarPermissoesVendedorFirestore();
       if (permissoesDinamicas.isNotEmpty) {
-        return permissoesDinamicas[chave] ?• false;
+        return permissoesDinamicas[chave] ?? false;
       }
     }
 
     final plano = await _buscarPlanoUsuario(email);
     if (plano.isNotEmpty) {
-      return plano[chave] ?• false;
+      return plano[chave] ?? false;
     }
 
     final boxPermissoes = await Hive.openBox('permissoes');
     final Map<String, bool> permissoesTipo = Map<String, bool>.from(
-      boxPermissoes.get(tipo, defaultValue: permissoesPadrao[tipo]) ?• {},
+      boxPermissoes.get(tipo, defaultValue: permissoesPadrao[tipo]) ?? {},
     );
     _garanteTodasAsChaves(permissoesTipo);
-    return permissoesTipo[chave] ?• false;
+    return permissoesTipo[chave] ?? false;
   }
 
   /// ✅ Carrega permissões dinâmicas do vendedor via Firestore
@@ -172,7 +172,7 @@ class PermissaoService {
       if (user == null) return {};
 
       final boxSessao = await Hive.openBox('sessao');
-      final storeId = (boxSessao.get('store_id') ?• boxSessao.get('storeId') ?• '').toString();
+      final storeId = (boxSessao.get('store_id') ?? boxSessao.get('storeId') ?? '').toString();
       if (storeId.isEmpty) return {};
 
       final vendedorService = VendedorService();
@@ -224,7 +224,7 @@ class PermissaoService {
 
     final boxPermissoes = await Hive.openBox('permissoes');
     final Map<String, bool> permissoesTipo = Map<String, bool>.from(
-      boxPermissoes.get(tipo, defaultValue: permissoesPadrao[tipo]) ?• {},
+      boxPermissoes.get(tipo, defaultValue: permissoesPadrao[tipo]) ?? {},
     );
     _garanteTodasAsChaves(permissoesTipo);
     return permissoesTipo;
@@ -253,7 +253,7 @@ class PermissaoService {
   static Future<void> restaurarPadrao() async {
     final boxSessao = await Hive.openBox('sessao');
     final tipo = boxSessao.get('tipo_usuario', defaultValue: 'vendedor');
-    final padrao = Map<String, bool>.from(permissoesPadrao[tipo] ?• {});
+    final padrao = Map<String, bool>.from(permissoesPadrao[tipo] ?? {});
     _garanteTodasAsChaves(padrao);
 
     final boxPerm = await Hive.openBox('permissoes');
@@ -274,7 +274,7 @@ class PermissaoService {
     final boxPerm = await Hive.openBox('permissoes');
 
     final Map<String, bool> atual = Map<String, bool>.from(
-      boxPerm.get(tipo, defaultValue: permissoesPadrao[tipo]) ?• {},
+      boxPerm.get(tipo, defaultValue: permissoesPadrao[tipo]) ?? {},
     );
 
     _garanteTodasAsChaves(atual);
@@ -291,7 +291,7 @@ class PermissaoService {
     final remoto = await PlanoService.getPlanoByUid(user.uid);
     if (remoto.isEmpty) return;
 
-    final email = user.email ?• '';
+    final email = user.email ?? '';
     if (email.isEmpty) return;
 
     // Salva plano remoto na store local por e-mail (mantendo compatibilidade)

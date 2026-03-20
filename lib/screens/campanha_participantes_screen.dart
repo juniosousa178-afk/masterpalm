@@ -52,9 +52,9 @@ class CampanhaParticipantesScreen extends StatelessWidget {
             itemBuilder: (_, i) {
               final data = docs[i].data() as Map<String, dynamic>;
 
-              final nome = data["nomeCliente"] ?• "Cliente não informado";
-              final valor = (data["valorCompra"] ?• 0).toDouble();
-              final numeros = List<String>.from(data["numeros"] ?• []);
+              final nome = data["nomeCliente"] ?? "Cliente não informado";
+              final valor = (data["valorCompra"] ?? 0).toDouble();
+              final numeros = List<String>.from(data["numeros"] ?? []);
 
               return Card(
                 color: const Color(0xFF10121A),

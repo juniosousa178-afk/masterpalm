@@ -16,8 +16,8 @@ class ProdutoAutoSyncService {
   factory ProdutoAutoSyncService() => _instance;
   ProdutoAutoSyncService._internal();
 
-  StreamSubscription<BoxEvent>• _subscription;
-  Timer• _debounceTimer;
+  StreamSubscription<BoxEvent>? _subscription;
+  Timer? _debounceTimer;
   final Set<String> _pendingProductKeys = {};
   bool _isRunning = false;
   /// Quando true, eventos do box são ignorados (evita loop: sync Firestore→Hive dispara AUTO-SYNC).
@@ -153,7 +153,7 @@ class ProdutoAutoSyncService {
       debugPrint('📤 [AUTO-SYNC] Sincronizando: ${produto.nome}');
 
       // Determina o target baseado no estado do produto
-      final target = produto.ativoNoRascunho • SyncTarget.draft : SyncTarget.live;
+      final target = produto.ativoNoRascunho ? SyncTarget.draft : SyncTarget.live;
 
       // ✅ VERIFICAR SE DEVE EXISTIR NO CATÁLOGO
       final deveExistir = produto.quantidade > 0 &&

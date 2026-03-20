@@ -20,7 +20,7 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
   final List<Map<String, String>> _historico = [];
   bool _enviando = false;
   int _cooldownRestante = 0;
-  Timer• _cooldownTimer;
+  Timer? _cooldownTimer;
   String _preferirModelo = 'gemini';
   int _usoPerguntas = 0;
 
@@ -39,7 +39,7 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
   Future<void> _atualizarUso() async {
     final lojaId = await LojaIdService.get();
     final uso = await IaUsoLimiteService.getUsoAtual(lojaId);
-    if (mounted) setState(() => _usoPerguntas = uso[TipoUsoIa.perguntas] ?• 0);
+    if (mounted) setState(() => _usoPerguntas = uso[TipoUsoIa.perguntas] ?? 0);
   }
 
   @override
@@ -81,7 +81,7 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
       final resposta = await AiLojaService.chatDicas(
         mensagem: texto,
         historico: _historico.length > 1
-            • _historico.sublist(0, _historico.length - 1)
+            ? _historico.sublist(0, _historico.length - 1)
             : null,
       );
       if (mounted) {
@@ -171,7 +171,7 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
         children: [
           Expanded(
             child: _historico.isEmpty && !_enviando
-                • Center(
+                ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Column(
@@ -198,7 +198,7 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
                     controller: _scrollCtrl,
                     physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    itemCount: _historico.length + (_enviando • 1 : 0),
+                    itemCount: _historico.length + (_enviando ? 1 : 0),
                     itemBuilder: (context, i) {
                       if (i == _historico.length) {
                         return Padding(
@@ -225,7 +225,7 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Row(
-                          mainAxisAlignment: isUser • MainAxisAlignment.end : MainAxisAlignment.start,
+                          mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (!isUser)
@@ -240,12 +240,12 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                 decoration: BoxDecoration(
                                   color: isUser
-                                      • (theme.colorScheme.primaryContainer.withValues(alpha:0.6))
+                                      ? (theme.colorScheme.primaryContainer.withValues(alpha:0.6))
                                       : Colors.grey.shade100,
                                   borderRadius: BorderRadius.circular(16),
                                 ),
                                 child: SelectableText(
-                                  msg['content'] ?• '',
+                                  msg['content'] ?? '',
                                   style: theme.textTheme.bodyMedium,
                                 ),
                               ),
@@ -294,11 +294,11 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
                   ),
                   const SizedBox(width: 8),
                   IconButton.filled(
-                    onPressed: (_enviando || _cooldownRestante > 0) • null : _enviar,
+                    onPressed: (_enviando || _cooldownRestante > 0) ? null : _enviar,
                     icon: _cooldownRestante > 0
-                        • Text('${_cooldownRestante}s', style: const TextStyle(fontSize: 12))
+                        ? Text('${_cooldownRestante}s', style: const TextStyle(fontSize: 12))
                         : const Icon(Icons.send),
-                    tooltip: _cooldownRestante > 0 • 'Aguarde ${_cooldownRestante}s' : 'Enviar',
+                    tooltip: _cooldownRestante > 0 ? 'Aguarde ${_cooldownRestante}s' : 'Enviar',
                   ),
                 ],
               ),

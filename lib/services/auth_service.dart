@@ -9,14 +9,14 @@ import 'store_resolver_unified.dart';
 
 /// Serviço de autenticação + sessão local (Hive)
 class AuthService extends ChangeNotifier {
-  final FirebaseAuth• _auth;
-  final FirebaseFirestore• _db;
+  final FirebaseAuth? _auth;
+  final FirebaseFirestore? _db;
   final bool offline;
 
   // Construtor interno
   AuthService._({
-    required FirebaseAuth• auth,
-    required FirebaseFirestore• db,
+    required FirebaseAuth? auth,
+    required FirebaseFirestore? db,
     required this.offline,
   })  : _auth = auth,
         _db = db;
@@ -40,7 +40,7 @@ class AuthService extends ChangeNotifier {
     );
   }
 
-  User• get currentUser => offline • null : _auth?.currentUser;
+  User? get currentUser => offline ? null : _auth?.currentUser;
 
   // ==========================================================
   // Helpers (Hive)
@@ -174,7 +174,7 @@ class AuthService extends ChangeNotifier {
           'alterar_pin': false,
         },
         'ownerStoreId': '', // admin não vincula loja aqui!
-        'authUid': cred.user?.uid ?• '',
+        'authUid': cred.user?.uid ?? '',
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -232,7 +232,7 @@ class AuthService extends ChangeNotifier {
 
       // Caso o doc não exista (usuário legado salvo por UID)
       if (!snap.exists) {
-        final uid = auth.currentUser?.uid ?• '';
+        final uid = auth.currentUser?.uid ?? '';
         if (uid.isNotEmpty) {
           final q = await db
               .collection('usuarios')
@@ -254,10 +254,10 @@ class AuthService extends ChangeNotifier {
         }
       }
 
-      final data = snap.data() ?• {};
-      final tipo = (data['tipo'] ?• '').toString().trim().toLowerCase();
-      final ownerStoreId = (data['ownerStoreId'] ?• '').toString().trim();
-      final storeId = (data['store_id'] ?• '').toString().trim();
+      final data = snap.data() ?? {};
+      final tipo = (data['tipo'] ?? '').toString().trim().toLowerCase();
+      final ownerStoreId = (data['ownerStoreId'] ?? '').toString().trim();
+      final storeId = (data['store_id'] ?? '').toString().trim();
 
       if (tipo.isEmpty) {
         return 'Seu tipo de usuário está vazio. Peça ao administrador.';

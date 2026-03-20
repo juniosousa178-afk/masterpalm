@@ -14,7 +14,7 @@ class ImportExcelPageState extends State<ImportExcelPage> {
   List<List<String>> dadosExcel = [];
 
   Future<void> importarExcel() async {
-    FilePickerResult• result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx', 'xls'],
     );
@@ -40,7 +40,7 @@ class ImportExcelPageState extends State<ImportExcelPage> {
     for (var row in sheet.rows) {
       List<String> linha = [];
       for (var cell in row) {
-        linha.add(cell?.value.toString() ?• '');
+        linha.add(cell?.value.toString() ?? '');
       }
       dados.add(linha);
     }

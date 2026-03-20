@@ -59,17 +59,17 @@ class ComissaoConfigService {
   /// Atualiza campos específicos da configuração
   static Future<bool> atualizarConfig({
     required String lojaId,
-    double• comissaoGlobalPercent,
-    bool• apenasAposPagamentoConfirmado,
-    bool• excluirFreteDaBase,
-    bool• descontoReduzBase,
-    int• trackingExpiracaoDias,
-    String• regraAtribuicao,
-    double• bonusMetaBatida100,
-    double• bonusMetaBatida150,
-    double• comissaoMinimaValor,
-    double• comissaoMaximaValor,
-    bool• estornoAutomaticoEmCancelamento,
+    double? comissaoGlobalPercent,
+    bool? apenasAposPagamentoConfirmado,
+    bool? excluirFreteDaBase,
+    bool? descontoReduzBase,
+    int? trackingExpiracaoDias,
+    String? regraAtribuicao,
+    double? bonusMetaBatida100,
+    double? bonusMetaBatida150,
+    double? comissaoMinimaValor,
+    double? comissaoMaximaValor,
+    bool? estornoAutomaticoEmCancelamento,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -177,7 +177,7 @@ class ComissaoConfigService {
     required String vendedorUid,
     required String vendedorEmail,
     required String vendedorNome,
-    double• comissaoPercentual,
+    double? comissaoPercentual,
     bool ativo = true,
   }) async {
     try {
@@ -209,7 +209,7 @@ class ComissaoConfigService {
   static Future<bool> atualizarPercentualVendedor({
     required String lojaId,
     required String vendedorUid,
-    required double• comissaoPercentual,
+    required double? comissaoPercentual,
   }) async {
     try {
       await _db
@@ -247,7 +247,7 @@ class ComissaoConfigService {
         'atualizadoEm': DateTime.now().toIso8601String(),
       });
 
-      debugPrint('✅ [COMISSAO-CONFIG] Vendedor ${ativo • "ativado" : "desativado"}');
+      debugPrint('✅ [COMISSAO-CONFIG] Vendedor ${ativo ? "ativado" : "desativado"}');
       return true;
     } catch (e) {
       debugPrint('❌ [COMISSAO-CONFIG] Erro ao toggle vendedor (type=${e.runtimeType})');
@@ -264,7 +264,7 @@ class ComissaoConfigService {
   static Future<double> calcularPercentualEfetivo({
     required String lojaId,
     required String vendedorUid,
-    double• percentualMetaAtingida,
+    double? percentualMetaAtingida,
   }) async {
     try {
       // Buscar configuração global
@@ -280,7 +280,7 @@ class ComissaoConfigService {
       );
 
       // Usar percentual específico ou global
-      double percentual = vendedorConfig?.comissaoPercentual ?• config.comissaoGlobalPercent;
+      double percentual = vendedorConfig?.comissaoPercentual ?? config.comissaoGlobalPercent;
 
       // Aplicar bônus por meta batida
       if (percentualMetaAtingida != null) {
@@ -340,8 +340,8 @@ class ComissaoConfigService {
           final comissao = ComissaoVendedor(
             lojaId: lojaId,
             vendedorUid: uid,
-            vendedorEmail: data['email'] ?• '',
-            vendedorNome: data['nome'] ?• '',
+            vendedorEmail: data['email'] ?? '',
+            vendedorNome: data['nome'] ?? '',
           );
 
           final ref = _db

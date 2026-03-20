@@ -33,11 +33,11 @@ enum StoreResolveContext {
 /// Resultado da resolução de loja
 class StoreResolveResult {
   final bool success;
-  final String• storeId;
-  final String• canonicalStoreId; // ID canônico (após redirect se houver)
-  final String• errorMessage;
+  final String? storeId;
+  final String? canonicalStoreId; // ID canônico (após redirect se houver)
+  final String? errorMessage;
   final bool needsRedirect;
-  final String• redirectTo;
+  final String? redirectTo;
 
   StoreResolveResult._({
     required this.success,
@@ -48,11 +48,11 @@ class StoreResolveResult {
     this.redirectTo,
   });
 
-  factory StoreResolveResult.ok(String storeId, {String• canonicalId}) {
+  factory StoreResolveResult.ok(String storeId, {String? canonicalId}) {
     return StoreResolveResult._(
       success: true,
       storeId: storeId,
-      canonicalStoreId: canonicalId ?• storeId,
+      canonicalStoreId: canonicalId ?? storeId,
     );
   }
 
@@ -90,7 +90,7 @@ class StoreResolverUnified {
   /// [urlStoreId] - StoreId vindo da URL (apenas para contexto público)
   static Future<StoreResolveResult> resolve({
     required StoreResolveContext context,
-    String• urlStoreId,
+    String? urlStoreId,
   }) async {
     logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logD('🔒 [STORE-RESOLVER-UNIFIED] Resolvendo loja');
@@ -113,8 +113,8 @@ class StoreResolverUnified {
 
   /// Resolve loja para catálogo público
   /// REGRA: SEMPRE usa storeId da URL, NUNCA do usuário logado
-  static Future<StoreResolveResult> _resolvePublicCatalog(String• urlStoreId) async {
-    final rawId = (urlStoreId ?• '').trim();
+  static Future<StoreResolveResult> _resolvePublicCatalog(String? urlStoreId) async {
+    final rawId = (urlStoreId ?? '').trim();
 
     if (rawId.isEmpty) {
       logD('❌ [STORE-RESOLVER] URL sem storeId - não pode usar catálogo público');
@@ -137,7 +137,7 @@ class StoreResolverUnified {
         final lojaData = asMap(raw);
 
         // Verificar se há redirect configurado
-        final redirectTo = (lojaData['redirectTo'] ?• '').toString().trim();
+        final redirectTo = (lojaData['redirectTo'] ?? '').toString().trim();
         if (redirectTo.isNotEmpty && redirectTo != rawId) {
           logD('🔀 [STORE-RESOLVER] Loja $rawId redireciona para $redirectTo');
           return StoreResolveResult.redirect(rawId, redirectTo);
@@ -207,7 +207,7 @@ class StoreResolverUnified {
     try {
       logD('[STORE_RESOLVE] origem=StoreResolverUnified._resolveAdminDashboard antes StoreResolverService.resolve');
       final storeId = await StoreResolverService.resolve();
-      logD('[STORE_RESOLVE] origem=StoreResolverUnified._resolveAdminDashboard depois StoreResolverService.resolve valor=${storeId ?• "null"}');
+      logD('[STORE_RESOLVE] origem=StoreResolverUnified._resolveAdminDashboard depois StoreResolverService.resolve valor=${storeId ?? "null"}');
 
       if (storeId == null || storeId.trim().isEmpty) {
         logD('❌ [STORE-RESOLVER] Usuário sem loja configurada');
@@ -269,7 +269,7 @@ class StoreResolverUnified {
     // 3. Limpar Hive boxes
     try {
       final sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
       await sessao.delete('store_id');
       await sessao.delete('usuario_logado');
@@ -281,7 +281,7 @@ class StoreResolverUnified {
 
     try {
       final config = Hive.isBoxOpen('config')
-          • Hive.box('config')
+          ? Hive.box('config')
           : await Hive.openBox('config');
       await config.delete('store_id');
       await config.delete('store_slug');

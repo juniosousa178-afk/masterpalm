@@ -10,10 +10,10 @@ class MasterConfig {
   String masterPassword;
 
   @HiveField(1)
-  String• mercadoPagoAccessToken;
+  String? mercadoPagoAccessToken;
 
   @HiveField(2)
-  String• mercadoPagoPublicKey;
+  String? mercadoPagoPublicKey;
 
   @HiveField(3)
   bool requirePlanForNewUsers;
@@ -25,22 +25,22 @@ class MasterConfig {
   Map<String, dynamic> globalSettings;
 
   @HiveField(6)
-  DateTime• lastUpdated;
+  DateTime? lastUpdated;
 
   @HiveField(7)
-  String• updatedBy;
+  String? updatedBy;
 
   MasterConfig({
     this.masterPassword = '030419922009jj',
     this.mercadoPagoAccessToken,
     this.mercadoPagoPublicKey,
     this.requirePlanForNewUsers = true,
-    List<String>• usersWithUnlimitedAccess,
-    Map<String, dynamic>• globalSettings,
+    List<String>? usersWithUnlimitedAccess,
+    Map<String, dynamic>? globalSettings,
     this.lastUpdated,
     this.updatedBy,
-  })  : usersWithUnlimitedAccess = usersWithUnlimitedAccess ?• [],
-        globalSettings = globalSettings ?• {};
+  })  : usersWithUnlimitedAccess = usersWithUnlimitedAccess ?? [],
+        globalSettings = globalSettings ?? {};
 
   Map<String, dynamic> toMap() {
     return {
@@ -57,42 +57,42 @@ class MasterConfig {
 
   factory MasterConfig.fromMap(Map<String, dynamic> map) {
     return MasterConfig(
-      masterPassword: map['masterPassword'] ?• '030419922009jj',
+      masterPassword: map['masterPassword'] ?? '030419922009jj',
       mercadoPagoAccessToken: map['mercadoPagoAccessToken'],
       mercadoPagoPublicKey: map['mercadoPagoPublicKey'],
-      requirePlanForNewUsers: map['requirePlanForNewUsers'] ?• true,
+      requirePlanForNewUsers: map['requirePlanForNewUsers'] ?? true,
       usersWithUnlimitedAccess:
-          List<String>.from(map['usersWithUnlimitedAccess'] ?• []),
-      globalSettings: Map<String, dynamic>.from(map['globalSettings'] ?• {}),
+          List<String>.from(map['usersWithUnlimitedAccess'] ?? []),
+      globalSettings: Map<String, dynamic>.from(map['globalSettings'] ?? {}),
       lastUpdated: map['lastUpdated'] != null
-          • DateTime.parse(map['lastUpdated'])
+          ? DateTime.parse(map['lastUpdated'])
           : null,
       updatedBy: map['updatedBy'],
     );
   }
 
   MasterConfig copyWith({
-    String• masterPassword,
-    String• mercadoPagoAccessToken,
-    String• mercadoPagoPublicKey,
-    bool• requirePlanForNewUsers,
-    List<String>• usersWithUnlimitedAccess,
-    Map<String, dynamic>• globalSettings,
-    DateTime• lastUpdated,
-    String• updatedBy,
+    String? masterPassword,
+    String? mercadoPagoAccessToken,
+    String? mercadoPagoPublicKey,
+    bool? requirePlanForNewUsers,
+    List<String>? usersWithUnlimitedAccess,
+    Map<String, dynamic>? globalSettings,
+    DateTime? lastUpdated,
+    String? updatedBy,
   }) {
     return MasterConfig(
-      masterPassword: masterPassword ?• this.masterPassword,
+      masterPassword: masterPassword ?? this.masterPassword,
       mercadoPagoAccessToken:
-          mercadoPagoAccessToken ?• this.mercadoPagoAccessToken,
-      mercadoPagoPublicKey: mercadoPagoPublicKey ?• this.mercadoPagoPublicKey,
+          mercadoPagoAccessToken ?? this.mercadoPagoAccessToken,
+      mercadoPagoPublicKey: mercadoPagoPublicKey ?? this.mercadoPagoPublicKey,
       requirePlanForNewUsers:
-          requirePlanForNewUsers ?• this.requirePlanForNewUsers,
+          requirePlanForNewUsers ?? this.requirePlanForNewUsers,
       usersWithUnlimitedAccess:
-          usersWithUnlimitedAccess ?• this.usersWithUnlimitedAccess,
-      globalSettings: globalSettings ?• this.globalSettings,
-      lastUpdated: lastUpdated ?• this.lastUpdated,
-      updatedBy: updatedBy ?• this.updatedBy,
+          usersWithUnlimitedAccess ?? this.usersWithUnlimitedAccess,
+      globalSettings: globalSettings ?? this.globalSettings,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+      updatedBy: updatedBy ?? this.updatedBy,
     );
   }
 }

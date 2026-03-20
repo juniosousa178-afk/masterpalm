@@ -26,7 +26,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
   static const Color surfaceColor = Color(0xFFF8FAFC);
   static const Color cardColor = Colors.white;
 
-  String• _lojaId;
+  String? _lojaId;
   bool _sincronizando = false;
   bool _publicando = false;
 
@@ -71,7 +71,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
   /// ✅ Multi-loja: LojaIdService primeiro (StoreResolver), Hive apenas fallback offline
   Future<void> _loadLoja() async {
     try {
-      String• storeId = (await LojaIdService.get())?.trim();
+      String? storeId = (await LojaIdService.get())?.trim();
       if (storeId == null || storeId.isEmpty) {
         final box = await Hive.openBox('config');
         storeId = box.get('store_id')?.toString().trim();
@@ -175,7 +175,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
     if (!mounted) return;
     Navigator.pop(context);
 
-    final isValido = validacao[gateway] ?• false;
+    final isValido = validacao[gateway] ?? false;
 
     _mostrarResultadoValidacao(gateway, isValido);
   }
@@ -206,29 +206,29 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: isValido
-                    • successColor.withValues(alpha:0.1)
+                    ? successColor.withValues(alpha:0.1)
                     : errorColor.withValues(alpha:0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                isValido • Icons.check_circle : Icons.error_outline,
-                color: isValido • successColor : errorColor,
+                isValido ? Icons.check_circle : Icons.error_outline,
+                color: isValido ? successColor : errorColor,
                 size: 48,
               ),
             ),
             const SizedBox(height: 16),
             Text(
-              isValido • 'Conexão Validada!' : 'Falha na Validação',
+              isValido ? 'Conexão Validada!' : 'Falha na Validação',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: isValido • successColor : errorColor,
+                color: isValido ? successColor : errorColor,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               isValido
-                  • 'As credenciais do $gateway estáo corretas e funcionando!'
+                  ? 'As credenciais do $gateway estáo corretas e funcionando!'
                   : 'Não foi possível validar as credenciais do $gateway.',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -253,7 +253,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                             color: warningColor, size: 20),
                         const SizedBox(width: 8),
                         Text(
-                          'Possóveis causas:',
+                          'Possíveis causas:',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: Colors.grey[800],
@@ -262,7 +262,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                       ],
                     ),
                     const SizedBox(height: 8),
-                    _buildDicaItem('Token de TESTE ao invàs de PRODUÇÃO'),
+                    _buildDicaItem('Token de TESTE ao invés de PRODUÇÃO'),
                     _buildDicaItem('Access Token expirado ou inválido'),
                     _buildDicaItem('Sem conexão com a internet'),
                   ],
@@ -350,7 +350,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
           {'icon': Icons.login, 'text': 'Faça login no PagSeguro'},
           {
             'icon': Icons.settings,
-            'text': 'Vá em "Integrações" • "Token de Segurança"'
+            'text': 'Vá em "Integrações" > "Token de Segurança"'
           },
           {'icon': Icons.add_circle, 'text': 'Clique em "Gerar novo token"'},
           {'icon': Icons.copy, 'text': 'Copie o token gerado'},
@@ -386,7 +386,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
         passos = [
           {'icon': Icons.touch_app, 'text': 'Toque em "Gerar API Key"'},
           {'icon': Icons.login, 'text': 'Faça login no InfinitePay'},
-          {'icon': Icons.settings, 'text': 'Acesse "Configurações" • "API"'},
+          {'icon': Icons.settings, 'text': 'Acesse "Configurações" > "API"'},
           {'icon': Icons.add_circle, 'text': 'Clique em "Gerar nova chave"'},
           {'icon': Icons.copy, 'text': 'Copie a API Key e o Merchant ID'},
           {'icon': Icons.content_paste, 'text': 'Cole nos campos abaixo'},
@@ -558,17 +558,17 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
       final results = await SyncFirestoreScript.syncTudo();
       if (!mounted) return;
       if (results['success'] == true) {
-        final p = results['produtos'] as Map<String, int>• ?• {};
-        final c = results['clientes'] as Map<String, int>• ?• {};
+        final p = results['produtos'] as Map<String, int>? ?? {};
+        final c = results['clientes'] as Map<String, int>? ?? {};
         _mostrarSnackBarModerno(
-          'Sincronizado: ${p['synced'] ?• 0} produtos, ${c['synced'] ?• 0} clientes',
+          'Sincronizado: ${p['synced'] ?? 0} produtos, ${c['synced'] ?? 0} clientes',
           Icons.cloud_done,
           successColor,
         );
       } else {
         final err = results['errors'] as List<dynamic>?;
         _mostrarSnackBarModerno(
-          err != null && err.isNotEmpty • err.first.toString() : 'Erro na sincronização',
+          err != null && err.isNotEmpty ? err.first.toString() : 'Erro na sincronização',
           Icons.error_outline,
           errorColor,
         );
@@ -644,42 +644,42 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
             );
           }
 
-          final data = snap.data?.data() ?• <String, dynamic>{};
+          final data = snap.data?.data() ?? <String, dynamic>{};
 
           // Extrair dados de cada gateway
-          final mp = (data['mp'] as Map<String, dynamic>?) ?• {};
+          final mp = (data['mp'] as Map<String, dynamic>?) ?? {};
           final connectedMp = mp['connected'] == true;
-          final userIdMp = (mp['user_id'] ?• '').toString();
-          final publicKeyMp = (mp['public_key'] ?• '').toString();
+          final userIdMp = (mp['user_id'] ?? '').toString();
+          final publicKeyMp = (mp['public_key'] ?? '').toString();
 
           // Mantido para quando reativar gateways (PagSeguro, Ton, InfinitePay)
-          final pagseguro = (data['pagseguro'] as Map<String, dynamic>?) ?• {};
-          final pagseguroToken = (pagseguro['token'] ?• '').toString();
-          final pagseguroSellerId = (pagseguro['seller_id'] ?• '').toString();
+          final pagseguro = (data['pagseguro'] as Map<String, dynamic>?) ?? {};
+          final pagseguroToken = (pagseguro['token'] ?? '').toString();
+          final pagseguroSellerId = (pagseguro['seller_id'] ?? '').toString();
           // ignore: unused_local_variable
           final pagseguroConfigured = pagseguroToken.isNotEmpty;
 
-          final ton = (data['ton'] as Map<String, dynamic>?) ?• {};
-          final tonClientId = (ton['client_id'] ?• '').toString();
-          final tonClientSecret = (ton['client_secret'] ?• '').toString();
+          final ton = (data['ton'] as Map<String, dynamic>?) ?? {};
+          final tonClientId = (ton['client_id'] ?? '').toString();
+          final tonClientSecret = (ton['client_secret'] ?? '').toString();
           // ignore: unused_local_variable
           final tonConfigured = tonClientId.isNotEmpty;
 
-          final infinit = (data['infinitpay'] as Map<String, dynamic>?) ?• {};
-          final infinitApiKey = (infinit['api_key'] ?• '').toString();
-          final infinitMerchantId = (infinit['merchant_id'] ?• '').toString();
+          final infinit = (data['infinitpay'] as Map<String, dynamic>?) ?? {};
+          final infinitApiKey = (infinit['api_key'] ?? '').toString();
+          final infinitMerchantId = (infinit['merchant_id'] ?? '').toString();
           // ignore: unused_local_variable
           final infinitConfigured = infinitApiKey.isNotEmpty;
 
-          final checkout = (data['checkout'] as Map<String, dynamic>?) ?• {};
+          final checkout = (data['checkout'] as Map<String, dynamic>?) ?? {};
           final checkoutGatewayRaw =
-              (checkout['gateway'] ?• checkout['gatewayPadrao'] ?• 'whatsapp')
+              (checkout['gateway'] ?? checkout['gatewayPadrao'] ?? 'whatsapp')
                   .toString();
           final pixKey =
-              (checkout['pixKey'] ?• checkout['chavePix'] ?• '').toString();
+              (checkout['pixKey'] ?? checkout['chavePix'] ?? '').toString();
           final jurosParcelamento =
-              (checkout['jurosParcelamento'] ?• 1.99).toString();
-          final maxParcelas = (checkout['maxParcelas'] ?• 12).toString();
+              (checkout['jurosParcelamento'] ?? 1.99).toString();
+          final maxParcelas = (checkout['maxParcelas'] ?? 12).toString();
 
           // Preencher controllers
           void setIfEmpty(TextEditingController c, String v) {
@@ -755,7 +755,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                       IconButton(
                         icon: const Icon(Icons.cloud_sync_outlined, color: Colors.white),
                         tooltip: 'Sincronizar tudo',
-                        onPressed: _lojaId == null • null : _sincronizarTudo,
+                        onPressed: _lojaId == null ? null : _sincronizarTudo,
                       ),
                     if (_publicando)
                       const Padding(
@@ -773,7 +773,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                       IconButton(
                         icon: const Icon(Icons.cloud_upload_outlined, color: Colors.white),
                         tooltip: 'Publicar catálogo',
-                        onPressed: _lojaId == null • null : _publicarCatalogo,
+                        onPressed: _lojaId == null ? null : _publicarCatalogo,
                       ),
                     const SizedBox(width: 8),
                   ],
@@ -870,10 +870,10 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                             'https://www.mercadopago.com.br/developers/panel/app',
                           ),
                           onTest: connectedMp
-                              • () => _validarGateway('mercadopago')
+                              ? () => _validarGateway('mercadopago')
                               : null,
                           onDisconnect: connectedMp
-                              • () async {
+                              ? () async {
                                   await PagamentosService.desconectarLoja(
                                       _lojaId!);
                                   if (!mounted) return;
@@ -959,7 +959,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                         //     'https://pagseguro.uol.com.br/preferencias/integracoes.jhtml',
                         //   ),
                         //   onTest: pagseguroConfigured
-                        //       • () => _validarGateway('pagseguro')
+                        //       ? () => _validarGateway('pagseguro')
                         //       : null,
                         //   formContent: Column(
                         //     children: [
@@ -1016,7 +1016,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                         //   onCredentials: () =>
                         //       _abrirUrl('https://www.ton.com.br/desenvolvedores'),
                         //   onTest: tonConfigured
-                        //       • () => _validarGateway('ton')
+                        //       ? () => _validarGateway('ton')
                         //       : null,
                         //   formContent: Column(
                         //     children: [
@@ -1075,7 +1075,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                         //   onCredentials: () =>
                         //       _abrirUrl('https://www.infinitepay.io'),
                         //   onTest: infinitConfigured
-                        //       • () => _validarGateway('infinitepay')
+                        //       ? () => _validarGateway('infinitepay')
                         //       : null,
                         //   formContent: Column(
                         //     children: [
@@ -1210,12 +1210,12 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
     required IconData icone,
     required Color cor,
     required bool isConnected,
-    String• userId,
+    String? userId,
     required VoidCallback onGuide,
     required VoidCallback onOpenPanel,
     required VoidCallback onCredentials,
-    VoidCallback• onTest,
-    VoidCallback• onDisconnect,
+    VoidCallback? onTest,
+    VoidCallback? onDisconnect,
     required Widget formContent,
   }) {
     return Container(
@@ -1279,7 +1279,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isConnected
-                        • successColor.withValues(alpha:0.1)
+                        ? successColor.withValues(alpha:0.1)
                         : Colors.grey.withValues(alpha:0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
@@ -1288,18 +1288,18 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                     children: [
                       Icon(
                         isConnected
-                            • Icons.check_circle
+                            ? Icons.check_circle
                             : Icons.circle_outlined,
                         size: 14,
-                        color: isConnected • successColor : Colors.grey,
+                        color: isConnected ? successColor : Colors.grey,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        isConnected • 'Ativo' : 'Inativo',
+                        isConnected ? 'Ativo' : 'Inativo',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: isConnected • successColor : Colors.grey,
+                          color: isConnected ? successColor : Colors.grey,
                         ),
                       ),
                     ],
@@ -1401,8 +1401,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
   Widget _buildModernTextField({
     required TextEditingController controller,
     required String label,
-    IconData• icon,
-    String• hint,
+    IconData? icon,
+    String? hint,
     bool obscureText = false,
   }) {
     return Container(
@@ -1419,7 +1419,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
           labelText: label,
           hintText: hint,
           prefixIcon:
-              icon != null • Icon(icon, color: primaryColor, size: 20) : null,
+              icon != null ? Icon(icon, color: primaryColor, size: 20) : null,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -1597,7 +1597,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
   Widget _buildGatewayChip(String label, String value, IconData icon) {
     final selected = _gatewayPadrao == value;
     return Material(
-      color: selected • primaryColor : Colors.grey[100],
+      color: selected ? primaryColor : Colors.grey[100],
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: () => setState(() => _gatewayPadrao = value),
@@ -1610,7 +1610,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
               Icon(
                 icon,
                 size: 18,
-                color: selected • Colors.white : Colors.grey[600],
+                color: selected ? Colors.white : Colors.grey[600],
               ),
               const SizedBox(width: 8),
               Text(
@@ -1618,7 +1618,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: selected • Colors.white : Colors.grey[700],
+                  color: selected ? Colors.white : Colors.grey[700],
                 ),
               ),
             ],
@@ -1647,9 +1647,9 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
 
   Future<void> _salvarCheckout() async {
     final jurosVal =
-        double.tryParse(_jurosParcelamentoCtrl.text.trim()) ?• 1.99;
+        double.tryParse(_jurosParcelamentoCtrl.text.trim()) ?? 1.99;
     final maxParcelas =
-        (int.tryParse(_maxParcelasCtrl.text.trim()) ?• 12).clamp(1, 24);
+        (int.tryParse(_maxParcelasCtrl.text.trim()) ?? 12).clamp(1, 24);
     final checkoutData = {
       'gateway': _gatewayPadrao,
       'gatewayPadrao': _gatewayPadrao,

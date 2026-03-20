@@ -42,9 +42,9 @@ class CatalogoSyncService {
   }
 
   static String _collectionName(SyncTarget t) =>
-      t == SyncTarget.draft • 'draft_produtos' : 'produtos';
+      t == SyncTarget.draft ? 'draft_produtos' : 'produtos';
 
-  static String• _extFromMime(String• mime) {
+  static String? _extFromMime(String? mime) {
     if (mime == null) return null;
     final m = mime.toLowerCase();
     if (m.contains('png')) return '.png';
@@ -53,7 +53,7 @@ class CatalogoSyncService {
     return null;
   }
 
-  static String• _mimeFromExt(String ext) {
+  static String? _mimeFromExt(String ext) {
     final e = ext.toLowerCase();
     if (e.endsWith('.png')) return 'image/png';
     if (e.endsWith('.jpg') || e.endsWith('.jpeg')) return 'image/jpeg';
@@ -64,7 +64,7 @@ class CatalogoSyncService {
   // ===============================================================
   // LojaId resolver (✅ evita "loja diferente")
   // ===============================================================
-static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
+static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   if (lojaIdOverride != null && lojaIdOverride.trim().isNotEmpty) {
     return lojaIdOverride.trim();
   }
@@ -82,7 +82,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
   static Future<String> _uploadIfLocal(
     String pathStr, {
     required String lojaId,
-    String• docIdForPath,
+    String? docIdForPath,
   }) async {
     if (pathStr.trim().isEmpty) return '';
     final trimmed = pathStr.trim();
@@ -100,10 +100,10 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
         if (data == null) return '';
 
         final bytes = Uint8List.fromList(data.contentAsBytes());
-        final ext = _extFromMime(data.mimeType) ?• '.jpg';
+        final ext = _extFromMime(data.mimeType) ?? '.jpg';
         final name = '${DateTime.now().millisecondsSinceEpoch}$ext';
 
-        final dest = 'lojas/$lojaId/produtos/${docIdForPath ?• "img"}/$name';
+        final dest = 'lojas/$lojaId/produtos/${docIdForPath ?? "img"}/$name';
 
         final ref = _storage.ref(dest);
         await ref.putData(
@@ -125,7 +125,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
         final bytes = await blob_fetch.fetchBlobUrlAsBytes(trimmed);
         if (bytes == null || bytes.isEmpty) return '';
         final name = '${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final dest = 'lojas/$lojaId/produtos/${docIdForPath ?• "img"}/$name';
+        final dest = 'lojas/$lojaId/produtos/${docIdForPath ?? "img"}/$name';
         final ref = _storage.ref(dest);
         await ref.putData(
           bytes,
@@ -147,7 +147,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
     final name = p.basename(trimmed);
     final ext = p.extension(name);
     final dest =
-        'lojas/$lojaId/produtos/${docIdForPath ?• "img"}/${DateTime.now().millisecondsSinceEpoch}_$name';
+        'lojas/$lojaId/produtos/${docIdForPath ?? "img"}/${DateTime.now().millisecondsSinceEpoch}_$name';
 
     final pf = PlatformFile(
       name: name,
@@ -160,7 +160,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
         platformFile: pf,
         storagePath: dest,
         metadata: SettableMetadata(
-          contentType: _mimeFromExt(ext) ?• 'image/jpeg',
+          contentType: _mimeFromExt(ext) ?? 'image/jpeg',
           cacheControl: 'public,max-age=31536000,immutable',
         ),
       ),
@@ -194,8 +194,8 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
     }
 
     final slug =
-        pdt.slug.trim().isNotEmpty • pdt.slug.trim() : slugify(pdt.nome);
-    final principal = imgs.isNotEmpty • imgs.first : '';
+        pdt.slug.trim().isNotEmpty ? pdt.slug.trim() : slugify(pdt.nome);
+    final principal = imgs.isNotEmpty ? imgs.first : '';
     final preco = pdt.precoFinal.toDouble();
     // Preço por variação (opcional): se tiver, catálogo exibe faixa "R$ X a R$ Y"
     double priceMin = preco;
@@ -203,8 +203,8 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
     if (pdt.precoPorTamanho != null && pdt.precoPorTamanho!.isNotEmpty) {
       final precos = pdt.precoPorTamanho!.values.where((v) => v > 0).toList();
       if (precos.isNotEmpty) {
-        priceMin = precos.reduce((a, b) => a < b • a : b);
-        priceMax = precos.reduce((a, b) => a > b • a : b);
+        priceMin = precos.reduce((a, b) => a < b ? a : b);
+        priceMax = precos.reduce((a, b) => a > b ? a : b);
       }
     }
 
@@ -234,7 +234,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
       'qtdEstoque': pdt.quantidade,
       'tamanhos': pdt.tamanhos,
       'estoquePorTamanho': pdt.estoquePorTamanho,
-      'estoquePorCor': pdt.temVariacaoSoloCor • pdt.estoquePorCor : null,
+      'estoquePorCor': pdt.temVariacaoSoloCor ? pdt.estoquePorCor : null,
       'cores': pdt.cores,
       'variacoes': pdt.variacoes,
       if (pdt.precoPorTamanho != null && pdt.precoPorTamanho!.isNotEmpty)
@@ -313,12 +313,12 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
     bool removerSeSemEstoque = false,
 
     // ✅ força loja correta quando você já tem ela (LojaConfig / Admin etc)
-    String• lojaIdOverride,
+    String? lojaIdOverride,
   }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
 
     final docId =
-        (pdt.slug.trim().isNotEmpty • pdt.slug : slugify(pdt.nome)).trim();
+        (pdt.slug.trim().isNotEmpty ? pdt.slug : slugify(pdt.nome)).trim();
 
     final publicado = pdt.publicadoNoCatalogo == true;
     // Combo: quantidade = quantos combos disponíveis; produto simples: quantidade em estoque
@@ -327,7 +327,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
         (pdt.ehCombo && publicado && pdt.quantidade >= 0);
 
     final deveExistir = target == SyncTarget.draft
-        • estoqueOk
+        ? estoqueOk
         : (publicado && estoqueOk);
 
     if (kDebugMode) {
@@ -359,7 +359,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
     bool removerSeSemEstoque = false,
 
     // ✅ força loja correta
-    String• lojaIdOverride,
+    String? lojaIdOverride,
   }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
 
@@ -374,7 +374,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
 
     for (final pdt in box.values) {
       final docId =
-          (pdt.slug.trim().isNotEmpty • pdt.slug : slugify(pdt.nome)).trim();
+          (pdt.slug.trim().isNotEmpty ? pdt.slug : slugify(pdt.nome)).trim();
 
       final publicado = pdt.publicadoNoCatalogo == true;
       final estoqueOk = !removerSeSemEstoque ||
@@ -421,10 +421,10 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
   // ===============================================================
   // Atalhos
   // ===============================================================
-  static Future<void> pushAllToDraft({String• lojaIdOverride}) =>
+  static Future<void> pushAllToDraft({String? lojaIdOverride}) =>
       syncAll(target: SyncTarget.draft, lojaIdOverride: lojaIdOverride);
 
-  static Future<void> pushAllToLive({String• lojaIdOverride}) =>
+  static Future<void> pushAllToLive({String? lojaIdOverride}) =>
       syncAll(
         target: SyncTarget.live,
         removerSeSemEstoque: true, // ✅ Remove produtos sem estoque do catálogo LIVE
@@ -441,7 +441,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
     Produto produto, {
     SyncTarget target = SyncTarget.draft,
     bool removerSeSemEstoque = false,
-    String• lojaIdOverride,
+    String? lojaIdOverride,
   }) async {
     await syncProduto(
       produto,
@@ -456,7 +456,7 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
   static Future<void> removeBySlug(
     String slugOuNome, {
     SyncTarget target = SyncTarget.live,
-    String• lojaIdOverride,
+    String? lojaIdOverride,
   }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
     final docId = slugify(slugOuNome);
@@ -486,14 +486,14 @@ static Future<String> _resolveLojaId([String• lojaIdOverride]) async {
   static Future<void> removeProdutoFromFirestore(
     Produto pdt, {
     required SyncTarget target,
-    String• lojaIdOverride,
+    String? lojaIdOverride,
   }) async {
     try {
       final lojaId = await _resolveLojaId(lojaIdOverride);
       final colName = _collectionName(target);
 
       final docId =
-          (pdt.slug.trim().isNotEmpty • pdt.slug : slugify(pdt.nome)).trim();
+          (pdt.slug.trim().isNotEmpty ? pdt.slug : slugify(pdt.nome)).trim();
 
       await _db.collection('lojas').doc(lojaId).collection(colName).doc(docId).delete();
 

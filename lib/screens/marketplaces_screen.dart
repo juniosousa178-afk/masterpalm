@@ -16,10 +16,10 @@ class MarketplacesScreen extends StatefulWidget {
 class _MarketplacesScreenState extends State<MarketplacesScreen> {
   bool _loading = true;
   Map<String, dynamic> _config = {};
-  String• _lojaId;
+  String? _lojaId;
 
   /// Loading por marketplace (não bloqueia a tela inteira)
-  String• _loadingMarketplace;
+  String? _loadingMarketplace;
 
   /// Última sincronização por marketplace
   final Map<String, DateTime?> _ultimaSincronizacao = {};
@@ -97,23 +97,23 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
   }
 
   void _preencherControllers() {
-    final tiktok = _config['tiktok_shop'] as Map<String, dynamic>• ?• {};
-    _tiktokAppKeyController.text = tiktok['app_key'] ?• '';
-    _tiktokAppSecretController.text = tiktok['app_secret'] ?• '';
-    _tiktokAccessTokenController.text = tiktok['access_token'] ?• '';
-    _tiktokShopIdController.text = tiktok['shop_id'] ?• '';
+    final tiktok = _config['tiktok_shop'] as Map<String, dynamic>? ?? {};
+    _tiktokAppKeyController.text = tiktok['app_key'] ?? '';
+    _tiktokAppSecretController.text = tiktok['app_secret'] ?? '';
+    _tiktokAccessTokenController.text = tiktok['access_token'] ?? '';
+    _tiktokShopIdController.text = tiktok['shop_id'] ?? '';
 
-    final ml = _config['mercado_livre'] as Map<String, dynamic>• ?• {};
-    _mlClientIdController.text = ml['client_id'] ?• '';
-    _mlClientSecretController.text = ml['client_secret'] ?• '';
-    _mlAccessTokenController.text = ml['access_token'] ?• '';
-    _mlRefreshTokenController.text = ml['refresh_token'] ?• '';
+    final ml = _config['mercado_livre'] as Map<String, dynamic>? ?? {};
+    _mlClientIdController.text = ml['client_id'] ?? '';
+    _mlClientSecretController.text = ml['client_secret'] ?? '';
+    _mlAccessTokenController.text = ml['access_token'] ?? '';
+    _mlRefreshTokenController.text = ml['refresh_token'] ?? '';
 
-    final shopee = _config['shopee'] as Map<String, dynamic>• ?• {};
-    _shopeePartnerIdController.text = shopee['partner_id'] ?• '';
-    _shopeePartnerKeyController.text = shopee['partner_key'] ?• '';
-    _shopeeShopIdController.text = shopee['shop_id'] ?• '';
-    _shopeeAccessTokenController.text = shopee['access_token'] ?• '';
+    final shopee = _config['shopee'] as Map<String, dynamic>? ?? {};
+    _shopeePartnerIdController.text = shopee['partner_id'] ?? '';
+    _shopeePartnerKeyController.text = shopee['partner_key'] ?? '';
+    _shopeeShopIdController.text = shopee['shop_id'] ?? '';
+    _shopeeAccessTokenController.text = shopee['access_token'] ?? '';
   }
 
   String _mensagemAmigavel(dynamic e) {
@@ -143,7 +143,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
   }
 
   /// Valida campos obrigatórios antes de salvar
-  String• _validarAntesDeSalvar() {
+  String? _validarAntesDeSalvar() {
     final tiktokAtivo = _tiktokAppKeyController.text.trim().isNotEmpty;
     if (tiktokAtivo) {
       if (_tiktokAppSecretController.text.trim().isEmpty) return 'TikTok: App Secret é obrigatório';
@@ -259,9 +259,9 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
 
       if (!mounted) return;
       if (resultado['success'] == true) {
-        _mostrarSucesso(resultado['message'] ?• 'Conexão OK!');
+        _mostrarSucesso(resultado['message'] ?? 'Conexão OK!');
       } else {
-        _mostrarErro(resultado['error'] ?• 'Falha na conexão');
+        _mostrarErro(resultado['error'] ?? 'Falha na conexão');
       }
     } catch (e) {
       if (mounted) _mostrarErro(_mensagemAmigavel(e));
@@ -313,9 +313,9 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
       _ultimaSincronizacao[marketplace] = DateTime.now();
 
       if (resultado['success'] == true) {
-        final total = resultado['total'] ?• 0;
-        final sincronizados = resultado['sincronizados'] ?• 0;
-        final erros = resultado['erros'] ?• 0;
+        final total = resultado['total'] ?? 0;
+        final sincronizados = resultado['sincronizados'] ?? 0;
+        final erros = resultado['erros'] ?? 0;
 
         showDialog(
           context: context,
@@ -335,7 +335,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
           ),
         );
       } else {
-        _mostrarErro(resultado['error'] ?• 'Erro na sincronização');
+        _mostrarErro(resultado['error'] ?? 'Erro na sincronização');
       }
     } catch (e) {
       if (mounted) _mostrarErro(_mensagemAmigavel(e));
@@ -359,13 +359,13 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
         border: const OutlineInputBorder(),
         prefixIcon: Icon(icon),
         suffixIcon: obscureDefault
-            • IconButton(
-                icon: Icon(obscure • Icons.visibility : Icons.visibility_off),
+            ? IconButton(
+                icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
                 onPressed: () => setState(() => _mostrarTokens = !_mostrarTokens),
               )
             : null,
       ),
-      maxLines: obscure • 1 : 3,
+      maxLines: obscure ? 1 : 3,
     );
   }
 
@@ -384,7 +384,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
         ],
       ),
       body: _loading
-          • const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -396,7 +396,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
                     children: [
                       Checkbox(
                         value: _mostrarTokens,
-                        onChanged: (v) => setState(() => _mostrarTokens = v ?• false),
+                        onChanged: (v) => setState(() => _mostrarTokens = v ?? false),
                       ),
                       const Text('Mostrar tokens sensíveis'),
                     ],
@@ -437,10 +437,10 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
             ),
             const SizedBox(height: 12),
             const Text(
-              '• Configure os tokens/credenciais de cada marketplace\n'
-              '• Use "Testar conexão" para validar antes de salvar\n'
-              '• Sincronize seus produtos automaticamente\n'
-              '• Gerencie estoque em todos os marketplaces',
+              '? Configure os tokens/credenciais de cada marketplace\n'
+              '? Use "Testar conexão" para validar antes de salvar\n'
+              '? Sincronize seus produtos automaticamente\n'
+              '? Gerencie estoque em todos os marketplaces',
               style: TextStyle(fontSize: 14),
             ),
           ],
@@ -450,7 +450,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
   }
 
   Widget _buildTikTokShopSection() {
-    final tiktok = _config['tiktok_shop'] as Map<String, dynamic>• ?• {};
+    final tiktok = _config['tiktok_shop'] as Map<String, dynamic>? ?? {};
     final ativo = tiktok['ativo'] == true;
     final loading = _loadingMarketplace == 'tiktok';
     final ultima = _ultimaSincronizacao['tiktok'];
@@ -462,7 +462,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(ativo • '✅ Configurado' : '⚠️ Não configurado', style: TextStyle(color: ativo • Colors.green : Colors.orange)),
+            Text(ativo ? '✅ Configurado' : '⚠️ Não configurado', style: TextStyle(color: ativo ? Colors.green : Colors.orange)),
             if (ultima != null)
               Text(
                 'Última sync: ${ultima.hour.toString().padLeft(2, '0')}:${ultima.minute.toString().padLeft(2, '0')}',
@@ -511,15 +511,15 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: (ativo && !loading) • () => _testarConexao('tiktok') : null,
-                        icon: loading • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
-                        label: Text(loading • 'Testando...' : 'Testar conexão'),
+                        onPressed: (ativo && !loading) ? () => _testarConexao('tiktok') : null,
+                        icon: loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
+                        label: Text(loading ? 'Testando...' : 'Testar conexão'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: (ativo && !loading) • () => _sincronizarProdutos('tiktok') : null,
+                        onPressed: (ativo && !loading) ? () => _sincronizarProdutos('tiktok') : null,
                         icon: const Icon(Icons.sync),
                         label: const Text('Sincronizar'),
                       ),
@@ -579,7 +579,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
   }
 
   Widget _buildMercadoLivreSection() {
-    final ml = _config['mercado_livre'] as Map<String, dynamic>• ?• {};
+    final ml = _config['mercado_livre'] as Map<String, dynamic>? ?? {};
     final ativo = ml['ativo'] == true;
     final loading = _loadingMarketplace == 'mercadolivre';
     final ultima = _ultimaSincronizacao['mercadolivre'];
@@ -591,7 +591,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(ativo • '✅ Configurado' : '⚠️ Não configurado', style: TextStyle(color: ativo • Colors.green : Colors.orange)),
+            Text(ativo ? '✅ Configurado' : '⚠️ Não configurado', style: TextStyle(color: ativo ? Colors.green : Colors.orange)),
             if (ultima != null)
               Text('Última sync: ${ultima.hour.toString().padLeft(2, '0')}:${ultima.minute.toString().padLeft(2, '0')}', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ],
@@ -623,15 +623,15 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: (ativo && !loading) • () => _testarConexao('mercadolivre') : null,
-                        icon: loading • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
-                        label: Text(loading • 'Testando...' : 'Testar conexão'),
+                        onPressed: (ativo && !loading) ? () => _testarConexao('mercadolivre') : null,
+                        icon: loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
+                        label: Text(loading ? 'Testando...' : 'Testar conexão'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: (ativo && !loading) • () => _sincronizarProdutos('mercadolivre') : null,
+                        onPressed: (ativo && !loading) ? () => _sincronizarProdutos('mercadolivre') : null,
                         icon: const Icon(Icons.sync),
                         label: const Text('Sincronizar'),
                       ),
@@ -690,7 +690,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
   }
 
   Widget _buildShopeeSection() {
-    final shopee = _config['shopee'] as Map<String, dynamic>• ?• {};
+    final shopee = _config['shopee'] as Map<String, dynamic>? ?? {};
     final ativo = shopee['ativo'] == true;
     final loading = _loadingMarketplace == 'shopee';
     final ultima = _ultimaSincronizacao['shopee'];
@@ -702,7 +702,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(ativo • '✅ Configurado' : '⚠️ Não configurado', style: TextStyle(color: ativo • Colors.green : Colors.orange)),
+            Text(ativo ? '✅ Configurado' : '⚠️ Não configurado', style: TextStyle(color: ativo ? Colors.green : Colors.orange)),
             if (ultima != null)
               Text('Última sync: ${ultima.hour.toString().padLeft(2, '0')}:${ultima.minute.toString().padLeft(2, '0')}', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           ],
@@ -739,15 +739,15 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: (ativo && !loading) • () => _testarConexao('shopee') : null,
-                        icon: loading • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
-                        label: Text(loading • 'Testando...' : 'Testar conexão'),
+                        onPressed: (ativo && !loading) ? () => _testarConexao('shopee') : null,
+                        icon: loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.wifi_tethering),
+                        label: Text(loading ? 'Testando...' : 'Testar conexão'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: (ativo && !loading) • () => _sincronizarProdutos('shopee') : null,
+                        onPressed: (ativo && !loading) ? () => _sincronizarProdutos('shopee') : null,
                         icon: const Icon(Icons.sync),
                         label: const Text('Sincronizar'),
                       ),
@@ -828,15 +828,15 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
       leading: Text(emoji, style: const TextStyle(fontSize: 24)),
       title: Text(nome),
       trailing: Chip(
-        label: Text(ativo • 'Ativo' : 'Em breve'),
-        backgroundColor: ativo • Colors.green.shade100 : Colors.grey.shade200,
+        label: Text(ativo ? 'Ativo' : 'Em breve'),
+        backgroundColor: ativo ? Colors.green.shade100 : Colors.grey.shade200,
       ),
     );
   }
 
   Widget _buildBotaoSalvar() {
     return ElevatedButton.icon(
-      onPressed: _loading • null : _salvar,
+      onPressed: _loading ? null : _salvar,
       icon: const Icon(Icons.save),
       label: const Text('SALVAR CONFIGURAÇÕES'),
       style: ElevatedButton.styleFrom(

@@ -40,9 +40,9 @@ class CampanhaMotor {
     };
   }
 
-  CampanhaMotor copyWith({String• id}) {
+  CampanhaMotor copyWith({String? id}) {
     return CampanhaMotor(
-      id: id ?• this.id,
+      id: id ?? this.id,
       oportunidadeId: oportunidadeId,
       tipoCampanha: tipoCampanha,
       codigoCupom: codigoCupom,
@@ -58,21 +58,21 @@ class CampanhaMotor {
     final data = doc.data() as Map<String, dynamic>;
     final textosRaw = data['textos'];
     final textos = textosRaw is Map
-        • textosRaw.map((k, v) => MapEntry(k.toString(), v.toString()))
+        ? textosRaw.map((k, v) => MapEntry(k.toString(), v.toString()))
         : <String, String>{};
     return CampanhaMotor(
       id: doc.id,
-      oportunidadeId: (data['oportunidadeId'] ?• '').toString(),
-      tipoCampanha: (data['tipoCampanha'] ?• '').toString(),
-      codigoCupom: (data['codigoCupom'] ?• '').toString(),
+      oportunidadeId: (data['oportunidadeId'] ?? '').toString(),
+      tipoCampanha: (data['tipoCampanha'] ?? '').toString(),
+      codigoCupom: (data['codigoCupom'] ?? '').toString(),
       percentualDesconto: (data['percentualDesconto'] is num)
-          • (data['percentualDesconto'] as num).toDouble()
+          ? (data['percentualDesconto'] as num).toDouble()
           : 0.0,
-      linkPromocao: (data['linkPromocao'] ?• '').toString(),
+      linkPromocao: (data['linkPromocao'] ?? '').toString(),
       textos: textos,
-      status: (data['status'] ?• 'criada').toString(),
+      status: (data['status'] ?? 'criada').toString(),
       criadoEm: data['criadoEm'] != null
-          • (data['criadoEm'] as Timestamp).toDate()
+          ? (data['criadoEm'] as Timestamp).toDate()
           : DateTime.now(),
     );
   }

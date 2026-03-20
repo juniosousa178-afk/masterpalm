@@ -17,7 +17,7 @@ class SubcategoriasScreen extends StatefulWidget {
 
 class _SubcategoriasScreenState extends State<SubcategoriasScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-  String• _lojaId;
+  String? _lojaId;
   List<Subcategoria> _subcategorias = [];
   bool _loading = true;
 
@@ -115,7 +115,7 @@ class _SubcategoriasScreenState extends State<SubcategoriasScreen> {
   Future<void> _saveSubcategoria({
     required String nome,
     required String categoriaId,
-    String• icone,
+    String? icone,
   }) async {
     try {
       final novaSubcategoria = Subcategoria(
@@ -139,7 +139,7 @@ class _SubcategoriasScreenState extends State<SubcategoriasScreen> {
             .add({
           'nome': nome,
           'categoriaId': categoriaId,
-          'icone': icone ?• '',
+          'icone': icone ?? '',
           'ativa': true,
           'dataCriacao': FieldValue.serverTimestamp(),
         });
@@ -296,9 +296,9 @@ class _SubcategoriasScreenState extends State<SubcategoriasScreen> {
         ],
       ),
       body: _loading
-          • const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : _subcategorias.isEmpty
-              • Center(
+              ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -331,10 +331,10 @@ class _SubcategoriasScreenState extends State<SubcategoriasScreen> {
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: sub.ativa
-                              • Colors.deepPurple.shade100
+                              ? Colors.deepPurple.shade100
                               : Colors.grey.shade300,
                           child: Text(
-                            sub.icone ?• '📁',
+                            sub.icone ?? '📁',
                             style: const TextStyle(fontSize: 20),
                           ),
                         ),
@@ -342,7 +342,7 @@ class _SubcategoriasScreenState extends State<SubcategoriasScreen> {
                           sub.nome,
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            decoration: sub.ativa • null : TextDecoration.lineThrough,
+                            decoration: sub.ativa ? null : TextDecoration.lineThrough,
                           ),
                         ),
                         subtitle: Text('Categoria: ${sub.categoriaId}'),

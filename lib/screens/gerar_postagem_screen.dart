@@ -33,17 +33,17 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
   final _publicoCtrl = TextEditingController();
 
   String _modo = 'produto'; // produto | produto_parado | campanha
-  String• _sugestaoParadoNome;
+  String? _sugestaoParadoNome;
   bool _loadingSugestao = false;
   bool _gerando = false;
-  String• _erro;
-  String• _legendaInstagram;
-  String• _legendaCurta;
-  String• _mensagemWhatsApp;
-  String• _chamadaPromocional;
+  String? _erro;
+  String? _legendaInstagram;
+  String? _legendaCurta;
+  String? _mensagemWhatsApp;
+  String? _chamadaPromocional;
 
   List<Produto> _produtos = [];
-  TextEditingController• _autocompleteController;
+  TextEditingController? _autocompleteController;
 
   @override
   void initState() {
@@ -100,7 +100,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
     setState(() => _loadingSugestao = true);
     try {
       final result = await DashboardInsightsService.loadInsights(lojaId: lojaId);
-      String• nomeParado;
+      String? nomeParado;
       for (final i in result.insights) {
         if (i.type == DashboardInsightType.produtoParado && i.data != null && i.data!['nome'] != null) {
           nomeParado = i.data!['nome']?.toString().trim();
@@ -122,7 +122,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
   String get _precoTexto {
     final p = _precoCtrl.text.trim().replaceAll(',', '.');
     final v = double.tryParse(p);
-    if (v == null) return _precoCtrl.text.trim().isEmpty • '' : _precoCtrl.text.trim();
+    if (v == null) return _precoCtrl.text.trim().isEmpty ? '' : _precoCtrl.text.trim();
     return 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
   }
 
@@ -145,7 +145,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
     }
 
     String nome = _nome;
-    if (_modo == 'produto_parado' && (_sugestaoParadoNome ?• '').isNotEmpty) {
+    if (_modo == 'produto_parado' && (_sugestaoParadoNome ?? '').isNotEmpty) {
       nome = _sugestaoParadoNome!;
       _nomeCtrl.text = nome;
     }
@@ -171,39 +171,39 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
     final precoTexto = _precoTexto;
 
     try {
-      String• legendaIg;
-      String• legendaCurta;
-      String• msgWa;
-      String• chamada;
+      String? legendaIg;
+      String? legendaCurta;
+      String? msgWa;
+      String? chamada;
 
-      if (_modo == 'produto_parado' && (_sugestaoParadoNome ?• '').isNotEmpty) {
+      if (_modo == 'produto_parado' && (_sugestaoParadoNome ?? '').isNotEmpty) {
         try {
           final sugestao = await AiLojaService.sugerirPromocaoEstoqueParado(
             produtos: [{'nome': _sugestaoParadoNome}],
           );
           if (sugestao.trim().isNotEmpty) {
             msgWa = sugestao;
-            chamada = sugestao.length > 80 • '${sugestao.substring(0, 77)}…' : sugestao;
+            chamada = sugestao.length > 80 ? '${sugestao.substring(0, 77)}…' : sugestao;
           }
         } catch (_) {
           msgWa = _fallbackMensagemWhatsApp(nome, precoTexto);
           chamada = _fallbackChamadaPromo(nome);
         }
         try {
-          legendaIg = await AiLojaService.sugerirLegendaInstagram(produtoNome: nome, descricao: descricao.isNotEmpty • descricao : null);
+          legendaIg = await AiLojaService.sugerirLegendaInstagram(produtoNome: nome, descricao: descricao.isNotEmpty ? descricao : null);
         } catch (_) {
           legendaIg = _fallbackLegenda(nome);
         }
         final legenda = legendaIg;
-        legendaCurta = legenda.length > 80 • '${legenda.substring(0, 77)}…' : legenda;
+        legendaCurta = legenda.length > 80 ? '${legenda.substring(0, 77)}…' : legenda;
       } else {
         try {
-          legendaIg = await AiLojaService.sugerirLegendaInstagram(produtoNome: nome, descricao: descricao.isNotEmpty • descricao : null);
+          legendaIg = await AiLojaService.sugerirLegendaInstagram(produtoNome: nome, descricao: descricao.isNotEmpty ? descricao : null);
         } catch (_) {
           legendaIg = _fallbackLegenda(nome);
         }
         final legenda = legendaIg;
-        legendaCurta = legenda.length > 80 • '${legenda.substring(0, 77)}…' : legenda;
+        legendaCurta = legenda.length > 80 ? '${legenda.substring(0, 77)}…' : legenda;
 
         try {
           final contexto = [
@@ -215,7 +215,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
           ].join(' | ');
           msgWa = await AiLojaService.sugerirMensagemWhatsApp(
             tipo: 'promocao',
-            contexto: contexto.isEmpty • nome : '$nome — $contexto',
+            contexto: contexto.isEmpty ? nome : '$nome — $contexto',
           );
         } catch (_) {
           msgWa = _fallbackMensagemWhatsApp(nome, precoTexto);
@@ -227,7 +227,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
         IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
         setState(() {
           _legendaInstagram = legendaIg;
-          _legendaCurta = legendaCurta ?• legendaIg;
+          _legendaCurta = legendaCurta ?? legendaIg;
           _mensagemWhatsApp = msgWa;
           _chamadaPromocional = chamada;
           _gerando = false;
@@ -252,7 +252,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
   }
 
   static String _fallbackMensagemWhatsApp(String nome, String precoTexto) {
-    final p = precoTexto.isEmpty • '' : ' - $precoTexto';
+    final p = precoTexto.isEmpty ? '' : ' - $precoTexto';
     return 'Olá! Quero te mostrar: $nome$p. Se quiser, já me chame para fazer seu pedido.';
   }
 
@@ -260,7 +260,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
     return 'Promoção: $nome. Aproveite!';
   }
 
-  void _copiar(String• texto) {
+  void _copiar(String? texto) {
     if (texto == null || texto.isEmpty) return;
     Clipboard.setData(ClipboardData(text: texto));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -268,7 +268,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
     );
   }
 
-  Future<void> _abrirWhatsApp(String• texto) async {
+  Future<void> _abrirWhatsApp(String? texto) async {
     if (texto == null || texto.isEmpty) return;
     final uri = Uri.parse('https://wa.me/?text=${CatalogShareService.encodeForWhatsApp(texto)}');
     if (await canLaunchUrl(uri)) {
@@ -352,8 +352,8 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
               _nomeCtrl.text = p.nome;
               _categoriaCtrl.text = p.categoria.trim();
               _precoCtrl.text = (p.precoComPromocao > 0
-                      • p.precoComPromocao
-                      : (p.precoFinal > 0 • p.precoFinal : p.precoUnitario))
+                      ? p.precoComPromocao
+                      : (p.precoFinal > 0 ? p.precoFinal : p.precoUnitario))
                   .toStringAsFixed(2)
                   .replaceAll('.', ',');
               _descricaoCtrl.text = p.descricao.trim();
@@ -436,11 +436,11 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
           ],
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: _gerando • null : _gerar,
+            onPressed: _gerando ? null : _gerar,
             icon: _gerando
-                • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.auto_awesome),
-            label: Text(_gerando • 'Gerando…' : 'Gerar textos'),
+            label: Text(_gerando ? 'Gerando…' : 'Gerar textos'),
             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
           ),
           if (_legendaInstagram != null || _mensagemWhatsApp != null) ...[

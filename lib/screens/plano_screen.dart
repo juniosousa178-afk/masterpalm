@@ -15,7 +15,7 @@ class PlanoScreen extends StatefulWidget {
 class _PlanoScreenState extends State<PlanoScreen> {
   List<Map<String, dynamic>> usuarios = [];
   Map<String, bool> permissoesUsuario = {};
-  String• usuarioSelecionado;
+  String? usuarioSelecionado;
 
   /// Nome amigável para cada chave de permissão
   final Map<String, String> nomesTelas = const {
@@ -53,9 +53,9 @@ class _PlanoScreenState extends State<PlanoScreen> {
           .map((doc) {
             final data = doc.data();
             return {
-              'email': (data['email'] ?• '').toString(),
+              'email': (data['email'] ?? '').toString(),
               'uid': doc.id, // pode ser o próprio e-mail em sua base
-              'tipo': (data['tipo'] ?• 'vendedor').toString(),
+              'tipo': (data['tipo'] ?? 'vendedor').toString(),
             };
           })
           .where((u) =>
@@ -64,7 +64,7 @@ class _PlanoScreenState extends State<PlanoScreen> {
                   u['tipo'] == 'admin' ||
                   u['tipo'] == 'programador'))
           .toList()
-        ..sort((a, b) => (a['email'] ?• '').compareTo(b['email'] ?• ''));
+        ..sort((a, b) => (a['email'] ?? '').compareTo(b['email'] ?? ''));
 
       if (!mounted) return;
       setState(() {
@@ -89,7 +89,7 @@ class _PlanoScreenState extends State<PlanoScreen> {
     if (!mounted) return;
     setState(() {
       permissoesUsuario = {
-        for (final chave in nomesTelas.keys) chave: plano[chave] ?• false,
+        for (final chave in nomesTelas.keys) chave: plano[chave] ?? false,
       };
     });
   }
@@ -99,7 +99,7 @@ class _PlanoScreenState extends State<PlanoScreen> {
     if (usuarioSelecionado == null) return;
 
     try {
-      final userEmail = FirebaseAuth.instance.currentUser?.email ?• '';
+      final userEmail = FirebaseAuth.instance.currentUser?.email ?? '';
       if (userEmail.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -113,7 +113,7 @@ class _PlanoScreenState extends State<PlanoScreen> {
           .collection('usuarios')
           .doc(userEmail)
           .get();
-      final tipoLogado = (doc.data()?['tipo'] ?• 'vendedor').toString();
+      final tipoLogado = (doc.data()?['tipo'] ?? 'vendedor').toString();
 
       if (tipoLogado == 'admin' || tipoLogado == 'programador') {
         await PlanoService.salvarPlano(usuarioSelecionado!, permissoesUsuario);
@@ -172,7 +172,7 @@ class _PlanoScreenState extends State<PlanoScreen> {
                   .map<DropdownMenuItem<String>>((usuario) => DropdownMenuItem(
                         value: usuario['email'],
                         child: Text(
-                          '${usuario['email']}  •  ${usuario['tipo']}',
+                          '${usuario['email']} • ${usuario['tipo']}',
                           style: const TextStyle(color: Colors.white),
                         ),
                       ))
@@ -210,7 +210,7 @@ class _PlanoScreenState extends State<PlanoScreen> {
                               nome,
                               style: const TextStyle(color: Colors.white),
                             ),
-                            value: permissoesUsuario[chave] ?• false,
+                            value: permissoesUsuario[chave] ?? false,
                             onChanged: (value) {
                               setState(() {
                                 permissoesUsuario[chave] = value;

@@ -25,8 +25,8 @@ class GloboSorteService {
     required String numero,
     required String campanhaId,
     required String clienteNome,
-    String• clienteEmail,
-    String• clienteWhatsApp,
+    String? clienteEmail,
+    String? clienteWhatsApp,
     required double valorCompra,
   }) async {
     try {
@@ -80,7 +80,7 @@ class GloboSorteService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['numeros'] ?• []);
+        return List<Map<String, dynamic>>.from(data['numeros'] ?? []);
       } else {
         logE('❌ Erro ao consultar números: ${response.statusCode}');
         return [];
@@ -265,11 +265,11 @@ class NumeroSorte {
   final String numero;
   final String campanhaId;
   final String clienteNome;
-  final String• clienteEmail;
-  final String• clienteWhatsApp;
+  final String? clienteEmail;
+  final String? clienteWhatsApp;
   final double valorCompra;
   final DateTime dataRegistro;
-  final String• globoSorteId; // ID retornado pela API da Globo da Sorte
+  final String? globoSorteId; // ID retornado pela API da Globo da Sorte
 
   NumeroSorte({
     required this.numero,

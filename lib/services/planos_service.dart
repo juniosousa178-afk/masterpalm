@@ -14,7 +14,7 @@ class PlanInfo {
   final String planId;
   final String status;
   final bool trialing;
-  final DateTime• currentPeriodEnd;
+  final DateTime? currentPeriodEnd;
   final bool trialUsed;
   final bool manualOverride;
 
@@ -46,11 +46,11 @@ class PlanInfo {
     return currentPeriodEnd!.isBefore(DateTime.now());
   }
 
-  int• get daysLeft {
+  int? get daysLeft {
     if (isLifetime) return null;
     if (currentPeriodEnd == null) return 0;
     final d = currentPeriodEnd!.difference(DateTime.now()).inDays;
-    return d < 0 • 0 : d;
+    return d < 0 ? 0 : d;
   }
 }
 
@@ -63,7 +63,7 @@ class PlanosService {
   CollectionReference<Map<String, dynamic>> _subsCol(String uid) =>
       _userRef(uid).collection('subscriptions');
 
-  DateTime• _parseEnd(dynamic raw) {
+  DateTime? _parseEnd(dynamic raw) {
     if (raw == null) return null;
     if (raw is Timestamp) return raw.toDate();
     if (raw is String) {
@@ -80,10 +80,10 @@ class PlanosService {
     required String planId,
     required String status,
     required bool trialing,
-    DateTime• currentPeriodEnd,
-    bool• trialUsed,
-    DateTime• trialUsedAt,
-    Map<String, dynamic>• manualOverride,
+    DateTime? currentPeriodEnd,
+    bool? trialUsed,
+    DateTime? trialUsedAt,
+    Map<String, dynamic>? manualOverride,
   }) async {
     try {
       await _userRef(uid).set({
@@ -92,7 +92,7 @@ class PlanosService {
         'status': status,
         'trialing': trialing,
         'currentPeriodEnd':
-            currentPeriodEnd != null • Timestamp.fromDate(currentPeriodEnd) : null,
+            currentPeriodEnd != null ? Timestamp.fromDate(currentPeriodEnd) : null,
         if (trialUsed != null) 'trialUsed': trialUsed,
         if (trialUsedAt != null) 'trialUsedAt': Timestamp.fromDate(trialUsedAt),
         if (manualOverride != null) 'manualOverride': manualOverride,
@@ -126,7 +126,7 @@ class PlanosService {
       final doc = await _userRef(uid).get().timeout(const Duration(seconds: 2));
 
       // 2) Verificar também na collection 'usuarios/{email}' (grants do admin)
-      Map<String, dynamic>• usuarioData;
+      Map<String, dynamic>? usuarioData;
       try {
         final usuarioDoc = await _db.collection('usuarios').doc(email).get()
             .timeout(const Duration(seconds: 2));
@@ -140,7 +140,7 @@ class PlanosService {
         final planoAtivo = usuarioData['planoAtivo'] == true;
 
         if (planoAtivo && (isLifetime || manualOverride)) {
-          final planoId = (usuarioData['planoId'] ?• 'lifetime').toString();
+          final planoId = (usuarioData['planoId'] ?? 'lifetime').toString();
           final end = _parseEnd(usuarioData['currentPeriodEnd']);
 
           return PlanInfo(
@@ -157,7 +157,7 @@ class PlanosService {
       if (!doc.exists) {
         // Fallback: verificar se 'usuarios/{email}' tem algum plano ativo
         if (usuarioData != null && usuarioData['planoAtivo'] == true) {
-          final planoId = (usuarioData['planoId'] ?• '').toString();
+          final planoId = (usuarioData['planoId'] ?? '').toString();
           if (planoId.isNotEmpty) {
             return PlanInfo(
               planId: planoId,
@@ -172,19 +172,19 @@ class PlanosService {
         return null;
       }
 
-    final d = doc.data() ?• const <String, dynamic>{};
+    final d = doc.data() ?? const <String, dynamic>{};
 
-    final mo = (d['manualOverride'] is Map) • (d['manualOverride'] as Map) : null;
+    final mo = (d['manualOverride'] is Map) ? (d['manualOverride'] as Map) : null;
     final moEnabled = mo != null && (mo['enabled'] == true);
 
-    String planId = (d['currentPlanId'] ?• '')?.toString() ?• '';
-    String status = (d['status'] ?• 'active')?.toString() ?• 'active';
-    bool trialing = (d['trialing'] ?• false) == true;
-    DateTime• end = _parseEnd(d['currentPeriodEnd']);
-    final bool trialUsed = (d['trialUsed'] ?• false) == true;
+    String planId = (d['currentPlanId'] ?? '')?.toString() ?? '';
+    String status = (d['status'] ?? 'active')?.toString() ?? 'active';
+    bool trialing = (d['trialing'] ?? false) == true;
+    DateTime? end = _parseEnd(d['currentPeriodEnd']);
+    final bool trialUsed = (d['trialUsed'] ?? false) == true;
 
     if (moEnabled) {
-      planId = (mo['planId'] ?• PlanId.lifetime).toString();
+      planId = (mo['planId'] ?? PlanId.lifetime).toString();
       status = 'active';
       trialing = false;
       end = null; // lifetime
@@ -233,8 +233,8 @@ class PlanosService {
     required String email,
   }) async {
     final userDoc = await _userRef(uid).get();
-    final data = userDoc.data() ?• {};
-    final alreadyUsed = (data['trialUsed'] ?• false) == true;
+    final data = userDoc.data() ?? {};
+    final alreadyUsed = (data['trialUsed'] ?? false) == true;
 
     if (alreadyUsed) {
       throw Exception('TRIAL_ALREADY_USED');
@@ -276,9 +276,9 @@ class PlanosService {
     required String email,
     required String planId, // pro_monthly | pro_yearly
     required DateTime currentPeriodEnd,
-    String• subId,
+    String? subId,
   }) async {
-    final id = subId ?• _subsCol(uid).doc().id;
+    final id = subId ?? _subsCol(uid).doc().id;
 
     await _subsCol(uid).doc(id).set({
       'planId': planId,
@@ -359,7 +359,7 @@ class PlanosService {
       status: 'active',
       trialing: false,
       currentPeriodEnd: planId == PlanId.lifetime
-          • null
+          ? null
           : DateTime.now().add(const Duration(days: 3650)), // fallback longo
       manualOverride: override,
     );

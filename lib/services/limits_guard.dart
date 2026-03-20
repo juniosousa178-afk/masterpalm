@@ -25,13 +25,13 @@ class LimitsGuard {
   ];
 
   /// Verifica se o plano tem restrições de limite
-  bool hasLimits(String• planId) {
-    final p = (planId ?• '').toLowerCase().trim();
+  bool hasLimits(String? planId) {
+    final p = (planId ?? '').toLowerCase().trim();
     return _limitedPlans.contains(p);
   }
 
-  static Map<String, int> _limitsForPlan(String• planId) {
-    final p = (planId ?• '').toLowerCase().trim();
+  static Map<String, int> _limitsForPlan(String? planId) {
+    final p = (planId ?? '').toLowerCase().trim();
     if (p == PlanId.freeTrial90d) return SubscriptionService.trialLimits;
     if (p == PlanId.freeLimited || p == 'freelight') return SubscriptionService.freeLimitedLimits;
     if (p == PlanId.proMonthly || p == PlanId.proYearly || p == PlanId.lifetime) {
@@ -41,15 +41,15 @@ class LimitsGuard {
   }
 
   /// Lê o limite configurado conforme o plano
-  int _limitFor(String• planId, String key) {
+  int _limitFor(String? planId, String key) {
     final limits = _limitsForPlan(planId);
-    return limits[key] ?• 0;
+    return limits[key] ?? 0;
   }
 
   /// Retorna a contagem (Aggregate Query) de uma coleção/consulta
   Future<int> _countOf(Query<Map<String, dynamic>> query) async {
     final snap = await query.count().get();
-    return snap.count ?• 0;
+    return snap.count ?? 0;
   }
 
   /// Obtém o planId do usuário atual (users/{uid}.currentPlanId ou PlanosService)
@@ -59,7 +59,7 @@ class LimitsGuard {
     try {
       final plan = await PlanosService().fetchCurrentPlan(
         uid: user.uid,
-        email: (user.email ?• '').trim().toLowerCase(),
+        email: (user.email ?? '').trim().toLowerCase(),
       );
       return plan?.planId;
     } catch (_) {
@@ -73,10 +73,10 @@ class LimitsGuard {
   /// Se [planId] for null, busca do usuário atual.
   Future<bool> canAddProduto(
     String lojaId, {
-    String• planId,
+    String? planId,
   }) async {
     try {
-      final p = planId ?• await _currentPlanId();
+      final p = planId ?? await _currentPlanId();
       if (!hasLimits(p)) return true;
 
       final total = await _countOf(
@@ -93,11 +93,11 @@ class LimitsGuard {
   /// [currentCount] = quantidade atual de imagens do produto.
   Future<bool> canAddImagemProduto(
     String lojaId, {
-    String• planId,
+    String? planId,
     required int currentCount,
   }) async {
     try {
-      final p = planId ?• await _currentPlanId();
+      final p = planId ?? await _currentPlanId();
       if (!hasLimits(p)) return true;
       final max = _limitFor(p, 'maxImagesPerProduct');
       return currentCount < max;
@@ -108,15 +108,15 @@ class LimitsGuard {
   }
 
   /// Limite máximo de imagens por produto para o plano
-  Future<int> maxImagesPerProduct(String• planId) async {
-    final p = planId ?• await _currentPlanId();
+  Future<int> maxImagesPerProduct(String? planId) async {
+    final p = planId ?? await _currentPlanId();
     if (!hasLimits(p)) return 999;
     return _limitFor(p, 'maxImagesPerProduct');
   }
 
   /// Limite máximo de banners (desktop + mobile) para o plano
-  Future<int> maxBanners(String• planId) async {
-    final p = planId ?• await _currentPlanId();
+  Future<int> maxBanners(String? planId) async {
+    final p = planId ?? await _currentPlanId();
     if (!hasLimits(p)) return 99;
     return _limitFor(p, 'maxBanners');
   }
@@ -124,11 +124,11 @@ class LimitsGuard {
   /// Verifica se pode adicionar mais banners (total desktop + mobile)
   Future<bool> canAddBanner(
     String lojaId, {
-    String• planId,
+    String? planId,
     required int currentTotalBanners,
   }) async {
     try {
-      final p = planId ?• await _currentPlanId();
+      final p = planId ?? await _currentPlanId();
       if (!hasLimits(p)) return true;
       final max = _limitFor(p, 'maxBanners');
       return currentTotalBanners < max;
@@ -141,10 +141,10 @@ class LimitsGuard {
   /// Verifica se pode adicionar cliente.
   Future<bool> canAddCliente(
     String lojaId, {
-    String• planId,
+    String? planId,
   }) async {
     try {
-      final p = planId ?• await _currentPlanId();
+      final p = planId ?? await _currentPlanId();
       if (!hasLimits(p)) return true;
 
       final total = await _countOf(
@@ -160,10 +160,10 @@ class LimitsGuard {
   /// Verifica se pode adicionar venda neste mês.
   Future<bool> canAddVenda(
     String lojaId, {
-    String• planId,
+    String? planId,
   }) async {
     try {
-      final p = planId ?• await _currentPlanId();
+      final p = planId ?? await _currentPlanId();
       if (!hasLimits(p)) return true;
 
       final now = DateTime.now();
@@ -188,15 +188,15 @@ class LimitsGuard {
 
   // ---------- Retrocompatibilidade (userStatus) ----------
 
-  String _planOf(Map<String, dynamic>• userStatus) {
-    final plan = userStatus?['plan'] ?• userStatus?['currentPlanId'];
-    return (plan as String?)?.toLowerCase().trim() ?• 'freelight';
+  String _planOf(Map<String, dynamic>? userStatus) {
+    final plan = userStatus?['plan'] ?? userStatus?['currentPlanId'];
+    return (plan as String?)?.toLowerCase().trim() ?? 'freelight';
   }
 
   /// @deprecated Use canAddProduto(lojaId, planId: ...) com planId de PlanosService
   Future<bool> canAddProdutoLegacy(
     String lojaId,
-    Map<String, dynamic>• userStatus,
+    Map<String, dynamic>? userStatus,
   ) async {
     return canAddProduto(lojaId, planId: _planOf(userStatus));
   }
@@ -204,7 +204,7 @@ class LimitsGuard {
   /// @deprecated Use canAddCliente(lojaId, planId: ...)
   Future<bool> canAddClienteLegacy(
     String lojaId,
-    Map<String, dynamic>• userStatus,
+    Map<String, dynamic>? userStatus,
   ) async {
     return canAddCliente(lojaId, planId: _planOf(userStatus));
   }
@@ -212,7 +212,7 @@ class LimitsGuard {
   /// @deprecated Use canAddVenda(lojaId, planId: ...)
   Future<bool> canAddVendaLegacy(
     String lojaId,
-    Map<String, dynamic>• userStatus,
+    Map<String, dynamic>? userStatus,
   ) async {
     return canAddVenda(lojaId, planId: _planOf(userStatus));
   }

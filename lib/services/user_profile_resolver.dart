@@ -33,7 +33,7 @@ class UserProfileResolver {
     if (user == null) return null;
 
     final uid = user.uid;
-    final email = (user.email ?• '').trim().toLowerCase();
+    final email = (user.email ?? '').trim().toLowerCase();
     if (email.isEmpty) {
       logW('UserProfileResolver: email vazio, não é possível ler usuarios/', tag: 'USER_PROFILE');
     }
@@ -78,7 +78,7 @@ class UserProfileResolver {
       }
 
       if (userExists) {
-        final data = userSnap.data() ?• {};
+        final data = userSnap.data() ?? {};
         logD('UserProfileResolver: usando fonte users (users/$uid)', tag: 'USER_PROFILE');
         return UserProfile.fromMap(
           uid: uid,
@@ -90,7 +90,7 @@ class UserProfileResolver {
       }
 
       if (usuarioExists) {
-        final data = usuarioSnap.data() ?• {};
+        final data = usuarioSnap.data() ?? {};
         logD('UserProfileResolver: usando fonte usuarios (usuarios/$email)', tag: 'USER_PROFILE');
         return UserProfile.fromMap(
           uid: uid,

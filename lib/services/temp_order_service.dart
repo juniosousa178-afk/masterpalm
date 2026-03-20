@@ -34,7 +34,7 @@ class TempOrderService {
       if (kDebugMode) debugPrint('TempOrderService: LojaIdService.get falhou (type=${e.runtimeType})');
     }
     try {
-      final cfg = Hive.isBoxOpen('config') • Hive.box('config') : await Hive.openBox('config');
+      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
       final candidates = <String?>[
         cfg.get('store_id') as String?,
         cfg.get('loja_id') as String?,
@@ -90,7 +90,7 @@ class TempOrderService {
   ///   para compatibilidade com regras/consultas.
   static Future<String> create(
     Map<String, dynamic> data, {
-    String• lojaId,
+    String? lojaId,
   }) async {
     FirebaseGuard.require('TempOrderService.create');
 
@@ -122,7 +122,7 @@ class TempOrderService {
           data: {
           ...data,
           'lojaId': lid,
-          'status': (data['status'] ?• 'aberto'),
+          'status': (data['status'] ?? 'aberto'),
           'createdAt': now,
           'criadoEm': now, // compatibilidade com regras antigas
           'updatedAt': now,
@@ -136,7 +136,7 @@ class TempOrderService {
           data: {
           ...data,
           'public': true, // leitura pública permitida pelas regras
-          'status': (data['status'] ?• 'aberto'),
+          'status': (data['status'] ?? 'aberto'),
           'createdAt': now,
           'criadoEm': now, // exigido pelas regras do seu espelho público
           'updatedAt': now,
@@ -187,7 +187,7 @@ class TempOrderService {
 
     try {
       final refs = await _docRefs(id);
-      FirebaseException• lastErr;
+      FirebaseException? lastErr;
       bool updated = false;
 
       for (final ref in refs) {
@@ -226,7 +226,7 @@ class TempOrderService {
     FirebaseGuard.require('TempOrderService.removeEverywhere');
 
     final refs = await _docRefs(id);
-    FirebaseException• lastErr;
+    FirebaseException? lastErr;
     var removed = false;
 
     for (final ref in refs) {
@@ -263,7 +263,7 @@ class TempOrderService {
 
   /// Lista pedidos abertos. Se [lojaId] for informado, lista daquela loja.
   /// Caso contrário, tenta listar da raiz (espelho público).
-  static Future<List<Map<String, dynamic>>> list({String• lojaId}) async {
+  static Future<List<Map<String, dynamic>>> list({String? lojaId}) async {
     FirebaseGuard.require('TempOrderService.list');
 
     try {

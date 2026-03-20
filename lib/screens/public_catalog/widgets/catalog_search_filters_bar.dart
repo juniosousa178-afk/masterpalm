@@ -12,7 +12,7 @@ class CatalogSearchBar extends StatelessWidget {
   final Color headerSearchBg;
   final String hintText;
   final bool iconOnRight;
-  final Color• borderColor;
+  final Color? borderColor;
   final double borderRadius;
   final double height;
   final ValueChanged<String> onChanged;
@@ -54,7 +54,7 @@ class CatalogSearchBar extends StatelessWidget {
             filled: true,
             fillColor: headerSearchBg,
             prefixIcon: iconOnRight
-                • null
+                ? null
                 : Icon(
                     Icons.search,
                     color: headerSearchHint,
@@ -81,19 +81,19 @@ class CatalogSearchBar extends StatelessWidget {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(borderRadius),
               borderSide: borderColor == null
-                  • BorderSide.none
+                  ? BorderSide.none
                   : BorderSide(color: borderColor!),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(borderRadius),
               borderSide: borderColor == null
-                  • BorderSide.none
+                  ? BorderSide.none
                   : BorderSide(color: borderColor!),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(borderRadius),
               borderSide: borderColor == null
-                  • BorderSide.none
+                  ? BorderSide.none
                   : BorderSide(color: borderColor!),
             ),
           ),
@@ -108,8 +108,8 @@ class CatalogSearchBar extends StatelessWidget {
 /// [verticalLayout] true = uma categoria por linha (sidebar desktop).
 class CatalogCategorySubcategoryFilters extends StatelessWidget {
   final List<String> categoriasMenu;
-  final String• selectedCategory;
-  final String• selectedSubcategory;
+  final String? selectedCategory;
+  final String? selectedSubcategory;
   final List<Map<String, dynamic>> produtos;
   final Color textColor;
   final Color cardColor;
@@ -167,9 +167,9 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: isSelected
-                              • FontWeight.w600
+                              ? FontWeight.w600
                               : FontWeight.normal,
-                          color: isSelected • Colors.white : textColor,
+                          color: isSelected ? Colors.white : textColor,
                         ),
                       ),
                       backgroundColor: cardColor.withValues(alpha:0.5),
@@ -180,7 +180,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                         side: BorderSide(
                           color: isSelected
-                              • primaryColor
+                              ? primaryColor
                               : Colors.transparent,
                         ),
                       ),
@@ -199,8 +199,8 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight:
-                            isSelected • FontWeight.w600 : FontWeight.normal,
-                        color: isSelected • Colors.white : textColor,
+                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                        color: isSelected ? Colors.white : textColor,
                       ),
                     ),
                     backgroundColor: cardColor.withValues(alpha:0.5),
@@ -210,7 +210,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                       side: BorderSide(
-                        color: isSelected • primaryColor : Colors.transparent,
+                        color: isSelected ? primaryColor : Colors.transparent,
                       ),
                     ),
                     onSelected: (_) => onCategorySelected(cat),
@@ -226,10 +226,10 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
               }
               final subcategoriasSet = <String>{};
               for (final p in produtos) {
-                final cat = (p['categoria'] ?• p['categoriaId'] ?• '')
+                final cat = (p['categoria'] ?? p['categoriaId'] ?? '')
                     .toString()
                     .trim();
-                final subcat = (p['subcategoria'] ?• p['subcategoriaId'] ?• '')
+                final subcat = (p['subcategoria'] ?? p['subcategoriaId'] ?? '')
                     .toString()
                     .trim();
                 if (cat == selectedCategory && subcat.isNotEmpty) {
@@ -264,7 +264,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: isSelected
-                                        • Colors.white70
+                                        ? Colors.white70
                                         : textColor,
                                   ),
                                   maxLines: 1,
@@ -276,14 +276,14 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     color: isSelected
-                                        • Colors.white
+                                        ? Colors.white
                                         : textColor,
                                   ),
                                 ),
                               ],
                             ),
                             backgroundColor: isSelected
-                                • null
+                                ? null
                                 : cardColor.withValues(alpha:0.85),
                             selectedColor:
                                 primaryColor.withValues(alpha:0.7),
@@ -291,7 +291,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                               borderRadius: BorderRadius.circular(16),
                               side: BorderSide(
                                 color: isSelected
-                                    • primaryColor
+                                    ? primaryColor
                                     : textColor.withValues(alpha:0.4),
                               ),
                             ),
@@ -314,7 +314,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: isSelected
-                                      • Colors.white70
+                                      ? Colors.white70
                                       : textColor,
                                 ),
                                 maxLines: 1,
@@ -325,7 +325,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: isSelected • Colors.white : textColor,
+                                  color: isSelected ? Colors.white : textColor,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -333,7 +333,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                             ],
                           ),
                           backgroundColor: isSelected
-                              • null
+                              ? null
                               : cardColor.withValues(alpha:0.85),
                           selectedColor:
                               primaryColor.withValues(alpha:0.7),
@@ -341,7 +341,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                             borderRadius: BorderRadius.circular(16),
                             side: BorderSide(
                               color: isSelected
-                                  • primaryColor
+                                  ? primaryColor
                                   : textColor.withValues(alpha:0.4),
                             ),
                           ),
@@ -360,7 +360,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
 
   Widget _buildVerticalLayout(BuildContext context) {
     final items = <Widget>[];
-    // "Todos" • sem balão, só texto clicável
+    // "Todos" ? sem balão, só texto clicável
     items.add(_buildSidebarItem(
       label: 'Todos',
       isSelected: selectedCategory == null,
@@ -379,8 +379,8 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
       if (isSelected) {
         final subcategoriasSet = <String>{};
         for (final p in produtos) {
-          final c = (p['categoria'] ?• p['categoriaId'] ?• '').toString().trim();
-          final sub = (p['subcategoria'] ?• p['subcategoriaId'] ?• '').toString().trim();
+          final c = (p['categoria'] ?? p['categoriaId'] ?? '').toString().trim();
+          final sub = (p['subcategoria'] ?? p['subcategoriaId'] ?? '').toString().trim();
           if (c == cat && sub.isNotEmpty) subcategoriasSet.add(sub);
         }
         final subcategorias = subcategoriasSet.toList()..sort();
@@ -424,17 +424,17 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
   }) {
     return Material(
       color: isSelected
-          • primaryColor.withValues(alpha:0.2)
+          ? primaryColor.withValues(alpha:0.2)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: EdgeInsets.fromLTRB(isSubcategory • 16 : 12, 10, 12, 10),
+          padding: EdgeInsets.fromLTRB(isSubcategory ? 16 : 12, 10, 12, 10),
           decoration: BoxDecoration(
             border: isSelected
-                • Border(
+                ? Border(
                     left: BorderSide(color: primaryColor, width: 3),
                   )
                 : null,
@@ -443,9 +443,9 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: isSubcategory • 13 : 14,
-              fontWeight: isSelected • FontWeight.w600 : FontWeight.normal,
-              color: isSelected • primaryColor : textColor,
+              fontSize: isSubcategory ? 13 : 14,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              color: isSelected ? primaryColor : textColor,
             ),
           ),
         ),
@@ -458,8 +458,8 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
 class CatalogSortFiltersSection extends StatelessWidget {
   final String ordenacaoProdutos;
   final bool apenasEmEstoque;
-  final double• precoMin;
-  final double• precoMax;
+  final double? precoMin;
+  final double? precoMax;
   final Color primaryColor;
   final Color cardColor;
   final Color textColor;
@@ -505,20 +505,20 @@ class CatalogSortFiltersSection extends StatelessWidget {
                 icon: Icon(
                   Icons.tune,
                   size: 18,
-                  color: hasAlgoAtivo • Colors.white : textColor,
+                  color: hasAlgoAtivo ? Colors.white : textColor,
                 ),
                 label: Text(
-                  hasAlgoAtivo • 'Filtro ativo' : 'Filtro',
+                  hasAlgoAtivo ? 'Filtro ativo' : 'Filtro',
                   style: TextStyle(
-                    color: hasAlgoAtivo • Colors.white : textColor,
+                    color: hasAlgoAtivo ? Colors.white : textColor,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  backgroundColor: hasAlgoAtivo • primaryColor : cardColor,
+                  backgroundColor: hasAlgoAtivo ? primaryColor : cardColor,
                   side: BorderSide(
                     color: hasAlgoAtivo
-                        • primaryColor
+                        ? primaryColor
                         : textColor.withValues(alpha: 0.12),
                   ),
                   shape: RoundedRectangleBorder(
@@ -553,9 +553,9 @@ class CatalogSortFiltersSection extends StatelessWidget {
               primaryColor: primaryColor,
               cardColor: cardColor,
               textColor: textColor,
-              onPagePrev: paginaAtual > 0 • () => onPageChanged(paginaAtual - 1) : null,
+              onPagePrev: paginaAtual > 0 ? () => onPageChanged(paginaAtual - 1) : null,
               onPageNext: paginaAtual < totalPaginas - 1
-                  • () => onPageChanged(paginaAtual + 1)
+                  ? () => onPageChanged(paginaAtual + 1)
                   : null,
             ),
           ],
@@ -576,7 +576,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
     if (precoMin != null || precoMax != null) {
       parts.add('Preço');
     }
-    return parts.join(' • ');
+    return parts.join(' ? ');
   }
 
   Future<void> _showFilterMenu(BuildContext context) async {
@@ -668,7 +668,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
                 ),
                 _FilterActionTile(
                   label: (precoMin != null || precoMax != null)
-                      • 'Faixa de preço (ativo)'
+                      ? 'Faixa de preço (ativo)'
                       : 'Faixa de preço',
                   selected: precoMin != null || precoMax != null,
                   textColor: textColor,
@@ -707,18 +707,18 @@ class _FilterActionTile extends StatelessWidget {
     return ListTile(
       dense: true,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      tileColor: selected • primaryColor.withValues(alpha: 0.12) : null,
+      tileColor: selected ? primaryColor.withValues(alpha: 0.12) : null,
       contentPadding: const EdgeInsets.symmetric(horizontal: 10),
       title: Text(
         label,
         style: TextStyle(
-          color: selected • primaryColor : textColor,
-          fontWeight: selected • FontWeight.w700 : FontWeight.w500,
+          color: selected ? primaryColor : textColor,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           fontSize: 14,
         ),
       ),
       trailing: selected
-          • Icon(Icons.check_circle, color: primaryColor, size: 18)
+          ? Icon(Icons.check_circle, color: primaryColor, size: 18)
           : null,
       onTap: onTap,
     );
@@ -747,14 +747,14 @@ class _FilterSwitchTile extends StatelessWidget {
         label,
         style: TextStyle(
           color: textColor,
-          fontWeight: value • FontWeight.w700 : FontWeight.w500,
+          fontWeight: value ? FontWeight.w700 : FontWeight.w500,
           fontSize: 14,
         ),
       ),
       trailing: Icon(
-        value • Icons.check_box : Icons.check_box_outline_blank,
+        value ? Icons.check_box : Icons.check_box_outline_blank,
         size: 20,
-        color: value • Colors.green : textColor.withValues(alpha: 0.6),
+        color: value ? Colors.green : textColor.withValues(alpha: 0.6),
       ),
       onTap: onTap,
     );
@@ -768,8 +768,8 @@ class CatalogPaginacaoRow extends StatelessWidget {
   final Color primaryColor;
   final Color cardColor;
   final Color textColor;
-  final VoidCallback• onPagePrev;
-  final VoidCallback• onPageNext;
+  final VoidCallback? onPagePrev;
+  final VoidCallback? onPageNext;
 
   const CatalogPaginacaoRow({
     super.key,
@@ -792,7 +792,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
         children: [
           Material(
             color: paginaAtual > 0
-                • primaryColor
+                ? primaryColor
                 : cardColor.withValues(alpha:0.5),
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
@@ -804,7 +804,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
                   Icons.arrow_back_ios_new,
                   size: 24,
                   color: paginaAtual > 0
-                      • Colors.white
+                      ? Colors.white
                       : textColor.withValues(alpha:0.4),
                 ),
               ),
@@ -827,7 +827,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
           ),
           Material(
             color: paginaAtual < totalPaginas - 1
-                • primaryColor
+                ? primaryColor
                 : cardColor.withValues(alpha:0.5),
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
@@ -839,7 +839,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
                   Icons.arrow_forward_ios,
                   size: 24,
                   color: paginaAtual < totalPaginas - 1
-                      • Colors.white
+                      ? Colors.white
                       : textColor.withValues(alpha:0.4),
                 ),
               ),

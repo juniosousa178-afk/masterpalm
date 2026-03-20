@@ -22,8 +22,8 @@ class MotorCrescimentoDetectorService {
   /// [deadline] opcional: interrompe e retorna o que já tiver após esse momento.
   static Future<List<OportunidadeCrescimento>> detectarProdutosParados(
     String lojaId, {
-    int• limit,
-    DateTime• deadline,
+    int? limit,
+    DateTime? deadline,
   }) async {
     if (lojaId.trim().isEmpty) return [];
     try {
@@ -31,7 +31,7 @@ class MotorCrescimentoDetectorService {
 
       final vendasBoxName = HiveBoxNames.vendas(lojaId);
       final vendasBox = Hive.isBoxOpen(vendasBoxName)
-          • Hive.box<Venda>(vendasBoxName)
+          ? Hive.box<Venda>(vendasBoxName)
           : await Hive.openBox<Venda>(vendasBoxName);
 
       final nomesVendidos = <String>{};
@@ -50,7 +50,7 @@ class MotorCrescimentoDetectorService {
 
       final produtosBoxName = HiveBoxNames.produtos(lojaId);
       final produtosBox = Hive.isBoxOpen(produtosBoxName)
-          • Hive.box<Produto>(produtosBoxName)
+          ? Hive.box<Produto>(produtosBoxName)
           : await Hive.openBox<Produto>(produtosBoxName);
 
       final oportunidades = <OportunidadeCrescimento>[];
@@ -61,14 +61,14 @@ class MotorCrescimentoDetectorService {
         final nome = p.nome.trim();
         if (nome.isEmpty || nomesVendidos.contains(nome)) continue;
         if (limit != null && limit > 0 && oportunidades.length >= limit) break;
-        final id = 'parado_${i}_${p.slug.isNotEmpty • p.slug : p.nome}';
+        final id = 'parado_${i}_${p.slug.isNotEmpty ? p.slug : p.nome}';
         oportunidades.add(OportunidadeCrescimento(
           id: id,
           tipo: TipoOportunidade.produtoParado,
           titulo: '${p.nome} parado há $diasProdutoParado dias',
           descricao: 'Produto sem venda nos últimos $diasProdutoParado dias.',
           prioridade: 4,
-          entidadeId: p.idFirebase.isNotEmpty • p.idFirebase : (p.slug.isNotEmpty • p.slug : p.key?.toString() ?• ''),
+          entidadeId: p.idFirebase.isNotEmpty ? p.idFirebase : (p.slug.isNotEmpty ? p.slug : p.key?.toString() ?? ''),
           entidadeNome: p.nome,
           metricaPrincipal: '$diasProdutoParado dias sem venda',
           detalhes: {'quantidade': p.quantidade, 'precoUnitario': p.precoUnitario},
@@ -87,14 +87,14 @@ class MotorCrescimentoDetectorService {
   /// [deadline] opcional: interrompe e retorna o que já tiver após esse momento.
   static Future<List<OportunidadeCrescimento>> detectarEstoqueBaixo(
     String lojaId, {
-    int• limit,
-    DateTime• deadline,
+    int? limit,
+    DateTime? deadline,
   }) async {
     if (lojaId.trim().isEmpty) return [];
     try {
       final produtosBoxName = HiveBoxNames.produtos(lojaId);
       final produtosBox = Hive.isBoxOpen(produtosBoxName)
-          • Hive.box<Produto>(produtosBoxName)
+          ? Hive.box<Produto>(produtosBoxName)
           : await Hive.openBox<Produto>(produtosBoxName);
 
       final oportunidades = <OportunidadeCrescimento>[];
@@ -104,15 +104,15 @@ class MotorCrescimentoDetectorService {
         if (p.lojaId != lojaId) continue;
         if (!p.isEstoqueBaixo) continue;
         if (limit != null && limit > 0 && oportunidades.length >= limit) break;
-        final minimo = p.estoqueMinimo > 0 • p.estoqueMinimo : 5;
-        final id = 'estoque_${i}_${p.slug.isNotEmpty • p.slug : p.nome}';
+        final minimo = p.estoqueMinimo > 0 ? p.estoqueMinimo : 5;
+        final id = 'estoque_${i}_${p.slug.isNotEmpty ? p.slug : p.nome}';
         oportunidades.add(OportunidadeCrescimento(
           id: id,
           tipo: TipoOportunidade.estoqueBaixo,
           titulo: '${p.nome} com estoque baixo',
           descricao: 'Apenas ${p.quantidade} un. em estoque (mínimo: $minimo).',
           prioridade: 3,
-          entidadeId: p.idFirebase.isNotEmpty • p.idFirebase : (p.slug.isNotEmpty • p.slug : p.key?.toString() ?• ''),
+          entidadeId: p.idFirebase.isNotEmpty ? p.idFirebase : (p.slug.isNotEmpty ? p.slug : p.key?.toString() ?? ''),
           entidadeNome: p.nome,
           metricaPrincipal: '${p.quantidade} un.',
           detalhes: {'quantidade': p.quantidade, 'estoqueMinimo': minimo},
@@ -134,7 +134,7 @@ class MotorCrescimentoDetectorService {
 
       final vendasBoxName = HiveBoxNames.vendas(lojaId);
       final vendasBox = Hive.isBoxOpen(vendasBoxName)
-          • Hive.box<Venda>(vendasBoxName)
+          ? Hive.box<Venda>(vendasBoxName)
           : await Hive.openBox<Venda>(vendasBoxName);
 
       final vendasLoja = vendasBox.values
@@ -155,10 +155,10 @@ class MotorCrescimentoDetectorService {
   /// [deadline] opcional: interrompe a detecção e retorna o que já tiver.
   static Future<List<OportunidadeCrescimento>> detectarOportunidades(
     String lojaId, {
-    int• limit,
-    DateTime• deadline,
+    int? limit,
+    DateTime? deadline,
   }) async {
-    final half = limit != null && limit > 0 • (limit ~/ 2) : null;
+    final half = limit != null && limit > 0 ? (limit ~/ 2) : null;
     final parados = await detectarProdutosParados(lojaId, limit: half, deadline: deadline);
     final estoqueBaixo = await detectarEstoqueBaixo(lojaId, limit: half, deadline: deadline);
     final todas = [...parados, ...estoqueBaixo];

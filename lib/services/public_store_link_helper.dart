@@ -15,7 +15,7 @@ const String kPublicCatalogBaseUrl = 'https://app.mastepalm.com.br/loja';
 
 /// Verifica se [storeIdOrSlug] é válido para usar em link público.
 /// Retorna false para null, vazio ou placeholder.
-bool isValidForPublicLink(String• storeIdOrSlug) {
+bool isValidForPublicLink(String? storeIdOrSlug) {
   if (storeIdOrSlug == null) return false;
   final s = storeIdOrSlug.trim().toLowerCase();
   if (s.isEmpty) return false;
@@ -25,17 +25,17 @@ bool isValidForPublicLink(String• storeIdOrSlug) {
 
 /// Monta a URL do catálogo público da loja.
 /// Retorna null se [storeIdOrSlug] for inválido (placeholder ou vazio).
-String• buildPublicCatalogUrl(String• storeIdOrSlug) {
+String? buildPublicCatalogUrl(String? storeIdOrSlug) {
   if (!isValidForPublicLink(storeIdOrSlug)) return null;
   return '$kPublicCatalogBaseUrl/${Uri.encodeComponent(storeIdOrSlug!.trim())}';
 }
 
 /// Monta a URL de recuperação de carrinho: /loja/{id}?cart={cartId}.
 /// Retorna null se [storeIdOrSlug] for inválido.
-String• buildRecuperacaoCarrinhoUrl(String• storeIdOrSlug, String cartId) {
+String? buildRecuperacaoCarrinhoUrl(String? storeIdOrSlug, String cartId) {
   if (!isValidForPublicLink(storeIdOrSlug) || cartId.trim().isEmpty) return null;
   final base = buildPublicCatalogUrl(storeIdOrSlug);
   if (base == null) return null;
-  final sep = base.contains('?') • '&' : '?';
+  final sep = base.contains('?') ? '&' : '?';
   return '$base${sep}cart=${Uri.encodeComponent(cartId.trim())}';
 }

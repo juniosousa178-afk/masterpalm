@@ -45,7 +45,7 @@ class RemoteConfigSafeService {
         list = raw.split(',').map((s) => s.trim().toLowerCase()).where((s) => s.isNotEmpty).toList();
       }
       final deduped = list.toSet().toList();
-      return deduped.isEmpty • fallback : deduped;
+      return deduped.isEmpty ? fallback : deduped;
     } catch (e, st) {
       logW('RemoteConfigSafeService.getStringListFromJson($key) falhou, usando fallback', tag: 'RC_SAFE');
       logE('getStringListFromJson (type=${e.runtimeType})', tag: 'RC_SAFE', error: e, st: st);

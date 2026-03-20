@@ -69,19 +69,19 @@ class PublicCatalogScreen extends StatefulWidget {
   final bool preview;
 
   /// ✅ ID do vendedor para tracking de comissão (vem da URL ?ref=vendedorId)
-  final String• vendedorRef;
+  final String? vendedorRef;
 
   /// ✅ ID do cliente que indicou (link ?indicacao=clienteId) – quem comprou ganha cupom e quem indicou também (após o amigo usar)
-  final String• indicacaoClienteRef;
+  final String? indicacaoClienteRef;
 
   /// ✅ Página inicial ao abrir (ex: ?page=dicas no link do catálogo)
-  final String• initialPage;
+  final String? initialPage;
 
   /// ✅ ID do carrinho para recuperação (ex: ?cart=ID no link)
-  final String• initialCartId;
+  final String? initialCartId;
 
   /// ✅ ID ou slug do produto para abrir direto (ex: link campanha ?produto=ID)
-  final String• initialProdutoId;
+  final String? initialProdutoId;
 
   const PublicCatalogScreen({
     super.key,
@@ -110,7 +110,7 @@ List<Map<String, dynamic>> _processDocsToProducts(
       final m = asMapDeep(d.data());
       if (m.isEmpty) continue;
       final publicarNoCatalogo =
-          m['publicadoNoCatalogo'] ?• m['publicarNoCatalogo'] ?• true;
+          m['publicadoNoCatalogo'] ?? m['publicarNoCatalogo'] ?? true;
       if (publicarNoCatalogo == false) continue;
 
       final bool exibirCatalogo = !(m['exibir_no_catalogo'] == false ||
@@ -119,7 +119,7 @@ List<Map<String, dynamic>> _processDocsToProducts(
       if (!exibirCatalogo) continue;
 
       final tipoEarly =
-          (m['tipoProduto'] ?• m['tipo'] ?• 'simples').toString();
+          (m['tipoProduto'] ?? m['tipo'] ?? 'simples').toString();
       final itensComboEarly = m['itensCombo'];
       final isComboEarly = tipoEarly == 'combo' ||
           (itensComboEarly is List && itensComboEarly.isNotEmpty);
@@ -135,54 +135,54 @@ List<Map<String, dynamic>> _processDocsToProducts(
       final estoquePorCor = stock.estoquePorCor;
       final variacoes = stock.variacoes;
 
-      final nome = (m['nome'] ?• m['name'] ?• '').toString();
-      final desc = (m['descricao_curta'] ?• m['descricao'] ?• '').toString();
+      final nome = (m['nome'] ?? m['name'] ?? '').toString();
+      final desc = (m['descricao_curta'] ?? m['descricao'] ?? '').toString();
       final precoRaw =
-          m['preco'] ?• m['preco_venda'] ?• m['price'] ?• m['precoFinal'];
+          m['preco'] ?? m['preco_venda'] ?? m['price'] ?? m['precoFinal'];
       final preco = (precoRaw is num)
-          • precoRaw.toDouble()
-          : double.tryParse('$precoRaw') ?• 0.0;
+          ? precoRaw.toDouble()
+          : double.tryParse('$precoRaw') ?? 0.0;
 
       // Preço por variação: no card deve aparecer o menor e o maior cadastrado na variação
       double priceMin = preco;
       double priceMax = preco;
-      Map<String, double>• precoPorTamanhoMap;
+      Map<String, double>? precoPorTamanhoMap;
       final pptRaw = m['precoPorTamanho'];
       if (pptRaw is Map && pptRaw.isNotEmpty) {
         precoPorTamanhoMap = {};
         final precos = <double>[];
         for (final e in pptRaw.entries) {
           final v = e.value;
-          final d = (v is num) • v.toDouble() : double.tryParse('$v');
+          final d = (v is num) ? v.toDouble() : double.tryParse('$v');
           if (d != null && d > 0) {
             precoPorTamanhoMap[e.key.toString()] = d;
             precos.add(d);
           }
         }
         if (precos.isNotEmpty) {
-          priceMin = precos.reduce((a, b) => a < b • a : b);
-          priceMax = precos.reduce((a, b) => a > b • a : b);
+          priceMin = precos.reduce((a, b) => a < b ? a : b);
+          priceMax = precos.reduce((a, b) => a > b ? a : b);
         }
         if (precoPorTamanhoMap.isEmpty) precoPorTamanhoMap = null;
       }
       // Fallback: documento pode ter priceMin/priceMax já gravados pelo sync
       if (m['priceMin'] != null || m['priceMax'] != null) {
         final pm = (m['priceMin'] is num)
-            • (m['priceMin'] as num).toDouble()
+            ? (m['priceMin'] as num).toDouble()
             : double.tryParse('${m['priceMin']}');
         final pM = (m['priceMax'] is num)
-            • (m['priceMax'] as num).toDouble()
+            ? (m['priceMax'] as num).toDouble()
             : double.tryParse('${m['priceMax']}');
         if (pm != null && pM != null && pm > 0 && pM > 0) {
           if (precoPorTamanhoMap == null || precoPorTamanhoMap.isEmpty) {
-            priceMin = pm < pM • pm : pM;
-            priceMax = pm > pM • pm : pM;
+            priceMin = pm < pM ? pm : pM;
+            priceMax = pm > pM ? pm : pM;
           }
         }
       }
 
       final categoria =
-          (m['categoria'] ?• m['categoria_nome'] ?• m['categoriaNome'] ?• '')
+          (m['categoria'] ?? m['categoria_nome'] ?? m['categoriaNome'] ?? '')
               .toString()
               .trim();
       final subcategoria = (m['subcategoria'] ??
@@ -193,7 +193,7 @@ List<Map<String, dynamic>> _processDocsToProducts(
           .trim();
 
       String principal =
-          (m['imagem_principal'] ?• m['imageUrl'] ?• '').toString();
+          (m['imagem_principal'] ?? m['imageUrl'] ?? '').toString();
       final imagens = <String>[];
       final imgsRaw = m['imagens'];
       if (imgsRaw is List) imagens.addAll(imgsRaw.map((e) => e.toString()));
@@ -217,10 +217,10 @@ List<Map<String, dynamic>> _processDocsToProducts(
         }
         if (promocaoAtiva) {
           final percentualPromo = (m['percentualPromo'] is num)
-              • (m['percentualPromo'] as num).toDouble()
+              ? (m['percentualPromo'] as num).toDouble()
               : 0.0;
           final valorPromo = (m['valorPromo'] is num)
-              • (m['valorPromo'] as num).toDouble()
+              ? (m['valorPromo'] as num).toDouble()
               : 0.0;
           if (percentualPromo > 0) {
             precoComDesconto = (preco - preco * (percentualPromo / 100))
@@ -239,7 +239,7 @@ List<Map<String, dynamic>> _processDocsToProducts(
         }
       }
 
-      DateTime• dataCriacao;
+      DateTime? dataCriacao;
       for (final k in ['createdAt', 'criadoEm', 'dataCadastro']) {
         final v = m[k];
         if (v != null) {
@@ -259,57 +259,57 @@ List<Map<String, dynamic>> _processDocsToProducts(
           DateTime.now().difference(dataCriacao).inDays <= 30;
 
       // Combo: itens do kit (nome, slug, quantidade, tamanho?, cor?)
-      List<Map<String, dynamic>>• itensCombo;
+      List<Map<String, dynamic>>? itensCombo;
       final itensComboRaw = m['itensCombo'];
       if (itensComboRaw is List && itensComboRaw.isNotEmpty) {
         itensCombo = [];
         for (final e in itensComboRaw) {
           if (e is! Map) continue;
-          final nomeItem = (e['nome'] ?• e['name'] ?• '').toString().trim();
+          final nomeItem = (e['nome'] ?? e['name'] ?? '').toString().trim();
           if (nomeItem.isEmpty) continue;
-          final slugItem = (e['slug'] ?• '').toString().trim();
-          final idItem = (e['id'] ?• e['produtoId'] ?• '').toString().trim();
+          final slugItem = (e['slug'] ?? '').toString().trim();
+          final idItem = (e['id'] ?? e['produtoId'] ?? '').toString().trim();
           itensCombo.add({
             'nome': nomeItem,
             'slug': slugItem,
             'quantidade': (e['quantidade'] is num)
-                • (e['quantidade'] as num).toInt()
-                : int.tryParse('${e['quantidade']}') ?• 1,
+                ? (e['quantidade'] as num).toInt()
+                : int.tryParse('${e['quantidade']}') ?? 1,
             if (idItem.isNotEmpty) 'id': idItem,
-            if ((e['tamanho'] ?• '').toString().trim().isNotEmpty)
-              'tamanho': (e['tamanho'] ?• '').toString().trim(),
-            if ((e['cor'] ?• '').toString().trim().isNotEmpty)
-              'cor': (e['cor'] ?• '').toString().trim(),
+            if ((e['tamanho'] ?? '').toString().trim().isNotEmpty)
+              'tamanho': (e['tamanho'] ?? '').toString().trim(),
+            if ((e['cor'] ?? '').toString().trim().isNotEmpty)
+              'cor': (e['cor'] ?? '').toString().trim(),
           });
         }
         if (itensCombo.isEmpty) itensCombo = null;
       }
       final tipoProduto =
-          (m['tipoProduto'] ?• m['tipo'] ?• 'simples').toString();
+          (m['tipoProduto'] ?? m['tipo'] ?? 'simples').toString();
 
       produtos.add({
         'id': d.id,
-        'nome': nome.isEmpty • 'Produto sem nome' : nome,
+        'nome': nome.isEmpty ? 'Produto sem nome' : nome,
         'descricao': desc,
-        'preco': emPromocao • precoComDesconto : preco,
+        'preco': emPromocao ? precoComDesconto : preco,
         'precoFinal': preco,
-        'priceMin': emPromocao • priceMinComPromo : priceMin,
-        'priceMax': emPromocao • priceMaxComPromo : priceMax,
+        'priceMin': emPromocao ? priceMinComPromo : priceMin,
+        'priceMax': emPromocao ? priceMaxComPromo : priceMax,
         if (precoPorTamanhoMap != null && precoPorTamanhoMap.isNotEmpty)
           'precoPorTamanho': precoPorTamanhoMap,
         'imageUrl': principal,
         'imagens': imagens,
         'categoria': categoria,
         'subcategoria': subcategoria,
-        'slug': m['slug'] ?• '',
-        'peso': (m['peso'] is num) • (m['peso'] as num).toDouble() : 0.0,
-        'tipoEmbalagem': m['tipoEmbalagem'] ?• 'padrao',
+        'slug': m['slug'] ?? '',
+        'peso': (m['peso'] is num) ? (m['peso'] as num).toDouble() : 0.0,
+        'tipoEmbalagem': m['tipoEmbalagem'] ?? 'padrao',
         'emPromocao': emPromocao,
         'percentualPromo': (m['percentualPromo'] is num)
-            • (m['percentualPromo'] as num).toDouble()
+            ? (m['percentualPromo'] as num).toDouble()
             : 0.0,
         'valorPromo': (m['valorPromo'] is num)
-            • (m['valorPromo'] as num).toDouble()
+            ? (m['valorPromo'] as num).toDouble()
             : 0.0,
         'quantidade': quantidadeTotal,
         'estoquePorTamanho': estoquePorTamanho,
@@ -319,23 +319,23 @@ List<Map<String, dynamic>> _processDocsToProducts(
         'dataCriacao': dataCriacao,
         'divideSemJuros': m['divideSemJuros'] == true,
         'maxParcelasSemJuros': (m['maxParcelasSemJuros'] is num)
-            • (m['maxParcelasSemJuros'] as num).toInt()
+            ? (m['maxParcelasSemJuros'] as num).toInt()
             : 12,
         'percentualDescontoPix': (m['percentualDescontoPix'] is num)
-            • (m['percentualDescontoPix'] as num).toDouble()
+            ? (m['percentualDescontoPix'] as num).toDouble()
             : 0.0,
-        'videoUrl': (m['videoUrl'] ?• '').toString().trim(),
+        'videoUrl': (m['videoUrl'] ?? '').toString().trim(),
         'tipoProduto': tipoProduto,
         if (itensCombo != null && itensCombo.isNotEmpty)
           'itensCombo': itensCombo,
         if (itensCombo != null && itensCombo.isNotEmpty) ...{
           if (m['descontoComboValor'] != null)
             'descontoComboValor': (m['descontoComboValor'] is num)
-                • (m['descontoComboValor'] as num).toDouble()
+                ? (m['descontoComboValor'] as num).toDouble()
                 : 0.0,
           if (m['descontoComboPercentual'] != null)
             'descontoComboPercentual': (m['descontoComboPercentual'] is num)
-                • (m['descontoComboPercentual'] as num).toDouble()
+                ? (m['descontoComboPercentual'] as num).toDouble()
                 : 0.0,
         },
         'vendasScoreCatalogo': vendasScoreFromFirestoreMap(m),
@@ -352,17 +352,17 @@ List<Map<String, dynamic>> _processDocsToProducts(
 }
 
 /// Encontra um produto na lista por id, nome ou slug (para combos).
-Map<String, dynamic>• _findProdutoNaLista(List<Map<String, dynamic>> produtos,
-    String• id, String• nome, String• slug) {
-  final idTrim = (id ?• '').toString().trim();
-  final nomeNorm = (nome ?• '').toString().trim().toLowerCase();
-  final slugTrim = (slug ?• '').toString().trim();
+Map<String, dynamic>? _findProdutoNaLista(List<Map<String, dynamic>> produtos,
+    String? id, String? nome, String? slug) {
+  final idTrim = (id ?? '').toString().trim();
+  final nomeNorm = (nome ?? '').toString().trim().toLowerCase();
+  final slugTrim = (slug ?? '').toString().trim();
   for (final p in produtos) {
-    final pId = (p['id'] ?• '').toString().trim();
+    final pId = (p['id'] ?? '').toString().trim();
     if (idTrim.isNotEmpty && pId == idTrim) return p;
-    final pNome = (p['nome'] ?• '').toString().trim().toLowerCase();
+    final pNome = (p['nome'] ?? '').toString().trim().toLowerCase();
     if (nomeNorm.isNotEmpty && pNome == nomeNorm) return p;
-    final pSlug = (p['slug'] ?• '').toString().trim();
+    final pSlug = (p['slug'] ?? '').toString().trim();
     if (slugTrim.isNotEmpty && pSlug == slugTrim) return p;
   }
   return null;
@@ -377,16 +377,16 @@ void _precoMinMaxProduto(Map<String, dynamic> p, List<double> outMinMax) {
       if (v is num) precos.add(v.toDouble());
     });
     if (precos.isNotEmpty) {
-      outMinMax[0] = precos.reduce((a, b) => a < b • a : b);
-      outMinMax[1] = precos.reduce((a, b) => a > b • a : b);
+      outMinMax[0] = precos.reduce((a, b) => a < b ? a : b);
+      outMinMax[1] = precos.reduce((a, b) => a > b ? a : b);
       return;
     }
   }
-  final pm = (p['priceMin'] is num) • (p['priceMin'] as num).toDouble() : null;
-  final pM = (p['priceMax'] is num) • (p['priceMax'] as num).toDouble() : null;
-  final preco = (p['preco'] is num) • (p['preco'] as num).toDouble() : 0.0;
-  outMinMax[0] = pm ?• preco;
-  outMinMax[1] = pM ?• preco;
+  final pm = (p['priceMin'] is num) ? (p['priceMin'] as num).toDouble() : null;
+  final pM = (p['priceMax'] is num) ? (p['priceMax'] as num).toDouble() : null;
+  final preco = (p['preco'] is num) ? (p['preco'] as num).toDouble() : 0.0;
+  outMinMax[0] = pm ?? preco;
+  outMinMax[1] = pM ?? preco;
 }
 
 /// Aplica preço do combo = soma dos produtos do kit com desconto (valor ou %). Mais atrativo = menor preço final.
@@ -399,14 +399,14 @@ void _aplicarPrecoComboFromSoma(List<Map<String, dynamic>> produtos) {
       if (e is! Map) continue;
       final ref = _findProdutoNaLista(
         produtos,
-        (e['id'] ?• e['produtoId'] ?• '').toString().trim(),
-        (e['nome'] ?• e['name'] ?• '').toString().trim(),
-        (e['slug'] ?• '').toString().trim(),
+        (e['id'] ?? e['produtoId'] ?? '').toString().trim(),
+        (e['nome'] ?? e['name'] ?? '').toString().trim(),
+        (e['slug'] ?? '').toString().trim(),
       );
       if (ref == null) continue;
       final qtd = (e['quantidade'] is num)
-          • (e['quantidade'] as num).toInt()
-          : int.tryParse('${e['quantidade']}') ?• 1;
+          ? (e['quantidade'] as num).toInt()
+          : int.tryParse('${e['quantidade']}') ?? 1;
       final minMax = <double>[0, 0];
       _precoMinMaxProduto(ref, minMax);
       somaMin += minMax[0] * qtd;
@@ -414,10 +414,10 @@ void _aplicarPrecoComboFromSoma(List<Map<String, dynamic>> produtos) {
     }
     if (somaMin <= 0 && somaMax <= 0) continue;
     final descontoValor = (p['descontoComboValor'] is num)
-        • (p['descontoComboValor'] as num).toDouble()
+        ? (p['descontoComboValor'] as num).toDouble()
         : 0.0;
     final descontoPerc = (p['descontoComboPercentual'] is num)
-        • (p['descontoComboPercentual'] as num).toDouble()
+        ? (p['descontoComboPercentual'] as num).toDouble()
         : 0.0;
     double finalMin = somaMin;
     double finalMax = somaMax;
@@ -428,8 +428,8 @@ void _aplicarPrecoComboFromSoma(List<Map<String, dynamic>> produtos) {
       final comValorMax = (somaMax - descontoValor).clamp(0.0, double.infinity);
       final comPercMax =
           somaMax * (1 - descontoPerc / 100).clamp(0.0, double.infinity);
-      finalMin = comValorMin < comPercMin • comValorMin : comPercMin;
-      finalMax = comValorMax < comPercMax • comValorMax : comPercMax;
+      finalMin = comValorMin < comPercMin ? comValorMin : comPercMin;
+      finalMax = comValorMax < comPercMax ? comValorMax : comPercMax;
     }
     p['preco'] = finalMin;
     p['priceMin'] = finalMin;
@@ -443,46 +443,46 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _catalogScrollController = ScrollController();
   final ValueNotifier<double> _scrollOffsetNotifier = ValueNotifier(0);
-  Timer• _searchDebounce;
-  String• _selectedCategory;
-  String• _selectedSubcategory;
+  Timer? _searchDebounce;
+  String? _selectedCategory;
+  String? _selectedSubcategory;
   String _ordenacaoProdutos =
       'nome'; // nome | preco_asc | preco_desc | novidade
-  double• _precoMin;
-  double• _precoMax;
+  double? _precoMin;
+  double? _precoMax;
   bool _apenasEmEstoque = false;
 
   // ✅ FONTE ÚNICA: lojaId resolvido de forma assíncrona
-  String• _resolvedLojaId;
+  String? _resolvedLojaId;
   bool _loadingLojaId = true;
 
   final List<Map<String, dynamic>> _cart = [];
   bool _publicando = false;
 
   /// Último pré-pedido criado nesta sessão do carrinho (evita vários pedidos ao trocar forma de pagamento)
-  String• _ultimoPrePedidoId;
-  Map<String, dynamic>• _ultimoPrePedidoData;
+  String? _ultimoPrePedidoId;
+  Map<String, dynamic>? _ultimoPrePedidoData;
 
   /// Estado da roleta (persiste ao fechar/reabrir o carrinho; reseta em nova compra)
   bool _roletaJaGirada = false;
-  String• _cupomRoletaCodigo;
-  double• _cupomRoletaDesconto;
-  String• _premioRoletaDescricao;
+  String? _cupomRoletaCodigo;
+  double? _cupomRoletaDesconto;
+  String? _premioRoletaDescricao;
   bool _freteGratisRoleta = false;
 
   int _refreshCounter = 0;
   bool _isOffline = false;
   List<String> _recentIds = [];
   List<String> _favoritosIds = [];
-  String• _clienteId;
-  String• _clienteEmail;
+  String? _clienteId;
+  String? _clienteEmail;
   bool _modoEscuro = false;
   bool _mostrarEstoqueNoCatalogo = false;
   bool _mostrarQuantidadeNoCatalogo = false;
   bool _openedInitialPage = false;
-  String• _pendingInitialProdutoId;
+  String? _pendingInitialProdutoId;
   bool _initialProdutoHandled = false;
-  StreamSubscription<List<ConnectivityResult>>• _connectivitySubscription;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   static const String _keyModoEscuro = 'catalog_dark_mode';
   static const String _keyMostrarEstoqueCatalogo = 'mostrar_estoque_catalogo';
   static const String _keyMostrarQuantidadeCatalogo =
@@ -491,10 +491,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   static const String _baseUrlCatalogo = 'https://app.mastepalm.com.br/loja';
 
   /// Cache de streams (evita recriação a cada rebuild = piscar)
-  Stream<Map<String, dynamic>>• _cachedConfigStream;
-  String• _cachedConfigStreamKey;
-  Stream<QuerySnapshot<Map<String, dynamic>>>• _cachedProdutosStream;
-  String• _cachedProdutosStreamKey;
+  Stream<Map<String, dynamic>>? _cachedConfigStream;
+  String? _cachedConfigStreamKey;
+  Stream<QuerySnapshot<Map<String, dynamic>>>? _cachedProdutosStream;
+  String? _cachedProdutosStreamKey;
 
   Stream<Map<String, dynamic>> _getConfigStream(String lojaId) {
     final key = '${lojaId}_${widget.preview}';
@@ -503,7 +503,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
     _cachedConfigStreamKey = key;
     _cachedConfigStream = _useCatalogCache && !widget.preview
-        • CatalogCacheService.getConfigStream(
+        ? CatalogCacheService.getConfigStream(
             lojaId: lojaId,
             preview: widget.preview,
           )
@@ -519,7 +519,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
     _cachedProdutosStreamKey = key;
     _cachedProdutosStream = _useCatalogCache && !widget.preview
-        • CatalogCacheService.getProdutosStream(
+        ? CatalogCacheService.getProdutosStream(
             lojaId: lojaId,
             preview: widget.preview,
             forceRefresh: _refreshCounter > 0,
@@ -545,7 +545,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                'Erro ao carregar: ${e is TimeoutException • "Tempo esgotado" : e}'),
+                'Erro ao carregar: ${e is TimeoutException ? "Tempo esgotado" : e}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -603,7 +603,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final v = prefs.getBool(_keyModoEscuro);
-      if (mounted) setState(() => _modoEscuro = v ?• false);
+      if (mounted) setState(() => _modoEscuro = v ?? false);
     } catch (_) {}
   }
 
@@ -613,7 +613,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final prefs = await SharedPreferences.getInstance();
       final key = '${_keyMostrarEstoqueCatalogo}_$lojaId';
       final v = prefs.getBool(key);
-      if (mounted) setState(() => _mostrarEstoqueNoCatalogo = v ?• false);
+      if (mounted) setState(() => _mostrarEstoqueNoCatalogo = v ?? false);
     } catch (_) {}
   }
 
@@ -623,7 +623,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final prefs = await SharedPreferences.getInstance();
       final key = '${_keyMostrarQuantidadeCatalogo}_$lojaId';
       final v = prefs.getBool(key);
-      if (mounted) setState(() => _mostrarQuantidadeNoCatalogo = v ?• false);
+      if (mounted) setState(() => _mostrarQuantidadeNoCatalogo = v ?? false);
     } catch (_) {}
   }
 
@@ -640,13 +640,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required BuildContext context,
     required String logoUrl,
     required bool isDark,
-    int• colorClaro,
-    int• colorEscuro,
+    int? colorClaro,
+    int? colorEscuro,
   }) {
     const int defaultLogoColorClaro =
         0xFF212121; // escuro para tema claro (logo branca fica visível)
-    final int• tintValue =
-        isDark • colorEscuro : (colorClaro ?• defaultLogoColorClaro);
+    final int? tintValue =
+        isDark ? colorEscuro : (colorClaro ?? defaultLogoColorClaro);
     final Widget image = Image(
       image: mpImageProvider(logoUrl),
       fit: BoxFit.contain,
@@ -752,14 +752,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final p = product;
       final productId = safeStr(p['id']);
       if (productId.isNotEmpty) _onProductViewed(productId);
-      Map<String, int>• mapEstoque(dynamic raw) {
+      Map<String, int>? mapEstoque(dynamic raw) {
         if (raw is! Map) return null;
         final out = <String, int>{};
         raw.forEach((k, v) {
-          final n = v is num • v.toInt() : int.tryParse('$v');
+          final n = v is num ? v.toInt() : int.tryParse('$v');
           if (n != null && n > 0) out[k.toString()] = n;
         });
-        return out.isEmpty • null : out;
+        return out.isEmpty ? null : out;
       }
       final estoqueTam = mapEstoque(p['estoquePorTamanho']);
       final estoqueCor = mapEstoque(p['estoquePorCor']);
@@ -775,19 +775,19 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               peso: safeDouble(p['peso']),
               tipoEmbalagem: safeStr(p['tipoEmbalagem'], 'padrao'),
               price: safeDouble(p['preco']),
-              priceMin: p['priceMin'] != null • safeDouble(p['priceMin']) : null,
-              priceMax: p['priceMax'] != null • safeDouble(p['priceMax']) : null,
+              priceMin: p['priceMin'] != null ? safeDouble(p['priceMin']) : null,
+              priceMax: p['priceMax'] != null ? safeDouble(p['priceMax']) : null,
               precoPorTamanho: (p['precoPorTamanho'] is Map)
-                  • Map<String, double>.from(
+                  ? Map<String, double>.from(
                       (p['precoPorTamanho'] as Map).map(
                         (k, v) => MapEntry(
                           k.toString(),
-                          v is num • v.toDouble() : 0.0,
+                          v is num ? v.toDouble() : 0.0,
                         ),
                       ),
                     )
                   : null,
-              precoOriginal: p['emPromocao'] == true • safeDouble(p['precoFinal']) : null,
+              precoOriginal: p['emPromocao'] == true ? safeDouble(p['precoFinal']) : null,
               emPromocao: safeBool(p['emPromocao']),
               percentualPromo: safeDouble(p['percentualPromo']),
               valorPromo: safeDouble(p['valorPromo']),
@@ -796,7 +796,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               estoquePorTamanho: estoqueTam,
               estoquePorCor: estoqueCor,
               variacoes: (p['variacoes'] != null && asMapDeep(p['variacoes']).isNotEmpty)
-                  • asMapDeep(p['variacoes'])
+                  ? asMapDeep(p['variacoes'])
                   : null,
               prazoEntrega: null,
               percentualDescontoPix: safeDouble(p['percentualDescontoPix']),
@@ -806,7 +806,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 '$_baseUrlCatalogo/$lojaId',
                 ref: widget.vendedorRef,
                 indicacao: widget.indicacaoClienteRef,
-                produto: safeStr(p['slug']).isNotEmpty • safeStr(p['slug']) : productId,
+                produto: safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : productId,
               ),
               lojaId: lojaId,
               onAdd: (it) => _addToCart(it, produtos),
@@ -823,9 +823,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             name: safeStr(p['nome'], 'Produto'),
             descricao: safeStr(p['descricao']),
             price: safeDouble(p['preco']),
-            priceMin: p['priceMin'] != null • safeDouble(p['priceMin']) : null,
-            priceMax: p['priceMax'] != null • safeDouble(p['priceMax']) : null,
-            precoOriginal: p['emPromocao'] == true • safeDouble(p['precoFinal']) : null,
+            priceMin: p['priceMin'] != null ? safeDouble(p['priceMin']) : null,
+            priceMax: p['priceMax'] != null ? safeDouble(p['priceMax']) : null,
+            precoOriginal: p['emPromocao'] == true ? safeDouble(p['precoFinal']) : null,
             emPromocao: safeBool(p['emPromocao']),
             percentualPromo: safeDouble(p['percentualPromo']),
             valorPromo: safeDouble(p['valorPromo']),
@@ -834,13 +834,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             estoquePorTamanho: estoqueTam,
             estoquePorCor: estoqueCor,
             variacoes: (p['variacoes'] != null && asMapDeep(p['variacoes']).isNotEmpty)
-                • asMapDeep(p['variacoes'])
+                ? asMapDeep(p['variacoes'])
                 : null,
             catalogShareUrl: CatalogShareService.buildUrlWithParams(
               '$_baseUrlCatalogo/$lojaId',
               ref: widget.vendedorRef,
               indicacao: widget.indicacaoClienteRef,
-              produto: safeStr(p['slug']).isNotEmpty • safeStr(p['slug']) : productId,
+              produto: safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : productId,
             ),
             prazoEntrega: null,
             percentualDescontoPix: safeDouble(p['percentualDescontoPix']),
@@ -858,7 +858,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final lid = _resolvedLojaId;
     if (cliente != null && lojaSessao == lid && lid != null) {
       final cid = cliente['clienteId']?.toString();
-      final email = cliente['email']?.toString().trim() ?• '';
+      final email = cliente['email']?.toString().trim() ?? '';
       if (mounted) {
         setState(() {
           _clienteId = cid;
@@ -879,7 +879,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   Future<void> _loadCarrinho() async {
     final lid = _resolvedLojaId;
     final cid = _clienteId;
-    final email = _clienteEmail ?• '';
+    final email = _clienteEmail ?? '';
     if (lid == null || cid == null || email.isEmpty) return;
     final items = await ClienteAuthService.getCarrinho(
       lojaId: lid,
@@ -925,7 +925,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   Future<void> _loadFavoritos() async {
     final lid = _resolvedLojaId;
     final cid = _clienteId;
-    final email = _clienteEmail ?• '';
+    final email = _clienteEmail ?? '';
     if (lid == null || cid == null || email.isEmpty) return;
     final ids = await ClienteAuthService.getFavoritos(
       lojaId: lid,
@@ -946,7 +946,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   }
 
   void _abrirLoginParaFavorito() {
-    final lojaIdAuth = _resolvedLojaId ?• widget.lojaId;
+    final lojaIdAuth = _resolvedLojaId ?? widget.lojaId;
     showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -1014,7 +1014,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   Future<void> _toggleFavorito(String productId) async {
     final lid = _resolvedLojaId;
     final cid = _clienteId;
-    final email = _clienteEmail ?• '';
+    final email = _clienteEmail ?? '';
     if (lid == null || cid == null || email.isEmpty) return;
     final result = await ClienteAuthService.toggleFavorito(
       lojaId: lid,
@@ -1072,7 +1072,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(result.errorMessage ?• 'Loja não encontrada'),
+                content: Text(result.errorMessage ?? 'Loja não encontrada'),
                 backgroundColor: Colors.red,
               ),
             );
@@ -1091,9 +1091,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _loadingLojaId = false;
         });
         _loadMostrarEstoqueNoCatalogo(
-            result.canonicalStoreId ?• result.storeId ?• widget.lojaId);
+            result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadMostrarQuantidadeNoCatalogo(
-            result.canonicalStoreId ?• result.storeId ?• widget.lojaId);
+            result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadRecentIds();
         _loadClienteAndFavoritos();
         if (!widget.preview &&
@@ -1118,7 +1118,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
         if (!result.success) {
           logD('❌ [CATÁLOGO] ${result.errorMessage}');
-          throw StateError(result.errorMessage ?• 'Nenhuma loja configurada');
+          throw StateError(result.errorMessage ?? 'Nenhuma loja configurada');
         }
 
         if (result.needsRedirect && result.redirectTo != null) {
@@ -1127,13 +1127,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         }
 
         setState(() {
-          _resolvedLojaId = result.canonicalStoreId ?• result.storeId;
+          _resolvedLojaId = result.canonicalStoreId ?? result.storeId;
           _loadingLojaId = false;
         });
         _loadMostrarEstoqueNoCatalogo(
-            result.canonicalStoreId ?• result.storeId ?• widget.lojaId);
+            result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadMostrarQuantidadeNoCatalogo(
-            result.canonicalStoreId ?• result.storeId ?• widget.lojaId);
+            result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadRecentIds();
         _loadClienteAndFavoritos();
         if (!widget.preview &&
@@ -1153,7 +1153,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _resolvedLojaId = null;
         });
         final msg = e is TimeoutException
-            • (e.message ?• 'Tempo esgotado. Tente novamente.')
+            ? (e.message ?? 'Tempo esgotado. Tente novamente.')
             : 'Erro ao carregar: $e';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg), backgroundColor: Colors.red),
@@ -1278,9 +1278,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           '📦 [_addToCart] Item: ${item['nome']} tam:${item['tamanho']} cor:${item['cor']}');
     }
 
-    final id = '${item['id'] ?• item['produtosId'] ?• ''}';
-    final tam = (item['tamanho'] ?• '').toString().trim();
-    final cor = (item['cor'] ?• '').toString().trim();
+    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
+    final tam = (item['tamanho'] ?? '').toString().trim();
+    final cor = (item['cor'] ?? '').toString().trim();
     final addQty = CatalogEstoqueHelper.parseCartItemQuantidade(item['quantidade']);
     final comboRaw = item['itensComboComSelecao'];
     final isComboLine =
@@ -1301,7 +1301,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         }
         if (already + addQty > avail) {
           _snack(avail <= 0
-              • 'Produto esgotado nesta variação.'
+              ? 'Produto esgotado nesta variação.'
               : 'Estoque insuficiente. Disponível: $avail un.');
           return;
         }
@@ -1335,7 +1335,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final db = FirebaseFirestore.instance;
     final baseRef = db.collection('lojas').doc(lojaId);
 
-    final String cfgCol = widget.preview • 'draft_config' : 'config';
+    final String cfgCol = widget.preview ? 'draft_config' : 'config';
     final configRef = baseRef.collection(cfgCol).doc('config');
     final paymentsRef = baseRef.collection(cfgCol).doc('payments');
 
@@ -1343,20 +1343,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     logD('🔥 [CATÁLOGO] CONFIGURAÇÃO');
     logD('   Loja: $lojaId');
     logD(
-        '   Modo: ${widget.preview • "PREVIEW (rascunho)" : "PRODUÇÃO (publicado)"}');
+        '   Modo: ${widget.preview ? "PREVIEW (rascunho)" : "PRODUÇÃO (publicado)"}');
     logD('   Caminho: lojas/$lojaId/$cfgCol/config');
     logD(
         '   ⚠️  Se cores estão erradas, verifique se configuração foi PUBLICADA!');
     logD('═══════════════════════════════════════════════════════════');
 
     final controller = StreamController<Map<String, dynamic>>();
-    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>• subscription;
+    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? subscription;
 
     void startListening() {
       subscription = configRef.snapshots().listen(
         (cfgSnap) async {
           _cfgPermissionDeniedLogged = false;
-          final cfg = asMapDeep(cfgSnap.data() ?• {});
+          final cfg = asMapDeep(cfgSnap.data() ?? {});
 
           try {
             final paySnap = await paymentsRef.get();
@@ -1367,7 +1367,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
           // Fallback: carregar cupons da collection se config vazio (sincronização FretesCuponsScreen)
           final cuponsCfg = cfg['cupons'];
-          final cuponsListCfg = cuponsCfg is List • cuponsCfg : null;
+          final cuponsListCfg = cuponsCfg is List ? cuponsCfg : null;
           if (cuponsListCfg == null || cuponsListCfg.isEmpty) {
             try {
               final cuponsSnap = await FirebaseFirestore.instance
@@ -1381,32 +1381,32 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               final now = DateTime.now();
               for (final doc in cuponsSnap.docs) {
                 final d = asMapDeep(doc.data());
-                final cod = (d['codigo'] ?• d['code'] ?• '')
+                final cod = (d['codigo'] ?? d['code'] ?? '')
                     .toString()
                     .toUpperCase()
                     .trim();
                 if (cod.isEmpty) continue;
                 final dataFim = d['dataFim'];
                 if (dataFim != null) {
-                  final fim = dataFim is Timestamp • dataFim.toDate() : null;
+                  final fim = dataFim is Timestamp ? dataFim.toDate() : null;
                   if (fim != null && now.isAfter(fim)) continue;
                 }
                 final tipoRaw =
-                    (d['tipo'] ?• 'percent').toString().toLowerCase();
+                    (d['tipo'] ?? 'percent').toString().toLowerCase();
                 final tipoNorm = tipoRaw == 'valor' || tipoRaw == 'fixo'
-                    • 'valor'
+                    ? 'valor'
                     : tipoRaw.contains('frete')
-                        • 'frete_gratis'
+                        ? 'frete_gratis'
                         : 'percent';
                 cuponsList.add({
                   'codigo': cod,
                   'tipo': tipoNorm,
                   'ativo': true,
                   'valor': safeDouble(d['valor']),
-                  'aplicarEm': (d['aplicarEm'] ?• 'produtos').toString(),
+                  'aplicarEm': (d['aplicarEm'] ?? 'produtos').toString(),
                   'freteGratis': d['freteGratis'] == true,
                   'valorMinimo': d['valorMinimo'] == null
-                      • null
+                      ? null
                       : safeDouble(d['valorMinimo']),
                   'dataFim': dataFim,
                   'validade': d['validade'],
@@ -1452,14 +1452,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _produtosStream(String lojaId) {
-    final col = widget.preview • kDraftProdutosCol : kLiveProdutosCol;
+    final col = widget.preview ? kDraftProdutosCol : kLiveProdutosCol;
 
     logD('📦 [CATÁLOGO] produtos: lojas/$lojaId/$col');
 
     // Filtro apenas por ativo - demais filtros serão aplicados no código
     // (evita necessidade de índice composto no Firestore)
     final controller = StreamController<QuerySnapshot<Map<String, dynamic>>>();
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>• subscription;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subscription;
 
     void startListening() {
       subscription = FirebaseFirestore.instance
@@ -1499,9 +1499,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   Future<void> _mostrarDialogoFiltroPreco(Color textColor) async {
     final minCtrl =
-        TextEditingController(text: _precoMin?.toStringAsFixed(2) ?• '');
+        TextEditingController(text: _precoMin?.toStringAsFixed(2) ?? '');
     final maxCtrl =
-        TextEditingController(text: _precoMax?.toStringAsFixed(2) ?• '');
+        TextEditingController(text: _precoMax?.toStringAsFixed(2) ?? '');
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1594,7 +1594,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       for (final d in draftSnap.docs) {
         final data = asMapDeep(d.data());
 
-        data['ativo'] = (data['ativo'] ?• true) == true;
+        data['ativo'] = (data['ativo'] ?? true) == true;
         data['publishedAt'] = FieldValue.serverTimestamp();
         data['updatedAt'] = FieldValue.serverTimestamp();
 
@@ -1620,7 +1620,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final draftCfgSnap = await draftCfgRef.get();
       if (draftCfgSnap.exists) {
         await liveCfgRef.set(
-            asMapDeep(draftCfgSnap.data() ?• {}), SetOptions(merge: true));
+            asMapDeep(draftCfgSnap.data() ?? {}), SetOptions(merge: true));
       }
 
       final draftPayRef = lojaDoc.collection('draft_config').doc('payments');
@@ -1629,7 +1629,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final draftPaySnap = await draftPayRef.get();
       if (draftPaySnap.exists) {
         await livePayRef.set(
-            asMapDeep(draftPaySnap.data() ?• {}), SetOptions(merge: true));
+            asMapDeep(draftPaySnap.data() ?? {}), SetOptions(merge: true));
       }
 
       _snack('Catálogo publicado com sucesso!');
@@ -1647,14 +1647,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required Color buttonText,
     required Color textColor,
     required Color cardColor,
-    required Color• checkoutCardColor,
-    required Color• checkoutFieldBg,
-    required Color• checkoutFieldBorder,
-    required Color• checkoutFieldTextColor,
-    required Color• checkoutLabelColor,
-    required Color• checkoutTotalColor,
-    required Color• productNameColor,
-    required Color• productPriceColor,
+    required Color? checkoutCardColor,
+    required Color? checkoutFieldBg,
+    required Color? checkoutFieldBorder,
+    required Color? checkoutFieldTextColor,
+    required Color? checkoutLabelColor,
+    required Color? checkoutTotalColor,
+    required Color? productNameColor,
+    required Color? productPriceColor,
     required String whatsappVendedor,
     required String lojaNome,
     required Map<String, String> paymentAsset,
@@ -1674,7 +1674,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
 
     // Carregar dados do formulário salvos anteriormente (persistência ao sair/voltar)
-    Map<String, dynamic>• initialFormData;
+    Map<String, dynamic>? initialFormData;
     try {
       final prefs = await SharedPreferences.getInstance();
       final key = 'catalog_cart_form_$lojaId';
@@ -1713,9 +1713,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             initialFreteGratisRoleta: _freteGratisRoleta,
             onRoletaPremioGanho: ({
               required bool jaGirada,
-              String• codigo,
-              double• desconto,
-              String• descricao,
+              String? codigo,
+              double? desconto,
+              String? descricao,
               required bool freteGratis,
             }) {
               if (!mounted) return;
@@ -1748,15 +1748,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             onCheckoutPix:
                 (checkoutGateway == 'pix' || checkoutGateway == 'whatsapp') &&
                         pixKey.trim().isNotEmpty
-                    • ({
+                    ? ({
                         required Map<String, dynamic> customer,
                         required Map<String, dynamic> entrega,
                         required double valorTotal,
                         String observacao = '',
-                        String• cupomRoletaCodigo,
-                        double• cupomRoletaDesconto,
-                        String• premioRoletaDescricao,
-                        void Function(String message)• showErrorInCart,
+                        String? cupomRoletaCodigo,
+                        double? cupomRoletaDesconto,
+                        String? premioRoletaDescricao,
+                        void Function(String message)? showErrorInCart,
                       }) async {
                         void showErr(String msg) {
                           if (showErrorInCart != null) {
@@ -1767,7 +1767,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           }
                         }
 
-                        String• vendaId;
+                        String? vendaId;
                         try {
                           vendaId =
                               await CatalogoVendaService.registrarVendaCatalogo(
@@ -1795,7 +1795,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           valor: valorTotal,
                           nomeRecebedor: 'LOJA',
                           cidadeRecebedor: 'BRASIL',
-                          txid: vendaId ?• '***',
+                          txid: vendaId ?? '***',
                         );
                         if (ctx.mounted) {
                           setState(() {
@@ -1828,11 +1828,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               required Map<String, dynamic> entrega,
               required String pagamento,
               String observacao = '',
-              String• cupomRoletaCodigo,
-              double• cupomRoletaDesconto,
-              String• premioRoletaDescricao,
-              Future<void> Function(String• pedidoId)• onSuccess,
-              void Function(String message)• showErrorInCart,
+              String? cupomRoletaCodigo,
+              double? cupomRoletaDesconto,
+              String? premioRoletaDescricao,
+              Future<void> Function(String? pedidoId)? onSuccess,
+              void Function(String message)? showErrorInCart,
             }) async {
               void showErr(String msg) {
                 if (showErrorInCart != null) {
@@ -1844,7 +1844,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
               try {
                 // ✨ Reutilizar pré-pedido se já foi criado (ex.: após erro em outra forma de pagamento)
-                Map<String, dynamic>• prePedido;
+                Map<String, dynamic>? prePedido;
                 if (_ultimoPrePedidoId != null &&
                     _ultimoPrePedidoData != null) {
                   prePedido = _ultimoPrePedidoData;
@@ -1899,7 +1899,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 }
 
                 // ✨ Buscar slug da loja para gerar link correto
-                String• lojaSlug;
+                String? lojaSlug;
                 try {
                   final lojaDoc = await FirebaseFirestore.instance
                       .collection('lojas')
@@ -1907,7 +1907,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       .get();
                   if (lojaDoc.exists) {
                     lojaSlug =
-                        asMap(lojaDoc.data())['slug']?.toString() ?• lojaId;
+                        asMap(lojaDoc.data())['slug']?.toString() ?? lojaId;
                   }
                 } catch (e) {
                   logD(
@@ -1932,7 +1932,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       prePedidoId.isNotEmpty) {
                     logD('🎁 Gerando cupom e número da sorte...');
 
-                    final total = prePedidoVal['total'] ?• 0.0;
+                    final total = prePedidoVal['total'] ?? 0.0;
 
                     final requestBody = {
                       'lojaId': lojaId,
@@ -1940,9 +1940,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       'pedidoId': prePedidoId,
                       'valorPedido': total,
                       'clienteEmail':
-                          cliente['email'] ?• customer['email'] ?• '',
-                      'clienteNome': cliente['nome'] ?• customer['nome'] ?• '',
-                      'clienteTelefone': customer['telefone'] ?• '',
+                          cliente['email'] ?? customer['email'] ?? '',
+                      'clienteNome': cliente['nome'] ?? customer['nome'] ?? '',
+                      'clienteTelefone': customer['telefone'] ?? '',
                     };
 
                     logD('📤 [CUPOM] Enviando requisição para Cloud Function:');
@@ -1969,13 +1969,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       try {
                         final data = asMap(json.decode(response.body));
                         final cupom = asMap(data['cupom']);
-                        final cupomCodigo = cupom['codigo']?.toString() ?• '';
+                        final cupomCodigo = cupom['codigo']?.toString() ?? '';
                         final cupomDesconto =
-                            cupom['desconto']?.toString() ?• '0';
+                            cupom['desconto']?.toString() ?? '0';
                         final cupomValidade =
-                            cupom['validade']?.toString() ?• '';
+                            cupom['validade']?.toString() ?? '';
                         final numeroSorte =
-                            data['numeroSorte']?.toString() ?• '';
+                            data['numeroSorte']?.toString() ?? '';
 
                         logD('✅ Cupom: $cupomCodigo');
                         logD('✅ Número da sorte: $numeroSorte');
@@ -1983,7 +1983,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         final cupomMsg = '\n\n🎁 *Parabéns!*\n\n'
                             'Você ganhou um cupom de $cupomDesconto% de desconto:\n'
                             '📌 *$cupomCodigo*\n'
-                            '${cupomValidade.isNotEmpty • 'Válido até $cupomValidade\n\n' : ''}'
+                            '${cupomValidade.isNotEmpty ? 'Válido até $cupomValidade\n\n' : ''}'
                             '🎰 *Seu número da sorte:* $numeroSorte\n'
                             'Boa sorte! 🍀';
 
@@ -2041,10 +2041,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               required Map<String, dynamic> entrega,
               required String pagamento,
               String observacao = '',
-              String• cupomRoletaCodigo,
-              double• cupomRoletaDesconto,
-              String• premioRoletaDescricao,
-              void Function(String message)• showErrorInCart,
+              String? cupomRoletaCodigo,
+              double? cupomRoletaDesconto,
+              String? premioRoletaDescricao,
+              void Function(String message)? showErrorInCart,
             }) async {
               // Erros devem aparecer na tela do carrinho (não no catálogo)
               void showErr(String msg) {
@@ -2057,7 +2057,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               }
 
               // ✨ Reutilizar pré-pedido se já foi criado (evita vários pedidos ao trocar forma de pagamento)
-              String• pedidoId = _ultimoPrePedidoId;
+              String? pedidoId = _ultimoPrePedidoId;
               if (pedidoId == null) {
                 try {
                   logD(
@@ -2115,7 +2115,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final valorFrete = safeDouble(entrega['valor']);
                 final valorTotal = subtotal + valorFrete;
                 final isPix = pagamento.toUpperCase() == 'PIX';
-                int• maxInstallmentsSemJuros;
+                int? maxInstallmentsSemJuros;
                 if (!isPix) {
                   final limites = _cart
                       .where((e) => e['divideSemJuros'] == true)
@@ -2131,14 +2131,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                 logD(
                     '💰 Criando pagamento - Valor total: R\$ ${valorTotal.toStringAsFixed(2)}');
-                Map<String, dynamic>• paymentData;
+                Map<String, dynamic>? paymentData;
 
                 // Na WEB: usar Cloud Function (evita CORS ao chamar api.mercadopago.com)
                 if (kIsWeb) {
                   try {
                     final body = <String, dynamic>{
                       'lojaId': lojaId,
-                      'type': isPix • 'pix' : 'preference',
+                      'type': isPix ? 'pix' : 'preference',
                       if (isPix) ...{
                         'valor': valorTotal,
                         'descricao': 'Pedido #$pedidoId',
@@ -2152,7 +2152,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         'descricao': 'Compra em $lojaId',
                         'externalReference': pedidoId,
                         'payer': customer['email'] != null
-                            • {'email': customer['email'].toString()}
+                            ? {'email': customer['email'].toString()}
                             : null,
                         if (maxInstallmentsSemJuros != null)
                           'maxInstallments': maxInstallmentsSemJuros,
@@ -2220,9 +2220,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       return;
                     }
 
-                    final config = asMapDeep(configDoc.data() ?• {});
+                    final config = asMapDeep(configDoc.data() ?? {});
                     final mp = asMap(config['mp']);
-                    final accessToken = mp['access_token'] ?• mp['token'];
+                    final accessToken = mp['access_token'] ?? mp['token'];
 
                     if (accessToken == null || accessToken.toString().isEmpty) {
                       showErr(
@@ -2251,7 +2251,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         descricao: 'Compra em $lojaId',
                         externalReference: pedidoId,
                         payer: customer['email'] != null
-                            • {'email': customer['email'].toString()}
+                            ? {'email': customer['email'].toString()}
                             : null,
                         maxInstallments: maxInstallmentsSemJuros,
                         backUrls: {
@@ -2271,7 +2271,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     try {
                       final body = <String, dynamic>{
                         'lojaId': lojaId,
-                        'type': isPix • 'pix' : 'preference',
+                        'type': isPix ? 'pix' : 'preference',
                         if (isPix) ...{
                           'valor': valorTotal,
                           'descricao': 'Pedido #$pedidoId',
@@ -2285,7 +2285,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           'descricao': 'Compra em $lojaId',
                           'externalReference': pedidoId,
                           'payer': customer['email'] != null
-                              • {'email': customer['email'].toString()}
+                              ? {'email': customer['email'].toString()}
                               : null,
                           if (maxInstallmentsSemJuros != null)
                             'maxInstallments': maxInstallmentsSemJuros,
@@ -2537,9 +2537,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           'clienteId': clienteLogado['clienteId'],
           'pedidoId': pedidoId,
           'valorPedido': valorTotal,
-          'clienteEmail': clienteLogado['email'] ?• customer['email'] ?• '',
-          'clienteNome': clienteLogado['nome'] ?• customer['nome'] ?• '',
-          'clienteTelefone': customer['telefone'] ?• '',
+          'clienteEmail': clienteLogado['email'] ?? customer['email'] ?? '',
+          'clienteNome': clienteLogado['nome'] ?? customer['nome'] ?? '',
+          'clienteTelefone': customer['telefone'] ?? '',
         }),
         timeout: HttpTimeouts.cloudFunction,
       );
@@ -2572,7 +2572,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final themeData = _modoEscuro • ThemeData.dark() : ThemeData.light();
+    final themeData = _modoEscuro ? ThemeData.dark() : ThemeData.light();
     // Usar tema do contexto (ex.: web) para loading/erro, evitando tela branca
     final themeForStates = Theme.of(context);
     if (_loadingLojaId) {
@@ -2601,21 +2601,21 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           }
 
           final Map<String, dynamic> cfg =
-              (cfgSnap.data ?• {}).map((k, v) => MapEntry(k.toString(), v));
+              (cfgSnap.data ?? {}).map((k, v) => MapEntry(k.toString(), v));
 
           if (kDebugMode) {
             logD('📄 [CATÁLOGO] Config carregado: ${cfg.keys.length} chaves');
           }
 
           final whatsappVendedor =
-              (cfg['whatsapp_vendedor'] ?• cfg['whatsapp'] ?• '').toString();
+              (cfg['whatsapp_vendedor'] ?? cfg['whatsapp'] ?? '').toString();
 
           // ✅ WhatsApp do rodapé: usa rodape['whatsapp'] quando configurado (sincronizado com Loja Config)
           final rodapeForWhatsapp = mpMapDyn(cfg['rodape']);
           final whatsappRodape =
-              (rodapeForWhatsapp['whatsapp'] ?• '').toString().trim();
+              (rodapeForWhatsapp['whatsapp'] ?? '').toString().trim();
           final atendimentoWhatsapp =
-              whatsappRodape.isNotEmpty • whatsappRodape : whatsappVendedor;
+              whatsappRodape.isNotEmpty ? whatsappRodape : whatsappVendedor;
 
           // =================== CONFIGURAÇÕES DE LAYOUT ===================
           final cardShowShadow = safeBool(cfg['cardShowShadow'], true);
@@ -2628,90 +2628,90 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           // ✅ CORRIGIDO: Lê de 'theme' e 'checkoutTheme' (mesma estrutura do LojaConfig)
           final themeRaw = cfg['theme'];
           final themeMap = (themeRaw is Map
-              • themeRaw.map((k, v) => MapEntry(k.toString(), v))
+              ? themeRaw.map((k, v) => MapEntry(k.toString(), v))
               : <String, dynamic>{});
 
           final checkoutThemeRaw = cfg['checkoutTheme'];
           final checkoutThemeMap = (checkoutThemeRaw is Map
-              • checkoutThemeRaw.map((k, v) => MapEntry(k.toString(), v))
+              ? checkoutThemeRaw.map((k, v) => MapEntry(k.toString(), v))
               : <String, dynamic>{});
 
           // ✅ NOVO: Lê de 'uiColors' (cores unificadas expandidas)
           final uiColorsRaw = cfg['uiColors'];
           final uiColorsMap = (uiColorsRaw is Map
-              • uiColorsRaw.map((k, v) => MapEntry(k.toString(), v))
+              ? uiColorsRaw.map((k, v) => MapEntry(k.toString(), v))
               : <String, dynamic>{});
 
           // ✅ NOVO: Lê de 'catalogHeaderColors' (cores do cabeçalho)
           final headerColorsRaw = cfg['catalogHeaderColors'];
           final headerColorsMap = (headerColorsRaw is Map
-              • headerColorsRaw.map((k, v) => MapEntry(k.toString(), v))
+              ? headerColorsRaw.map((k, v) => MapEntry(k.toString(), v))
               : <String, dynamic>{});
 
           // ✅ NOVO: Lê de 'catalogFooterColors' (cores do rodapé)
           final footerColorsRaw = cfg['catalogFooterColors'];
           final footerColorsMap = (footerColorsRaw is Map
-              • footerColorsRaw.map((k, v) => MapEntry(k.toString(), v))
+              ? footerColorsRaw.map((k, v) => MapEntry(k.toString(), v))
               : <String, dynamic>{});
 
           // ✅ NOVO: Lê de 'catalogDicasColors' (cores da tela Dicas)
           final dicasColorsRaw = cfg['catalogDicasColors'];
           final dicasColorsMap = (dicasColorsRaw is Map
-              • dicasColorsRaw.map((k, v) => MapEntry(k.toString(), v))
+              ? dicasColorsRaw.map((k, v) => MapEntry(k.toString(), v))
               : <String, dynamic>{});
 
           Color colorFromTheme(String key, Color fallback) {
             final dynamic raw = themeMap[key];
-            return readColorFromCfg(raw) ?• fallback;
+            return readColorFromCfg(raw) ?? fallback;
           }
 
           Color colorFromCheckoutTheme(String key, Color fallback) {
             final dynamic raw = checkoutThemeMap[key];
-            return readColorFromCfg(raw) ?• fallback;
+            return readColorFromCfg(raw) ?? fallback;
           }
 
           Color colorFromUiColors(String key, Color fallback) {
             final dynamic raw = uiColorsMap[key];
-            return readColorFromCfg(raw) ?• fallback;
+            return readColorFromCfg(raw) ?? fallback;
           }
 
           Color colorFromHeaderColors(String key, Color fallback) {
             final dynamic raw = headerColorsMap[key];
-            return readColorFromCfg(raw) ?• fallback;
+            return readColorFromCfg(raw) ?? fallback;
           }
 
           Color colorFromFooterColors(String key, Color fallback) {
             final dynamic raw = footerColorsMap[key];
-            return readColorFromCfg(raw) ?• fallback;
+            return readColorFromCfg(raw) ?? fallback;
           }
 
           Color colorFromDicasColors(String key, Color fallback) {
             final dynamic raw = dicasColorsMap[key];
-            return readColorFromCfg(raw) ?• fallback;
+            return readColorFromCfg(raw) ?? fallback;
           }
 
           // ===== Tema geral (cards e produtos) =====
           // Prioriza uiColors > theme > fallback
           final primaryColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors('buttonPrimaryBg',
+              ? colorFromUiColors('buttonPrimaryBg',
                   colorFromTheme('primaria', const Color(0xFF22C55E)))
               : colorFromTheme('primaria', const Color(0xFF22C55E));
           final bgColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors('background',
+              ? colorFromUiColors('background',
                   colorFromTheme('fundo', const Color(0xFF020617)))
               : colorFromTheme('fundo', const Color(0xFF020617));
           final cardColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors('cardBackground',
+              ? colorFromUiColors('cardBackground',
                   colorFromTheme('card', const Color(0xFF020617)))
               : colorFromTheme('card', const Color(0xFF020617));
           final textColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors('textPrimary',
+              ? colorFromUiColors('textPrimary',
                   colorFromTheme(
                       'texto', Colors.white.withValues(alpha: 0.95)))
               : colorFromTheme(
                   'texto', Colors.white.withValues(alpha: 0.95));
           final btnTextColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors('buttonPrimaryText',
+              ? colorFromUiColors('buttonPrimaryText',
                   colorFromTheme('botaoTexto', Colors.white))
               : colorFromTheme('botaoTexto', Colors.white);
 
@@ -2726,7 +2726,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
           // ===== Cor do cabeçalho (separada do fundo geral) =====
           final headerColor = headerColorsMap.isNotEmpty
-              • colorFromHeaderColors(
+              ? colorFromHeaderColors(
                   'background', colorFromTheme('cabecalho', bgColor))
               : colorFromTheme('cabecalho', bgColor);
           final headerTextColor = colorFromHeaderColors('text', Colors.white);
@@ -2749,7 +2749,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               colorFromFooterColors('divider', Colors.white24);
 
           // ===== Cores da tela Dicas e Informações =====
-          CatalogDicasColors• catalogDicasColors;
+          CatalogDicasColors? catalogDicasColors;
           if (dicasColorsMap.isNotEmpty) {
             catalogDicasColors = CatalogDicasColors(
               background:
@@ -2773,31 +2773,31 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           // ===== Cores do checkout / carrinho =====
           // Prioriza uiColors > checkoutTheme > fallback
           final checkoutCardColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors(
+              ? colorFromUiColors(
                   'cardBackground', colorFromCheckoutTheme('card', cardColor))
               : colorFromCheckoutTheme('card', cardColor);
 
           final checkoutFieldBg = uiColorsMap.isNotEmpty
-              • colorFromUiColors('fieldBackground',
+              ? colorFromUiColors('fieldBackground',
                   colorFromCheckoutTheme('campo', const Color(0xFF0F172A)))
               : colorFromCheckoutTheme('campo', const Color(0xFF0F172A));
 
           final checkoutFieldTextColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors(
+              ? colorFromUiColors(
                   'fieldText', colorFromCheckoutTheme('texto', textColor))
               : colorFromCheckoutTheme('texto', textColor);
 
           final checkoutLabelColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors(
+              ? colorFromUiColors(
                   'labelText', colorFromCheckoutTheme('label', textColor))
               : colorFromCheckoutTheme('label', textColor);
 
           final checkoutTotalColor = uiColorsMap.isNotEmpty
-              • colorFromUiColors('priceHighlight',
+              ? colorFromUiColors('priceHighlight',
                   colorFromCheckoutTheme('total', const Color(0xFF22C55E)))
               : colorFromCheckoutTheme('total', const Color(0xFF22C55E));
           final checkoutFieldBorder = uiColorsMap.isNotEmpty
-              • colorFromUiColors('fieldBorder', Colors.white.withValues(alpha: 0.25))
+              ? colorFromUiColors('fieldBorder', Colors.white.withValues(alpha: 0.25))
               : Colors.white.withValues(alpha: 0.25);
 
           // ===== Cores de nome e preço do produto =====
@@ -2807,7 +2807,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           // =================== IDENTIDADE / LINKS ===================
           final lojaNome = (cfg['nomeLoja'] ??
                   cfg['nome_loja'] ??
-                  cfg['nome'] ?• // ✅ CORRIGIDO: adiciona 'nome'
+                  cfg['nome'] ?? // ✅ CORRIGIDO: adiciona 'nome'
                   cfg['name'] ??
                   'Minha Loja')
               .toString()
@@ -2817,27 +2817,27 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           final rodapeLinks = mpMapDyn(cfg['rodape']);
 
           final instagramUrl =
-              (rodapeLinks['instagram'] ?• links['instagram'] ?• '').toString();
+              (rodapeLinks['instagram'] ?? links['instagram'] ?? '').toString();
           final facebookUrl =
-              (rodapeLinks['facebook'] ?• links['facebook'] ?• '').toString();
-          final tiktokUrl = (rodapeLinks['tiktok'] ?• '').toString();
-          final telegramUrl = (rodapeLinks['telegram'] ?• '').toString();
-          final kwaiUrl = (rodapeLinks['kwai'] ?• '').toString();
-          final linkedinUrl = (rodapeLinks['linkedin'] ?• '').toString();
-          final emailUrl = (rodapeLinks['email'] ?• '').toString();
-          final whatsappUrl = (rodapeLinks['whatsapp'] ?• '').toString();
+              (rodapeLinks['facebook'] ?? links['facebook'] ?? '').toString();
+          final tiktokUrl = (rodapeLinks['tiktok'] ?? '').toString();
+          final telegramUrl = (rodapeLinks['telegram'] ?? '').toString();
+          final kwaiUrl = (rodapeLinks['kwai'] ?? '').toString();
+          final linkedinUrl = (rodapeLinks['linkedin'] ?? '').toString();
+          final emailUrl = (rodapeLinks['email'] ?? '').toString();
+          final whatsappUrl = (rodapeLinks['whatsapp'] ?? '').toString();
           final sobreUrl =
-              (rodapeLinks['sobre'] ?• links['sobre'] ?• '').toString();
+              (rodapeLinks['sobre'] ?? links['sobre'] ?? '').toString();
           final trocasUrl =
-              (rodapeLinks['trocas'] ?• links['trocas'] ?• '').toString();
+              (rodapeLinks['trocas'] ?? links['trocas'] ?? '').toString();
           final loginUrl =
-              (rodapeLinks['login'] ?• links['login'] ?• '').toString();
+              (rodapeLinks['login'] ?? links['login'] ?? '').toString();
 
           final empresa = asMap(cfg['empresa']);
           final empresaRazao =
-              (rodapeLinks['razao'] ?• empresa['razao'] ?• '').toString();
+              (rodapeLinks['razao'] ?? empresa['razao'] ?? '').toString();
           final empresaCnpj =
-              (rodapeLinks['cnpj'] ?• empresa['cnpj'] ?• '').toString();
+              (rodapeLinks['cnpj'] ?? empresa['cnpj'] ?? '').toString();
 
           // ✅ CORRIGIDO: Token de frete unificado
           final freightToken = (cfg['melhorEnvioToken'] ??
@@ -2853,7 +2853,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           // ✅ CORRIGIDO: Lê payments de 'rodape' (onde o LojaConfig salva)
           final rodapeRaw = cfg['rodape'];
           final rodapeMap = rodapeRaw is Map
-              • rodapeRaw.map((k, v) => MapEntry(k.toString(), v))
+              ? rodapeRaw.map((k, v) => MapEntry(k.toString(), v))
               : <String, dynamic>{};
 
           final paymentsFromRodape = rodapeMap['payments'];
@@ -2884,7 +2884,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               mpMapDyn(checkoutCfg['checkout']);
 
           String normalizeGateway(dynamic v) {
-            final s = v?.toString().toLowerCase().trim() ?• '';
+            final s = v?.toString().toLowerCase().trim() ?? '';
             if (s.isEmpty) return '';
             final compact = s.replaceAll(RegExp(r'[\s_-]+'), '');
             if (compact.contains('mercadopago') || compact == 'mp') {
@@ -2953,7 +2953,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           }
 
           String extractPixKey() {
-            String• fromCheckout = (checkoutInner['pixKey'] ??
+            String? fromCheckout = (checkoutInner['pixKey'] ??
                     checkoutInner['chavePix'] ??
                     checkoutInner['pix_chave'] ??
                     checkoutInner['pix_key'])
@@ -2998,7 +2998,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 ?.toString()
                 .trim();
 
-            return fromRoot ?• '';
+            return fromRoot ?? '';
           }
 
           final pixKey = extractPixKey();
@@ -3035,15 +3035,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               checkoutCfg['jurosParcelamento'] ??
               cfg['jurosParcelamento'];
           final jurosParcelamento = (jurosRaw is num)
-              • jurosRaw.toDouble()
-              : (double.tryParse(jurosRaw?.toString() ?• '') ?• 1.99);
+              ? jurosRaw.toDouble()
+              : (double.tryParse(jurosRaw?.toString() ?? '') ?? 1.99);
 
           final maxParcelasRaw = checkoutInner['maxParcelas'] ??
               checkoutCfg['maxParcelas'] ??
               cfg['maxParcelas'];
           final maxParcelas = (maxParcelasRaw is int)
-              • maxParcelasRaw
-              : (int.tryParse(maxParcelasRaw?.toString() ?• '') ?• 12);
+              ? maxParcelasRaw
+              : (int.tryParse(maxParcelasRaw?.toString() ?? '') ?? 12);
           final maxParcelasClamped = maxParcelas.clamp(1, 24);
 
           // =================== FRETES, CUPONS, MÍDIA ===================
@@ -3061,7 +3061,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               scaffoldBackgroundColor: bgColor,
               colorScheme: ColorScheme.fromSeed(
                 seedColor: primaryColor,
-                brightness: _modoEscuro • Brightness.dark : Brightness.light,
+                brightness: _modoEscuro ? Brightness.dark : Brightness.light,
                 primary: primaryColor,
                 surface: cardColor,
               ),
@@ -3128,11 +3128,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   );
                 }
                 final docs = prodSnap.hasData && prodSnap.data != null
-                    • prodSnap.data!.docs
+                    ? prodSnap.data!.docs
                     : <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
                 final produtos = docs.isEmpty
-                    • <Map<String, dynamic>>[]
+                    ? <Map<String, dynamic>>[]
                     : _processDocsToProducts(docs);
 
                 const badgeSSL = 'assets/badges/ssl.png';
@@ -3150,7 +3150,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 // Prazo de entrega (primeiro frete com prazo preenchido)
                 String prazoEntregaTexto = 'Conforme opção no checkout';
                 for (final f in fretes) {
-                  final p = (f['prazo'] ?• '').toString().trim();
+                  final p = (f['prazo'] ?? '').toString().trim();
                   if (p.isNotEmpty) {
                     prazoEntregaTexto = p;
                     break;
@@ -3163,8 +3163,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   for (final e in asList(cfg['faq'])) {
                     if (e is Map) {
                       final m = Map<String, String>.from(e.map((k, v) =>
-                          MapEntry(k.toString(), v?.toString() ?• '')));
-                      if ((m['pergunta'] ?• '').trim().isNotEmpty) {
+                          MapEntry(k.toString(), v?.toString() ?? '')));
+                      if ((m['pergunta'] ?? '').trim().isNotEmpty) {
                         faqItems.add(m);
                       }
                     }
@@ -3195,7 +3195,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     .toString()
                     .trim();
                 final termosUsoUrl =
-                    (cfg['termosUsoUrl'] ?• cfg['termos_uso_url'] ?• '')
+                    (cfg['termosUsoUrl'] ?? cfg['termos_uso_url'] ?? '')
                         .toString()
                         .trim();
 
@@ -3208,7 +3208,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             e['quantidade']));
 
                 final layoutCatalogo =
-                    (cfg['layoutCatalogo'] ?• cfg['layout_catalogo'] ?• 'padrao')
+                    (cfg['layoutCatalogo'] ?? cfg['layout_catalogo'] ?? 'padrao')
                         .toString()
                         .trim()
                         .toLowerCase();
@@ -3231,14 +3231,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final bestSellersSectionEnabled = safeBool(
                     minimalBestSellersCfg['enabled'], true);
                 final bestSellersTitle =
-                    (minimalBestSellersCfg['title'] ?• 'Mais vendidos')
+                    (minimalBestSellersCfg['title'] ?? 'Mais vendidos')
                         .toString();
                 final bestSellersLimit = safeInt(
                     minimalBestSellersCfg['count'], 10)
                     .clamp(3, 24);
 
                 TextAlign parseTextAlign(dynamic raw, TextAlign fallback) {
-                  final v = (raw ?• '').toString().trim().toLowerCase();
+                  final v = (raw ?? '').toString().trim().toLowerCase();
                   switch (v) {
                     case 'left':
                       return TextAlign.left;
@@ -3255,10 +3255,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                 // Mostrar quantidade / estoque no catálogo (Firestore > prefs)
                 final mostrarQuantidadeNoCatalogo =
-                    cfg['mostrarQuantidadeNoCatalogo'] as bool• ??
+                    cfg['mostrarQuantidadeNoCatalogo'] as bool? ??
                         _mostrarQuantidadeNoCatalogo;
                 final mostrarEstoqueNoCatalogo =
-                    cfg['mostrarEstoqueNoCatalogo'] as bool• ??
+                    cfg['mostrarEstoqueNoCatalogo'] as bool? ??
                         _mostrarEstoqueNoCatalogo;
 
                 // categorias únicas para o menu lateral
@@ -3266,13 +3266,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final categoriasSet = <String>{};
                 final categoryAliasesByName = <String, Set<String>>{};
                 for (final p in produtos) {
-                  final c = (p['categoria'] ?• p['categoriaId'] ?• '')
+                  final c = (p['categoria'] ?? p['categoriaId'] ?? '')
                       .toString()
                       .trim();
                   if (c.isNotEmpty) {
                     categoriasSet.add(c);
                     final aliases = categoryAliasesByName.putIfAbsent(c, () => <String>{});
-                    final cid = (p['categoriaId'] ?• '').toString().trim();
+                    final cid = (p['categoriaId'] ?? '').toString().trim();
                     if (cid.isNotEmpty) aliases.add(cid);
                     aliases.add(c.toLowerCase());
                   }
@@ -3283,7 +3283,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 // Lê configurações do menu (quais itens mostrar/ocultar)
                 final menuRaw = cfg['menu'];
                 final menuMap = menuRaw is Map
-                    • menuRaw.map((k, v) => MapEntry(k.toString(), v))
+                    ? menuRaw.map((k, v) => MapEntry(k.toString(), v))
                     : <String, dynamic>{};
 
                 final menuShowCategorias =
@@ -3312,11 +3312,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 // Lê dados da página "Quem Somos"
                 final quemSomosRaw = cfg['quemSomos'];
                 final quemSomosMap = quemSomosRaw is Map
-                    • quemSomosRaw.map((k, v) => MapEntry(k.toString(), v))
+                    ? quemSomosRaw.map((k, v) => MapEntry(k.toString(), v))
                     : <String, dynamic>{};
 
                 final quemSomosTitulo =
-                    (quemSomosMap['titulo'] ?• 'Quem somos').toString();
+                    (quemSomosMap['titulo'] ?? 'Quem somos').toString();
                 final quemSomosTexto = (quemSomosMap['texto'] ??
                         cfg['quem_somos'] ??
                         cfg['sobre_texto'] ??
@@ -3326,11 +3326,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 // Lê dados do SAC
                 final sacRaw = cfg['sac'];
                 final sacMap = sacRaw is Map
-                    • sacRaw.map((k, v) => MapEntry(k.toString(), v))
+                    ? sacRaw.map((k, v) => MapEntry(k.toString(), v))
                     : <String, dynamic>{};
 
                 final sacWhatsapp =
-                    (sacMap['whatsapp'] ?• whatsappVendedor).toString();
+                    (sacMap['whatsapp'] ?? whatsappVendedor).toString();
 
                 // Lista de dicas (cuidados, garantias, qualidade etc.) – só ativas com título
                 final dicasRaw = cfg['dicas'];
@@ -3352,8 +3352,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   _openedInitialPage = true;
                   final contact = DicasContactInfo(
                     whatsappNumber: atendimentoWhatsapp,
-                    instagramUrl: instagramUrl.isNotEmpty • instagramUrl : null,
-                    facebookUrl: facebookUrl.isNotEmpty • facebookUrl : null,
+                    instagramUrl: instagramUrl.isNotEmpty ? instagramUrl : null,
+                    facebookUrl: facebookUrl.isNotEmpty ? facebookUrl : null,
                   );
                   final dicasW = MediaQuery.of(context).size.width;
                   final dicasIsWide = dicasW >= 900;
@@ -3363,12 +3363,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       context,
                       MaterialPageRoute<void>(
                         builder: (_) => CatalogDicasScreen(
-                          lojaId: _resolvedLojaId ?• widget.lojaId,
+                          lojaId: _resolvedLojaId ?? widget.lojaId,
                           lojaNome: lojaNome,
                           dicas: dicasList,
                           primaryColor: primaryColor,
-                          logoUrl: logoUrl.isNotEmpty • logoUrl : null,
-                          logoHeight: dicasIsWide • 90 : 80,
+                          logoUrl: logoUrl.isNotEmpty ? logoUrl : null,
+                          logoHeight: dicasIsWide ? 90 : 80,
                           bannerHeightCard: mediaConfig.bannerH * 0.65,
                           bannerHeightDetail: mediaConfig.bannerH * 0.85,
                           dicasColors: catalogDicasColors,
@@ -3413,7 +3413,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                         fontSize: 20,
                                         fontWeight: FontWeight.w700,
                                         color: _modoEscuro
-                                            • headerTextColor
+                                            ? headerTextColor
                                             : textColor,
                                       ),
                                       maxLines: 1,
@@ -3518,7 +3518,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             Theme.of(context).brightness ==
                                                 Brightness.dark;
                                         final subcatColor = isDark
-                                            • Colors.white
+                                            ? Colors.white
                                             : Colors.black87;
                                         return ListTile(
                                           dense: true,
@@ -3561,9 +3561,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                               if (cliente != null) {
                                 // Cliente LOGADO - mostrar perfil e opcionalmente Indicar amigo
-                                final nome = cliente['nome'] ?• 'Cliente';
+                                final nome = cliente['nome'] ?? 'Cliente';
                                 final clienteId =
-                                    (cliente['clienteId'] ?• '').toString();
+                                    (cliente['clienteId'] ?? '').toString();
                                 return Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -3572,7 +3572,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                         backgroundColor: Colors.blue,
                                         child: Text(
                                           nome.isNotEmpty
-                                              • nome[0].toUpperCase()
+                                              ? nome[0].toUpperCase()
                                               : 'C',
                                           style: const TextStyle(
                                               color: Colors.white),
@@ -3643,7 +3643,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       onTap: () {
                                         Navigator.pop(context);
                                         final lojaIdAuth =
-                                            _resolvedLojaId ?• widget.lojaId;
+                                            _resolvedLojaId ?? widget.lojaId;
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
@@ -3660,7 +3660,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       onTap: () {
                                         Navigator.pop(context);
                                         final lojaIdAuth =
-                                            _resolvedLojaId ?• widget.lojaId;
+                                            _resolvedLojaId ?? widget.lojaId;
                                         Navigator.push(
                                           context,
                                           MaterialPageRoute(
@@ -3686,7 +3686,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             onChanged: (value) => _toggleModoEscuro(value),
                             title: const Text('Modo escuro'),
                             secondary: Icon(
-                              _modoEscuro • Icons.dark_mode : Icons.light_mode,
+                              _modoEscuro ? Icons.dark_mode : Icons.light_mode,
                               color: primaryColor,
                             ),
                           ),
@@ -3703,7 +3703,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                 Navigator.pop(context);
 
                                 final sacNumber = sacWhatsapp.trim().isNotEmpty
-                                    • sacWhatsapp.trim()
+                                    ? sacWhatsapp.trim()
                                     : whatsappVendedor.trim();
 
                                 if (sacNumber.isEmpty) {
@@ -3732,7 +3732,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       Theme.of(context).scaffoldBackgroundColor,
                                   builder: (_) {
                                     final texto = quemSomosTexto.trim().isEmpty
-                                        • 'Texto de "$quemSomosTitulo" ainda não configurado.\n\nVocê poderá editar esse conteúdo na tela Loja Config.'
+                                        ? 'Texto de "$quemSomosTitulo" ainda não configurado.\n\nVocê poderá editar esse conteúdo na tela Loja Config.'
                                         : quemSomosTexto.trim();
                                     return Padding(
                                       padding: EdgeInsets.fromLTRB(
@@ -3795,13 +3795,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                   context,
                                   MaterialPageRoute<void>(
                                     builder: (_) => CatalogDicasScreen(
-                                      lojaId: _resolvedLojaId ?• widget.lojaId,
+                                      lojaId: _resolvedLojaId ?? widget.lojaId,
                                       lojaNome: lojaNome,
                                       dicas: dicasList,
                                       primaryColor: primaryColor,
                                       logoUrl:
-                                          logoUrl.isNotEmpty • logoUrl : null,
-                                      logoHeight: isWide • 90 : 80,
+                                          logoUrl.isNotEmpty ? logoUrl : null,
+                                      logoHeight: isWide ? 90 : 80,
                                       bannerHeightCard:
                                           mediaConfig.bannerH * 0.65,
                                       bannerHeightDetail:
@@ -3810,10 +3810,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       contactInfo: DicasContactInfo(
                                         whatsappNumber: atendimentoWhatsapp,
                                         instagramUrl: instagramUrl.isNotEmpty
-                                            • instagramUrl
+                                            ? instagramUrl
                                             : null,
                                         facebookUrl: facebookUrl.isNotEmpty
-                                            • facebookUrl
+                                            ? facebookUrl
                                             : null,
                                       ),
                                     ),
@@ -3832,14 +3832,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     elevation: 0,
                     // Altura dinâmica: desktop maior; mobile inalterado
                     toolbarHeight: useMinimalLayout
-                        • (isDesktop • 100 : 88)
+                        ? (isDesktop ? 100 : 88)
                         : (isDesktop
-                            • (categoriasMenu.isEmpty
-                                • 140
-                                : (_selectedCategory != null • 236 : 186))
+                            ? (categoriasMenu.isEmpty
+                                ? 140
+                                : (_selectedCategory != null ? 236 : 186))
                             : (categoriasMenu.isEmpty
-                                • 120
-                                : (_selectedCategory != null • 216 : 166))),
+                                ? 120
+                                : (_selectedCategory != null ? 216 : 166))),
                     titleSpacing: 0,
                     automaticallyImplyLeading: false,
                     title: Column(
@@ -3865,8 +3865,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             Expanded(
                               child: Center(
                                 child: logoUrl.isNotEmpty
-                                    • SizedBox(
-                                        height: isDesktop • 68 : 56,
+                                    ? SizedBox(
+                                        height: isDesktop ? 68 : 56,
                                         child: Image(
                                           image: mpImageProvider(logoUrl),
                                           fit: BoxFit.contain,
@@ -3902,7 +3902,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                   final messenger =
                                       ScaffoldMessenger.of(context);
                                   final lojaId =
-                                      _resolvedLojaId ?• widget.lojaId;
+                                      _resolvedLojaId ?? widget.lojaId;
                                   final url =
                                       'https://app.mastepalm.com.br/loja/$lojaId';
                                   logD('🌐 Abrindo catálogo web: $url');
@@ -3964,9 +3964,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                     ),
                                   ),
                                   onPressed:
-                                      _publicando • null : publicarCatalogo,
+                                      _publicando ? null : publicarCatalogo,
                                   child: Text(
-                                    _publicando • 'Publicando...' : 'Publicar',
+                                    _publicando ? 'Publicando...' : 'Publicar',
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -4050,7 +4050,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           headerSearchText: headerSearchText,
                           headerSearchHint: headerSearchHint,
                           headerSearchBg: useMinimalLayout
-                              • (readColorFromCfg(minimalSearchCfg['background']) ??
+                              ? (readColorFromCfg(minimalSearchCfg['background']) ??
                                   Colors.white)
                               : headerSearchBg,
                           hintText: (minimalSearchCfg['placeholder'] ??
@@ -4058,14 +4058,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               .toString(),
                           iconOnRight: useMinimalLayout,
                           borderColor: useMinimalLayout
-                              • (readColorFromCfg(minimalSearchCfg['borderColor']) ??
+                              ? (readColorFromCfg(minimalSearchCfg['borderColor']) ??
                                   Colors.black12)
                               : null,
                           borderRadius: useMinimalLayout
-                              • safeDouble(minimalSearchCfg['radius'], 10)
+                              ? safeDouble(minimalSearchCfg['radius'], 10)
                               : 12,
                           height: useMinimalLayout
-                              • safeDouble(minimalSearchCfg['height'], 44)
+                              ? safeDouble(minimalSearchCfg['height'], 44)
                               : 42,
                           onChanged: _debouncedSearchUpdate,
                           onClear: () {
@@ -4117,7 +4117,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                   // ========== FAB DO CARRINHO ==========
                   floatingActionButton: _cart.isEmpty
-                      • null
+                      ? null
                       : FloatingActionButton.extended(
                           onPressed: () => _openCartSheet(
                             fretes: fretes,
@@ -4162,7 +4162,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
                               child: CatalogPromoBar(
                                 enabled: true,
-                              text: (promoBarCfg['text'] ?• '').toString(),
+                              text: (promoBarCfg['text'] ?? '').toString(),
                               backgroundColor: readColorFromCfg(
                                       promoBarCfg['backgroundColor']) ??
                                   const Color(0xFFFF4F96),
@@ -4170,7 +4170,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                   readColorFromCfg(promoBarCfg['textColor']) ??
                                       Colors.white,
                               icon: safeBool(promoBarCfg['showIcon'], false)
-                                  • Icons.local_offer_outlined
+                                  ? Icons.local_offer_outlined
                                   : null,
                               height: safeDouble(promoBarCfg['height'], 34),
                               textAlign: parseTextAlign(
@@ -4179,7 +4179,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                 marqueeWhenOverflow:
                                     safeBool(promoBarCfg['marquee'], true),
                               onTap: () {
-                                final link = (promoBarCfg['link'] ?• '')
+                                final link = (promoBarCfg['link'] ?? '')
                                     .toString()
                                     .trim();
                                 if (link.isEmpty) return;
@@ -4220,14 +4220,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       final isDesktopBody = c.maxWidth >= 1024;
                                       // 👉 aplica filtro da busca + categoria + subcategoria
                                       final listaFiltrada = produtos.where((p) {
-                                        final n = (p['nome'] ?• '')
+                                        final n = (p['nome'] ?? '')
                                             .toString()
                                             .toLowerCase();
-                                        final d = (p['descricao'] ?• '')
+                                        final d = (p['descricao'] ?? '')
                                             .toString()
                                             .toLowerCase();
                                         final matchText = search.trim().isEmpty
-                                            • true
+                                            ? true
                                             : n.contains(search) ||
                                                 d.contains(search);
                                         final cat = (p['categoria'] ??
@@ -4238,7 +4238,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                         final matchCat =
                                             _selectedCategory == null ||
                                                     _selectedCategory!.isEmpty
-                                                • true
+                                                ? true
                                                 : cat == _selectedCategory;
                                         // Filtro por subcategoria (compatível com subcategoriaId)
                                         final subcat = (p['subcategoria'] ??
@@ -4250,16 +4250,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             _selectedSubcategory == null ||
                                                     _selectedSubcategory!
                                                         .isEmpty
-                                                • true
+                                                ? true
                                                 : subcat ==
                                                     _selectedSubcategory;
                                         final preco = (p['preco'] ??
                                                 p['valor'] ??
                                                 0.0) is num
-                                            • (p['preco'] ?• p['valor'] ?• 0.0)
+                                            ? (p['preco'] ?? p['valor'] ?? 0.0)
                                                 as num
                                             : (double.tryParse(
-                                                    '${p['preco'] ?• p['valor'] ?• 0}') ??
+                                                    '${p['preco'] ?? p['valor'] ?? 0}') ??
                                                 0.0);
                                         final matchPrecoMin =
                                             _precoMin == null ||
@@ -4289,20 +4289,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           final va = (a['valor'] ??
                                                   a['preco'] ??
                                                   0.0) is num
-                                              • (a['valor'] ??
+                                              ? (a['valor'] ??
                                                   a['preco'] ??
                                                   0.0) as num
                                               : (double.tryParse(
-                                                      '${a['valor'] ?• a['preco'] ?• 0}') ??
+                                                      '${a['valor'] ?? a['preco'] ?? 0}') ??
                                                   0.0);
                                           final vb = (b['valor'] ??
                                                   b['preco'] ??
                                                   0.0) is num
-                                              • (b['valor'] ??
+                                              ? (b['valor'] ??
                                                   b['preco'] ??
                                                   0.0) as num
                                               : (double.tryParse(
-                                                      '${b['valor'] ?• b['preco'] ?• 0}') ??
+                                                      '${b['valor'] ?? b['preco'] ?? 0}') ??
                                                   0.0);
                                           return va.compareTo(vb);
                                         });
@@ -4312,20 +4312,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           final va = (a['valor'] ??
                                                   a['preco'] ??
                                                   0.0) is num
-                                              • (a['valor'] ??
+                                              ? (a['valor'] ??
                                                   a['preco'] ??
                                                   0.0) as num
                                               : (double.tryParse(
-                                                      '${a['valor'] ?• a['preco'] ?• 0}') ??
+                                                      '${a['valor'] ?? a['preco'] ?? 0}') ??
                                                   0.0);
                                           final vb = (b['valor'] ??
                                                   b['preco'] ??
                                                   0.0) is num
-                                              • (b['valor'] ??
+                                              ? (b['valor'] ??
                                                   b['preco'] ??
                                                   0.0) as num
                                               : (double.tryParse(
-                                                      '${b['valor'] ?• b['preco'] ?• 0}') ??
+                                                      '${b['valor'] ?? b['preco'] ?? 0}') ??
                                                   0.0);
                                           return vb.compareTo(va);
                                         });
@@ -4346,10 +4346,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       } else {
                                         // nome (alfabética)
                                         listaOrdenada.sort((a, b) {
-                                          final an = (a['nome'] ?• '')
+                                          final an = (a['nome'] ?? '')
                                               .toString()
                                               .toLowerCase();
-                                          final bn = (b['nome'] ?• '')
+                                          final bn = (b['nome'] ?? '')
                                               .toString()
                                               .toLowerCase();
                                           return an.compareTo(bn);
@@ -4435,7 +4435,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                                 '')
                                                             .toString(),
                                                     imageUrl: (isDesktop
-                                                                • heroBannerCfg[
+                                                                ? heroBannerCfg[
                                                                     'image']
                                                                 : heroBannerCfg[
                                                                     'mobileImage']) ??
@@ -4458,7 +4458,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             cardColor,
                                                     height: safeDouble(
                                                         heroBannerCfg['height'],
-                                                        isDesktop • 210 : 164),
+                                                        isDesktop ? 210 : 164),
                                                     borderRadius: safeDouble(
                                                         heroBannerCfg[
                                                             'borderRadius'],
@@ -4771,13 +4771,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   mostrarQuantidadeNoCatalogo,
                                               cardBorderRadius:
                                                   useMinimalLayout
-                                                      • safeDouble(
+                                                      ? safeDouble(
                                                           minimalGridCfg[
                                                               'cardBorderRadius'],
                                                           cardBorderRadius)
                                                       : cardBorderRadius,
                                               cardShowShadow: useMinimalLayout
-                                                  • safeBool(
+                                                  ? safeBool(
                                                       minimalGridCfg[
                                                           'cardShowShadow'],
                                                       false)
@@ -4788,7 +4788,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   jurosParcelamento,
                                               maxParcelas: maxParcelasClamped,
                                               imageCacheWidth: useMinimalLayout
-                                                  • safeInt(
+                                                  ? safeInt(
                                                       minimalGridCfg[
                                                           'imageCacheWidth'],
                                                       CatalogProductCardSize
@@ -4805,7 +4805,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     isWeb: kIsWeb,
                                                   ).width,
                                               imageCacheHeight: useMinimalLayout
-                                                  • safeInt(
+                                                  ? safeInt(
                                                       minimalGridCfg[
                                                           'imageCacheHeight'],
                                                       CatalogProductCardSize
@@ -4822,7 +4822,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     isWeb: kIsWeb,
                                                   ).height,
                                               childAspectRatio: useMinimalLayout
-                                                  • safeDouble(
+                                                  ? safeDouble(
                                                       minimalGridCfg[
                                                           'aspectRatio'],
                                                       CatalogProductCardSize
@@ -4833,15 +4833,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       .standardAspectRatio(
                                                           productCardSize),
                                               mainAxisSpacing: useMinimalLayout
-                                                  • safeDouble(minimalGridCfg[
+                                                  ? safeDouble(minimalGridCfg[
                                                       'mainAxisSpacing'], 14)
                                                   : 16,
                                               crossAxisSpacing: useMinimalLayout
-                                                  • safeDouble(minimalGridCfg[
+                                                  ? safeDouble(minimalGridCfg[
                                                       'crossAxisSpacing'], 12)
                                                   : 16,
                                               padding: useMinimalLayout
-                                                  • const EdgeInsets.fromLTRB(
+                                                  ? const EdgeInsets.fromLTRB(
                                                       12, 0, 12, 24)
                                                   : const EdgeInsets.fromLTRB(
                                                       12, 0, 12, 24),
@@ -4863,14 +4863,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   cardColor: cardColor,
                                                   textColor: textColor,
                                                   onPagePrev: paginaAtual > 0
-                                                      • () =>
+                                                      ? () =>
                                                           _currentPageNotifier
                                                                   .value =
                                                               paginaAtual - 1
                                                       : null,
                                                   onPageNext: paginaAtual <
                                                           totalPaginas - 1
-                                                      • () =>
+                                                      ? () =>
                                                           _currentPageNotifier
                                                                   .value =
                                                               paginaAtual + 1
@@ -5052,7 +5052,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               Theme.of(context).colorScheme.primary;
                           return Positioned(
                             left: 16,
-                            bottom: _cart.isEmpty • 24 : 88,
+                            bottom: _cart.isEmpty ? 24 : 88,
                             child: Material(
                               elevation: 4,
                               color: primaryColor.withValues(alpha: 0.9),
@@ -5089,15 +5089,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 void mpLogStoreDiag({
   required String tag,
   required String lojaId,
-  String• slug,
-  bool• preview,
-  String• cfgPath,
-  String• produtosPath,
+  String? slug,
+  bool? preview,
+  String? cfgPath,
+  String? produtosPath,
 }) {
   logD('━━━━━━━━━━━━ STORE-DIAG ━━━━━━━━━━━━');
   logD('[$tag] (store resolvido)');
-  logD('[$tag] slug=${slug ?• "(null)"}');
-  logD('[$tag] preview=${preview ?• "(null)"}');
+  logD('[$tag] slug=${slug ?? "(null)"}');
+  logD('[$tag] preview=${preview ?? "(null)"}');
   if (cfgPath != null) logD('[$tag] cfgPath=$cfgPath');
   if (produtosPath != null) logD('[$tag] produtosPath=$produtosPath');
   logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

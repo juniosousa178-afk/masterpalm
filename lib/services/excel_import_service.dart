@@ -28,7 +28,7 @@ class ExcelImportService {
       return;
     }
 
-    FilePickerResult• result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx'],
     );
@@ -44,13 +44,13 @@ class ExcelImportService {
       for (var table in excel.tables.keys) {
         for (var row in excel.tables[table]!.rows.skip(1)) {
           final item = EstoqueItem(
-            nome: row[0]?.value.toString() ?• '',
-            quantidade: int.tryParse(row[1]?.value.toString() ?• '0') ?• 0,
+            nome: row[0]?.value.toString() ?? '',
+            quantidade: int.tryParse(row[1]?.value.toString() ?? '0') ?? 0,
             precoUnitario:
-                double.tryParse(row[2]?.value.toString() ?• '0') ?• 0.0,
-            categoria: row[3]?.value.toString() ?• '',
-            codigoBarras: row[4]?.value.toString() ?• '',
-            dataEntrada: DateTime.tryParse(row[5]?.value.toString() ?• '') ??
+                double.tryParse(row[2]?.value.toString() ?? '0') ?? 0.0,
+            categoria: row[3]?.value.toString() ?? '',
+            codigoBarras: row[4]?.value.toString() ?? '',
+            dataEntrada: DateTime.tryParse(row[5]?.value.toString() ?? '') ??
                 DateTime.now(),
           );
           box.add(item);
@@ -67,7 +67,7 @@ class ExcelImportService {
       return;
     }
 
-    FilePickerResult• result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx'],
     );
@@ -83,20 +83,20 @@ class ExcelImportService {
       for (var table in excel.tables.keys) {
         for (var row in excel.tables[table]!.rows.skip(1)) {
           final venda = Venda(
-            produtosDescricao: row[0]?.value.toString() ?• '',
-            quantidade: int.tryParse(row[1]?.value.toString() ?• '0') ?• 0,
-            preco: double.tryParse(row[2]?.value.toString() ?• '0') ?• 0.0,
-            total: double.tryParse(row[3]?.value.toString() ?• '0') ?• 0.0,
-            formasPagamento: row[4]?.value.toString() ?• '',
-            data: DateTime.tryParse(row[5]?.value.toString() ?• '') ??
+            produtosDescricao: row[0]?.value.toString() ?? '',
+            quantidade: int.tryParse(row[1]?.value.toString() ?? '0') ?? 0,
+            preco: double.tryParse(row[2]?.value.toString() ?? '0') ?? 0.0,
+            total: double.tryParse(row[3]?.value.toString() ?? '0') ?? 0.0,
+            formasPagamento: row[4]?.value.toString() ?? '',
+            data: DateTime.tryParse(row[5]?.value.toString() ?? '') ??
                 DateTime.now(),
-            clienteNome: row[6]?.value.toString() ?• '',
-            tamanho: row[7]?.value.toString() ?• '',
-            desconto: double.tryParse(row[8]?.value.toString() ?• '0') ?• 0.0,
+            clienteNome: row[6]?.value.toString() ?? '',
+            tamanho: row[7]?.value.toString() ?? '',
+            desconto: double.tryParse(row[8]?.value.toString() ?? '0') ?? 0.0,
             vendedor: row[9]?.value.toString() ??
                 'Desconhecido',
             observacao: row.length > 10
-                • row[10]?.value.toString() ?• ''
+                ? row[10]?.value.toString() ?? ''
                 : '',
             lojaId: lojaId,
           );
@@ -114,7 +114,7 @@ class ExcelImportService {
       return;
     }
 
-    FilePickerResult• result = await FilePicker.platform.pickFiles(
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx'],
     );
@@ -130,11 +130,11 @@ class ExcelImportService {
       for (var table in excel.tables.keys) {
         for (var row in excel.tables[table]!.rows.skip(1)) {
           final cliente = Cliente(
-            nome: row[0]?.value.toString() ?• '',
-            telefone: row[1]?.value.toString() ?• '',
-            cep: row[2]?.value.toString() ?• '',
-            cidade: row[3]?.value.toString() ?• '',
-            instagram: row[4]?.value.toString() ?• '',
+            nome: row[0]?.value.toString() ?? '',
+            telefone: row[1]?.value.toString() ?? '',
+            cep: row[2]?.value.toString() ?? '',
+            cidade: row[3]?.value.toString() ?? '',
+            instagram: row[4]?.value.toString() ?? '',
             lojaId: lojaId,
           );
           box.add(cliente);

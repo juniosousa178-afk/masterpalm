@@ -18,9 +18,9 @@ class VendedorPerfil {
   final String adminEmail;        // Email do admin
   final bool ativo;               // Se o vendedor está ativo
   final Map<String, bool> permissoes; // Permissões dinâmicas
-  final double• comissaoPercentual;   // null = usa global da loja
+  final double? comissaoPercentual;   // null = usa global da loja
   final DateTime criadoEm;
-  final DateTime• atualizadoEm;
+  final DateTime? atualizadoEm;
 
   VendedorPerfil({
     required this.uid,
@@ -40,17 +40,17 @@ class VendedorPerfil {
   factory VendedorPerfil.fromFirestore(Map<String, dynamic> data, String uid) {
     return VendedorPerfil(
       uid: uid,
-      email: (data['email'] ?• '').toString().trim().toLowerCase(),
-      nome: (data['nome'] ?• data['name'] ?• '').toString(),
-      telefone: (data['telefone'] ?• data['phone'] ?• '').toString(),
-      storeId: (data['storeId'] ?• data['store_id'] ?• data['lojaId'] ?• '').toString(),
-      adminUid: (data['adminUid'] ?• data['ownerId'] ?• data['createdBy'] ?• '').toString(),
-      adminEmail: (data['adminEmail'] ?• data['ownerEmail'] ?• data['ownerAdminEmail'] ?• '').toString(),
-      ativo: data['ativo'] ?• data['active'] ?• true,
-      permissoes: _parsePermissoes(data['permissoes'] ?• data['permissions']),
+      email: (data['email'] ?? '').toString().trim().toLowerCase(),
+      nome: (data['nome'] ?? data['name'] ?? '').toString(),
+      telefone: (data['telefone'] ?? data['phone'] ?? '').toString(),
+      storeId: (data['storeId'] ?? data['store_id'] ?? data['lojaId'] ?? '').toString(),
+      adminUid: (data['adminUid'] ?? data['ownerId'] ?? data['createdBy'] ?? '').toString(),
+      adminEmail: (data['adminEmail'] ?? data['ownerEmail'] ?? data['ownerAdminEmail'] ?? '').toString(),
+      ativo: data['ativo'] ?? data['active'] ?? true,
+      permissoes: _parsePermissoes(data['permissoes'] ?? data['permissions']),
       comissaoPercentual: (data['comissaoPercentual'] as num?)?.toDouble(),
-      criadoEm: _parseTimestamp(data['criadoEm'] ?• data['createdAt']),
-      atualizadoEm: _parseTimestamp(data['atualizadoEm'] ?• data['updatedAt']),
+      criadoEm: _parseTimestamp(data['criadoEm'] ?? data['createdAt']),
+      atualizadoEm: _parseTimestamp(data['atualizadoEm'] ?? data['updatedAt']),
     );
   }
 
@@ -96,9 +96,9 @@ class VendedorPerfil {
 
   /// Copia com alterações
   VendedorPerfil copyWith({
-    bool• ativo,
-    Map<String, bool>• permissoes,
-    double• comissaoPercentual,
+    bool? ativo,
+    Map<String, bool>? permissoes,
+    double? comissaoPercentual,
   }) {
     return VendedorPerfil(
       uid: uid,
@@ -108,9 +108,9 @@ class VendedorPerfil {
       storeId: storeId,
       adminUid: adminUid,
       adminEmail: adminEmail,
-      ativo: ativo ?• this.ativo,
-      permissoes: permissoes ?• this.permissoes,
-      comissaoPercentual: comissaoPercentual ?• this.comissaoPercentual,
+      ativo: ativo ?? this.ativo,
+      permissoes: permissoes ?? this.permissoes,
+      comissaoPercentual: comissaoPercentual ?? this.comissaoPercentual,
       criadoEm: criadoEm,
       atualizadoEm: DateTime.now(),
     );
@@ -127,8 +127,8 @@ class VendedorService {
   final _auth = FirebaseAuth.instance;
 
   // Cache do perfil atual
-  VendedorPerfil• _perfilAtual;
-  VendedorPerfil• get perfilAtual => _perfilAtual;
+  VendedorPerfil? _perfilAtual;
+  VendedorPerfil? get perfilAtual => _perfilAtual;
 
   /// Permissões padrão de vendedor (todas desativadas até admin liberar)
   static const Map<String, bool> permissoesPadrao = {
@@ -184,12 +184,12 @@ class VendedorService {
       final userDoc = await _db.collection('users').doc(user.uid).get();
       if (!userDoc.exists) return null;
 
-      final userData = userDoc.data() ?• {};
-      final role = (userData['role'] ?• userData['tipo'] ?• '').toString().toLowerCase();
+      final userData = userDoc.data() ?? {};
+      final role = (userData['role'] ?? userData['tipo'] ?? '').toString().toLowerCase();
 
       if (role != 'vendedor') return null;
 
-      final storeId = (userData['storeId'] ?• userData['store_id'] ?• userData['lojaId'] ?• '').toString();
+      final storeId = (userData['storeId'] ?? userData['store_id'] ?? userData['lojaId'] ?? '').toString();
       if (storeId.isEmpty) return null;
 
       // Buscar perfil completo em lojas/{storeId}/vendedores/{uid}
@@ -202,7 +202,7 @@ class VendedorService {
 
       if (vendedorDoc.exists) {
         _perfilAtual = VendedorPerfil.fromFirestore(
-          vendedorDoc.data() ?• {},
+          vendedorDoc.data() ?? {},
           user.uid,
         );
       } else {
@@ -236,7 +236,7 @@ class VendedorService {
           .doc(vendedorUid)
           .get();
 
-      return doc.exists && (doc.data()?['ativo'] ?• false) == true;
+      return doc.exists && (doc.data()?['ativo'] ?? false) == true;
     } catch (e) {
       debugPrint('⚠️ [VENDEDOR] Erro ao validar pertencimento (type=${e.runtimeType})');
       return false;
@@ -274,7 +274,7 @@ class VendedorService {
 
       if (!doc.exists) return Map.from(permissoesPadrao);
 
-      final data = doc.data() ?• {};
+      final data = doc.data() ?? {};
       final permissoes = VendedorPerfil._parsePermissoes(data['permissoes']);
 
       // Mesclar com padrão (garantir campos obrigatórios)
@@ -343,8 +343,8 @@ class VendedorService {
     required String storeId,
     required String adminUid,
     required String adminEmail,
-    Map<String, bool>• permissoesIniciais,
-    double• comissaoPercentual,
+    Map<String, bool>? permissoesIniciais,
+    double? comissaoPercentual,
   }) async {
     try {
       // 1. Criar usuário no Firebase Auth
@@ -540,7 +540,7 @@ class VendedorService {
     if (path.isEmpty) return '';
 
     // Remove barra final do baseUrl se houver
-    final base = baseUrl.endsWith('/') • baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
     return '$base$path';
   }
 
@@ -554,7 +554,7 @@ class VendedorService {
 
     try {
       final sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
 
       await sessao.put('tipo_usuario', 'vendedor');
@@ -576,7 +576,7 @@ class VendedorService {
   Future<Map<String, dynamic>> carregarDaSessao() async {
     try {
       final sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
 
       return {

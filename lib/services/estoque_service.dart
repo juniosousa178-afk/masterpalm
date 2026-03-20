@@ -27,7 +27,7 @@ class EstoqueResult {
   final String mensagem;
   final int estoqueAntes;
   final int estoqueDepois;
-  final Produto• produto;
+  final Produto? produto;
 
   EstoqueResult({
     required this.sucesso,
@@ -45,7 +45,7 @@ class EstoqueResult {
     required String mensagem,
     required int estoqueAntes,
     required int estoqueDepois,
-    Produto• produto,
+    Produto? produto,
   }) {
     return EstoqueResult(
       sucesso: true,
@@ -81,9 +81,9 @@ class EstoqueService {
   static Future<EstoqueResult> atualizarEstoque({
     required Box<Produto> produtosBox,
     required String lojaId,
-    String• produtoId,
-    String• produtoNome,
-    String• produtoSlug,
+    String? produtoId,
+    String? produtoNome,
+    String? produtoSlug,
     required String tamanho,
     required String cor,
     required int quantidade,
@@ -105,16 +105,16 @@ class EstoqueService {
 
     debugPrint('$tag ========================================');
     debugPrint('$tag Iniciando $operacao de estoque');
-    debugPrint('$tag Produto: ${produtoId ?• produtoNome ?• produtoSlug}');
-    debugPrint('$tag Tamanho: "${tamanho.isEmpty • "VAZIO" : tamanho}"');
-    debugPrint('$tag Cor: "${cor.isEmpty • "VAZIO" : cor}"');
+    debugPrint('$tag Produto: ${produtoId ?? produtoNome ?? produtoSlug}');
+    debugPrint('$tag Tamanho: "${tamanho.isEmpty ? "VAZIO" : tamanho}"');
+    debugPrint('$tag Cor: "${cor.isEmpty ? "VAZIO" : cor}"');
     debugPrint('$tag Quantidade: $quantidade');
     debugPrint('$tag LojaId: $lojaId');
 
     // 1) Buscar produto no Hive: productId primeiro, depois slug, depois nome
-    Produto• produto = VendasService.encontrarProdutoNoEstoque(
+    Produto? produto = VendasService.encontrarProdutoNoEstoque(
       produtosBox: produtosBox,
-      productId: (produtoId != null && produtoId.trim().isNotEmpty) • produtoId.trim() : null,
+      productId: (produtoId != null && produtoId.trim().isNotEmpty) ? produtoId.trim() : null,
       slug: produtoSlug,
       nome: produtoNome,
       lojaId: lojaId,
@@ -132,7 +132,7 @@ class EstoqueService {
     }
 
     if (produto == null) {
-      final msg = 'Produto não encontrado: ${produtoId ?• produtoNome ?• produtoSlug}';
+      final msg = 'Produto não encontrado: ${produtoId ?? produtoNome ?? produtoSlug}';
       debugPrint('$tag ERRO: $msg');
       return EstoqueResult.erro(msg);
     }
@@ -177,7 +177,7 @@ class EstoqueService {
     try {
       if (operacao == 'baixa') {
         // === BAIXA via transação Firestore (atômico) ===
-        final produtoId = produto.idFirebase.isNotEmpty • produto.idFirebase : null;
+        final produtoId = produto.idFirebase.isNotEmpty ? produto.idFirebase : null;
         final result = await EstoqueTransactionService.baixarEstoqueTransaction(
           lojaId: lojaId,
           quantidade: quantidade,
@@ -214,22 +214,22 @@ class EstoqueService {
 
       // === DEVOLUÇÃO (mantém lógica original - não usa transação) ===
       if (produto.usaVariacoes && (tam.isNotEmpty || corTrim.isNotEmpty)) {
-        final tamKey = tam.isEmpty • '' : tam;
-        final corKey = corTrim.isEmpty • 'sem-cor' : corTrim;
+        final tamKey = tam.isEmpty ? '' : tam;
+        final corKey = corTrim.isEmpty ? 'sem-cor' : corTrim;
         estoqueAntes = produto.obterEstoqueVariacao(tamKey, corKey);
         debugPrint('$tag Tipo: VARIAÇÃO');
-        debugPrint('$tag Estoque ANTES: $estoqueAntes (${tam.isEmpty • "cor" : tam}${corTrim.isEmpty • "" : " - $corTrim"})');
+        debugPrint('$tag Estoque ANTES: $estoqueAntes (${tam.isEmpty ? "cor" : tam}${corTrim.isEmpty ? "" : " - $corTrim"})');
 
         produto.devolverEstoqueVariacao(tamKey, corKey, quantidade);
         estoqueDepois = produto.obterEstoqueVariacao(tamKey, corKey);
         debugPrint('$tag Estoque DEPOIS: $estoqueDepois');
       } else if (produto.estoquePorTamanho.isNotEmpty && tam.isNotEmpty) {
-        estoqueAntes = produto.estoquePorTamanho[tam] ?• 0;
+        estoqueAntes = produto.estoquePorTamanho[tam] ?? 0;
         debugPrint('$tag Tipo: ESTOQUE POR TAMANHO');
         debugPrint('$tag Estoque ANTES: $estoqueAntes (tamanho $tam)');
 
         produto.devolverEstoquePorTamanho(tam, quantidade);
-        estoqueDepois = produto.estoquePorTamanho[tam] ?• 0;
+        estoqueDepois = produto.estoquePorTamanho[tam] ?? 0;
         debugPrint('$tag Estoque DEPOIS: $estoqueDepois (tamanho $tam)');
       } else {
         estoqueAntes = produto.quantidade;
@@ -287,8 +287,8 @@ class EstoqueService {
   static Future<EstoqueResult> baixarEstoque({
     required Box<Produto> produtosBox,
     required String lojaId,
-    String• produtoNome,
-    String• produtoSlug,
+    String? produtoNome,
+    String? produtoSlug,
     required String tamanho,
     required String cor,
     required int quantidadeVendida,
@@ -313,8 +313,8 @@ class EstoqueService {
   static Future<EstoqueResult> devolverEstoque({
     required Box<Produto> produtosBox,
     required String lojaId,
-    String• produtoNome,
-    String• produtoSlug,
+    String? produtoNome,
+    String? produtoSlug,
     required String tamanho,
     required String cor,
     required int quantidadeDevolvida,
@@ -341,8 +341,8 @@ class EstoqueService {
   static Future<EstoqueResult> validarDisponibilidade({
     required Box<Produto> produtosBox,
     required String lojaId,
-    String• produtoNome,
-    String• produtoSlug,
+    String? produtoNome,
+    String? produtoSlug,
     required String tamanho,
     required String cor,
     required int quantidadeSolicitada,
@@ -350,11 +350,11 @@ class EstoqueService {
     const tag = '[ESTOQUE-VALIDAR]';
 
     debugPrint('$tag Validando disponibilidade...');
-    debugPrint('$tag Produto: ${produtoNome ?• produtoSlug}');
+    debugPrint('$tag Produto: ${produtoNome ?? produtoSlug}');
     debugPrint('$tag Tamanho: $tamanho, Cor: $cor, Qtd: $quantidadeSolicitada');
 
     // Buscar produto
-    Produto• produto;
+    Produto? produto;
 
     if (produtoSlug != null && produtoSlug.isNotEmpty) {
       produto = VendasService.encontrarProdutoNoEstoque(
@@ -380,7 +380,7 @@ class EstoqueService {
       );
 
     if (produto == null) {
-      return EstoqueResult.erro('Produto não encontrado: ${produtoNome ?• produtoSlug}');
+      return EstoqueResult.erro('Produto não encontrado: ${produtoNome ?? produtoSlug}');
     }
 
     final tam = tamanho.trim();
@@ -391,8 +391,8 @@ class EstoqueService {
       return EstoqueResult.erro(
         'O produto "${produto.nome}" possui variações. '
         'É obrigatório informar TAMANHO e COR. '
-        'Tamanho: "${tam.isEmpty • "VAZIO" : tam}", '
-        'Cor: "${corTrim.isEmpty • "VAZIO" : corTrim}".'
+        'Tamanho: "${tam.isEmpty ? "VAZIO" : tam}", '
+        'Cor: "${corTrim.isEmpty ? "VAZIO" : corTrim}".'
       );
     }
 
@@ -402,7 +402,7 @@ class EstoqueService {
     if (produto.usaVariacoes && tam.isNotEmpty && corTrim.isNotEmpty) {
       disponivel = produto.obterEstoqueVariacao(tam, corTrim);
     } else if (produto.estoquePorTamanho.isNotEmpty && tam.isNotEmpty) {
-      disponivel = produto.estoquePorTamanho[tam] ?• 0;
+      disponivel = produto.estoquePorTamanho[tam] ?? 0;
     } else {
       disponivel = produto.quantidade;
     }
@@ -436,7 +436,7 @@ class EstoqueService {
       for (final mapaTamanho in produto.variacoes!.values) {
         if (mapaTamanho is Map) {
           for (final qtd in mapaTamanho.values) {
-            total += (qtd as num?)?.toInt() ?• 0;
+            total += (qtd as num?)?.toInt() ?? 0;
           }
         }
       }
@@ -457,8 +457,8 @@ class EstoqueService {
   /// Busca produto no Firestore e salva no Hive
   static Future<Produto?> _buscarProdutoNoFirestore({
     required String lojaId,
-    String• nome,
-    String• slug,
+    String? nome,
+    String? slug,
     required Box<Produto> produtosBox,
   }) async {
     try {
@@ -473,8 +473,8 @@ class EstoqueService {
 
       for (final doc in snapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        final docSlug = (data['slug'] ?• '').toString().trim().toLowerCase();
-        final docNome = (data['nome'] ?• '').toString().trim().toLowerCase();
+        final docSlug = (data['slug'] ?? '').toString().trim().toLowerCase();
+        final docNome = (data['nome'] ?? '').toString().trim().toLowerCase();
 
         final slugMatch = slug != null && slug.isNotEmpty && docSlug == slug.trim().toLowerCase();
         final nomeMatch = nome != null && nome.isNotEmpty && docNome == nome.trim().toLowerCase();
@@ -485,26 +485,26 @@ class EstoqueService {
           // Criar produto e salvar no Hive
           final produto = Produto(
             idFirebase: doc.id,
-            nome: data['nome'] ?• '',
-            custoReal: (data['custoReal'] as num?)?.toDouble() ?• 0.0,
+            nome: data['nome'] ?? '',
+            custoReal: (data['custoReal'] as num?)?.toDouble() ?? 0.0,
             frete: 0.0,
             gastosFixos: 0.0,
             gastosVariaveis: 0.0,
-            precoSugerido: (data['preco'] as num?)?.toDouble() ?• 0.0,
-            precoFinal: (data['preco'] as num?)?.toDouble() ?• 0.0,
-            precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?• (data['preco'] as num?)?.toDouble() ?• 0.0,
-            quantidade: (data['quantidade'] as num?)?.toInt() ?• 0,
-            categoria: data['categoria'] ?• '',
+            precoSugerido: (data['preco'] as num?)?.toDouble() ?? 0.0,
+            precoFinal: (data['preco'] as num?)?.toDouble() ?? 0.0,
+            precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?? (data['preco'] as num?)?.toDouble() ?? 0.0,
+            quantidade: (data['quantidade'] as num?)?.toInt() ?? 0,
+            categoria: data['categoria'] ?? '',
             dataEntrada: DateTime.now(),
-            slug: data['slug'] ?• '',
+            slug: data['slug'] ?? '',
             lojaId: lojaId,
-            descricao: data['descricao'] ?• '',
-            imagens: (data['imagens'] as List?)?.cast<String>() ?• [],
-            tamanhos: (data['tamanhos'] as List?)?.cast<String>() ?• [],
-            cores: (data['cores'] as List?)?.cast<String>() ?• [],
+            descricao: data['descricao'] ?? '',
+            imagens: (data['imagens'] as List?)?.cast<String>() ?? [],
+            tamanhos: (data['tamanhos'] as List?)?.cast<String>() ?? [],
+            cores: (data['cores'] as List?)?.cast<String>() ?? [],
             estoquePorTamanho: _parseEstoquePorTamanho(data['estoquePorTamanho']),
             variacoes: data['variacoes'] as Map<String, dynamic>?,
-            publicadoNoCatalogo: data['publicadoNoCatalogo'] ?• false,
+            publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
           );
 
           // Salvar no Hive para próximas consultas
@@ -527,7 +527,7 @@ class EstoqueService {
     if (data == null) return {};
     if (data is Map<String, int>) return data;
     if (data is Map) {
-      return data.map((key, value) => MapEntry(key.toString(), (value as num?)?.toInt() ?• 0));
+      return data.map((key, value) => MapEntry(key.toString(), (value as num?)?.toInt() ?? 0));
     }
     return {};
   }
@@ -547,7 +547,7 @@ class EstoqueService {
     String lojaId,
   ) async {
     const tag = '[ESTOQUE-SYNC]';
-    int• remoteQtd;
+    int? remoteQtd;
     bool divergenciaRelevante = false;
 
     try {
@@ -561,10 +561,10 @@ class EstoqueService {
             .doc(produto.idFirebase)
             .get();
         if (snap.exists) {
-          final data = snap.data() ?• <String, dynamic>{};
+          final data = snap.data() ?? <String, dynamic>{};
           remoteQtd = (data['quantidade'] as num?)?.toInt();
           final localQtd = produto.quantidade;
-          final diff = (remoteQtd != null) • (remoteQtd - localQtd).abs() : null;
+          final diff = (remoteQtd != null) ? (remoteQtd - localQtd).abs() : null;
 
           debugPrint(
             '$tag [ESTOQUE_AJUSTE] Ajuste manual solicitado. lojaId=$lojaId, '
@@ -648,7 +648,7 @@ class EstoqueService {
       }
 
       return divergenciaRelevante
-          • ResultadoAjusteEstoque.divergenciaDetectada
+          ? ResultadoAjusteEstoque.divergenciaDetectada
           : ResultadoAjusteEstoque.sucesso;
     } catch (e) {
       debugPrint('$tag Erro geral ao sincronizar (type=${e.runtimeType})');
@@ -680,7 +680,7 @@ class EstoqueService {
     if (produto.usaVariacoes && tamanho.isNotEmpty && cor.isNotEmpty) {
       return produto.obterEstoqueVariacao(tamanho, cor);
     } else if (produto.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
-      return produto.estoquePorTamanho[tamanho] ?• 0;
+      return produto.estoquePorTamanho[tamanho] ?? 0;
     } else {
       return produto.quantidade;
     }

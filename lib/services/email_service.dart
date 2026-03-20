@@ -15,7 +15,7 @@ class EmailService {
     required String assunto,
     required String mensagem,
     String remetenteNome = 'MasterPalm',
-    String• logoUrl,
+    String? logoUrl,
   }) async {
     const smtpEmail = 'masterpalm26@gmail.com';
     const smtpSenha = 'vyicsfqbsghrbuuz'; // Senha de app (sem espaços)

@@ -17,9 +17,9 @@ class CatalogRecentService {
       final prefs = await SharedPreferences.getInstance();
       final key = _key(lojaId);
       final raw = prefs.getString(key);
-      final decoded = raw != null • jsonDecode(raw) : null;
+      final decoded = raw != null ? jsonDecode(raw) : null;
       final list = (decoded is List)
-          • decoded.map((e) => e.toString()).toList()
+          ? decoded.map((e) => e.toString()).toList()
           : <String>[];
       list.remove(productId);
       list.insert(0, productId);
@@ -36,7 +36,7 @@ class CatalogRecentService {
       if (raw == null) return [];
       final decoded = jsonDecode(raw);
       return (decoded is List)
-          • decoded.map((e) => e.toString()).where((id) => id.isNotEmpty).toList()
+          ? decoded.map((e) => e.toString()).where((id) => id.isNotEmpty).toList()
           : <String>[];
     } catch (_) {
       return [];

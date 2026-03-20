@@ -62,11 +62,11 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> {
       }
       if (token != null && token.isNotEmpty) {
         r.appCheckTokenPrefix =
-            token.substring(0, token.length >= 20 • 20 : token.length);
+            token.substring(0, token.length >= 20 ? 20 : token.length);
         r.ok(
             'AppCheck',
             kIsWeb
-                • 'Token OK (Web). Se estiver em debug, cadastre o token no Console.'
+                ? 'Token OK (Web). Se estiver em debug, cadastre o token no Console.'
                 : 'Token OK (Mobile)');
       } else {
         throw 'Token vazio';
@@ -93,7 +93,7 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> {
       final doc = col.doc('last');
       await doc.set({
         'ts': FieldValue.serverTimestamp(),
-        'by': r.currentUser ?• 'no-user',
+        'by': r.currentUser ?? 'no-user',
       }, SetOptions(merge: true));
       final snap = await doc.get(const GetOptions(source: Source.server));
       r.ok('Firestore', 'Document read OK (exists=${snap.exists})');
@@ -152,16 +152,16 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> {
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  ...r.errors.map((e) => SelectableText('• $e')),
+                  ...r.errors.map((e) => SelectableText('? $e')),
                   const SizedBox(height: 24),
                 ],
                 const SizedBox(height: 40),
                 const Text(
                   'Dicas:\n'
-                  '• "Too many attempts": limite de tokens do Firebase. Esta tela usa token em cache. Espere uns minutos e puxe para atualizar.\n'
-                  '• Web + App Check em debug: cadastre o token impresso no console em App Check > Debug Tokens.\n'
-                  '• Se “Enforcement” estiver ON, garanta que as regras permitem essas operações de teste.\n'
-                  '• Se Auth anônimo não fizer sentido no seu app, remova a parte do signInAnonymously().',
+                  '? "Too many attempts": limite de tokens do Firebase. Esta tela usa token em cache. Espere uns minutos e puxe para atualizar.\n'
+                  '? Web + App Check em debug: cadastre o token impresso no console em App Check > Debug Tokens.\n'
+                  '? Se “Enforcement” estiver ON, garanta que as regras permitem essas operações de teste.\n'
+                  '? Se Auth anônimo não fizer sentido no seu app, remova a parte do signInAnonymously().',
                   style: TextStyle(color: Colors.black54),
                 ),
               ],
@@ -179,7 +179,7 @@ class _ShaFingerprintButton extends StatelessWidget {
   Future<Map<String, dynamic>?> _getSigningFingerprints() async {
     try {
       final result = await _channel.invokeMethod<Map>('getSigningFingerprints');
-      return Map<String, dynamic>.from(result ?• {});
+      return Map<String, dynamic>.from(result ?? {});
     } on PlatformException catch (e) {
       throw Exception('${e.code}: ${e.message}');
     }
@@ -215,9 +215,9 @@ class _ShaFingerprintButton extends StatelessWidget {
     );
   }
 
-  void _showShaDialog(BuildContext context, Map<String, dynamic>• data) {
-    final sha1List = (data?['sha1'] as List?)?.cast<String>() ?• [];
-    final sha256List = (data?['sha256'] as List?)?.cast<String>() ?• [];
+  void _showShaDialog(BuildContext context, Map<String, dynamic>? data) {
+    final sha1List = (data?['sha1'] as List?)?.cast<String>() ?? [];
+    final sha256List = (data?['sha256'] as List?)?.cast<String>() ?? [];
 
     showDialog(
       context: context,
@@ -264,9 +264,9 @@ class _ShaFingerprintButton extends StatelessWidget {
 }
 
 class _HeaderTile extends StatelessWidget {
-  final String• appId;
-  final String• projectId;
-  final String• user;
+  final String? appId;
+  final String? projectId;
+  final String? user;
   const _HeaderTile({this.appId, this.projectId, this.user});
 
   @override
@@ -274,8 +274,8 @@ class _HeaderTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: const Icon(Icons.info),
-        title: Text('Projeto: ${projectId ?• "-"}'),
-        subtitle: Text('AppId: ${appId ?• "-"}\nUser: ${user ?• "-"}'),
+        title: Text('Projeto: ${projectId ?? "-"}'),
+        subtitle: Text('AppId: ${appId ?? "-"}\nUser: ${user ?? "-"}'),
       ),
     );
   }
@@ -290,8 +290,8 @@ class _ResultTile extends StatelessWidget {
     final ok = r.ok;
     return Card(
       child: ListTile(
-        leading: Icon(ok • Icons.check_circle : Icons.error,
-            color: ok • Colors.green : Colors.red),
+        leading: Icon(ok ? Icons.check_circle : Icons.error,
+            color: ok ? Colors.green : Colors.red),
         title: Text(r.area),
         subtitle: Text(r.message),
       ),
@@ -300,17 +300,17 @@ class _ResultTile extends StatelessWidget {
 }
 
 class _HealthReport {
-  String• appId;
-  String• projectId;
-  String• currentUser;
-  String• appCheckTokenPrefix;
+  String? appId;
+  String? projectId;
+  String? currentUser;
+  String? appCheckTokenPrefix;
   final List<_ItemResult> results = [];
   final List<String> errors = [];
 
   void ok(String area, String msg) => results.add(_ItemResult(area, true, msg));
-  void err(String area, Object e, StackTrace• st) {
+  void err(String area, Object e, StackTrace? st) {
     results.add(_ItemResult(area, false, e.toString()));
-    errors.add('[$area] $e\n${st ?• ''}');
+    errors.add('[$area] $e\n${st ?? ''}');
   }
 
   /// Erro com mensagem amigável (ex.: 403 App Check não configurado no debug).

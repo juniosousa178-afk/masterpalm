@@ -52,7 +52,7 @@ class RemoteConfigService {
       await _rc.setConfigSettings(RemoteConfigSettings(
         fetchTimeout: const Duration(seconds: 10),
         minimumFetchInterval: kDebugMode
-            • const Duration(minutes: 1)
+            ? const Duration(minutes: 1)
             : const Duration(hours: 1),
       ));
 
@@ -66,7 +66,7 @@ class RemoteConfigService {
       await _rc.fetchAndActivate();
       _recaptchaSiteKey =
           _rc.getString(_keyRecaptchaSiteKey).trim().isNotEmpty
-              • _rc.getString(_keyRecaptchaSiteKey)
+              ? _rc.getString(_keyRecaptchaSiteKey)
               : _defaultRecaptchaSiteKey;
 
       final pMensal = _rc.getDouble(_keyPlanoMensalPreco);

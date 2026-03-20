@@ -24,7 +24,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
   Future<Map<String, dynamic>?> _carregarDadosPerfil() async {
     final session = await ClienteAuthService.getClienteLogado();
     if (session == null) return null;
-    final email = (session['email'] ?• '').toString().trim().toLowerCase();
+    final email = (session['email'] ?? '').toString().trim().toLowerCase();
     if (email.isEmpty) return null;
     final sessionClienteId = session['clienteId']?.toString();
     if (sessionClienteId != widget.clienteId) return null;
@@ -93,14 +93,14 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
               ),
             );
           }
-          final nome = dados['nome'] ?• 'Sem nome';
-          final email = dados['email'] ?• '';
+          final nome = dados['nome'] ?? 'Sem nome';
+          final email = dados['email'] ?? '';
           final lojaId = widget.lojaId;
           final clienteId = widget.clienteId;
-          final telefone = dados['telefone'] ?• '';
-          final cuponsDoc = List<Map<String, dynamic>>.from(dados['cupons'] ?• []);
-          final pedidosClienteDoc = List<Map<String, dynamic>>.from(dados['pedidos'] ?• []);
-          final favoritosIds = List<String>.from((dados['favoritos'] ?• []).map((e) => e.toString()))
+          final telefone = dados['telefone'] ?? '';
+          final cuponsDoc = List<Map<String, dynamic>>.from(dados['cupons'] ?? []);
+          final pedidosClienteDoc = List<Map<String, dynamic>>.from(dados['pedidos'] ?? []);
+          final favoritosIds = List<String>.from((dados['favoritos'] ?? []).map((e) => e.toString()))
               .where((id) => id.isNotEmpty)
               .toList();
 
@@ -113,14 +113,14 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
               favoritosIds: favoritosIds,
             ),
             builder: (context, snapshotDados) {
-              final pedidos = snapshotDados.data?['pedidos'] as List<Map<String, dynamic>>• ?• [];
+              final pedidos = snapshotDados.data?['pedidos'] as List<Map<String, dynamic>>? ?? [];
               final pedidosPrecisaReconectar =
-                  snapshotDados.data?['pedidosPrecisaReconectar'] as bool• ?• false;
-              final cuponsRoleta = snapshotDados.data?['cuponsRoleta'] as List<Map<String, dynamic>>• ?• [];
-              final numerosCampanhas = snapshotDados.data?['numerosCampanhas'] as List<Map<String, dynamic>>• ?• [];
+                  snapshotDados.data?['pedidosPrecisaReconectar'] as bool? ?? false;
+              final cuponsRoleta = snapshotDados.data?['cuponsRoleta'] as List<Map<String, dynamic>>? ?? [];
+              final numerosCampanhas = snapshotDados.data?['numerosCampanhas'] as List<Map<String, dynamic>>? ?? [];
               final cupons = _mesclarCupons(cuponsDoc, cuponsRoleta);
               final todosNumerosSorte = _mesclarNumerosSorte(pedidosClienteDoc, numerosCampanhas);
-              final favoritosProdutos = snapshotDados.data?['favoritosProdutos'] as List<Map<String, dynamic>>• ?• [];
+              final favoritosProdutos = snapshotDados.data?['favoritosProdutos'] as List<Map<String, dynamic>>? ?? [];
 
               return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
@@ -132,7 +132,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                   radius: 50,
                   backgroundColor: Colors.blue,
                   child: Text(
-                    nome.isNotEmpty • nome[0].toUpperCase() : '?',
+                    nome.isNotEmpty ? nome[0].toUpperCase() : '?',
                     style: const TextStyle(fontSize: 40, color: Colors.white),
                   ),
                 ),
@@ -187,39 +187,39 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                   Icons.local_offer,
                   Colors.orange,
                   cupons.isEmpty
-                      • const Text('Você ainda não tem cupons de desconto')
+                      ? const Text('Você ainda não tem cupons de desconto')
                       : Column(
                           children: cupons.map((cupom) {
-                            final codigo = cupom['codigo'] ?• '';
-                            final desconto = (cupom['desconto'] as num?)?.toDouble() ?• 0.0;
-                            final tipo = (cupom['tipo'] ?• cupom['origem'] ?• '').toString();
+                            final codigo = cupom['codigo'] ?? '';
+                            final desconto = (cupom['desconto'] as num?)?.toDouble() ?? 0.0;
+                            final tipo = (cupom['tipo'] ?? cupom['origem'] ?? '').toString();
                             final validade = cupom['validade']?.toString() ??
                                 (cupom['dataExpiracao'] != null
-                                    • _formatarData(cupom['dataExpiracao'])
+                                    ? _formatarData(cupom['dataExpiracao'])
                                     : '');
-                            final usado = cupom['usado'] ?• false;
+                            final usado = cupom['usado'] ?? false;
                             final isFreteGratis = tipo == 'frete_gratis';
                             final descricao = isFreteGratis
-                                • 'Frete grátis'
+                                ? 'Frete grátis'
                                 : '${desconto.toStringAsFixed(0)}% de desconto';
 
                             return Card(
-                              color: usado • Colors.grey[300] : Colors.orange[50],
+                              color: usado ? Colors.grey[300] : Colors.orange[50],
                               child: ListTile(
                                 leading: Icon(
-                                  usado • Icons.check_circle : Icons.local_offer,
-                                  color: usado • Colors.grey : Colors.orange,
+                                  usado ? Icons.check_circle : Icons.local_offer,
+                                  color: usado ? Colors.grey : Colors.orange,
                                 ),
                                 title: Text(
                                   codigo,
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     decoration: usado
-                                        • TextDecoration.lineThrough
+                                        ? TextDecoration.lineThrough
                                         : null,
                                   ),
                                 ),
-                                subtitle: Text('$descricao${validade.isNotEmpty • '\nVálido até $validade' : ''}'),
+                                subtitle: Text('$descricao${validade.isNotEmpty ? '\nVálido até $validade' : ''}'),
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -250,11 +250,11 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                                         ),
                                       ),
                                     Text(
-                                      usado • 'USADO' : 'ATIVO',
+                                      usado ? 'USADO' : 'ATIVO',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         fontSize: 12,
-                                        color: usado • Colors.grey[600] : Colors.orange[700],
+                                        color: usado ? Colors.grey[600] : Colors.orange[700],
                                       ),
                                     ),
                                   ],
@@ -273,12 +273,12 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                   Icons.casino,
                   Colors.green,
                   todosNumerosSorte.isEmpty
-                      • const Text('Você ainda não tem números da sorte')
+                      ? const Text('Você ainda não tem números da sorte')
                       : Column(
                           children: todosNumerosSorte.map((item) {
-                            final numeroSorte = item['numeroSorte'] ?• '';
-                            final data = item['data'] ?• '';
-                            final valor = (item['valor'] as num?)?.toDouble() ?• 0.0;
+                            final numeroSorte = item['numeroSorte'] ?? '';
+                            final data = item['data'] ?? '';
+                            final valor = (item['valor'] as num?)?.toDouble() ?? 0.0;
                             final campanha = item['campanhaNome']?.toString();
 
                             return Card(
@@ -291,7 +291,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                                 ),
                                 subtitle: Text(
                                   campanha != null && campanha.isNotEmpty
-                                      • '$campanha\n$data • R\$ ${valor.toStringAsFixed(2)}'
+                                      ? '$campanha\n$data • R\$ ${valor.toStringAsFixed(2)}'
                                       : 'Pedido de $data\nR\$ ${valor.toStringAsFixed(2)}',
                                 ),
                               ),
@@ -308,7 +308,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                   Icons.favorite,
                   Colors.pink,
                   favoritosProdutos.isEmpty
-                      • const Text('Você ainda não tem produtos favoritos')
+                      ? const Text('Você ainda não tem produtos favoritos')
                       : _buildFavoritosGrid(context, favoritosProdutos, lojaId, clienteId, email),
                 ),
                 const SizedBox(height: 24),
@@ -320,22 +320,22 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                   Icons.shopping_bag,
                   Colors.blue,
                   snapshotDados.connectionState == ConnectionState.waiting
-                      • const Center(child: Padding(
+                      ? const Center(child: Padding(
                           padding: EdgeInsets.all(24),
                           child: CircularProgressIndicator(),
                         ))
                       : pedidos.isEmpty
-                          • _buildMensagemMeusPedidosVazio(
+                          ? _buildMensagemMeusPedidosVazio(
                               context,
                               pedidosPrecisaReconectar,
                             )
                           : Column(
                               children: pedidos.map((pedido) {
-                                final id = (pedido['id'] ?• '').toString();
-                                final status = (pedido['status'] ?• 'pendente').toString();
-                                final total = (pedido['total'] as num?)?.toDouble() ?• 0.0;
+                                final id = (pedido['id'] ?? '').toString();
+                                final status = (pedido['status'] ?? 'pendente').toString();
+                                final total = (pedido['total'] as num?)?.toDouble() ?? 0.0;
                                 final dataCriacao = pedido['dataCriacao'];
-                                String dataStr = pedido['dataStr']?.toString() ?• '';
+                                String dataStr = pedido['dataStr']?.toString() ?? '';
                                 if (dataStr.isEmpty && dataCriacao != null) {
                                   try {
                                     final dt = (dataCriacao as dynamic).toDate() as DateTime;
@@ -349,13 +349,13 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
 
                                 final statusLabel = _statusLabel(status);
                                 final statusColor = _statusColor(status);
-                                final codigoRastreio = (pedido['codigoRastreio'] ?• pedido['codigo_rastreio'] ?• pedido['rastreio'] ?• '').toString().trim();
+                                final codigoRastreio = (pedido['codigoRastreio'] ?? pedido['codigo_rastreio'] ?? pedido['rastreio'] ?? '').toString().trim();
 
                                 return Card(
                                   child: ListTile(
                                     leading: const Icon(Icons.shopping_bag, color: Colors.blue),
                                     title: Text(
-                                      'Pedido #${id.length > 8 • id.substring(0, 8) : id}',
+                                      'Pedido #${id.length > 8 ? id.substring(0, 8) : id}',
                                       style: const TextStyle(fontWeight: FontWeight.bold),
                                     ),
                                     subtitle: Column(
@@ -363,7 +363,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
-                                          '${dataStr.isNotEmpty • '$dataStr\n' : ''}R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}',
+                                          '${dataStr.isNotEmpty ? '$dataStr\n' : ''}R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}',
                                         ),
                                         if (codigoRastreio.isNotEmpty)
                                           Padding(
@@ -528,13 +528,13 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
       spacing: 12,
       runSpacing: 12,
       children: produtos.map((p) {
-        final id = (p['id'] ?• '').toString();
-        final nome = (p['nome'] ?• '').toString();
-        final preco = (p['preco'] ?• p['valor'] ?• 0.0) is num
-            • ((p['preco'] ?• p['valor']) as num).toDouble()
+        final id = (p['id'] ?? '').toString();
+        final nome = (p['nome'] ?? '').toString();
+        final preco = (p['preco'] ?? p['valor'] ?? 0.0) is num
+            ? ((p['preco'] ?? p['valor']) as num).toDouble()
             : 0.0;
-        final imagens = (p['imagens'] as List?)?.cast<String>() ?• [];
-        final imageUrl = imagens.isNotEmpty • imagens.first : (p['imageUrl'] ?• p['url_foto'] ?• '').toString();
+        final imagens = (p['imagens'] as List?)?.cast<String>() ?? [];
+        final imageUrl = imagens.isNotEmpty ? imagens.first : (p['imageUrl'] ?? p['url_foto'] ?? '').toString();
         return SizedBox(
           width: 120,
           child: Card(
@@ -623,14 +623,14 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
     final codigosVistos = <String>{};
     final resultado = <Map<String, dynamic>>[];
     for (final c in doc) {
-      final cod = (c['codigo'] ?• '').toString();
+      final cod = (c['codigo'] ?? '').toString();
       if (cod.isNotEmpty && !codigosVistos.contains(cod)) {
         codigosVistos.add(cod);
         resultado.add(c);
       }
     }
     for (final c in roleta) {
-      final cod = (c['codigo'] ?• '').toString();
+      final cod = (c['codigo'] ?? '').toString();
       if (cod.isNotEmpty && !codigosVistos.contains(cod)) {
         codigosVistos.add(cod);
         resultado.add(c);
@@ -645,16 +645,16 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
     List<Map<String, dynamic>> campanhas,
   ) {
     final numerosDoc = pedidosDoc
-        .where((p) => (p['numeroSorte'] ?• '').toString().isNotEmpty)
+        .where((p) => (p['numeroSorte'] ?? '').toString().isNotEmpty)
         .map((p) => {
               'numeroSorte': p['numeroSorte'],
-              'data': p['data'] ?• '',
-              'valor': (p['valor'] as num?)?.toDouble() ?• 0.0,
+              'data': p['data'] ?? '',
+              'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
               'campanhaNome': null,
             })
         .toList();
     return [...numerosDoc, ...campanhas]
-      ..sort((a, b) => (b['data'] ?• '').compareTo(a['data'] ?• ''));
+      ..sort((a, b) => (b['data'] ?? '').compareTo(a['data'] ?? ''));
   }
 
   /// Busca pedidos de clientes_portal + doc cliente (MP) e mescla ordenados por data
@@ -678,20 +678,20 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
         .where((p) => !idsPrePedidos.contains(p['id']?.toString()))
         .map((p) => {
               'id': p['id'],
-              'status': p['status'] ?• 'Confirmado',
-              'total': (p['valor'] as num?)?.toDouble() ?• 0.0,
+              'status': p['status'] ?? 'Confirmado',
+              'total': (p['valor'] as num?)?.toDouble() ?? 0.0,
               'dataCriacao': null,
-              'dataStr': p['data'] ?• '',
+              'dataStr': p['data'] ?? '',
             })
         .toList();
 
     final todos = [...fromPortal, ...onlyFromDoc];
     todos.sort((a, b) {
       final dtA = a['dataCriacao'] != null
-          • (a['dataCriacao'] as dynamic).toDate() as DateTime?
+          ? (a['dataCriacao'] as dynamic).toDate() as DateTime?
           : null;
       final dtB = b['dataCriacao'] != null
-          • (b['dataCriacao'] as dynamic).toDate() as DateTime?
+          ? (b['dataCriacao'] as dynamic).toDate() as DateTime?
           : null;
       if (dtA != null && dtB != null)       return dtB.compareTo(dtA);
       if (dtA != null) return -1;
@@ -793,9 +793,9 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
 
   /// Dialog para editar dados pessoais
   void _mostrarDialogEditarDados(BuildContext context, Map<String, dynamic> dadosAtuais) {
-    final nomeController = TextEditingController(text: dadosAtuais['nome'] ?• '');
-    final emailController = TextEditingController(text: dadosAtuais['email'] ?• '');
-    final telefoneController = TextEditingController(text: dadosAtuais['telefone'] ?• '');
+    final nomeController = TextEditingController(text: dadosAtuais['nome'] ?? '');
+    final emailController = TextEditingController(text: dadosAtuais['email'] ?? '');
+    final telefoneController = TextEditingController(text: dadosAtuais['telefone'] ?? '');
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -893,7 +893,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text(resultado['error'] ?• 'Erro ao atualizar dados'),
+                    content: Text(resultado['error'] ?? 'Erro ao atualizar dados'),
                     backgroundColor: Colors.red,
                   ),
                 );
@@ -936,7 +936,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          mostrarSenhaAtual • Icons.visibility : Icons.visibility_off,
+                          mostrarSenhaAtual ? Icons.visibility : Icons.visibility_off,
                         ),
                         onPressed: () {
                           setState(() => mostrarSenhaAtual = !mostrarSenhaAtual);
@@ -960,7 +960,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          mostrarNovaSenha • Icons.visibility : Icons.visibility_off,
+                          mostrarNovaSenha ? Icons.visibility : Icons.visibility_off,
                         ),
                         onPressed: () {
                           setState(() => mostrarNovaSenha = !mostrarNovaSenha);
@@ -987,7 +987,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          mostrarConfirmarSenha • Icons.visibility : Icons.visibility_off,
+                          mostrarConfirmarSenha ? Icons.visibility : Icons.visibility_off,
                         ),
                         onPressed: () {
                           setState(() => mostrarConfirmarSenha = !mostrarConfirmarSenha);
@@ -1039,7 +1039,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(resultado['error'] ?• 'Erro ao alterar senha'),
+                      content: Text(resultado['error'] ?? 'Erro ao alterar senha'),
                       backgroundColor: Colors.red,
                     ),
                   );

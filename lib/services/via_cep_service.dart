@@ -76,12 +76,12 @@ class ViaCepService {
       if (_isErroResposta(data)) return null;
 
       return ViaCepResult(
-        cep: (data['cep'] ?• '').toString().trim(),
-        logradouro: (data['logradouro'] ?• '').toString().trim(),
-        complemento: (data['complemento'] ?• '').toString().trim(),
-        bairro: (data['bairro'] ?• '').toString().trim(),
-        localidade: (data['localidade'] ?• '').toString().trim(),
-        uf: (data['uf'] ?• '').toString().trim(),
+        cep: (data['cep'] ?? '').toString().trim(),
+        logradouro: (data['logradouro'] ?? '').toString().trim(),
+        complemento: (data['complemento'] ?? '').toString().trim(),
+        bairro: (data['bairro'] ?? '').toString().trim(),
+        localidade: (data['localidade'] ?? '').toString().trim(),
+        uf: (data['uf'] ?? '').toString().trim(),
       );
     } catch (e) {
       if (kDebugMode) debugPrint('❌ [ViaCEP] Erro (type=${e.runtimeType})');

@@ -15,7 +15,7 @@ import 'catalog_combo_variation_sheet.dart';
 Map<String, int> _estoqueMapForDetail(Map<String, dynamic> raw) {
   final result = <String, int>{};
   raw.forEach((k, v) {
-    final n = v is num • v.toInt() : int.tryParse('$v');
+    final n = v is num ? v.toInt() : int.tryParse('$v');
     if (n != null && n > 0) result[k.toString()] = n;
   });
   return result;
@@ -31,33 +31,33 @@ class CatalogProductDetailScreen extends StatelessWidget {
   final num peso;
   final String tipoEmbalagem;
   final double price;
-  final double• priceMin;
-  final double• priceMax;
-  final Map<String, double>• precoPorTamanho;
-  final double• precoOriginal;
+  final double? priceMin;
+  final double? priceMax;
+  final Map<String, double>? precoPorTamanho;
+  final double? precoOriginal;
   final bool emPromocao;
   final double percentualPromo;
   final double valorPromo;
   final List<String> imagens;
   final int quantidade;
-  final Map<String, int>• estoquePorTamanho;
-  final Map<String, int>• estoquePorCor;
-  final Map<String, dynamic>• variacoes;
-  final String• prazoEntrega;
+  final Map<String, int>? estoquePorTamanho;
+  final Map<String, int>? estoquePorCor;
+  final Map<String, dynamic>? variacoes;
+  final String? prazoEntrega;
   final double percentualDescontoPix;
   final bool divideSemJuros;
   final int maxParcelas;
-  final String• catalogShareUrl;
+  final String? catalogShareUrl;
   final String lojaId;
   final bool ehCombo;
-  final List<Map<String, dynamic>>• itensCombo;
-  final Map<String, dynamic>• comboProductMap;
-  final List<Map<String, dynamic>>• todosProdutosForCombo;
-  final String• nomeLoja;
-  final String• contatoWhatsapp;
-  final String• politicaFrete;
+  final List<Map<String, dynamic>>? itensCombo;
+  final Map<String, dynamic>? comboProductMap;
+  final List<Map<String, dynamic>>? todosProdutosForCombo;
+  final String? nomeLoja;
+  final String? contatoWhatsapp;
+  final String? politicaFrete;
   final void Function(Map<String, dynamic>) onAdd;
-  final VoidCallback• onAbrirCarrinho;
+  final VoidCallback? onAbrirCarrinho;
 
   const CatalogProductDetailScreen({
     super.key,
@@ -102,29 +102,29 @@ class CatalogProductDetailScreen extends StatelessWidget {
     required Map<String, dynamic> p,
     required String lojaId,
     required void Function(Map<String, dynamic>) onAdd,
-    VoidCallback• onAbrirCarrinho,
-    String• catalogShareUrl,
-    String• nomeLoja,
-    String• contatoWhatsapp,
-    String• politicaFrete,
-    String• prazoEntregaTexto,
-    List<Map<String, dynamic>>• todosProdutos,
+    VoidCallback? onAbrirCarrinho,
+    String? catalogShareUrl,
+    String? nomeLoja,
+    String? contatoWhatsapp,
+    String? politicaFrete,
+    String? prazoEntregaTexto,
+    List<Map<String, dynamic>>? todosProdutos,
   }) {
     final estoqueTam = _estoqueMapForDetail(asMap(p['estoquePorTamanho']));
     final estoqueCor = _estoqueMapForDetail(asMap(p['estoquePorCor']));
     final price = safeDouble(p['preco']);
-    final priceMin = p['priceMin'] != null • safeDouble(p['priceMin']) : null;
-    final priceMax = p['priceMax'] != null • safeDouble(p['priceMax']) : null;
+    final priceMin = p['priceMin'] != null ? safeDouble(p['priceMin']) : null;
+    final priceMax = p['priceMax'] != null ? safeDouble(p['priceMax']) : null;
     final precoPorTamanho = (p['precoPorTamanho'] != null && p['precoPorTamanho'] is Map)
-        • Map<String, double>.from(
+        ? Map<String, double>.from(
             (p['precoPorTamanho'] as Map).map(
-              (k, v) => MapEntry(k.toString(), (v is num) • v.toDouble() : 0.0),
+              (k, v) => MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0),
             ),
           )
         : null;
-    final tipoProduto = (p['tipoProduto'] ?• p['tipo'] ?• 'simples').toString();
+    final tipoProduto = (p['tipoProduto'] ?? p['tipo'] ?? 'simples').toString();
     final itensComboRaw = p['itensCombo'];
-    List<Map<String, dynamic>>• itensCombo;
+    List<Map<String, dynamic>>? itensCombo;
     if (itensComboRaw is List && itensComboRaw.isNotEmpty) {
       itensCombo = [];
       for (final e in itensComboRaw) {
@@ -138,7 +138,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
     final ehCombo = tipoProduto == 'combo' ||
         (itensCombo != null && itensCombo.isNotEmpty);
     final maxPar = safeBool(p['divideSemJuros'])
-        • safeInt(p['maxParcelasSemJuros'], 12).clamp(1, 24)
+        ? safeInt(p['maxParcelasSemJuros'], 12).clamp(1, 24)
         : 12;
 
     return CatalogProductDetailScreen(
@@ -153,18 +153,18 @@ class CatalogProductDetailScreen extends StatelessWidget {
       priceMax: priceMax,
       precoPorTamanho: precoPorTamanho,
       precoOriginal:
-          (p['emPromocao'] == true) • safeDouble(p['precoFinal']) : null,
+          (p['emPromocao'] == true) ? safeDouble(p['precoFinal']) : null,
       emPromocao: safeBool(p['emPromocao']),
       percentualPromo: safeDouble(p['percentualPromo']),
       valorPromo: safeDouble(p['valorPromo']),
       imagens: safeListString(p['imagens']).isNotEmpty
-          • safeListString(p['imagens'])
+          ? safeListString(p['imagens'])
           : [safeStr(p['imageUrl'])],
       quantidade: safeInt(p['quantidade']),
-      estoquePorTamanho: estoqueTam.isNotEmpty • estoqueTam : null,
-      estoquePorCor: estoqueCor.isNotEmpty • estoqueCor : null,
+      estoquePorTamanho: estoqueTam.isNotEmpty ? estoqueTam : null,
+      estoquePorCor: estoqueCor.isNotEmpty ? estoqueCor : null,
       variacoes: (p['variacoes'] != null && asMapDeep(p['variacoes']).isNotEmpty)
-          • asMapDeep(p['variacoes'])
+          ? asMapDeep(p['variacoes'])
           : null,
       prazoEntrega: prazoEntregaTexto,
       percentualDescontoPix: safeDouble(p['percentualDescontoPix']),
@@ -174,8 +174,8 @@ class CatalogProductDetailScreen extends StatelessWidget {
       lojaId: lojaId,
       ehCombo: ehCombo,
       itensCombo: itensCombo,
-      comboProductMap: ehCombo • p : null,
-      todosProdutosForCombo: ehCombo • (todosProdutos ?• []) : null,
+      comboProductMap: ehCombo ? p : null,
+      todosProdutosForCombo: ehCombo ? (todosProdutos ?? []) : null,
       nomeLoja: nomeLoja,
       contatoWhatsapp: contatoWhatsapp,
       politicaFrete: politicaFrete,
@@ -233,14 +233,14 @@ class CatalogProductDetailScreen extends StatelessWidget {
           precoPorTamanho: precoPorTamanho,
           precoOriginal: precoOriginal,
           emPromocao: emPromocao,
-          imageUrl: imagens.isNotEmpty • imagens.first : '',
-          estoquePorTamanho: estoquePorTamanho ?• {},
-          estoquePorCor: estoquePorCor ?• {},
+          imageUrl: imagens.isNotEmpty ? imagens.first : '',
+          estoquePorTamanho: estoquePorTamanho ?? {},
+          estoquePorCor: estoquePorCor ?? {},
           variacoes: variacoes,
           percentualDescontoPix: percentualDescontoPix,
           mostrarQuantidadeNoCatalogo: false,
           onAddToCart: (tamanho, cor, preco) {
-            final img = imagens.isNotEmpty • imagens.first : '';
+            final img = imagens.isNotEmpty ? imagens.first : '';
             onAdd({
               'produtosId': id,
               'id': id,
@@ -255,8 +255,8 @@ class CatalogProductDetailScreen extends StatelessWidget {
               'slug': slug,
               'peso': peso,
               'tipoEmbalagem': tipoEmbalagem,
-              'tamanho': tamanho ?• '',
-              'cor': cor ?• '',
+              'tamanho': tamanho ?? '',
+              'cor': cor ?? '',
             });
             Navigator.of(context).pop();
             Navigator.of(context).pop();
@@ -265,7 +265,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
         ),
       );
     } else {
-      final img = imagens.isNotEmpty • imagens.first : '';
+      final img = imagens.isNotEmpty ? imagens.first : '';
       onAdd({
         'produtosId': id,
         'id': id,
@@ -292,14 +292,14 @@ class CatalogProductDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
-    final imgList = imagens.isNotEmpty • imagens : [''];
+    final imgList = imagens.isNotEmpty ? imagens : [''];
     final hasManyImages = imgList.where((e) => e.trim().isNotEmpty).length > 1;
-    final galleryHeight = MediaQuery.of(context).size.width < 420 • 300.0 : 340.0;
+    final galleryHeight = MediaQuery.of(context).size.width < 420 ? 300.0 : 340.0;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.appBarTheme.backgroundColor ?• theme.cardColor,
+        backgroundColor: theme.appBarTheme.backgroundColor ?? theme.cardColor,
         elevation: 0,
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -310,12 +310,12 @@ class CatalogProductDetailScreen extends StatelessWidget {
             IconButton(
               onPressed: () async {
                 final precoTexto = _temFaixaPreco
-                    • 'R\$ ${_fmt2(priceMin!)} a R\$ ${_fmt2(priceMax!)}'
+                    ? 'R\$ ${_fmt2(priceMin!)} a R\$ ${_fmt2(priceMax!)}'
                     : 'R\$ ${_fmt2(price)}';
                 final msg = CatalogShareService.buildProductShareMessage(
                   nome: name,
                   precoTexto: precoTexto,
-                  descricaoCurta: descricao.trim().isEmpty • null : descricao,
+                  descricaoCurta: descricao.trim().isEmpty ? null : descricao,
                   url: catalogShareUrl!,
                 );
                 final uri = Uri.parse(
@@ -338,7 +338,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
             SizedBox(
               height: galleryHeight,
               child: imgList.first.isEmpty
-                  • Container(
+                  ? Container(
                       color: theme.cardColor,
                       child: Icon(
                         Icons.image_not_supported_outlined,
@@ -468,7 +468,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
                         Icon(Icons.pix, size: 16, color: Colors.green[700]),
                         const SizedBox(width: 4),
                         Text(
-                          'ou R\$ ${_fmt2(price * (1 - percentualDescontoPix / 100))} no PIX (${percentualDescontoPix == percentualDescontoPix.truncateToDouble() • percentualDescontoPix.toInt() : _fmt2(percentualDescontoPix)}% off)',
+                          'ou R\$ ${_fmt2(price * (1 - percentualDescontoPix / 100))} no PIX (${percentualDescontoPix == percentualDescontoPix.truncateToDouble() ? percentualDescontoPix.toInt() : _fmt2(percentualDescontoPix)}% off)',
                           style: TextStyle(
                             color: Colors.green[700],
                             fontSize: 13,
@@ -506,14 +506,14 @@ class CatalogProductDetailScreen extends StatelessWidget {
                   const SizedBox(height: 6),
                   Text(
                     descricao.trim().isEmpty
-                        • 'Sem descrição disponível para este produto.'
+                        ? 'Sem descrição disponível para este produto.'
                         : descricao,
                     style: TextStyle(
                       color: Colors.grey[600],
                       fontSize: 14,
                       height: 1.5,
                       fontStyle: descricao.trim().isEmpty
-                          • FontStyle.italic
+                          ? FontStyle.italic
                           : FontStyle.normal,
                     ),
                   ),
@@ -522,7 +522,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
                     width: double.infinity,
                     height: 48,
                     child: FilledButton(
-                      onPressed: quantidade > 0 • () => _addToCart(context) : null,
+                      onPressed: quantidade > 0 ? () => _addToCart(context) : null,
                       style: FilledButton.styleFrom(
                         backgroundColor: primaryColor,
                         foregroundColor: Colors.white,
@@ -532,7 +532,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
                         elevation: 0,
                       ),
                       child: Text(
-                        quantidade > 0 • 'Adicionar ao carrinho' : 'Indisponível',
+                        quantidade > 0 ? 'Adicionar ao carrinho' : 'Indisponível',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
@@ -544,7 +544,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: () => _abrirDuvidasPergunte(context),
                     icon: const Icon(Icons.help_outline, size: 18),
-                    label: const Text('Dúvidas• Pergunte'),
+                    label: const Text('Dúvidas? Pergunte'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -648,9 +648,9 @@ class _CatalogFullscreenGalleryState extends State<_CatalogFullscreenGallery> {
 class _DuvidasPergunteDialogDetail extends StatefulWidget {
   final String produtoNome;
   final bool temEstoque;
-  final String• nomeLoja;
-  final String• contatoWhatsapp;
-  final String• politicaFrete;
+  final String? nomeLoja;
+  final String? contatoWhatsapp;
+  final String? politicaFrete;
   final TextEditingController perguntaCtrl;
   final String lojaId;
 
@@ -672,7 +672,7 @@ class _DuvidasPergunteDialogDetail extends StatefulWidget {
 class _DuvidasPergunteDialogDetailState
     extends State<_DuvidasPergunteDialogDetail> {
   bool _enviando = false;
-  String• _resposta;
+  String? _resposta;
 
   Future<void> _enviar() async {
     final pergunta = widget.perguntaCtrl.text.trim();
@@ -709,7 +709,7 @@ class _DuvidasPergunteDialogDetailState
       };
       final resposta = await AiLojaService.chatAtendimentoCatalogo(
         pergunta: pergunta,
-        contexto: contexto.isEmpty • null : contexto,
+        contexto: contexto.isEmpty ? null : contexto,
       );
       if (mounted) {
         IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
@@ -734,7 +734,7 @@ class _DuvidasPergunteDialogDetailState
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Dúvidas• Pergunte'),
+      title: const Text('Dúvidas? Pergunte'),
       content: SingleChildScrollView(
         physics:
             const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -745,7 +745,7 @@ class _DuvidasPergunteDialogDetailState
             TextField(
               controller: widget.perguntaCtrl,
               decoration: const InputDecoration(
-                hintText: 'Ex: Tem em estoque• Qual o prazo de entrega?',
+                hintText: 'Ex: Tem em estoque? Qual o prazo de entrega?',
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
@@ -778,14 +778,14 @@ class _DuvidasPergunteDialogDetailState
             onPressed: () => Navigator.pop(context),
             child: const Text('Fechar')),
         FilledButton.icon(
-          onPressed: _enviando • null : _enviar,
+          onPressed: _enviando ? null : _enviar,
           icon: _enviando
-              • const SizedBox(
+              ? const SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.send, size: 18),
-          label: Text(_enviando • 'Enviando…' : 'Enviar'),
+          label: Text(_enviando ? 'Enviando…' : 'Enviar'),
         ),
       ],
     );

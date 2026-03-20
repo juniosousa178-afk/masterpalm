@@ -26,7 +26,7 @@ class MotorCrescimentoScreen extends StatefulWidget {
 const int _primeiraPaginaLimit = 30;
 
 class _MotorCrescimentoScreenState extends State<MotorCrescimentoScreen> {
-  Future<MotorCrescimentoPainel>• _future;
+  Future<MotorCrescimentoPainel>? _future;
   bool _carregandoResto = false;
 
   @override
@@ -75,7 +75,7 @@ class _MotorCrescimentoScreenState extends State<MotorCrescimentoScreen> {
         backgroundColor: theme.colorScheme.surface,
       ),
       body: widget.lojaId.isEmpty
-          • const Center(
+          ? const Center(
               child: Text('Nenhuma loja ativa. Configure a loja nas Configurações.'),
             )
           : FutureBuilder<MotorCrescimentoPainel>(
@@ -385,7 +385,7 @@ class _OportunidadeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = oportunidade.tipo == TipoOportunidade.produtoParado
-        • _warningColor
+        ? _warningColor
         : _errorColor;
 
     return Card(
@@ -395,7 +395,7 @@ class _OportunidadeTile extends StatelessWidget {
           backgroundColor: color.withValues(alpha:0.15),
           child: Icon(
             oportunidade.tipo == TipoOportunidade.produtoParado
-                • Icons.inventory_2_outlined
+                ? Icons.inventory_2_outlined
                 : Icons.warning_amber_outlined,
             color: color,
             size: 22,

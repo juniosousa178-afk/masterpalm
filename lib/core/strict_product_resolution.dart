@@ -10,10 +10,10 @@ import 'feature_flags.dart';
 
 /// Override para testes: quando não-null, substitui [kStrictProductResolution].
 /// Usar apenas em testes. Em produção nunca é definido.
-bool• _testStrictOverride;
+bool? _testStrictOverride;
 
 /// Define override para testes. Chamar no setUp/tearDown dos testes.
-void setStrictResolutionTestOverride(bool• value) {
+void setStrictResolutionTestOverride(bool? value) {
   _testStrictOverride = value;
 }
 
@@ -22,22 +22,22 @@ void setStrictResolutionTestOverride(bool• value) {
 void reportProductResolvedByName({
   required String lojaId,
   required String fluxo,
-  String• nome,
-  String• slug,
-  String• productIdRecebido,
+  String? nome,
+  String? slug,
+  String? productIdRecebido,
 }) {
-  final strict = _testStrictOverride ?• kStrictProductResolution;
+  final strict = _testStrictOverride ?? kStrictProductResolution;
   debugPrint(
     '[PRODUTO_FALLBACK] [PRODUTO_NOME_STRICT] Resolução por nome | '
-    'lojaId=$lojaId | fluxo=$fluxo | nome=${nome ?• "(vazio)"} | '
-    'slug=${slug ?• "(vazio)"} | productIdRecebido=${productIdRecebido ?• "(vazio)"} | '
-    'strictMode=$strict | ambiente=${kDebugMode • "debug" : "release"}',
+    'lojaId=$lojaId | fluxo=$fluxo | nome=${nome ?? "(vazio)"} | '
+    'slug=${slug ?? "(vazio)"} | productIdRecebido=${productIdRecebido ?? "(vazio)"} | '
+    'strictMode=$strict | ambiente=${kDebugMode ? "debug" : "release"}',
   );
   if (strict) {
     throw Exception(
       'Resolução de produto por nome bloqueada em modo estrito. '
       'Este fluxo ainda não é ID-first. Informe/propague productId. '
-      'Fluxo: $fluxo | lojaId: $lojaId | nome: ${nome ?• "?"}',
+      'Fluxo: $fluxo | lojaId: $lojaId | nome: ${nome ?? "?"}',
     );
   }
 }

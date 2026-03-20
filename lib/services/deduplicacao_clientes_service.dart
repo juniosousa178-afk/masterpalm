@@ -25,8 +25,8 @@ class DeduplicacaoClientesService {
         lista.sort((a, b) {
           final scoreA = _completude(a);
           final scoreB = _completude(b);
-          final histA = a.historico?.length ?• 0;
-          final histB = b.historico?.length ?• 0;
+          final histA = a.historico?.length ?? 0;
+          final histB = b.historico?.length ?? 0;
           if (histA != histB) return histB.compareTo(histA);
           return scoreB.compareTo(scoreA);
         });
@@ -40,7 +40,7 @@ class DeduplicacaoClientesService {
               if (!manter.historico!.any((x) => x.key == v.key)) {
                 manter.historico!.add(v);
               }
-              v.clienteId = manter.key?.toString() ?• manter.idFirebase;
+              v.clienteId = manter.key?.toString() ?? manter.idFirebase;
               await v.save();
             }
           }
@@ -61,7 +61,7 @@ class DeduplicacaoClientesService {
   static int _completude(Cliente c) {
     int s = 0;
     if (c.telefone.trim().isNotEmpty) s += 2;
-    if ((c.email ?• '').isNotEmpty) s += 1;
+    if ((c.email ?? '').isNotEmpty) s += 1;
     if (c.instagram.trim().isNotEmpty) s += 1;
     if (c.cep.trim().isNotEmpty) s += 1;
     return s;

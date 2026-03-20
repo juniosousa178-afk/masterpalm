@@ -226,7 +226,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _mostrarSenha • Icons.visibility : Icons.visibility_off,
+                          _mostrarSenha ? Icons.visibility : Icons.visibility_off,
                         ),
                         onPressed: () {
                           setState(() => _mostrarSenha = !_mostrarSenha);
@@ -256,7 +256,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                       suffixIcon: IconButton(
                         icon: Icon(
                           _mostrarConfirmarSenha
-                              • Icons.visibility
+                              ? Icons.visibility
                               : Icons.visibility_off,
                         ),
                         onPressed: () {
@@ -279,14 +279,14 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
                   // Botão Cadastrar
                   ElevatedButton(
-                    onPressed: _carregando • null : _fazerCadastro,
+                    onPressed: _carregando ? null : _fazerCadastro,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
                     ),
                     child: _carregando
-                        • const SizedBox(
+                        ? const SizedBox(
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(
@@ -310,7 +310,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                         ),
                       );
                     },
-                    child: const Text('Já tem conta• Faça login'),
+                    child: const Text('Já tem conta? Faça login'),
                   ),
                 ],
               ),

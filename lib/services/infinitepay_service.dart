@@ -15,15 +15,15 @@ class InfinitePayService {
     required String apiKey,
     required double valor,
     required String descricao,
-    String• cpfPagador,
-    String• nomePagador,
-    String• emailPagador,
-    String• referencia,
-    int• expiracaoMinutos,
+    String? cpfPagador,
+    String? nomePagador,
+    String? emailPagador,
+    String? referencia,
+    int? expiracaoMinutos,
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.post(
         Uri.parse('$baseUrl/v2/payments/pix'),
@@ -75,14 +75,14 @@ class InfinitePayService {
     required String apiKey,
     required double valor,
     required String descricao,
-    List<String>• metodosPermitidos,
-    String• referencia,
-    Map<String, dynamic>• customer,
-    Map<String, dynamic>• urlsRedirecionamento,
+    List<String>? metodosPermitidos,
+    String? referencia,
+    Map<String, dynamic>? customer,
+    Map<String, dynamic>? urlsRedirecionamento,
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.post(
         Uri.parse('$baseUrl/v2/payment-links'),
@@ -127,7 +127,7 @@ class InfinitePayService {
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.get(
         Uri.parse('$baseUrl/v2/payments/$paymentId'),
@@ -163,7 +163,7 @@ class InfinitePayService {
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.post(
         Uri.parse('$baseUrl/v2/payments/$paymentId/cancel'),
@@ -190,11 +190,11 @@ class InfinitePayService {
   static Future<bool> estornarPagamento({
     required String apiKey,
     required String paymentId,
-    double• valorParcial,
+    double? valorParcial,
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.post(
         Uri.parse('$baseUrl/v2/payments/$paymentId/refund'),
@@ -226,7 +226,7 @@ class InfinitePayService {
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.get(
         Uri.parse('$baseUrl/v2/account'),
@@ -248,7 +248,7 @@ class InfinitePayService {
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.get(
         Uri.parse('$baseUrl/v2/account'),
@@ -276,14 +276,14 @@ class InfinitePayService {
   /// Lista pagamentos
   static Future<List<Map<String, dynamic>>> listarPagamentos({
     required String apiKey,
-    int• limit,
-    String• status,
-    DateTime• dataInicio,
-    DateTime• dataFim,
+    int? limit,
+    String? status,
+    DateTime? dataInicio,
+    DateTime? dataFim,
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final queryParams = <String, String>{};
       if (limit != null) queryParams['limit'] = limit.toString();
@@ -302,7 +302,7 @@ class InfinitePayService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['payments'] ?• []);
+        return List<Map<String, dynamic>>.from(data['payments'] ?? []);
       } else {
         debugPrint('❌ Erro ao listar pagamentos: ${response.statusCode}');
         return [];

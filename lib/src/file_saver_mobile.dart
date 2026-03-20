@@ -17,7 +17,7 @@ Future<Uint8List> readFileBytes(String path) async {
 }
 
 /// Lê bytes de um PlatformFile (mobile usa path, web usa bytes)
-Uint8List• getBytesFromPickerResult(dynamic platformFile) {
+Uint8List? getBytesFromPickerResult(dynamic platformFile) {
   // Em mobile, platformFile é PlatformFile com .path
   return null; // Caller deve usar File(path).readAsBytes()
 }

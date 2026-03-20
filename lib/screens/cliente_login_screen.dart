@@ -39,14 +39,14 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
     super.dispose();
   }
 
-  String• _getCpfDigits() {
+  String? _getCpfDigits() {
     final cpf = _cpfController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    return cpf.isEmpty • null : cpf;
+    return cpf.isEmpty ? null : cpf;
   }
 
-  String• _getTelefoneDigits() {
+  String? _getTelefoneDigits() {
     final tel = _telefoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    return tel.isEmpty • null : tel;
+    return tel.isEmpty ? null : tel;
   }
 
   Future<void> _fazerLogin() async {
@@ -90,7 +90,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
         content: Row(
           children: [
             Icon(
-              isSuccess • Icons.check_circle_outline : Icons.error_outline,
+              isSuccess ? Icons.check_circle_outline : Icons.error_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -98,7 +98,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isSuccess • const Color(0xFF22C55E) : (isError • const Color(0xFFEF4444) : AppColors.primary),
+        backgroundColor: isSuccess ? const Color(0xFF22C55E) : (isError ? const Color(0xFFEF4444) : AppColors.primary),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -114,7 +114,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: isDark • null : AppColors.background,
+        backgroundColor: isDark ? null : AppColors.background,
         appBar: AppBar(
           title: const Text('Minha Conta'),
           centerTitle: true,
@@ -163,7 +163,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: isDark • theme.cardTheme.color : AppColors.card,
+                          color: isDark ? theme.cardTheme.color : AppColors.card,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
@@ -239,7 +239,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                             SizedBox(
                               height: 52,
                               child: ElevatedButton(
-                                onPressed: _carregando • null : _fazerLogin,
+                                onPressed: _carregando ? null : _fazerLogin,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primary,
                                   foregroundColor: Colors.white,
@@ -250,7 +250,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                                   ),
                                 ),
                                 child: _carregando
-                                    • const SizedBox(
+                                    ? const SizedBox(
                                         height: 22,
                                         width: 22,
                                         child: CircularProgressIndicator(
@@ -318,12 +318,12 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
     required String label,
     required String hint,
     required IconData icon,
-    TextInputType• keyboardType,
+    TextInputType? keyboardType,
     bool autocorrect = true,
     TextCapitalization textCapitalization = TextCapitalization.none,
-    List<String>• autofillHints,
-    List<TextInputFormatter>• inputFormatters,
-    String• Function(String?)• validator,
+    List<String>? autofillHints,
+    List<TextInputFormatter>? inputFormatters,
+    String? Function(String?)? validator,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -341,7 +341,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
         hintText: hint,
         prefixIcon: Icon(icon, size: 22),
         filled: true,
-        fillColor: isDark • null : Colors.grey.withValues(alpha:0.06),
+        fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

@@ -6,7 +6,7 @@ import 'campanha_motor.dart';
 /// Resultado da execução de uma campanha.
 class CampanhaMotorResult {
   final bool sucesso;
-  final CampanhaMotor• campanha;
+  final CampanhaMotor? campanha;
   final String mensagem;
   final bool cupomCriado;
   final bool linkGerado;

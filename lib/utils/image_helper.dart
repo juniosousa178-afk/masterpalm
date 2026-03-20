@@ -10,9 +10,9 @@ import 'package:flutter/material.dart';
 Widget buildPlatformImage(
   String path, {
   BoxFit fit = BoxFit.cover,
-  double• width,
-  double• height,
-  Widget Function(BuildContext, Object, StackTrace?)• errorBuilder,
+  double? width,
+  double? height,
+  Widget Function(BuildContext, Object, StackTrace?)? errorBuilder,
 }) {
   final defaultErrorBuilder = errorBuilder ??
       (_, __, ___) => Container(
@@ -62,7 +62,7 @@ Widget buildPlatformImage(
 }
 
 /// Retorna o ImageProvider correto para a plataforma.
-ImageProvider• buildPlatformImageProvider(String• path) {
+ImageProvider? buildPlatformImageProvider(String? path) {
   if (path == null || path.isEmpty) return null;
 
   // blob: em outra origem (ex.: app em localhost, blob de app.mastepalm.com.br) não carrega no Web.

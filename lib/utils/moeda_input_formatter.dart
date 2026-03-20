@@ -22,11 +22,11 @@ class MoedaInputFormatter extends TextInputFormatter {
     final digits = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
     if (digits.isEmpty) {
       return TextEditingValue(
-        text: allowEmpty • '' : '0,00',
+        text: allowEmpty ? '' : '0,00',
         selection: const TextSelection.collapsed(offset: 0),
       );
     }
-    var cents = int.tryParse(digits) ?• 0;
+    var cents = int.tryParse(digits) ?? 0;
     final maxCents = (maxReais * 100).round();
     if (cents > maxCents) cents = maxCents;
 
@@ -44,7 +44,7 @@ class MoedaInputFormatter extends TextInputFormatter {
   static double parse(String text) {
     final digits = text.replaceAll(RegExp(r'[^\d]'), '');
     if (digits.isEmpty) return 0;
-    return (int.tryParse(digits) ?• 0) / 100.0;
+    return (int.tryParse(digits) ?? 0) / 100.0;
   }
 
   /// Converte double 5.0 em texto formatado "5,00"

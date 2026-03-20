@@ -62,11 +62,11 @@ class CatalogCacheService {
     required bool preview,
     bool forceRefresh = false,
   }) {
-    final cfgCol = preview • 'draft_config' : 'config';
+    final cfgCol = preview ? 'draft_config' : 'config';
     final cacheKey = '${lojaId}_$preview';
     final controller = StreamController<Map<String, dynamic>>.broadcast();
-    Timer• timer;
-    Map<String, dynamic>• lastEmitted;
+    Timer? timer;
+    Map<String, dynamic>? lastEmitted;
     const timeout = Duration(seconds: 10);
     const ttlMs = _configTtlSeconds * 1000;
 
@@ -189,7 +189,7 @@ class CatalogCacheService {
     try {
       if (paySnap.exists) {
         final payData = paySnap.data();
-        cfg['payments'] = payData != null • asMap(payData) : null;
+        cfg['payments'] = payData != null ? asMap(payData) : null;
       }
     } catch (_) {}
 
@@ -212,25 +212,25 @@ class CatalogCacheService {
           final raw = doc.data();
           final d = asMap(raw);
           final cod =
-              (d['codigo'] ?• d['code'] ?• '').toString().toUpperCase().trim();
+              (d['codigo'] ?? d['code'] ?? '').toString().toUpperCase().trim();
           if (cod.isEmpty) continue;
           final dataFim = d['dataFim'];
           if (dataFim != null) {
             final fim = asDateTime(dataFim);
             if (fim != null && now.isAfter(fim)) continue;
           }
-          final tipoRaw = (d['tipo'] ?• 'percent').toString().toLowerCase();
+          final tipoRaw = (d['tipo'] ?? 'percent').toString().toLowerCase();
           final tipoNorm = tipoRaw == 'valor' || tipoRaw == 'fixo'
-              • 'valor'
+              ? 'valor'
               : tipoRaw.contains('frete')
-                  • 'frete_gratis'
+                  ? 'frete_gratis'
                   : 'percent';
           cuponsList.add({
             'codigo': cod,
             'tipo': tipoNorm,
             'ativo': true,
-            'valor': (asNum(d['valor'])?.toDouble()) ?• 0.0,
-            'aplicarEm': (d['aplicarEm'] ?• 'produtos').toString(),
+            'valor': (asNum(d['valor'])?.toDouble()) ?? 0.0,
+            'aplicarEm': (d['aplicarEm'] ?? 'produtos').toString(),
             'freteGratis': d['freteGratis'] == true,
             'valorMinimo': asNum(d['valorMinimo'])?.toDouble(),
             'dataFim': dataFim,
@@ -254,7 +254,7 @@ class CatalogCacheService {
     required bool preview,
     bool forceRefresh = false,
   }) async* {
-    final col = preview • 'draft_produtos' : 'produtos';
+    final col = preview ? 'draft_produtos' : 'produtos';
     final cacheKey = '${lojaId}_$col';
 
     // Se cache válido e não forçar refresh: emite 1x e pula fetch imediato (evita piscar)
@@ -313,7 +313,7 @@ class CatalogCacheService {
   static void invalidate(String lojaId, {bool preview = false}) {
     _configCache.remove('${lojaId}_$preview');
     _produtosCache
-        .remove('${lojaId}_${preview • 'draft_produtos' : 'produtos'}');
+        .remove('${lojaId}_${preview ? 'draft_produtos' : 'produtos'}');
     // Crítico: limpar disco também — senão o catálogo continua servindo config antiga do disco
     _disk.clear(lojaId, preview: preview);
     logD('🔄 [CACHE] Cache invalidado (memória + disco)');

@@ -23,14 +23,14 @@ class NotificacaoVenda {
   final TipoNotificacao tipo;
   final String titulo;
   final String mensagem;
-  final String• pedidoId; // Referência ao pedido
-  final String• vendaId; // Referência à venda (após confirmação)
+  final String? pedidoId; // Referência ao pedido
+  final String? vendaId; // Referência à venda (após confirmação)
   final String storeId;
-  final double• valor; // Valor da venda (apenas para admin)
-  final double• comissao; // Valor da comissão (apenas para vendedor)
+  final double? valor; // Valor da venda (apenas para admin)
+  final double? comissao; // Valor da comissão (apenas para vendedor)
   final bool lida;
   final DateTime criadaEm;
-  final Map<String, dynamic>• dados; // Dados extras
+  final Map<String, dynamic>? dados; // Dados extras
 
   NotificacaoVenda({
     required this.id,
@@ -52,17 +52,17 @@ class NotificacaoVenda {
   factory NotificacaoVenda.fromFirestore(Map<String, dynamic> data, String id) {
     return NotificacaoVenda(
       id: id,
-      destinatarioUid: data['destinatarioUid'] ?• '',
-      destinatarioEmail: data['destinatarioEmail'] ?• '',
+      destinatarioUid: data['destinatarioUid'] ?? '',
+      destinatarioEmail: data['destinatarioEmail'] ?? '',
       tipo: _parseTipo(data['tipo']),
-      titulo: data['titulo'] ?• '',
-      mensagem: data['mensagem'] ?• '',
+      titulo: data['titulo'] ?? '',
+      mensagem: data['mensagem'] ?? '',
       pedidoId: data['pedidoId'],
       vendaId: data['vendaId'],
-      storeId: data['storeId'] ?• '',
+      storeId: data['storeId'] ?? '',
       valor: (data['valor'] as num?)?.toDouble(),
       comissao: (data['comissao'] as num?)?.toDouble(),
-      lida: data['lida'] ?• false,
+      lida: data['lida'] ?? false,
       criadaEm: _parseTimestamp(data['criadaEm']),
       dados: data['dados'] as Map<String, dynamic>?,
     );
@@ -130,7 +130,7 @@ class NotificacaoVendasService {
     required String clienteNome,
     required double valorTotal,
     required String origem, // 'catalogo_web', 'catalogo_vendedor', etc
-    String• vendedorNome, // Se veio de link de vendedor
+    String? vendedorNome, // Se veio de link de vendedor
     bool pagamentoConfirmado = false, // Se gateway já confirmou
   }) async {
     try {
@@ -138,9 +138,9 @@ class NotificacaoVendasService {
       final lojaDoc = await _db.collection('lojas').doc(storeId).get();
       if (!lojaDoc.exists) return;
 
-      final lojaData = lojaDoc.data() ?• {};
-      final adminUid = lojaData['ownerUid'] ?• lojaData['adminUid'] ?• '';
-      final adminEmail = lojaData['ownerEmail'] ?• lojaData['adminEmail'] ?• '';
+      final lojaData = lojaDoc.data() ?? {};
+      final adminUid = lojaData['ownerUid'] ?? lojaData['adminUid'] ?? '';
+      final adminEmail = lojaData['ownerEmail'] ?? lojaData['adminEmail'] ?? '';
 
       if (adminUid.isEmpty) {
         logW('⚠️ [NOTIF] Admin não encontrado para loja $storeId');
@@ -149,7 +149,7 @@ class NotificacaoVendasService {
 
       // Montar mensagem motivadora e entusiasmada! 🎉
       String titulo = pagamentoConfirmado
-          • '🎉 Pedido confirmado! Mais uma venda realizada!'
+          ? '🎉 Pedido confirmado! Mais uma venda realizada!'
           : '🛍️ Novo pedido pelo catálogo – alguém quer comprar!';
       String mensagem =
           'Cliente: $clienteNome\nValor: R\$ ${valorTotal.toStringAsFixed(2).replaceAll('.', ',')}';
@@ -254,7 +254,7 @@ class NotificacaoVendasService {
     required String vendedorEmail,
     required String pedidoId,
     required String clienteNome,
-    String• motivo,
+    String? motivo,
   }) async {
     try {
       String mensagem = 'Cliente: $clienteNome';
@@ -354,7 +354,7 @@ class NotificacaoVendasService {
           .count()
           .get();
 
-      return snapshot.count ?• 0;
+      return snapshot.count ?? 0;
     } catch (e) {
       logW('⚠️ [NOTIF] Erro ao contar não lidas (type=${e.runtimeType})');
       return 0;

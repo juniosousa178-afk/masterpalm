@@ -6,7 +6,7 @@ import '../models/venda.dart';
 import '../models/fornecedor.dart';
 
 class HiveMultiStore {
-  static String• _lojaId;
+  static String? _lojaId;
 
   /// Chame sempre ao logar
   static Future<void> inicializar(String lojaId) async {
@@ -23,14 +23,14 @@ class HiveMultiStore {
 
   // GETTERS SEGUROS POR LOJA
   static Box<Produto> get produtos =>
-      Hive.box<Produto>(HiveBoxNames.produtos(_lojaId ?• (throw StateError('HiveMultiStore não inicializado: chame inicializar(lojaId) após login'))));
+      Hive.box<Produto>(HiveBoxNames.produtos(_lojaId ?? (throw StateError('HiveMultiStore não inicializado: chame inicializar(lojaId) após login'))));
 
   static Box<Cliente> get clientes =>
-      Hive.box<Cliente>(HiveBoxNames.clientes(_lojaId ?• (throw StateError('HiveMultiStore não inicializado: chame inicializar(lojaId) após login'))));
+      Hive.box<Cliente>(HiveBoxNames.clientes(_lojaId ?? (throw StateError('HiveMultiStore não inicializado: chame inicializar(lojaId) após login'))));
 
   static Box<Venda> get vendas =>
-      Hive.box<Venda>(HiveBoxNames.vendas(_lojaId ?• (throw StateError('HiveMultiStore não inicializado: chame inicializar(lojaId) após login'))));
+      Hive.box<Venda>(HiveBoxNames.vendas(_lojaId ?? (throw StateError('HiveMultiStore não inicializado: chame inicializar(lojaId) após login'))));
 
   static Box<Fornecedor> get fornecedores =>
-      Hive.box<Fornecedor>(HiveBoxNames.fornecedores(_lojaId ?• (throw StateError('HiveMultiStore não inicializado: chame inicializar(lojaId) após login'))));
+      Hive.box<Fornecedor>(HiveBoxNames.fornecedores(_lojaId ?? (throw StateError('HiveMultiStore não inicializado: chame inicializar(lojaId) após login'))));
 }

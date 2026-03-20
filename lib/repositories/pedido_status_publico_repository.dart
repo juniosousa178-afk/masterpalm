@@ -4,8 +4,8 @@ import '../models/pedido_status_publico.dart';
 import '../services/pedido_collection_resolver.dart';
 
 class PedidoStatusPublicoRepository {
-  PedidoStatusPublicoRepository({FirebaseFirestore• db})
-      : _db = db ?• FirebaseFirestore.instance;
+  PedidoStatusPublicoRepository({FirebaseFirestore? db})
+      : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
 
@@ -38,7 +38,7 @@ class PedidoStatusPublicoRepository {
     final snap = await docRef(lojaId: lojaId, pedidoId: pedidoId).get();
     if (!snap.exists) return null;
     return PedidoStatusPublico.fromMap(
-      snap.data() ?• const <String, dynamic>{},
+      snap.data() ?? const <String, dynamic>{},
       documentId: snap.id,
     );
   }
@@ -66,7 +66,7 @@ class PedidoStatusPublicoRepository {
     final result = <String, Map<String, dynamic>>{};
 
     for (var i = 0; i < ids.length; i += maxWhereIn) {
-      final end = (i + maxWhereIn > ids.length) • ids.length : i + maxWhereIn;
+      final end = (i + maxWhereIn > ids.length) ? ids.length : i + maxWhereIn;
       final chunk = ids.sublist(i, end);
       final snapshot = await collectionRef(lojaId: lojaId)
           .where(FieldPath.documentId, whereIn: chunk)
@@ -98,11 +98,11 @@ class PedidoStatusPublicoRepository {
     required String lojaId,
     required String pedidoId,
     required Map<String, dynamic> pedidoData,
-    String• overrideStatus,
-    Object• overrideDataCriacao,
-    Object• overrideDataAtualizacao,
-    String• overrideCodigoRastreio,
-    String• overrideFreteNome,
+    String? overrideStatus,
+    Object? overrideDataCriacao,
+    Object? overrideDataAtualizacao,
+    String? overrideCodigoRastreio,
+    String? overrideFreteNome,
     bool merge = true,
   }) {
     final status = PedidoStatusPublico.fromPedidoPrivado(

@@ -25,7 +25,7 @@ class VendaItem {
   /// ID do produto no Firestore (idFirebase). Opcional para compatibilidade com vendas antigas.
   /// Quando preenchido, fluxos de duplicação e devolução usam este ID primeiro.
   @HiveField(6)
-  String• productId;
+  String? productId;
 
   VendaItem({
     required this.produtoNome,

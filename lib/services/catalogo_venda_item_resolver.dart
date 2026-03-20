@@ -14,19 +14,19 @@ List<Map<String, dynamic>> expandirItemsParaEstoque({
 }) {
   final result = <Map<String, dynamic>>[];
   for (final item in items) {
-    final productId = (item['productId'] ?• item['id'] ?• '').toString().trim();
-    final nome = (item['nome'] ?• item['name'] ?• '').toString().trim();
-    final slug = (item['slug'] ?• '').toString().trim();
-    final qtd = (item['quantidade'] as num?)?.toInt() ?• (item['qty'] as int?) ?• 1;
-    final tamanho = (item['tamanho'] ?• item['size'] ?• '').toString().trim();
-    final cor = (item['cor'] ?• item['color'] ?• '').toString().trim();
+    final productId = (item['productId'] ?? item['id'] ?? '').toString().trim();
+    final nome = (item['nome'] ?? item['name'] ?? '').toString().trim();
+    final slug = (item['slug'] ?? '').toString().trim();
+    final qtd = (item['quantidade'] as num?)?.toInt() ?? (item['qty'] as int?) ?? 1;
+    final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
+    final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
 
     if (nome.isEmpty && slug.isEmpty && productId.isEmpty) continue;
     if (qtd <= 0) continue;
 
     // Ordem: productId → slug → nome
-    Produto• prod = productId.isNotEmpty
-        • produtosBox.values.firstWhereOrNull(
+    Produto? prod = productId.isNotEmpty
+        ? produtosBox.values.firstWhereOrNull(
             (x) => x.lojaId == lojaId && x.idFirebase.trim() == productId,
           )
         : null;
@@ -56,32 +56,32 @@ List<Map<String, dynamic>> expandirItemsParaEstoque({
           lojaId: lojaId,
           fluxo: 'expandirEstoque_item',
           nome: nome,
-          slug: slug.isNotEmpty • slug : null,
-          productIdRecebido: productId.isNotEmpty • productId : null,
+          slug: slug.isNotEmpty ? slug : null,
+          productIdRecebido: productId.isNotEmpty ? productId : null,
         );
       }
     }
     if (prod == null) continue;
 
     final listaCombo = (item['itensComboComSelecao'] is List)
-        • (item['itensComboComSelecao'] as List).cast<Map<String, dynamic>>()
+        ? (item['itensComboComSelecao'] as List).cast<Map<String, dynamic>>()
         : prod.itensCombo;
     if (prod.ehCombo && listaCombo != null && listaCombo.isNotEmpty) {
       for (final comboItem in listaCombo) {
-        final idComp = (comboItem['id'] ?• comboItem['productId'] ?• '').toString().trim();
-        final nomeComp = (comboItem['nome'] ?• '').toString();
-        final slugComp = (comboItem['slug'] ?• '').toString();
+        final idComp = (comboItem['id'] ?? comboItem['productId'] ?? '').toString().trim();
+        final nomeComp = (comboItem['nome'] ?? '').toString();
+        final slugComp = (comboItem['slug'] ?? '').toString();
         final qtdComp = (comboItem['quantidade'] is num
-                • (comboItem['quantidade'] as num).toInt()
-                : int.tryParse('${comboItem['quantidade']}') ?• 1)
+                ? (comboItem['quantidade'] as num).toInt()
+                : int.tryParse('${comboItem['quantidade']}') ?? 1)
             .clamp(1, 9999);
-        final tam = (comboItem['tamanho'] ?• '').toString();
-        final corComp = (comboItem['cor'] ?• '').toString();
+        final tam = (comboItem['tamanho'] ?? '').toString();
+        final corComp = (comboItem['cor'] ?? '').toString();
         final qtdTotal = qtd * qtdComp;
         if (nomeComp.isEmpty || qtdTotal <= 0) continue;
 
         // Ordem: productId → slug → nome. Logs [COMBO_ID] / [COMBO_FALLBACK] / [COMBO_ITEM].
-        Produto• pComp;
+        Produto? pComp;
         if (idComp.isNotEmpty) {
           pComp = produtosBox.values.firstWhereOrNull(
             (x) => x.lojaId == lojaId && x.idFirebase.trim() == idComp,
@@ -117,8 +117,8 @@ List<Map<String, dynamic>> expandirItemsParaEstoque({
               lojaId: lojaId,
               fluxo: 'expandirEstoque_combo_item',
               nome: nomeComp,
-              slug: slugComp.isNotEmpty • slugComp : null,
-              productIdRecebido: idComp.isNotEmpty • idComp : null,
+              slug: slugComp.isNotEmpty ? slugComp : null,
+              productIdRecebido: idComp.isNotEmpty ? idComp : null,
             );
           }
         }

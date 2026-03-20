@@ -13,7 +13,7 @@ import 'catalog_product_card.dart';
 Map<String, int> _mapToMapStringInt(Map<String, dynamic> raw) {
   final result = <String, int>{};
   raw.forEach((k, v) {
-    final n = v is num • v.toInt() : int.tryParse('$v');
+    final n = v is num ? v.toInt() : int.tryParse('$v');
     if (n != null && n > 0) result[k.toString()] = n;
   });
   return result;
@@ -25,26 +25,26 @@ class PublicCatalogProductCard extends StatelessWidget {
   final Map<String, dynamic> produto;
   final String lojaId;
   final void Function(Map<String, dynamic>) onAdd;
-  final void Function(String productId)• onProductViewed;
-  final void Function()• onToggleFavorito;
-  final void Function()• onAbrirCarrinho;
-  final String• clienteId;
+  final void Function(String productId)? onProductViewed;
+  final void Function()? onToggleFavorito;
+  final void Function()? onAbrirCarrinho;
+  final String? clienteId;
   final List<String> favoritosIds;
   /// Lista de todos os produtos do catálogo (para combos: resolver variações dos itens do kit).
-  final List<Map<String, dynamic>>• todosProdutos;
+  final List<Map<String, dynamic>>? todosProdutos;
   final bool mostrarEstoqueNoCatalogo;
   final bool mostrarQuantidadeNoCatalogo;
   final double cardBorderRadius;
   final bool cardShowShadow;
-  final String• prazoEntregaTexto;
-  final double• jurosParcelamento;
+  final String? prazoEntregaTexto;
+  final double? jurosParcelamento;
   final int maxParcelas;
   /// Layout compacto (ex.: seção "Vistos recentemente")
   final bool compact;
-  final int• imageCacheWidth;
-  final int• imageCacheHeight;
+  final int? imageCacheWidth;
+  final int? imageCacheHeight;
   /// URL do catálogo para compartilhar (máscara, link curto ou padrão)
-  final String• catalogShareUrl;
+  final String? catalogShareUrl;
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
   final bool minimalLayout;
   final String productCardSize;
@@ -78,8 +78,8 @@ class PublicCatalogProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = produto;
-    final baseCatalogUrl = catalogShareUrl ?• buildPublicCatalogUrl(lojaId) ?• '';
-    final deepLinkProduto = safeStr(p['slug']).isNotEmpty • safeStr(p['slug']) : safeStr(p['id']);
+    final baseCatalogUrl = catalogShareUrl ?? buildPublicCatalogUrl(lojaId) ?? '';
+    final deepLinkProduto = safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : safeStr(p['id']);
     final catalogUrl = CatalogShareService.buildUrlWithParams(
       baseCatalogUrl,
       produto: deepLinkProduto,
@@ -89,17 +89,17 @@ class PublicCatalogProductCard extends StatelessWidget {
     final estoqueCor = _mapToMapStringInt(asMap(p['estoquePorCor']));
 
     final price = safeDouble(p['preco']);
-    final priceMin = p['priceMin'] != null • safeDouble(p['priceMin']) : null;
-    final priceMax = p['priceMax'] != null • safeDouble(p['priceMax']) : null;
+    final priceMin = p['priceMin'] != null ? safeDouble(p['priceMin']) : null;
+    final priceMax = p['priceMax'] != null ? safeDouble(p['priceMax']) : null;
     final precoPorTamanho = (p['precoPorTamanho'] != null && p['precoPorTamanho'] is Map)
-        • Map<String, double>.from(
-            (p['precoPorTamanho'] as Map).map((k, v) => MapEntry(k.toString(), (v is num) • v.toDouble() : 0.0)),
+        ? Map<String, double>.from(
+            (p['precoPorTamanho'] as Map).map((k, v) => MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0)),
           )
         : null;
 
-    final tipoProduto = (p['tipoProduto'] ?• p['tipo'] ?• 'simples').toString();
+    final tipoProduto = (p['tipoProduto'] ?? p['tipo'] ?? 'simples').toString();
     final itensComboRaw = p['itensCombo'];
-    List<Map<String, dynamic>>• itensCombo;
+    List<Map<String, dynamic>>? itensCombo;
     if (itensComboRaw is List && itensComboRaw.isNotEmpty) {
       itensCombo = [];
       for (final e in itensComboRaw) {
@@ -127,16 +127,16 @@ class PublicCatalogProductCard extends StatelessWidget {
       tipoEmbalagem: safeStr(p['tipoEmbalagem'], 'padrao'),
       emPromocao: safeBool(p['emPromocao']),
       precoOriginal: (p['emPromocao'] == true)
-          • safeDouble(p['precoFinal'])
+          ? safeDouble(p['precoFinal'])
           : null,
       percentualPromo: safeDouble(p['percentualPromo']),
       valorPromo: safeDouble(p['valorPromo']),
       quantidade: safeInt(p['quantidade']),
-      estoquePorTamanho: estoqueTam.isNotEmpty • estoqueTam : null,
-      estoquePorCor: estoqueCor.isNotEmpty • estoqueCor : null,
+      estoquePorTamanho: estoqueTam.isNotEmpty ? estoqueTam : null,
+      estoquePorCor: estoqueCor.isNotEmpty ? estoqueCor : null,
       variacoes: (p['variacoes'] != null &&
               asMapDeep(p['variacoes']).isNotEmpty)
-          • asMapDeep(p['variacoes'])
+          ? asMapDeep(p['variacoes'])
           : null,
       onAdd: onAdd,
       borderRadius: cardBorderRadius,
@@ -150,7 +150,7 @@ class PublicCatalogProductCard extends StatelessWidget {
       divideSemJuros: safeBool(p['divideSemJuros']),
       jurosParcelamento: jurosParcelamento,
       maxParcelas: safeBool(p['divideSemJuros'])
-          • safeInt(p['maxParcelasSemJuros'], maxParcelas).clamp(1, 24)
+          ? safeInt(p['maxParcelasSemJuros'], maxParcelas).clamp(1, 24)
           : maxParcelas,
       percentualDescontoPix: safeDouble(p['percentualDescontoPix']),
       onAbrirCarrinho: onAbrirCarrinho,
@@ -161,8 +161,8 @@ class PublicCatalogProductCard extends StatelessWidget {
       imageCacheHeight: imageCacheHeight,
       ehCombo: ehCombo,
       itensCombo: itensCombo,
-      comboProductMap: ehCombo • p : null,
-      todosProdutosForCombo: ehCombo • (todosProdutos ?• []) : null,
+      comboProductMap: ehCombo ? p : null,
+      todosProdutosForCombo: ehCombo ? (todosProdutos ?? []) : null,
       minimalLayout: minimalLayout,
       productCardSize: productCardSize,
     );

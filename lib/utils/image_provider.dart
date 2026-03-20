@@ -7,11 +7,11 @@ import 'package:flutter/widgets.dart';
 ///  - http/https  -> NetworkImage
 ///  - file:/// ou caminho absoluto -> FileImage (apenas mobile/desktop)
 ///  - fallback -> AssetImage (se quiser)
-ImageProvider<Object> mpImageProvider(String• pathOrUrl,
-    {ImageProvider<Object>• fallback}) {
-  final String v = (pathOrUrl ?• '').trim();
+ImageProvider<Object> mpImageProvider(String? pathOrUrl,
+    {ImageProvider<Object>? fallback}) {
+  final String v = (pathOrUrl ?? '').trim();
   if (v.isEmpty) {
-    return fallback ?• const AssetImage('assets/images/placeholder.png');
+    return fallback ?? const AssetImage('assets/images/placeholder.png');
   }
 
   final lower = v.toLowerCase();
@@ -26,14 +26,14 @@ ImageProvider<Object> mpImageProvider(String• pathOrUrl,
   }
 
   if (kIsWeb && isBlob) {
-    return fallback ?• const AssetImage('assets/images/placeholder.png');
+    return fallback ?? const AssetImage('assets/images/placeholder.png');
   }
 
   if (!kIsWeb && (isFileScheme || isAbsolutePath)) {
-    final path = isFileScheme • Uri.parse(v).toFilePath() : v;
+    final path = isFileScheme ? Uri.parse(v).toFilePath() : v;
     return FileImage(File(path));
   }
 
   // Web não consegue ler caminho local -> usa fallback
-  return fallback ?• const AssetImage('assets/images/placeholder.png');
+  return fallback ?? const AssetImage('assets/images/placeholder.png');
 }

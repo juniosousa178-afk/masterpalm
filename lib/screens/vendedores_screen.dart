@@ -32,7 +32,7 @@ class _VendedoresScreenState extends State<VendedoresScreen>
   final _vendedorService = VendedorService();
   List<VendedorPerfil> _vendedores = [];
   bool _carregando = true;
-  String• _storeId;
+  String? _storeId;
   String _usuarioAtual = '';
 
   @override
@@ -48,9 +48,9 @@ class _VendedoresScreenState extends State<VendedoresScreen>
           children: [
             Icon(
               isError
-                  • Icons.error_outline
+                  ? Icons.error_outline
                   : isWarning
-                      • Icons.warning_amber
+                      ? Icons.warning_amber
                       : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
@@ -60,7 +60,7 @@ class _VendedoresScreenState extends State<VendedoresScreen>
           ],
         ),
         backgroundColor:
-            isError • _errorColor : isWarning • _warningColor : _successColor,
+            isError ? _errorColor : isWarning ? _warningColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -104,9 +104,9 @@ class _VendedoresScreenState extends State<VendedoresScreen>
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
           child: _carregando
-              • const Center(child: CircularProgressIndicator())
+              ? const Center(child: CircularProgressIndicator())
               : _vendedores.isEmpty
-                  • _buildEmptyState()
+                  ? _buildEmptyState()
                   : _buildLista(),
         ),
       ),
@@ -189,10 +189,10 @@ class _VendedoresScreenState extends State<VendedoresScreen>
                 children: [
                   CircleAvatar(
                     backgroundColor:
-                        vendedor.ativo • _primaryColor : Colors.grey,
+                        vendedor.ativo ? _primaryColor : Colors.grey,
                     child: Text(
                       vendedor.nome.isNotEmpty
-                          • vendedor.nome[0].toUpperCase()
+                          ? vendedor.nome[0].toUpperCase()
                           : 'V',
                       style: const TextStyle(
                           color: Colors.white, fontWeight: FontWeight.bold),
@@ -221,14 +221,14 @@ class _VendedoresScreenState extends State<VendedoresScreen>
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: vendedor.ativo
-                          • _successColor.withValues(alpha:0.1)
+                          ? _successColor.withValues(alpha:0.1)
                           : _errorColor.withValues(alpha:0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      vendedor.ativo • 'Ativo' : 'Inativo',
+                      vendedor.ativo ? 'Ativo' : 'Inativo',
                       style: TextStyle(
-                        color: vendedor.ativo • _successColor : _errorColor,
+                        color: vendedor.ativo ? _successColor : _errorColor,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -292,13 +292,13 @@ class _VendedoresScreenState extends State<VendedoresScreen>
                   TextButton.icon(
                     onPressed: () => _alterarStatus(vendedor),
                     icon: Icon(
-                      vendedor.ativo • Icons.block : Icons.check_circle,
+                      vendedor.ativo ? Icons.block : Icons.check_circle,
                       size: 18,
                     ),
-                    label: Text(vendedor.ativo • 'Desativar' : 'Ativar'),
+                    label: Text(vendedor.ativo ? 'Desativar' : 'Ativar'),
                     style: TextButton.styleFrom(
                       foregroundColor:
-                          vendedor.ativo • _errorColor : _successColor,
+                          vendedor.ativo ? _errorColor : _successColor,
                     ),
                   ),
                 ],
@@ -318,7 +318,7 @@ class _VendedoresScreenState extends State<VendedoresScreen>
       'clientes': 'Clientes',
       'historico_cliente': 'Historico',
     };
-    return traducoes[key] ?• key;
+    return traducoes[key] ?? key;
   }
 
   Future<void> _abrirPermissoes(VendedorPerfil vendedor) async {
@@ -353,10 +353,10 @@ class _VendedoresScreenState extends State<VendedoresScreen>
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(vendedor.ativo • 'Desativar vendedor?' : 'Ativar vendedor?'),
+        title: Text(vendedor.ativo ? 'Desativar vendedor?' : 'Ativar vendedor?'),
         content: Text(
           vendedor.ativo
-              • 'O vendedor nao podera mais acessar o sistema.'
+              ? 'O vendedor nao podera mais acessar o sistema.'
               : 'O vendedor podera acessar o sistema novamente.',
         ),
         actions: [
@@ -367,9 +367,9 @@ class _VendedoresScreenState extends State<VendedoresScreen>
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: vendedor.ativo • _errorColor : _successColor,
+              backgroundColor: vendedor.ativo ? _errorColor : _successColor,
             ),
-            child: Text(vendedor.ativo • 'Desativar' : 'Ativar'),
+            child: Text(vendedor.ativo ? 'Desativar' : 'Ativar'),
           ),
         ],
       ),
@@ -384,7 +384,7 @@ class _VendedoresScreenState extends State<VendedoresScreen>
     );
 
     if (ok) {
-      _snack(vendedor.ativo • 'Vendedor desativado' : 'Vendedor ativado');
+      _snack(vendedor.ativo ? 'Vendedor desativado' : 'Vendedor ativado');
       await _carregarDados();
     } else {
       _snack('Erro ao alterar status', isError: true);
@@ -462,7 +462,7 @@ class _PermissoesSheetState extends State<_PermissoesSheet> {
                 backgroundColor: const Color(0xFF6366F1),
                 child: Text(
                   widget.vendedor.nome.isNotEmpty
-                      • widget.vendedor.nome[0].toUpperCase()
+                      ? widget.vendedor.nome[0].toUpperCase()
                       : 'V',
                   style: const TextStyle(color: Colors.white),
                 ),
@@ -494,7 +494,7 @@ class _PermissoesSheetState extends State<_PermissoesSheet> {
           ..._permissoesLiberaveis.map((p) {
             final key = p['key'] as String;
             return SwitchListTile(
-              value: _permissoes[key] ?• false,
+              value: _permissoes[key] ?? false,
               onChanged: (v) => setState(() => _permissoes[key] = v),
               title: Text(p['label'] as String),
               subtitle: Text(
@@ -594,7 +594,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: isError • _errorColor : _successColor,
+        backgroundColor: isError ? _errorColor : _successColor,
       ),
     );
   }
@@ -614,9 +614,9 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
     final appCheck = FirebaseAppCheck.instanceFor(app: app);
     await appCheck.activate(
       androidProvider:
-          kReleaseMode • AndroidProvider.playIntegrity : AndroidProvider.debug,
+          kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
       appleProvider:
-          kReleaseMode • AppleProvider.appAttest : AppleProvider.debug,
+          kReleaseMode ? AppleProvider.appAttest : AppleProvider.debug,
     );
     await appCheck.setTokenAutoRefreshEnabled(true);
   }
@@ -631,8 +631,8 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
     final telefone = _telefoneController.text.trim();
     final senha = _senhaController.text.trim();
 
-    FirebaseApp• secApp;
-    FirebaseAuth• secAuth;
+    FirebaseApp? secApp;
+    FirebaseAuth? secAuth;
 
     try {
       secApp = await _ensureSecondaryApp();
@@ -648,7 +648,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
       final db = FirebaseFirestore.instance;
       final agora = DateTime.now();
       final trialEnd = agora.add(const Duration(days: 7));
-      final adminUid = FirebaseAuth.instance.currentUser?.uid ?• '';
+      final adminUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
       // Salvar em users/{uid}
       await db.collection('users').doc(uid).set({
@@ -744,7 +744,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
       setState(() => _carregando = false);
       _snack(
         e.code == 'email-already-in-use'
-            • 'Este e-mail ja esta em uso.'
+            ? 'Este e-mail ja esta em uso.'
             : 'Erro Firebase: ${e.code}',
         isError: true,
       );
@@ -825,7 +825,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                       borderRadius: BorderRadius.circular(12)),
                 ),
                 validator: (v) =>
-                    v == null || v.isEmpty • 'Informe o nome' : null,
+                    v == null || v.isEmpty ? 'Informe o nome' : null,
               ),
               const SizedBox(height: 16),
 
@@ -839,7 +839,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                       borderRadius: BorderRadius.circular(12)),
                 ),
                 validator: (v) =>
-                    v == null || !v.contains('@') • 'E-mail invalido' : null,
+                    v == null || !v.contains('@') ? 'E-mail invalido' : null,
               ),
               const SizedBox(height: 16),
 
@@ -854,7 +854,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                       borderRadius: BorderRadius.circular(12)),
                 ),
                 validator: (v) =>
-                    v == null || v.isEmpty • 'Informe o telefone' : null,
+                    v == null || v.isEmpty ? 'Informe o telefone' : null,
               ),
               const SizedBox(height: 16),
 
@@ -866,7 +866,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                   prefixIcon: const Icon(Icons.lock, color: _primaryColor),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscureSenha • Icons.visibility : Icons.visibility_off,
+                      _obscureSenha ? Icons.visibility : Icons.visibility_off,
                       color: Colors.grey[600],
                     ),
                     onPressed: () =>
@@ -876,7 +876,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                       borderRadius: BorderRadius.circular(12)),
                 ),
                 validator: (v) =>
-                    v == null || v.length < 4 • 'Minimo 4 caracteres' : null,
+                    v == null || v.length < 4 ? 'Minimo 4 caracteres' : null,
               ),
               const SizedBox(height: 24),
 
@@ -908,9 +908,9 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _carregando • null : _cadastrarVendedor,
+                  onPressed: _carregando ? null : _cadastrarVendedor,
                   icon: _carregando
-                      • const SizedBox(
+                      ? const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
@@ -920,7 +920,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                         )
                       : const Icon(Icons.person_add),
                   label: Text(
-                    _carregando • 'Cadastrando...' : 'Cadastrar Vendedor',
+                    _carregando ? 'Cadastrando...' : 'Cadastrar Vendedor',
                     style: const TextStyle(fontSize: 16),
                   ),
                   style: ElevatedButton.styleFrom(

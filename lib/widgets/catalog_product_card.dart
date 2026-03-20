@@ -47,8 +47,8 @@ class CatalogProductCard extends StatelessWidget {
         _parseColor(config.corBotao, const Color(0xFFFFD700));
 
     // 🔹 Fonte e tamanhos (se fonte vier vazia, usa fonte padrão)
-    final String• fontFamily =
-        config.fonte.isNotEmpty • config.fonte : null;
+    final String? fontFamily =
+        config.fonte.isNotEmpty ? config.fonte : null;
     final double baseSize = config.tamanhoFonte;
     final double nomeSize = baseSize;        // nome do produto
     final double precoSize = baseSize + 2;   // preço um pouco maior
@@ -56,7 +56,7 @@ class CatalogProductCard extends StatelessWidget {
 
     // 🔹 Imagem principal do produto (primeira da lista)
     final String fotoPrincipal =
-        (produto.imagens.isNotEmpty • produto.imagens.first : '').trim();
+        (produto.imagens.isNotEmpty ? produto.imagens.first : '').trim();
 
     return Card(
       color: corCard,

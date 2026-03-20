@@ -21,9 +21,9 @@ class CatalogSkeletonGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final base = theme.brightness == Brightness.dark
-        • Colors.grey.shade800
+        ? Colors.grey.shade800
         : Colors.grey.shade300;
-    final cols = isDesktop • desktopCols : mobileCols;
+    final cols = isDesktop ? desktopCols : mobileCols;
     final gridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
       crossAxisCount: cols,
       mainAxisSpacing: 16,

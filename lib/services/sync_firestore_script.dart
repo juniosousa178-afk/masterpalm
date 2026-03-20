@@ -225,7 +225,7 @@ class SyncFirestoreScript {
             'instagram': cliente.instagram,
             'cep': cliente.cep,
             'cidade': cliente.cidade,
-            'totalCompras': cliente.historico?.length ?• 0,
+            'totalCompras': cliente.historico?.length ?? 0,
             'createdAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
           };

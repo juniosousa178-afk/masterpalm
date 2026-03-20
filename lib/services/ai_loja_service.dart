@@ -16,7 +16,7 @@ class AiLojaService {
   /// Preferência: 'gemini' (padrão). OpenAI desabilitado temporariamente.
   static Future<String> getPreferirModelo() async {
     final prefs = await SharedPreferences.getInstance();
-    final v = prefs.getString(_keyPreferirModelo) ?• 'gemini';
+    final v = prefs.getString(_keyPreferirModelo) ?? 'gemini';
     if (v == 'openai') return 'gemini'; // migrar para Gemini (GPT desabilitado)
     return v;
   }
@@ -47,8 +47,8 @@ class AiLojaService {
   /// Retorna o texto da descrição ou lança em caso de erro.
   static Future<String> sugerirDescricao({
     required String nome,
-    String• categoria,
-    String• subcategoria,
+    String? categoria,
+    String? subcategoria,
   }) async {
     try {
       final pref = await _getPref();
@@ -66,14 +66,14 @@ class AiLojaService {
       }
       return descricao;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
   /// Envia uma mensagem no chat de dicas e retorna a resposta da IA.
   static Future<String> chatDicas({
     required String mensagem,
-    List<Map<String, String>>• historico,
+    List<Map<String, String>>? historico,
   }) async {
     try {
       final pref = await _getPref();
@@ -88,7 +88,7 @@ class AiLojaService {
       if (resposta == null || resposta.isEmpty) throw Exception('Resposta da IA vazia');
       return resposta;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
@@ -102,21 +102,21 @@ class AiLojaService {
   }
 
   /// Sugere título otimizado para o produto (até ~60 caracteres).
-  static Future<String> sugerirTitulo({required String nome, String• categoria}) async {
+  static Future<String> sugerirTitulo({required String nome, String? categoria}) async {
     try {
       return await _call('sugerirTituloProduto', {
         'nome': nome.trim(),
         if (categoria != null && categoria.trim().isNotEmpty) 'categoria': categoria.trim(),
       });
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
   /// Variações de descrição: para feed, WhatsApp e Instagram.
   static Future<Map<String, String>> sugerirVariacoesDescricao({
     required String nome,
-    String• descricaoAtual,
+    String? descricaoAtual,
   }) async {
     try {
       final pref = await _getPref();
@@ -128,17 +128,17 @@ class AiLojaService {
       });
       final data = result.data as Map<dynamic, dynamic>?;
       return {
-        'paraFeed': (data?['paraFeed'] ?• '').toString(),
-        'paraWhatsApp': (data?['paraWhatsApp'] ?• '').toString(),
-        'paraInstagram': (data?['paraInstagram'] ?• '').toString(),
+        'paraFeed': (data?['paraFeed'] ?? '').toString(),
+        'paraWhatsApp': (data?['paraWhatsApp'] ?? '').toString(),
+        'paraInstagram': (data?['paraInstagram'] ?? '').toString(),
       };
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
   /// Legenda para Instagram/Reels.
-  static Future<String> sugerirLegendaInstagram({required String produtoNome, String• descricao}) async {
+  static Future<String> sugerirLegendaInstagram({required String produtoNome, String? descricao}) async {
     try {
       final pref = await _getPref();
       final data = await _functions.httpsCallable('sugerirLegendaInstagram').call(<String, dynamic>{
@@ -150,14 +150,14 @@ class AiLojaService {
       if (out == null || out.isEmpty) throw Exception('Resposta da IA vazia');
       return out;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
   /// Mensagem pronta para WhatsApp. [tipo]: posVenda, recuperacaoCarrinho, promocao, novidade.
   static Future<String> sugerirMensagemWhatsApp({
     required String tipo,
-    String• contexto,
+    String? contexto,
   }) async {
     try {
       final pref = await _getPref();
@@ -170,14 +170,14 @@ class AiLojaService {
       if (out == null || out.isEmpty) throw Exception('Resposta da IA vazia');
       return out;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
   /// Sugere categoria, subcategoria e tags.
   static Future<Map<String, dynamic>> sugerirCategoriaSubcategoria({
     required String nome,
-    String• descricao,
+    String? descricao,
   }) async {
     try {
       final pref = await _getPref();
@@ -190,12 +190,12 @@ class AiLojaService {
       final data = result.data as Map<dynamic, dynamic>?;
       final tags = data?['tags'];
       return {
-        'categoria': (data?['categoria'] ?• 'Geral').toString(),
-        'subcategoria': (data?['subcategoria'] ?• '').toString(),
-        'tags': tags is List • List<String>.from(tags.map((e) => e.toString())) : <String>[],
+        'categoria': (data?['categoria'] ?? 'Geral').toString(),
+        'subcategoria': (data?['subcategoria'] ?? '').toString(),
+        'tags': tags is List ? List<String>.from(tags.map((e) => e.toString())) : <String>[],
       };
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
@@ -213,14 +213,14 @@ class AiLojaService {
       if (out == null || out.isEmpty) throw Exception('Resposta da IA vazia');
       return out;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
   /// Análise de vendas em linguagem natural. [resumoVendas] = texto com dados para contexto.
   static Future<String> analiseVendasNatural({
     required String pergunta,
-    String• resumoVendas,
+    String? resumoVendas,
   }) async {
     try {
       final pref = await _getPref();
@@ -233,14 +233,14 @@ class AiLojaService {
       if (out == null || out.isEmpty) throw Exception('Resposta da IA vazia');
       return out;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
   /// Atendimento no catálogo: cliente pergunta (estoque, frete). [contexto] = dados da loja.
   static Future<String> chatAtendimentoCatalogo({
     required String pergunta,
-    Map<String, dynamic>• contexto,
+    Map<String, dynamic>? contexto,
   }) async {
     try {
       final pref = await _getPref();
@@ -253,7 +253,7 @@ class AiLojaService {
       if (out == null || out.isEmpty) throw Exception('Resposta da IA vazia');
       return out;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 
@@ -273,7 +273,7 @@ class AiLojaService {
       if (out == null || out.isEmpty) throw Exception('Resposta da IA vazia');
       return out;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?• e.code);
+      throw Exception(e.message ?? e.code);
     }
   }
 }

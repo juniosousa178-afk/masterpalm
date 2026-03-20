@@ -16,7 +16,7 @@ String extractInstagramUsername(String value) {
     r'(?:https?://)?(?:www\.)?instagram\.com/([a-zA-Z0-9_.]+)',
     caseSensitive: false,
   ).firstMatch(trimmed);
-  if (match != null) return match.group(1) ?• '';
+  if (match != null) return match.group(1) ?? '';
   return trimmed.split(RegExp(r'[\s/]')).first.trim();
 }
 

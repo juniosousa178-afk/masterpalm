@@ -29,7 +29,7 @@ Future<void> corrigirUrlsImagens() async {
     final updates = <String, dynamic>{};
 
     // logoUrl no root
-    final logoUrl = (data['logoUrl'] ?• '') as String;
+    final logoUrl = (data['logoUrl'] ?? '') as String;
     final fixedLogo = _fixBucket(logoUrl);
     if (fixedLogo != logoUrl) {
       updates['logoUrl'] = fixedLogo;
@@ -37,7 +37,7 @@ Future<void> corrigirUrlsImagens() async {
     }
 
     // banners no root
-    final banners = (data['banners'] as List?)?.cast<dynamic>() ?• const [];
+    final banners = (data['banners'] as List?)?.cast<dynamic>() ?? const [];
     final fixedBanners = banners.map((e) => _fixBucket('$e')).toList();
     if ('$banners' != '$fixedBanners') {
       updates['banners'] = fixedBanners;
@@ -47,19 +47,19 @@ Future<void> corrigirUrlsImagens() async {
     // dentro de "config", se existir
     final cfgRaw = data['config'];
     final cfg = cfgRaw is Map<String, dynamic>
-        • Map<String, dynamic>.from(cfgRaw)
+        ? Map<String, dynamic>.from(cfgRaw)
         : <String, dynamic>{};
 
     bool changedCfg = false;
 
-    final cfgLogo = (cfg['logoUrl'] ?• '') as String;
+    final cfgLogo = (cfg['logoUrl'] ?? '') as String;
     final cfgLogoFixed = _fixBucket(cfgLogo);
     if (cfgLogoFixed != cfgLogo) {
       cfg['logoUrl'] = cfgLogoFixed;
       changedCfg = true;
     }
 
-    final cfgBanners = (cfg['banners'] as List?)?.cast<dynamic>() ?• const [];
+    final cfgBanners = (cfg['banners'] as List?)?.cast<dynamic>() ?? const [];
     final cfgBannersFixed = cfgBanners.map((e) => _fixBucket('$e')).toList();
     if ('$cfgBanners' != '$cfgBannersFixed') {
       cfg['banners'] = cfgBannersFixed;
@@ -85,7 +85,7 @@ Future<void> corrigirUrlsImagens() async {
       // campos comuns
       for (final key in ['imagemUrl', 'imageUrl']) {
         if (pd.containsKey(key)) {
-          final v = (pd[key] ?• '') as String;
+          final v = (pd[key] ?? '') as String;
           final f = _fixBucket(v);
           if (f != v) {
             up[key] = f;

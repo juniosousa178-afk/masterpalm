@@ -18,8 +18,8 @@ import 'cliente_perfil_screen.dart';
 
 class CartItem {
   final ProdutoCatalogo produto;
-  String• tamanho;
-  String• cor;
+  String? tamanho;
+  String? cor;
   int quantidade;
 
   CartItem({
@@ -38,18 +38,18 @@ class CatalogoScreen extends StatefulWidget {
 }
 
 class _CatalogoScreenState extends State<CatalogoScreen> {
-  Box<ProdutoCatalogo>• produtosBox;
-  CatalogoConfig• config;
+  Box<ProdutoCatalogo>? produtosBox;
+  CatalogoConfig? config;
 
   String busca = '';
   final List<CartItem> _carrinho = [];
 
   // Cliente autenticado
-  ClienteWeb• _clienteAutenticado;
-  String• _lojaId;
+  ClienteWeb? _clienteAutenticado;
+  String? _lojaId;
 
   // Cupom aplicado
-  CupomCliente• _cupomAplicado;
+  CupomCliente? _cupomAplicado;
 
   @override
   void initState() {
@@ -62,7 +62,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
     // ✅ Usar StoreResolverFacade (mesma lógica da loja modelo): NUNCA Hive direto.
     // Hive sessao pode ter store_id de outro usuário (IndexedDB compartilhado no Web).
     _lojaId = await StoreResolverFacade.resolveForAdminApp();
-    final lojaId = _lojaId?.trim().isNotEmpty == true • _lojaId! : '';
+    final lojaId = _lojaId?.trim().isNotEmpty == true ? _lojaId! : '';
 
     if (lojaId.isEmpty) {
       if (mounted) setState(() {});
@@ -194,12 +194,12 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
     }
   }
 
-  void _addCarrinho(ProdutoCatalogo produto, {String• tamanho, String• cor}) {
+  void _addCarrinho(ProdutoCatalogo produto, {String? tamanho, String? cor}) {
     final idx = _carrinho.indexWhere(
       (e) =>
           e.produto.key == produto.key &&
-          (e.tamanho ?• '') == (tamanho ?• '') &&
-          (e.cor ?• '') == (cor ?• ''),
+          (e.tamanho ?? '') == (tamanho ?? '') &&
+          (e.cor ?? '') == (cor ?? ''),
     );
     if (idx >= 0) {
       if (_carrinho[idx].quantidade < produto.quantidade) {
@@ -268,7 +268,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                   controller: nomeCtrl,
                   decoration: const InputDecoration(labelText: 'Nome completo'),
                   validator: (v) =>
-                      (v == null || v.trim().isEmpty) • 'Informe o nome' : null,
+                      (v == null || v.trim().isEmpty) ? 'Informe o nome' : null,
                 ),
                 const SizedBox(height: 8),
                 TextFormField(
@@ -279,7 +279,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                     helperText: 'Ex: 5533999999999',
                   ),
                   validator: (v) => (v == null || v.trim().isEmpty)
-                      • 'Informe o telefone'
+                      ? 'Informe o telefone'
                       : null,
                 ),
                 const SizedBox(height: 8),
@@ -288,7 +288,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                   decoration:
                       const InputDecoration(labelText: 'Endereço completo'),
                   validator: (v) => (v == null || v.trim().isEmpty)
-                      • 'Informe o endereço'
+                      ? 'Informe o endereço'
                       : null,
                 ),
                 const SizedBox(height: 8),
@@ -300,7 +300,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                         value: 'Dinheiro', child: Text('Dinheiro')),
                     DropdownMenuItem(value: 'Cartão', child: Text('Cartão')),
                   ],
-                  onChanged: (v) => pagamento = v ?• 'Pix',
+                  onChanged: (v) => pagamento = v ?? 'Pix',
                   decoration:
                       const InputDecoration(labelText: 'Forma de pagamento'),
                 ),
@@ -314,7 +314,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
               child: const Text('Cancelar')),
           ElevatedButton(
             onPressed: () {
-              if (form.currentState?.validate() ?• false) {
+              if (form.currentState?.validate() ?? false) {
                 Navigator.pop(context, true);
               }
             },
@@ -337,9 +337,9 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
     sb.writeln('Itens:');
     for (final item in _carrinho) {
       final tam =
-          (item.tamanho?.isNotEmpty ?• false) • ' - Tamanho: ${item.tamanho}' : '';
+          (item.tamanho?.isNotEmpty ?? false) ? ' - Tamanho: ${item.tamanho}' : '';
       final corStr =
-          (item.cor?.isNotEmpty ?• false) • ' - Cor: ${item.cor}' : '';
+          (item.cor?.isNotEmpty ?? false) ? ' - Cor: ${item.cor}' : '';
       sb.writeln(
           '${item.quantidade}x ${item.produto.nome}$tam$corStr - R\$ ${item.produto.precoFinal.toStringAsFixed(2)}');
     }
@@ -360,7 +360,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
 
     // pega número salvo em Config (ou pede para configurar)
     final cfg = Hive.box('config');
-   final numero = (cfg.get('whatsapp') ?• '') as String;
+   final numero = (cfg.get('whatsapp') ?? '') as String;
 if (numero.isEmpty) {
   if (!mounted) return;
   showDialog<void>(
@@ -449,13 +449,13 @@ if (numero.isEmpty) {
                       itemBuilder: (context, index) {
                         final item = _carrinho[index];
                         final detalhes = <String>[];
-                        if (item.tamanho?.isNotEmpty ?• false) {
+                        if (item.tamanho?.isNotEmpty ?? false) {
                           detalhes.add('Tam: ${item.tamanho}');
                         }
-                        if (item.cor?.isNotEmpty ?• false) {
+                        if (item.cor?.isNotEmpty ?? false) {
                           detalhes.add('Cor: ${item.cor}');
                         }
-                        final detalhesStr = detalhes.isNotEmpty • ' (${detalhes.join(', ')})' : '';
+                        final detalhesStr = detalhes.isNotEmpty ? ' (${detalhes.join(', ')})' : '';
 
                         return Row(
                           children: [
@@ -613,8 +613,8 @@ if (numero.isEmpty) {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  corHex(config?.corBotao ?• '0xFF2196F3'),
-                  corHex(config?.corBotao ?• '0xFF2196F3').withValues(alpha:0.7),
+                  corHex(config?.corBotao ?? '0xFF2196F3'),
+                  corHex(config?.corBotao ?? '0xFF2196F3').withValues(alpha:0.7),
                 ],
               ),
             ),
@@ -626,14 +626,14 @@ if (numero.isEmpty) {
                   radius: 30,
                   backgroundColor: Colors.white,
                   child: Icon(
-                    _clienteAutenticado != null • Icons.person : Icons.person_outline,
+                    _clienteAutenticado != null ? Icons.person : Icons.person_outline,
                     size: 35,
-                    color: corHex(config?.corBotao ?• '0xFF2196F3'),
+                    color: corHex(config?.corBotao ?? '0xFF2196F3'),
                   ),
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  _clienteAutenticado?.nome ?• 'Visitante',
+                  _clienteAutenticado?.nome ?? 'Visitante',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 20,
@@ -659,9 +659,9 @@ if (numero.isEmpty) {
           // Minha Conta
           ListTile(
             leading: const Icon(Icons.account_circle),
-            title: Text(_clienteAutenticado != null • 'Meu Perfil' : 'Entrar / Cadastrar'),
+            title: Text(_clienteAutenticado != null ? 'Meu Perfil' : 'Entrar / Cadastrar'),
             subtitle: _clienteAutenticado != null && _cupomAplicado != null
-                • Text(
+                ? Text(
                     'Cupom: ${_cupomAplicado!.desconto}% OFF',
                     style: const TextStyle(color: Colors.green, fontSize: 12),
                   )
@@ -684,7 +684,7 @@ if (numero.isEmpty) {
               leading: const Icon(Icons.card_giftcard),
               title: const Text('Meus Cupons'),
               trailing: _clienteAutenticado!.cuponsValidos.isNotEmpty
-                  • Container(
+                  ? Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: Colors.green,
@@ -730,7 +730,7 @@ if (numero.isEmpty) {
       return Scaffold(
         body: Center(
           child: semLoja
-              • const Text('Loja não definida. Selecione uma loja para acessar o catálogo.')
+              ? const Text('Loja não definida. Selecione uma loja para acessar o catálogo.')
               : const CircularProgressIndicator(),
         ),
       );
@@ -844,7 +844,7 @@ if (numero.isEmpty) {
             ),
             Expanded(
               child: produtos.isEmpty
-                  • const Center(child: Text('Nenhum produto encontrado'))
+                  ? const Center(child: Text('Nenhum produto encontrado'))
                   : GridView.builder(
                       padding: const EdgeInsets.all(12),
                       gridDelegate:
@@ -857,15 +857,15 @@ if (numero.isEmpty) {
                       itemCount: produtos.length,
                       itemBuilder: (context, index) {
                         final p = produtos[index];
-                        String• tamanhoSelecionado =
-                            (p.tamanhos.isNotEmpty) • p.tamanhos.first : null;
-                        String• corSelecionada;
+                        String? tamanhoSelecionado =
+                            (p.tamanhos.isNotEmpty) ? p.tamanhos.first : null;
+                        String? corSelecionada;
 
                         // Se usa variações, pega as cores disponíveis para o tamanho selecionado
                         List<String> coresDisponiveis = [];
                         if (p.usaVariacoes && tamanhoSelecionado != null) {
                           coresDisponiveis = p.obterCoresPorTamanho(tamanhoSelecionado);
-                          corSelecionada = coresDisponiveis.isNotEmpty • coresDisponiveis.first : null;
+                          corSelecionada = coresDisponiveis.isNotEmpty ? coresDisponiveis.first : null;
                         } else if (p.cores.isNotEmpty) {
                           coresDisponiveis = p.cores;
                           corSelecionada = p.cores.first;
@@ -887,7 +887,7 @@ if (numero.isEmpty) {
                                   Expanded(
                                     flex: 7,
                                     child: p.imagens.isNotEmpty
-                                        • img_helper.buildPlatformImage(
+                                        ? img_helper.buildPlatformImage(
                                             p.imagens.first,
                                             fit: BoxFit.cover,
                                             width: double.infinity,
@@ -962,7 +962,7 @@ if (numero.isEmpty) {
                                                         if (p.usaVariacoes && v != null) {
                                                           coresDisponiveis = p.obterCoresPorTamanho(v);
                                                           corSelecionada = coresDisponiveis.isNotEmpty
-                                                              • coresDisponiveis.first
+                                                              ? coresDisponiveis.first
                                                               : null;
                                                         }
                                                       });

@@ -68,7 +68,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
         if (cores is Map) {
           int total = 0;
           for (final qtd in cores.values) {
-            total += (qtd as num?)?.toInt() ?• 0;
+            total += (qtd as num?)?.toInt() ?? 0;
           }
           if (total > 0) result[tamanho.toString()] = total;
         }
@@ -88,7 +88,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       final mapaTamanho = widget.produto.variacoes![_tamanhoSelecionado];
       if (mapaTamanho is Map) {
         return Map<String, int>.from(
-          mapaTamanho.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?• 0)),
+          mapaTamanho.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0)),
         );
       }
     }
@@ -110,11 +110,11 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       return widget.produto.obterEstoqueVariacao('', _corSelecionada);
     }
     if (widget.produto.usaVariacoes && _tamanhoSelecionado.isNotEmpty) {
-      final corKey = _corSelecionada.isEmpty • 'sem-cor' : _corSelecionada;
+      final corKey = _corSelecionada.isEmpty ? 'sem-cor' : _corSelecionada;
       return widget.produto.obterEstoqueVariacao(_tamanhoSelecionado, corKey);
     }
     if (_tamanhoSelecionado.isNotEmpty) {
-      return widget.produto.estoquePorTamanho[_tamanhoSelecionado] ?• 0;
+      return widget.produto.estoquePorTamanho[_tamanhoSelecionado] ?? 0;
     }
     return widget.produto.quantidade;
   }
@@ -136,7 +136,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       'dourado': Color(0xFFFFD700),
       'prata': Color(0xFFC0C0C0),
     };
-    return coresMap[nome.toLowerCase()] ?• Colors.grey;
+    return coresMap[nome.toLowerCase()] ?? Colors.grey;
   }
 
   void _confirmar() {
@@ -216,7 +216,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       final hasStock = qtd > 0;
                       return InkWell(
                         onTap: hasStock
-                            • () => setState(() {
+                            ? () => setState(() {
                                   _tamanhoSelecionado = tam;
                                   if (widget.produto.usaVariacoes) {
                                     _corSelecionada = '';
@@ -232,14 +232,14 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                           ),
                           decoration: BoxDecoration(
                             color: sel
-                                • theme.colorScheme.primary
+                                ? theme.colorScheme.primary
                                 : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: sel
-                                  • theme.colorScheme.primary
+                                  ? theme.colorScheme.primary
                                   : Colors.grey.shade300,
-                              width: sel • 2 : 1,
+                              width: sel ? 2 : 1,
                             ),
                           ),
                           child: Column(
@@ -249,15 +249,15 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                                 tam,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
-                                  color: sel • Colors.white : Colors.black87,
+                                  color: sel ? Colors.white : Colors.black87,
                                 ),
                               ),
                               Text(
-                                hasStock • '$qtd un.' : 'Esgotado',
+                                hasStock ? '$qtd un.' : 'Esgotado',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: sel
-                                      • Colors.white70
+                                      ? Colors.white70
                                       : Colors.grey[600],
                                 ),
                               ),
@@ -291,7 +291,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       final corVisual = _getColorFromName(cor);
                       return InkWell(
                         onTap: hasStock
-                            • () => setState(() => _corSelecionada = cor)
+                            ? () => setState(() => _corSelecionada = cor)
                             : null,
                         borderRadius: BorderRadius.circular(10),
                         child: AnimatedContainer(
@@ -302,14 +302,14 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                           ),
                           decoration: BoxDecoration(
                             color: sel
-                                • theme.colorScheme.primary
+                                ? theme.colorScheme.primary
                                 : Colors.grey.shade100,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: sel
-                                  • theme.colorScheme.primary
+                                  ? theme.colorScheme.primary
                                   : Colors.grey.shade300,
-                              width: sel • 2 : 1,
+                              width: sel ? 2 : 1,
                             ),
                           ),
                           child: Row(
@@ -331,7 +331,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                                 cor,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
-                                  color: sel • Colors.white : Colors.black87,
+                                  color: sel ? Colors.white : Colors.black87,
                                 ),
                               ),
                               const SizedBox(width: 4),
@@ -339,7 +339,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                                 '($qtd)',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: sel • Colors.white70 : Colors.grey[600],
+                                  color: sel ? Colors.white70 : Colors.grey[600],
                                 ),
                               ),
                             ],
@@ -364,7 +364,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       children: [
                         IconButton(
                           onPressed: _quantidade > 1
-                              • () => setState(() => _quantidade--)
+                              ? () => setState(() => _quantidade--)
                               : null,
                           icon: const Icon(Icons.remove_circle_outline),
                         ),
@@ -377,7 +377,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                         ),
                         IconButton(
                           onPressed: _quantidade < _estoqueDisponivel
-                              • () => setState(() => _quantidade++)
+                              ? () => setState(() => _quantidade++)
                               : null,
                           icon: const Icon(Icons.add_circle_outline),
                         ),
@@ -390,7 +390,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                         style: TextStyle(
                           fontSize: 12,
                           color: _estoqueDisponivel < 3
-                              • Colors.orange
+                              ? Colors.orange
                               : Colors.grey[600],
                         ),
                       ),
@@ -402,11 +402,11 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                   width: double.infinity,
                   height: 52,
                   child: ElevatedButton.icon(
-                    onPressed: _podeConfirmar • _confirmar : null,
+                    onPressed: _podeConfirmar ? _confirmar : null,
                     icon: const Icon(Icons.check),
                     label: Text(
                       _temVariacoes && !_podeConfirmar
-                          • 'Selecione as opções'
+                          ? 'Selecione as opções'
                           : 'Adicionar (R\$ ${_fmt2(widget.preco * _quantidade)})',
                       style: const TextStyle(
                         fontSize: 16,

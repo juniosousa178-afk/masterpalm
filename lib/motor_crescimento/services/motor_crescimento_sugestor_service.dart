@@ -24,9 +24,9 @@ class MotorCrescimentoSugestorService {
 
     try {
       final ia = await _gerarTextosIa(nome, oportunidade.tipo, contexto);
-      textoPromocao = ia['textoPromocao'] ?• _fallbackTextoPromocao(nome, oportunidade.tipo);
-      mensagemWhatsApp = ia['mensagemWhatsApp'] ?• _fallbackMensagemWhatsApp(nome, oportunidade.tipo);
-      legendaInstagram = ia['legendaInstagram'] ?• _fallbackLegendaInstagram(nome, oportunidade.tipo);
+      textoPromocao = ia['textoPromocao'] ?? _fallbackTextoPromocao(nome, oportunidade.tipo);
+      mensagemWhatsApp = ia['mensagemWhatsApp'] ?? _fallbackMensagemWhatsApp(nome, oportunidade.tipo);
+      legendaInstagram = ia['legendaInstagram'] ?? _fallbackLegendaInstagram(nome, oportunidade.tipo);
     } catch (_) {
       textoPromocao = _fallbackTextoPromocao(nome, oportunidade.tipo);
       mensagemWhatsApp = _fallbackMensagemWhatsApp(nome, oportunidade.tipo);
@@ -34,15 +34,15 @@ class MotorCrescimentoSugestorService {
     }
 
     final tipoCampanha = oportunidade.tipo == TipoOportunidade.produtoParado
-        • 'promocao'
+        ? 'promocao'
         : 'urgencia';
     final titulo = oportunidade.tipo == TipoOportunidade.produtoParado
-        • 'Promoção para $nome'
+        ? 'Promoção para $nome'
         : 'Urgência: estoque de $nome';
     final descricao = oportunidade.tipo == TipoOportunidade.produtoParado
-        • 'Produto parado há 30 dias. Sugerimos desconto para movimentar o estoque.'
+        ? 'Produto parado há 30 dias. Sugerimos desconto para movimentar o estoque.'
         : 'Estoque baixo. Destaque para venda rápida ou recompra.';
-    final percentualDesconto = oportunidade.tipo == TipoOportunidade.produtoParado • 15.0 : 0.0;
+    final percentualDesconto = oportunidade.tipo == TipoOportunidade.produtoParado ? 15.0 : 0.0;
     final codigoCupomSugerido = _gerarCodigoCupomSugerido(nome, oportunidade.tipo);
 
     return SugestaoCampanha(
@@ -62,9 +62,9 @@ class MotorCrescimentoSugestorService {
     TipoOportunidade tipo,
     String contexto,
   ) async {
-    final tipoWhatsApp = tipo == TipoOportunidade.produtoParado • 'promocao' : 'novidade';
+    final tipoWhatsApp = tipo == TipoOportunidade.produtoParado ? 'promocao' : 'novidade';
     final ctx = tipo == TipoOportunidade.produtoParado
-        • 'Produto $nome parado há 30 dias. Criar promoção.'
+        ? 'Produto $nome parado há 30 dias. Criar promoção.'
         : 'Produto $nome com estoque baixo. Urgência.';
 
     // Chamadas em paralelo para reduzir tempo por sugestão
@@ -110,7 +110,7 @@ class MotorCrescimentoSugestorService {
 
   static String _gerarCodigoCupomSugerido(String nome, TipoOportunidade tipo) {
     final base = nome.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
-    final pre = base.length >= 4 • base.substring(0, 4) : base.padLeft(4, 'X');
+    final pre = base.length >= 4 ? base.substring(0, 4) : base.padLeft(4, 'X');
     if (tipo == TipoOportunidade.produtoParado) {
       return 'PROMO${pre}15';
     }

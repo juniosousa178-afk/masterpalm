@@ -36,11 +36,11 @@ class PlanoService {
     try {
       final snap = await _findDocByUid(uid);
       if (snap == null || !snap.exists) return {};
-      final data = snap.data() ?• const <String, dynamic>{};
+      final data = snap.data() ?? const <String, dynamic>{};
       final raw = data['permissoes'];
       if (raw is Map) {
         return Map<String, bool>.from(
-          raw.map((k, v) => MapEntry(k.toString(), (v is bool) • v : v == true)),
+          raw.map((k, v) => MapEntry(k.toString(), (v is bool) ? v : v == true)),
         );
       }
       return {};
@@ -74,22 +74,22 @@ class PlanoService {
         return defaults;
       }
 
-      final data = snap.data() ?• const <String, dynamic>{};
+      final data = snap.data() ?? const <String, dynamic>{};
       final raw = data['permissoes'];
 
       if (raw is Map) {
         final map = Map<String, bool>.from(
-          raw.map((k, v) => MapEntry(k.toString(), (v is bool) • v : v == true)),
+          raw.map((k, v) => MapEntry(k.toString(), (v is bool) ? v : v == true)),
         );
         if (map.isNotEmpty) return map;
         // Sem permissões definidas → usa o tipo, se existir
-        final tipo = (data['tipo'] ?• 'vendedor').toString().toLowerCase();
+        final tipo = (data['tipo'] ?? 'vendedor').toString().toLowerCase();
         final defaults = permissoesPorTipo(tipo);
         return defaults;
       }
 
       // Sem campo "permissoes" → padrão por tipo
-      final tipo = (data['tipo'] ?• 'vendedor').toString().toLowerCase();
+      final tipo = (data['tipo'] ?? 'vendedor').toString().toLowerCase();
       final defaults = permissoesPorTipo(tipo);
       return defaults;
     } catch (e) {
@@ -113,7 +113,7 @@ class PlanoService {
   /// ♻️ Restaura permissões padrão (por e-mail)
   static Future<void> resetarParaPadrao(String email) async {
     final snap = await _getByEmail(email);
-    final tipo = (snap.data()?['tipo'] ?• 'vendedor').toString().toLowerCase();
+    final tipo = (snap.data()?['tipo'] ?? 'vendedor').toString().toLowerCase();
     final defaults = permissoesPorTipo(tipo);
     await salvarPlano(email, defaults);
   }
@@ -127,7 +127,7 @@ class PlanoService {
         'email': email,
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-    } else if ((snap.data()?['email'] ?• '') != email) {
+    } else if ((snap.data()?['email'] ?? '') != email) {
       await ref.set({'email': email}, SetOptions(merge: true));
     }
   }

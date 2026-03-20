@@ -25,7 +25,7 @@ class _SplashScreenState extends State<SplashScreen> {
     _decidir();
   }
 
-  Future<void> _go(String route, {Object• args}) async {
+  Future<void> _go(String route, {Object? args}) async {
     if (!mounted || _done) return;
     _done = true;
     if (!mounted) return;
@@ -33,7 +33,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   String _slugify(String raw) {
-    raw = (raw.isEmpty • 'minha-loja' : raw).toLowerCase();
+    raw = (raw.isEmpty ? 'minha-loja' : raw).toLowerCase();
     raw = raw.replaceAll(RegExp(r'\s+'), '-').replaceAll(RegExp(r'[^a-z0-9\-]'), '');
     return raw.replaceAll(RegExp(r'\-+'), '-');
   }
@@ -49,7 +49,7 @@ class _SplashScreenState extends State<SplashScreen> {
       final sessao = await Hive.openBox('sessao');
       if (sessao.get('auth_context') == 'cliente') return _go('/router');
       final tipoRaw = sessao.get('tipo_usuario') as String?;
-      final tipo = (tipoRaw?.trim() ?• '').isEmpty • '' : tipoRaw!.trim();
+      final tipo = (tipoRaw?.trim() ?? '').isEmpty ? '' : tipoRaw!.trim();
       if (tipo.isEmpty) return _go('/router');
       if (tipo != 'admin') return _go('/home');
 
@@ -59,14 +59,14 @@ class _SplashScreenState extends State<SplashScreen> {
       // ================================================================
       // ✅ PASSO 1: RESOLVE LOJA EXISTENTE (NÃO CRIA NOVA)
       // ================================================================
-      String• lojaId = await StoreResolverFacade.resolveForAdminApp();
+      String? lojaId = await StoreResolverFacade.resolveForAdminApp();
 
       // ================================================================
       // ✅ PASSO 2: SE NÃO EXISTIR, CRIA UMA ÚNICA VEZ
       // ================================================================
       if (lojaId == null || lojaId.isEmpty) {
-        final nome = user.displayName ?• 'Minha Loja';
-        final slug = _slugify(user.email?.split('@').first ?• 'minha-loja');
+        final nome = user.displayName ?? 'Minha Loja';
+        final slug = _slugify(user.email?.split('@').first ?? 'minha-loja');
 
         debugPrint('🆕 Criando loja para usuário ${user.uid}...');
 
@@ -108,8 +108,8 @@ class _SplashScreenState extends State<SplashScreen> {
         }
 
         // ✅ Loja válida - atualiza slug no Hive (se necessário)
-        final data = lojaDoc.data() ?• {};
-        final slug = (data['slug'] ?• lojaId).toString();
+        final data = lojaDoc.data() ?? {};
+        final slug = (data['slug'] ?? lojaId).toString();
         
         final cfg = await Hive.openBox('config');
         await cfg.put('loja_slug', slug);

@@ -6,24 +6,24 @@ class ClienteWeb {
   final String id;
   final String nome;
   final String email;
-  final String• telefone;
-  final String• cpf;
+  final String? telefone;
+  final String? cpf;
 
   // Endereço
-  final String• cep;
-  final String• endereco;
-  final String• numero;
-  final String• complemento;
-  final String• bairro;
-  final String• cidade;
-  final String• estado;
+  final String? cep;
+  final String? endereco;
+  final String? numero;
+  final String? complemento;
+  final String? bairro;
+  final String? cidade;
+  final String? estado;
 
   // Cupons disponíveis
   final List<CupomCliente> cupons;
 
   // Metadados
   final DateTime criadoEm;
-  final DateTime• atualizadoEm;
+  final DateTime? atualizadoEm;
 
   ClienteWeb({
     required this.id,
@@ -38,18 +38,18 @@ class ClienteWeb {
     this.bairro,
     this.cidade,
     this.estado,
-    List<CupomCliente>• cupons,
-    DateTime• criadoEm,
+    List<CupomCliente>? cupons,
+    DateTime? criadoEm,
     this.atualizadoEm,
-  }) : cupons = cupons ?• [],
-       criadoEm = criadoEm ?• DateTime.now();
+  }) : cupons = cupons ?? [],
+       criadoEm = criadoEm ?? DateTime.now();
 
   /// Converte de Map (Firestore) para objeto
   factory ClienteWeb.fromMap(Map<String, dynamic> map, String id) {
     return ClienteWeb(
       id: id,
-      nome: map['nome'] ?• '',
-      email: map['email'] ?• '',
+      nome: map['nome'] ?? '',
+      email: map['email'] ?? '',
       telefone: map['telefone'],
       cpf: map['cpf'],
       cep: map['cep'],
@@ -61,8 +61,8 @@ class ClienteWeb {
       estado: map['estado'],
       cupons: (map['cupons'] as List?)
           ?.map((c) => CupomCliente.fromMap(c))
-          .toList() ?• [],
-      criadoEm: (map['criadoEm'] as dynamic)?.toDate() ?• DateTime.now(),
+          .toList() ?? [],
+      criadoEm: (map['criadoEm'] as dynamic)?.toDate() ?? DateTime.now(),
       atualizadoEm: (map['atualizadoEm'] as dynamic)?.toDate(),
     );
   }
@@ -83,7 +83,7 @@ class ClienteWeb {
       'estado': estado,
       'cupons': cupons.map((c) => c.toMap()).toList(),
       'criadoEm': criadoEm,
-      'atualizadoEm': atualizadoEm ?• DateTime.now(),
+      'atualizadoEm': atualizadoEm ?? DateTime.now(),
     };
   }
 
@@ -111,36 +111,36 @@ class ClienteWeb {
   }
 
   ClienteWeb copyWith({
-    String• nome,
-    String• email,
-    String• telefone,
-    String• cpf,
-    String• cep,
-    String• endereco,
-    String• numero,
-    String• complemento,
-    String• bairro,
-    String• cidade,
-    String• estado,
-    List<CupomCliente>• cupons,
-    DateTime• atualizadoEm,
+    String? nome,
+    String? email,
+    String? telefone,
+    String? cpf,
+    String? cep,
+    String? endereco,
+    String? numero,
+    String? complemento,
+    String? bairro,
+    String? cidade,
+    String? estado,
+    List<CupomCliente>? cupons,
+    DateTime? atualizadoEm,
   }) {
     return ClienteWeb(
       id: id,
-      nome: nome ?• this.nome,
-      email: email ?• this.email,
-      telefone: telefone ?• this.telefone,
-      cpf: cpf ?• this.cpf,
-      cep: cep ?• this.cep,
-      endereco: endereco ?• this.endereco,
-      numero: numero ?• this.numero,
-      complemento: complemento ?• this.complemento,
-      bairro: bairro ?• this.bairro,
-      cidade: cidade ?• this.cidade,
-      estado: estado ?• this.estado,
-      cupons: cupons ?• this.cupons,
+      nome: nome ?? this.nome,
+      email: email ?? this.email,
+      telefone: telefone ?? this.telefone,
+      cpf: cpf ?? this.cpf,
+      cep: cep ?? this.cep,
+      endereco: endereco ?? this.endereco,
+      numero: numero ?? this.numero,
+      complemento: complemento ?? this.complemento,
+      bairro: bairro ?? this.bairro,
+      cidade: cidade ?? this.cidade,
+      estado: estado ?? this.estado,
+      cupons: cupons ?? this.cupons,
       criadoEm: criadoEm,
-      atualizadoEm: atualizadoEm ?• DateTime.now(),
+      atualizadoEm: atualizadoEm ?? DateTime.now(),
     );
   }
 }
@@ -151,8 +151,8 @@ class CupomCliente {
   final double desconto; // Percentual (ex: 10 para 10%)
   final DateTime dataExpiracao;
   final bool usado;
-  final DateTime• dataUso;
-  final String• origem; // 'roleta', 'campanha', 'manual'
+  final DateTime? dataUso;
+  final String? origem; // 'roleta', 'campanha', 'manual'
 
   CupomCliente({
     required this.codigo,
@@ -165,10 +165,10 @@ class CupomCliente {
 
   factory CupomCliente.fromMap(Map<String, dynamic> map) {
     return CupomCliente(
-      codigo: map['codigo'] ?• '',
-      desconto: (map['desconto'] as num?)?.toDouble() ?• 0.0,
-      dataExpiracao: (map['dataExpiracao'] as dynamic)?.toDate() ?• DateTime.now(),
-      usado: map['usado'] ?• false,
+      codigo: map['codigo'] ?? '',
+      desconto: (map['desconto'] as num?)?.toDouble() ?? 0.0,
+      dataExpiracao: (map['dataExpiracao'] as dynamic)?.toDate() ?? DateTime.now(),
+      usado: map['usado'] ?? false,
       dataUso: (map['dataUso'] as dynamic)?.toDate(),
       origem: map['origem'],
     );

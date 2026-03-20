@@ -29,20 +29,20 @@ class CuponsService {
   static Future<CupomCliente?> criarCupomRoleta({
     required String lojaId,
     required String clienteId,
-    String• clienteNome,
-    String• clienteEmail,
-    String• clienteWhatsApp,
+    String? clienteNome,
+    String? clienteEmail,
+    String? clienteWhatsApp,
     required Map<String, dynamic> premio,
-    String• campanhaId,
-    String• roletaId,
+    String? campanhaId,
+    String? roletaId,
   }) async {
     try {
       // Parse do tipo de prêmio
-      final tipoStr = premio['tipo'] as String• ?• 'desconto';
+      final tipoStr = premio['tipo'] as String? ?? 'desconto';
       TipoCupom tipo;
-      double• valorDesconto;
-      String• brindeDescricao;
-      String• premioSurpresaDescricao;
+      double? valorDesconto;
+      String? brindeDescricao;
+      String? premioSurpresaDescricao;
       String titulo;
       String descricao;
 
@@ -50,7 +50,7 @@ class CuponsService {
         case 'percent':
         case 'desconto':
           tipo = TipoCupom.desconto;
-          valorDesconto = (premio['valor'] as num?)?.toDouble() ?• 5.0;
+          valorDesconto = (premio['valor'] as num?)?.toDouble() ?? 5.0;
           titulo = '${valorDesconto.toStringAsFixed(0)}% de Desconto';
           descricao = 'Desconto aplicado automaticamente na próxima compra';
           break;
@@ -58,7 +58,7 @@ class CuponsService {
         case 'valor':
         case 'descontoFixo':
           tipo = TipoCupom.descontoFixo;
-          valorDesconto = (premio['valor'] as num?)?.toDouble() ?• 10.0;
+          valorDesconto = (premio['valor'] as num?)?.toDouble() ?? 10.0;
           titulo = 'R\$ ${valorDesconto.toStringAsFixed(2)} de Desconto';
           descricao = 'Desconto aplicado automaticamente na próxima compra';
           break;
@@ -71,14 +71,14 @@ class CuponsService {
 
         case 'brinde':
           tipo = TipoCupom.brinde;
-          brindeDescricao = premio['label'] as String• ?• 'Produto grátis';
+          brindeDescricao = premio['label'] as String? ?? 'Produto grátis';
           titulo = 'Brinde: $brindeDescricao';
           descricao = 'Brinde será adicionado ao seu pedido';
           break;
 
         case 'premioSurpresa':
           tipo = TipoCupom.premioSurpresa;
-          premioSurpresaDescricao = premio['label'] as String• ?• 'Aguarde a surpresa!';
+          premioSurpresaDescricao = premio['label'] as String? ?? 'Aguarde a surpresa!';
           titulo = 'Prêmio Surpresa';
           descricao = 'Será revelado na sua próxima compra';
           break;
@@ -133,13 +133,13 @@ class CuponsService {
   static Future<Map<String, String>?> criarCuponsIndicacao({
     required String lojaId,
     required String clienteAmigoId,
-    String• clienteAmigoNome,
-    String• clienteAmigoEmail,
-    String• clienteAmigoWhatsApp,
+    String? clienteAmigoNome,
+    String? clienteAmigoEmail,
+    String? clienteAmigoWhatsApp,
     required String clienteIndicadorId,
-    String• clienteIndicadorNome,
-    String• clienteIndicadorEmail,
-    String• clienteIndicadorWhatsApp,
+    String? clienteIndicadorNome,
+    String? clienteIndicadorEmail,
+    String? clienteIndicadorWhatsApp,
     required String tipoDesconto, // 'percentual' | 'valor'
     required double valorDesconto,
     int validadeDias = 60,
@@ -147,9 +147,9 @@ class CuponsService {
     try {
       final agora = DateTime.now();
       final validade = agora.add(Duration(days: validadeDias));
-      final tipo = tipoDesconto == 'valor' • TipoCupom.descontoFixo : TipoCupom.desconto;
+      final tipo = tipoDesconto == 'valor' ? TipoCupom.descontoFixo : TipoCupom.desconto;
       final tituloAmigo = tipo == TipoCupom.desconto
-          • '${valorDesconto.toStringAsFixed(0)}% de desconto (indicação)'
+          ? '${valorDesconto.toStringAsFixed(0)}% de desconto (indicação)'
           : 'R\$ ${valorDesconto.toStringAsFixed(2)} de desconto (indicação)';
       const descricao = 'Válido na próxima compra. Programa de indicação.';
 
@@ -330,7 +330,7 @@ class CuponsService {
     double freteDesconto = 0.0;
     List<String> cuponsAplicados = [];
     List<Map<String, dynamic>> brindes = [];
-    String• mensagemPremioSurpresa;
+    String? mensagemPremioSurpresa;
 
     try {
       // Busca cupons válidos
@@ -367,7 +367,7 @@ class CuponsService {
           case TipoCupom.brinde:
             // Adiciona brinde
             brindes.add({
-              'nome': cupom.brindeDescricao ?• 'Brinde',
+              'nome': cupom.brindeDescricao ?? 'Brinde',
               'quantidade': 1,
               'preco': 0.0,
               'cupomId': cupom.id,
@@ -378,7 +378,7 @@ class CuponsService {
 
           case TipoCupom.premioSurpresa:
             // Revela prêmio surpresa
-            mensagemPremioSurpresa = cupom.premioSurpresaDescricao ?• 'Você ganhou um prêmio especial!';
+            mensagemPremioSurpresa = cupom.premioSurpresaDescricao ?? 'Você ganhou um prêmio especial!';
             cuponsAplicados.add(cupom.id);
             debugPrint('✅ Prêmio surpresa revelado: $mensagemPremioSurpresa');
             break;

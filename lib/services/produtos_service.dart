@@ -62,7 +62,7 @@ class ProdutosService {
         .collection('draft_config')
         .doc('config')
         .snapshots()
-        .map((d) => d.data() ?• {});
+        .map((d) => d.data() ?? {});
   }
 
   /// Config publicada:
@@ -74,7 +74,7 @@ class ProdutosService {
         .collection('config')
         .doc('config')
         .snapshots()
-        .map((d) => d.data() ?• {});
+        .map((d) => d.data() ?? {});
   }
 
   /// Compat: catálogo público hoje usa *prévia*, então aponta pro draft.
@@ -120,7 +120,7 @@ class ProdutosService {
     Map<String, int> estoque(dynamic v) {
       if (v is Map) {
         return v.map((k, val) {
-          final parsed = (val is num) • val.toInt() : 0;
+          final parsed = (val is num) ? val.toInt() : 0;
           return MapEntry(k.toString(), parsed);
         });
       }
@@ -128,28 +128,28 @@ class ProdutosService {
     }
 
    final dynamic rawPreco = m['preco'] ??
-    m['preco_venda'] ?• // compatível com CatalogoSyncService
+    m['preco_venda'] ?? // compatível com CatalogoSyncService
     m['precoVenda'] ??
     m['price'] ??
-    m['precoFinal'] ?• // compatível com CatalogoSyncService
+    m['precoFinal'] ?? // compatível com CatalogoSyncService
     0;
 
 final num nPreco = (rawPreco is num)
-    • rawPreco
-    : num.tryParse(rawPreco.toString()) ?• 0;
+    ? rawPreco
+    : num.tryParse(rawPreco.toString()) ?? 0;
 
     return ProdutoFirestore(
-      id: (m['id'] ?• '').toString(),
-      nome: (m['nome'] ?• m['name'] ?• '').toString(),
-      descricao: (m['descricao'] ?• m['description'] ?• '').toString(),
-      imagens: _toStringList(m['imagens'] ?• m['fotos'] ?• m['images']),
+      id: (m['id'] ?? '').toString(),
+      nome: (m['nome'] ?? m['name'] ?? '').toString(),
+      descricao: (m['descricao'] ?? m['description'] ?? '').toString(),
+      imagens: _toStringList(m['imagens'] ?? m['fotos'] ?? m['images']),
       preco: nPreco.toDouble(),
-      categoriaId: (m['categoriaId'] ?• m['categoria'] ?• '').toString(),
+      categoriaId: (m['categoriaId'] ?? m['categoria'] ?? '').toString(),
       subcategoriaId:
-          (m['subcategoriaId'] ?• m['subcategoria'] ?• '').toString(),
+          (m['subcategoriaId'] ?? m['subcategoria'] ?? '').toString(),
       estoquePorTamanho: estoque(m['estoquePorTamanho']),
       quantidade:
-          (m['quantidade'] is num) • (m['quantidade'] as num).toInt() : 0,
+          (m['quantidade'] is num) ? (m['quantidade'] as num).toInt() : 0,
     );
   }
 
@@ -166,8 +166,8 @@ final num nPreco = (rawPreco is num)
   /// Compat: catálogo público hoje mostra SOMENTE os rascunhos (prévia).
   Stream<List<ProdutoFirestore>> streamProdutosPublicos({
     required String lojaId,
-    String• categoriaId,
-    String• subcategoriaId,
+    String? categoriaId,
+    String? subcategoriaId,
   }) {
     return streamProdutosDraft(lojaId).map((items) {
       var out = items;
@@ -193,12 +193,12 @@ final num nPreco = (rawPreco is num)
 
   Future<String> upsertProdutoDraft({
     required String lojaId,
-    String• id,
+    String? id,
     required Map<String, dynamic> data,
   }) async {
     final map = Map<String, dynamic>.from(data);
-    map['ativo'] = (map['ativo'] is bool) • map['ativo'] : true;
-    map['publicar'] = (map['publicar'] is bool) • map['publicar'] : false;
+    map['ativo'] = (map['ativo'] is bool) ? map['ativo'] : true;
+    map['publicar'] = (map['publicar'] is bool) ? map['publicar'] : false;
     map['updatedAt'] = FieldValue.serverTimestamp();
 
     if (id == null || id.isEmpty) {
@@ -270,13 +270,13 @@ final num nPreco = (rawPreco is num)
     final liveCfgRef = ref.collection('config').doc('config');
 
     final draftCfg = await draftCfgRef.get();
-    await liveCfgRef.set(draftCfg.data() ?• {}, SetOptions(merge: true)); // ✅ CORRIGIDO: merge: true
+    await liveCfgRef.set(draftCfg.data() ?? {}, SetOptions(merge: true)); // ✅ CORRIGIDO: merge: true
 
     // espelho/compat no doc raiz
     await ref.set({
       'slug': lojaId,
       'updatedAt': FieldValue.serverTimestamp(),
-      'config': draftCfg.data() ?• {},
+      'config': draftCfg.data() ?? {},
     }, SetOptions(merge: true));
   }
 
@@ -284,7 +284,7 @@ final num nPreco = (rawPreco is num)
   Future<void> _commitInChunks(List<void Function(WriteBatch)> ops) async {
     const maxBatch = 450; // margem de segurança
     for (var i = 0; i < ops.length; i += maxBatch) {
-      final end = (i + maxBatch <= ops.length) • i + maxBatch : ops.length;
+      final end = (i + maxBatch <= ops.length) ? i + maxBatch : ops.length;
       final batch = _db.batch();
       for (final op in ops.sublist(i, end)) {
         op(batch);
@@ -325,7 +325,7 @@ final num nPreco = (rawPreco is num)
 
     for (final d in draftSnap.docs) {
       final data = Map<String, dynamic>.from(d.data());
-      final ativo = (data['ativo'] is bool) • data['ativo'] as bool : true;
+      final ativo = (data['ativo'] is bool) ? data['ativo'] as bool : true;
       if (!ativo) continue;
 
       // Carimbo de data/hora ao publicar
@@ -353,8 +353,8 @@ final num nPreco = (rawPreco is num)
 
   Future<List<ProdutoFirestore>> listDraftOnce({
     required String lojaId,
-    bool• ativo,
-    bool• publicar,
+    bool? ativo,
+    bool? publicar,
   }) async {
     Query<Map<String, dynamic>> q = _colDraft(lojaId);
     if (ativo != null) q = q.where('ativo', isEqualTo: ativo);

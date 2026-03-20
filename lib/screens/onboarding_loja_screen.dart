@@ -23,9 +23,9 @@ class _OnboardingLojaScreenState extends State<OnboardingLojaScreen> {
   bool _salvando = false;
 
   // UI de disponibilidade
-  bool• _slugDisponivel; // null=desconhecido, true=ok, false=ocupado
+  bool? _slugDisponivel; // null=desconhecido, true=ok, false=ocupado
   String _slugMsg = '';
-  Timer• _debounce;
+  Timer? _debounce;
 
   // ---------- Utils ----------
 
@@ -47,7 +47,7 @@ class _OnboardingLojaScreenState extends State<OnboardingLojaScreen> {
     if (digits.isEmpty) return '';
     if (digits.length >= 12 && digits.startsWith('55')) return '+$digits';
     if (digits.length == 11) return '+55$digits';
-    return raw.startsWith('+') • raw : '+$digits';
+    return raw.startsWith('+') ? raw : '+$digits';
   }
 
   Future<void> _checkDisponibilidadeDebounced(String value) async {
@@ -88,7 +88,7 @@ class _OnboardingLojaScreenState extends State<OnboardingLojaScreen> {
 
     // Se já existe, checa se o owner é o próprio usuário
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    final ownerUid = (doc.data()?['ownerUid'] ?• '').toString();
+    final ownerUid = (doc.data()?['ownerUid'] ?? '').toString();
 
     if (uid != null && uid == ownerUid) {
       setState(() {
@@ -131,7 +131,7 @@ class _OnboardingLojaScreenState extends State<OnboardingLojaScreen> {
         // Criar nova loja com ownership do usuário logado
         tx.set(lojaRef, <String, dynamic>{
           'id': lojaId,
-          'name': nome.isEmpty • 'Minha Loja' : nome,
+          'name': nome.isEmpty ? 'Minha Loja' : nome,
           'slug': lojaId,
           'ownerUid': uid,
           'owner': {
@@ -160,7 +160,7 @@ class _OnboardingLojaScreenState extends State<OnboardingLojaScreen> {
       } else {
         // Já existe. Só permite atualizar se for do próprio owner
         final data = snap.data() as Map<String, dynamic>;
-        final ownerUid = (data['ownerUid'] ?• '').toString();
+        final ownerUid = (data['ownerUid'] ?? '').toString();
         if (ownerUid != uid) {
           throw StateError('Este ID já pertence a outra loja.');
         }
@@ -168,7 +168,7 @@ class _OnboardingLojaScreenState extends State<OnboardingLojaScreen> {
         tx.set(
           lojaRef,
           <String, dynamic>{
-            'name': nome.isEmpty • (data['name'] ?• 'Minha Loja') : nome,
+            'name': nome.isEmpty ? (data['name'] ?? 'Minha Loja') : nome,
             'whatsappE164': whatsE164,
             'cidade': cidade,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -239,7 +239,7 @@ await StoreResolverService.set(lojaId);  }
     if (_slugDisponivel == false) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_slugMsg.isEmpty • 'ID indisponível' : _slugMsg),
+          content: Text(_slugMsg.isEmpty ? 'ID indisponível' : _slugMsg),
         ),
       );
       return;
@@ -277,16 +277,16 @@ await StoreResolverService.set(lojaId);  }
     String label,
     TextEditingController c, {
     TextInputType type = TextInputType.text,
-    String• hint,
-    String• Function(String?)• validator,
-    void Function(String)• onChanged,
+    String? hint,
+    String? Function(String?)? validator,
+    void Function(String)? onChanged,
   }) {
     return TextFormField(
       controller: c,
       keyboardType: type,
       style: const TextStyle(color: Colors.white),
       validator:
-          validator ?• (v) => (v == null || v.trim().isEmpty) • 'Obrigatório' : null,
+          validator ?? (v) => (v == null || v.trim().isEmpty) ? 'Obrigatório' : null,
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
@@ -305,9 +305,9 @@ await StoreResolverService.set(lojaId);  }
   @override
   Widget build(BuildContext context) {
     final dispColor = _slugDisponivel == null
-        • Colors.white38
+        ? Colors.white38
         : _slugDisponivel == true
-            • const Color(0xFF00FFA3)
+            ? const Color(0xFF00FFA3)
             : const Color(0xFFFF6B6B);
 
     return Scaffold(
@@ -410,7 +410,7 @@ await StoreResolverService.set(lojaId);  }
                                         onChanged: (v) =>
                                             _checkDisponibilidadeDebounced(v),
                                         validator: (v) {
-                                          final id = _slugify(v ?• '');
+                                          final id = _slugify(v ?? '');
                                           if (id.length < 3) {
                                             return 'Mínimo 3 caracteres';
                                           }
@@ -459,7 +459,7 @@ await StoreResolverService.set(lojaId);  }
                                 SizedBox(
                                   height: 50,
                                   child: ElevatedButton(
-                                    onPressed: _salvando • null : _salvar,
+                                    onPressed: _salvando ? null : _salvar,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor:
                                           const Color(0xFF30CEF5),
@@ -469,7 +469,7 @@ await StoreResolverService.set(lojaId);  }
                                       ),
                                     ),
                                     child: _salvando
-                                        • const CircularProgressIndicator(
+                                        ? const CircularProgressIndicator(
                                             color: Colors.white,
                                           )
                                         : const Text(

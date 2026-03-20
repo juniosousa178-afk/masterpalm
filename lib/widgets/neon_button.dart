@@ -11,7 +11,7 @@ const NeonButton({super.key, required this.label, required this.onPressed, this.
 
 @override
 Widget build(BuildContext context) {
-final bg = secondary • AppTheme.neonGreen : AppTheme.neonBlue;
+final bg = secondary ? AppTheme.neonGreen : AppTheme.neonBlue;
 return SizedBox(
 width: double.infinity,
 child: ElevatedButton(

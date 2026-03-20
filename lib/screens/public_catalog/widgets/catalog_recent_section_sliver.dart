@@ -15,30 +15,30 @@ import 'product_card.dart';
 Widget buildCatalogRecentSectionSliver({
   required List<Map<String, dynamic>> recentProducts,
   /// Lista completa de produtos do catálogo (para combos na seção recentes).
-  List<Map<String, dynamic>>• todosProdutos,
+  List<Map<String, dynamic>>? todosProdutos,
   required String lojaId,
   required void Function(Map<String, dynamic>) onAdd,
-  void Function(String productId)• onProductViewed,
-  void Function(String productId)• onToggleFavorito,
-  VoidCallback• onAbrirLoginParaFavorito,
-  VoidCallback• onAbrirCarrinho,
-  String• clienteId,
+  void Function(String productId)? onProductViewed,
+  void Function(String productId)? onToggleFavorito,
+  VoidCallback? onAbrirLoginParaFavorito,
+  VoidCallback? onAbrirCarrinho,
+  String? clienteId,
   List<String> favoritosIds = const [],
   required bool mostrarEstoqueNoCatalogo,
   required bool mostrarQuantidadeNoCatalogo,
   required double cardBorderRadius,
   required bool cardShowShadow,
-  String• prazoEntregaTexto,
-  double• jurosParcelamento,
+  String? prazoEntregaTexto,
+  double? jurosParcelamento,
   required int maxParcelas,
   required Color textColor,
   bool useMinimalLayout = false,
-  Color• cardColor,
-  Color• priceColor,
-  String• catalogShareUrl,
-  String• nomeLoja,
-  String• contatoWhatsapp,
-  String• politicaFrete,
+  Color? cardColor,
+  Color? priceColor,
+  String? catalogShareUrl,
+  String? nomeLoja,
+  String? contatoWhatsapp,
+  String? politicaFrete,
   String productCardSize = CatalogProductCardSize.medium,
 }) {
   if (recentProducts.isEmpty) {
@@ -52,13 +52,13 @@ Widget buildCatalogRecentSectionSliver({
         productCardSize: productCardSize,
         products: recentProducts,
         lojaId: lojaId,
-        todosProdutos: todosProdutos ?• recentProducts,
+        todosProdutos: todosProdutos ?? recentProducts,
         onAdd: onAdd,
         onAbrirCarrinho: onAbrirCarrinho,
         catalogShareUrl: catalogShareUrl,
         textColor: textColor,
-        cardColor: cardColor ?• ThemeData.fallback().cardColor,
-        priceColor: priceColor ?• textColor,
+        cardColor: cardColor ?? ThemeData.fallback().cardColor,
+        priceColor: priceColor ?? textColor,
         prazoEntregaTexto: prazoEntregaTexto,
         nomeLoja: nomeLoja,
         contatoWhatsapp: contatoWhatsapp,
@@ -80,10 +80,10 @@ Widget buildCatalogRecentSectionSliver({
         final is360 = screenWidth <= 360;
         final is390 = screenWidth > 360 && screenWidth <= 390;
         final recentHeight = size == CatalogProductCardSize.large
-            • (is360 • 366.0 : (is390 • 372.0 : 380.0))
+            ? (is360 ? 366.0 : (is390 ? 372.0 : 380.0))
             : size == CatalogProductCardSize.small
-                • (is360 • 334.0 : (is390 • 340.0 : 344.0))
-                : (is360 • 352.0 : (is390 • 356.0 : 360.0));
+                ? (is360 ? 334.0 : (is390 ? 340.0 : 344.0))
+                : (is360 ? 352.0 : (is390 ? 356.0 : 360.0));
         final cache = CatalogProductCardSize.horizontalCardImageCache(
           size: productCardSize,
           isWeb: kIsWeb,
@@ -121,12 +121,12 @@ Widget buildCatalogRecentSectionSliver({
                         onAdd: onAdd,
                         onProductViewed: onProductViewed,
                         onToggleFavorito: clienteId != null
-                            • () => onToggleFavorito?.call(safeStr(p['id']))
+                            ? () => onToggleFavorito?.call(safeStr(p['id']))
                             : onAbrirLoginParaFavorito,
                         onAbrirCarrinho: onAbrirCarrinho,
                         clienteId: clienteId,
                         favoritosIds: favoritosIds,
-                        todosProdutos: todosProdutos ?• recentProducts,
+                        todosProdutos: todosProdutos ?? recentProducts,
                         mostrarEstoqueNoCatalogo: mostrarEstoqueNoCatalogo,
                         mostrarQuantidadeNoCatalogo: mostrarQuantidadeNoCatalogo,
                         cardBorderRadius: cardBorderRadius,

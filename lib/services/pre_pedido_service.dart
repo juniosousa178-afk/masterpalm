@@ -48,9 +48,9 @@ class PrePedidoService {
   }) async {
     final cliente = pedidoData['cliente'];
     final clienteMap =
-        cliente is Map • Map<String, dynamic>.from(cliente) : <String, dynamic>{};
-    final clienteId = (clienteMap['id'] ?• '').toString().trim();
-    final email = (clienteMap['email'] ?• '').toString().trim().toLowerCase();
+        cliente is Map ? Map<String, dynamic>.from(cliente) : <String, dynamic>{};
+    final clienteId = (clienteMap['id'] ?? '').toString().trim();
+    final email = (clienteMap['email'] ?? '').toString().trim().toLowerCase();
     if (email.isEmpty) return null;
 
     if (clienteId.isNotEmpty) {
@@ -59,7 +59,7 @@ class PrePedidoService {
         clienteId: clienteId,
         email: email,
       );
-      return (dados?['portalToken'] ?• '').toString().trim();
+      return (dados?['portalToken'] ?? '').toString().trim();
     }
 
     final snapshot = await _firestore
@@ -73,7 +73,7 @@ class PrePedidoService {
 
     final doc = snapshot.docs.first;
     final clienteData = doc.data();
-    var portalToken = (clienteData['portalToken'] ?• '').toString().trim();
+    var portalToken = (clienteData['portalToken'] ?? '').toString().trim();
     if (portalToken.isEmpty) {
       portalToken = _gerarPortalToken();
       await doc.reference.update({'portalToken': portalToken});
@@ -85,7 +85,7 @@ class PrePedidoService {
     required String lojaId,
     required String pedidoId,
     required Map<String, dynamic> pedidoData,
-    String• overrideStatus,
+    String? overrideStatus,
   }) async {
     final portalToken = await _resolvePortalTokenForPedido(
       lojaId: lojaId,
@@ -94,8 +94,8 @@ class PrePedidoService {
     if (portalToken == null || portalToken.isEmpty) return;
 
     final frete = pedidoData['frete'];
-    final freteMap = frete is Map • Map<String, dynamic>.from(frete) : null;
-    final itens = (pedidoData['itens'] as List?) ?• const [];
+    final freteMap = frete is Map ? Map<String, dynamic>.from(frete) : null;
+    final itens = (pedidoData['itens'] as List?) ?? const [];
 
     await _clientePortalRepository.savePedidoResumo(
       lojaId: lojaId,
@@ -104,26 +104,26 @@ class PrePedidoService {
       data: {
         'pedidoId': pedidoId,
         'lojaId': lojaId,
-        'status': (overrideStatus ?• pedidoData['status'] ?• 'pendente').toString(),
+        'status': (overrideStatus ?? pedidoData['status'] ?? 'pendente').toString(),
         'dataCriacao': pedidoData['dataCriacao'],
         'dataAtualizacao': FieldValue.serverTimestamp(),
-        'total': (pedidoData['total'] as num?)?.toDouble() ?• 0.0,
+        'total': (pedidoData['total'] as num?)?.toDouble() ?? 0.0,
         'itensResumo': itens
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .map((item) => {
-                  'nome': (item['nome'] ?• '').toString(),
-                  'quantidade': (item['quantidade'] as num?)?.toInt() ?• 1,
+                  'nome': (item['nome'] ?? '').toString(),
+                  'quantidade': (item['quantidade'] as num?)?.toInt() ?? 1,
                 })
-            .where((item) => (item['nome'] ?• '').toString().trim().isNotEmpty)
+            .where((item) => (item['nome'] ?? '').toString().trim().isNotEmpty)
             .toList(growable: false),
-        if ((pedidoData['codigoRastreio'] ?• '').toString().trim().isNotEmpty)
+        if ((pedidoData['codigoRastreio'] ?? '').toString().trim().isNotEmpty)
           'codigoRastreio': pedidoData['codigoRastreio'],
-        if (((pedidoData['codigo_rastreio'] ?• '').toString().trim().isNotEmpty) &&
-            (pedidoData['codigoRastreio'] ?• '').toString().trim().isEmpty)
+        if (((pedidoData['codigo_rastreio'] ?? '').toString().trim().isNotEmpty) &&
+            (pedidoData['codigoRastreio'] ?? '').toString().trim().isEmpty)
           'codigoRastreio': pedidoData['codigo_rastreio'],
         if (freteMap != null &&
-            (freteMap['nome'] ?• '').toString().trim().isNotEmpty)
+            (freteMap['nome'] ?? '').toString().trim().isNotEmpty)
           'freteNome': freteMap['nome'],
       },
     );
@@ -160,13 +160,13 @@ class PrePedidoService {
     required Map<String, dynamic> entrega,
     required String pagamento,
     String observacao = '',
-    String• cupomCodigo,
+    String? cupomCodigo,
     double desconto = 0.0,
-    String• cupomRoletaCodigo,
-    double• cupomRoletaDesconto,
-    String• premioRoletaDescricao,
-    String• vendedorRef, // ✅ ID do vendedor para comissão (vem do link ?ref=)
-    String• indicacaoClienteId, // ✅ ID do cliente que indicou (link ?indicacao=clienteId)
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
+    String? premioRoletaDescricao,
+    String? vendedorRef, // ✅ ID do vendedor para comissão (vem do link ?ref=)
+    String? indicacaoClienteId, // ✅ ID do cliente que indicou (link ?indicacao=clienteId)
     String?
         origemCheckout, // 'whatsapp' quando finalizado por WhatsApp (para notificação específica)
   }) async {
@@ -177,27 +177,27 @@ class PrePedidoService {
       final isPix = pagamento.toUpperCase() == 'PIX';
 
       for (final item in items) {
-        final qty = (item['quantidade'] as int?) ?• (item['qty'] as int?) ?• 1;
+        final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
         final price = (item['preco'] as num?)?.toDouble() ??
             (item['price'] as num?)?.toDouble() ??
             0.0;
         final pctPix =
-            (item['percentualDescontoPix'] as num?)?.toDouble() ?• 0.0;
+            (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
         final precoEfetivo =
-            (isPix && pctPix > 0) • price * (1 - pctPix / 100) : price;
+            (isPix && pctPix > 0) ? price * (1 - pctPix / 100) : price;
         final itemTotal = precoEfetivo * qty;
         subtotal += itemTotal;
 
         final storedItem = {
-          'id': item['id'] ?• item['produtosId'] ?• '',
-          'produtosId': item['produtosId'] ?• item['id'] ?• '',
-          'nome': item['nome'] ?• item['name'] ?• '',
+          'id': item['id'] ?? item['produtosId'] ?? '',
+          'produtosId': item['produtosId'] ?? item['id'] ?? '',
+          'nome': item['nome'] ?? item['name'] ?? '',
           'quantidade': qty,
           'precoUnitario': precoEfetivo,
-          'tamanho': item['tamanho'] ?• item['size'] ?• '',
-          'cor': item['cor'] ?• item['color'] ?• '',
-          'imagem': item['imageUrl'] ?• item['url_foto'] ?• item['image'] ?• '',
-          'slug': item['slug'] ?• '',
+          'tamanho': item['tamanho'] ?? item['size'] ?? '',
+          'cor': item['cor'] ?? item['color'] ?? '',
+          'imagem': item['imageUrl'] ?? item['url_foto'] ?? item['image'] ?? '',
+          'slug': item['slug'] ?? '',
           'total': itemTotal,
         };
         if (item['itensComboComSelecao'] is List) {
@@ -207,8 +207,8 @@ class PrePedidoService {
       }
 
       final freteGratis = entrega['freteGratis'] == true;
-      final freteValor = (entrega['valor'] as num?)?.toDouble() ?• 0.0;
-      final total = subtotal + (freteGratis • 0 : freteValor) - desconto;
+      final freteValor = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
+      final total = subtotal + (freteGratis ? 0 : freteValor) - desconto;
 
       // Criar documento do pré-pedido
       final prePedidoData = {
@@ -218,12 +218,12 @@ class PrePedidoService {
 
         // Cliente (email em lowercase para queries no perfil)
         'cliente': {
-          'nome': customer['nome'] ?• '',
-          'cpf': customer['cpf'] ?• '',
-          'email': (customer['email'] ?• '').toString().toLowerCase().trim(),
-          'telefone': customer['telefone'] ?• '',
-          'endereco': customer['endereco'] ?• {},
-          'enderecoFormatado': customer['enderecoFormatado'] ?• '',
+          'nome': customer['nome'] ?? '',
+          'cpf': customer['cpf'] ?? '',
+          'email': (customer['email'] ?? '').toString().toLowerCase().trim(),
+          'telefone': customer['telefone'] ?? '',
+          'endereco': customer['endereco'] ?? {},
+          'enderecoFormatado': customer['enderecoFormatado'] ?? '',
           if (clienteId != null && clienteId.isNotEmpty) 'id': clienteId,
         },
 
@@ -233,14 +233,14 @@ class PrePedidoService {
         // Valores
         'subtotal': subtotal,
         'frete': {
-          'nome': entrega['nome'] ?• 'Entrega',
+          'nome': entrega['nome'] ?? 'Entrega',
           'valor': freteValor,
           'gratis': freteGratis,
-          'tipo': entrega['tipo'] ?• '',
+          'tipo': entrega['tipo'] ?? '',
           if (entrega['plataforma'] != null) 'plataforma': entrega['plataforma'],
         },
         'cupom': cupomCodigo != null
-            • {
+            ? {
                 'codigo': cupomCodigo,
                 'desconto': desconto,
               }
@@ -256,11 +256,11 @@ class PrePedidoService {
         // ✅ Prêmio da Roleta (se houver)
         'premioRoleta': premioRoletaDescricao != null ||
                 cupomRoletaCodigo != null
-            • {
-                'descricao': premioRoletaDescricao ?• '',
+            ? {
+                'descricao': premioRoletaDescricao ?? '',
                 'tipo': determinarTipoPremio(premioRoletaDescricao,
                     cupomRoletaCodigo, cupomRoletaDesconto),
-                'valor': cupomRoletaDesconto ?• 0.0,
+                'valor': cupomRoletaDesconto ?? 0.0,
                 'codigo': cupomRoletaCodigo,
                 'status': 'pendente', // pendente | ativo | usado
                 'dataGanho': FieldValue.serverTimestamp(),
@@ -307,7 +307,7 @@ class PrePedidoService {
 
       // ✅ Atualizar endereço na coleção clientes para "Usar último endereço" (catálogo web/APK)
       try {
-        final email = (customer['email'] ?• '').toString().trim().toLowerCase();
+        final email = (customer['email'] ?? '').toString().trim().toLowerCase();
         if (email.isNotEmpty) {
           if (clienteId != null && clienteId.isNotEmpty) {
             await _firestore
@@ -316,8 +316,8 @@ class PrePedidoService {
                 .collection('clientes')
                 .doc(clienteId)
                 .update({
-              'endereco': customer['endereco'] ?• {},
-              'enderecoFormatado': customer['enderecoFormatado'] ?• '',
+              'endereco': customer['endereco'] ?? {},
+              'enderecoFormatado': customer['enderecoFormatado'] ?? '',
               'email': email,
             });
             logD(
@@ -333,8 +333,8 @@ class PrePedidoService {
                 .get();
             if (snap.docs.isNotEmpty) {
               await snap.docs.first.reference.update({
-                'endereco': customer['endereco'] ?• {},
-                'enderecoFormatado': customer['enderecoFormatado'] ?• '',
+                'endereco': customer['endereco'] ?? {},
+                'enderecoFormatado': customer['enderecoFormatado'] ?? '',
                 'email': email,
               });
               logD(
@@ -373,17 +373,17 @@ class PrePedidoService {
                   .collection('clientes')
                   .doc(indicacaoClienteId)
                   .get();
-              final refData = refDoc.data() ?• {};
+              final refData = refDoc.data() ?? {};
               final res = await CuponsService.criarCuponsIndicacao(
               lojaId: lojaId,
               clienteAmigoId: clienteId,
-              clienteAmigoNome: (customer['nome'] ?• '').toString(),
-              clienteAmigoEmail: (customer['email'] ?• '').toString(),
-              clienteAmigoWhatsApp: (customer['telefone'] ?• '').toString(),
+              clienteAmigoNome: (customer['nome'] ?? '').toString(),
+              clienteAmigoEmail: (customer['email'] ?? '').toString(),
+              clienteAmigoWhatsApp: (customer['telefone'] ?? '').toString(),
               clienteIndicadorId: indicacaoClienteId,
-              clienteIndicadorNome: (refData['nome'] ?• '').toString(),
-              clienteIndicadorEmail: (refData['email'] ?• '').toString(),
-              clienteIndicadorWhatsApp: (refData['telefone'] ?• refData['whatsapp'] ?• '').toString(),
+              clienteIndicadorNome: (refData['nome'] ?? '').toString(),
+              clienteIndicadorEmail: (refData['email'] ?? '').toString(),
+              clienteIndicadorWhatsApp: (refData['telefone'] ?? refData['whatsapp'] ?? '').toString(),
               tipoDesconto: cfg.tipo,
               valorDesconto: cfg.valor,
               validadeDias: cfg.validadeDias,
@@ -407,7 +407,7 @@ class PrePedidoService {
       );
 
       // 🎯 CRIAR PRÉ-PEDIDO NA PLATAFORMA DE FRETE (Melhor Envio, etc - em background)
-      final plataforma = (entrega['plataforma'] ?• '').toString().trim();
+      final plataforma = (entrega['plataforma'] ?? '').toString().trim();
       final deveCriarNaPlataforma = plataforma.isNotEmpty &&
           plataforma != 'manual' &&
           (entrega['tipo'] != null && entrega['tipo'].toString().isNotEmpty);
@@ -461,10 +461,10 @@ class PrePedidoService {
                 if ((err != null || inst != null) && resultadoFrete != null) {
                   await docRef.update({
                     'plataformaFrete': {
-                      'plataforma': resultadoFrete['plataforma'] ?• 'melhor_envio',
+                      'plataforma': resultadoFrete['plataforma'] ?? 'melhor_envio',
                       'success': false,
                       'error': err,
-                      'instrucoes': inst ?• 'Crie o envio manualmente em melhorenvio.com.br/painel/carrinho',
+                      'instrucoes': inst ?? 'Crie o envio manualmente em melhorenvio.com.br/painel/carrinho',
                       'criadoEm': FieldValue.serverTimestamp(),
                     }
                   });
@@ -481,20 +481,20 @@ class PrePedidoService {
 
       // Email ao cliente: pedido recebido (em background, não bloqueia)
       final emailCliente =
-          (customer['email'] ?• '').toString().trim().toLowerCase();
+          (customer['email'] ?? '').toString().trim().toLowerCase();
       if (emailCliente.isNotEmpty) {
         unawaited((() async {
           try {
             final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
             final lojaData = lojaDoc.data();
-            final lojaNome = (lojaData?['nome'] ?• 'Loja').toString().trim();
+            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
             final logoUrl = _extrairLogoUrl(lojaData);
             await PedidoClienteEmailService.enviarPedidoRecebido(
               clienteEmail: emailCliente,
-              clienteNome: (customer['nome'] ?• 'Cliente').toString(),
+              clienteNome: (customer['nome'] ?? 'Cliente').toString(),
               pedidoId: docRef.id,
               total: total,
-              remetenteNome: lojaNome.isEmpty • 'Loja' : lojaNome,
+              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
               logoUrl: logoUrl,
             );
           } catch (e) {
@@ -511,9 +511,9 @@ class PrePedidoService {
             logW('⚠️ [PRE-PEDIDO] Loja não existe, não envia email admin');
             return;
           }
-          final lojaData = lojaDoc.data() ?• {};
+          final lojaData = lojaDoc.data() ?? {};
           // ownerEmail, adminEmail ou owner.email (quando owner é Map)
-          var adminEmail = (lojaData['ownerEmail'] ?• lojaData['adminEmail'] ?• '').toString().trim();
+          var adminEmail = (lojaData['ownerEmail'] ?? lojaData['adminEmail'] ?? '').toString().trim();
           if (adminEmail.isEmpty) {
             final owner = lojaData['owner'];
             if (owner is Map && owner['email'] != null) {
@@ -526,27 +526,27 @@ class PrePedidoService {
           }
 
           final codigo = docRef.id.length >= 8
-              • docRef.id.substring(0, 8).toUpperCase()
+              ? docRef.id.substring(0, 8).toUpperCase()
               : docRef.id.toUpperCase();
           final endereco = customer['endereco'] as Map<String, dynamic>?;
-          final cep = endereco?['cep'] ?• endereco?['postalCode'] ?• '';
+          final cep = endereco?['cep'] ?? endereco?['postalCode'] ?? '';
 
           await PedidoClienteEmailService.enviarNovoPedidoParaAdmin(
             adminEmail: adminEmail,
-            clienteNome: (customer['nome'] ?• 'Cliente').toString(),
+            clienteNome: (customer['nome'] ?? 'Cliente').toString(),
             pedidoId: docRef.id,
             codigoPedido: codigo,
             itens: itensList,
             total: total,
             pagamento: pagamento,
             statusPagamento: determinarStatusPagamento(pagamento) == 'pendente'
-                • 'Pagamento pendente'
+                ? 'Pagamento pendente'
                 : 'Aprovado',
-            entregaNome: (entrega['nome'] ?• 'Entrega').toString(),
-            enderecoFormatado: (customer['enderecoFormatado'] ?• '').toString().trim().isEmpty
-                • null
-                : (customer['enderecoFormatado'] ?• '').toString(),
-            cep: cep.toString().trim().isEmpty • null : cep.toString(),
+            entregaNome: (entrega['nome'] ?? 'Entrega').toString(),
+            enderecoFormatado: (customer['enderecoFormatado'] ?? '').toString().trim().isEmpty
+                ? null
+                : (customer['enderecoFormatado'] ?? '').toString(),
+            cep: cep.toString().trim().isEmpty ? null : cep.toString(),
             dataCriacao: DateTime.now(),
           );
         } catch (e) {
@@ -649,9 +649,9 @@ class PrePedidoService {
       final vendedorRef = prePedidoData?['vendedorRef'] as String?;
       final clienteData = prePedidoData?['cliente'] as Map?;
       final clienteNome =
-          (clienteData)?['nome'] ?• 'Cliente';
+          (clienteData)?['nome'] ?? 'Cliente';
       final clienteEmail =
-          ((clienteData)?['email'] ?• '').toString().trim().toLowerCase();
+          ((clienteData)?['email'] ?? '').toString().trim().toLowerCase();
 
       // Atualizar status para 'confirmado' e salvar vendaId (mantém doc para rastreio: embalando → enviado → entregue)
       await _pedidoRepository.updatePedido(
@@ -683,7 +683,7 @@ class PrePedidoService {
               .doc(vendedorRef)
               .get();
 
-          final vendedorEmail = vendedorDoc.data()?['email'] ?• '';
+          final vendedorEmail = vendedorDoc.data()?['email'] ?? '';
 
           await NotificacaoVendasService().notificarVendedorVendaConfirmada(
             storeId: lojaId,
@@ -706,14 +706,14 @@ class PrePedidoService {
           try {
             final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
             final lojaData = lojaDoc.data();
-            final lojaNome = (lojaData?['nome'] ?• 'Loja').toString().trim();
+            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
             final logoUrl = _extrairLogoUrl(lojaData);
             await PedidoClienteEmailService.enviarAtualizacaoStatus(
               clienteEmail: clienteEmail,
               clienteNome: clienteNome,
               pedidoId: prePedidoId,
               novoStatus: 'confirmado',
-              remetenteNome: lojaNome.isEmpty • 'Loja' : lojaNome,
+              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
               logoUrl: logoUrl,
             );
           } catch (e) {
@@ -734,7 +734,7 @@ class PrePedidoService {
   static Future<bool> cancelarPrePedido({
     required String lojaId,
     required String prePedidoId,
-    String• motivo,
+    String? motivo,
   }) async {
     try {
       // ✅ Buscar dados do pré-pedido antes de deletar (para notificação)
@@ -744,9 +744,9 @@ class PrePedidoService {
       final vendedorRef = prePedidoData?['vendedorRef'] as String?;
       final clienteData = prePedidoData?['cliente'] as Map?;
       final clienteNome =
-          (clienteData)?['nome'] ?• 'Cliente';
+          (clienteData)?['nome'] ?? 'Cliente';
       final clienteEmail =
-          ((clienteData)?['email'] ?• '').toString().trim().toLowerCase();
+          ((clienteData)?['email'] ?? '').toString().trim().toLowerCase();
 
       // Mantém um espelho público sanitizado mesmo quando o pré-pedido privado é removido.
       try {
@@ -777,14 +777,14 @@ class PrePedidoService {
           try {
             final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
             final lojaData = lojaDoc.data();
-            final lojaNome = (lojaData?['nome'] ?• 'Loja').toString().trim();
+            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
             final logoUrl = _extrairLogoUrl(lojaData);
             await PedidoClienteEmailService.enviarAtualizacaoStatus(
               clienteEmail: clienteEmail,
               clienteNome: clienteNome,
               pedidoId: prePedidoId,
               novoStatus: 'cancelado',
-              remetenteNome: lojaNome.isEmpty • 'Loja' : lojaNome,
+              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
               logoUrl: logoUrl,
             );
           } catch (e) {
@@ -812,7 +812,7 @@ class PrePedidoService {
               .doc(vendedorRef)
               .get();
 
-          final vendedorEmail = vendedorDoc.data()?['email'] ?• '';
+          final vendedorEmail = vendedorDoc.data()?['email'] ?? '';
 
           await NotificacaoVendasService().notificarVendedorVendaCancelada(
             storeId: lojaId,
@@ -840,7 +840,7 @@ class PrePedidoService {
     required String prePedidoId,
   }) async {
     try {
-      Map<String, dynamic>• prePedidoData;
+      Map<String, dynamic>? prePedidoData;
       try {
         prePedidoData = await _pedidoRepository.getPedidoById(
           flowType: PedidoFlowType.prePedidos,
@@ -893,7 +893,7 @@ class PrePedidoService {
     required String lojaId,
     required String prePedidoId,
     required String novoStatus,
-    Map<String, dynamic>• extraUpdates,
+    Map<String, dynamic>? extraUpdates,
     bool enviarEmailCliente = true,
   }) async {
     try {
@@ -920,27 +920,27 @@ class PrePedidoService {
           try {
             final doc = await _prePedidosRef(lojaId).doc(prePedidoId).get();
             if (!doc.exists) return;
-            final data = doc.data() ?• {};
+            final data = doc.data() ?? {};
             final cliente = data['cliente'] as Map<String, dynamic>?;
             final email =
-                (cliente?['email'] ?• '').toString().trim().toLowerCase();
+                (cliente?['email'] ?? '').toString().trim().toLowerCase();
             if (email.isEmpty) return;
 
             final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
             final lojaData = lojaDoc.data();
-            final lojaNome = (lojaData?['nome'] ?• 'Loja').toString().trim();
+            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
             final logoUrl = _extrairLogoUrl(lojaData);
             final codigoRastreio = extraUpdates?['codigoRastreio']?.toString();
 
             await PedidoClienteEmailService.enviarAtualizacaoStatus(
               clienteEmail: email,
-              clienteNome: (cliente?['nome'] ?• 'Cliente').toString(),
+              clienteNome: (cliente?['nome'] ?? 'Cliente').toString(),
               pedidoId: prePedidoId,
               novoStatus: novoStatus,
               codigoRastreio: codigoRastreio?.trim().isEmpty == true
-                  • null
+                  ? null
                   : codigoRastreio,
-              remetenteNome: lojaNome.isEmpty • 'Loja' : lojaNome,
+              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
               logoUrl: logoUrl,
             );
             } catch (e) {
@@ -965,7 +965,7 @@ class PrePedidoService {
           .count()
           .get();
 
-      return snapshot.count ?• 0;
+      return snapshot.count ?? 0;
     } catch (e, st) {
       logE('❌ Erro ao contar pré-pedidos (type=${e.runtimeType})', error: e, st: st);
       return 0;
@@ -995,22 +995,22 @@ class PrePedidoService {
 
   /// Determina o status do pagamento com base no método selecionado
   ///
-  static String• _extrairLogoUrl(Map<String, dynamic>• lojaData) {
+  static String? _extrairLogoUrl(Map<String, dynamic>? lojaData) {
     if (lojaData == null) return null;
-    final lm = (lojaData['logoMobileUrl'] ?• '').toString().trim();
+    final lm = (lojaData['logoMobileUrl'] ?? '').toString().trim();
     if (lm.isNotEmpty) return lm;
-    final ld = (lojaData['logoDesktopUrl'] ?• '').toString().trim();
+    final ld = (lojaData['logoDesktopUrl'] ?? '').toString().trim();
     if (ld.isNotEmpty) return ld;
     final media = lojaData['media'];
     if (media is Map) {
       final mobile = media['mobile'];
       if (mobile is Map) {
-        final mUrl = (mobile['logoUrl'] ?• '').toString().trim();
+        final mUrl = (mobile['logoUrl'] ?? '').toString().trim();
         if (mUrl.isNotEmpty) return mUrl;
       }
       final desktop = media['desktop'];
       if (desktop is Map) {
-        final dUrl = (desktop['logoUrl'] ?• '').toString().trim();
+        final dUrl = (desktop['logoUrl'] ?? '').toString().trim();
         if (dUrl.isNotEmpty) return dUrl;
       }
     }
@@ -1022,7 +1022,7 @@ class PrePedidoService {
     required Map<String, dynamic> prePedido,
     required String lojaId,
     String baseUrl = 'https://app.mastepalm.com.br',
-    String• lojaSlug,
+    String? lojaSlug,
   }) {
     final buffer = StringBuffer();
 
@@ -1030,13 +1030,13 @@ class PrePedidoService {
     buffer.writeln('');
 
     // Itens
-    final itens = (prePedido['itens'] as List?) ?• [];
+    final itens = (prePedido['itens'] as List?) ?? [];
     for (final item in itens) {
-      final nome = item['nome'] ?• '';
-      final qty = item['quantidade'] ?• 1;
-      final preco = (item['precoUnitario'] as num?)?.toDouble() ?• 0.0;
-      final tamanho = (item['tamanho'] ?• '').toString().trim();
-      final cor = (item['cor'] ?• '').toString().trim(); // ✅ ADICIONADO: cor
+      final nome = item['nome'] ?? '';
+      final qty = item['quantidade'] ?? 1;
+      final preco = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
+      final tamanho = (item['tamanho'] ?? '').toString().trim();
+      final cor = (item['cor'] ?? '').toString().trim(); // ✅ ADICIONADO: cor
 
       // Montar descrição com variações
       final variacoes = <String>[];
@@ -1057,12 +1057,12 @@ class PrePedidoService {
     buffer.writeln('');
 
     // Valores
-    final subtotal = (prePedido['subtotal'] as num?)?.toDouble() ?• 0.0;
+    final subtotal = (prePedido['subtotal'] as num?)?.toDouble() ?? 0.0;
     final frete = prePedido['frete'] as Map<String, dynamic>?;
-    final freteNome = frete?['nome'] ?• 'Entrega';
-    final freteValor = (frete?['valor'] as num?)?.toDouble() ?• 0.0;
+    final freteNome = frete?['nome'] ?? 'Entrega';
+    final freteValor = (frete?['valor'] as num?)?.toDouble() ?? 0.0;
     final freteGratis = frete?['gratis'] == true;
-    final total = (prePedido['total'] as num?)?.toDouble() ?• 0.0;
+    final total = (prePedido['total'] as num?)?.toDouble() ?? 0.0;
 
     buffer.writeln('Subtotal: R\$ ${formatarValor(subtotal)}');
 
@@ -1075,7 +1075,7 @@ class PrePedidoService {
     // Cupom (se houver)
     final cupom = prePedido['cupom'] as Map<String, dynamic>?;
     if (cupom != null) {
-      final desconto = (cupom['desconto'] as num?)?.toDouble() ?• 0.0;
+      final desconto = (cupom['desconto'] as num?)?.toDouble() ?? 0.0;
       if (desconto > 0) {
         buffer.writeln('Desconto: -R\$ ${formatarValor(desconto)}');
       }
@@ -1084,19 +1084,19 @@ class PrePedidoService {
     buffer.writeln('Total: R\$ ${formatarValor(total)}');
 
     // Pagamento
-    final pagamento = prePedido['pagamento'] ?• '';
+    final pagamento = prePedido['pagamento'] ?? '';
     buffer.writeln('Pagamento: $pagamento');
     buffer.writeln('');
 
     // Cliente
     final cliente = prePedido['cliente'] as Map<String, dynamic>?;
     if (cliente != null) {
-      buffer.writeln('Cliente: ${cliente['nome'] ?• ''}');
-      final tel = (cliente['telefone'] ?• '').toString();
+      buffer.writeln('Cliente: ${cliente['nome'] ?? ''}');
+      final tel = (cliente['telefone'] ?? '').toString();
       if (tel.isNotEmpty) {
         buffer.writeln('Tel.: $tel');
       }
-      final endereco = cliente['enderecoFormatado']?.toString() ?• '';
+      final endereco = cliente['enderecoFormatado']?.toString() ?? '';
       if (endereco.isNotEmpty) {
         buffer.writeln('Endereço: $endereco');
       }
@@ -1105,8 +1105,8 @@ class PrePedidoService {
     // ✅ Prêmio da Roleta (se houver)
     final premioRoleta = prePedido['premioRoleta'] as Map<String, dynamic>?;
     if (premioRoleta != null) {
-      final tipo = premioRoleta['tipo']?.toString() ?• '';
-      final descricao = premioRoleta['descricao']?.toString() ?• '';
+      final tipo = premioRoleta['tipo']?.toString() ?? '';
+      final descricao = premioRoleta['descricao']?.toString() ?? '';
 
       buffer.writeln('');
       buffer.writeln('🎁 PRÊMIO DA ROLETA:');
@@ -1115,7 +1115,7 @@ class PrePedidoService {
         buffer.writeln('   Brinde: $descricao');
         buffer.writeln('   ⚠️ Será entregue junto com o pedido');
       } else if (tipo == 'desconto') {
-        final valor = (premioRoleta['valor'] as num?)?.toDouble() ?• 0.0;
+        final valor = (premioRoleta['valor'] as num?)?.toDouble() ?? 0.0;
         buffer.writeln('   Cupom de $valor% OFF');
         buffer.writeln(
             '   ⚠️ Válido para a próxima compra após pagamento confirmado');
@@ -1127,7 +1127,7 @@ class PrePedidoService {
     }
 
     // Observações
-    final obs = (prePedido['observacao'] ?• '').toString().trim();
+    final obs = (prePedido['observacao'] ?? '').toString().trim();
     if (obs.isNotEmpty) {
       buffer.writeln('');
       buffer.writeln('📝 Observações: $obs');
@@ -1136,7 +1136,7 @@ class PrePedidoService {
     buffer.writeln('');
 
     // Link do pedido - usa HTTPS para ser clicável no WhatsApp
-    final prePedidoId = prePedido['id'] ?• '';
+    final prePedidoId = prePedido['id'] ?? '';
     if (prePedidoId.isNotEmpty) {
       final url = gerarUrlPedido(
         prePedidoId: prePedidoId,
@@ -1157,11 +1157,11 @@ class PrePedidoService {
   static Future<void> _salvarOuAtualizarCliente({
     required String lojaId,
     required Map<String, dynamic> customer,
-    String• pedidoId,
+    String? pedidoId,
     required double total,
   }) async {
     try {
-      final telefone = (customer['telefone'] ?• '')
+      final telefone = (customer['telefone'] ?? '')
           .toString()
           .replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -1189,15 +1189,15 @@ class PrePedidoService {
         logD(
             '🔄 [CLIENTE-AUTO-SAVE] Cliente já existe, atualizando dados...');
 
-        final dados = clienteDoc.data() ?• {};
+        final dados = clienteDoc.data() ?? {};
 
         await clienteRef.update({
-          'nome': customer['nome'] ?• dados['nome'],
-          'email': customer['email'] ?• dados['email'],
-          'cpf': customer['cpf'] ?• dados['cpf'],
-          'endereco': customer['endereco'] ?• dados['endereco'],
+          'nome': customer['nome'] ?? dados['nome'],
+          'email': customer['email'] ?? dados['email'],
+          'cpf': customer['cpf'] ?? dados['cpf'],
+          'endereco': customer['endereco'] ?? dados['endereco'],
           'enderecoFormatado':
-              customer['enderecoFormatado'] ?• dados['enderecoFormatado'],
+              customer['enderecoFormatado'] ?? dados['enderecoFormatado'],
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
@@ -1210,15 +1210,15 @@ class PrePedidoService {
         final clienteData = {
           'id': clienteId,
           'lojaId': lojaId,
-          'nome': customer['nome'] ?• '',
-          'telefone': customer['telefone'] ?• '',
-          'email': customer['email'] ?• '',
-          'cpf': customer['cpf'] ?• '',
-          'endereco': customer['endereco'] ?• {},
-          'enderecoFormatado': customer['enderecoFormatado'] ?• '',
+          'nome': customer['nome'] ?? '',
+          'telefone': customer['telefone'] ?? '',
+          'email': customer['email'] ?? '',
+          'cpf': customer['cpf'] ?? '',
+          'endereco': customer['endereco'] ?? {},
+          'enderecoFormatado': customer['enderecoFormatado'] ?? '',
           'instagram': '',
-          'cep': (customer['endereco'] as Map?)?['cep'] ?• '',
-          'cidade': (customer['endereco'] as Map?)?['cidade'] ?• '',
+          'cep': (customer['endereco'] as Map?)?['cep'] ?? '',
+          'cidade': (customer['endereco'] as Map?)?['cidade'] ?? '',
           'avatarUrl': null,
 
           // Histórico de compras
@@ -1251,7 +1251,7 @@ class PrePedidoService {
     required double total,
   }) async {
     try {
-      final telefone = (customer['telefone'] ?• '')
+      final telefone = (customer['telefone'] ?? '')
           .toString()
           .replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -1268,13 +1268,13 @@ class PrePedidoService {
       final clienteDoc = await clienteRef.get();
       if (!clienteDoc.exists) return;
 
-      final dados = clienteDoc.data() ?• {};
+      final dados = clienteDoc.data() ?? {};
       final historicoAtual =
           (dados['historicoCompras'] as List?)?.cast<Map<String, dynamic>>() ??
               [];
       final totalComprasAtual =
-          (dados['totalCompras'] as num?)?.toDouble() ?• 0.0;
-      final quantidadeComprasAtual = (dados['quantidadeCompras'] as int?) ?• 0;
+          (dados['totalCompras'] as num?)?.toDouble() ?? 0.0;
+      final quantidadeComprasAtual = (dados['quantidadeCompras'] as int?) ?? 0;
 
       // Adicionar novo pedido ao histórico
       historicoAtual.add({

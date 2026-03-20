@@ -12,7 +12,7 @@ class WebLandingPlanCard extends StatelessWidget {
   final IconData icon;
   final String description;
   final List<String> bullets;
-  final String• badge;
+  final String? badge;
   final Color cardColor;
   final Color surfaceColor;
 

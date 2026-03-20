@@ -51,7 +51,7 @@ class MarketplaceService {
           .get();
 
       if (!doc.exists) return {};
-      return doc.data() ?• {};
+      return doc.data() ?? {};
     } catch (e) {
       debugPrint('❌ [MARKETPLACE] Erro ao buscar config (type=${e.runtimeType})');
       return {};
@@ -75,7 +75,7 @@ class MarketplaceService {
   }
 
   /// Traduz erros comuns para mensagens amigáveis
-  static String _mensagemErroAmigavel(dynamic e, [int• statusCode]) {
+  static String _mensagemErroAmigavel(dynamic e, [int? statusCode]) {
     final msg = e.toString().toLowerCase();
     if (statusCode == 401) return 'Token expirado ou inválido. Gere um novo token no painel do marketplace.';
     if (statusCode == 403) return 'Acesso negado. Verifique se as permissões do app estão corretas.';
@@ -138,7 +138,7 @@ class MarketplaceService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['code'] == 0) return {'success': true, 'message': 'Conexão OK'};
-        return {'success': false, 'error': data['message'] ?• 'Erro na API'};
+        return {'success': false, 'error': data['message'] ?? 'Erro na API'};
       }
       return {'success': false, 'error': _mensagemErroAmigavel(response.body, response.statusCode)};
     } catch (e) {
@@ -158,7 +158,7 @@ class MarketplaceService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return {'success': true, 'message': 'Conectado como ${data['nickname'] ?• 'vendedor'}'};
+        return {'success': true, 'message': 'Conectado como ${data['nickname'] ?? 'vendedor'}'};
       }
       if (response.statusCode == 401) {
         return {'success': false, 'error': 'Token expirado. Use o Refresh Token para renovar ou gere um novo.'};
@@ -198,7 +198,7 @@ class MarketplaceService {
         if (data['error'] == null || data['error'] == '') {
           return {'success': true, 'message': 'Conexão OK'};
         }
-        return {'success': false, 'error': data['message'] ?• data['error'] ?• 'Erro na API'};
+        return {'success': false, 'error': data['message'] ?? data['error'] ?? 'Erro na API'};
       }
       return {'success': false, 'error': _mensagemErroAmigavel(response.body, response.statusCode)};
     } catch (e) {
@@ -233,14 +233,14 @@ class MarketplaceService {
         return {
           'success': true,
           'access_token': data['access_token'],
-          'refresh_token': data['refresh_token'] ?• refreshToken,
+          'refresh_token': data['refresh_token'] ?? refreshToken,
           'expires_in': data['expires_in'],
         };
       }
       final err = jsonDecode(response.body);
       return {
         'success': false,
-        'error': err['message'] ?• 'Falha ao renovar token. Verifique Client ID, Secret e Refresh Token.',
+        'error': err['message'] ?? 'Falha ao renovar token. Verifique Client ID, Secret e Refresh Token.',
       };
     } catch (e) {
       return {'success': false, 'error': _mensagemErroAmigavel(e)};
@@ -250,12 +250,12 @@ class MarketplaceService {
   /// Obtém Access Token válido (renova se necessário)
   static Future<String?> _obterAccessTokenML(String lojaId) async {
     final config = await buscarConfig(lojaId);
-    final ml = config['mercado_livre'] as Map<String, dynamic>• ?• {};
+    final ml = config['mercado_livre'] as Map<String, dynamic>? ?? {};
 
-    var accessToken = (ml['access_token'] ?• '').toString();
-    final refreshToken = (ml['refresh_token'] ?• '').toString();
-    final clientId = (ml['client_id'] ?• '').toString();
-    final clientSecret = (ml['client_secret'] ?• '').toString();
+    var accessToken = (ml['access_token'] ?? '').toString();
+    final refreshToken = (ml['refresh_token'] ?? '').toString();
+    final clientId = (ml['client_id'] ?? '').toString();
+    final clientSecret = (ml['client_secret'] ?? '').toString();
 
     if (accessToken.isEmpty) return null;
 
@@ -294,7 +294,7 @@ class MarketplaceService {
 
   /// Gera assinatura HMAC-SHA256 para TikTok Shop API
   static String _gerarAssinaturaTikTok(String appSecret, String path, int timestamp, Map<String, dynamic> body) {
-    final bodyStr = body.isEmpty • '' : jsonEncode(body);
+    final bodyStr = body.isEmpty ? '' : jsonEncode(body);
     final signStr = '$appSecret$path$timestamp$bodyStr';
     final key = utf8.encode(appSecret);
     final bytes = utf8.encode(signStr);
@@ -306,18 +306,18 @@ class MarketplaceService {
 
   static Future<Map<String, dynamic>> sincronizarProdutosTikTok({
     required String lojaId,
-    List<String>• produtoIds,
+    List<String>? produtoIds,
   }) async {
     try {
       debugPrint('🎵 [TIKTOK] Iniciando sincronização...');
 
       final config = await buscarConfig(lojaId);
-      final tiktokConfig = config['tiktok_shop'] as Map<String, dynamic>• ?• {};
+      final tiktokConfig = config['tiktok_shop'] as Map<String, dynamic>? ?? {};
 
-      final appKey = (tiktokConfig['app_key'] ?• '').toString();
-      final appSecret = (tiktokConfig['app_secret'] ?• '').toString();
-      final accessToken = (tiktokConfig['access_token'] ?• '').toString();
-      final shopId = (tiktokConfig['shop_id'] ?• '').toString();
+      final appKey = (tiktokConfig['app_key'] ?? '').toString();
+      final appSecret = (tiktokConfig['app_secret'] ?? '').toString();
+      final accessToken = (tiktokConfig['access_token'] ?? '').toString();
+      final shopId = (tiktokConfig['shop_id'] ?? '').toString();
 
       if (appKey.isEmpty || appSecret.isEmpty || accessToken.isEmpty) {
         return {'success': false, 'error': 'Credenciais TikTok Shop não configuradas'};
@@ -370,7 +370,7 @@ class MarketplaceService {
           } else {
             erros++;
           }
-          resultados.add({'produto_id': produtoId, 'nome': produto['nome'] ?• 'Sem nome', ...resultado});
+          resultados.add({'produto_id': produtoId, 'nome': produto['nome'] ?? 'Sem nome', ...resultado});
         } catch (e) {
           debugPrint('❌ [TIKTOK] Erro produto ${doc.id} (type=${e.runtimeType})');
           erros++;
@@ -403,27 +403,27 @@ class MarketplaceService {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
 
       final productData = {
-        'title': produto['nome'] ?• 'Produto',
-        'description': produto['descricao'] ?• '',
-        'category_id': produto['tiktok_category_id'] ?• '1',
-        'brand_id': produto['tiktok_brand_id'] ?• '',
-        'main_images': [{'url': produto['imagem'] ?• ''}],
+        'title': produto['nome'] ?? 'Produto',
+        'description': produto['descricao'] ?? '',
+        'category_id': produto['tiktok_category_id'] ?? '1',
+        'brand_id': produto['tiktok_brand_id'] ?? '',
+        'main_images': [{'url': produto['imagem'] ?? ''}],
         'skus': [
           {
-            'price': {'amount': ((produto['preco'] as num?)?.toDouble() ?• 0) * 100, 'currency': 'BRL'},
+            'price': {'amount': ((produto['preco'] as num?)?.toDouble() ?? 0) * 100, 'currency': 'BRL'},
             'stock_infos': [
-              {'available_stock': (produto['estoque'] as int?) ?• 0, 'warehouse_id': shopId}
+              {'available_stock': (produto['estoque'] as int?) ?? 0, 'warehouse_id': shopId}
             ],
-            'seller_sku': produto['sku'] ?• produto['id'] ?• '',
+            'seller_sku': produto['sku'] ?? produto['id'] ?? '',
           }
         ],
         'package_dimensions': {
-          'length': (produto['comprimento'] as num?)?.toInt() ?• 10,
-          'width': (produto['largura'] as num?)?.toInt() ?• 10,
-          'height': (produto['altura'] as num?)?.toInt() ?• 10,
+          'length': (produto['comprimento'] as num?)?.toInt() ?? 10,
+          'width': (produto['largura'] as num?)?.toInt() ?? 10,
+          'height': (produto['altura'] as num?)?.toInt() ?? 10,
           'unit': 'CENTIMETER',
         },
-        'package_weight': {'value': ((produto['peso'] as num?)?.toDouble() ?• 100) / 1000, 'unit': 'KILOGRAM'},
+        'package_weight': {'value': ((produto['peso'] as num?)?.toDouble() ?? 100) / 1000, 'unit': 'KILOGRAM'},
       };
 
       final bodyStr = jsonEncode(productData);
@@ -447,7 +447,7 @@ class MarketplaceService {
         if (data['code'] == 0) {
           return {'success': true, 'product_id': data['data']['product_id'], 'message': 'Produto criado no TikTok Shop'};
         }
-        return {'success': false, 'error': data['message'] ?• 'Erro desconhecido'};
+        return {'success': false, 'error': data['message'] ?? 'Erro desconhecido'};
       }
       return {'success': false, 'error': _mensagemErroAmigavel(response.body, response.statusCode)};
     } catch (e) {
@@ -468,8 +468,8 @@ class MarketplaceService {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final productData = {
         'product_id': tiktokProductId,
-        'title': produto['nome'] ?• 'Produto',
-        'description': produto['descricao'] ?• '',
+        'title': produto['nome'] ?? 'Produto',
+        'description': produto['descricao'] ?? '',
       };
       final bodyStr = jsonEncode(productData);
       final sign = _gerarAssinaturaTikTok(appSecret, path, timestamp, productData);
@@ -490,7 +490,7 @@ class MarketplaceService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['code'] == 0) return {'success': true, 'message': 'Produto atualizado no TikTok Shop'};
-        return {'success': false, 'error': data['message'] ?• 'Erro desconhecido'};
+        return {'success': false, 'error': data['message'] ?? 'Erro desconhecido'};
       }
       return {'success': false, 'error': 'HTTP ${response.statusCode}'};
     } catch (e) {
@@ -504,7 +504,7 @@ class MarketplaceService {
 
   static Future<Map<String, dynamic>> sincronizarProdutosMercadoLivre({
     required String lojaId,
-    List<String>• produtoIds,
+    List<String>? produtoIds,
   }) async {
     try {
       debugPrint('🟡 [ML] Iniciando sincronização...');
@@ -564,16 +564,16 @@ class MarketplaceService {
   }) async {
     try {
       final productData = {
-        'title': produto['nome'] ?• 'Produto',
-        'category_id': produto['ml_category_id'] ?• 'MLB1051',
-        'price': (produto['preco'] as num?)?.toDouble() ?• 0,
+        'title': produto['nome'] ?? 'Produto',
+        'category_id': produto['ml_category_id'] ?? 'MLB1051',
+        'price': (produto['preco'] as num?)?.toDouble() ?? 0,
         'currency_id': 'BRL',
-        'available_quantity': (produto['estoque'] as int?) ?• 0,
+        'available_quantity': (produto['estoque'] as int?) ?? 0,
         'buying_mode': 'buy_it_now',
         'listing_type_id': 'gold_special',
         'condition': 'new',
-        'description': {'plain_text': produto['descricao'] ?• ''},
-        'pictures': [{'source': produto['imagem'] ?• ''}],
+        'description': {'plain_text': produto['descricao'] ?? ''},
+        'pictures': [{'source': produto['imagem'] ?? ''}],
       };
 
       final response = await _requestWithRetry(() => http.post(
@@ -587,7 +587,7 @@ class MarketplaceService {
         return {'success': true, 'id': data['id'], 'permalink': data['permalink'], 'message': 'Produto criado no Mercado Livre'};
       }
       final error = jsonDecode(response.body);
-      return {'success': false, 'error': error['message'] ?• _mensagemErroAmigavel(response.body, response.statusCode)};
+      return {'success': false, 'error': error['message'] ?? _mensagemErroAmigavel(response.body, response.statusCode)};
     } catch (e) {
       return {'success': false, 'error': _mensagemErroAmigavel(e)};
     }
@@ -600,9 +600,9 @@ class MarketplaceService {
   }) async {
     try {
       final updateData = {
-        'price': (produto['preco'] as num?)?.toDouble() ?• 0,
-        'available_quantity': (produto['estoque'] as int?) ?• 0,
-        'title': produto['nome'] ?• 'Produto',
+        'price': (produto['preco'] as num?)?.toDouble() ?? 0,
+        'available_quantity': (produto['estoque'] as int?) ?? 0,
+        'title': produto['nome'] ?? 'Produto',
       };
 
       final response = await _requestWithRetry(() => http.put(
@@ -634,18 +634,18 @@ class MarketplaceService {
 
   static Future<Map<String, dynamic>> sincronizarProdutosShopee({
     required String lojaId,
-    List<String>• produtoIds,
+    List<String>? produtoIds,
   }) async {
     try {
       debugPrint('🛍️ [SHOPEE] Iniciando sincronização...');
 
       final config = await buscarConfig(lojaId);
-      final shopeeConfig = config['shopee'] as Map<String, dynamic>• ?• {};
+      final shopeeConfig = config['shopee'] as Map<String, dynamic>? ?? {};
 
-      final partnerId = (shopeeConfig['partner_id'] ?• '').toString();
-      final partnerKey = (shopeeConfig['partner_key'] ?• '').toString();
-      final shopId = (shopeeConfig['shop_id'] ?• '').toString();
-      final accessToken = (shopeeConfig['access_token'] ?• '').toString();
+      final partnerId = (shopeeConfig['partner_id'] ?? '').toString();
+      final partnerKey = (shopeeConfig['partner_key'] ?? '').toString();
+      final shopId = (shopeeConfig['shop_id'] ?? '').toString();
+      final accessToken = (shopeeConfig['access_token'] ?? '').toString();
 
       if (partnerId.isEmpty || partnerKey.isEmpty || accessToken.isEmpty || shopId.isEmpty) {
         return {'success': false, 'error': 'Credenciais Shopee incompletas. Preencha Partner ID, Partner Key, Shop ID e Access Token.'};
@@ -719,31 +719,31 @@ class MarketplaceService {
       final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
       final itemData = {
-        'name': produto['nome'] ?• 'Produto',
-        'description': produto['descricao'] ?• '',
-        'category_id': (produto['shopee_category_id'] as int?) ?• 100015,
+        'name': produto['nome'] ?? 'Produto',
+        'description': produto['descricao'] ?? '',
+        'category_id': (produto['shopee_category_id'] as int?) ?? 100015,
         'brand': {'brand_id': 0, 'original_brand_name': 'Marca'},
-        'price': (produto['preco'] as num?)?.toDouble() ?• 0,
-        'stock': (produto['estoque'] as int?) ?• 0,
-        'item_sku': produto['sku'] ?• produto['id'] ?• '',
+        'price': (produto['preco'] as num?)?.toDouble() ?? 0,
+        'stock': (produto['estoque'] as int?) ?? 0,
+        'item_sku': produto['sku'] ?? produto['id'] ?? '',
         'images': [
-          {'url': produto['imagem'] ?• ''}
+          {'url': produto['imagem'] ?? ''}
         ],
-        'weight': ((produto['peso'] as num?)?.toDouble() ?• 0.1) * 1000,
+        'weight': ((produto['peso'] as num?)?.toDouble() ?? 0.1) * 1000,
         'dimension': {
-          'length': (produto['comprimento'] as num?)?.toDouble() ?• 10,
-          'width': (produto['largura'] as num?)?.toDouble() ?• 10,
-          'height': (produto['altura'] as num?)?.toDouble() ?• 10,
+          'length': (produto['comprimento'] as num?)?.toDouble() ?? 10,
+          'width': (produto['largura'] as num?)?.toDouble() ?? 10,
+          'height': (produto['altura'] as num?)?.toDouble() ?? 10,
         },
       };
 
       final sign = _gerarAssinaturaShopee(partnerId, path, timestamp, accessToken, shopId, partnerKey);
 
       final body = {
-        'partner_id': int.tryParse(partnerId) ?• 0,
+        'partner_id': int.tryParse(partnerId) ?? 0,
         'timestamp': timestamp,
         'sign': sign,
-        'shop_id': int.tryParse(shopId) ?• 0,
+        'shop_id': int.tryParse(shopId) ?? 0,
         ...itemData,
       };
 
@@ -756,10 +756,10 @@ class MarketplaceService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['error'] == null || data['error'] == '') {
-          final itemId = data['response']?['item_id'] ?• data['item_id'];
+          final itemId = data['response']?['item_id'] ?? data['item_id'];
           return {'success': true, 'item_id': itemId, 'message': 'Produto criado na Shopee'};
         }
-        return {'success': false, 'error': data['message'] ?• data['error'] ?• 'Erro na API Shopee'};
+        return {'success': false, 'error': data['message'] ?? data['error'] ?? 'Erro na API Shopee'};
       }
       return {'success': false, 'error': _mensagemErroAmigavel(response.body, response.statusCode)};
     } catch (e) {
@@ -781,14 +781,14 @@ class MarketplaceService {
       final sign = _gerarAssinaturaShopee(partnerId, path, timestamp, accessToken, shopId, partnerKey);
 
       final body = {
-        'partner_id': int.tryParse(partnerId) ?• 0,
+        'partner_id': int.tryParse(partnerId) ?? 0,
         'timestamp': timestamp,
         'sign': sign,
-        'shop_id': int.tryParse(shopId) ?• 0,
-        'item_id': int.tryParse(itemId) ?• 0,
-        'price': (produto['preco'] as num?)?.toDouble() ?• 0,
-        'stock': (produto['estoque'] as int?) ?• 0,
-        'name': produto['nome'] ?• 'Produto',
+        'shop_id': int.tryParse(shopId) ?? 0,
+        'item_id': int.tryParse(itemId) ?? 0,
+        'price': (produto['preco'] as num?)?.toDouble() ?? 0,
+        'stock': (produto['estoque'] as int?) ?? 0,
+        'name': produto['nome'] ?? 'Produto',
       };
 
       final response = await _requestWithRetry(() => http.post(
@@ -802,7 +802,7 @@ class MarketplaceService {
         if (data['error'] == null || data['error'] == '') {
           return {'success': true, 'message': 'Produto atualizado na Shopee'};
         }
-        return {'success': false, 'error': data['message'] ?• data['error'] ?• 'Erro na API Shopee'};
+        return {'success': false, 'error': data['message'] ?? data['error'] ?? 'Erro na API Shopee'};
       }
       return {'success': false, 'error': 'HTTP ${response.statusCode}'};
     } catch (e) {
@@ -832,10 +832,10 @@ class MarketplaceService {
         final tiktokId = produto['tiktok_product_id'] as String?;
         if (tiktokId != null && tiktokId.isNotEmpty) {
           final r = await _atualizarEstoqueTikTok(
-            appKey: (tiktok['app_key'] ?• '').toString(),
-            appSecret: (tiktok['app_secret'] ?• '').toString(),
-            accessToken: (tiktok['access_token'] ?• '').toString(),
-            shopId: (tiktok['shop_id'] ?• '').toString(),
+            appKey: (tiktok['app_key'] ?? '').toString(),
+            appSecret: (tiktok['app_secret'] ?? '').toString(),
+            accessToken: (tiktok['access_token'] ?? '').toString(),
+            shopId: (tiktok['shop_id'] ?? '').toString(),
             tiktokProductId: tiktokId,
             estoque: novoEstoque,
           );
@@ -858,10 +858,10 @@ class MarketplaceService {
         final shopeeId = produto['shopee_item_id'] as String?;
         if (shopeeId != null && shopeeId.isNotEmpty) {
           final r = await _atualizarEstoqueShopee(
-            partnerId: (shopee['partner_id'] ?• '').toString(),
-            partnerKey: (shopee['partner_key'] ?• '').toString(),
-            shopId: (shopee['shop_id'] ?• '').toString(),
-            accessToken: (shopee['access_token'] ?• '').toString(),
+            partnerId: (shopee['partner_id'] ?? '').toString(),
+            partnerKey: (shopee['partner_key'] ?? '').toString(),
+            shopId: (shopee['shop_id'] ?? '').toString(),
+            accessToken: (shopee['access_token'] ?? '').toString(),
             itemId: shopeeId,
             estoque: novoEstoque,
           );
@@ -899,7 +899,7 @@ class MarketplaceService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['code'] == 0 • {'success': true} : {'success': false, 'error': data['message']};
+        return data['code'] == 0 ? {'success': true} : {'success': false, 'error': data['message']};
       }
       return {'success': false, 'error': 'HTTP ${response.statusCode}'};
     } catch (e) {
@@ -919,7 +919,7 @@ class MarketplaceService {
         body: jsonEncode({'available_quantity': estoque}),
       ).timeout(const Duration(seconds: 15));
 
-      return response.statusCode == 200 • {'success': true} : {'success': false, 'error': 'HTTP ${response.statusCode}'};
+      return response.statusCode == 200 ? {'success': true} : {'success': false, 'error': 'HTTP ${response.statusCode}'};
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }
@@ -939,11 +939,11 @@ class MarketplaceService {
       final sign = _gerarAssinaturaShopee(partnerId, path, timestamp, accessToken, shopId, partnerKey);
 
       final body = {
-        'partner_id': int.tryParse(partnerId) ?• 0,
+        'partner_id': int.tryParse(partnerId) ?? 0,
         'timestamp': timestamp,
         'sign': sign,
-        'shop_id': int.tryParse(shopId) ?• 0,
-        'item_id': int.tryParse(itemId) ?• 0,
+        'shop_id': int.tryParse(shopId) ?? 0,
+        'item_id': int.tryParse(itemId) ?? 0,
         'stock': estoque,
       };
 
@@ -955,7 +955,7 @@ class MarketplaceService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return (data['error'] == null || data['error'] == '') • {'success': true} : {'success': false, 'error': data['message']};
+        return (data['error'] == null || data['error'] == '') ? {'success': true} : {'success': false, 'error': data['message']};
       }
       return {'success': false, 'error': 'HTTP ${response.statusCode}'};
     } catch (e) {

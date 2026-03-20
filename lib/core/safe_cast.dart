@@ -29,7 +29,7 @@ Map<String, dynamic> asMap(dynamic v) {
 /// String com fallback; nunca retorna null.
 String safeString(dynamic v, {String fallback = ''}) {
   final s = asString(v);
-  return s ?• fallback;
+  return s ?? fallback;
 }
 
 /// int com fallback; nunca retorna null.
@@ -72,7 +72,7 @@ Map<String, dynamic> asMapDeep(dynamic v) {
     final result = <String, dynamic>{};
     for (final e in v.entries) {
       final val = e.value;
-      result[e.key] = val is Map • asMapDeep(val) : (val is List • _asListDeep(val) : val);
+      result[e.key] = val is Map ? asMapDeep(val) : (val is List ? _asListDeep(val) : val);
     }
     return result;
   }
@@ -80,7 +80,7 @@ Map<String, dynamic> asMapDeep(dynamic v) {
     try {
       final result = <String, dynamic>{};
       v.forEach((k, val) {
-        result[k.toString()] = val is Map • asMapDeep(val) : (val is List • _asListDeep(val) : val);
+        result[k.toString()] = val is Map ? asMapDeep(val) : (val is List ? _asListDeep(val) : val);
       });
       return result;
     } catch (e) {
@@ -94,7 +94,7 @@ Map<String, dynamic> asMapDeep(dynamic v) {
 
 List<dynamic> _asListDeep(dynamic v) {
   if (v == null || v is! List) return [];
-  return v.map((e) => e is Map • asMapDeep(e) : (e is List • _asListDeep(e) : e)).toList();
+  return v.map((e) => e is Map ? asMapDeep(e) : (e is List ? _asListDeep(e) : e)).toList();
 }
 
 /// Converte para List; nunca lança. Elementos mantêm tipo dynamic.
@@ -106,15 +106,15 @@ List asList(dynamic v) {
 }
 
 /// Converte para String; null se vazio ou inválido.
-String• asString(dynamic v) {
+String? asString(dynamic v) {
   if (v == null) return null;
-  if (v is String) return v.isEmpty • null : v;
+  if (v is String) return v.isEmpty ? null : v;
   final s = '$v'.trim();
-  return s.isEmpty • null : s;
+  return s.isEmpty ? null : s;
 }
 
 /// Converte para num (int ou double); null se inválido.
-num• asNum(dynamic v) {
+num? asNum(dynamic v) {
   if (v == null) return null;
   if (v is num) return v;
   if (v is String) {
@@ -139,15 +139,15 @@ bool asBool(dynamic v, {bool defaultValue = false}) {
 
 /// Converte para DateTime; suporta Timestamp, DateTime, String ISO, int millis,
 /// e objeto Firestore {seconds, nanoseconds} (evita erro "reading 'Timestamp'" no web).
-DateTime• asDateTime(dynamic v) {
+DateTime? asDateTime(dynamic v) {
   if (v == null) return null;
   if (v is DateTime) return v;
   if (v is Timestamp) return v.toDate();
   // Fallback para objeto Firestore {seconds, nanoseconds} (web pode retornar isso)
   if (v is Map && v['seconds'] != null) {
     try {
-      final s = (v['seconds'] is num) • (v['seconds'] as num).toInt() : 0;
-      final n = (v['nanoseconds'] is num) • (v['nanoseconds'] as num).toInt() : 0;
+      final s = (v['seconds'] is num) ? (v['seconds'] as num).toInt() : 0;
+      final n = (v['nanoseconds'] is num) ? (v['nanoseconds'] as num).toInt() : 0;
       return DateTime.fromMillisecondsSinceEpoch(s * 1000 + n ~/ 1000000);
     } catch (_) {}
   }
@@ -164,11 +164,11 @@ DateTime• asDateTime(dynamic v) {
 dynamic safeGet(Map<String, dynamic> map, String key, [dynamic fallback]) {
   if (!map.containsKey(key)) return fallback;
   final raw = map[key];
-  return raw ?• fallback;
+  return raw ?? fallback;
 }
 
 /// Cast seguro para T ou null; evita TypeError em release.
-T• castOrNull<T>(dynamic v) {
+T? castOrNull<T>(dynamic v) {
   if (v == null) return null;
   if (v is T) return v;
   logW('castOrNull: valor tipo ${v.runtimeType}, esperado $T; usando fallback null.', tag: 'SAFE_CAST');
@@ -192,4 +192,4 @@ List<Map<String, dynamic>> listOfMapStringDynamic(dynamic v) {
 }
 
 /// Alias de asDateTime; suporta Timestamp, DateTime, String ISO, int millis.
-DateTime• parseDate(dynamic v) => asDateTime(v);
+DateTime? parseDate(dynamic v) => asDateTime(v);

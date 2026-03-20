@@ -119,7 +119,7 @@ class _ClientePerfilScreenState extends State<ClientePerfilScreen> {
                       radius: 40,
                       backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha:0.1),
                       child: Text(
-                        _cliente.nome.isNotEmpty • _cliente.nome[0].toUpperCase() : '?',
+                        _cliente.nome.isNotEmpty ? _cliente.nome[0].toUpperCase() : '?',
                         style: TextStyle(
                           fontSize: 32,
                           fontWeight: FontWeight.bold,
@@ -419,8 +419,8 @@ class _ClientePerfilScreenState extends State<ClientePerfilScreen> {
                     '${cupom.diasRestantes} dias restantes',
                     style: TextStyle(
                       fontSize: 12,
-                      color: cupom.diasRestantes <= 7 • Colors.orange : Colors.grey[600],
-                      fontWeight: cupom.diasRestantes <= 7 • FontWeight.bold : null,
+                      color: cupom.diasRestantes <= 7 ? Colors.orange : Colors.grey[600],
+                      fontWeight: cupom.diasRestantes <= 7 ? FontWeight.bold : null,
                     ),
                   ),
                 ],

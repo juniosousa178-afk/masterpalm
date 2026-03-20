@@ -74,7 +74,7 @@ class FullSyncService {
 
       // Verificar se o cache é da loja correta
       final sessaoBox = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
 
       final cachedLojaId = sessaoBox.get('last_synced_loja_id');
@@ -123,7 +123,7 @@ class FullSyncService {
       // Buscar TODOS os produtos do Firestore (paginado)
       int totalSincronizados = 0;
       const int pageSize = 500;
-      DocumentSnapshot• lastDoc;
+      DocumentSnapshot? lastDoc;
       bool hasMore = true;
 
       while (hasMore) {
@@ -153,7 +153,7 @@ class FullSyncService {
             // Verificar se já existe pelo idFirebase ou slug (whereType evita crash por typeId inválido)
             final candidatos = box.values.whereType<Produto>().where(
                 (p) => p.idFirebase == doc.id || p.slug == produto.slug);
-            final existente = candidatos.isEmpty • null : candidatos.first;
+            final existente = candidatos.isEmpty ? null : candidatos.first;
 
             if (existente != null) {
               // Atualizar existente
@@ -225,11 +225,11 @@ class FullSyncService {
         try {
           final data = doc.data();
           final cliente = Cliente(
-            nome: data['nome']?.toString() ?• '',
-            telefone: data['telefone']?.toString() ?• '',
-            instagram: data['instagram']?.toString() ?• '',
-            cep: data['cep']?.toString() ?• '',
-            cidade: data['cidade']?.toString() ?• '',
+            nome: data['nome']?.toString() ?? '',
+            telefone: data['telefone']?.toString() ?? '',
+            instagram: data['instagram']?.toString() ?? '',
+            cep: data['cep']?.toString() ?? '',
+            cidade: data['cidade']?.toString() ?? '',
             email: data['email']?.toString(),
             endereco: data['endereco']?.toString(),
             lojaId: lojaId,
@@ -238,7 +238,7 @@ class FullSyncService {
           // Verificar duplicidade (whereType evita crash por typeId inválido)
           final candidatos = box.values.whereType<Cliente>().where((c) =>
               c.telefone == cliente.telefone || c.email == cliente.email);
-          final existente = candidatos.isEmpty • null : candidatos.first;
+          final existente = candidatos.isEmpty ? null : candidatos.first;
 
           if (existente == null && cliente.nome.isNotEmpty) {
             await box.add(cliente);
@@ -285,21 +285,21 @@ class FullSyncService {
   /// Converte documento Firestore para Produto
   static Produto _produtoFromFirestore(Map<String, dynamic> data, String docId) {
     final preco = (data['precoFinal'] as num?)?.toDouble() ??
-                  (data['preco'] as num?)?.toDouble() ?• 0.0;
+                  (data['preco'] as num?)?.toDouble() ?? 0.0;
     return Produto(
-      nome: data['nome']?.toString() ?• '',
-      descricao: data['descricao']?.toString() ?• '',
-      custoReal: (data['custoReal'] as num?)?.toDouble() ?• 0.0,
-      frete: (data['frete'] as num?)?.toDouble() ?• 0.0,
-      gastosFixos: (data['gastosFixos'] as num?)?.toDouble() ?• 0.0,
-      gastosVariaveis: (data['gastosVariaveis'] as num?)?.toDouble() ?• 0.0,
-      precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ?• preco,
+      nome: data['nome']?.toString() ?? '',
+      descricao: data['descricao']?.toString() ?? '',
+      custoReal: (data['custoReal'] as num?)?.toDouble() ?? 0.0,
+      frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
+      gastosFixos: (data['gastosFixos'] as num?)?.toDouble() ?? 0.0,
+      gastosVariaveis: (data['gastosVariaveis'] as num?)?.toDouble() ?? 0.0,
+      precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ?? preco,
       precoFinal: preco,
-      precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?• preco,
+      precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?? preco,
       quantidade: (data['quantidade'] as num?)?.toInt() ??
-                  (data['estoque'] as num?)?.toInt() ?• 0,
-      categoria: data['categoria']?.toString() ?• '',
-      subcategoria: data['subcategoria']?.toString() ?• '',
+                  (data['estoque'] as num?)?.toInt() ?? 0,
+      categoria: data['categoria']?.toString() ?? '',
+      subcategoria: data['subcategoria']?.toString() ?? '',
       imagens: _parseListString(data['imagens']),
       tamanhos: _parseListString(data['tamanhos']),
       estoquePorTamanho: _parseMapStringInt(data['estoquePorTamanho']),
@@ -309,13 +309,13 @@ class FullSyncService {
                            data['publicar'] == true,
       divideSemJuros: data['divideSemJuros'] == true,
       maxParcelasSemJuros: (data['maxParcelasSemJuros'] is num)
-          • (data['maxParcelasSemJuros'] as num).toInt()
+          ? (data['maxParcelasSemJuros'] as num).toInt()
           : 12,
       percentualDescontoPix: (data['percentualDescontoPix'] is num)
-          • (data['percentualDescontoPix'] as num).toDouble()
+          ? (data['percentualDescontoPix'] as num).toDouble()
           : 0.0,
-      slug: data['slug']?.toString() ?• docId,
-      lojaId: data['lojaId']?.toString() ?• '',
+      slug: data['slug']?.toString() ?? docId,
+      lojaId: data['lojaId']?.toString() ?? '',
       idFirebase: docId,
       dataEntrada: DateTime.now(),
     );
@@ -332,12 +332,12 @@ class FullSyncService {
   static Map<String, int> _parseMapStringInt(dynamic value) {
     if (value == null) return {};
     if (value is Map) {
-      return value.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?• 0));
+      return value.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0));
     }
     return {};
   }
 
-  static Map<String, dynamic>• _parseMapDynamic(dynamic value) {
+  static Map<String, dynamic>? _parseMapDynamic(dynamic value) {
     if (value == null) return null;
     if (value is Map) {
       return Map<String, dynamic>.from(value);
@@ -349,7 +349,7 @@ class FullSyncService {
 /// Resultado da sincronização
 class SyncResult {
   bool sucesso = false;
-  String• erro;
+  String? erro;
   int produtosSincronizados = 0;
   int clientesSincronizados = 0;
   int vendasSincronizadas = 0;

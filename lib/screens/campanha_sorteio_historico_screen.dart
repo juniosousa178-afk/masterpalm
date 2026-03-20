@@ -9,7 +9,7 @@ import '../utils/text_utils.dart';
 class CampanhaSorteioHistoricoScreen extends StatefulWidget {
   final String lojaId;
   final String campanhaId;
-  final String• nomeCampanha;
+  final String? nomeCampanha;
 
   const CampanhaSorteioHistoricoScreen({
     super.key,
@@ -106,7 +106,7 @@ class _CampanhaSorteioHistoricoScreenState
                 hintStyle: const TextStyle(color: Colors.white38),
                 prefixIcon: const Icon(Icons.search, color: Colors.white54),
                 suffixIcon: _searchQuery.isNotEmpty
-                    • IconButton(
+                    ? IconButton(
                         icon: const Icon(Icons.clear, color: Colors.white54),
                         onPressed: () {
                           _searchController.clear();
@@ -175,8 +175,8 @@ class _CampanhaSorteioHistoricoScreenState
         final filtered = docs.where((doc) {
           if (_searchQuery.isEmpty) return true;
           final data = doc.data() as Map<String, dynamic>;
-          final nome = (data['clienteNome'] ?• '').toString().toLowerCase();
-          final numero = (data['numeroSorte'] ?• '').toString().toLowerCase();
+          final nome = (data['clienteNome'] ?? '').toString().toLowerCase();
+          final numero = (data['numeroSorte'] ?? '').toString().toLowerCase();
           return nome.contains(_searchQuery) || numero.contains(_searchQuery);
         }).toList();
 
@@ -266,8 +266,8 @@ class _CampanhaSorteioHistoricoScreenState
         final filtered = docs.where((doc) {
           if (_searchQuery.isEmpty) return true;
           final data = doc.data() as Map<String, dynamic>;
-          final nome = (data['nomeCliente'] ?• '').toString().toLowerCase();
-          final numero = (data['numero'] ?• '').toString().toLowerCase();
+          final nome = (data['nomeCliente'] ?? '').toString().toLowerCase();
+          final numero = (data['numero'] ?? '').toString().toLowerCase();
           return nome.contains(_searchQuery) || numero.contains(_searchQuery);
         }).toList();
 
@@ -305,7 +305,7 @@ class _CampanhaSorteioHistoricoScreenState
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          '${filtered.length} vencedor${filtered.length > 1 • "es" : ""}',
+                          '${filtered.length} vencedor${filtered.length > 1 ? "es" : ""}',
                           style: const TextStyle(
                             color: Colors.amber,
                             fontSize: 13,
@@ -337,10 +337,10 @@ class _CampanhaSorteioHistoricoScreenState
 
   /// Card de participante
   Widget _buildParticipanteCard(Map<String, dynamic> data) {
-    final numero = data['numeroSorte'] ?• '-----';
-    final nome = data['clienteNome'] ?• 'Cliente não identificado';
-    final telefone = data['clienteTelefone'] ?• '';
-    final email = data['clienteEmail'] ?• '';
+    final numero = data['numeroSorte'] ?? '-----';
+    final nome = data['clienteNome'] ?? 'Cliente não identificado';
+    final telefone = data['clienteTelefone'] ?? '';
+    final email = data['clienteEmail'] ?? '';
     final valorPedido = data['valorPedido'] as num?;
     final dataParticipacao = (data['dataParticipacao'] as Timestamp?)?.toDate();
     final sorteado = data['sorteado'] == true;
@@ -351,7 +351,7 @@ class _CampanhaSorteioHistoricoScreenState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: sorteado
-            • const BorderSide(color: Colors.amber, width: 2)
+            ? const BorderSide(color: Colors.amber, width: 2)
             : BorderSide.none,
       ),
       child: Padding(
@@ -370,7 +370,7 @@ class _CampanhaSorteioHistoricoScreenState
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: sorteado
-                          • [Colors.amber.shade700, Colors.orange.shade700]
+                          ? [Colors.amber.shade700, Colors.orange.shade700]
                           : [Colors.greenAccent.shade700, Colors.green.shade700],
                     ),
                     borderRadius: BorderRadius.circular(10),
@@ -490,9 +490,9 @@ class _CampanhaSorteioHistoricoScreenState
 
   /// Card de vencedor
   Widget _buildVencedorCard(Map<String, dynamic> data) {
-    final numero = data['numero'] ?• '-----';
-    final nome = data['nomeCliente'] ?• 'Cliente não identificado';
-    final telefone = data['telefoneCliente'] ?• '';
+    final numero = data['numero'] ?? '-----';
+    final nome = data['nomeCliente'] ?? 'Cliente não identificado';
+    final telefone = data['telefoneCliente'] ?? '';
     final valorPedido = data['valorPedido'] as num?;
     final dataSorteio = (data['data'] as Timestamp?)?.toDate();
 
@@ -684,7 +684,7 @@ class _CampanhaSorteioHistoricoScreenState
     try {
       final isParticipantes = _tabController.index == 0;
       final snap = isParticipantes
-          • await FirebaseFirestore.instance
+          ? await FirebaseFirestore.instance
               .collection('lojas')
               .doc(widget.lojaId)
               .collection('campanhas_sorteio')
@@ -719,12 +719,12 @@ class _CampanhaSorteioHistoricoScreenState
           final d = doc.data();
           final ts = d['dataParticipacao'] as Timestamp?;
           buffer.writeln(
-            '${d['numeroSorte'] ?• ''};'
-            '${(d['clienteNome'] ?• '').toString().replaceAll(';', ',')};'
-            '${d['clienteTelefone'] ?• ''};'
-            '${d['clienteEmail'] ?• ''};'
-            '${(d['valorPedido'] as num?)?.toStringAsFixed(2) ?• ''};'
-            '${ts != null • '${ts.toDate().day.toString().padLeft(2, '0')}/${ts.toDate().month.toString().padLeft(2, '0')}/${ts.toDate().year}' : ''}',
+            '${d['numeroSorte'] ?? ''};'
+            '${(d['clienteNome'] ?? '').toString().replaceAll(';', ',')};'
+            '${d['clienteTelefone'] ?? ''};'
+            '${d['clienteEmail'] ?? ''};'
+            '${(d['valorPedido'] as num?)?.toStringAsFixed(2) ?? ''};'
+            '${ts != null ? '${ts.toDate().day.toString().padLeft(2, '0')}/${ts.toDate().month.toString().padLeft(2, '0')}/${ts.toDate().year}' : ''}',
           );
         }
       } else {
@@ -733,20 +733,20 @@ class _CampanhaSorteioHistoricoScreenState
           final d = doc.data();
           final ts = d['data'] as Timestamp?;
           buffer.writeln(
-            '${d['numero'] ?• ''};'
-            '${(d['nomeCliente'] ?• '').toString().replaceAll(';', ',')};'
-            '${d['telefoneCliente'] ?• ''};'
-            '${(d['valorPedido'] as num?)?.toStringAsFixed(2) ?• ''};'
-            '${ts != null • '${ts.toDate().day.toString().padLeft(2, '0')}/${ts.toDate().month.toString().padLeft(2, '0')}/${ts.toDate().year}' : ''}',
+            '${d['numero'] ?? ''};'
+            '${(d['nomeCliente'] ?? '').toString().replaceAll(';', ',')};'
+            '${d['telefoneCliente'] ?? ''};'
+            '${(d['valorPedido'] as num?)?.toStringAsFixed(2) ?? ''};'
+            '${ts != null ? '${ts.toDate().day.toString().padLeft(2, '0')}/${ts.toDate().month.toString().padLeft(2, '0')}/${ts.toDate().year}' : ''}',
           );
         }
       }
 
-      final nomeArquivo = isParticipantes • 'participantes' : 'vencedores';
+      final nomeArquivo = isParticipantes ? 'participantes' : 'vencedores';
       await SharePlus.instance.share(
         ShareParams(
           text: sanitizeForPlatform(buffer.toString()),
-          subject: sanitizeForPlatform('${widget.nomeCampanha ?• 'Campanha'} - $nomeArquivo'),
+          subject: sanitizeForPlatform('${widget.nomeCampanha ?? 'Campanha'} - $nomeArquivo'),
         ),
       );
     } catch (e) {
@@ -788,15 +788,15 @@ class _CampanhaSorteioHistoricoScreenState
     }
 
     final mensagem = '''
-?• *PARABÉNS, ${nome.split(' ').first}!* ??
+🎉 *PARABÉNS, ${nome.split(' ').first}!* 🎉
 
 Você foi o GRANDE VENCEDOR do nosso sorteio!
 
-?• *Número premiado:* $numero
+🏆 *Número premiado:* $numero
 
 Entre em contato conosco para retirar seu prêmio!
 
-?• Obrigado por participar!
+✨ Obrigado por participar!
 ''';
 
     final url =

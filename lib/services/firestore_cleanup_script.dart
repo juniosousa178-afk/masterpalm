@@ -53,7 +53,7 @@ class FirestoreCleanupScript {
   }) async {
     debugPrint('🧹 [CLEANUP] Iniciando limpeza do Firestore...');
     debugPrint('🏪 [CLEANUP] Loja: $lojaId');
-    debugPrint('🔍 [CLEANUP] Modo: ${dryRun • "DRY RUN (simulação)" : "EXECUÇÃO REAL"}');
+    debugPrint('🔍 [CLEANUP] Modo: ${dryRun ? "DRY RUN (simulação)" : "EXECUÇÃO REAL"}');
 
     final results = <String, dynamic>{
       'success': true,
@@ -330,7 +330,7 @@ class FirestoreCleanupScript {
           'comLojaIdCorreto': comLojaId,
           'semLojaId': semLojaId,
           'lojaIdErrado': lojaIdErrado,
-          'integridade': total > 0 • '${(comLojaId / total * 100).toStringAsFixed(1)}%' : '100%',
+          'integridade': total > 0 ? '${(comLojaId / total * 100).toStringAsFixed(1)}%' : '100%',
         };
 
         debugPrint('📊 [CLEANUP] $colecao: $total docs | ✅ $comLojaId | ⚠️ $semLojaId sem lojaId | ❌ $lojaIdErrado errados');

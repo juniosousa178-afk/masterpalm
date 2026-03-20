@@ -30,18 +30,18 @@ class SuperFreteService {
       final url = Uri.parse('$base/api/v8/calculator');
 
       debugPrint('━━━ [SuperFrete] DIAG INÍCIO ━━━');
-      debugPrint('[SuperFrete] Ambiente: ${useSandbox • "SANDBOX" : "PRODUÇÃO"}');
+      debugPrint('[SuperFrete] Ambiente: ${useSandbox ? "SANDBOX" : "PRODUÇÃO"}');
       debugPrint('[SuperFrete] URL completa: $url');
       debugPrint('[SuperFrete] Base: $base');
-      debugPrint('[SuperFrete] Token: ${token.length} chars, prefixo: ${token.length > 8 • "${token.substring(0, 8)}..." : "(curto)"}');
+      debugPrint('[SuperFrete] Token: ${token.length} chars, prefixo: ${token.length > 8 ? "${token.substring(0, 8)}..." : "(curto)"}');
       debugPrint('[SuperFrete] CEP Origem: $cepOrigem | Destino: $cepDestino');
       debugPrint('[SuperFrete] Peso: ${peso}g | Dimensões: ${altura}x${largura}x${comprimento}cm');
 
       // Dimensões mínimas do Mini Envios (Correios): alt 1cm, larg 10cm, comp 15cm
-      final alt = (altura < 1 • 1.0 : altura).toInt();
-      final lar = (largura < 10 • 10.0 : largura).toInt();
-      final comp = (comprimento < 15 • 15.0 : comprimento).toInt();
-      final pesoKg = (peso / 1000) < 0.3 • 0.3 : (peso / 1000);
+      final alt = (altura < 1 ? 1.0 : altura).toInt();
+      final lar = (largura < 10 ? 10.0 : largura).toInt();
+      final comp = (comprimento < 15 ? 15.0 : comprimento).toInt();
+      final pesoKg = (peso / 1000) < 0.3 ? 0.3 : (peso / 1000);
 
       final body = jsonEncode({
         'from': {
@@ -79,12 +79,12 @@ class SuperFreteService {
 
       debugPrint('━━━ [SuperFrete] DIAG RESPOSTA ━━━');
       debugPrint('[SuperFrete] Status: ${response.statusCode}');
-      debugPrint('[SuperFrete] Content-Type: ${response.headers['content-type'] ?• "(não informado)"}');
+      debugPrint('[SuperFrete] Content-Type: ${response.headers['content-type'] ?? "(não informado)"}');
       debugPrint('[SuperFrete] Tamanho body: ${response.body.length} chars');
       final inicio = response.body.trim().toLowerCase();
-      debugPrint('[SuperFrete] Início do body: "${inicio.length > 80 • "${inicio.substring(0, 80)}..." : inicio}"');
-      debugPrint('[SuperFrete] É HTML• ${inicio.startsWith('<!') || inicio.startsWith('<html')}');
-      debugPrint('[SuperFrete] É JSON• ${inicio.startsWith('[') || inicio.startsWith('{')}');
+      debugPrint('[SuperFrete] Início do body: "${inicio.length > 80 ? "${inicio.substring(0, 80)}..." : inicio}"');
+      debugPrint('[SuperFrete] É HTML? ${inicio.startsWith('<!') || inicio.startsWith('<html')}');
+      debugPrint('[SuperFrete] É JSON? ${inicio.startsWith('[') || inicio.startsWith('{')}');
       if (response.body.length < 500) {
         debugPrint('[SuperFrete] Body completo: ${response.body}');
       }
@@ -100,7 +100,7 @@ class SuperFreteService {
         debugPrint('[SuperFrete] URL que retornou HTML: $url');
         debugPrint('[SuperFrete] Possível causa: URL/rota incorreta ou token inválido para este ambiente.');
         final hint = useSandbox
-            • 'Token inválido ou API Sandbox indisponível. Verifique o token em sandbox.superfrete.com/#/integrations'
+            ? 'Token inválido ou API Sandbox indisponível. Verifique o token em sandbox.superfrete.com/#/integrations'
             : 'Resposta HTML recebida. Se o token é do Sandbox, ative "Usar Sandbox" nas configurações. URLs: Sandbox=sandbox.superfrete.com, Produção=api.superfrete.com';
         throw Exception('API SuperFrete retornou página web em vez de JSON. $hint');
       }
@@ -119,10 +119,10 @@ class SuperFreteService {
 
       for (var servico in data) {
         opcoes.add({
-          'nome': servico['name'] ?• 'Sem nome',
-          'preco': (servico['price'] ?• 0.0).toDouble(),
-          'prazo': servico['delivery_time'] ?• 0,
-          'empresa': servico['company']['name'] ?• 'SuperFrete',
+          'nome': servico['name'] ?? 'Sem nome',
+          'preco': (servico['price'] ?? 0.0).toDouble(),
+          'prazo': servico['delivery_time'] ?? 0,
+          'empresa': servico['company']['name'] ?? 'SuperFrete',
           'servico_id': servico['id'],
         });
       }
@@ -170,7 +170,7 @@ class SuperFreteService {
 
       return {
         'sucesso': true,
-        'eventos': data['tracking'] ?• [],
+        'eventos': data['tracking'] ?? [],
       };
     } catch (e) {
       debugPrint('❌ [SuperFrete] Erro no rastreio (type=${e.runtimeType})');
@@ -193,19 +193,19 @@ class SuperFreteService {
     required Map<String, dynamic> to,
     required Map<String, dynamic> package,
     required double valorDeclarado,
-    String• pedidoRef,
+    String? pedidoRef,
     bool useSandbox = false,
   }) async {
     try {
       debugPrint('[SuperFrete] Criando envio no carrinho...');
 
       final body = <String, dynamic>{
-        'service': servicoId is int • servicoId : int.tryParse(servicoId.toString()) ?• 0,
+        'service': servicoId is int ? servicoId : int.tryParse(servicoId.toString()) ?? 0,
         'from': from,
         'to': to,
         'package': package,
         'options': <String, dynamic>{
-          'insurance_value': valorDeclarado > 0 • valorDeclarado : 10.0,
+          'insurance_value': valorDeclarado > 0 ? valorDeclarado : 10.0,
           'receipt': false,
           'own_hand': false,
         },
@@ -232,7 +232,7 @@ class SuperFreteService {
         return {
           'sucesso': true,
           'id': data['id'],
-          'protocol': data['protocol'] ?• data['id'],
+          'protocol': data['protocol'] ?? data['id'],
           'message': 'Pedido adicionado ao carrinho da SuperFrete',
         };
       }
@@ -240,7 +240,7 @@ class SuperFreteService {
       String errorMsg = 'Erro ${response.statusCode}';
       try {
         final err = jsonDecode(response.body);
-        errorMsg = (err['message'] ?• err['error'] ?• err['errors'] ?• errorMsg).toString();
+        errorMsg = (err['message'] ?? err['error'] ?? err['errors'] ?? errorMsg).toString();
       } catch (_) {}
       return {'sucesso': false, 'erro': errorMsg};
     } catch (e) {

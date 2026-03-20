@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firestore_paths.dart';
 
 class ClientePortalRepository {
-  ClientePortalRepository({FirebaseFirestore• db})
-      : _db = db ?• FirebaseFirestore.instance;
+  ClientePortalRepository({FirebaseFirestore? db})
+      : _db = db ?? FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
 

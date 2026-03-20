@@ -15,14 +15,14 @@ class AdminPainelWeb extends StatefulWidget {
 class _AdminPainelWebState extends State<AdminPainelWeb> {
   List<Map<String, dynamic>> vendas = [];
   bool carregando = true;
-  String• _lojaId;
+  String? _lojaId;
 
   // Filtros
   final TextEditingController clienteController = TextEditingController();
   final TextEditingController formaPagamentoController =
       TextEditingController();
-  DateTime• dataInicio;
-  DateTime• dataFim;
+  DateTime? dataInicio;
+  DateTime? dataFim;
 
   @override
   void initState() {
@@ -57,10 +57,10 @@ class _AdminPainelWebState extends State<AdminPainelWeb> {
     final dados = snapshot.docs.map((doc) {
       final data = doc.data();
       return {
-        'cliente': data['clienteNome'] ?• data['cliente'] ?• '',
-        'total': (data['total'] as num?)?.toDouble() ?• 0.0,
-        'formaPagamento': data['formasPagamento'] ?• data['formaPagamento'] ?• '',
-        'data': (data['data'] as Timestamp?)?.toDate() ?• DateTime.now(),
+        'cliente': data['clienteNome'] ?? data['cliente'] ?? '',
+        'total': (data['total'] as num?)?.toDouble() ?? 0.0,
+        'formaPagamento': data['formasPagamento'] ?? data['formaPagamento'] ?? '',
+        'data': (data['data'] as Timestamp?)?.toDate() ?? DateTime.now(),
       };
     }).toList();
 
@@ -83,12 +83,12 @@ class _AdminPainelWebState extends State<AdminPainelWeb> {
 
     final dadosFiltrados = snapshot.docs.map((doc) {
       final data = doc.data();
-      final dataVenda = (data['data'] as Timestamp?)?.toDate() ?• DateTime.now();
+      final dataVenda = (data['data'] as Timestamp?)?.toDate() ?? DateTime.now();
 
       return {
-        'cliente': data['clienteNome'] ?• data['cliente'] ?• '',
-        'total': (data['total'] as num?)?.toDouble() ?• 0.0,
-        'formaPagamento': data['formasPagamento'] ?• data['formaPagamento'] ?• '',
+        'cliente': data['clienteNome'] ?? data['cliente'] ?? '',
+        'total': (data['total'] as num?)?.toDouble() ?? 0.0,
+        'formaPagamento': data['formasPagamento'] ?? data['formaPagamento'] ?? '',
         'data': dataVenda,
       };
     }).where((venda) {
@@ -102,9 +102,9 @@ class _AdminPainelWebState extends State<AdminPainelWeb> {
               venda['data'].isBefore(dataFim!.add(const Duration(days: 1))));
 
       final clienteOk = clienteFiltro.isEmpty ||
-          (venda['cliente']?.toString() ?• '').toLowerCase().contains(clienteFiltro);
+          (venda['cliente']?.toString() ?? '').toLowerCase().contains(clienteFiltro);
       final pagamentoOk = pagamentoFiltro.isEmpty ||
-          (venda['formaPagamento']?.toString() ?• '').toLowerCase().contains(pagamentoFiltro);
+          (venda['formaPagamento']?.toString() ?? '').toLowerCase().contains(pagamentoFiltro);
 
       return clienteOk && pagamentoOk && dentroData;
     }).toList();
@@ -154,7 +154,7 @@ class _AdminPainelWebState extends State<AdminPainelWeb> {
                   if (data != null) setState(() => dataInicio = data);
                 },
                 child: Text(dataInicio == null
-                    • 'Data Início'
+                    ? 'Data Início'
                     : DateFormat('dd/MM/yyyy').format(dataInicio!)),
               ),
             ),
@@ -171,7 +171,7 @@ class _AdminPainelWebState extends State<AdminPainelWeb> {
                   if (data != null) setState(() => dataFim = data);
                 },
                 child: Text(dataFim == null
-                    • 'Data Fim'
+                    ? 'Data Fim'
                     : DateFormat('dd/MM/yyyy').format(dataFim!)),
               ),
             ),
@@ -211,7 +211,7 @@ class _AdminPainelWebState extends State<AdminPainelWeb> {
         ],
         rows: vendas.map((venda) {
           return DataRow(cells: [
-            DataCell(Text(venda['cliente'] ?• '')),
+            DataCell(Text(venda['cliente'] ?? '')),
             DataCell(Text(DateFormat('dd/MM/yyyy').format(venda['data']))),
             DataCell(Text(venda['formaPagamento'])),
             DataCell(Text('R\$ ${venda['total'].toStringAsFixed(2)}')),

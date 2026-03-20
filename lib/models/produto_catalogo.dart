@@ -8,10 +8,10 @@ class ProdutoCatalogo extends HiveObject {
   String nome;
 
   @HiveField(1)
-  String• descricao;
+  String? descricao;
 
   @HiveField(2)
-  String• sobre;
+  String? sobre;
 
   @HiveField(3)
   List<String> tamanhos;
@@ -44,7 +44,7 @@ class ProdutoCatalogo extends HiveObject {
   String categoria;
 
   @HiveField(13)
-  String• subcategoria;
+  String? subcategoria;
 
   @HiveField(14)
   DateTime dataEntrada;
@@ -59,7 +59,7 @@ class ProdutoCatalogo extends HiveObject {
   List<String> cores;
 
   @HiveField(18)
-  Map<String, dynamic>• variacoes; // Estrutura: {tamanho: {cor: quantidade}}
+  Map<String, dynamic>? variacoes; // Estrutura: {tamanho: {cor: quantidade}}
 
   ProdutoCatalogo({
     required this.nome,
@@ -93,7 +93,7 @@ class ProdutoCatalogo extends HiveObject {
     final mapaTamanho = variacoes![tamanho];
     if (mapaTamanho == null || mapaTamanho is! Map) return 0;
 
-    return (mapaTamanho[cor] as num?)?.toInt() ?• 0;
+    return (mapaTamanho[cor] as num?)?.toInt() ?? 0;
   }
 
   /// Obtém todas as cores disponíveis para um tamanho específico
@@ -104,7 +104,7 @@ class ProdutoCatalogo extends HiveObject {
     if (mapaTamanho == null || mapaTamanho is! Map) return [];
 
     return mapaTamanho.keys
-        .where((cor) => ((mapaTamanho[cor] as num?)?.toInt() ?• 0) > 0)
+        .where((cor) => ((mapaTamanho[cor] as num?)?.toInt() ?? 0) > 0)
         .cast<String>()
         .toList();
   }

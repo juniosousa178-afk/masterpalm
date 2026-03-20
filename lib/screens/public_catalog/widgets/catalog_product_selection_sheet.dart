@@ -9,14 +9,14 @@ import '../../../widgets/smart_image.dart';
 class CatalogProductSelectionSheet extends StatefulWidget {
   final String name;
   final double price;
-  final double• precoOriginal;
+  final double? precoOriginal;
   final bool emPromocao;
   final String imageUrl;
   final Map<String, int> estoquePorTamanho;
   final Map<String, int> estoquePorCor;
-  final Map<String, dynamic>• variacoes;
-  final Map<String, double>• precoPorTamanho;
-  final void Function(String• tamanho, String• cor, double preco) onAddToCart;
+  final Map<String, dynamic>? variacoes;
+  final Map<String, double>? precoPorTamanho;
+  final void Function(String? tamanho, String? cor, double preco) onAddToCart;
   final double percentualDescontoPix;
   /// Se true, exibe "X un."; se false, exibe "Disponível" (como no botão Ver).
   final bool mostrarQuantidadeNoCatalogo;
@@ -44,8 +44,8 @@ class CatalogProductSelectionSheet extends StatefulWidget {
 
 class _CatalogProductSelectionSheetState
     extends State<CatalogProductSelectionSheet> {
-  String• _tamanhoSelecionado;
-  String• _corSelecionada;
+  String? _tamanhoSelecionado;
+  String? _corSelecionada;
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
@@ -73,7 +73,7 @@ class _CatalogProductSelectionSheetState
         if (cores is Map) {
           int total = 0;
           cores.forEach((_, qtd) {
-            total += asNum(qtd)?.toInt() ?• 0;
+            total += asNum(qtd)?.toInt() ?? 0;
           });
           if (total > 0) {
             result[tamanho.toString()] = total;
@@ -90,14 +90,14 @@ class _CatalogProductSelectionSheetState
       final semTam = widget.variacoes!['sem-tamanho'];
       if (semTam is Map && semTam.isNotEmpty) {
         return Map<String, int>.from(semTam.map((key, value) =>
-            MapEntry(key.toString(), asNum(value)?.toInt() ?• 0)));
+            MapEntry(key.toString(), asNum(value)?.toInt() ?? 0)));
       }
     }
     if (widget.variacoes != null && _tamanhoSelecionado != null) {
       final mapaTamanho = widget.variacoes![_tamanhoSelecionado];
       if (mapaTamanho is Map) {
         return Map<String, int>.from(mapaTamanho.map((key, value) =>
-            MapEntry(key.toString(), asNum(value)?.toInt() ?• 0)));
+            MapEntry(key.toString(), asNum(value)?.toInt() ?? 0)));
       }
     }
     return widget.estoquePorCor;
@@ -148,7 +148,7 @@ class _CatalogProductSelectionSheetState
       'terracota': Color(0xFFE2725B),
       'ferrugem': Color(0xFFB7410E),
     };
-    return coresMap[nome.toLowerCase()] ?• Colors.grey;
+    return coresMap[nome.toLowerCase()] ?? Colors.grey;
   }
 
   @override
@@ -367,7 +367,7 @@ class _CatalogProductSelectionSheetState
 
                         return InkWell(
                           onTap: hasStock
-                              • () => setState(() {
+                              ? () => setState(() {
                                     _tamanhoSelecionado = tamanho;
                                     if (widget.variacoes != null) {
                                       _corSelecionada = null;
@@ -381,21 +381,21 @@ class _CatalogProductSelectionSheetState
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
                               color: !hasStock
-                                  • Colors.grey.withValues(alpha:0.1)
+                                  ? Colors.grey.withValues(alpha:0.1)
                                   : isSelected
-                                      • theme.colorScheme.primary
+                                      ? theme.colorScheme.primary
                                       : Colors.white.withValues(alpha:0.05),
                               border: Border.all(
                                 color: !hasStock
-                                    • Colors.grey.withValues(alpha:0.3)
+                                    ? Colors.grey.withValues(alpha:0.3)
                                     : isSelected
-                                        • theme.colorScheme.primary
+                                        ? theme.colorScheme.primary
                                         : Colors.white.withValues(alpha:0.2),
-                                width: isSelected • 2 : 1,
+                                width: isSelected ? 2 : 1,
                               ),
                               borderRadius: BorderRadius.circular(10),
                               boxShadow: isSelected
-                                  • [
+                                  ? [
                                       BoxShadow(
                                         color: theme.colorScheme.primary
                                             .withValues(alpha:0.3),
@@ -414,21 +414,21 @@ class _CatalogProductSelectionSheetState
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
                                     color: !hasStock
-                                        • Colors.grey
+                                        ? Colors.grey
                                         : isSelected
-                                            • Colors.white
+                                            ? Colors.white
                                             : theme.textTheme.bodyLarge?.color,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  hasStock • (widget.mostrarQuantidadeNoCatalogo • '$qtd un.' : 'Disponível') : 'Esgotado',
+                                  hasStock ? (widget.mostrarQuantidadeNoCatalogo ? '$qtd un.' : 'Disponível') : 'Esgotado',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: !hasStock
-                                        • Colors.grey
+                                        ? Colors.grey
                                         : isSelected
-                                            • Colors.white
+                                            ? Colors.white
                                                 .withValues(alpha:0.8)
                                             : Colors.grey[500],
                                   ),
@@ -442,9 +442,9 @@ class _CatalogProductSelectionSheetState
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
                                       color: !hasStock
-                                          • Colors.grey
+                                          ? Colors.grey
                                           : isSelected
-                                              • Colors.white
+                                              ? Colors.white
                                               : theme.colorScheme.primary,
                                     ),
                                   ),
@@ -564,7 +564,7 @@ class _CatalogProductSelectionSheetState
 
                           return InkWell(
                             onTap: hasStock
-                                • () => setState(() => _corSelecionada = cor)
+                                ? () => setState(() => _corSelecionada = cor)
                                 : null,
                             borderRadius: BorderRadius.circular(10),
                             child: AnimatedContainer(
@@ -575,22 +575,22 @@ class _CatalogProductSelectionSheetState
                               ),
                               decoration: BoxDecoration(
                                 color: !hasStock
-                                    • Colors.grey.withValues(alpha:0.1)
+                                    ? Colors.grey.withValues(alpha:0.1)
                                     : isSelected
-                                        • theme.colorScheme.primary
+                                        ? theme.colorScheme.primary
                                         : Colors.white.withValues(alpha:0.05),
                                 border: Border.all(
                                   color: !hasStock
-                                      • Colors.grey.withValues(alpha:0.3)
+                                      ? Colors.grey.withValues(alpha:0.3)
                                       : isSelected
-                                          • theme.colorScheme.primary
+                                          ? theme.colorScheme.primary
                                           : Colors.white
                                               .withValues(alpha:0.2),
-                                  width: isSelected • 2 : 1,
+                                  width: isSelected ? 2 : 1,
                                 ),
                                 borderRadius: BorderRadius.circular(10),
                                 boxShadow: isSelected
-                                    • [
+                                    ? [
                                         BoxShadow(
                                           color: theme.colorScheme.primary
                                               .withValues(alpha:0.3),
@@ -611,7 +611,7 @@ class _CatalogProductSelectionSheetState
                                       shape: BoxShape.circle,
                                       border: Border.all(
                                         color: isLight
-                                            • Colors.grey.shade400
+                                            ? Colors.grey.shade400
                                             : Colors.white
                                                 .withValues(alpha:0.3),
                                         width: 2,
@@ -626,19 +626,19 @@ class _CatalogProductSelectionSheetState
                                       ],
                                     ),
                                     child: !hasStock
-                                        • Icon(
+                                        ? Icon(
                                             Icons.close,
                                             size: 14,
                                             color: isLight
-                                                • Colors.black54
+                                                ? Colors.black54
                                                 : Colors.white54,
                                           )
                                         : isSelected
-                                            • Icon(
+                                            ? Icon(
                                                 Icons.check,
                                                 size: 14,
                                                 color: isLight
-                                                    • Colors.black
+                                                    ? Colors.black
                                                     : Colors.white,
                                               )
                                             : null,
@@ -654,21 +654,21 @@ class _CatalogProductSelectionSheetState
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
                                           color: !hasStock
-                                              • Colors.grey
+                                              ? Colors.grey
                                               : isSelected
-                                                  • Colors.white
+                                                  ? Colors.white
                                                   : theme.textTheme.bodyLarge
                                                       ?.color,
                                         ),
                                       ),
                                       Text(
-                                        hasStock • (widget.mostrarQuantidadeNoCatalogo • '$qtd un.' : 'Disponível') : 'Esgotado',
+                                        hasStock ? (widget.mostrarQuantidadeNoCatalogo ? '$qtd un.' : 'Disponível') : 'Esgotado',
                                         style: TextStyle(
                                           fontSize: 10,
                                           color: !hasStock
-                                              • Colors.grey
+                                              ? Colors.grey
                                               : isSelected
-                                                  • Colors.white
+                                                  ? Colors.white
                                                       .withValues(alpha:0.8)
                                                   : Colors.grey[500],
                                         ),
@@ -683,9 +683,9 @@ class _CatalogProductSelectionSheetState
                                             fontSize: 11,
                                             fontWeight: FontWeight.w700,
                                             color: !hasStock
-                                                • Colors.grey
+                                                ? Colors.grey
                                                 : isSelected
-                                                    • Colors.white
+                                                    ? Colors.white
                                                     : theme.colorScheme.primary,
                                           ),
                                         ),
@@ -746,23 +746,23 @@ class _CatalogProductSelectionSheetState
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _podeAdicionar
-                            • theme.colorScheme.primary
+                            ? theme.colorScheme.primary
                             : Colors.grey.shade600,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        elevation: _podeAdicionar • 4 : 0,
+                        elevation: _podeAdicionar ? 4 : 0,
                         shadowColor: theme.colorScheme.primary
                             .withValues(alpha:0.4),
                       ),
                       onPressed: _podeAdicionar
-                          • () => widget.onAddToCart(
+                          ? () => widget.onAddToCart(
                               _tamanhoSelecionado, _corSelecionada, _precoAtual)
                           : null,
                       icon: Icon(
                         _podeAdicionar
-                            • Icons.shopping_cart_checkout
+                            ? Icons.shopping_cart_checkout
                             : Icons.touch_app,
                         size: 22,
                       ),

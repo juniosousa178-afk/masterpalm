@@ -17,12 +17,12 @@ class PagSeguroService {
     required String token,
     required List<Map<String, dynamic>> itens,
     required Map<String, dynamic> customer,
-    double• freteValor,
-    String• referencia,
+    double? freteValor,
+    String? referencia,
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.post(
         Uri.parse('$baseUrl/orders'),
@@ -31,7 +31,7 @@ class PagSeguroService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'reference_id': referencia ?• DateTime.now().millisecondsSinceEpoch.toString(),
+          'reference_id': referencia ?? DateTime.now().millisecondsSinceEpoch.toString(),
           'customer': customer,
           'items': itens.map((item) => {
             'reference_id': item['id'],
@@ -69,12 +69,12 @@ class PagSeguroService {
     required double valor,
     required String descricao,
     required Map<String, dynamic> customer,
-    String• referencia,
-    int• expiracaoSegundos,
+    String? referencia,
+    int? expiracaoSegundos,
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.post(
         Uri.parse('$baseUrl/charges'),
@@ -84,7 +84,7 @@ class PagSeguroService {
           'x-idempotency-key': DateTime.now().millisecondsSinceEpoch.toString(),
         },
         body: jsonEncode({
-          'reference_id': referencia ?• DateTime.now().millisecondsSinceEpoch.toString(),
+          'reference_id': referencia ?? DateTime.now().millisecondsSinceEpoch.toString(),
           'description': descricao,
           'amount': {
             'value': (valor * 100).toInt(), // em centavos
@@ -134,7 +134,7 @@ class PagSeguroService {
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.get(
         Uri.parse('$baseUrl/charges/$chargeId'),
@@ -169,7 +169,7 @@ class PagSeguroService {
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.post(
         Uri.parse('$baseUrl/charges/$chargeId/cancel'),
@@ -198,7 +198,7 @@ class PagSeguroService {
     bool sandbox = false,
   }) async {
     try {
-      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
 
       final response = await http.get(
         Uri.parse('$baseUrl/public-keys/card'),
@@ -219,7 +219,7 @@ class PagSeguroService {
     required String nome,
     required String email,
     required String cpf,
-    String• telefone,
+    String? telefone,
   }) {
     return {
       'name': nome,

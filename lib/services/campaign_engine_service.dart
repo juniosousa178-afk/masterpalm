@@ -25,11 +25,11 @@ class Participacao {
   final String id;
   final String campanhaId;
   final String numero; // 5 dígitos: "12345"
-  final String• vendaId;
-  final String• clienteId;
+  final String? vendaId;
+  final String? clienteId;
   final String nomeCliente;
-  final String• telefone;
-  final String• email;
+  final String? telefone;
+  final String? email;
   final double totalVenda;
   final String origem; // "catalogo" | "manual"
   final DateTime criadoEm;
@@ -55,29 +55,29 @@ class Participacao {
   });
 
   factory Participacao.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?• {};
+    final data = doc.data() ?? {};
     return Participacao(
       id: doc.id,
-      campanhaId: data['campanhaId']?.toString() ?• '',
+      campanhaId: data['campanhaId']?.toString() ?? '',
       // Compatível com NumeroSorteService (numeroSorte) e legado (numero)
-      numero: data['numeroSorte']?.toString() ?• data['numero']?.toString() ?• '',
+      numero: data['numeroSorte']?.toString() ?? data['numero']?.toString() ?? '',
       // Compatível com NumeroSorteService (pedidoId) e legado (vendaId)
-      vendaId: data['pedidoId']?.toString() ?• data['vendaId']?.toString(),
+      vendaId: data['pedidoId']?.toString() ?? data['vendaId']?.toString(),
       clienteId: data['clienteId']?.toString(),
       // Compatível com NumeroSorteService (clienteNome) e legado (nomeCliente)
-      nomeCliente: data['clienteNome']?.toString() ?• data['nomeCliente']?.toString() ?• '',
+      nomeCliente: data['clienteNome']?.toString() ?? data['nomeCliente']?.toString() ?? '',
       // Compatível com NumeroSorteService (clienteTelefone) e legado (telefone)
-      telefone: data['clienteTelefone']?.toString() ?• data['telefone']?.toString(),
+      telefone: data['clienteTelefone']?.toString() ?? data['telefone']?.toString(),
       // Compatível com NumeroSorteService (clienteEmail) e legado (email)
-      email: data['clienteEmail']?.toString() ?• data['email']?.toString(),
+      email: data['clienteEmail']?.toString() ?? data['email']?.toString(),
       // Compatível com NumeroSorteService (valorPedido) e legado (totalVenda)
       totalVenda: (data['valorPedido'] as num?)?.toDouble() ??
-                  (data['totalVenda'] as num?)?.toDouble() ?• 0.0,
-      origem: data['origem']?.toString() ?• 'manual',
+                  (data['totalVenda'] as num?)?.toDouble() ?? 0.0,
+      origem: data['origem']?.toString() ?? 'manual',
       // Compatível com NumeroSorteService (dataParticipacao) e legado (criadoEm)
       criadoEm: (data['dataParticipacao'] as Timestamp?)?.toDate() ??
-                (data['criadoEm'] as Timestamp?)?.toDate() ?• DateTime.now(),
-      status: data['status']?.toString() ?• 'valido',
+                (data['criadoEm'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      status: data['status']?.toString() ?? 'valido',
       mensagemEnviadaWhatsApp: data['mensagemEnviadaWhatsApp'] == true,
       mensagemEnviadaEmail: data['mensagemEnviadaEmail'] == true,
     );
@@ -106,11 +106,11 @@ class Participacao {
 /// Resultado da operação de participação
 class ParticipacaoResult {
   final bool sucesso;
-  final String• numero;
-  final String• campanhaId;
-  final String• campanhaNome;
-  final String• erro;
-  final Participacao• participacao;
+  final String? numero;
+  final String? campanhaId;
+  final String? campanhaNome;
+  final String? erro;
+  final Participacao? participacao;
 
   ParticipacaoResult({
     required this.sucesso,
@@ -160,15 +160,15 @@ class CampaignEngineService {
   /// [nomeLoja] - Nome da loja (para mensagens)
   static Future<ParticipacaoResult> onVendaConcluida({
     required String lojaId,
-    Venda• venda,
-    String• vendaId,
-    String• clienteNome,
-    String• clienteId,
-    String• telefone,
-    String• email,
-    double• valorTotal,
+    Venda? venda,
+    String? vendaId,
+    String? clienteNome,
+    String? clienteId,
+    String? telefone,
+    String? email,
+    double? valorTotal,
     String origem = 'manual',
-    String• nomeLoja,
+    String? nomeLoja,
   }) async {
     logD('');
     logD('═══════════════════════════════════════════════════════════');
@@ -182,9 +182,9 @@ class CampaignEngineService {
 
     try {
       // Extrair dados da venda se fornecida
-      final idVenda = vendaId ?• venda?.key?.toString() ?• venda?.idFirebase ?• '';
-      final nome = clienteNome ?• venda?.clienteNome ?• 'Cliente';
-      final valor = valorTotal ?• venda?.total ?• 0.0;
+      final idVenda = vendaId ?? venda?.key?.toString() ?? venda?.idFirebase ?? '';
+      final nome = clienteNome ?? venda?.clienteNome ?? 'Cliente';
+      final valor = valorTotal ?? venda?.total ?? 0.0;
 
       if (idVenda.isEmpty) {
         logW('⚠️ [CampaignEngine] vendaId vazio, usando timestamp');
@@ -211,8 +211,8 @@ class CampaignEngineService {
       }
 
       final campanhaId = campanha['id'] as String;
-      final campanhaNome = campanha['nome']?.toString() ?• campanha['titulo']?.toString() ?• 'Campanha';
-      final valorMinimo = (campanha['valorMinimo'] as num?)?.toDouble() ?• 0.0;
+      final campanhaNome = campanha['nome']?.toString() ?? campanha['titulo']?.toString() ?? 'Campanha';
+      final valorMinimo = (campanha['valorMinimo'] as num?)?.toDouble() ?? 0.0;
       final dataSorteio = (campanha['dataSorteio'] as Timestamp?)?.toDate() ??
                           (campanha['dataFim'] as Timestamp?)?.toDate();
 
@@ -266,7 +266,7 @@ class CampaignEngineService {
         email: email,
         campanhaNome: campanhaNome,
         dataSorteio: dataSorteio,
-        nomeLoja: nomeLoja ?• lojaId,
+        nomeLoja: nomeLoja ?? lojaId,
       );
 
       return ParticipacaoResult(
@@ -338,7 +338,7 @@ class CampaignEngineService {
         logD('   ✅ dentroDoInicio=$dentroDoInicio, dentroDoFim=$dentroDoFim');
 
         if (dentroDoInicio && dentroDoFim) {
-          logD('✅ [CampaignEngine] Campanha ativa encontrada: ${doc.id} - ${data['nome'] ?• data['titulo']}');
+          logD('✅ [CampaignEngine] Campanha ativa encontrada: ${doc.id} - ${data['nome'] ?? data['titulo']}');
           return {
             'id': doc.id,
             ...data,
@@ -469,10 +469,10 @@ class CampaignEngineService {
     required String participacaoId,
     required String numero,
     required String clienteNome,
-    String• telefone,
-    String• email,
+    String? telefone,
+    String? email,
     required String campanhaNome,
-    DateTime• dataSorteio,
+    DateTime? dataSorteio,
     required String nomeLoja,
   }) async {
     // Não bloqueia o fluxo principal
@@ -539,12 +539,12 @@ class CampaignEngineService {
     required String clienteNome,
     required String numero,
     required String campanhaNome,
-    DateTime• dataSorteio,
+    DateTime? dataSorteio,
     required String nomeLoja,
   }) async {
     final primeiroNome = clienteNome.split(' ').first;
     final dataFormatada = dataSorteio != null
-        • '${dataSorteio.day.toString().padLeft(2, '0')}/${dataSorteio.month.toString().padLeft(2, '0')}/${dataSorteio.year}'
+        ? '${dataSorteio.day.toString().padLeft(2, '0')}/${dataSorteio.month.toString().padLeft(2, '0')}/${dataSorteio.year}'
         : 'Em breve';
     final dataParticipacao = '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}';
 
@@ -566,7 +566,7 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
 
     // Limpar telefone
     final telefoneLimpo = telefone.replaceAll(RegExp(r'[^\d]'), '');
-    final telefoneFormatado = telefoneLimpo.startsWith('55') • telefoneLimpo : '55$telefoneLimpo';
+    final telefoneFormatado = telefoneLimpo.startsWith('55') ? telefoneLimpo : '55$telefoneLimpo';
 
     final uri = Uri.parse('https://wa.me/$telefoneFormatado?text=${Uri.encodeComponent(mensagem)}');
 
@@ -584,12 +584,12 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
     required String clienteNome,
     required String numero,
     required String campanhaNome,
-    DateTime• dataSorteio,
+    DateTime? dataSorteio,
     required String nomeLoja,
   }) async {
     final primeiroNome = clienteNome.split(' ').first;
     final dataFormatada = dataSorteio != null
-        • '${dataSorteio.day.toString().padLeft(2, '0')}/${dataSorteio.month.toString().padLeft(2, '0')}/${dataSorteio.year}'
+        ? '${dataSorteio.day.toString().padLeft(2, '0')}/${dataSorteio.month.toString().padLeft(2, '0')}/${dataSorteio.year}'
         : 'Em breve';
 
     final assunto = 'Confirmacao de participacao - Campanha $campanhaNome';
@@ -791,7 +791,7 @@ Fale com a gente por aqui para combinarmos os proximos passos.
     );
 
     final telefoneLimpo = telefone.replaceAll(RegExp(r'[^\d]'), '');
-    final telefoneFormatado = telefoneLimpo.startsWith('55') • telefoneLimpo : '55$telefoneLimpo';
+    final telefoneFormatado = telefoneLimpo.startsWith('55') ? telefoneLimpo : '55$telefoneLimpo';
 
     final uri = Uri.parse('https://wa.me/$telefoneFormatado?text=${Uri.encodeComponent(mensagem)}');
 

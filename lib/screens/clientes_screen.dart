@@ -69,17 +69,17 @@ class _ClientesScreenState extends State<ClientesScreen>
   final TextEditingController _enderecoController = TextEditingController();
 
   // Avatar temporário do diálogo
-  Uint8List• _novoAvatarBytes;
+  Uint8List? _novoAvatarBytes;
 
   late Box<Cliente> clientesBox;
   late Box<Venda> vendasBox;
 
-  String• lojaId;
+  String? lojaId;
   String filtro = '';
   bool _carregando = true;
   bool _erroResolucaoLoja = false;
   bool _erroHiveCacheLocal = false;
-  String• _erroHiveCacheDetalhe;
+  String? _erroHiveCacheDetalhe;
   /// FASE 3: true quando sync em background falhou (lista local permanece; usuário vê aviso)
   bool _syncFalhou = false;
   bool _importando = false;
@@ -87,16 +87,16 @@ class _ClientesScreenState extends State<ClientesScreen>
   bool _reparando = false;
   bool _sincronizando = false;
   bool _enviandoClientes = false;
-  bool• _temDadosParaImportar; // null = ainda não verificou
-  Timer• _filtroDebounce;
+  bool? _temDadosParaImportar; // null = ainda não verificou
+  Timer? _filtroDebounce;
   static const _filtroDebounceDuration = Duration(milliseconds: 300);
 
   // TabController para as abas
   late TabController _tabController;
 
   // Filtros para histórico
-  DateTime• dataInicial;
-  DateTime• dataFinal;
+  DateTime? dataInicial;
+  DateTime? dataFinal;
   String filtroNomeHistorico = '';
   String ordenacaoClientes = 'alfabetica'; // alfabetica | alfabetica_desc | data
   String ordenacaoHistorico = 'data_desc'; // data_desc | data_asc | cliente_asc | cliente_desc
@@ -109,7 +109,7 @@ class _ClientesScreenState extends State<ClientesScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         logD(
-          '[CLIENTES_LIFECYCLE] initState postFrame route=${ModalRoute.of(context)?.settings.name ?• "null"}',
+          '[CLIENTES_LIFECYCLE] initState postFrame route=${ModalRoute.of(context)?.settings.name ?? "null"}',
         );
       });
     }
@@ -139,7 +139,7 @@ class _ClientesScreenState extends State<ClientesScreen>
     super.didChangeDependencies();
     if (kIsWeb) {
       logD(
-        '[CLIENTES_LIFECYCLE] didChangeDependencies route=${ModalRoute.of(context)?.settings.name ?• "null"} uri=${Uri.base}',
+        '[CLIENTES_LIFECYCLE] didChangeDependencies route=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${Uri.base}',
       );
     }
     final route = ModalRoute.of(context);
@@ -194,11 +194,11 @@ class _ClientesScreenState extends State<ClientesScreen>
     if (kDebugMode) {
       final user = FirebaseAuth.instance.currentUser;
       logD('[CLIENTES_INIT] inicio _init');
-      logD('[CLIENTES_INIT] auth uid=${user?.uid ?• "null"} email=${user?.email ?• "null"}');
-      logD('[CLIENTES_INIT] rota=${ModalRoute.of(context)?.settings.name ?• "null"} uri=${kIsWeb • Uri.base.toString() : "n/a"}');
+      logD('[CLIENTES_INIT] auth uid=${user?.uid ?? "null"} email=${user?.email ?? "null"}');
+      logD('[CLIENTES_INIT] rota=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${kIsWeb ? Uri.base.toString() : "n/a"}');
       try {
-        final sessao = Hive.isBoxOpen('sessao') • Hive.box('sessao') : await Hive.openBox('sessao');
-        final cfg = Hive.isBoxOpen('config') • Hive.box('config') : await Hive.openBox('config');
+        final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
+        final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
         logD('[CLIENTES_INIT] sessao.store_id=${sessao.get("store_id")} config.store_id=${cfg.get("store_id")} usuario_logado_email=${sessao.get("usuario_logado_email")} usuario_logado=${sessao.get("usuario_logado")}');
       } catch (e) {
         logW('[CLIENTES_INIT] leitura sessao/config falhou (type=${e.runtimeType})');
@@ -214,8 +214,8 @@ class _ClientesScreenState extends State<ClientesScreen>
 
     logD('[LOJAID] origem=Clientes._init antes LojaIdService.getWithTimeout');
     lojaId = await LojaIdService.getWithTimeout(
-        timeout: kIsWeb • const Duration(seconds: 25) : const Duration(seconds: 10));
-    logD('[LOJAID] origem=Clientes._init depois LojaIdService.getWithTimeout valor=${lojaId ?• "null"}');
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
+    logD('[LOJAID] origem=Clientes._init depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
       if (kDebugMode) logD('[STORE-RESOLVE] Clientes: lojaId null, tentando retry em 2s');
@@ -223,8 +223,8 @@ class _ClientesScreenState extends State<ClientesScreen>
       if (!mounted) return;
       logD('[LOJAID] origem=Clientes._init retry antes LojaIdService.getWithTimeout');
       lojaId = await LojaIdService.getWithTimeout(
-          timeout: kIsWeb • const Duration(seconds: 15) : const Duration(seconds: 8));
-      logD('[LOJAID] origem=Clientes._init retry depois LojaIdService.getWithTimeout valor=${lojaId ?• "null"}');
+          timeout: kIsWeb ? const Duration(seconds: 15) : const Duration(seconds: 8));
+      logD('[LOJAID] origem=Clientes._init retry depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
     }
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
@@ -239,14 +239,14 @@ class _ClientesScreenState extends State<ClientesScreen>
           logD('[LOJAID] origem=Clientes._init authWait antes LojaIdService.getWithTimeout');
           lojaId = await LojaIdService.getWithTimeout(
               timeout: const Duration(seconds: 12));
-          logD('[LOJAID] origem=Clientes._init authWait depois LojaIdService.getWithTimeout valor=${lojaId ?• "null"}');
+          logD('[LOJAID] origem=Clientes._init authWait depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
         } catch (e) {
           logW('[CLIENTES_INIT] auth wait/retry falhou (type=${e.runtimeType})');
         }
       }
       if (!mounted) return;
       if (lojaId == null || lojaId!.trim().isEmpty) {
-        logW('[ERRO_LOJA] origem=Clientes._init motivo=lojaId null/vazio apos retries authUid=${FirebaseAuth.instance.currentUser?.uid ?• "null"} authEmail=${FirebaseAuth.instance.currentUser?.email ?• "null"}');
+        logW('[ERRO_LOJA] origem=Clientes._init motivo=lojaId null/vazio apos retries authUid=${FirebaseAuth.instance.currentUser?.uid ?? "null"} authEmail=${FirebaseAuth.instance.currentUser?.email ?? "null"}');
         if (mounted) {
           setState(() {
             _carregando = false;
@@ -285,8 +285,8 @@ class _ClientesScreenState extends State<ClientesScreen>
     final clientesBoxName = HiveBoxNames.clientes(lojaId!);
     final vendasBoxName = HiveBoxNames.vendas(lojaId!);
 
-    Object• clientesBoxError;
-    Object• vendasBoxError;
+    Object? clientesBoxError;
+    Object? vendasBoxError;
 
     logD(
       '[HIVE_BOX] adapters registradas Cliente(typeId=0)=${Hive.isAdapterRegistered(0)} Venda(typeId=1)=${Hive.isAdapterRegistered(1)}',
@@ -345,7 +345,7 @@ class _ClientesScreenState extends State<ClientesScreen>
           _erroResolucaoLoja = false;
           _erroHiveCacheLocal = true;
           _erroHiveCacheDetalhe =
-              '$clientesBoxName${vendasBoxError != null • ' + $vendasBoxName' : ''}';
+              '$clientesBoxName${vendasBoxError != null ? ' + $vendasBoxName' : ''}';
         });
       }
       return;
@@ -474,7 +474,7 @@ class _ClientesScreenState extends State<ClientesScreen>
       await _verificarSeTemDadosParaImportar();
       if (!mounted) return;
       final msg = n > 0
-          • 'Baixados $n novo(s) cliente(s)'
+          ? 'Baixados $n novo(s) cliente(s)'
           : 'Nenhum cliente novo encontrado';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -568,7 +568,7 @@ class _ClientesScreenState extends State<ClientesScreen>
     final parts = t.split(' ');
     if (parts.isEmpty || parts.first.isEmpty) return '?';
     if (parts.length == 1) {
-      return parts[0].isEmpty • '?' : parts[0][0].toUpperCase();
+      return parts[0].isEmpty ? '?' : parts[0][0].toUpperCase();
     }
     final last = parts[parts.length - 1];
     if (parts[0].isEmpty || last.isEmpty) return '?';
@@ -588,7 +588,7 @@ class _ClientesScreenState extends State<ClientesScreen>
       const Color(0xFF06B6D4), // Cyan
       const Color(0xFF3B82F6), // Blue
     ];
-    final index = name.isEmpty • 0 : name.codeUnitAt(0) % colors.length;
+    final index = name.isEmpty ? 0 : name.codeUnitAt(0) % colors.length;
     return colors[index];
   }
 
@@ -611,7 +611,7 @@ class _ClientesScreenState extends State<ClientesScreen>
 
   Future<void> _pickAvatarFromGallery(StateSetter setStateDialog) async {
     final picker = ImagePicker();
-    final XFile• img =
+    final XFile? img =
         await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
     if (img != null) {
       _novoAvatarBytes = await img.readAsBytes();
@@ -695,8 +695,8 @@ class _ClientesScreenState extends State<ClientesScreen>
     _instagramController.text = cliente.instagram;
     _cepController.text = cliente.cep;
     _cidadeController.text = cliente.cidade;
-    _emailController.text = cliente.email ?• '';
-    _enderecoController.text = cliente.endereco ?• '';
+    _emailController.text = cliente.email ?? '';
+    _enderecoController.text = cliente.endereco ?? '';
 
     showModalBottomSheet(
       context: context,
@@ -818,10 +818,10 @@ class _ClientesScreenState extends State<ClientesScreen>
                     cliente.cep = _cepController.text.trim();
                     cliente.cidade = _cidadeController.text.trim();
                     cliente.email = _emailController.text.trim().isEmpty
-                        • null
+                        ? null
                         : _emailController.text.trim();
                     cliente.endereco = _enderecoController.text.trim().isEmpty
-                        • null
+                        ? null
                         : _enderecoController.text.trim();
 
                     if (cliente.lojaId.isEmpty) {
@@ -861,7 +861,7 @@ class _ClientesScreenState extends State<ClientesScreen>
     required TextEditingController controller,
     required String label,
     required IconData icon,
-    TextInputType• keyboardType,
+    TextInputType? keyboardType,
   }) {
     return TextField(
       controller: controller,
@@ -893,7 +893,7 @@ class _ClientesScreenState extends State<ClientesScreen>
           if (item.tamanho.isNotEmpty) item.tamanho,
           if (item.cor.isNotEmpty) item.cor,
         ].join(' / ');
-        final suf = variacao.isNotEmpty • ' ($variacao)' : '';
+        final suf = variacao.isNotEmpty ? ' ($variacao)' : '';
         return '${item.quantidade}x ${item.produtoNome}$suf';
       }).join('\n');
     }
@@ -901,14 +901,14 @@ class _ClientesScreenState extends State<ClientesScreen>
   }
 
   /// Retorna o cliente pelo nome (primeiro que corresponder).
-  Cliente• _clientePorNome(String nome) {
+  Cliente? _clientePorNome(String nome) {
     final nomeNorm = normalizeText(nome);
     return clientesBox.values.firstWhereOrNull(
       (c) => _lojaMatch(c.lojaId, lojaId) && normalizeText(c.nome) == nomeNorm,
     );
   }
 
-  static bool _lojaMatch(String• cLoja, String• lojaId) {
+  static bool _lojaMatch(String? cLoja, String? lojaId) {
     if (lojaId == null || lojaId.isEmpty) return false;
     if (cLoja == null || cLoja.isEmpty) return true; // legado: mostra no contexto atual
     return cLoja == lojaId;
@@ -1022,7 +1022,7 @@ class _ClientesScreenState extends State<ClientesScreen>
               // Lista de compras
               Expanded(
                 child: vendasDoCliente.isEmpty
-                    • Center(
+                    ? Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1090,7 +1090,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
-                                            DateFormat('dd/MM/yyyy • HH:mm')
+                                            DateFormat('dd/MM/yyyy ? HH:mm')
                                                 .format(venda.data),
                                             style: TextStyle(
                                               color: Colors.grey[500],
@@ -1173,7 +1173,7 @@ class _ClientesScreenState extends State<ClientesScreen>
       final picked = result.files.first;
       final fileBytes = picked.bytes ??
           (picked.path != null && !kIsWeb
-              • await io.File(picked.path!).readAsBytes()
+              ? await io.File(picked.path!).readAsBytes()
               : null);
       if (fileBytes == null) {
         if (mounted) setState(() => _importando = false);
@@ -1189,7 +1189,7 @@ class _ClientesScreenState extends State<ClientesScreen>
         }
         return;
       }
-      final Sheet• sheet = excel.tables[excel.tables.keys.first];
+      final Sheet? sheet = excel.tables[excel.tables.keys.first];
 
       if (sheet == null) {
         if (mounted) setState(() => _importando = false);
@@ -1200,15 +1200,15 @@ class _ClientesScreenState extends State<ClientesScreen>
       bool limiteAtingido = false;
       for (int i = 1; i < sheet.maxRows; i++) {
         final row = sheet.row(i);
-        final nome = row[0]?.value?.toString() ?• '';
-        final telefone = row[1]?.value?.toString() ?• '';
-        final instagram = row.length > 2 • row[2]?.value?.toString() ?• '' : '';
-        final cep = row.length > 3 • row[3]?.value?.toString() ?• '' : '';
-        final cidade = row.length > 4 • row[4]?.value?.toString() ?• '' : '';
+        final nome = row[0]?.value?.toString() ?? '';
+        final telefone = row[1]?.value?.toString() ?? '';
+        final instagram = row.length > 2 ? row[2]?.value?.toString() ?? '' : '';
+        final cep = row.length > 3 ? row[3]?.value?.toString() ?? '' : '';
+        final cidade = row.length > 4 ? row[4]?.value?.toString() ?? '' : '';
 
         if (nome.isNotEmpty && telefone.isNotEmpty) {
           final limpo = telefone.replaceAll(RegExp(r'\D'), '');
-          final e164 = limpo.startsWith('55') • limpo : '55$limpo';
+          final e164 = limpo.startsWith('55') ? limpo : '55$limpo';
           if (e164.length < 10) continue;
           final existe = clientesBox.values.any(
             (cli) => cli.telefone == e164 && cli.lojaId == lojaId,
@@ -1301,12 +1301,12 @@ class _ClientesScreenState extends State<ClientesScreen>
 
       final Map<String, String> mapaNomePorTelefone = {};
       for (final c in contatos) {
-        final nome = (c.displayName ?• '').trim();
-        final phone = c.phones?.firstOrNull?.value ?• '';
+        final nome = (c.displayName ?? '').trim();
+        final phone = c.phones?.firstOrNull?.value ?? '';
         final limpo = phone.replaceAll(RegExp(r'\D'), '');
         if (nome.isEmpty || limpo.length < 10) continue;
 
-        final e164 = limpo.startsWith('55') • limpo : '55$limpo';
+        final e164 = limpo.startsWith('55') ? limpo : '55$limpo';
         mapaNomePorTelefone.putIfAbsent(e164, () => nome);
       }
 
@@ -1443,7 +1443,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: selecionadosTemp.isEmpty
-                              • null
+                              ? null
                               : () => Navigator.of(dialogContext).pop(selecionadosTemp),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF25D366),
@@ -1482,7 +1482,7 @@ class _ClientesScreenState extends State<ClientesScreen>
         );
         if (existe) continue;
 
-        final nome = mapaNomePorTelefone[tel] ?• 'Sem nome';
+        final nome = mapaNomePorTelefone[tel] ?? 'Sem nome';
 
         final novoCliente = Cliente(
           nome: capitalizeWords(nome),
@@ -1555,10 +1555,10 @@ class _ClientesScreenState extends State<ClientesScreen>
                             radius: 32,
                             backgroundColor: Colors.grey[200],
                             backgroundImage: (_novoAvatarBytes != null)
-                                • MemoryImage(_novoAvatarBytes!)
+                                ? MemoryImage(_novoAvatarBytes!)
                                 : null,
                             child: (_novoAvatarBytes == null)
-                                • Icon(Icons.person, size: 32, color: Colors.grey[400])
+                                ? Icon(Icons.person, size: 32, color: Colors.grey[400])
                                 : null,
                           ),
                           Positioned(
@@ -1677,9 +1677,9 @@ class _ClientesScreenState extends State<ClientesScreen>
                       final messenger = ScaffoldMessenger.of(context);
 
                       final limpo = _telefoneController.text.replaceAll(RegExp(r'\D'), '');
-                      final e164 = limpo.startsWith('55') • limpo : '55$limpo';
+                      final e164 = limpo.startsWith('55') ? limpo : '55$limpo';
 
-                      String• caminhoAvatar;
+                      String? caminhoAvatar;
                       if (_novoAvatarBytes != null && _novoAvatarBytes!.isNotEmpty) {
                         caminhoAvatar = await _salvarAvatarLocal(e164, _novoAvatarBytes!);
                       }
@@ -1693,10 +1693,10 @@ class _ClientesScreenState extends State<ClientesScreen>
                         lojaId: lojaId!,
                       )
                         ..email = _emailController.text.trim().isEmpty
-                            • null
+                            ? null
                             : _emailController.text.trim()
                         ..endereco = _enderecoController.text.trim().isEmpty
-                            • null
+                            ? null
                             : _enderecoController.text.trim()
                         ..avatarPath = caminhoAvatar;
 
@@ -1754,7 +1754,7 @@ class _ClientesScreenState extends State<ClientesScreen>
   Future<void> _selecionarDataInicial() async {
     final data = await showDatePicker(
       context: context,
-      initialDate: dataInicial ?• DateTime.now(),
+      initialDate: dataInicial ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
     );
@@ -1764,7 +1764,7 @@ class _ClientesScreenState extends State<ClientesScreen>
   Future<void> _selecionarDataFinal() async {
     final data = await showDatePicker(
       context: context,
-      initialDate: dataFinal ?• DateTime.now(),
+      initialDate: dataFinal ?? DateTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
     );
@@ -1817,7 +1817,7 @@ class _ClientesScreenState extends State<ClientesScreen>
           build: (pw.Context context) {
             final itensPdf = venda.itensOuVazio;
             final subtotalReal = itensPdf.isNotEmpty
-                • itensPdf.fold<double>(0.0, (s, i) => s + i.precoUnitario * i.quantidade)
+                ? itensPdf.fold<double>(0.0, (s, i) => s + i.precoUnitario * i.quantidade)
                 : venda.preco;
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -1860,9 +1860,9 @@ class _ClientesScreenState extends State<ClientesScreen>
                 if (cliente != null) ...[
                   if (cliente.telefone.isNotEmpty)
                     pw.Text('Telefone: ${cliente.telefone}'),
-                  if ((cliente.email ?• '').isNotEmpty)
+                  if ((cliente.email ?? '').isNotEmpty)
                     pw.Text('Email: ${cliente.email}'),
-                  if ((cliente.endereco ?• '').isNotEmpty)
+                  if ((cliente.endereco ?? '').isNotEmpty)
                     pw.Text('Endereço: ${cliente.endereco}'),
                   if (cliente.cep.isNotEmpty)
                     pw.Text('CEP: ${cliente.cep}'),
@@ -1943,11 +1943,11 @@ class _ClientesScreenState extends State<ClientesScreen>
                             ),
                             pw.Padding(
                               padding: const pw.EdgeInsets.all(4),
-                              child: pw.Text(item.tamanho.isNotEmpty • item.tamanho : '-'),
+                              child: pw.Text(item.tamanho.isNotEmpty ? item.tamanho : '-'),
                             ),
                             pw.Padding(
                               padding: const pw.EdgeInsets.all(4),
-                              child: pw.Text(item.cor.isNotEmpty • item.cor : '-'),
+                              child: pw.Text(item.cor.isNotEmpty ? item.cor : '-'),
                             ),
                             pw.Padding(
                               padding: const pw.EdgeInsets.all(4),
@@ -2151,7 +2151,7 @@ class _ClientesScreenState extends State<ClientesScreen>
             content: const Text('Venda excluída. Desfazer?'),
             duration: const Duration(seconds: 30),
             action: id != null
-                • SnackBarAction(
+                ? SnackBarAction(
                     label: 'Desfazer',
                     onPressed: () {
                       scaffoldMessengerKey.currentState?.hideCurrentSnackBar();
@@ -2177,8 +2177,8 @@ class _ClientesScreenState extends State<ClientesScreen>
     if (mounted) setState(() {});
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
-        content: Text(ok • 'Venda restaurada' : 'Não foi possível desfazer'),
-        backgroundColor: ok • null : Colors.red.shade700,
+        content: Text(ok ? 'Venda restaurada' : 'Não foi possível desfazer'),
+        backgroundColor: ok ? null : Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -2189,8 +2189,8 @@ class _ClientesScreenState extends State<ClientesScreen>
     if (mounted) setState(() {});
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
-        content: Text(ok • 'Cliente restaurado' : 'Não foi possível desfazer'),
-        backgroundColor: ok • null : Colors.red.shade700,
+        content: Text(ok ? 'Cliente restaurado' : 'Não foi possível desfazer'),
+        backgroundColor: ok ? null : Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -2294,7 +2294,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                       icon: Icons.table_chart,
                       label: 'Importar Excel',
                       color: const Color(0xFF22C55E),
-                      onPressed: _importando • null : importarExcel,
+                      onPressed: _importando ? null : importarExcel,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -2303,7 +2303,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                       icon: FontAwesomeIcons.whatsapp,
                       label: 'WhatsApp',
                       color: const Color(0xFF25D366),
-                      onPressed: _importando • null : importarContatosWhatsApp,
+                      onPressed: _importando ? null : importarContatosWhatsApp,
                     ),
                   ),
                 ],
@@ -2327,10 +2327,10 @@ class _ClientesScreenState extends State<ClientesScreen>
                   final vendasA = _vendasDoCliente(a);
                   final vendasB = _vendasDoCliente(b);
                   final dataA = vendasA.isNotEmpty
-                      • vendasA.map((v) => v.data).reduce((a, b) => a.isAfter(b) • a : b)
+                      ? vendasA.map((v) => v.data).reduce((a, b) => a.isAfter(b) ? a : b)
                       : DateTime(2000);
                   final dataB = vendasB.isNotEmpty
-                      • vendasB.map((v) => v.data).reduce((a, b) => a.isAfter(b) • a : b)
+                      ? vendasB.map((v) => v.data).reduce((a, b) => a.isAfter(b) ? a : b)
                       : DateTime(2000);
                   return dataB.compareTo(dataA);
                 });
@@ -2349,14 +2349,14 @@ class _ClientesScreenState extends State<ClientesScreen>
                       EmptyStateCta(
                         icon: Icons.people_outline,
                         title: filtro.isEmpty
-                            • 'Nenhum cliente cadastrado'
+                            ? 'Nenhum cliente cadastrado'
                             : 'Nenhum cliente encontrado',
                         subtitle: filtro.isEmpty
-                            • 'Adicione seu primeiro cliente'
+                            ? 'Adicione seu primeiro cliente'
                             : 'Tente ajustar o filtro de busca',
-                        buttonLabel: filtro.isEmpty • 'Adicionar cliente' : 'Limpar busca',
+                        buttonLabel: filtro.isEmpty ? 'Adicionar cliente' : 'Limpar busca',
                         onPressed: filtro.isEmpty
-                            • _abrirCadastroCliente
+                            ? _abrirCadastroCliente
                             : () => setState(() => _filtroController.clear()),
                         accentColor: const Color(0xFF6366F1),
                       ),
@@ -2426,18 +2426,18 @@ class _ClientesScreenState extends State<ClientesScreen>
     required IconData icon,
     required String label,
     required Color color,
-    VoidCallback• onPressed,
+    VoidCallback? onPressed,
   }) {
     return OutlinedButton.icon(
       onPressed: onPressed,
       icon: _importando
-          • SizedBox(
+          ? SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2, color: color),
             )
           : Icon(icon, size: 18),
-      label: Text(_importando • 'Importando...' : label),
+      label: Text(_importando ? 'Importando...' : label),
       style: OutlinedButton.styleFrom(
         foregroundColor: color,
         side: BorderSide(color: color),
@@ -2477,7 +2477,7 @@ class _ClientesScreenState extends State<ClientesScreen>
               children: [
                 // Avatar
                 hasAvatar
-                    • CircleAvatar(
+                    ? CircleAvatar(
                         radius: 26,
                         backgroundImage: FileImage(io.File(cliente.avatarPath!)),
                       )
@@ -2534,7 +2534,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            '$compras ${compras == 1 • 'compra' : 'compras'}',
+                            '$compras ${compras == 1 ? 'compra' : 'compras'}',
                             style: const TextStyle(
                               color: Color(0xFF6366F1),
                               fontSize: 11,
@@ -2627,7 +2627,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                                     content: const Text('Cliente excluído. Desfazer?'),
                                     duration: const Duration(seconds: 30),
                                     action: id != null
-                                        • SnackBarAction(
+                                        ? SnackBarAction(
                                             label: 'Desfazer',
                                             onPressed: () {
                                               scaffoldMessengerKey.currentState?.hideCurrentSnackBar();
@@ -2727,7 +2727,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                   Expanded(
                     child: _buildDateButton(
                       label: dataInicial == null
-                          • 'Data inicial'
+                          ? 'Data inicial'
                           : DateFormat('dd/MM/yy').format(dataInicial!),
                       onPressed: _selecionarDataInicial,
                       hasValue: dataInicial != null,
@@ -2740,7 +2740,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                   Expanded(
                     child: _buildDateButton(
                       label: dataFinal == null
-                          • 'Data final'
+                          ? 'Data final'
                           : DateFormat('dd/MM/yy').format(dataFinal!),
                       onPressed: _selecionarDataFinal,
                       hasValue: dataFinal != null,
@@ -2819,7 +2819,7 @@ class _ClientesScreenState extends State<ClientesScreen>
           child: RefreshIndicator(
             onRefresh: _init,
             child: vendas.isEmpty
-                • ListView(
+                ? ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     children: const [
                       _ClientesHistoricoEmptyBody(),
@@ -2850,18 +2850,18 @@ class _ClientesScreenState extends State<ClientesScreen>
       icon: Icon(
         Icons.calendar_today,
         size: 16,
-        color: hasValue • const Color(0xFF6366F1) : Colors.grey,
+        color: hasValue ? const Color(0xFF6366F1) : Colors.grey,
       ),
       label: Text(
         label,
         style: TextStyle(
-          color: hasValue • const Color(0xFF6366F1) : Colors.grey[600],
+          color: hasValue ? const Color(0xFF6366F1) : Colors.grey[600],
         ),
       ),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 12),
         side: BorderSide(
-          color: hasValue • const Color(0xFF6366F1) : Colors.grey.shade300,
+          color: hasValue ? const Color(0xFF6366F1) : Colors.grey.shade300,
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
@@ -2913,7 +2913,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       Text(
-                        DateFormat('dd/MM/yyyy • HH:mm').format(venda.data),
+                        DateFormat('dd/MM/yyyy ? HH:mm').format(venda.data),
                         style: TextStyle(
                           color: Colors.grey[500],
                           fontSize: 12,
@@ -3045,8 +3045,8 @@ class _ClientesScreenState extends State<ClientesScreen>
     final vendasDaLoja = vendasBox.values.where((v) => v.lojaId == null || v.lojaId!.isEmpty || v.lojaId == lojaId).toList();
     final porCliente = <String, double>{};
     for (final v in vendasDaLoja) {
-      final nome = v.clienteNome.trim().isEmpty • 'Sem nome' : v.clienteNome;
-      porCliente[nome] = (porCliente[nome] ?• 0) + v.total;
+      final nome = v.clienteNome.trim().isEmpty ? 'Sem nome' : v.clienteNome;
+      porCliente[nome] = (porCliente[nome] ?? 0) + v.total;
     }
     final topClientes = porCliente.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     final fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2);
@@ -3079,7 +3079,7 @@ class _ClientesScreenState extends State<ClientesScreen>
       return Scaffold(
         appBar: AppBar(title: const Text('Clientes')),
         body: _ClientesHiveCacheErroLojaBody(
-          detalhe: _erroHiveCacheDetalhe ?• 'clientes/vendas',
+          detalhe: _erroHiveCacheDetalhe ?? 'clientes/vendas',
           onRetry: () {
             if (kDebugMode) logD('[STORE-LIFECYCLE] Clientes: retry Hive cache');
             setState(() {
@@ -3136,7 +3136,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _enviandoClientes
-                  • const SizedBox(
+                  ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green),
@@ -3144,7 +3144,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                   : const Icon(Icons.cloud_upload, color: Colors.green, size: 20),
             ),
             tooltip: 'Enviar para Nuvem',
-            onPressed: _enviandoClientes • null : _enviarClientesParaNuvem,
+            onPressed: _enviandoClientes ? null : _enviarClientesParaNuvem,
           ),
           IconButton(
             icon: Container(
@@ -3154,7 +3154,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _sincronizando
-                  • const SizedBox(
+                  ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
@@ -3162,9 +3162,9 @@ class _ClientesScreenState extends State<ClientesScreen>
                   : const Icon(Icons.cloud_download, color: Color(0xFF3B82F6), size: 20),
             ),
             tooltip: _temDadosParaImportar == true
-                • 'Baixar da Nuvem (há clientes novos)'
+                ? 'Baixar da Nuvem (há clientes novos)'
                 : 'Baixar da Nuvem',
-            onPressed: _sincronizando • null : _baixarClientesDaNuvem,
+            onPressed: _sincronizando ? null : _baixarClientesDaNuvem,
           ),
           IconButton(
             icon: Container(
@@ -3180,7 +3180,7 @@ class _ClientesScreenState extends State<ClientesScreen>
           ),
           IconButton(
             icon: _reparando
-                • const SizedBox(
+                ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
@@ -3188,7 +3188,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                 : const Icon(Icons.build_circle_outlined),
             tooltip: 'Reparar histórico de compras',
             onPressed: _reparando
-                • null
+                ? null
                 : () async {
                     setState(() => _reparando = true);
                     try {
@@ -3223,7 +3223,7 @@ class _ClientesScreenState extends State<ClientesScreen>
           if (_tabController.index == 1 && vendas.isNotEmpty)
             IconButton(
               icon: _exportando
-                  • const SizedBox(
+                  ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
@@ -3231,7 +3231,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                   : const Icon(Icons.download),
               tooltip: 'Exportar para Excel',
               onPressed: _exportando
-                  • null
+                  ? null
                   : () async {
                       setState(() => _exportando = true);
                       try {
@@ -3268,7 +3268,7 @@ class _ClientesScreenState extends State<ClientesScreen>
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: Size.fromHeight(operacaoEmAndamento • 52 : 48),
+          preferredSize: Size.fromHeight(operacaoEmAndamento ? 52 : 48),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -3333,10 +3333,10 @@ class _ClientesScreenState extends State<ClientesScreen>
                         const SizedBox(height: 16),
                         Text(
                           _reparando
-                              • 'Reparando histórico...'
+                              ? 'Reparando histórico...'
                               : _sincronizando
-                                  • 'Sincronizando...'
-                                  : (_exportando • 'Exportando...' : 'Importando...'),
+                                  ? 'Sincronizando...'
+                                  : (_exportando ? 'Exportando...' : 'Importando...'),
                         ),
                       ],
                     ),
@@ -3481,7 +3481,7 @@ class _ClientesErroLojaBody extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Verifique sua conexão e tente novamente.',
-              style: (Theme.of(context).textTheme.bodyMedium ?• Theme.of(context).textTheme.bodyLarge)?.copyWith(color: Colors.grey[600]) ?• const TextStyle(fontSize: 14, color: Colors.grey),
+              style: (Theme.of(context).textTheme.bodyMedium ?? Theme.of(context).textTheme.bodyLarge)?.copyWith(color: Colors.grey[600]) ?? const TextStyle(fontSize: 14, color: Colors.grey),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
@@ -3579,7 +3579,7 @@ class _SugestoesIaClientesScreen extends StatefulWidget {
 
 class _SugestoesIaClientesScreenState extends State<_SugestoesIaClientesScreen> {
   final _perguntaCtrl = TextEditingController();
-  String• _resposta;
+  String? _resposta;
   bool _enviando = false;
   static const _primaryColor = Color(0xFF6366F1);
   static const _cardColor = Color(0xFF1E293B);
@@ -3590,8 +3590,8 @@ class _SugestoesIaClientesScreenState extends State<_SugestoesIaClientesScreen> 
     super.dispose();
   }
 
-  Future<void> _enviar(String• perguntaFixa) async {
-    final pergunta = perguntaFixa ?• _perguntaCtrl.text.trim();
+  Future<void> _enviar(String? perguntaFixa) async {
+    final pergunta = perguntaFixa ?? _perguntaCtrl.text.trim();
     if (pergunta.isEmpty || _enviando) return;
     final lojaId = widget.lojaId;
     if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
@@ -3632,11 +3632,11 @@ class _SugestoesIaClientesScreenState extends State<_SugestoesIaClientesScreen> 
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _enviando • null : () => _enviar(null),
+        onPressed: _enviando ? null : () => _enviar(null),
         tooltip: 'Enviar pergunta',
         backgroundColor: _primaryColor,
         child: _enviando
-            • const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.send, color: Colors.white),
       ),
       body: Scrollbar(
@@ -3662,19 +3662,19 @@ class _SugestoesIaClientesScreenState extends State<_SugestoesIaClientesScreen> 
               runSpacing: 8,
               children: [
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Sugestões para reter clientes e reduzir abandono.'),
+                  onPressed: _enviando ? null : () => _enviar('Sugestões para reter clientes e reduzir abandono.'),
                   icon: const Icon(Icons.loyalty, size: 18),
                   label: const Text('Retenção'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Sugestões para programa de indicação (trazer amigos).'),
+                  onPressed: _enviando ? null : () => _enviar('Sugestões para programa de indicação (trazer amigos).'),
                   icon: const Icon(Icons.group_add, size: 18),
                   label: const Text('Indicação'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Como segmentar clientes para campanhas• Sugestões.'),
+                  onPressed: _enviando ? null : () => _enviar('Como segmentar clientes para campanhas? Sugestões.'),
                   icon: const Icon(Icons.pie_chart_outline, size: 18),
                   label: const Text('Segmentação'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
@@ -3695,9 +3695,9 @@ class _SugestoesIaClientesScreenState extends State<_SugestoesIaClientesScreen> 
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _enviando • null : () => _enviar(null),
-              icon: _enviando • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-              label: Text(_enviando • 'Analisando…' : 'Enviar'),
+              onPressed: _enviando ? null : () => _enviar(null),
+              icon: _enviando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+              label: Text(_enviando ? 'Analisando…' : 'Enviar'),
               style: FilledButton.styleFrom(backgroundColor: _primaryColor),
             ),
             if (_resposta != null) ...[

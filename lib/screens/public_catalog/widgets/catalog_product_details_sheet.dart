@@ -14,28 +14,28 @@ class CatalogProductDetailsSheet extends StatelessWidget {
   final String name;
   final String descricao;
   final double price;
-  final double• priceMin;
-  final double• priceMax;
-  final String• catalogShareUrl;
-  final double• precoOriginal;
+  final double? priceMin;
+  final double? priceMax;
+  final String? catalogShareUrl;
+  final double? precoOriginal;
   final bool emPromocao;
   final double percentualPromo;
   final double valorPromo;
   final List<String> imagens;
   final int quantidade;
-  final Map<String, int>• estoquePorTamanho;
+  final Map<String, int>? estoquePorTamanho;
   /// Cores com quantidade (ex.: sem tamanho ou híbrido).
-  final Map<String, int>• estoquePorCor;
+  final Map<String, int>? estoquePorCor;
   /// Mapa tamanho → cor → quantidade (ou preço aninhado).
-  final Map<String, dynamic>• variacoes;
-  final String• prazoEntrega;
+  final Map<String, dynamic>? variacoes;
+  final String? prazoEntrega;
   final double percentualDescontoPix;
   /// Itens que compõem o kit/combo – exibidos na seção "Produtos do kit"
-  final ItensComboList• itensCombo;
-  /// Contexto opcional para "Dúvidas• Pergunte" (IA): nome da loja, contato, política de frete.
-  final String• nomeLoja;
-  final String• contatoWhatsapp;
-  final String• politicaFrete;
+  final ItensComboList? itensCombo;
+  /// Contexto opcional para "Dúvidas? Pergunte" (IA): nome da loja, contato, política de frete.
+  final String? nomeLoja;
+  final String? contatoWhatsapp;
+  final String? politicaFrete;
   /// Loja do catálogo (obrigatório para IA). Usa o lojaId do contexto do catálogo, nunca LojaIdService.
   final String lojaId;
 
@@ -79,7 +79,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
     }
     if (v is int) return v;
     if (v is num) return v.toInt();
-    return int.tryParse('$v') ?• 0;
+    return int.tryParse('$v') ?? 0;
   }
 
   @override
@@ -121,12 +121,12 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                   IconButton(
                     onPressed: () async {
                       final precoTexto = _temFaixaPreco
-                          • 'R\$ ${_fmt2(priceMin!)} a R\$ ${_fmt2(priceMax!)}'
+                          ? 'R\$ ${_fmt2(priceMin!)} a R\$ ${_fmt2(priceMax!)}'
                           : 'R\$ ${_fmt2(price)}';
                       final msg = CatalogShareService.buildProductShareMessage(
                         nome: name,
                         precoTexto: precoTexto,
-                        descricaoCurta: descricao.trim().isEmpty • null : descricao,
+                        descricaoCurta: descricao.trim().isEmpty ? null : descricao,
                         url: catalogShareUrl!,
                       );
                       final uri = Uri.parse(
@@ -199,7 +199,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                           ),
                           child: Text(
                             percentualPromo > 0
-                                • '-${percentualPromo.toStringAsFixed(0)}%'
+                                ? '-${percentualPromo.toStringAsFixed(0)}%'
                                 : '-R\$ ${valorPromo.toStringAsFixed(2).replaceAll('.', ',')}',
                             style: const TextStyle(
                               color: Colors.white,
@@ -226,7 +226,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                         Icon(Icons.pix, size: 18, color: Colors.green[700]),
                         const SizedBox(width: 6),
                         Text(
-                          'ou ${_temFaixaPreco • "a partir de " : ""}R\$ ${_fmt2((_temFaixaPreco • priceMin! : price) * (1 - percentualDescontoPix / 100))} no PIX (${percentualDescontoPix == percentualDescontoPix.truncateToDouble() • percentualDescontoPix.toInt() : _fmt2(percentualDescontoPix)}% off)',
+                          'ou ${_temFaixaPreco ? "a partir de " : ""}R\$ ${_fmt2((_temFaixaPreco ? priceMin! : price) * (1 - percentualDescontoPix / 100))} no PIX (${percentualDescontoPix == percentualDescontoPix.truncateToDouble() ? percentualDescontoPix.toInt() : _fmt2(percentualDescontoPix)}% off)',
                           style: TextStyle(
                             color: Colors.green[700],
                             fontSize: 15,
@@ -273,11 +273,11 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                               horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
                             color: qtd > 0
-                                • Colors.green.withValues(alpha:0.1)
+                                ? Colors.green.withValues(alpha:0.1)
                                 : Colors.red.withValues(alpha:0.1),
                             border: Border.all(
                               color: qtd > 0
-                                  • Colors.green[700]!
+                                  ? Colors.green[700]!
                                   : Colors.red[700]!,
                               width: 1.5,
                             ),
@@ -291,13 +291,13 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                                   fontSize: 16,
                                   fontWeight: FontWeight.w700,
                                   color: qtd > 0
-                                      • Colors.green[700]
+                                      ? Colors.green[700]
                                       : Colors.red[700],
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                qtd > 0 • 'Disponível' : 'Indisponível',
+                                qtd > 0 ? 'Disponível' : 'Indisponível',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey[600],
@@ -325,7 +325,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                       if (e.value is! Map) return const SizedBox.shrink();
                       final m = e.value as Map;
                       final label = e.key.toString() == 'sem-tamanho'
-                          • 'Cor (sem tamanho)'
+                          ? 'Cor (sem tamanho)'
                           : 'Tamanho: ${e.key}';
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
@@ -348,16 +348,16 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                                 final q = _qtdVar(ce.value);
                                 return Chip(
                                   label: Text(
-                                    '${ce.key}: ${q > 0 • '$q un.' : '0'}',
+                                    '${ce.key}: ${q > 0 ? '$q un.' : '0'}',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: q > 0
-                                          • Colors.green[800]
+                                          ? Colors.green[800]
                                           : Colors.grey,
                                     ),
                                   ),
                                   backgroundColor: q > 0
-                                      • Colors.green.withValues(alpha:0.08)
+                                      ? Colors.green.withValues(alpha:0.08)
                                       : Colors.grey.withValues(alpha:0.12),
                                 );
                               }).toList(),
@@ -390,22 +390,22 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                               horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
                             color: qtd > 0
-                                • Colors.green.withValues(alpha:0.1)
+                                ? Colors.green.withValues(alpha:0.1)
                                 : Colors.red.withValues(alpha:0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: qtd > 0
-                                  • Colors.green[700]!
+                                  ? Colors.green[700]!
                                   : Colors.red[700]!,
                             ),
                           ),
                           child: Text(
-                            '${entry.key}: ${qtd > 0 • '$qtd un.' : 'esgotado'}',
+                            '${entry.key}: ${qtd > 0 ? '$qtd un.' : 'esgotado'}',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
                               color: qtd > 0
-                                  • Colors.green[800]
+                                  ? Colors.green[800]
                                   : Colors.red[700],
                             ),
                           ),
@@ -420,20 +420,20 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                     Row(
                       children: [
                         Icon(
-                          quantidade > 0 • Icons.check_circle : Icons.cancel,
+                          quantidade > 0 ? Icons.check_circle : Icons.cancel,
                           color: quantidade > 0
-                              • Colors.green[700]
+                              ? Colors.green[700]
                               : Colors.red[700],
                           size: 20,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           quantidade > 0
-                              • 'Produto disponível'
+                              ? 'Produto disponível'
                               : 'Produto indisponível',
                           style: TextStyle(
                             color: quantidade > 0
-                                • Colors.green[700]
+                                ? Colors.green[700]
                                 : Colors.red[700],
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -487,12 +487,12 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                           ...itensCombo!.asMap().entries.map((entry) {
                             final idx = entry.key + 1;
                             final item = entry.value;
-                            final nomeItem = (item['nome'] ?• item['name'] ?• '').toString();
+                            final nomeItem = (item['nome'] ?? item['name'] ?? '').toString();
                             final qtd = (item['quantidade'] is num)
-                                • (item['quantidade'] as num).toInt()
-                                : int.tryParse('${item['quantidade']}') ?• 1;
-                            final tam = (item['tamanho'] ?• '').toString().trim();
-                            final cor = (item['cor'] ?• '').toString().trim();
+                                ? (item['quantidade'] as num).toInt()
+                                : int.tryParse('${item['quantidade']}') ?? 1;
+                            final tam = (item['tamanho'] ?? '').toString().trim();
+                            final cor = (item['cor'] ?? '').toString().trim();
                             final extras = <String>[];
                             if (tam.isNotEmpty) extras.add('Tamanho: $tam');
                             if (cor.isNotEmpty) extras.add('Cor: $cor');
@@ -533,7 +533,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                                         ),
                                         if (extras.isNotEmpty)
                                           Text(
-                                            extras.join(' • '),
+                                            extras.join(' ? '),
                                             style: TextStyle(
                                               fontSize: 12,
                                               color: Colors.grey[500],
@@ -587,7 +587,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: () => _abrirDuvidasPergunte(context),
                     icon: const Icon(Icons.help_outline, size: 20),
-                    label: const Text('Dúvidas• Pergunte'),
+                    label: const Text('Dúvidas? Pergunte'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -623,9 +623,9 @@ class CatalogProductDetailsSheet extends StatelessWidget {
 class _DuvidasPergunteDialog extends StatefulWidget {
   final String produtoNome;
   final bool temEstoque;
-  final String• nomeLoja;
-  final String• contatoWhatsapp;
-  final String• politicaFrete;
+  final String? nomeLoja;
+  final String? contatoWhatsapp;
+  final String? politicaFrete;
   final TextEditingController perguntaCtrl;
   final String lojaId;
 
@@ -645,7 +645,7 @@ class _DuvidasPergunteDialog extends StatefulWidget {
 
 class _DuvidasPergunteDialogState extends State<_DuvidasPergunteDialog> {
   bool _enviando = false;
-  String• _resposta;
+  String? _resposta;
 
   Future<void> _enviar() async {
     final pergunta = widget.perguntaCtrl.text.trim();
@@ -672,7 +672,7 @@ class _DuvidasPergunteDialogState extends State<_DuvidasPergunteDialog> {
       };
       final resposta = await AiLojaService.chatAtendimentoCatalogo(
         pergunta: pergunta,
-        contexto: contexto.isEmpty • null : contexto,
+        contexto: contexto.isEmpty ? null : contexto,
       );
       if (mounted) {
         IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
@@ -697,7 +697,7 @@ class _DuvidasPergunteDialogState extends State<_DuvidasPergunteDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Dúvidas• Pergunte'),
+      title: const Text('Dúvidas? Pergunte'),
       content: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
         child: Column(
@@ -707,7 +707,7 @@ class _DuvidasPergunteDialogState extends State<_DuvidasPergunteDialog> {
             TextField(
               controller: widget.perguntaCtrl,
               decoration: const InputDecoration(
-                hintText: 'Ex: Tem em estoque• Qual o prazo de entrega?',
+                hintText: 'Ex: Tem em estoque? Qual o prazo de entrega?',
                 border: OutlineInputBorder(),
               ),
               maxLines: 2,
@@ -734,11 +734,11 @@ class _DuvidasPergunteDialogState extends State<_DuvidasPergunteDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fechar')),
         FilledButton.icon(
-          onPressed: _enviando • null : _enviar,
+          onPressed: _enviando ? null : _enviar,
           icon: _enviando
-              • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.send, size: 18),
-          label: Text(_enviando • 'Enviando…' : 'Enviar'),
+          label: Text(_enviando ? 'Enviando…' : 'Enviar'),
         ),
       ],
     );

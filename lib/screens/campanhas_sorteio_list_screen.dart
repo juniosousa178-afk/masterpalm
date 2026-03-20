@@ -75,7 +75,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
         content: Row(
           children: [
             Icon(
-              isError • Icons.error_outline : Icons.check_circle_outline,
+              isError ? Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -83,7 +83,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError • _errorColor : _successColor,
+        backgroundColor: isError ? _errorColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -98,7 +98,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
       builder: (ctx) => AlertDialog(
         title: const Text('Excluir campanha?'),
         content: Text(
-          'A campanha "$nomeCampanha" ser• exclu?da permanentemente.\n\n'
+          'A campanha "$nomeCampanha" ser? exclu?da permanentemente.\n\n'
           'Participantes e hist?rico de sorteios ser?o removidos. Esta a??o n?o pode ser desfeita.',
         ),
         actions: [
@@ -149,7 +149,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
         builder: (ctx) => AlertDialog(
           title: const Text('Desativar campanha?'),
           content: Text(
-            'A campanha "$nomeCampanha" ser• pausada. Os participantes j• cadastrados permanecem. Deseja continuar?',
+            'A campanha "$nomeCampanha" ser? pausada. Os participantes j? cadastrados permanecem. Deseja continuar?',
           ),
           actions: [
             TextButton(
@@ -175,11 +175,11 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
           .doc(campanhaId)
           .update({
         'ativa': novoValor,
-        'status': novoValor • 'aberta' : 'pausada',
+        'status': novoValor ? 'aberta' : 'pausada',
       });
 
       _showModernSnackBar(
-        novoValor • 'Campanha ativada com sucesso!' : 'Campanha desativada',
+        novoValor ? 'Campanha ativada com sucesso!' : 'Campanha desativada',
       );
     } catch (e) {
       _showModernSnackBar('Erro ao atualizar campanha: $e', isError: true);
@@ -344,10 +344,10 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
         animation: _tabController,
         builder: (context, child) {
           return AnimatedOpacity(
-            opacity: _tabController.index == 0 • 1.0 : 0.0,
+            opacity: _tabController.index == 0 ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
             child: AnimatedScale(
-              scale: _tabController.index == 0 • 1.0 : 0.0,
+              scale: _tabController.index == 0 ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
               child: FloatingActionButton.extended(
                 backgroundColor: _successColor,
@@ -403,8 +403,8 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
           final busca = _busca.toLowerCase();
           docs = docs.where((d) {
             final data = d.data() as Map<String, dynamic>;
-            final nome = (data['nome'] ?• '').toString().toLowerCase();
-            final desc = (data['descricao'] ?• '').toString().toLowerCase();
+            final nome = (data['nome'] ?? '').toString().toLowerCase();
+            final desc = (data['descricao'] ?? '').toString().toLowerCase();
             return nome.contains(busca) || desc.contains(busca);
           }).toList();
         }
@@ -413,7 +413,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
         if (_filtroStatus != 'todas') {
           docs = docs.where((d) {
             final data = d.data() as Map<String, dynamic>;
-            final status = data['status'] ?• '';
+            final status = data['status'] ?? '';
             final ativa = data['ativa'] == true;
             if (_filtroStatus == 'ativas') return ativa && status != 'finalizada';
             if (_filtroStatus == 'pausadas') return status == 'pausada';
@@ -444,7 +444,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                           hintText: 'Buscar por nome ou descri??o...',
                           prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
                           suffixIcon: _busca.isNotEmpty
-                              • IconButton(
+                              ? IconButton(
                                   icon: const Icon(Icons.clear, size: 20),
                                   onPressed: () {
                                     _buscaController.clear();
@@ -484,7 +484,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                 sliver: docs.isEmpty
-                    • SliverToBoxAdapter(
+                    ? SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.only(top: 48),
                           child: Center(
@@ -495,7 +495,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                                 const SizedBox(height: 16),
                                 Text(
                                   docs.isEmpty && _busca.isEmpty && _filtroStatus == 'todas'
-                                      • 'Nenhuma campanha criada'
+                                      ? 'Nenhuma campanha criada'
                                       : 'Nenhuma campanha encontrada',
                                   style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                                   textAlign: TextAlign.center,
@@ -503,7 +503,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                                 const SizedBox(height: 8),
                                 Text(
                                   _filtroStatus != 'todas' || _busca.isNotEmpty
-                                      • 'Tente outro filtro ou termo de busca.'
+                                      ? 'Tente outro filtro ou termo de busca.'
                                       : 'Crie sua primeira campanha de sorteio',
                                   style: TextStyle(fontSize: 13, color: Colors.grey[500]),
                                   textAlign: TextAlign.center,
@@ -598,7 +598,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
               SizedBox(height: 12),
               Text('1. Toque em "Abrir configura??es" para acessar as configura??es do aparelho.'),
               SizedBox(height: 6),
-              Text('2. Em muitos celulares, a grava??o de tela fica na barra de notifica??es (arraste de cima para baixo) • procure por "Gravar tela" ou "Screen record".'),
+              Text('2. Em muitos celulares, a grava??o de tela fica na barra de notifica??es (arraste de cima para baixo) ? procure por "Gravar tela" ou "Screen record".'),
               SizedBox(height: 6),
               Text('3. Toque em "Abrir Roleta" abaixo, inicie a grava??o do sistema e depois gire a roleta.'),
               SizedBox(height: 12),
@@ -651,9 +651,9 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
   }
 
   Widget _buildCampanhaCard(String id, Map<String, dynamic> data) {
-    final nome = data['nome'] ?• 'Sem nome';
-    final status = data['status'] ?• 'ativa';
-    final descricao = data['descricao'] ?• '';
+    final nome = data['nome'] ?? 'Sem nome';
+    final status = data['status'] ?? 'ativa';
+    final descricao = data['descricao'] ?? '';
     final ativa = data['ativa'] == true;
     final dataInicio = data['dataInicio'];
     final dataFim = data['dataFim'];
@@ -748,7 +748,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                '${_formatarData(dataInicio)} • ${_formatarData(dataFim)} | Sorteio: ${_formatarData(dataSorteio)}',
+                                '${_formatarData(dataInicio)} ? ${_formatarData(dataFim)} | Sorteio: ${_formatarData(dataSorteio)}',
                                 style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -799,11 +799,11 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
                         color: ativa
-                            • _successColor.withValues(alpha:0.1)
+                            ? _successColor.withValues(alpha:0.1)
                             : Colors.grey.withValues(alpha:0.1),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: ativa • _successColor : Colors.grey,
+                          color: ativa ? _successColor : Colors.grey,
                           width: 1,
                         ),
                       ),
@@ -811,15 +811,15 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            ativa • Icons.check_circle : Icons.cancel,
-                            color: ativa • _successColor : Colors.grey,
+                            ativa ? Icons.check_circle : Icons.cancel,
+                            color: ativa ? _successColor : Colors.grey,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            ativa • 'CAMPANHA ATIVA' : 'CAMPANHA INATIVA',
+                            ativa ? 'CAMPANHA ATIVA' : 'CAMPANHA INATIVA',
                             style: TextStyle(
-                              color: ativa • _successColor : Colors.grey,
+                              color: ativa ? _successColor : Colors.grey,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -827,7 +827,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                           const SizedBox(width: 8),
                           Icon(
                             Icons.toggle_on,
-                            color: ativa • _successColor : Colors.grey,
+                            color: ativa ? _successColor : Colors.grey,
                             size: 24,
                           ),
                         ],

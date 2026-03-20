@@ -20,9 +20,9 @@ class PedidoClienteEmailService {
     required String pagamento,
     required String statusPagamento,
     required String entregaNome,
-    String• enderecoFormatado,
-    String• cep,
-    DateTime• dataCriacao,
+    String? enderecoFormatado,
+    String? cep,
+    DateTime? dataCriacao,
   }) async {
     final email = adminEmail.trim().toLowerCase();
     if (email.isEmpty) {
@@ -32,7 +32,7 @@ class PedidoClienteEmailService {
     try {
       final assunto = 'Você recebeu um novo pedido: $codigoPedido';
       final dataStr = dataCriacao != null
-          • '${dataCriacao.day} de ${_mesNome(dataCriacao.month)} às ${dataCriacao.hour.toString().padLeft(2, '0')}:${dataCriacao.minute.toString().padLeft(2, '0')}h'
+          ? '${dataCriacao.day} de ${_mesNome(dataCriacao.month)} às ${dataCriacao.hour.toString().padLeft(2, '0')}:${dataCriacao.minute.toString().padLeft(2, '0')}h'
           : '';
       final totalStr = total.toStringAsFixed(2).replaceAll('.', ',');
 
@@ -48,13 +48,13 @@ class PedidoClienteEmailService {
       buffer.writeln('');
       buffer.writeln('Produtos:');
       for (final item in itens) {
-        final nome = (item['nome'] ?• '').toString();
-        final qty = (item['quantidade'] as num?)?.toInt() ?• 1;
+        final nome = (item['nome'] ?? '').toString();
+        final qty = (item['quantidade'] as num?)?.toInt() ?? 1;
         final precoUn = (item['precoUnitario'] as num?)?.toDouble();
         final totalItem = (item['total'] as num?)?.toDouble();
-        final valor = totalItem ?• (precoUn != null • precoUn * qty : 0.0);
-        final tam = (item['tamanho'] ?• '').toString().trim();
-        final variacao = tam.isNotEmpty • ' - $tam' : '';
+        final valor = totalItem ?? (precoUn != null ? precoUn * qty : 0.0);
+        final tam = (item['tamanho'] ?? '').toString().trim();
+        final variacao = tam.isNotEmpty ? ' - $tam' : '';
         buffer.writeln('  ${qty}x $nome$variacao - R\$ ${valor.toStringAsFixed(2).replaceAll('.', ',')}');
       }
       buffer.writeln('');
@@ -100,7 +100,7 @@ class PedidoClienteEmailService {
     required String pedidoId,
     required double total,
     String remetenteNome = 'MasterPalm',
-    String• logoUrl,
+    String? logoUrl,
   }) async {
     final email = clienteEmail.trim().toLowerCase();
     if (email.isEmpty) {
@@ -111,7 +111,7 @@ class PedidoClienteEmailService {
       final totalStr = total.toStringAsFixed(2).replaceAll('.', ',');
       final assunto = 'Pedido recebido – R\$ $totalStr';
       final mensagem = '''
-Olá, ${clienteNome.isEmpty • 'Cliente' : clienteNome}!
+Olá, ${clienteNome.isEmpty ? 'Cliente' : clienteNome}!
 
 Recebemos seu pedido com sucesso. 🎉
 
@@ -147,9 +147,9 @@ Obrigado por comprar conosco!
     required String clienteNome,
     required String pedidoId,
     required String novoStatus,
-    String• codigoRastreio,
+    String? codigoRastreio,
     String remetenteNome = 'MasterPalm',
-    String• logoUrl,
+    String? logoUrl,
   }) async {
     final email = clienteEmail.trim().toLowerCase();
     if (email.isEmpty) {
@@ -160,7 +160,7 @@ Obrigado por comprar conosco!
       final statusLabel = _labelStatus(novoStatus);
       final assunto = 'Atualização do pedido: $statusLabel';
       final buffer = StringBuffer();
-      buffer.writeln("Olá, ${clienteNome.isEmpty • 'Cliente' : clienteNome}!");
+      buffer.writeln("Olá, ${clienteNome.isEmpty ? 'Cliente' : clienteNome}!");
       buffer.writeln('');
       buffer.writeln('Seu pedido foi atualizado: $statusLabel.');
       if (codigoRastreio != null && codigoRastreio.trim().isNotEmpty) {

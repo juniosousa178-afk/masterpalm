@@ -70,7 +70,7 @@ class _PermissoesScreenState extends State<PermissoesScreen> {
 
   Future<void> _carregarPermissoes() async {
     final box = await Hive.openBox('permissoes');
-    final chave = uidVendedor.isNotEmpty • uidVendedor : tipoSelecionado;
+    final chave = uidVendedor.isNotEmpty ? uidVendedor : tipoSelecionado;
 
     Map<String, bool> dados = Map<String, bool>.from(
       box.get(chave, defaultValue: {
@@ -85,7 +85,7 @@ class _PermissoesScreenState extends State<PermissoesScreen> {
 
   Future<void> _salvarPermissoes() async {
     final box = await Hive.openBox('permissoes');
-    final chave = uidVendedor.isNotEmpty • uidVendedor : tipoSelecionado;
+    final chave = uidVendedor.isNotEmpty ? uidVendedor : tipoSelecionado;
 
     await box.put(chave, permissoes);
 
@@ -177,7 +177,7 @@ class _PermissoesScreenState extends State<PermissoesScreen> {
                     _formatarPermissao(permissao),
                     style: const TextStyle(color: Colors.white),
                   ),
-                  value: permissoes[permissao] ?• false,
+                  value: permissoes[permissao] ?? false,
                   onChanged: (valor) {
                     setState(() {
                       permissoes[permissao] = valor;

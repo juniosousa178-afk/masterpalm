@@ -15,9 +15,9 @@ class CupomCliente {
   final String id;
   final String lojaId;
   final String clienteId;
-  final String• clienteNome;
-  final String• clienteEmail;
-  final String• clienteWhatsApp;
+  final String? clienteNome;
+  final String? clienteEmail;
+  final String? clienteWhatsApp;
 
   final TipoCupom tipo;
   final String codigo; // Código único do cupom (ex: ROLETA-ABC123)
@@ -25,24 +25,24 @@ class CupomCliente {
   final String descricao; // Ex: "Válido na próxima compra"
 
   // Valores
-  final double• valorDesconto; // % ou R$ dependendo do tipo
-  final String• brindeDescricao; // Se for brinde, descrição do produto
-  final String• premioSurpresaDescricao; // Se for prêmio surpresa
+  final double? valorDesconto; // % ou R$ dependendo do tipo
+  final String? brindeDescricao; // Se for brinde, descrição do produto
+  final String? premioSurpresaDescricao; // Se for prêmio surpresa
 
   // Controle
   final DateTime dataGanho;
   final DateTime dataValidade; // Geralmente dataGanho + 60 dias
   final bool usado;
-  final DateTime• dataUso;
-  final String• pedidoId; // ID do pedido onde foi usado
+  final DateTime? dataUso;
+  final String? pedidoId; // ID do pedido onde foi usado
 
   // Origem
-  final String• campanhaId;
-  final String• roletaId;
+  final String? campanhaId;
+  final String? roletaId;
 
   /// Indicação: cupom do indicador só fica ativo após o amigo usar o dele
   final bool ativo; // default true; false = aguardando amigo usar cupom
-  final String• cupomAmigoId; // id do cupom do amigo; quando ele for usado, este ativa
+  final String? cupomAmigoId; // id do cupom do amigo; quando ele for usado, este ativa
 
   CupomCliente({
     required this.id,
@@ -95,9 +95,9 @@ class CupomCliente {
       case TipoCupom.freteGratis:
         return 'Frete Grátis';
       case TipoCupom.brinde:
-        return 'Brinde: ${brindeDescricao ?• "Produto grátis"}';
+        return 'Brinde: ${brindeDescricao ?? "Produto grátis"}';
       case TipoCupom.premioSurpresa:
-        return 'Prêmio Surpresa: ${premioSurpresaDescricao ?• "Aguarde!"}';
+        return 'Prêmio Surpresa: ${premioSurpresaDescricao ?? "Aguarde!"}';
     }
   }
 
@@ -117,10 +117,10 @@ class CupomCliente {
   }
 
   factory CupomCliente.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?• {};
+    final data = doc.data() ?? {};
 
     // Parse tipo
-    final tipoStr = data['tipo'] as String• ?• 'desconto';
+    final tipoStr = data['tipo'] as String? ?? 'desconto';
     TipoCupom tipo;
     switch (tipoStr) {
       case 'descontoFixo':
@@ -141,27 +141,27 @@ class CupomCliente {
 
     return CupomCliente(
       id: doc.id,
-      lojaId: data['lojaId'] as String• ?• '',
-      clienteId: data['clienteId'] as String• ?• '',
+      lojaId: data['lojaId'] as String? ?? '',
+      clienteId: data['clienteId'] as String? ?? '',
       clienteNome: data['clienteNome'] as String?,
       clienteEmail: data['clienteEmail'] as String?,
       clienteWhatsApp: data['clienteWhatsApp'] as String?,
       tipo: tipo,
-      codigo: data['codigo'] as String• ?• '',
-      titulo: data['titulo'] as String• ?• '',
-      descricao: data['descricao'] as String• ?• '',
+      codigo: data['codigo'] as String? ?? '',
+      titulo: data['titulo'] as String? ?? '',
+      descricao: data['descricao'] as String? ?? '',
       valorDesconto: (data['valorDesconto'] as num?)?.toDouble(),
       brindeDescricao: data['brindeDescricao'] as String?,
       premioSurpresaDescricao: data['premioSurpresaDescricao'] as String?,
-      dataGanho: (data['dataGanho'] as Timestamp?)?.toDate() ?• DateTime.now(),
+      dataGanho: (data['dataGanho'] as Timestamp?)?.toDate() ?? DateTime.now(),
       dataValidade: (data['dataValidade'] as Timestamp?)?.toDate() ??
                     DateTime.now().add(const Duration(days: 60)),
-      usado: data['usado'] as bool• ?• false,
+      usado: data['usado'] as bool? ?? false,
       dataUso: (data['dataUso'] as Timestamp?)?.toDate(),
       pedidoId: data['pedidoId'] as String?,
       campanhaId: data['campanhaId'] as String?,
       roletaId: data['roletaId'] as String?,
-      ativo: data['ativo'] as bool• ?• true,
+      ativo: data['ativo'] as bool? ?? true,
       cupomAmigoId: data['cupomAmigoId'] as String?,
     );
   }
@@ -203,7 +203,7 @@ class CupomCliente {
       'dataGanho': Timestamp.fromDate(dataGanho),
       'dataValidade': Timestamp.fromDate(dataValidade),
       'usado': usado,
-      'dataUso': dataUso != null • Timestamp.fromDate(dataUso!) : null,
+      'dataUso': dataUso != null ? Timestamp.fromDate(dataUso!) : null,
       'pedidoId': pedidoId,
       'campanhaId': campanhaId,
       'roletaId': roletaId,
@@ -214,11 +214,11 @@ class CupomCliente {
 
   /// Cria uma cópia com campos atualizados
   CupomCliente copyWith({
-    bool• usado,
-    DateTime• dataUso,
-    String• pedidoId,
-    bool• ativo,
-    String• cupomAmigoId,
+    bool? usado,
+    DateTime? dataUso,
+    String? pedidoId,
+    bool? ativo,
+    String? cupomAmigoId,
   }) {
     return CupomCliente(
       id: id,
@@ -236,13 +236,13 @@ class CupomCliente {
       premioSurpresaDescricao: premioSurpresaDescricao,
       dataGanho: dataGanho,
       dataValidade: dataValidade,
-      usado: usado ?• this.usado,
-      dataUso: dataUso ?• this.dataUso,
-      pedidoId: pedidoId ?• this.pedidoId,
+      usado: usado ?? this.usado,
+      dataUso: dataUso ?? this.dataUso,
+      pedidoId: pedidoId ?? this.pedidoId,
       campanhaId: campanhaId,
       roletaId: roletaId,
-      ativo: ativo ?• this.ativo,
-      cupomAmigoId: cupomAmigoId ?• this.cupomAmigoId,
+      ativo: ativo ?? this.ativo,
+      cupomAmigoId: cupomAmigoId ?? this.cupomAmigoId,
     );
   }
 }

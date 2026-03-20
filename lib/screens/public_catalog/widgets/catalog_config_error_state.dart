@@ -5,13 +5,13 @@ import 'package:flutter/material.dart';
 
 /// UI quando configuração da loja não foi encontrada.
 class CatalogConfigErrorState extends StatelessWidget {
-  final ThemeData• themeData;
+  final ThemeData? themeData;
 
   const CatalogConfigErrorState({super.key, this.themeData});
 
   @override
   Widget build(BuildContext context) {
-    final theme = themeData ?• Theme.of(context);
+    final theme = themeData ?? Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: Center(

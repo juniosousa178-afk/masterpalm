@@ -16,7 +16,7 @@ const Color _warningColor = Color(0xFFF59E0B);
 class DashboardInsightsSection extends StatefulWidget {
   final String lojaId;
   final bool isVendedor;
-  final String• vendedorNome;
+  final String? vendedorNome;
 
   const DashboardInsightsSection({
     super.key,
@@ -31,7 +31,7 @@ class DashboardInsightsSection extends StatefulWidget {
 }
 
 class _DashboardInsightsSectionState extends State<DashboardInsightsSection> {
-  Future<DashboardInsightsResult>• _future;
+  Future<DashboardInsightsResult>? _future;
 
   @override
   void initState() {
@@ -119,7 +119,7 @@ class _DashboardInsightsSectionState extends State<DashboardInsightsSection> {
 class DashboardInsightsTicker extends StatefulWidget {
   final String lojaId;
   final bool isVendedor;
-  final String• vendedorNome;
+  final String? vendedorNome;
 
   const DashboardInsightsTicker({
     super.key,
@@ -134,10 +134,10 @@ class DashboardInsightsTicker extends StatefulWidget {
 }
 
 class _DashboardInsightsTickerState extends State<DashboardInsightsTicker> {
-  Future<DashboardInsightsResult>• _future;
+  Future<DashboardInsightsResult>? _future;
   int _currentIndex = 0;
   late final PageController _pageController;
-  Timer• _autoAdvanceTimer;
+  Timer? _autoAdvanceTimer;
 
   @override
   void initState() {

@@ -11,18 +11,18 @@ import '../services/store_resolver_facade.dart';
 import 'store_context.dart';
 
 class LojaIdService extends ChangeNotifier {
-  String• _lojaId;
+  String? _lojaId;
 
-  static LojaIdService• _instance;
+  static LojaIdService? _instance;
 
   LojaIdService() {
     _instance = this;
   }
 
-  String• get lojaId => _lojaId;
+  String? get lojaId => _lojaId;
 
   /// Compat: usado no código legado
-  String• getLoja() => _lojaId;
+  String? getLoja() => _lojaId;
 
   // ============================================================
   // ✅ BOOTSTRAP: carrega a loja ativa (chame no start do app)
@@ -40,8 +40,8 @@ class LojaIdService extends ChangeNotifier {
   // ============================================================
   // ✅ SET (instância): altera + persiste (Hive + StoreContext)
   // ============================================================
-  Future<void> setLoja(String• novoId) async {
-    final id = (novoId ?• '').trim();
+  Future<void> setLoja(String? novoId) async {
+    final id = (novoId ?? '').trim();
 
     if (id.isEmpty) {
       await LojaIdService.clear();
@@ -68,8 +68,8 @@ class LojaIdService extends ChangeNotifier {
     try {
       logD('[LOJAID] origem=LojaIdService.get antes StoreResolverFacade.resolveForAdminApp');
       final id = await StoreResolverFacade.resolveForAdminApp();
-      logD('[LOJAID] origem=LojaIdService.get depois StoreResolverFacade.resolveForAdminApp valor=${id ?• "null"}');
-      final trimmed = id?.trim() ?• '';
+      logD('[LOJAID] origem=LojaIdService.get depois StoreResolverFacade.resolveForAdminApp valor=${id ?? "null"}');
+      final trimmed = id?.trim() ?? '';
       if (trimmed.isNotEmpty) return trimmed;
       logW('[LOJAID] origem=LojaIdService.get retorno null motivo=StoreResolver retornou vazio');
     } catch (e) {
@@ -91,14 +91,14 @@ class LojaIdService extends ChangeNotifier {
       }
 
       final Box sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
       final cachedUserEmail =
-          (sessao.get('usuario_logado_email') ?• '').toString().trim().toLowerCase();
+          (sessao.get('usuario_logado_email') ?? '').toString().trim().toLowerCase();
       final cachedUserLegacy =
-          (sessao.get('usuario_logado') ?• '').toString().trim().toLowerCase();
-      final cachedUser = cachedUserEmail.isNotEmpty • cachedUserEmail : cachedUserLegacy;
-      final currentEmail = (current.email ?• '').trim().toLowerCase();
+          (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final cachedUser = cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
+      final currentEmail = (current.email ?? '').trim().toLowerCase();
       if (cachedUser.isEmpty || currentEmail != cachedUser) {
         logW('[LOJAID] origem=LojaIdService.get fallback sessao rejeitado motivo=principal mismatch currentEmail=$currentEmail cachedUser=$cachedUser');
         return null;
@@ -118,21 +118,21 @@ class LojaIdService extends ChangeNotifier {
       if (current == null) return null;
 
       final Box sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
       final cachedUserEmail =
-          (sessao.get('usuario_logado_email') ?• '').toString().trim().toLowerCase();
+          (sessao.get('usuario_logado_email') ?? '').toString().trim().toLowerCase();
       final cachedUserLegacy =
-          (sessao.get('usuario_logado') ?• '').toString().trim().toLowerCase();
-      final cachedUser = cachedUserEmail.isNotEmpty • cachedUserEmail : cachedUserLegacy;
-      final currentEmail = (current.email ?• '').trim().toLowerCase();
+          (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final cachedUser = cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
+      final currentEmail = (current.email ?? '').trim().toLowerCase();
       if (cachedUser.isEmpty || currentEmail != cachedUser) {
         logW('[LOJAID] origem=LojaIdService.get fallback config rejeitado motivo=principal mismatch currentEmail=$currentEmail cachedUser=$cachedUser');
         return null;
       }
 
       final Box cfg = Hive.isBoxOpen('config')
-          • Hive.box('config')
+          ? Hive.box('config')
           : await Hive.openBox('config');
       final rawId = normalizeFromBox(cfg);
       if (rawId != null && rawId.isNotEmpty) return rawId;
@@ -150,13 +150,13 @@ class LojaIdService extends ChangeNotifier {
   /// Nunca retorna 'padrao' nem placeholder (minha-loja). Retorna null se não conseguir resolver.
   /// Web: usa timeout maior e mais retries (Auth/Firestore podem demorar).
   static Future<String?> getWithTimeout({
-    Duration• timeout,
+    Duration? timeout,
   }) async {
     // Web: Auth pode demorar a restaurar sessão; usar timeout maior para evitar "Não foi possível carregar a loja"
     final effectiveTimeout = timeout != null
-        • (kIsWeb && timeout.inSeconds < 30 • const Duration(seconds: 30) : timeout)
-        : (kIsWeb • const Duration(seconds: 30) : const Duration(seconds: 10));
-    const retryTimeout = kIsWeb • Duration(seconds: 20) : Duration(seconds: 5);
+        ? (kIsWeb && timeout.inSeconds < 30 ? const Duration(seconds: 30) : timeout)
+        : (kIsWeb ? const Duration(seconds: 30) : const Duration(seconds: 10));
+    const retryTimeout = kIsWeb ? Duration(seconds: 20) : Duration(seconds: 5);
     logD('[LOJAID] origem=LojaIdService.getWithTimeout inicio timeout=${effectiveTimeout.inSeconds}s web=$kIsWeb');
 
     // ⚠️ NÃO usar Hive como fast path: no Web, IndexedDB é compartilhado e pode ter
@@ -166,8 +166,8 @@ class LojaIdService extends ChangeNotifier {
       logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=1');
       final id = await StoreResolverFacade.resolveForAdminApp()
           .timeout(effectiveTimeout, onTimeout: () => null);
-      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=1 valor=${id ?• "null"}');
-      final trimmed = id?.trim() ?• '';
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=1 valor=${id ?? "null"}');
+      final trimmed = id?.trim() ?? '';
       if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
         logD('[LOJAID] origem=LojaIdService.getWithTimeout retorno=$trimmed motivo=StoreResolver tentativa1');
         return trimmed;
@@ -178,8 +178,8 @@ class LojaIdService extends ChangeNotifier {
       logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=2');
       final idRetry = await StoreResolverFacade.resolveForAdminApp()
           .timeout(effectiveTimeout, onTimeout: () => null);
-      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=2 valor=${idRetry ?• "null"}');
-      final trimmedRetry = idRetry?.trim() ?• '';
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=2 valor=${idRetry ?? "null"}');
+      final trimmedRetry = idRetry?.trim() ?? '';
       if (trimmedRetry.isNotEmpty && isValidForPublicLink(trimmedRetry)) {
         logD('[LOJAID] origem=LojaIdService.getWithTimeout retorno=$trimmedRetry motivo=StoreResolver tentativa2');
         return trimmedRetry;
@@ -191,8 +191,8 @@ class LojaIdService extends ChangeNotifier {
         logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=timeout-retry');
         final id = await StoreResolverFacade.resolveForAdminApp()
             .timeout(retryTimeout, onTimeout: () => null);
-        logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=timeout-retry valor=${id ?• "null"}');
-        final trimmed = id?.trim() ?• '';
+        logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=timeout-retry valor=${id ?? "null"}');
+        final trimmed = id?.trim() ?? '';
         if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
           logD('[STORE_SCREEN] lojaId resolvido no retry = $trimmed');
           return trimmed;
@@ -211,7 +211,7 @@ class LojaIdService extends ChangeNotifier {
       await Future<void>.delayed(const Duration(seconds: 3));
       try {
         final id = await get();
-        final trimmed = id?.trim() ?• '';
+        final trimmed = id?.trim() ?? '';
         if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
           logD('[STORE_SCREEN] lojaId resolvido na última tentativa = $trimmed');
           return trimmed;
@@ -227,7 +227,7 @@ class LojaIdService extends ChangeNotifier {
               .timeout(const Duration(seconds: 5), onTimeout: () => null);
           final id = await StoreResolverFacade.resolveForAdminApp()
               .timeout(const Duration(seconds: 10), onTimeout: () => null);
-          final trimmed = id?.trim() ?• '';
+          final trimmed = id?.trim() ?? '';
           if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
             logD('[STORE_SCREEN] lojaId resolvido após Auth = $trimmed');
             return trimmed;
@@ -242,7 +242,7 @@ class LojaIdService extends ChangeNotifier {
     if (kIsWeb) {
       try {
         final authEmail =
-            FirebaseAuth.instance.currentUser?.email?.trim().toLowerCase() ?• '';
+            FirebaseAuth.instance.currentUser?.email?.trim().toLowerCase() ?? '';
         final webFallback = await _resolveSafeWebHiveFallback(authEmail: authEmail);
         if (webFallback != null && webFallback.isNotEmpty) return webFallback;
       } catch (e, st) {
@@ -262,31 +262,31 @@ class LojaIdService extends ChangeNotifier {
     required String authEmail,
   }) async {
     final sessaoBox = Hive.isBoxOpen('sessao')
-        • Hive.box('sessao')
+        ? Hive.box('sessao')
         : await Hive.openBox('sessao');
     final cfgBox = Hive.isBoxOpen('config')
-        • Hive.box('config')
+        ? Hive.box('config')
         : await Hive.openBox('config');
 
     final cachedUserEmail =
-        (sessaoBox.get('usuario_logado_email', defaultValue: '') ?• '')
+        (sessaoBox.get('usuario_logado_email', defaultValue: '') ?? '')
             .toString()
             .trim()
             .toLowerCase();
     final cachedUserLegacy =
-        (sessaoBox.get('usuario_logado', defaultValue: '') ?• '')
+        (sessaoBox.get('usuario_logado', defaultValue: '') ?? '')
             .toString()
             .trim()
             .toLowerCase();
     final cachedPrincipal =
-        cachedUserEmail.isNotEmpty • cachedUserEmail : cachedUserLegacy;
+        cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
 
-    final cachedStoreId = normalizeFromBox(sessaoBox) ?• '';
-    final cachedStoreIdCfg = normalizeFromBox(cfgBox) ?• '';
-    final candidate = cachedStoreId.isNotEmpty • cachedStoreId : cachedStoreIdCfg;
+    final cachedStoreId = normalizeFromBox(sessaoBox) ?? '';
+    final cachedStoreIdCfg = normalizeFromBox(cfgBox) ?? '';
+    final candidate = cachedStoreId.isNotEmpty ? cachedStoreId : cachedStoreIdCfg;
 
     logW(
-      '[STORE_SCREEN] WEB safe fallback: authEmail=${authEmail.isNotEmpty • authEmail : "null"} cachedPrincipal=${cachedPrincipal.isNotEmpty • cachedPrincipal : "null"} candidate=$candidate',
+      '[STORE_SCREEN] WEB safe fallback: authEmail=${authEmail.isNotEmpty ? authEmail : "null"} cachedPrincipal=${cachedPrincipal.isNotEmpty ? cachedPrincipal : "null"} candidate=$candidate',
     );
 
     if (candidate.isEmpty || !isValidForPublicLink(candidate)) {
@@ -338,7 +338,7 @@ class LojaIdService extends ChangeNotifier {
 
   // 2) sessao
   final Box sessao = Hive.isBoxOpen('sessao')
-      • Hive.box('sessao')
+      ? Hive.box('sessao')
       : await Hive.openBox('sessao');
 
   await sessao.put('store_id', id);
@@ -348,7 +348,7 @@ class LojaIdService extends ChangeNotifier {
 
   // 3) config
   final Box cfg = Hive.isBoxOpen('config')
-      • Hive.box('config')
+      ? Hive.box('config')
       : await Hive.openBox('config');
 
   await cfg.put('store_id', id);
@@ -370,14 +370,14 @@ class LojaIdService extends ChangeNotifier {
     // (redundância segura — se alguma box falhar no StoreContext, garante aqui)
     try {
       final Box sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
       await sessao.delete('store_id');
     } catch (_) {}
 
     try {
       final Box cfg = Hive.isBoxOpen('config')
-          • Hive.box('config')
+          ? Hive.box('config')
           : await Hive.openBox('config');
       await cfg.delete('store_id');
     } catch (_) {}

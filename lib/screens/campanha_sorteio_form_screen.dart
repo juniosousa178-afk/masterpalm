@@ -8,7 +8,7 @@ import 'globo_sorteio_screen.dart';
 
 class CampanhaSorteioFormScreen extends StatefulWidget {
   final String lojaId;
-  final String• campanhaId; // null = nova
+  final String? campanhaId; // null = nova
 
   const CampanhaSorteioFormScreen({
     super.key,
@@ -29,13 +29,13 @@ class _CampanhaSorteioFormScreenState
   final _descricaoController = TextEditingController();
   final _premioController = TextEditingController();
   final _valorMinimoController = TextEditingController();
-  final _valorXController = TextEditingController(); // ?• R$ X = 1 número
+  final _valorXController = TextEditingController(); // ?? R$ X = 1 número
 
-  DateTime• _dataInicio;
-  DateTime• _dataFim;
-  DateTime• _dataSorteio;
+  DateTime? _dataInicio;
+  DateTime? _dataFim;
+  DateTime? _dataSorteio;
   bool _ativa = true;
-  String• _statusAtual;
+  String? _statusAtual;
 
   bool _carregando = false;
   bool _salvando = false;
@@ -83,15 +83,15 @@ class _CampanhaSorteioFormScreenState
         return;
       }
 
-      final data = snap.data() ?• {};
+      final data = snap.data() ?? {};
 
-      _nomeController.text = data['nome'] ?• '';
-      _descricaoController.text = data['descricao'] ?• '';
-      _premioController.text = data['premioDescricao'] ?• '';
+      _nomeController.text = data['nome'] ?? '';
+      _descricaoController.text = data['descricao'] ?? '';
+      _premioController.text = data['premioDescricao'] ?? '';
 
       final valorMinimo =
-          (data['valorMinimo'] as num?)?.toDouble() ?• 0.0;
-      final valorX = (data['valorX'] as num?)?.toDouble() ?• 50.0;
+          (data['valorMinimo'] as num?)?.toDouble() ?? 0.0;
+      final valorX = (data['valorX'] as num?)?.toDouble() ?? 50.0;
 
       _valorMinimoController.text = MoedaInputFormatter.format(valorMinimo);
       _valorXController.text = MoedaInputFormatter.format(valorX);
@@ -104,7 +104,7 @@ class _CampanhaSorteioFormScreenState
       _dataFim = tsFim?.toDate();
       _dataSorteio = tsSorteio?.toDate();
 
-      _ativa = data['ativa'] as bool• ?• true;
+      _ativa = data['ativa'] as bool? ?? true;
       _statusAtual = data['status'] as String?;
 
       if (!mounted) return;
@@ -120,11 +120,11 @@ class _CampanhaSorteioFormScreenState
   }
 
   Future<void> _selecionarData({
-    required DateTime• atual,
+    required DateTime? atual,
     required ValueChanged<DateTime> onSelected,
   }) async {
     final agora = DateTime.now();
-    final inicial = atual ?• agora;
+    final inicial = atual ?? agora;
 
     final picked = await showDatePicker(
       context: context,
@@ -151,22 +151,22 @@ class _CampanhaSorteioFormScreenState
     }
 
     if (_dataFim!.isBefore(_dataInicio!)) {
-      _showSnackBar('A data de fim deve ser igual ou posterior • data de início.', isError: true);
+      _showSnackBar('A data de fim deve ser igual ou posterior ? data de início.', isError: true);
       return;
     }
     if (_dataSorteio!.isBefore(_dataFim!)) {
-      _showSnackBar('A data do sorteio deve ser igual ou posterior • data de fim.', isError: true);
+      _showSnackBar('A data do sorteio deve ser igual ou posterior ? data de fim.', isError: true);
       return;
     }
 
-    // • Só permite uma campanha ativa por vez: ao criar/ativar, verifica se já existe
+    // ? Só permite uma campanha ativa por vez: ao criar/ativar, verifica se já existe
     if (_ativa) {
       final ativas = await CampanhasSorteioService.listarCampanhasAtivas(
         lojaId: widget.lojaId,
         excluirId: widget.campanhaId,
       );
       if (ativas.isNotEmpty) {
-        final nome = ativas.first['nome'] ?• 'Campanha ativa';
+        final nome = ativas.first['nome'] ?? 'Campanha ativa';
         _showSnackBar(
           'Já existe uma campanha ativa: "$nome". '
           'Encerre ou desative a campanha atual antes de criar outra.',
@@ -192,7 +192,7 @@ class _CampanhaSorteioFormScreenState
         dataSorteio: _dataSorteio!,
         premioDescricao: _premioController.text.trim(),
         valorMinimo: valorMinimo,
-        valorXPorNumero: valorX, // ?• agora casa com o service
+        valorXPorNumero: valorX, // ?? agora casa com o service
         ativa: _ativa,
       );
 
@@ -200,7 +200,7 @@ class _CampanhaSorteioFormScreenState
 
       _showSnackBar(
         widget.campanhaId == null
-            • 'Campanha criada com sucesso!'
+            ? 'Campanha criada com sucesso!'
             : 'Campanha atualizada com sucesso!',
       );
 
@@ -222,7 +222,7 @@ class _CampanhaSorteioFormScreenState
         content: Row(
           children: [
             Icon(
-              isError • Icons.error_outline : Icons.check_circle_outline,
+              isError ? Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -230,7 +230,7 @@ class _CampanhaSorteioFormScreenState
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError • Colors.red : Colors.green,
+        backgroundColor: isError ? Colors.red : Colors.green,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -251,7 +251,7 @@ class _CampanhaSorteioFormScreenState
     );
   }
 
-  // • REMOVIDO: Configurar Roleta agora tem aba própria em Sorteios e Campanhas
+  // ? REMOVIDO: Configurar Roleta agora tem aba própria em Sorteios e Campanhas
   // void _abrirRoleta() {
   //   Navigator.of(context).push(
   //     MaterialPageRoute(
@@ -267,11 +267,11 @@ class _CampanhaSorteioFormScreenState
     return Scaffold(
       backgroundColor: const Color(0xFF05060A),
       appBar: AppBar(
-        title: Text(isEdit • 'Editar Campanha' : 'Nova Campanha'),
+        title: Text(isEdit ? 'Editar Campanha' : 'Nova Campanha'),
         backgroundColor: Colors.black,
       ),
       body: _carregando
-          • const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Center(
@@ -299,7 +299,7 @@ class _CampanhaSorteioFormScreenState
                                 Expanded(
                                   child: Text(
                                     isEdit
-                                        • 'Campanha de Sorteio'
+                                        ? 'Campanha de Sorteio'
                                         : 'Nova Campanha de Sorteio',
                                     style: const TextStyle(
                                       fontSize: 22,
@@ -550,7 +550,7 @@ class _CampanhaSorteioFormScreenState
                               children: [
                                 Expanded(
                                   child: ElevatedButton.icon(
-                                    onPressed: _salvando • null : _salvar,
+                                    onPressed: _salvando ? null : _salvar,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.greenAccent,
                                       foregroundColor: Colors.black,
@@ -563,7 +563,7 @@ class _CampanhaSorteioFormScreenState
                                       ),
                                     ),
                                     icon: _salvando
-                                        • const SizedBox(
+                                        ? const SizedBox(
                                             width: 18,
                                             height: 18,
                                             child:
@@ -577,9 +577,9 @@ class _CampanhaSorteioFormScreenState
                                         : const Icon(Icons.save),
                                     label: Text(
                                       _salvando
-                                          • 'Salvando...'
+                                          ? 'Salvando...'
                                           : (isEdit
-                                              • 'Salvar alterações'
+                                              ? 'Salvar alterações'
                                               : 'Criar campanha'),
                                     ),
                                   ),
@@ -589,7 +589,7 @@ class _CampanhaSorteioFormScreenState
 
                             const SizedBox(height: 12),
 
-                            // • Botão Globo (Configurar Roleta foi movido para aba própria)
+                            // ? Botão Globo (Configurar Roleta foi movido para aba própria)
                             if (isEdit)
                               ElevatedButton.icon(
                                 onPressed: _abrirGlobo,
@@ -613,9 +613,9 @@ class _CampanhaSorteioFormScreenState
 
   InputDecoration _inputDeco(
     String label, {
-    String• hint,
-    String• prefixText,
-    String• helperText,
+    String? hint,
+    String? prefixText,
+    String? helperText,
   }) {
     return InputDecoration(
       labelText: label,
@@ -645,7 +645,7 @@ class _CampanhaSorteioFormScreenState
 
 class _DateChip extends StatelessWidget {
   final String label;
-  final DateTime• date;
+  final DateTime? date;
   final VoidCallback onTap;
 
   const _DateChip({
@@ -654,7 +654,7 @@ class _DateChip extends StatelessWidget {
     required this.onTap,
   });
 
-  String _format(DateTime• dt) {
+  String _format(DateTime? dt) {
     if (dt == null) return 'Selecione';
     return '${dt.day.toString().padLeft(2, '0')}/'
         '${dt.month.toString().padLeft(2, '0')}/'

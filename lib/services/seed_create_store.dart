@@ -5,7 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 /// Cria a loja do usuário (se ainda não existir) e retorna o lojaId
 /// (o lojaId é o próprio slug, compatível com subdomínio).
 Future<String> seedCreateStoreIfMissing({
-  String• displayNameHint,
+  String? displayNameHint,
 }) async {
   final db = FirebaseFirestore.instance;
   final user = FirebaseAuth.instance.currentUser;
@@ -34,7 +34,7 @@ Future<String> seedCreateStoreIfMissing({
         .replaceAll(RegExp(r'\s+'), '-')
         .replaceAll(RegExp(r'-{2,}'), '-')
         .replaceAll(RegExp(r'^-+|-+$'), '');
-    return (base.isEmpty • 'minha-loja' : base).padRight(3, 'x');
+    return (base.isEmpty ? 'minha-loja' : base).padRight(3, 'x');
   }
 
   Future<String> pickUniqueSlug(String base) async {
@@ -51,7 +51,7 @@ Future<String> seedCreateStoreIfMissing({
   final base = toSlug(
     displayNameHint ??
         user.displayName ??
-        (user.email?.split('@').first ?• 'minha-loja'),
+        (user.email?.split('@').first ?? 'minha-loja'),
   );
   final slug = await pickUniqueSlug(base);
 
@@ -59,7 +59,7 @@ Future<String> seedCreateStoreIfMissing({
   final lojaRef = db.collection('lojas').doc(slug);
   try {
     await lojaRef.set(<String, dynamic>{
-      'name': displayNameHint ?• user.displayName ?• 'Minha Loja',
+      'name': displayNameHint ?? user.displayName ?? 'Minha Loja',
       'slug': slug,
       'ownerUid': uid,
       'createdAt': FieldValue.serverTimestamp(),

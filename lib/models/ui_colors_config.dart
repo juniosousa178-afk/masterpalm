@@ -188,14 +188,14 @@ class UiColorsConfig {
   /// Cria UiColorsConfig a partir de Map (Firestore)
   /// Suporta estrutura nova (uiColors) e antiga (theme + checkoutTheme)
   factory UiColorsConfig.fromMap(Map<String, dynamic> data) {
-    Color• parseColor(dynamic v) {
+    Color? parseColor(dynamic v) {
       if (v == null) return null;
       if (v is int) return Color(v);
       if (v is String) {
         final cleaned = v.replaceAll('#', '');
         final parsed = int.tryParse(cleaned, radix: 16);
         if (parsed != null) {
-          return cleaned.length == 6 • Color(0xFF000000 | parsed) : Color(parsed);
+          return cleaned.length == 6 ? Color(0xFF000000 | parsed) : Color(parsed);
         }
       }
       return null;
@@ -204,18 +204,18 @@ class UiColorsConfig {
     // Tenta carregar da nova estrutura (uiColors)
     final uiColorsRaw = data['uiColors'];
     final Map<String, dynamic> uiColors = uiColorsRaw is Map
-        • Map<String, dynamic>.from(uiColorsRaw)
+        ? Map<String, dynamic>.from(uiColorsRaw)
         : {};
 
     // Fallback para estrutura antiga (theme + checkoutTheme)
     final themeRaw = data['theme'];
     final Map<String, dynamic> theme = themeRaw is Map
-        • Map<String, dynamic>.from(themeRaw)
+        ? Map<String, dynamic>.from(themeRaw)
         : {};
 
     final checkoutThemeRaw = data['checkoutTheme'];
     final Map<String, dynamic> checkoutTheme = checkoutThemeRaw is Map
-        • Map<String, dynamic>.from(checkoutThemeRaw)
+        ? Map<String, dynamic>.from(checkoutThemeRaw)
         : {};
 
     // Defaults
@@ -327,56 +327,56 @@ class UiColorsConfig {
 
   /// Copia com modificações
   UiColorsConfig copyWith({
-    Color• background,
-    Color• cardBackground,
-    Color• textPrimary,
-    Color• textSecondary,
-    Color• cardTextPrimary,
-    Color• cardTextSecondary,
-    Color• labelText,
-    Color• primaryColor,
-    Color• priceHighlight,
-    Color• danger,
-    Color• fieldBackground,
-    Color• fieldText,
-    Color• fieldHint,
-    Color• fieldBorder,
-    Color• dividerColor,
-    Color• buttonPrimaryBg,
-    Color• buttonPrimaryText,
-    Color• buttonSecondaryBg,
-    Color• buttonSecondaryText,
-    Color• buttonSecondaryBorder,
-    Color• badgeBackground,
-    Color• badgeText,
-    Color• iconColor,
-    Color• shadowColor,
+    Color? background,
+    Color? cardBackground,
+    Color? textPrimary,
+    Color? textSecondary,
+    Color? cardTextPrimary,
+    Color? cardTextSecondary,
+    Color? labelText,
+    Color? primaryColor,
+    Color? priceHighlight,
+    Color? danger,
+    Color? fieldBackground,
+    Color? fieldText,
+    Color? fieldHint,
+    Color? fieldBorder,
+    Color? dividerColor,
+    Color? buttonPrimaryBg,
+    Color? buttonPrimaryText,
+    Color? buttonSecondaryBg,
+    Color? buttonSecondaryText,
+    Color? buttonSecondaryBorder,
+    Color? badgeBackground,
+    Color? badgeText,
+    Color? iconColor,
+    Color? shadowColor,
   }) {
     return UiColorsConfig(
-      background: background ?• this.background,
-      cardBackground: cardBackground ?• this.cardBackground,
-      textPrimary: textPrimary ?• this.textPrimary,
-      textSecondary: textSecondary ?• this.textSecondary,
-      cardTextPrimary: cardTextPrimary ?• this.cardTextPrimary,
-      cardTextSecondary: cardTextSecondary ?• this.cardTextSecondary,
-      labelText: labelText ?• this.labelText,
-      primaryColor: primaryColor ?• this.primaryColor,
-      priceHighlight: priceHighlight ?• this.priceHighlight,
-      danger: danger ?• this.danger,
-      fieldBackground: fieldBackground ?• this.fieldBackground,
-      fieldText: fieldText ?• this.fieldText,
-      fieldHint: fieldHint ?• this.fieldHint,
-      fieldBorder: fieldBorder ?• this.fieldBorder,
-      dividerColor: dividerColor ?• this.dividerColor,
-      buttonPrimaryBg: buttonPrimaryBg ?• this.buttonPrimaryBg,
-      buttonPrimaryText: buttonPrimaryText ?• this.buttonPrimaryText,
-      buttonSecondaryBg: buttonSecondaryBg ?• this.buttonSecondaryBg,
-      buttonSecondaryText: buttonSecondaryText ?• this.buttonSecondaryText,
-      buttonSecondaryBorder: buttonSecondaryBorder ?• this.buttonSecondaryBorder,
-      badgeBackground: badgeBackground ?• this.badgeBackground,
-      badgeText: badgeText ?• this.badgeText,
-      iconColor: iconColor ?• this.iconColor,
-      shadowColor: shadowColor ?• this.shadowColor,
+      background: background ?? this.background,
+      cardBackground: cardBackground ?? this.cardBackground,
+      textPrimary: textPrimary ?? this.textPrimary,
+      textSecondary: textSecondary ?? this.textSecondary,
+      cardTextPrimary: cardTextPrimary ?? this.cardTextPrimary,
+      cardTextSecondary: cardTextSecondary ?? this.cardTextSecondary,
+      labelText: labelText ?? this.labelText,
+      primaryColor: primaryColor ?? this.primaryColor,
+      priceHighlight: priceHighlight ?? this.priceHighlight,
+      danger: danger ?? this.danger,
+      fieldBackground: fieldBackground ?? this.fieldBackground,
+      fieldText: fieldText ?? this.fieldText,
+      fieldHint: fieldHint ?? this.fieldHint,
+      fieldBorder: fieldBorder ?? this.fieldBorder,
+      dividerColor: dividerColor ?? this.dividerColor,
+      buttonPrimaryBg: buttonPrimaryBg ?? this.buttonPrimaryBg,
+      buttonPrimaryText: buttonPrimaryText ?? this.buttonPrimaryText,
+      buttonSecondaryBg: buttonSecondaryBg ?? this.buttonSecondaryBg,
+      buttonSecondaryText: buttonSecondaryText ?? this.buttonSecondaryText,
+      buttonSecondaryBorder: buttonSecondaryBorder ?? this.buttonSecondaryBorder,
+      badgeBackground: badgeBackground ?? this.badgeBackground,
+      badgeText: badgeText ?? this.badgeText,
+      iconColor: iconColor ?? this.iconColor,
+      shadowColor: shadowColor ?? this.shadowColor,
     );
   }
 }
@@ -411,14 +411,14 @@ class CatalogHeaderColors {
   }
 
   factory CatalogHeaderColors.fromMap(Map<String, dynamic> data, Color bgFallback) {
-    Color• parseColor(dynamic v) {
+    Color? parseColor(dynamic v) {
       if (v == null) return null;
       if (v is int) return Color(v);
       if (v is String) {
         final cleaned = v.replaceAll('#', '');
         final parsed = int.tryParse(cleaned, radix: 16);
         if (parsed != null) {
-          return cleaned.length == 6 • Color(0xFF000000 | parsed) : Color(parsed);
+          return cleaned.length == 6 ? Color(0xFF000000 | parsed) : Color(parsed);
         }
       }
       return null;
@@ -427,13 +427,13 @@ class CatalogHeaderColors {
     // Lê de catalogHeaderColors ou de theme.cabecalho (legado)
     final headerColorsRaw = data['catalogHeaderColors'];
     final Map<String, dynamic> headerColors = headerColorsRaw is Map
-        • Map<String, dynamic>.from(headerColorsRaw)
+        ? Map<String, dynamic>.from(headerColorsRaw)
         : {};
 
     // Fallback para theme.cabecalho (legado)
     final themeRaw = data['theme'];
     final Map<String, dynamic> theme = themeRaw is Map
-        • Map<String, dynamic>.from(themeRaw)
+        ? Map<String, dynamic>.from(themeRaw)
         : {};
 
     final defaults = CatalogHeaderColors.defaults(bgFallback);
@@ -442,11 +442,11 @@ class CatalogHeaderColors {
       background: parseColor(headerColors['background']) ??
           parseColor(theme['cabecalho']) ??
           defaults.background,
-      text: parseColor(headerColors['text']) ?• defaults.text,
-      icon: parseColor(headerColors['icon']) ?• defaults.icon,
-      searchBackground: parseColor(headerColors['searchBackground']) ?• defaults.searchBackground,
-      searchText: parseColor(headerColors['searchText']) ?• defaults.searchText,
-      searchHint: parseColor(headerColors['searchHint']) ?• defaults.searchHint,
+      text: parseColor(headerColors['text']) ?? defaults.text,
+      icon: parseColor(headerColors['icon']) ?? defaults.icon,
+      searchBackground: parseColor(headerColors['searchBackground']) ?? defaults.searchBackground,
+      searchText: parseColor(headerColors['searchText']) ?? defaults.searchText,
+      searchHint: parseColor(headerColors['searchHint']) ?? defaults.searchHint,
     );
   }
 
@@ -462,20 +462,20 @@ class CatalogHeaderColors {
   }
 
   CatalogHeaderColors copyWith({
-    Color• background,
-    Color• text,
-    Color• icon,
-    Color• searchBackground,
-    Color• searchText,
-    Color• searchHint,
+    Color? background,
+    Color? text,
+    Color? icon,
+    Color? searchBackground,
+    Color? searchText,
+    Color? searchHint,
   }) {
     return CatalogHeaderColors(
-      background: background ?• this.background,
-      text: text ?• this.text,
-      icon: icon ?• this.icon,
-      searchBackground: searchBackground ?• this.searchBackground,
-      searchText: searchText ?• this.searchText,
-      searchHint: searchHint ?• this.searchHint,
+      background: background ?? this.background,
+      text: text ?? this.text,
+      icon: icon ?? this.icon,
+      searchBackground: searchBackground ?? this.searchBackground,
+      searchText: searchText ?? this.searchText,
+      searchHint: searchHint ?? this.searchHint,
     );
   }
 }
@@ -510,14 +510,14 @@ class CatalogFooterColors {
   }
 
   factory CatalogFooterColors.fromMap(Map<String, dynamic> data, Color bgFallback, Color primaryFallback) {
-    Color• parseColor(dynamic v) {
+    Color? parseColor(dynamic v) {
       if (v == null) return null;
       if (v is int) return Color(v);
       if (v is String) {
         final cleaned = v.replaceAll('#', '');
         final parsed = int.tryParse(cleaned, radix: 16);
         if (parsed != null) {
-          return cleaned.length == 6 • Color(0xFF000000 | parsed) : Color(parsed);
+          return cleaned.length == 6 ? Color(0xFF000000 | parsed) : Color(parsed);
         }
       }
       return null;
@@ -525,18 +525,18 @@ class CatalogFooterColors {
 
     final footerColorsRaw = data['catalogFooterColors'];
     final Map<String, dynamic> footerColors = footerColorsRaw is Map
-        • Map<String, dynamic>.from(footerColorsRaw)
+        ? Map<String, dynamic>.from(footerColorsRaw)
         : {};
 
     final defaults = CatalogFooterColors.defaults(bgFallback, primaryFallback);
 
     return CatalogFooterColors(
-      background: parseColor(footerColors['background']) ?• defaults.background,
-      text: parseColor(footerColors['text']) ?• defaults.text,
-      textSecondary: parseColor(footerColors['textSecondary']) ?• defaults.textSecondary,
-      icon: parseColor(footerColors['icon']) ?• defaults.icon,
-      link: parseColor(footerColors['link']) ?• defaults.link,
-      divider: parseColor(footerColors['divider']) ?• defaults.divider,
+      background: parseColor(footerColors['background']) ?? defaults.background,
+      text: parseColor(footerColors['text']) ?? defaults.text,
+      textSecondary: parseColor(footerColors['textSecondary']) ?? defaults.textSecondary,
+      icon: parseColor(footerColors['icon']) ?? defaults.icon,
+      link: parseColor(footerColors['link']) ?? defaults.link,
+      divider: parseColor(footerColors['divider']) ?? defaults.divider,
     );
   }
 
@@ -552,20 +552,20 @@ class CatalogFooterColors {
   }
 
   CatalogFooterColors copyWith({
-    Color• background,
-    Color• text,
-    Color• textSecondary,
-    Color• icon,
-    Color• link,
-    Color• divider,
+    Color? background,
+    Color? text,
+    Color? textSecondary,
+    Color? icon,
+    Color? link,
+    Color? divider,
   }) {
     return CatalogFooterColors(
-      background: background ?• this.background,
-      text: text ?• this.text,
-      textSecondary: textSecondary ?• this.textSecondary,
-      icon: icon ?• this.icon,
-      link: link ?• this.link,
-      divider: divider ?• this.divider,
+      background: background ?? this.background,
+      text: text ?? this.text,
+      textSecondary: textSecondary ?? this.textSecondary,
+      icon: icon ?? this.icon,
+      link: link ?? this.link,
+      divider: divider ?? this.divider,
     );
   }
 }

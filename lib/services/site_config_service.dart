@@ -13,8 +13,8 @@ class SiteConfig {
   final String apkSize;
   final String apkReleaseDate;
   final String apkChangelog;
-  final DateTime• lastUpdated;
-  final String• updatedBy;
+  final DateTime? lastUpdated;
+  final String? updatedBy;
 
   SiteConfig({
     this.apkDownloadUrl = 'https://mastepalm.com.br/downloads/masterpalm.apk',
@@ -38,7 +38,7 @@ class SiteConfig {
       return t.replaceAll(RegExp(r'/+$'), '');
     }
     final user = t.replaceFirst(RegExp(r'^@'), '').replaceFirst(RegExp(r'^https?://(www\.)?instagram\.com/', caseSensitive: false), '').split('/').first.trim();
-    return user.isEmpty • t : 'https://instagram.com/$user';
+    return user.isEmpty ? t : 'https://instagram.com/$user';
   }
 
   Map<String, dynamic> toMap() => {
@@ -56,19 +56,19 @@ class SiteConfig {
       };
 
   factory SiteConfig.fromMap(Map<String, dynamic> m) {
-    final apkUrl = (m['apkDownloadUrl'] ?• '').toString();
+    final apkUrl = (m['apkDownloadUrl'] ?? '').toString();
     final useDefaultApk = apkUrl.isEmpty || apkUrl.contains('SEU-LINK-AQUI') || apkUrl.contains('seu-link-aqui');
     return SiteConfig(
-        apkDownloadUrl: useDefaultApk • 'https://mastepalm.com.br/downloads/masterpalm.apk' : apkUrl,
-        appWebUrl: (m['appWebUrl'] ?• 'https://app.mastepalm.com.br').toString(),
-        supportWhatsappUrl: (m['supportWhatsappUrl'] ?• '').toString(),
-        instagramUrl: (m['instagramUrl'] ?• '').toString(),
-        supportEmail: (m['supportEmail'] ?• '').toString(),
-        apkVersion: (m['apkVersion'] ?• '1.0.0').toString(),
-        apkSize: (m['apkSize'] ?• '~25 MB').toString(),
-        apkReleaseDate: (m['apkReleaseDate'] ?• '2025').toString(),
-        apkChangelog: (m['apkChangelog'] ?• '').toString(),
-        lastUpdated: m['lastUpdated'] != null • DateTime.tryParse(m['lastUpdated'].toString()) : null,
+        apkDownloadUrl: useDefaultApk ? 'https://mastepalm.com.br/downloads/masterpalm.apk' : apkUrl,
+        appWebUrl: (m['appWebUrl'] ?? 'https://app.mastepalm.com.br').toString(),
+        supportWhatsappUrl: (m['supportWhatsappUrl'] ?? '').toString(),
+        instagramUrl: (m['instagramUrl'] ?? '').toString(),
+        supportEmail: (m['supportEmail'] ?? '').toString(),
+        apkVersion: (m['apkVersion'] ?? '1.0.0').toString(),
+        apkSize: (m['apkSize'] ?? '~25 MB').toString(),
+        apkReleaseDate: (m['apkReleaseDate'] ?? '2025').toString(),
+        apkChangelog: (m['apkChangelog'] ?? '').toString(),
+        lastUpdated: m['lastUpdated'] != null ? DateTime.tryParse(m['lastUpdated'].toString()) : null,
         updatedBy: m['updatedBy']?.toString(),
       );
   }

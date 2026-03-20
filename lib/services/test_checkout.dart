@@ -92,7 +92,7 @@ class _TestCheckoutState extends State<TestCheckout> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ElevatedButton(
-              onPressed: _loading • null : _criarPreferencia,
+              onPressed: _loading ? null : _criarPreferencia,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,

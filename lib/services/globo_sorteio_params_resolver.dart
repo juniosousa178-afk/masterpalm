@@ -13,7 +13,7 @@ import 'store_resolver_facade.dart';
 class GloboSorteioParams {
   final String lojaId;
   final String campanhaId;
-  final String• source;
+  final String? source;
 
   const GloboSorteioParams({
     required this.lojaId,
@@ -36,15 +36,15 @@ class GloboSorteioParamsResolver {
     required bool isWeb,
   }) async {
     try {
-      String• lojaId = _lojaIdFromUri(uri);
-      String• campanhaId = _campanhaIdFromUri(uri);
-      String• source = 'uri';
+      String? lojaId = _lojaIdFromUri(uri);
+      String? campanhaId = _campanhaIdFromUri(uri);
+      String? source = 'uri';
 
       if (lojaId == null || lojaId.trim().isEmpty) {
         logW('[GloboSorteioParams] lojaId não veio da URL; buscando contexto', tag: 'GLOBO_SORTEIO');
         final fromService = (await LojaIdService.get())?.trim();
         lojaId = (fromService != null && fromService.isNotEmpty)
-            • fromService
+            ? fromService
             : (await StoreResolverFacade.resolveForAdminApp())?.trim();
         source = 'context';
       }
@@ -76,27 +76,27 @@ class GloboSorteioParamsResolver {
     }
   }
 
-  static String• _lojaIdFromUri(Uri uri) {
+  static String? _lojaIdFromUri(Uri uri) {
     final q = uri.queryParameters;
-    final v = q['lojaId'] ?• q['loja_id'] ?• q['store'] ?• q['storeId'];
+    final v = q['lojaId'] ?? q['loja_id'] ?? q['store'] ?? q['storeId'];
     if (v != null && v.trim().isNotEmpty) return v.trim();
     final f = uri.fragment;
     if (f.isNotEmpty) {
       final params = Uri.splitQueryString(f);
-      final vf = params['lojaId'] ?• params['loja_id'] ?• params['store'] ?• params['storeId'];
+      final vf = params['lojaId'] ?? params['loja_id'] ?? params['store'] ?? params['storeId'];
       if (vf != null && vf.trim().isNotEmpty) return vf.trim();
     }
     return null;
   }
 
-  static String• _campanhaIdFromUri(Uri uri) {
+  static String? _campanhaIdFromUri(Uri uri) {
     final q = uri.queryParameters;
-    final v = q['campanhaId'] ?• q['campanha_id'] ?• q['campaign'] ?• q['campanha'];
+    final v = q['campanhaId'] ?? q['campanha_id'] ?? q['campaign'] ?? q['campanha'];
     if (v != null && v.trim().isNotEmpty) return v.trim();
     final f = uri.fragment;
     if (f.isNotEmpty) {
       final params = Uri.splitQueryString(f);
-      final vf = params['campanhaId'] ?• params['campanha_id'] ?• params['campaign'] ?• params['campanha'];
+      final vf = params['campanhaId'] ?? params['campanha_id'] ?? params['campaign'] ?? params['campanha'];
       if (vf != null && vf.trim().isNotEmpty) return vf.trim();
     }
     return null;

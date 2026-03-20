@@ -23,17 +23,17 @@ Future<Map<String, int>> importarProdutosDoExcel(
       try {
         final row = sheet.rows[i];
 
-        final nome = row[0]?.value.toString().trim() ?• '';
+        final nome = row[0]?.value.toString().trim() ?? '';
         final precoUnitario = double.tryParse(
-              row[1]?.value.toString().replaceAll(',', '.') ?• '',
+              row[1]?.value.toString().replaceAll(',', '.') ?? '',
             ) ??
             0.0;
         final quantidade = int.tryParse(
-              row[2]?.value.toString().replaceAll(RegExp(r'[^\d]'), '') ?• '',
+              row[2]?.value.toString().replaceAll(RegExp(r'[^\d]'), '') ?? '',
             ) ??
             0;
         final categoria =
-            row.length > 3 • row[3]?.value.toString().trim() ?• '' : '';
+            row.length > 3 ? row[3]?.value.toString().trim() ?? '' : '';
 
         // Valida dados essenciais
         if (nome.isEmpty || precoUnitario <= 0 || quantidade <= 0) {
@@ -41,8 +41,8 @@ Future<Map<String, int>> importarProdutosDoExcel(
           continue;
         }
 
-        final sku = (row.length > 4 • row[4]?.value.toString().trim() : null) ?• '';
-        final codigoBarras = (row.length > 5 • row[5]?.value.toString().trim() : null) ?• '';
+        final sku = (row.length > 4 ? row[4]?.value.toString().trim() : null) ?? '';
+        final codigoBarras = (row.length > 5 ? row[5]?.value.toString().trim() : null) ?? '';
 
         final novoProduto = Produto(
           nome: nome,
@@ -62,8 +62,8 @@ Future<Map<String, int>> importarProdutosDoExcel(
           produtosBox,
           lojaId,
           novoProduto,
-          codigoBarras: codigoBarras.isNotEmpty • codigoBarras : null,
-          sku: sku.isNotEmpty • sku : null,
+          codigoBarras: codigoBarras.isNotEmpty ? codigoBarras : null,
+          sku: sku.isNotEmpty ? sku : null,
         );
 
         if (result == UpsertResult.inserted) {

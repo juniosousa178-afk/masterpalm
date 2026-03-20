@@ -36,8 +36,8 @@ class _PrecificacaoUniversalScreenState
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
-  Box<Produto>• estoqueBox;
-  String• _lojaId;
+  Box<Produto>? estoqueBox;
+  String? _lojaId;
   final List<Map<String, dynamic>> produtos = [];
   bool _carregando = true;
   bool _importando = false;
@@ -116,9 +116,9 @@ class _PrecificacaoUniversalScreenState
           children: [
             Icon(
               isError
-                  • Icons.error_outline
+                  ? Icons.error_outline
                   : isWarning
-                      • Icons.warning_amber
+                      ? Icons.warning_amber
                       : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
@@ -128,9 +128,9 @@ class _PrecificacaoUniversalScreenState
           ],
         ),
         backgroundColor: isError
-            • _errorColor
+            ? _errorColor
             : isWarning
-                • _warningColor
+                ? _warningColor
                 : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -146,17 +146,17 @@ class _PrecificacaoUniversalScreenState
     if (input.length == 2) return double.parse('0.$input');
     final valor =
         "${input.substring(0, input.length - 2)}.${input.substring(input.length - 2)}";
-    return double.tryParse(valor) ?• 0.0;
+    return double.tryParse(valor) ?? 0.0;
   }
 
   String _chaveItem(Map<String, dynamic> item) =>
-      '${item['_uid'] ?• identityHashCode(item)}_${item['nome']}_${item['custo']}_${item['quantidade']}';
+      '${item['_uid'] ?? identityHashCode(item)}_${item['nome']}_${item['custo']}_${item['quantidade']}';
 
   TextEditingController _controllerPretendido(Map<String, dynamic> item) {
     final key = _chaveItem(item);
     _pretendidoControllers[key] ??= TextEditingController(
-      text: (item['precoPretendido'] as num• ?• 0) > 0
-          • MoedaInputFormatter.format((item['precoPretendido'] as num).toDouble())
+      text: (item['precoPretendido'] as num? ?? 0) > 0
+          ? MoedaInputFormatter.format((item['precoPretendido'] as num).toDouble())
           : '',
     );
     return _pretendidoControllers[key]!;
@@ -194,10 +194,10 @@ class _PrecificacaoUniversalScreenState
 
       final novos = <Map<String, dynamic>>[];
       for (var row in sheet.rows.skip(1)) {
-        final nome = row[0]?.value.toString().trim() ?• '';
-        final custo = (double.tryParse(row[1]?.value.toString() ?• '0') ?• 0)
+        final nome = row[0]?.value.toString().trim() ?? '';
+        final custo = (double.tryParse(row[1]?.value.toString() ?? '0') ?? 0)
             .clamp(0.0, double.infinity);
-        final quantidade = (int.tryParse(row[2]?.value.toString() ?• '0') ?• 1)
+        final quantidade = (int.tryParse(row[2]?.value.toString() ?? '0') ?? 1)
             .clamp(1, 999999);
 
         if (nome.isNotEmpty && custo > 0) {
@@ -233,20 +233,20 @@ class _PrecificacaoUniversalScreenState
   }
 
   double calcularPrecoVenda(double custo) {
-    final frete = (double.tryParse(freteController.text) ?• 0)
+    final frete = (double.tryParse(freteController.text) ?? 0)
         .clamp(0.0, double.infinity);
     final markup =
-        (double.tryParse(markupController.text) ?• 150).clamp(1.0, 9999.0);
+        (double.tryParse(markupController.text) ?? 150).clamp(1.0, 9999.0);
     final gastosFixos =
-        (double.tryParse(gastosFixosController.text) ?• 10).clamp(0.0, 100.0);
-    final mei = (double.tryParse(meiController.text) ?• 3.5).clamp(0.0, 100.0);
-    final embalagem = (double.tryParse(embalagemController.text) ?• 3.0)
+        (double.tryParse(gastosFixosController.text) ?? 10).clamp(0.0, 100.0);
+    final mei = (double.tryParse(meiController.text) ?? 3.5).clamp(0.0, 100.0);
+    final embalagem = (double.tryParse(embalagemController.text) ?? 3.0)
         .clamp(0.0, double.infinity);
     final taxaCartao =
-        (double.tryParse(taxaCartaoController.text) ?• 5).clamp(0.0, 100.0);
+        (double.tryParse(taxaCartaoController.text) ?? 5).clamp(0.0, 100.0);
 
     final custoPorItemFrete =
-        frete / (produtos.isNotEmpty • produtos.length : 1);
+        frete / (produtos.isNotEmpty ? produtos.length : 1);
     final totalCustos = custo +
         (custo * (gastosFixos / 100)) +
         (custo * (mei / 100)) +
@@ -358,9 +358,9 @@ class _PrecificacaoUniversalScreenState
       final nome = item['nome'] as String;
       final custo = item['custo'] as double;
       final precoPretendido =
-          (item['precoPretendido'] as num?)?.toDouble() ?• 0.0;
+          (item['precoPretendido'] as num?)?.toDouble() ?? 0.0;
       final precoSugerido = calcularPrecoVenda(custo);
-      final precoFinal = precoPretendido > 0 • precoPretendido : precoSugerido;
+      final precoFinal = precoPretendido > 0 ? precoPretendido : precoSugerido;
 
       final produtoExistente = estoqueBox!.values.firstWhereOrNull(
         (p) => p.nome.toLowerCase() == nome.toLowerCase(),
@@ -425,12 +425,12 @@ class _PrecificacaoUniversalScreenState
               headers: ['Produto', 'Custo', 'Sugerido', 'Pretendido'],
               data: produtos.map((item) {
                 final sugerido = calcularPrecoVenda(item['custo'] as double);
-                final pretendido = item['precoPretendido'] as num• ?• 0;
+                final pretendido = item['precoPretendido'] as num? ?? 0;
                 return [
                   item['nome'],
                   'R\$ ${(item['custo'] as num).toStringAsFixed(2)}',
                   'R\$ ${sugerido.toStringAsFixed(2)}',
-                  pretendido > 0 • 'R\$ ${pretendido.toStringAsFixed(2)}' : '-',
+                  pretendido > 0 ? 'R\$ ${pretendido.toStringAsFixed(2)}' : '-',
                 ];
               }).toList(),
             ),
@@ -593,9 +593,9 @@ class _PrecificacaoUniversalScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (_carregando) {
       return Scaffold(
-        backgroundColor: isDark • cs.surface : _backgroundColor,
+        backgroundColor: isDark ? cs.surface : _backgroundColor,
         appBar: AppBar(
-          backgroundColor: isDark • cs.primary : _primaryColor,
+          backgroundColor: isDark ? cs.primary : _primaryColor,
           foregroundColor: Colors.white,
           elevation: 0,
           title: const Text('Precificação Universal'),
@@ -622,9 +622,9 @@ class _PrecificacaoUniversalScreenState
     }
 
     return Scaffold(
-      backgroundColor: isDark • cs.surface : _backgroundColor,
+      backgroundColor: isDark ? cs.surface : _backgroundColor,
       appBar: AppBar(
-        backgroundColor: isDark • cs.primary : _primaryColor,
+        backgroundColor: isDark ? cs.primary : _primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text('Precificação Universal'),
@@ -644,7 +644,7 @@ class _PrecificacaoUniversalScreenState
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: _importando
-            • Center(
+            ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -695,7 +695,7 @@ class _PrecificacaoUniversalScreenState
               ),
       ),
       bottomNavigationBar: produtos.isNotEmpty
-          • SafeArea(
+          ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: SizedBox(
@@ -733,10 +733,10 @@ class _PrecificacaoUniversalScreenState
   Widget _buildConfigCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark • cs.primary : _primaryColor;
+    final primaryColor = isDark ? cs.primary : _primaryColor;
     return Card(
       elevation: 0,
-      color: isDark • cs.surfaceContainerHighest : _cardColor,
+      color: isDark ? cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: primaryColor.withValues(alpha:0.3)),
@@ -814,7 +814,7 @@ class _PrecificacaoUniversalScreenState
       {double minValue = 0, double maxValue = 999999}) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark • cs.primary : _primaryColor;
+    final primaryColor = isDark ? cs.primary : _primaryColor;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 150, minWidth: 100),
       child: Semantics(
@@ -825,7 +825,7 @@ class _PrecificacaoUniversalScreenState
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
           onChanged: (_) {
-            final v = double.tryParse(controller.text) ?• 0;
+            final v = double.tryParse(controller.text) ?? 0;
             if (v < minValue || v > maxValue) {
               controller.text = v.clamp(minValue, maxValue).toString();
             }
@@ -858,7 +858,7 @@ class _PrecificacaoUniversalScreenState
   Widget _buildProdutosHeader(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark • cs.primary : _primaryColor;
+    final primaryColor = isDark ? cs.primary : _primaryColor;
     return Row(
       children: [
         Icon(Icons.shopping_bag, color: primaryColor, size: 20),
@@ -884,7 +884,7 @@ class _PrecificacaoUniversalScreenState
                 ),
                 child: Icon(Icons.file_upload, color: primaryColor, size: 20),
               ),
-              onPressed: _importando • null : importarExcel,
+              onPressed: _importando ? null : importarExcel,
               tooltip: 'Importar Excel',
             ),
             IconButton(
@@ -920,7 +920,7 @@ class _PrecificacaoUniversalScreenState
   Widget _buildBusca(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark • cs.primary : _primaryColor;
+    final primaryColor = isDark ? cs.primary : _primaryColor;
     return TextField(
       controller: buscaController,
       onChanged: (v) => setState(() => _filtroBusca = v),
@@ -939,7 +939,7 @@ class _PrecificacaoUniversalScreenState
           borderSide: BorderSide(color: primaryColor, width: 2),
         ),
         filled: true,
-        fillColor: isDark • cs.surfaceContainerHighest : _cardColor,
+        fillColor: isDark ? cs.surfaceContainerHighest : _cardColor,
       ),
     );
   }
@@ -947,10 +947,10 @@ class _PrecificacaoUniversalScreenState
   Widget _buildEmptyState(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark • cs.primary : _primaryColor;
+    final primaryColor = isDark ? cs.primary : _primaryColor;
     return Card(
       elevation: 0,
-      color: isDark • cs.surfaceContainerHighest : _cardColor,
+      color: isDark ? cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: primaryColor.withValues(alpha:0.3)),
@@ -1051,7 +1051,7 @@ class _PrecificacaoUniversalScreenState
   Widget _buildItemProduto(BuildContext context, Map<String, dynamic> item) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark • cs.primary : _primaryColor;
+    final primaryColor = isDark ? cs.primary : _primaryColor;
     final precoSugerido = calcularPrecoVenda(item['custo'] as double);
     final controller = _controllerPretendido(item);
 
@@ -1059,7 +1059,7 @@ class _PrecificacaoUniversalScreenState
       key: ObjectKey(item),
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
-      color: isDark • cs.surfaceContainerHighest : _cardColor,
+      color: isDark ? cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: primaryColor.withValues(alpha:0.25)),
@@ -1152,7 +1152,7 @@ class _PrecificacaoUniversalScreenState
                 setState(() {});
               },
             ),
-            if ((item['precoPretendido'] as num• ?• 0) > 0) ...[
+            if ((item['precoPretendido'] as num? ?? 0) > 0) ...[
               const SizedBox(height: 8),
               Container(
                 padding:
@@ -1334,7 +1334,7 @@ class _AddProdutoSheetState extends State<_AddProdutoSheet> {
                 final nome = nomeController.text.trim();
                 final custo = MoedaInputFormatter.parse(custoController.text);
                 final quantidade =
-                    (int.tryParse(quantidadeController.text) ?• 1).clamp(1, 999999);
+                    (int.tryParse(quantidadeController.text) ?? 1).clamp(1, 999999);
                 widget.onAdd(nome, custo, quantidade);
               },
               style: ElevatedButton.styleFrom(

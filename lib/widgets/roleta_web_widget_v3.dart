@@ -16,10 +16,10 @@ import 'package:uuid/uuid.dart';
 class RoletaWebWidgetV3 extends StatefulWidget {
   final String lojaId;
   final double totalCarrinho;
-  final String• clienteEmail;
-  final VoidCallback• onCupomGerado;
-  final Function(String codigo, double desconto)• onCupomGeradoComDados;
-  final Function(String codigo, double desconto, String• descricao)• onPremioGanho;
+  final String? clienteEmail;
+  final VoidCallback? onCupomGerado;
+  final Function(String codigo, double desconto)? onCupomGeradoComDados;
+  final Function(String codigo, double desconto, String? descricao)? onPremioGanho;
 
   const RoletaWebWidgetV3({
     super.key,
@@ -94,10 +94,10 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
       if (!mounted) return;
       setState(() {
         _ativa = data['ativa'] == true;
-        _valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?• 0.0;
-        _frequenciaPremio = data['frequenciaPremio'] as int• ?• 10;
-        _vendasDesdePremio = data['vendasDesdePremio'] as int• ?• 0;
-        _totalVendas = data['totalVendas'] as int• ?• 0;
+        _valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?? 0.0;
+        _frequenciaPremio = data['frequenciaPremio'] as int? ?? 10;
+        _vendasDesdePremio = data['vendasDesdePremio'] as int? ?? 0;
+        _totalVendas = data['totalVendas'] as int? ?? 0;
 
         // Carregar prêmios (lista completa para o desenho da roleta; índices devem bater com o sorteio)
         final premiosRaw = data['premios'] as List?;
@@ -183,7 +183,7 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
     await _controller.forward(from: 0);
 
     final premio = premiosParaRoleta[premioIndex];
-    final tipoPremio = premio['tipo'] ?• '';
+    final tipoPremio = premio['tipo'] ?? '';
 
     setState(() => _girando = false);
 
@@ -212,8 +212,8 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
         if (!snap.exists || snap.data() == null) return (false, 0, <Map<String, dynamic>>[]);
 
         final data = snap.data()!;
-        int vendasDesdePremio = (data['vendasDesdePremio'] as num?)?.toInt() ?• 0;
-        final frequenciaPremio = (data['frequenciaPremio'] as int?) ?• 10;
+        int vendasDesdePremio = (data['vendasDesdePremio'] as num?)?.toInt() ?? 0;
+        final frequenciaPremio = (data['frequenciaPremio'] as int?) ?? 10;
         final premiosRaw = data['premios'] as List?;
         if (premiosRaw == null || premiosRaw.isEmpty) return (false, 0, <Map<String, dynamic>>[]);
 
@@ -228,28 +228,28 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
           final disponiveis = <int>[];
           for (var i = 0; i < premios.length; i++) {
             if (premios[i]['ativo'] != true) continue;
-            final tipo = premios[i]['tipo'] ?• '';
+            final tipo = premios[i]['tipo'] ?? '';
             if (tipo == 'nenhum') continue;
-            final qtdMax = (premios[i]['quantidadeMaxima'] as num?)?.toInt() ?• 0;
-            final qtdUsada = (premios[i]['quantidadeUsada'] as num?)?.toInt() ?• 0;
+            final qtdMax = (premios[i]['quantidadeMaxima'] as num?)?.toInt() ?? 0;
+            final qtdUsada = (premios[i]['quantidadeUsada'] as num?)?.toInt() ?? 0;
             if (qtdMax == 0 || qtdUsada < qtdMax) {
               disponiveis.add(i);
             }
           }
-          premioIndex = disponiveis.isNotEmpty • disponiveis.first : 0;
-          premios[premioIndex]['quantidadeUsada'] = ((premios[premioIndex]['quantidadeUsada'] as num?)?.toInt() ?• 0) + 1;
+          premioIndex = disponiveis.isNotEmpty ? disponiveis.first : 0;
+          premios[premioIndex]['quantidadeUsada'] = ((premios[premioIndex]['quantidadeUsada'] as num?)?.toInt() ?? 0) + 1;
         } else {
           premioIndex = 0;
           for (var i = 0; i < premios.length; i++) {
-            if ((premios[i]['tipo'] ?• '') == 'nenhum') {
+            if ((premios[i]['tipo'] ?? '') == 'nenhum') {
               premioIndex = i;
               break;
             }
           }
         }
 
-        final novaVendasDesdePremio = ganhou • 0 : vendasDesdePremio + 1;
-        final totalVendas = ((data['totalVendas'] as num?)?.toInt() ?• 0) + 1;
+        final novaVendasDesdePremio = ganhou ? 0 : vendasDesdePremio + 1;
+        final totalVendas = ((data['totalVendas'] as num?)?.toInt() ?? 0) + 1;
 
         transaction.update(docRef, {
           'totalVendas': totalVendas,
@@ -279,10 +279,10 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
 
   /// ✅ PROCESSA O PRÊMIO GANHO
   void _processarPremio(Map<String, dynamic> premio) {
-    final tipo = premio['tipo'] ?• '';
-    final label = premio['label'] ?• '';
-    final valor = (premio['valor'] as num?)?.toDouble() ?• 0.0;
-    final diasValidade = premio['diasValidade'] as int• ?• 30;
+    final tipo = premio['tipo'] ?? '';
+    final label = premio['label'] ?? '';
+    final valor = (premio['valor'] as num?)?.toDouble() ?? 0.0;
+    final diasValidade = premio['diasValidade'] as int? ?? 30;
     final dataExpiracao = DateTime.now().add(Duration(days: diasValidade));
 
     logD('🎉 [ROLETA-V3] Prêmio ganho: $label (tipo: $tipo, validade: $diasValidade dias)');
@@ -347,8 +347,8 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
     required String titulo,
     required String mensagem,
     required Color cor,
-    DateTime• dataExpiracao,
-    String• codigoCupom,
+    DateTime? dataExpiracao,
+    String? codigoCupom,
   }) {
     showDialog(
       context: context,
@@ -607,17 +607,17 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
                 width: double.infinity,
                 height: 65,
                 child: ElevatedButton(
-                  onPressed: _girando || !_podeGirar • null : _girarRoleta,
+                  onPressed: _girando || !_podeGirar ? null : _girarRoleta,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _girando || !_podeGirar
-                        • Colors.grey.shade800
+                        ? Colors.grey.shade800
                         : const Color(0xFFFFD700),
                     foregroundColor: Colors.black,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)),
                     elevation: 8,
                   ),
                   child: _girando
-                      • const Row(
+                      ? const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             SizedBox(
@@ -740,7 +740,7 @@ class _RoletaPainter extends CustomPainter {
       );
 
       // Texto do prêmio
-      final label = premios[i]['label'] ?• '';
+      final label = premios[i]['label'] ?? '';
       final textAngle = startAngle + sweepAngle / 2;
 
       canvas.save();
@@ -752,7 +752,7 @@ class _RoletaPainter extends CustomPainter {
           text: label,
           style: TextStyle(
             color: Colors.white,
-            fontSize: premios.length > 8 • 11 : 13,
+            fontSize: premios.length > 8 ? 11 : 13,
             fontWeight: FontWeight.w900,
           ),
         ),

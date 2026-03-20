@@ -35,11 +35,11 @@ class VendaTracking extends HiveObject {
 
   /// Telefone do cliente (se capturado)
   @HiveField(6)
-  String• clienteTelefone;
+  String? clienteTelefone;
 
   /// Nome do cliente (se capturado)
   @HiveField(7)
-  String• clienteNome;
+  String? clienteNome;
 
   /// Data/hora de criação do tracking
   @HiveField(8)
@@ -55,19 +55,19 @@ class VendaTracking extends HiveObject {
 
   /// ID da venda que utilizou este tracking
   @HiveField(11)
-  String• vendaId;
+  String? vendaId;
 
   /// Data/hora de utilização
   @HiveField(12)
-  DateTime• utilizadoEm;
+  DateTime? utilizadoEm;
 
   /// Origem do link (whatsapp, instagram, etc)
   @HiveField(13)
-  String• origem;
+  String? origem;
 
   /// IP ou identificador do dispositivo (para auditoria)
   @HiveField(14)
-  String• deviceId;
+  String? deviceId;
 
   VendaTracking({
     required this.trackingId,
@@ -112,26 +112,26 @@ class VendaTracking extends HiveObject {
   }
 
   /// Cria VendaTracking a partir de Map (do Firestore)
-  factory VendaTracking.fromMap(Map<String, dynamic> map, {String• docId}) {
+  factory VendaTracking.fromMap(Map<String, dynamic> map, {String? docId}) {
     return VendaTracking(
-      trackingId: map['trackingId'] ?• docId ?• '',
-      lojaId: map['lojaId'] ?• '',
-      vendedorUid: map['vendedorUid'] ?• '',
-      vendedorEmail: map['vendedorEmail'] ?• '',
-      vendedorNome: map['vendedorNome'] ?• '',
-      token: map['token'] ?• '',
+      trackingId: map['trackingId'] ?? docId ?? '',
+      lojaId: map['lojaId'] ?? '',
+      vendedorUid: map['vendedorUid'] ?? '',
+      vendedorEmail: map['vendedorEmail'] ?? '',
+      vendedorNome: map['vendedorNome'] ?? '',
+      token: map['token'] ?? '',
       clienteTelefone: map['clienteTelefone'],
       clienteNome: map['clienteNome'],
       criadoEm: map['criadoEm'] != null
-          • DateTime.tryParse(map['criadoEm'].toString()) ?• DateTime.now()
+          ? DateTime.tryParse(map['criadoEm'].toString()) ?? DateTime.now()
           : DateTime.now(),
       expiraEm: map['expiraEm'] != null
-          • DateTime.tryParse(map['expiraEm'].toString()) ?• DateTime.now().add(const Duration(days: 7))
+          ? DateTime.tryParse(map['expiraEm'].toString()) ?? DateTime.now().add(const Duration(days: 7))
           : DateTime.now().add(const Duration(days: 7)),
-      utilizado: map['utilizado'] ?• false,
+      utilizado: map['utilizado'] ?? false,
       vendaId: map['vendaId'],
       utilizadoEm: map['utilizadoEm'] != null
-          • DateTime.tryParse(map['utilizadoEm'].toString())
+          ? DateTime.tryParse(map['utilizadoEm'].toString())
           : null,
       origem: map['origem'],
       deviceId: map['deviceId'],
@@ -175,7 +175,7 @@ class ComissaoVenda extends HiveObject {
 
   /// ID do tracking que originou a venda
   @HiveField(6)
-  String• trackingId;
+  String? trackingId;
 
   /// Subtotal dos produtos (sem frete)
   @HiveField(7)
@@ -223,27 +223,27 @@ class ComissaoVenda extends HiveObject {
 
   /// Data de confirmação da comissão
   @HiveField(18)
-  DateTime• dataConfirmacao;
+  DateTime? dataConfirmacao;
 
   /// Data de pagamento da comissão ao vendedor
   @HiveField(19)
-  DateTime• dataPagamento;
+  DateTime? dataPagamento;
 
   /// Data de estorno (se cancelada)
   @HiveField(20)
-  DateTime• dataEstorno;
+  DateTime? dataEstorno;
 
   /// Motivo do estorno
   @HiveField(21)
-  String• motivoEstorno;
+  String? motivoEstorno;
 
   /// Observações
   @HiveField(22)
-  String• observacao;
+  String? observacao;
 
   /// ID do documento no Firestore
   @HiveField(23)
-  String• idFirebase;
+  String? idFirebase;
 
   ComissaoVenda({
     required this.comissaoId,
@@ -302,36 +302,36 @@ class ComissaoVenda extends HiveObject {
   }
 
   /// Cria ComissaoVenda a partir de Map (do Firestore)
-  factory ComissaoVenda.fromMap(Map<String, dynamic> map, {String• docId}) {
+  factory ComissaoVenda.fromMap(Map<String, dynamic> map, {String? docId}) {
     return ComissaoVenda(
-      comissaoId: map['comissaoId'] ?• docId ?• '',
-      lojaId: map['lojaId'] ?• '',
-      vendaId: map['vendaId'] ?• '',
-      vendedorUid: map['vendedorUid'] ?• '',
-      vendedorEmail: map['vendedorEmail'] ?• '',
-      vendedorNome: map['vendedorNome'] ?• '',
+      comissaoId: map['comissaoId'] ?? docId ?? '',
+      lojaId: map['lojaId'] ?? '',
+      vendaId: map['vendaId'] ?? '',
+      vendedorUid: map['vendedorUid'] ?? '',
+      vendedorEmail: map['vendedorEmail'] ?? '',
+      vendedorNome: map['vendedorNome'] ?? '',
       trackingId: map['trackingId'],
-      subtotalProdutos: (map['subtotalProdutos'] as num?)?.toDouble() ?• 0.0,
-      frete: (map['frete'] as num?)?.toDouble() ?• 0.0,
-      desconto: (map['desconto'] as num?)?.toDouble() ?• 0.0,
-      totalVenda: (map['totalVenda'] as num?)?.toDouble() ?• 0.0,
-      baseComissao: (map['baseComissao'] as num?)?.toDouble() ?• 0.0,
-      comissaoPercentual: (map['comissaoPercentual'] as num?)?.toDouble() ?• 0.0,
-      comissaoValor: (map['comissaoValor'] as num?)?.toDouble() ?• 0.0,
-      status: map['status'] ?• 'pendente',
-      origem: map['origem'] ?• 'catalogo',
-      statusPagamentoVenda: map['statusPagamentoVenda'] ?• 'pendente',
+      subtotalProdutos: (map['subtotalProdutos'] as num?)?.toDouble() ?? 0.0,
+      frete: (map['frete'] as num?)?.toDouble() ?? 0.0,
+      desconto: (map['desconto'] as num?)?.toDouble() ?? 0.0,
+      totalVenda: (map['totalVenda'] as num?)?.toDouble() ?? 0.0,
+      baseComissao: (map['baseComissao'] as num?)?.toDouble() ?? 0.0,
+      comissaoPercentual: (map['comissaoPercentual'] as num?)?.toDouble() ?? 0.0,
+      comissaoValor: (map['comissaoValor'] as num?)?.toDouble() ?? 0.0,
+      status: map['status'] ?? 'pendente',
+      origem: map['origem'] ?? 'catalogo',
+      statusPagamentoVenda: map['statusPagamentoVenda'] ?? 'pendente',
       dataVenda: map['dataVenda'] != null
-          • DateTime.tryParse(map['dataVenda'].toString()) ?• DateTime.now()
+          ? DateTime.tryParse(map['dataVenda'].toString()) ?? DateTime.now()
           : DateTime.now(),
       dataConfirmacao: map['dataConfirmacao'] != null
-          • DateTime.tryParse(map['dataConfirmacao'].toString())
+          ? DateTime.tryParse(map['dataConfirmacao'].toString())
           : null,
       dataPagamento: map['dataPagamento'] != null
-          • DateTime.tryParse(map['dataPagamento'].toString())
+          ? DateTime.tryParse(map['dataPagamento'].toString())
           : null,
       dataEstorno: map['dataEstorno'] != null
-          • DateTime.tryParse(map['dataEstorno'].toString())
+          ? DateTime.tryParse(map['dataEstorno'].toString())
           : null,
       motivoEstorno: map['motivoEstorno'],
       observacao: map['observacao'],

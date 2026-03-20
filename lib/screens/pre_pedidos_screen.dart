@@ -20,7 +20,7 @@ import '../services/loja_id_service.dart';
 class PrePedidosScreen extends StatefulWidget {
   final String lojaId;
   /// Se definido, ao carregar a lista o pedido é destacado (ex.: ao abrir por "Ver pedido" na notificação)
-  final String• initialPedidoId;
+  final String? initialPedidoId;
 
   const PrePedidosScreen({
     super.key,
@@ -103,7 +103,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     try {
       final sessao = await Hive.openBox('sessao');
       final tipo =
-          (sessao.get('tipo_usuario') ?• 'vendedor').toString().toLowerCase();
+          (sessao.get('tipo_usuario') ?? 'vendedor').toString().toLowerCase();
 
       // Vendedor NUNCA pode acessar pré-pedidos
       if (tipo == 'vendedor') {
@@ -158,7 +158,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         p == 'pix'; // PIX via gateway
   }
 
-  Future<void> _abrirWhatsApp(String• telefone, String clienteNome) async {
+  Future<void> _abrirWhatsApp(String? telefone, String clienteNome) async {
     if (telefone == null || telefone.trim().isEmpty) {
       _showModernSnackBar('Telefone não informado', isWarning: true);
       return;
@@ -168,7 +168,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       _showModernSnackBar('Número inválido', isWarning: true);
       return;
     }
-    final wa = numero.startsWith('55') • numero : '55$numero';
+    final wa = numero.startsWith('55') ? numero : '55$numero';
     final uri = Uri.parse(
       'https://wa.me/$wa?text=${Uri.encodeComponent('Olá $clienteNome! Segue o retorno sobre seu pedido.')}',
     );
@@ -192,9 +192,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           children: [
             Icon(
               isError
-                  • Icons.error_outline
+                  ? Icons.error_outline
                   : isWarning
-                      • Icons.warning_amber
+                      ? Icons.warning_amber
                       : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
@@ -204,9 +204,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           ],
         ),
         backgroundColor: isError
-            • _errorColor
+            ? _errorColor
             : isWarning
-                • _warningColor
+                ? _warningColor
                 : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -527,9 +527,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       stream: PrePedidoService.streamPrePedidos(
           lojaId: widget.lojaId, status: 'todos'),
       builder: (context, countSnapshot) {
-        final allPedidos = countSnapshot.data ?• [];
+        final allPedidos = countSnapshot.data ?? [];
         final pendenteCount = allPedidos
-            .where((p) => (p['status'] ?• 'pendente') == 'pendente')
+            .where((p) => (p['status'] ?? 'pendente') == 'pendente')
             .length;
         final todosCount = allPedidos.length;
 
@@ -537,7 +537,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         if (widget.initialPedidoId != null &&
             !_initialPedidoHighlightShown &&
             allPedidos.isNotEmpty) {
-          final found = allPedidos.any((p) => (p['id'] ?• '').toString() == widget.initialPedidoId);
+          final found = allPedidos.any((p) => (p['id'] ?? '').toString() == widget.initialPedidoId);
           if (found) {
             _initialPedidoHighlightShown = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -781,7 +781,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                         hintText: 'Buscar por cliente ou telefone...',
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _searchController.text.isNotEmpty
-                            • IconButton(
+                            ? IconButton(
                                 icon: const Icon(Icons.clear),
                                 onPressed: () {
                                   _searchController.clear();
@@ -868,7 +868,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
   List<Map<String, dynamic>> _filtrarEOrdenar(
     List<Map<String, dynamic>> lista,
-    String• status,
+    String? status,
   ) {
     var result = lista;
     final busca = _searchController.text.trim().toLowerCase();
@@ -876,8 +876,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       final buscaNum = busca.replaceAll(RegExp(r'[^\d]'), '');
       result = result.where((p) {
         final cliente = p['cliente'] as Map?;
-        final nome = (cliente?['nome'] ?• '').toString().toLowerCase();
-        final tel = (cliente?['telefone'] ?• '')
+        final nome = (cliente?['nome'] ?? '').toString().toLowerCase();
+        final tel = (cliente?['telefone'] ?? '')
             .toString()
             .replaceAll(RegExp(r'[^\d]'), '');
         return nome.contains(busca) ||
@@ -891,11 +891,11 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     } else if (_ordenacao == 'valor_maior') {
       result = List.from(result)
         ..sort((a, b) =>
-            ((b['total'] as num?) ?• 0).compareTo((a['total'] as num?) ?• 0));
+            ((b['total'] as num?) ?? 0).compareTo((a['total'] as num?) ?? 0));
     } else if (_ordenacao == 'valor_menor') {
       result = List.from(result)
         ..sort((a, b) =>
-            ((a['total'] as num?) ?• 0).compareTo((b['total'] as num?) ?• 0));
+            ((a['total'] as num?) ?? 0).compareTo((b['total'] as num?) ?? 0));
     } else {
       result = List.from(result)
         ..sort(
@@ -990,13 +990,13 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     try {
       final da = (a as dynamic).toDate() as DateTime;
       final db = (b as dynamic).toDate() as DateTime;
-      return recentePrimeiro • db.compareTo(da) : da.compareTo(db);
+      return recentePrimeiro ? db.compareTo(da) : da.compareTo(db);
     } catch (_) {
       return 0;
     }
   }
 
-  Widget _buildListaPrePedidos({String• status}) {
+  Widget _buildListaPrePedidos({String? status}) {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: PrePedidoService.streamPrePedidos(
         lojaId: widget.lojaId,
@@ -1016,7 +1016,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           );
         }
 
-        final prePedidos = _filtrarEOrdenar(snapshot.data ?• [], status);
+        final prePedidos = _filtrarEOrdenar(snapshot.data ?? [], status);
 
         // Abrir detalhe do pedido da notificação ("Ver pedido") para o admin concluir
         if (status == 'pendente' &&
@@ -1024,9 +1024,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             widget.initialPedidoId!.isNotEmpty &&
             !_initialPedidoHighlightShown &&
             prePedidos.isNotEmpty) {
-          Map<String, dynamic>• pedidoNotif;
+          Map<String, dynamic>? pedidoNotif;
           for (final p in prePedidos) {
-            if ((p['id'] ?• '').toString() == widget.initialPedidoId) {
+            if ((p['id'] ?? '').toString() == widget.initialPedidoId) {
               pedidoNotif = p;
               break;
             }
@@ -1067,15 +1067,15 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
   }
 
   Widget _buildPrePedidoCard(Map<String, dynamic> prePedido) {
-    final prePedidoId = prePedido['id'] ?• '';
-    final status = prePedido['status'] ?• 'pendente';
+    final prePedidoId = prePedido['id'] ?? '';
+    final status = prePedido['status'] ?? 'pendente';
     final statusPagamento =
-        (prePedido['statusPagamento'] ?• 'pendente').toString();
+        (prePedido['statusPagamento'] ?? 'pendente').toString();
     final cliente = prePedido['cliente'] as Map<String, dynamic>?;
     final itens =
-        (prePedido['itens'] as List?)?.cast<Map<String, dynamic>>() ?• [];
-    final total = (prePedido['total'] as num?)?.toDouble() ?• 0.0;
-    final pagamento = (prePedido['pagamento'] ?• '').toString();
+        (prePedido['itens'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final total = (prePedido['total'] as num?)?.toDouble() ?? 0.0;
+    final pagamento = (prePedido['pagamento'] ?? '').toString();
     final dataCriacao = prePedido['dataCriacao'];
     final isGateway = _isPagamentoGateway(pagamento);
     final aguardandoPagamento =
@@ -1171,7 +1171,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        cliente?['nome'] ?• 'Cliente não informado',
+                        cliente?['nome'] ?? 'Cliente não informado',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -1269,11 +1269,11 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 ),
                 const SizedBox(height: 12),
                 ...itens.take(3).map((item) {
-                  final nome = item['nome'] ?• '';
-                  final qty = item['quantidade'] ?• 1;
+                  final nome = item['nome'] ?? '';
+                  final qty = item['quantidade'] ?? 1;
                   final preco =
-                      (item['precoUnitario'] as num?)?.toDouble() ?• 0.0;
-                  final tamanho = (item['tamanho'] ?• '').toString();
+                      (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
+                  final tamanho = (item['tamanho'] ?? '').toString();
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1384,13 +1384,13 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                   children: [
                     _buildInfoChip(Icons.payment, pagamento),
                     if (cliente != null &&
-                        (cliente['telefone']?.toString() ?• '').isNotEmpty) ...[
+                        (cliente['telefone']?.toString() ?? '').isNotEmpty) ...[
                       _buildInfoChip(
                           Icons.phone, cliente['telefone'].toString()),
                       InkWell(
                         onTap: () => _abrirWhatsApp(
                           cliente['telefone'].toString(),
-                          cliente['nome']?.toString() ?• 'Cliente',
+                          cliente['nome']?.toString() ?? 'Cliente',
                         ),
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
@@ -1610,10 +1610,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
   Future<void> _verDetalhes(Map<String, dynamic> prePedido,
       {bool abrirParaConcluir = false}) async {
     final url = PrePedidoService.gerarUrlPedido(
-      prePedidoId: prePedido['id'] ?• '',
+      prePedidoId: prePedido['id'] ?? '',
       lojaId: widget.lojaId,
     );
-    final status = (prePedido['status'] ?• 'pendente').toString();
+    final status = (prePedido['status'] ?? 'pendente').toString();
     final isPendente = status == 'pendente';
 
     await showModalBottomSheet(
@@ -1791,7 +1791,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     );
   }
 
-  Widget _buildDetalheCliente(Map<String, dynamic>• cliente) {
+  Widget _buildDetalheCliente(Map<String, dynamic>? cliente) {
     if (cliente == null) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -1813,11 +1813,11 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildDetalheRow(
-              Icons.person_outline, 'Nome', cliente['nome'] ?• '-'),
-          _buildDetalheRow(Icons.phone, 'Telefone', cliente['telefone'] ?• '-'),
-          _buildDetalheRow(Icons.email, 'Email', cliente['email'] ?• '-'),
+              Icons.person_outline, 'Nome', cliente['nome'] ?? '-'),
+          _buildDetalheRow(Icons.phone, 'Telefone', cliente['telefone'] ?? '-'),
+          _buildDetalheRow(Icons.email, 'Email', cliente['email'] ?? '-'),
           _buildDetalheRow(Icons.location_on, 'Endereço',
-              cliente['enderecoFormatado'] ?• '-'),
+              cliente['enderecoFormatado'] ?? '-'),
         ],
       ),
     );
@@ -1851,7 +1851,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     );
   }
 
-  Widget _buildDetalheItens(List• itens) {
+  Widget _buildDetalheItens(List? itens) {
     if (itens == null || itens.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -1865,11 +1865,11 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
     return Column(
       children: itens.map((item) {
-        final nome = item['nome'] ?• '';
-        final qty = item['quantidade'] ?• 1;
-        final preco = (item['precoUnitario'] as num?)?.toDouble() ?• 0.0;
-        final total = (item['total'] as num?)?.toDouble() ?• 0.0;
-        final tamanho = (item['tamanho'] ?• '').toString();
+        final nome = item['nome'] ?? '';
+        final qty = item['quantidade'] ?? 1;
+        final preco = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
+        final total = (item['total'] as num?)?.toDouble() ?? 0.0;
+        final tamanho = (item['tamanho'] ?? '').toString();
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
@@ -1924,20 +1924,20 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
   }
 
   static String _nomeEntregaComPlataforma(Map<String, dynamic> frete) {
-    final nome = frete['nome'] ?• 'Entrega';
-    final plat = (frete['plataforma'] ?• '').toString().trim();
+    final nome = frete['nome'] ?? 'Entrega';
+    final plat = (frete['plataforma'] ?? '').toString().trim();
     if (plat.isEmpty || plat == 'manual') return nome;
     final abbr = plat == 'melhor_envio'
-        • 'ME'
+        ? 'ME'
         : plat == 'superfrete'
-            • 'SF'
+            ? 'SF'
             : plat == 'frenet'
-                • 'Frenet'
+                ? 'Frenet'
                 : '';
-    return abbr.isEmpty • nome : '$nome $abbr';
+    return abbr.isEmpty ? nome : '$nome $abbr';
   }
 
-  Widget _buildDetalheEntrega(Map<String, dynamic>• frete) {
+  Widget _buildDetalheEntrega(Map<String, dynamic>? frete) {
     if (frete == null) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -1950,7 +1950,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     }
 
     final nome = _nomeEntregaComPlataforma(frete);
-    final valor = (frete['valor'] as num?)?.toDouble() ?• 0.0;
+    final valor = (frete['valor'] as num?)?.toDouble() ?? 0.0;
     final gratis = frete['gratis'] == true;
 
     return Container(
@@ -1965,10 +1965,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           const SizedBox(width: 12),
           Expanded(child: Text(nome)),
           Text(
-            gratis • 'GRÁTIS' : 'R\$ ${valor.toStringAsFixed(2)}',
+            gratis ? 'GRÁTIS' : 'R\$ ${valor.toStringAsFixed(2)}',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: gratis • _successColor : Colors.grey[800],
+              color: gratis ? _successColor : Colors.grey[800],
             ),
           ),
         ],
@@ -1978,8 +1978,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
   Future<void> _mostrarDialogoAtualizarStatus(
       Map<String, dynamic> prePedido) async {
-    final prePedidoId = prePedido['id']?.toString() ?• '';
-    final statusAtual = prePedido['status']?.toString() ?• 'confirmado';
+    final prePedidoId = prePedido['id']?.toString() ?? '';
+    final statusAtual = prePedido['status']?.toString() ?? 'confirmado';
 
     final opcoes = <Map<String, String>>[];
     if (statusAtual == 'confirmado') {
@@ -2030,13 +2030,13 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             ...opcoes.map((opt) => ListTile(
                   leading: Icon(
                     opt['valor'] == 'embalando'
-                        • Icons.inventory_2
+                        ? Icons.inventory_2
                         : opt['valor'] == 'enviado'
-                            • Icons.local_shipping
+                            ? Icons.local_shipping
                             : Icons.done_all,
                     color: _primaryColor,
                   ),
-                  title: Text(opt['label'] ?• ''),
+                  title: Text(opt['label'] ?? ''),
                   onTap: () => Navigator.pop(context, opt['valor']),
                 )),
             SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
@@ -2048,18 +2048,18 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     if (selecionado == null || selecionado.isEmpty) return;
 
     // Ao marcar como "Enviado", perguntar código de rastreio (opcional) e se envia por email
-    Map<String, dynamic>• extraUpdates;
+    Map<String, dynamic>? extraUpdates;
     bool enviarEmailCliente = true;
     if (selecionado == 'enviado') {
       if (!mounted) return;
       final rastreioResult = await _mostrarDialogoCodigoRastreio(context);
       if (!mounted) return;
       if (rastreioResult != null) {
-        final codigo = (rastreioResult['codigo'] as String?)?.trim() ?• '';
+        final codigo = (rastreioResult['codigo'] as String?)?.trim() ?? '';
         if (codigo.isNotEmpty) {
           extraUpdates = {'codigoRastreio': codigo};
         }
-        enviarEmailCliente = rastreioResult['enviarEmail'] as bool• ?• true;
+        enviarEmailCliente = rastreioResult['enviarEmail'] as bool? ?? true;
       }
     }
 
@@ -2128,7 +2128,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 const SizedBox(height: 16),
                 CheckboxListTile(
                   value: enviarEmail,
-                  onChanged: (v) => setDialogState(() => enviarEmail = v ?• true),
+                  onChanged: (v) => setDialogState(() => enviarEmail = v ?? true),
                   title: const Text(
                     'Enviar código de rastreio por email ao cliente',
                     style: TextStyle(fontSize: 14),
@@ -2148,7 +2148,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
               onPressed: () {
                 final codigo = controller.text.trim();
                 Navigator.pop(context, {
-                  'codigo': codigo.isEmpty • null : codigo,
+                  'codigo': codigo.isEmpty ? null : codigo,
                   'enviarEmail': enviarEmail,
                 });
               },
@@ -2242,7 +2242,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
     try {
       final itensParaVenda = (prePedido['itens'] as List).map((item) {
-        final precoUnit = (item['precoUnitario'] as num?)?.toDouble() ?• 0.0;
+        final precoUnit = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
         logD('[PRE-PEDIDO] Processando item: ${item['nome']}');
         logD('[PRE-PEDIDO]   - precoUnitario: $precoUnit');
         logD('[PRE-PEDIDO]   - tamanho: ${item['tamanho']}');
@@ -2250,21 +2250,21 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         logD('[PRE-PEDIDO]   - quantidade: ${item['quantidade']}');
 
         return {
-          'nome': item['nome'] ?• '',
-          'name': item['nome'] ?• '',
-          'id': item['id'] ?• item['produtosId'] ?• '',
-          'produtosId': item['produtosId'] ?• item['id'] ?• '',
-          'quantidade': item['quantidade'] ?• 1,
-          'qty': item['quantidade'] ?• 1,
+          'nome': item['nome'] ?? '',
+          'name': item['nome'] ?? '',
+          'id': item['id'] ?? item['produtosId'] ?? '',
+          'produtosId': item['produtosId'] ?? item['id'] ?? '',
+          'quantidade': item['quantidade'] ?? 1,
+          'qty': item['quantidade'] ?? 1,
           'preco': precoUnit,
           'price': precoUnit,
           'precoUnitario': precoUnit,
-          'tamanho': item['tamanho'] ?• '',
-          'size': item['tamanho'] ?• '',
-          'cor': item['cor'] ?• '',
-          'color': item['cor'] ?• '',
-          'slug': item['slug'] ?• '',
-          'imageUrl': item['imagem'] ?• item['imageUrl'] ?• '',
+          'tamanho': item['tamanho'] ?? '',
+          'size': item['tamanho'] ?? '',
+          'cor': item['cor'] ?? '',
+          'color': item['cor'] ?? '',
+          'slug': item['slug'] ?? '',
+          'imageUrl': item['imagem'] ?? item['imageUrl'] ?? '',
           'percentualDescontoPix': 0.0, // já aplicado em precoUnitario
         };
       }).toList();
@@ -2282,9 +2282,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         items: itensParaVenda,
         entrega: prePedido['frete'],
         pagamento: prePedido['pagamento'],
-        observacao: prePedido['observacao'] ?• '',
+        observacao: prePedido['observacao'] ?? '',
         cupomCodigo: prePedido['cupom']?['codigo'],
-        desconto: (prePedido['cupom']?['desconto'] as num?)?.toDouble() ?• 0.0,
+        desconto: (prePedido['cupom']?['desconto'] as num?)?.toDouble() ?? 0.0,
         cupomRoletaCodigo: prePedido['premioRoleta']?['codigo'],
         cupomRoletaDesconto:
             (prePedido['premioRoleta']?['valor'] as num?)?.toDouble(),
@@ -2301,28 +2301,28 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         );
 
         // Gerar número da sorte e enviar por email e WhatsApp ao cliente
-        final cliente = prePedido['cliente'] as Map<String, dynamic>• ?• {};
-        final itens = prePedido['itens'] as List<dynamic>• ?• [];
-        double valorTotal = (prePedido['total'] as num?)?.toDouble() ?• 0.0;
+        final cliente = prePedido['cliente'] as Map<String, dynamic>? ?? {};
+        final itens = prePedido['itens'] as List<dynamic>? ?? [];
+        double valorTotal = (prePedido['total'] as num?)?.toDouble() ?? 0.0;
         if (valorTotal <= 0 && itens.isNotEmpty) {
           for (final e in itens) {
             final m = e as Map<String, dynamic>;
-            valorTotal += ((m['precoUnitario'] as num?)?.toDouble() ?• 0) *
-                ((m['quantidade'] as num?)?.toInt() ?• 1);
+            valorTotal += ((m['precoUnitario'] as num?)?.toDouble() ?? 0) *
+                ((m['quantidade'] as num?)?.toInt() ?? 1);
           }
         }
         final posPagamentoOk = await PosPagamentoService.processarConfirmacaoPagamento(
           lojaId: widget.lojaId,
           vendaId: vendaId,
           customer: {
-            'nome': cliente['nome'] ?• '',
-            'email': cliente['email'] ?• '',
-            'telefone': cliente['telefone'] ?• cliente['tel'] ?• '',
-            'id': cliente['id'] ?• cliente['clienteId'],
+            'nome': cliente['nome'] ?? '',
+            'email': cliente['email'] ?? '',
+            'telefone': cliente['telefone'] ?? cliente['tel'] ?? '',
+            'id': cliente['id'] ?? cliente['clienteId'],
           },
           items: itensParaVenda,
           valorTotal: valorTotal,
-          formaPagamento: (prePedido['pagamento'] ?• '').toString(),
+          formaPagamento: (prePedido['pagamento'] ?? '').toString(),
           cupomRoletaCodigo: prePedido['premioRoleta']?['codigo']?.toString(),
           cupomRoletaDesconto:
               (prePedido['premioRoleta']?['valor'] as num?)?.toDouble(),
@@ -2355,9 +2355,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
   }
 
   Future<void> _excluirPedidoFinalizado(Map<String, dynamic> prePedido) async {
-    final prePedidoId = prePedido['id']?.toString() ?• '';
-    final status = prePedido['status']?.toString() ?• '';
-    final clienteNome = (prePedido['cliente'] as Map?)?['nome'] ?• 'Pedido';
+    final prePedidoId = prePedido['id']?.toString() ?? '';
+    final status = prePedido['status']?.toString() ?? '';
+    final clienteNome = (prePedido['cliente'] as Map?)?['nome'] ?? 'Pedido';
 
     final confirmar = await showModalBottomSheet<bool>(
       context: context,
@@ -2395,7 +2395,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             ),
             const SizedBox(height: 12),
             Text(
-              'Excluir "$clienteNome" (${status.toUpperCase()})• Usado para limpar pedidos de teste.',
+              'Excluir "$clienteNome" (${status.toUpperCase()})? Usado para limpar pedidos de teste.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[600]),
             ),
@@ -2500,7 +2500,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                'Tem certeza• Informe o motivo (opcional):',
+                'Tem certeza? Informe o motivo (opcional):',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey[600], fontSize: 14),
               ),
@@ -2537,7 +2537,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       onPressed: () => Navigator.pop(context, {
                         'confirm': true,
                         'motivo': motivoCtrl.text.trim().isNotEmpty
-                            • motivoCtrl.text.trim()
+                            ? motivoCtrl.text.trim()
                             : 'Cancelado pelo vendedor',
                       }),
                       style: ElevatedButton.styleFrom(
@@ -2565,7 +2565,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       await PrePedidoService.cancelarPrePedido(
         lojaId: widget.lojaId,
         prePedidoId: prePedidoId,
-        motivo: '${result['motivo'] ?• 'Cancelado pelo vendedor'}',
+        motivo: '${result['motivo'] ?? 'Cancelado pelo vendedor'}',
       );
 
       if (mounted) {
@@ -2681,7 +2681,7 @@ class _PrePedidosEmptyBody extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         Text(
-          isPendente • 'Nenhum pré-pedido pendente' : 'Nenhum pré-pedido encontrado',
+          isPendente ? 'Nenhum pré-pedido pendente' : 'Nenhum pré-pedido encontrado',
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -2689,7 +2689,7 @@ class _PrePedidosEmptyBody extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          isPendente • 'Os novos pedidos aparecerão aqui' : 'Ainda não há pedidos registrados',
+          isPendente ? 'Os novos pedidos aparecerão aqui' : 'Ainda não há pedidos registrados',
           style: TextStyle(color: Colors.grey[600]),
         ),
       ],
@@ -2739,7 +2739,7 @@ class _SugestoesIaPedidosScreen extends StatefulWidget {
 
 class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
   final _perguntaCtrl = TextEditingController();
-  String• _resposta;
+  String? _resposta;
   bool _enviando = false;
   static const _primaryColor = Color(0xFF6366F1);
   static const _cardColor = Color(0xFF1E293B);
@@ -2750,8 +2750,8 @@ class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
     super.dispose();
   }
 
-  Future<void> _enviar(String• perguntaFixa) async {
-    final pergunta = perguntaFixa ?• _perguntaCtrl.text.trim();
+  Future<void> _enviar(String? perguntaFixa) async {
+    final pergunta = perguntaFixa ?? _perguntaCtrl.text.trim();
     if (pergunta.isEmpty || _enviando) return;
     final lojaId = await LojaIdService.get();
     if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
@@ -2792,11 +2792,11 @@ class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _enviando • null : () => _enviar(null),
+        onPressed: _enviando ? null : () => _enviar(null),
         tooltip: 'Enviar pergunta',
         backgroundColor: _primaryColor,
         child: _enviando
-            • const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.send, color: Colors.white),
       ),
       body: Scrollbar(
@@ -2822,19 +2822,19 @@ class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
               runSpacing: 8,
               children: [
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Sugestões para reduzir atrasos nas entregas e melhorar prazo.'),
+                  onPressed: _enviando ? null : () => _enviar('Sugestões para reduzir atrasos nas entregas e melhorar prazo.'),
                   icon: const Icon(Icons.local_shipping, size: 18),
                   label: const Text('Entregas e prazos'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Como organizar e priorizar pedidos pendentes• Sugestões.'),
+                  onPressed: _enviando ? null : () => _enviar('Como organizar e priorizar pedidos pendentes? Sugestões.'),
                   icon: const Icon(Icons.pending_actions, size: 18),
                   label: const Text('Pedidos pendentes'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Sugestões de mensagem ou comunicação com o cliente sobre status do pedido.'),
+                  onPressed: _enviando ? null : () => _enviar('Sugestões de mensagem ou comunicação com o cliente sobre status do pedido.'),
                   icon: const Icon(Icons.chat_bubble_outline, size: 18),
                   label: const Text('Comunicação com cliente'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
@@ -2855,9 +2855,9 @@ class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _enviando • null : () => _enviar(null),
-              icon: _enviando • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-              label: Text(_enviando • 'Analisando…' : 'Enviar'),
+              onPressed: _enviando ? null : () => _enviar(null),
+              icon: _enviando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+              label: Text(_enviando ? 'Analisando…' : 'Enviar'),
               style: FilledButton.styleFrom(backgroundColor: _primaryColor),
             ),
             if (_resposta != null) ...[

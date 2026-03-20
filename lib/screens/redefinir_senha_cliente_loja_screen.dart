@@ -8,7 +8,7 @@ import '../services/store_resolver_facade.dart';
 /// (quando o cliente esqueceu e a loja define uma nova).
 class RedefinirSenhaClienteLojaScreen extends StatefulWidget {
   /// Email do cliente (opcional; se passado, o campo já vem preenchido).
-  final String• emailCliente;
+  final String? emailCliente;
 
   const RedefinirSenhaClienteLojaScreen({super.key, this.emailCliente});
 
@@ -26,7 +26,7 @@ class _RedefinirSenhaClienteLojaScreenState
   bool _carregando = false;
   bool _mostrarNovaSenha = false;
   bool _mostrarConfirmar = false;
-  String• _lojaId;
+  String? _lojaId;
 
   static const _emailRegex =
       r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$';
@@ -60,8 +60,8 @@ class _RedefinirSenhaClienteLojaScreenState
       SnackBar(
         content: Text(message),
         backgroundColor: isSuccess
-            • const Color(0xFF22C55E)
-            : (isError • const Color(0xFFEF4444) : AppColors.primary),
+            ? const Color(0xFF22C55E)
+            : (isError ? const Color(0xFFEF4444) : AppColors.primary),
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -104,7 +104,7 @@ class _RedefinirSenhaClienteLojaScreenState
             isSuccess: true);
         Navigator.of(context).pop();
       } else {
-        _showSnack(resultado['error'] ?• 'Erro ao redefinir senha.', isError: true);
+        _showSnack(resultado['error'] ?? 'Erro ao redefinir senha.', isError: true);
       }
     } catch (e) {
       if (mounted) {
@@ -122,7 +122,7 @@ class _RedefinirSenhaClienteLojaScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Redefinir senha do cliente'),
-        backgroundColor: isDark • null : Colors.white,
+        backgroundColor: isDark ? null : Colors.white,
         foregroundColor: theme.colorScheme.onSurface,
       ),
       body: SafeArea(
@@ -164,7 +164,7 @@ class _RedefinirSenhaClienteLojaScreenState
                     suffixIcon: IconButton(
                       icon: Icon(
                         _mostrarNovaSenha
-                            • Icons.visibility_off
+                            ? Icons.visibility_off
                             : Icons.visibility,
                       ),
                       onPressed: () =>
@@ -183,7 +183,7 @@ class _RedefinirSenhaClienteLojaScreenState
                     suffixIcon: IconButton(
                       icon: Icon(
                         _mostrarConfirmar
-                            • Icons.visibility_off
+                            ? Icons.visibility_off
                             : Icons.visibility,
                       ),
                       onPressed: () =>
@@ -195,7 +195,7 @@ class _RedefinirSenhaClienteLojaScreenState
                 SizedBox(
                   height: 52,
                   child: ElevatedButton(
-                    onPressed: _carregando • null : _redefinir,
+                    onPressed: _carregando ? null : _redefinir,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -204,7 +204,7 @@ class _RedefinirSenhaClienteLojaScreenState
                       ),
                     ),
                     child: _carregando
-                        • const SizedBox(
+                        ? const SizedBox(
                             height: 22,
                             width: 22,
                             child: CircularProgressIndicator(

@@ -28,7 +28,7 @@ class MotorCrescimentoOrchestrator {
   /// [limit] opcional: retorna no máximo N oportunidades (ex.: 50 para abrir a tela rápido).
   static Future<MotorCrescimentoPainel> carregarPainel(
     String lojaId, {
-    int• limit,
+    int? limit,
   }) async {
     if (lojaId.trim().isEmpty) {
       return const MotorCrescimentoPainel(

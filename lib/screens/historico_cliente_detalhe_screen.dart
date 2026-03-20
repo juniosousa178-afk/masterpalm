@@ -20,7 +20,7 @@ const Color _surfaceColor = Color(0xFF1E293B);
 
 class HistoricoClienteDetalheScreen extends StatefulWidget {
   final String clienteNome;
-  final String• clienteTelefone;
+  final String? clienteTelefone;
   final Box<Venda> vendasBox;
   final String lojaId;
 
@@ -89,7 +89,7 @@ class _HistoricoClienteDetalheScreenState extends State<HistoricoClienteDetalheS
               tooltip: 'Ligar',
               onPressed: () async {
                 final tel = widget.clienteTelefone!.replaceAll(RegExp(r'\D'), '');
-                final e164 = tel.startsWith('55') • tel : '55$tel';
+                final e164 = tel.startsWith('55') ? tel : '55$tel';
                 try {
                   await launchUrl(Uri.parse('tel:+$e164'));
                 } catch (_) {
@@ -106,7 +106,7 @@ class _HistoricoClienteDetalheScreenState extends State<HistoricoClienteDetalheS
               tooltip: 'WhatsApp',
               onPressed: () async {
                 final tel = widget.clienteTelefone!.replaceAll(RegExp(r'\D'), '');
-                final e164 = tel.startsWith('55') • tel : '55$tel';
+                final e164 = tel.startsWith('55') ? tel : '55$tel';
                 try {
                   await launchUrl(Uri.parse('https://wa.me/$e164'));
                 } catch (_) {
@@ -151,7 +151,7 @@ class _HistoricoClienteDetalheScreenState extends State<HistoricoClienteDetalheS
             ),
           Expanded(
             child: vendas.isEmpty
-                • Center(
+                ? Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [

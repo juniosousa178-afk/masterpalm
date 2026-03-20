@@ -24,7 +24,7 @@ class TextosWhatsAppIaScreen extends StatefulWidget {
 class _TextosWhatsAppIaScreenState extends State<TextosWhatsAppIaScreen> {
   final _contextoCtrl = TextEditingController();
   String _tipoSelecionado = _tipos.first['id']!;
-  String• _mensagemGerada;
+  String? _mensagemGerada;
   bool _gerando = false;
 
   @override
@@ -49,7 +49,7 @@ class _TextosWhatsAppIaScreenState extends State<TextosWhatsAppIaScreen> {
     try {
       final msg = await AiLojaService.sugerirMensagemWhatsApp(
         tipo: _tipoSelecionado,
-        contexto: _contextoCtrl.text.trim().isEmpty • null : _contextoCtrl.text.trim(),
+        contexto: _contextoCtrl.text.trim().isEmpty ? null : _contextoCtrl.text.trim(),
       );
       if (mounted) {
         IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
@@ -126,15 +126,15 @@ class _TextosWhatsAppIaScreenState extends State<TextosWhatsAppIaScreen> {
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: _gerando • null : _gerar,
+            onPressed: _gerando ? null : _gerar,
             icon: _gerando
-                • const SizedBox(
+                ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.auto_awesome),
-            label: Text(_gerando • 'Gerando…' : 'Gerar mensagem'),
+            label: Text(_gerando ? 'Gerando…' : 'Gerar mensagem'),
             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
           ),
           if (_mensagemGerada != null) ...[

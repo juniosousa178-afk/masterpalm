@@ -12,7 +12,7 @@ class BootProfiler {
   final _events = <_BootEvent>[];
   final _t0 = DateTime.now();
 
-  void mark(String tag, [Object• payload]) {
+  void mark(String tag, [Object? payload]) {
     _events.add(_BootEvent(
       tag: tag,
       at: DateTime.now(),
@@ -21,7 +21,7 @@ class BootProfiler {
     // log enxuto no console
     // ignore: avoid_print
     debugPrint('⏱️ [BOOT] ${tag.padRight(20)} +${_deltaNowMs()}ms'
-        '${payload == null • '' : '  => $payload'}');
+        '${payload == null ? '' : '  => $payload'}');
   }
 
   String dump() {
@@ -30,7 +30,7 @@ class BootProfiler {
     for (final e in _events) {
       final dt = e.at.difference(_t0).inMilliseconds.toString().padLeft(5);
       buf.writeln(
-          '[$dt ms] ${e.tag}${e.payload == null • '' : '  :: ${e.payload}'}');
+          '[$dt ms] ${e.tag}${e.payload == null ? '' : '  :: ${e.payload}'}');
     }
     buf.writeln('────────────────────────────────────────────');
     return buf.toString();
@@ -42,7 +42,7 @@ class BootProfiler {
 class _BootEvent {
   final String tag;
   final DateTime at;
-  final Object• payload;
+  final Object? payload;
   _BootEvent({required this.tag, required this.at, this.payload});
 }
 

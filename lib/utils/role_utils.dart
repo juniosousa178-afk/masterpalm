@@ -73,7 +73,7 @@ class RoleUtils {
   RoleUtils._();
 
   /// Verifica se o email é root (SEMPRE programador)
-  static bool isRootEmail(String• email) {
+  static bool isRootEmail(String? email) {
     if (email == null || email.isEmpty) return false;
     return rootEmails.contains(email.trim().toLowerCase());
   }
@@ -81,9 +81,9 @@ class RoleUtils {
   /// Resolve o role correto para um usuário
   /// ROOT emails SEMPRE retornam programador
   static UserRole resolveRole({
-    required String• email,
-    String• firestoreRole,
-    String• localRole,
+    required String? email,
+    String? firestoreRole,
+    String? localRole,
   }) {
     // ROOT override - NUNCA sobrescrever
     if (isRootEmail(email)) {
@@ -106,11 +106,11 @@ class RoleUtils {
   static Future<UserRole> loadFromSession() async {
     try {
       final sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
 
-      final email = (sessao.get('usuario_logado') ?• '').toString().trim().toLowerCase();
-      final storedRole = (sessao.get('tipo_usuario') ?• '').toString();
+      final email = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final storedRole = (sessao.get('tipo_usuario') ?? '').toString();
       final isRoot = sessao.get('is_root') == true;
 
       // ROOT override
@@ -132,11 +132,11 @@ class RoleUtils {
   }) async {
     try {
       final sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
 
       final isRoot = isRootEmail(email);
-      final finalRole = isRoot • UserRole.programador : role;
+      final finalRole = isRoot ? UserRole.programador : role;
 
       await sessao.put('tipo_usuario', finalRole.name);
       await sessao.put('role', finalRole.name);

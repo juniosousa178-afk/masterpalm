@@ -15,16 +15,16 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
   final String lojaId;
   final List<Map<String, dynamic>> todosProdutos;
   final void Function(Map<String, dynamic>) onAdd;
-  final VoidCallback• onAbrirCarrinho;
-  final String• catalogShareUrl;
+  final VoidCallback? onAbrirCarrinho;
+  final String? catalogShareUrl;
   final Color textColor;
   final Color cardColor;
   final Color priceColor;
-  final String• prazoEntregaTexto;
-  final String• nomeLoja;
-  final String• contatoWhatsapp;
-  final String• politicaFrete;
-  final void Function(String productId)• onProductViewed;
+  final String? prazoEntregaTexto;
+  final String? nomeLoja;
+  final String? contatoWhatsapp;
+  final String? politicaFrete;
+  final void Function(String productId)? onProductViewed;
   final String productCardSize;
 
   const CatalogMinimalBestSellersSection({
@@ -76,9 +76,9 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
       builder: (context, constraints) {
         final w = constraints.maxWidth;
         final narrow = w < 420;
-        final hPad = narrow • 12.0 : 16.0;
-        final rowPad = narrow • 12.0 : 12.0;
-        final gap = narrow • 10.0 : 12.0;
+        final hPad = narrow ? 12.0 : 16.0;
+        final rowPad = narrow ? 12.0 : 12.0;
+        final gap = narrow ? 10.0 : 12.0;
         final cardW = CatalogProductCardSize.bestSellerCardWidth(
           productCardSize,
           screenWidth: w,
@@ -87,23 +87,23 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
           productCardSize,
           screenWidth: w,
         );
-        final radius = narrow • 12.0 : 14.0;
-        final titleSize = narrow • 13.5 : 14.5;
-        final bodyNameSize = narrow • 11.5 : 12.0;
-        final priceSize = narrow • 11.0 : 11.5;
+        final radius = narrow ? 12.0 : 14.0;
+        final titleSize = narrow ? 13.5 : 14.5;
+        final bodyNameSize = narrow ? 11.5 : 12.0;
+        final priceSize = narrow ? 11.0 : 11.5;
 
         return Padding(
-          padding: EdgeInsets.only(bottom: narrow • 8 : 10),
+          padding: EdgeInsets.only(bottom: narrow ? 8 : 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: EdgeInsets.fromLTRB(hPad, narrow • 4 : 2, hPad, narrow • 8 : 10),
+                padding: EdgeInsets.fromLTRB(hPad, narrow ? 4 : 2, hPad, narrow ? 8 : 10),
                 child: Row(
                   children: [
                     Expanded(
                       child: Text(
-                        title.trim().isEmpty • 'Mais vendidos' : title.trim(),
+                        title.trim().isEmpty ? 'Mais vendidos' : title.trim(),
                         style: TextStyle(
                           color: textColor.withValues(alpha: 0.92),
                           fontSize: titleSize,
@@ -127,7 +127,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                   itemBuilder: (context, i) {
                     final p = products[i];
                     final img = safeListString(p['imagens']).isNotEmpty
-                        • safeListString(p['imagens']).first
+                        ? safeListString(p['imagens']).first
                         : safeStr(p['imageUrl']);
                     final nome = safeStr(p['nome'], 'Produto');
                     final preco = safeDouble(p['preco']);
@@ -160,13 +160,13 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                                     top: Radius.circular(radius - 1),
                                   ),
                                   child: img.isEmpty
-                                      • ColoredBox(
+                                      ? ColoredBox(
                                           color: cardColor,
                                           child: Icon(
                                             Icons.image_outlined,
                                             color: textColor
                                                 .withValues(alpha: 0.32),
-                                            size: narrow • 32 : 34,
+                                            size: narrow ? 32 : 34,
                                           ),
                                         )
                                       : SmartImage(src: img, fit: BoxFit.cover),
@@ -174,10 +174,10 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                               ),
                               Padding(
                                 padding: EdgeInsets.fromLTRB(
-                                  narrow • 7 : 8,
-                                  narrow • 5 : 6,
-                                  narrow • 7 : 8,
-                                  narrow • 7 : 8,
+                                  narrow ? 7 : 8,
+                                  narrow ? 5 : 6,
+                                  narrow ? 7 : 8,
+                                  narrow ? 7 : 8,
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -193,16 +193,16 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                                         height: 1.22,
                                       ),
                                     ),
-                                    SizedBox(height: narrow • 3 : 4),
+                                    SizedBox(height: narrow ? 3 : 4),
                                     Text(
                                       temFaixa
-                                          • 'A partir de R\$ ${_fmt2(safeDouble(p['priceMin']))}'
+                                          ? 'A partir de R\$ ${_fmt2(safeDouble(p['priceMin']))}'
                                           : 'R\$ ${_fmt2(preco)}',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         color: p['emPromocao'] == true
-                                            • Colors.red[700]
+                                            ? Colors.red[700]
                                             : priceColor,
                                         fontSize: priceSize,
                                         fontWeight: FontWeight.w600,

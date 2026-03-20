@@ -23,7 +23,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final passC = TextEditingController();
 
   bool show = false;
-  String• error;
+  String? error;
   bool loading = false;
 
   @override
@@ -47,7 +47,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     slug = slug.replaceAll(RegExp(r'-{2,}'), '-');
     // Remove hífens no início e fim
     slug = slug.replaceAll(RegExp(r'^-+|-+$'), '');
-    return slug.isEmpty • 'minha-loja' : slug;
+    return slug.isEmpty ? 'minha-loja' : slug;
   }
 
   Future<String> _pickUniqueSlug(FirebaseFirestore db, String base) async {
@@ -122,7 +122,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       rethrow;
     }
 
-    if ((user.displayName ?• '').isEmpty && name.isNotEmpty) {
+    if ((user.displayName ?? '').isEmpty && name.isNotEmpty) {
       await user.updateDisplayName(name);
     }
 
@@ -147,8 +147,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         await db.collection('lojas').doc(slug).set({
           'id': slug,
           'lojaId': slug,
-          'name': name.isNotEmpty • name : 'Minha Loja',
-          'nome': name.isNotEmpty • name : 'Minha Loja',
+          'name': name.isNotEmpty ? name : 'Minha Loja',
+          'nome': name.isNotEmpty ? name : 'Minha Loja',
           'slug': slug,
           'ownerUid': user.uid,
           'ownerEmail': email,
@@ -165,14 +165,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
         await db.collection('lojas').doc(slug).collection('config').doc('config').set({
           'lojaId': slug,
           'slug': slug,
-          'nome': name.isNotEmpty • name : 'Minha Loja',
+          'nome': name.isNotEmpty ? name : 'Minha Loja',
           'createdAt': FieldValue.serverTimestamp(),
         });
 
         await db.collection('lojas').doc(slug).collection('draft_config').doc('config').set({
           'lojaId': slug,
           'slug': slug,
-          'nome': name.isNotEmpty • name : 'Minha Loja',
+          'nome': name.isNotEmpty ? name : 'Minha Loja',
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -248,7 +248,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     await _saveSessaoAsAdmin(email: email, lojaId: lojaId);
   }
 
-  String• _validateInputs() {
+  String? _validateInputs() {
     final name = nomeC.text.trim();
     final email = emailC.text.trim().toLowerCase();
     final phone = foneC.text.trim();
@@ -274,7 +274,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    AuthService• authSvc;
+    AuthService? authSvc;
     try {
       authSvc = context.read<AuthService>();
     } catch (e) {
@@ -376,7 +376,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     obscure: !show,
                     suffix: IconButton(
                       icon: Icon(
-                        show • Icons.visibility_off : Icons.visibility,
+                        show ? Icons.visibility_off : Icons.visibility,
                       ),
                       onPressed: () => setState(() => show = !show),
                     ),
@@ -391,7 +391,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                   const SizedBox(height: 20),
                   loading
-                      • const CircularProgressIndicator()
+                      ? const CircularProgressIndicator()
                       : NeonButton(
                           label: 'Criar conta',
                           onPressed: _onCreateAccount,

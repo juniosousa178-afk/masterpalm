@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 /// Card que mostra o resultado da roleta com todas as informações do cupom
 class ResultadoRoletaCard extends StatelessWidget {
   final CupomCliente cupom;
-  final VoidCallback• onFechar;
+  final VoidCallback? onFechar;
 
   const ResultadoRoletaCard({
     super.key,
@@ -112,7 +112,7 @@ class ResultadoRoletaCard extends StatelessWidget {
 
                   // Texto "Parabéns!"
                   const Text(
-                    '?• PARABÉNS! ??',
+                    '?? PARABÉNS! ??',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 28,
@@ -262,7 +262,7 @@ class ResultadoRoletaCard extends StatelessWidget {
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: onFechar ?• () => Navigator.of(context).pop(),
+                      onPressed: onFechar ?? () => Navigator.of(context).pop(),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: cor,

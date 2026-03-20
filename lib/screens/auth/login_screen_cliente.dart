@@ -39,15 +39,15 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
   }
 
   void _showSnackBar(String message,
-      {bool isError = false, bool isSuccess = false, bool isWarning = false, Duration• duration}) {
+      {bool isError = false, bool isSuccess = false, bool isWarning = false, Duration? duration}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        duration: duration ?• const Duration(seconds: 3),
+        duration: duration ?? const Duration(seconds: 3),
         content: Row(
           children: [
             Icon(
-              isSuccess • Icons.check_circle_outline : (isWarning • Icons.warning_amber : Icons.error_outline),
+              isSuccess ? Icons.check_circle_outline : (isWarning ? Icons.warning_amber : Icons.error_outline),
               color: Colors.white,
               size: 20,
             ),
@@ -56,8 +56,8 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
           ],
         ),
         backgroundColor: isSuccess
-            • const Color(0xFF22C55E)
-            : (isWarning • const Color(0xFFF59E0B) : (isError • const Color(0xFFEF4444) : AppColors.primary)),
+            ? const Color(0xFF22C55E)
+            : (isWarning ? const Color(0xFFF59E0B) : (isError ? const Color(0xFFEF4444) : AppColors.primary)),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -89,7 +89,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
         _showSnackBar('Bem-vindo, ${resultado['nome']}!', isSuccess: true);
         Navigator.of(context).pop();
       } else {
-        _showSnackBar(resultado['error'] ?• 'Erro ao fazer login', isError: true);
+        _showSnackBar(resultado['error'] ?? 'Erro ao fazer login', isError: true);
       }
     } catch (e) {
       if (!mounted) return;
@@ -109,9 +109,9 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
     setState(() => _carregando = true);
     try {
       final GoogleSignIn googleSignIn = kIsWeb
-          • GoogleSignIn(clientId: _webClientId)
+          ? GoogleSignIn(clientId: _webClientId)
           : GoogleSignIn();
-      final GoogleSignInAccount• account = await googleSignIn.signIn();
+      final GoogleSignInAccount? account = await googleSignIn.signIn();
       if (account == null) {
         if (mounted) setState(() => _carregando = false);
         return;
@@ -123,10 +123,10 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
         setState(() => _carregando = false);
         return;
       }
-      final nome = account.displayName ?• email.split('@').first;
+      final nome = account.displayName ?? email.split('@').first;
       // No Web, account.id pode ser null em runtime; fallback para o service identificar por email
       // ignore: dead_null_aware_expression
-      final googleUid = account.id ?• '';
+      final googleUid = account.id ?? '';
 
       final resultado = await ClienteAuthService.loginComGoogle(
         lojaId: widget.lojaId,
@@ -147,7 +147,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
         _showSnackBar('Bem-vindo, ${resultado['nome']}!', isSuccess: true);
         Navigator.of(context).pop();
       } else {
-        _showSnackBar(resultado['error'] ?• 'Erro ao entrar com Google', isError: true);
+        _showSnackBar(resultado['error'] ?? 'Erro ao entrar com Google', isError: true);
       }
     } catch (e) {
       if (!mounted) return;
@@ -162,7 +162,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
       } else if (is403) {
         userMsg = 'Google bloqueou o acesso. Ative o People API e confira as origens em Google Cloud Console.';
       } else {
-        userMsg = msg.length > 80 • 'Erro ao conectar com Google. Tente novamente.' : msg;
+        userMsg = msg.length > 80 ? 'Erro ao conectar com Google. Tente novamente.' : msg;
       }
       _showSnackBar(userMsg, isError: true, duration: const Duration(seconds: 5));
     } finally {
@@ -187,7 +187,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: isDark • null : AppColors.background,
+        backgroundColor: isDark ? null : AppColors.background,
         appBar: AppBar(
           title: const Text('Entrar'),
           centerTitle: true,
@@ -236,7 +236,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: isDark • theme.cardTheme.color : AppColors.card,
+                          color: isDark ? theme.cardTheme.color : AppColors.card,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
@@ -259,7 +259,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                                 hintText: 'seu@email.com',
                                 prefixIcon: const Icon(Icons.email_outlined, size: 22),
                                 filled: true,
-                                fillColor: isDark • null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -290,7 +290,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                                 hintText: '********',
                                 prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
                                 filled: true,
-                                fillColor: isDark • null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -306,7 +306,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                                 ),
                                 suffixIcon: IconButton(
                                   icon: Icon(
-                                    _mostrarSenha • Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                    _mostrarSenha ? Icons.visibility_off_rounded : Icons.visibility_rounded,
                                     size: 22,
                                   ),
                                   onPressed: () => setState(() => _mostrarSenha = !_mostrarSenha),
@@ -336,7 +336,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                             SizedBox(
                               height: 52,
                               child: ElevatedButton(
-                                onPressed: _carregando • null : _fazerLogin,
+                                onPressed: _carregando ? null : _fazerLogin,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primary,
                                   foregroundColor: Colors.white,
@@ -347,7 +347,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                                   ),
                                 ),
                                 child: _carregando
-                                    • const SizedBox(
+                                    ? const SizedBox(
                                         height: 22,
                                         width: 22,
                                         child: CircularProgressIndicator(
@@ -385,7 +385,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                             SizedBox(
                               height: 52,
                               child: OutlinedButton.icon(
-                                onPressed: _carregando • null : _fazerLoginComGoogle,
+                                onPressed: _carregando ? null : _fazerLoginComGoogle,
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: theme.colorScheme.onSurface,
                                   side: BorderSide(color: theme.colorScheme.outline),
@@ -413,7 +413,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                           );
                         },
                         child: Text(
-                          'Não tem conta• Cadastre-se',
+                          'Não tem conta? Cadastre-se',
                           style: TextStyle(
                             color: theme.primaryColor,
                             fontSize: 15,

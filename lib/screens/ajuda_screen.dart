@@ -11,7 +11,7 @@ class AjudaScreen extends StatelessWidget {
     final tel = telefone.replaceAll(RegExp(r'[^\d]'), '');
     if (tel.isEmpty) return;
     // Garante c?digo do Brasil se n?o tiver
-    final numero = tel.startsWith('55') • tel : '55$tel';
+    final numero = tel.startsWith('55') ? tel : '55$tel';
     const mensagem = 'Ol?! Tenho uma d?vida sobre o sistema e gostaria de ajuda.';
     final uri = Uri.parse(
       'https://wa.me/$numero?text=${Uri.encodeComponent(mensagem)}',
@@ -25,12 +25,12 @@ class AjudaScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark • cs.primary : AppColors.primary;
+    final primaryColor = isDark ? cs.primary : AppColors.primary;
 
     return Scaffold(
       backgroundColor: cs.surface,
       appBar: AppBar(
-        backgroundColor: isDark • cs.primary : AppColors.primary,
+        backgroundColor: isDark ? cs.primary : AppColors.primary,
         foregroundColor: Colors.white,
         title: const Text('Ajuda'),
         elevation: 0,
@@ -88,7 +88,7 @@ class AjudaScreen extends StatelessWidget {
     return FutureBuilder<String>(
       future: MasterConfigService.getSupportPhone(),
       builder: (context, snap) {
-        final phone = (snap.data ?• '').trim();
+        final phone = (snap.data ?? '').trim();
         if (phone.isEmpty) return const SizedBox.shrink();
 
         return Card(
@@ -125,7 +125,7 @@ class AjudaScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'D?vidas• Fale conosco pelo WhatsApp',
+                          'D?vidas? Fale conosco pelo WhatsApp',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -193,7 +193,7 @@ class AjudaScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Aqui voc• encontra explica??es detalhadas de cada tela e como s?o feitos os c?lculos. '
+              'Aqui voc? encontra explica??es detalhadas de cada tela e como s?o feitos os c?lculos. '
               'Role para baixo e toque nos cards para expandir.',
               style: TextStyle(
                 fontSize: 14,
@@ -267,20 +267,20 @@ class AjudaScreen extends StatelessWidget {
         _buildItemLista('Adicionar manualmente: informe nome, custo (ex: 10,90) e quantidade.'),
         _buildSubtitulo('F?rmula do pre?o sugerido:'),
         _buildFormula(
-          '1. Custo por item = Custo + Frete/(n• produtos)\n'
-          '2. Total de custos = Custo por item • (1 + Gastos Fixos%/100 + MEI%/100) + Embalagem\n'
-          '3. Pre?o sem taxa = Total de custos • (Markup/100)\n'
-          '4. Pre?o final = Pre?o sem taxa • (1 + Taxa cart?o%/100)',
+          '1. Custo por item = Custo + Frete/(n? produtos)\n'
+          '2. Total de custos = Custo por item ? (1 + Gastos Fixos%/100 + MEI%/100) + Embalagem\n'
+          '3. Pre?o sem taxa = Total de custos ? (Markup/100)\n'
+          '4. Pre?o final = Pre?o sem taxa ? (1 + Taxa cart?o%/100)',
         ),
         _buildSubtitulo('Exemplo pr?tico:'),
         _buildParagrafo(
           'Produto com custo R\$ 20,00, Markup 150%, Gastos Fixos 10%, MEI 3,5%, '
           'Embalagem R\$ 3, Frete R\$ 0, Taxa cart?o 5%. '
-          'Total custos • R\$ 27,70. Pre?o sem taxa = R\$ 41,55. Pre?o final • R\$ 43,63.',
+          'Total custos ? R\$ 27,70. Pre?o sem taxa = R\$ 41,55. Pre?o final ? R\$ 43,63.',
         ),
         _buildSubtitulo('Pre?o Pretendido:'),
         _buildParagrafo(
-          'Voc• pode informar um pre?o desejado para cada produto. Se preenchido, ele substitui o pre?o sugerido na hora de confirmar.',
+          'Voc? pode informar um pre?o desejado para cada produto. Se preenchido, ele substitui o pre?o sugerido na hora de confirmar.',
         ),
       ],
     );
@@ -302,7 +302,7 @@ class AjudaScreen extends StatelessWidget {
         _buildItemLista('Cadastrar produtos: nome, custo, pre?o, quantidade em estoque.'),
         _buildItemLista('Editar e excluir produtos.'),
         _buildItemLista('Buscar produtos por nome.'),
-        _buildItemLista('Ao registrar uma venda, o estoque • baixado automaticamente.'),
+        _buildItemLista('Ao registrar uma venda, o estoque ? baixado automaticamente.'),
         _buildSubtitulo('Dicas:'),
         _buildParagrafo(
           'Use a Precifica??o para calcular pre?os em lote e depois confirme para atualizar o estoque. '
@@ -322,17 +322,17 @@ class AjudaScreen extends StatelessWidget {
       cs: cs,
       children: [
         _buildParagrafo(
-          'Na tela de Vendas voc• registra as vendas da loja: adiciona produtos, define cliente e formas de pagamento.',
+          'Na tela de Vendas voc? registra as vendas da loja: adiciona produtos, define cliente e formas de pagamento.',
         ),
         _buildSubtitulo('Fluxo de uma venda:'),
         _buildItemLista('Nova venda: selecione produtos e quantidades.'),
         _buildItemLista('Informe o cliente (obrigat?rio para finalizar).'),
         _buildItemLista('Divida o pagamento: Dinheiro, Pix, Cart?o separadamente.'),
-        _buildItemLista('Finalize: estoque • baixado e a venda entra no relat?rio financeiro.'),
+        _buildItemLista('Finalize: estoque ? baixado e a venda entra no relat?rio financeiro.'),
         _buildSubtitulo('Editar venda:'),
         _buildParagrafo(
-          'Voc• pode editar vendas j• registradas: alterar cliente, produtos e formas de pagamento. '
-          'O estoque • ajustado automaticamente (devolve itens antigos e baixa novos).',
+          'Voc? pode editar vendas j? registradas: alterar cliente, produtos e formas de pagamento. '
+          'O estoque ? ajustado automaticamente (devolve itens antigos e baixa novos).',
         ),
       ],
     );
@@ -350,7 +350,7 @@ class AjudaScreen extends StatelessWidget {
         _buildParagrafo(
           'O relat?rio financeiro mostra vendas, recebimentos e metas em cards separados por forma de pagamento.',
         ),
-        _buildSubtitulo('O que voc• v?:'),
+        _buildSubtitulo('O que voc? v?:'),
         _buildItemLista('Dinheiro: total em vendas pagas em dinheiro.'),
         _buildItemLista('Pix: total em vendas pagas via Pix.'),
         _buildItemLista('Cart?o: total em vendas pagas com cart?o.'),
@@ -373,7 +373,7 @@ class AjudaScreen extends StatelessWidget {
       cs: cs,
       children: [
         _buildParagrafo(
-          'Cadastro de clientes para associar ?s vendas. O nome do cliente • obrigat?rio ao finalizar uma venda.',
+          'Cadastro de clientes para associar ?s vendas. O nome do cliente ? obrigat?rio ao finalizar uma venda.',
         ),
         _buildSubtitulo('Dados do cliente:'),
         _buildItemLista('Nome, telefone, e-mail (opcionais).'),
@@ -395,7 +395,7 @@ class AjudaScreen extends StatelessWidget {
       cs: cs,
       children: [
         _buildParagrafo(
-          'Cadastre fornecedores para organizar suas compras e vincular produtos • origem.',
+          'Cadastre fornecedores para organizar suas compras e vincular produtos ? origem.',
         ),
         _buildSubtitulo('Uso:'),
         _buildItemLista('Nome, contato e observa??es.'),
@@ -487,7 +487,7 @@ class AjudaScreen extends StatelessWidget {
         _buildSubtitulo('L?quido (recebido):'),
         _buildParagrafo(
           'O valor l?quido considera descontos de taxa de cart?o e MEI, quando configurados. '
-          'Ex: venda R\$ 100 em cart?o com taxa 5% • l?quido • R\$ 95.',
+          'Ex: venda R\$ 100 em cart?o com taxa 5% ? l?quido ? R\$ 95.',
         ),
         _buildSubtitulo('Filtros:'),
         _buildItemLista('Per?odo: dia, semana, m?s ou intervalo personalizado.'),
@@ -519,8 +519,8 @@ class AjudaScreen extends StatelessWidget {
           'Ferramenta separada das campanhas. O cliente gira a roleta ap?s a compra e pode ganhar pr?mios instant?neos (cupom de desconto, frete gr?tis ou "tente novamente").',
         ),
         _buildItemLista('Configurar: em Campanhas e Sorteios, abra a aba Roleta. Ative, defina o valor m?nimo da compra para liberar o giro e cadastre os pr?mios (label, tipo e valor).'),
-        _buildItemLista('Funcionamento: ao finalizar compra acima do valor m?nimo, o cliente v• o bot?o "Girar roleta", gira uma vez e recebe o pr?mio (ou n?o). Uma rota??o por compra.'),
-        _buildItemLista('Cupom ganho: s• pode ser usado na pr?xima compra e possui validade. Ap?s usado ou vencido, n?o • mais aceito.'),
+        _buildItemLista('Funcionamento: ao finalizar compra acima do valor m?nimo, o cliente v? o bot?o "Girar roleta", gira uma vez e recebe o pr?mio (ou n?o). Uma rota??o por compra.'),
+        _buildItemLista('Cupom ganho: s? pode ser usado na pr?xima compra e possui validade. Ap?s usado ou vencido, n?o ? mais aceito.'),
         _buildSubtitulo('Dica:'),
         _buildParagrafo(
           'Use campanhas para datas especiais, promo??es de fim de ano ou fideliza??o de clientes. Use a roleta para premia??o imediata e engajamento p?s-compra.',
@@ -594,7 +594,7 @@ class AjudaScreen extends StatelessWidget {
         _buildItemLista('Link do Instagram e perfil da loja.'),
         _buildItemLista('Integra??o com Meta Business para mensagens unificadas.'),
         _buildParagrafo(
-          'Facilita vendas por redes sociais: o cliente clica e j• abre o chat com a mensagem pronta.',
+          'Facilita vendas por redes sociais: o cliente clica e j? abre o chat com a mensagem pronta.',
         ),
       ],
     );
@@ -691,7 +691,7 @@ class AjudaScreen extends StatelessWidget {
         _buildSubtitulo('Consolidar Loja:'),
         _buildParagrafo(
           'Une dados de m?ltiplas lojas em uma ?nica. '
-          '?til quando voc• tem mais de uma loja (ex: matriz e filial) e quer centralizar estoque, vendas e clientes em um s• lugar.',
+          '?til quando voc? tem mais de uma loja (ex: matriz e filial) e quer centralizar estoque, vendas e clientes em um s? lugar.',
         ),
         _buildSubtitulo('Planos:'),
         _buildParagrafo(
@@ -738,7 +738,7 @@ class AjudaScreen extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('• ', style: TextStyle(fontSize: 14)),
+          const Text('? ', style: TextStyle(fontSize: 14)),
           Expanded(child: Text(text, style: const TextStyle(fontSize: 14, height: 1.4))),
         ],
       ),

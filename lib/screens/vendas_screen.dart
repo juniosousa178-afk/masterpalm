@@ -73,18 +73,18 @@ class _VendasScreenState extends State<VendasScreen>
 
   String searchQuery = '';
   String vendedorSelecionado = 'Todos';
-  String• lojaId;
+  String? lojaId;
   String ordenacaoVendas = 'data_desc'; // data_desc | data_asc | cliente_asc | cliente_desc
   bool _carregando = true;
   bool _erroResolucaoLoja = false;
   bool _erroHiveCacheLocal = false;
-  String• _erroHiveCacheDetalhe;
+  String? _erroHiveCacheDetalhe;
   /// FASE 3: true quando sync em background falhou (lista local permanece; usuário vê aviso)
   bool _syncFalhou = false;
   bool _importandoVendas = false;
   bool _exportandoVendas = false;
   bool _enviandoVendas = false;
-  bool• _temVendasParaImportar; // null = ainda não verificou, true/false = resultado
+  bool? _temVendasParaImportar; // null = ainda não verificou, true/false = resultado
   String _tipoUsuario = 'vendedor';
 
   final _searchController = TextEditingController();
@@ -97,7 +97,7 @@ class _VendasScreenState extends State<VendasScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         logD(
-          '[VENDAS_LIFECYCLE] initState postFrame route=${ModalRoute.of(context)?.settings.name ?• "null"}',
+          '[VENDAS_LIFECYCLE] initState postFrame route=${ModalRoute.of(context)?.settings.name ?? "null"}',
         );
       });
     }
@@ -110,7 +110,7 @@ class _VendasScreenState extends State<VendasScreen>
     super.didChangeDependencies();
     if (kIsWeb) {
       logD(
-        '[VENDAS_LIFECYCLE] didChangeDependencies route=${ModalRoute.of(context)?.settings.name ?• "null"} uri=${Uri.base}',
+        '[VENDAS_LIFECYCLE] didChangeDependencies route=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${Uri.base}',
       );
     }
     final route = ModalRoute.of(context);
@@ -177,11 +177,11 @@ class _VendasScreenState extends State<VendasScreen>
     if (kDebugMode) {
       final user = FirebaseAuth.instance.currentUser;
       logD('[VENDAS_INIT] inicio _init');
-      logD('[VENDAS_INIT] auth uid=${user?.uid ?• "null"} email=${user?.email ?• "null"}');
-      logD('[VENDAS_INIT] rota=${ModalRoute.of(context)?.settings.name ?• "null"} uri=${kIsWeb • Uri.base.toString() : "n/a"}');
+      logD('[VENDAS_INIT] auth uid=${user?.uid ?? "null"} email=${user?.email ?? "null"}');
+      logD('[VENDAS_INIT] rota=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${kIsWeb ? Uri.base.toString() : "n/a"}');
       try {
-        final sessao = Hive.isBoxOpen('sessao') • Hive.box('sessao') : await Hive.openBox('sessao');
-        final cfg = Hive.isBoxOpen('config') • Hive.box('config') : await Hive.openBox('config');
+        final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
+        final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
         logD('[VENDAS_INIT] sessao.store_id=${sessao.get("store_id")} config.store_id=${cfg.get("store_id")} usuario_logado_email=${sessao.get("usuario_logado_email")} usuario_logado=${sessao.get("usuario_logado")}');
       } catch (e) {
         logW('[VENDAS_INIT] leitura sessao/config falhou (type=${e.runtimeType})');
@@ -209,8 +209,8 @@ class _VendasScreenState extends State<VendasScreen>
 
     logD('[LOJAID] origem=Vendas._init antes LojaIdService.getWithTimeout');
     lojaId = await LojaIdService.getWithTimeout(
-        timeout: kIsWeb • const Duration(seconds: 25) : const Duration(seconds: 10));
-    logD('[LOJAID] origem=Vendas._init depois LojaIdService.getWithTimeout valor=${lojaId ?• "null"}');
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
+    logD('[LOJAID] origem=Vendas._init depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
       if (kDebugMode) logD('[STORE-RESOLVE] Vendas: lojaId null, tentando retry em 2s');
@@ -218,8 +218,8 @@ class _VendasScreenState extends State<VendasScreen>
       if (!mounted) return;
       logD('[LOJAID] origem=Vendas._init retry antes LojaIdService.getWithTimeout');
       lojaId = await LojaIdService.getWithTimeout(
-          timeout: kIsWeb • const Duration(seconds: 15) : const Duration(seconds: 8));
-      logD('[LOJAID] origem=Vendas._init retry depois LojaIdService.getWithTimeout valor=${lojaId ?• "null"}');
+          timeout: kIsWeb ? const Duration(seconds: 15) : const Duration(seconds: 8));
+      logD('[LOJAID] origem=Vendas._init retry depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
     }
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
@@ -235,14 +235,14 @@ class _VendasScreenState extends State<VendasScreen>
           logD('[LOJAID] origem=Vendas._init authWait antes LojaIdService.getWithTimeout');
           lojaId = await LojaIdService.getWithTimeout(
               timeout: const Duration(seconds: 12));
-          logD('[LOJAID] origem=Vendas._init authWait depois LojaIdService.getWithTimeout valor=${lojaId ?• "null"}');
+          logD('[LOJAID] origem=Vendas._init authWait depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
         } catch (e) {
           logW('[VENDAS_INIT] auth wait/retry falhou (type=${e.runtimeType})');
         }
       }
       if (!mounted) return;
       if (lojaId == null || lojaId!.trim().isEmpty) {
-        logW('[ERRO_LOJA] origem=Vendas._init motivo=lojaId null/vazio apos retries authUid=${FirebaseAuth.instance.currentUser?.uid ?• "null"} authEmail=${FirebaseAuth.instance.currentUser?.email ?• "null"}');
+        logW('[ERRO_LOJA] origem=Vendas._init motivo=lojaId null/vazio apos retries authUid=${FirebaseAuth.instance.currentUser?.uid ?? "null"} authEmail=${FirebaseAuth.instance.currentUser?.email ?? "null"}');
         if (mounted) {
           setState(() {
             _carregando = false;
@@ -282,8 +282,8 @@ class _VendasScreenState extends State<VendasScreen>
     final clientesBoxName = HiveBoxNames.clientes(lojaId!);
     final produtosBoxName = HiveBoxNames.produtos(lojaId!);
 
-    Object• vendasBoxError;
-    Object• clientesBoxError;
+    Object? vendasBoxError;
+    Object? clientesBoxError;
 
     logD(
       '[HIVE_BOX] adapters registradas Cliente(typeId=0)=${Hive.isAdapterRegistered(0)} Venda(typeId=1)=${Hive.isAdapterRegistered(1)}',
@@ -370,7 +370,7 @@ class _VendasScreenState extends State<VendasScreen>
           _carregando = false;
           _erroHiveCacheLocal = true;
           _erroResolucaoLoja = false;
-          _erroHiveCacheDetalhe = '${vendasBoxName}${clientesBoxError != null • ' + ' + clientesBoxName : ''}';
+          _erroHiveCacheDetalhe = '${vendasBoxName}${clientesBoxError != null ? ' + ' + clientesBoxName : ''}';
         });
       }
       return;
@@ -502,9 +502,9 @@ class _VendasScreenState extends State<VendasScreen>
       );
       if (!mounted) return;
       final msg = resultado.importadas > 0
-          • 'Importação concluída! ${resultado.importadas} venda(s) nova(s) importada(s).'
+          ? 'Importação concluída! ${resultado.importadas} venda(s) nova(s) importada(s).'
           : (resultado.jaExistentes > 0
-              • 'Todas as vendas já estavam no aparelho (${resultado.jaExistentes} verificadas).'
+              ? 'Todas as vendas já estavam no aparelho (${resultado.jaExistentes} verificadas).'
               : 'Nenhuma venda nova para importar.');
       _showSnackBar(msg);
       await _verificarSeTemVendasParaImportar();
@@ -526,7 +526,7 @@ class _VendasScreenState extends State<VendasScreen>
 
   /// Filtro: venda pertence à loja (inclui lojaId null/vazio = legado)
   bool _vendaDaLoja(Venda v) =>
-      v.lojaId == null || (v.lojaId?.isEmpty ?• true) || v.lojaId == lojaId;
+      v.lojaId == null || (v.lojaId?.isEmpty ?? true) || v.lojaId == lojaId;
 
   double get totalVendasDia {
     final hoje = DateTime.now();
@@ -617,8 +617,8 @@ class _VendasScreenState extends State<VendasScreen>
     final total30 = ultimos30.fold<double>(0, (s, v) => s + v.total);
     final porVendedor = <String, double>{};
     for (final v in lista) {
-      final nome = v.vendedor.trim().isEmpty • 'Sem vendedor' : v.vendedor;
-      porVendedor[nome] = (porVendedor[nome] ?• 0) + v.total;
+      final nome = v.vendedor.trim().isEmpty ? 'Sem vendedor' : v.vendedor;
+      porVendedor[nome] = (porVendedor[nome] ?? 0) + v.total;
     }
     final topVendedores = porVendedor.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     final fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2);
@@ -646,7 +646,7 @@ class _VendasScreenState extends State<VendasScreen>
         content: Row(
           children: [
             Icon(
-              isError • Icons.error_outline : Icons.check_circle_outline,
+              isError ? Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -654,7 +654,7 @@ class _VendasScreenState extends State<VendasScreen>
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError • _errorColor : _successColor,
+        backgroundColor: isError ? _errorColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
@@ -671,7 +671,7 @@ class _VendasScreenState extends State<VendasScreen>
         appBar: AppBar(title: const Text('Vendas')),
         backgroundColor: _backgroundColor,
         body: _VendasHiveCacheErroLojaBody(
-          detalhe: _erroHiveCacheDetalhe ?• 'vendas/clientes',
+          detalhe: _erroHiveCacheDetalhe ?? 'vendas/clientes',
           onRetry: () {
             if (kDebugMode) logD('[STORE-LIFECYCLE] Vendas: retry Hive cache');
             setState(() {
@@ -750,14 +750,14 @@ class _VendasScreenState extends State<VendasScreen>
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _enviandoVendas
-                  • const SizedBox(
+                  ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: _successColor),
                     )
                   : const Icon(Icons.cloud_upload, color: _successColor, size: 20),
             ),
-            onPressed: _enviandoVendas • null : _enviarVendasParaNuvem,
+            onPressed: _enviandoVendas ? null : _enviarVendasParaNuvem,
             tooltip: 'Enviar para Nuvem',
           ),
           IconButton(
@@ -768,16 +768,16 @@ class _VendasScreenState extends State<VendasScreen>
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _importandoVendas
-                  • const SizedBox(
+                  ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.cloud_download, color: Color(0xFF3B82F6), size: 20),
             ),
-            onPressed: _importandoVendas • null : _importarVendasDoFirestore,
+            onPressed: _importandoVendas ? null : _importarVendasDoFirestore,
             tooltip: _temVendasParaImportar == true
-                • 'Baixar da Nuvem (há vendas novas)'
+                ? 'Baixar da Nuvem (há vendas novas)'
                 : 'Baixar da Nuvem',
           ),
           IconButton(
@@ -800,19 +800,19 @@ class _VendasScreenState extends State<VendasScreen>
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _exportandoVendas
-                  • const SizedBox(
+                  ? const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: _primaryColor),
                     )
                   : const Icon(Icons.download, color: _primaryColor, size: 20),
             ),
-            onPressed: _exportandoVendas • null : _exportarExcel,
-            tooltip: _exportandoVendas • 'Exportando...' : 'Exportar Excel',
+            onPressed: _exportandoVendas ? null : _exportarExcel,
+            tooltip: _exportandoVendas ? 'Exportando...' : 'Exportar Excel',
           ),
         ],
         bottom: _operacaoEmAndamento
-            • const PreferredSize(
+            ? const PreferredSize(
                 preferredSize: Size.fromHeight(4),
                 child: LinearProgressIndicator(),
               )
@@ -1029,7 +1029,7 @@ class _VendasScreenState extends State<VendasScreen>
                 hintStyle: TextStyle(color: Colors.grey[400]),
                 prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
                 suffixIcon: searchQuery.isNotEmpty
-                    • IconButton(
+                    ? IconButton(
                         icon: Icon(Icons.clear, color: Colors.grey[400]),
                         onPressed: () {
                           _searchController.clear();
@@ -1076,7 +1076,7 @@ class _VendasScreenState extends State<VendasScreen>
                           child: Row(
                             children: [
                               Icon(
-                                v == 'Todos' • Icons.groups : Icons.person,
+                                v == 'Todos' ? Icons.groups : Icons.person,
                                 color: _primaryColor,
                                 size: 20,
                               ),
@@ -1150,7 +1150,7 @@ class _VendasScreenState extends State<VendasScreen>
   Widget _buildVendaCard(Venda v) {
     final currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
     final initials = v.clienteNome.isNotEmpty
-        • v.clienteNome.trim().split(' ').map((e) => e.isNotEmpty • e[0] : '').take(2).join().toUpperCase()
+        ? v.clienteNome.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase()
         : '?';
 
     // Cor baseada no valor da venda
@@ -1325,14 +1325,14 @@ class _VendasScreenState extends State<VendasScreen>
     return _VendasInfoChip(icon: icon, text: text, color: color);
   }
 
-  /// Resumo discriminado: Dinheiro R$ X • Pix R$ Y • Cartão R$ Z (apenas os preenchidos)
+  /// Resumo discriminado: Dinheiro R$ X ? Pix R$ Y ? Cartão R$ Z (apenas os preenchidos)
   String _resumoPagamento(Venda v) {
     final partes = <String>[];
     if (v.pagamentoDinheiro > 0) partes.add('Dinheiro R\$ ${v.pagamentoDinheiro.toStringAsFixed(2).replaceAll('.', ',')}');
     if (v.pagamentoPix > 0) partes.add('Pix R\$ ${v.pagamentoPix.toStringAsFixed(2).replaceAll('.', ',')}');
     if (v.pagamentoCartao > 0) partes.add('Cartão R\$ ${v.pagamentoCartao.toStringAsFixed(2).replaceAll('.', ',')}');
-    if (partes.isNotEmpty) return partes.join(' • ');
-    return v.formasPagamento.isNotEmpty • v.formasPagamento : '—';
+    if (partes.isNotEmpty) return partes.join(' ? ');
+    return v.formasPagamento.isNotEmpty ? v.formasPagamento : '—';
   }
 
   String _resumoVendedor(String vendedor) {
@@ -1349,8 +1349,8 @@ class _VendasScreenState extends State<VendasScreen>
       return v.itens!
           .map((i) => '${i.quantidade}x ${i.produtoNome}')
           .take(2)
-          .join(' • ') +
-          (v.itens!.length > 2 • ' +${v.itens!.length - 2}' : '');
+          .join(' ? ') +
+          (v.itens!.length > 2 ? ' +${v.itens!.length - 2}' : '');
     }
     final desc = v.produtosDescricao.trim();
     if (desc.isEmpty) return '-';
@@ -1604,7 +1604,7 @@ class _VendasScreenState extends State<VendasScreen>
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: expandValue
-          • Column(
+          ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -1672,7 +1672,7 @@ class _VendasScreenState extends State<VendasScreen>
     final variacao = [
       if (item.tamanho.isNotEmpty) item.tamanho,
       if (item.cor.isNotEmpty) item.cor,
-    ].join(' • ');
+    ].join(' ? ');
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
@@ -1857,7 +1857,7 @@ class _VendasScreenState extends State<VendasScreen>
               content: const Text('Venda excluída. Desfazer?'),
               duration: const Duration(seconds: 30),
               action: id != null
-                  • SnackBarAction(
+                  ? SnackBarAction(
                       label: 'Desfazer',
                       onPressed: () {
                         scaffoldMessengerKey.currentState?.hideCurrentSnackBar();
@@ -1880,8 +1880,8 @@ class _VendasScreenState extends State<VendasScreen>
     if (mounted) setState(() {});
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
-        content: Text(ok • 'Venda restaurada' : 'Não foi possível desfazer'),
-        backgroundColor: ok • null : Colors.red.shade700,
+        content: Text(ok ? 'Venda restaurada' : 'Não foi possível desfazer'),
+        backgroundColor: ok ? null : Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -1925,7 +1925,7 @@ class _VendasScreenState extends State<VendasScreen>
 
   Future<void> _imprimirPedido(Venda venda) async {
     try {
-      Cliente• cliente;
+      Cliente? cliente;
       for (final c in clientesBox.values) {
         if (c.lojaId == lojaId && c.nome == venda.clienteNome) {
           cliente = c;
@@ -1981,9 +1981,9 @@ class _VendasScreenState extends State<VendasScreen>
                 if (cliente != null) ...[
                   if (cliente.telefone.isNotEmpty)
                     pw.Text('Telefone: ${cliente.telefone}'),
-                  if ((cliente.email ?• '').isNotEmpty)
+                  if ((cliente.email ?? '').isNotEmpty)
                     pw.Text('Email: ${cliente.email}'),
-                  if ((cliente.endereco ?• '').isNotEmpty)
+                  if ((cliente.endereco ?? '').isNotEmpty)
                     pw.Text('Endereço: ${cliente.endereco}'),
                   if (cliente.cep.isNotEmpty)
                     pw.Text('CEP: ${cliente.cep}'),
@@ -2064,11 +2064,11 @@ class _VendasScreenState extends State<VendasScreen>
                             ),
                             pw.Padding(
                               padding: const pw.EdgeInsets.all(4),
-                              child: pw.Text(item.tamanho.isNotEmpty • item.tamanho : '-'),
+                              child: pw.Text(item.tamanho.isNotEmpty ? item.tamanho : '-'),
                             ),
                             pw.Padding(
                               padding: const pw.EdgeInsets.all(4),
-                              child: pw.Text(item.cor.isNotEmpty • item.cor : '-'),
+                              child: pw.Text(item.cor.isNotEmpty ? item.cor : '-'),
                             ),
                             pw.Padding(
                               padding: const pw.EdgeInsets.all(4),
@@ -2183,7 +2183,7 @@ class _VendasScreenState extends State<VendasScreen>
                 pw.SizedBox(height: 8),
                 pw.Text('Forma de Pagamento: ${venda.formasPagamentoDiscriminado}'),
                 if (venda.frete > 0) ...[
-                  pw.Text('Tipo de Entrega: ${venda.frete > 0 • "Com frete (R\$ ${venda.frete.toStringAsFixed(2)})" : "Retirada na loja"}'),
+                  pw.Text('Tipo de Entrega: ${venda.frete > 0 ? "Com frete (R\$ ${venda.frete.toStringAsFixed(2)})" : "Retirada na loja"}'),
                 ],
                 pw.SizedBox(height: 8),
                 pw.Text('Vendedor: ${venda.vendedor}'),
@@ -2606,7 +2606,7 @@ class _SugestoesIaVendasScreen extends StatefulWidget {
 
 class _SugestoesIaVendasScreenState extends State<_SugestoesIaVendasScreen> {
   final _perguntaCtrl = TextEditingController();
-  String• _resposta;
+  String? _resposta;
   bool _enviando = false;
   static const _primaryColor = Color(0xFF6366F1);
   static const _cardColor = Color(0xFF1E293B);
@@ -2617,8 +2617,8 @@ class _SugestoesIaVendasScreenState extends State<_SugestoesIaVendasScreen> {
     super.dispose();
   }
 
-  Future<void> _enviar(String• perguntaFixa) async {
-    final pergunta = perguntaFixa ?• _perguntaCtrl.text.trim();
+  Future<void> _enviar(String? perguntaFixa) async {
+    final pergunta = perguntaFixa ?? _perguntaCtrl.text.trim();
     if (pergunta.isEmpty || _enviando) return;
     final lojaId = await LojaIdService.get();
     if (lojaId == null || lojaId.trim().isEmpty) {
@@ -2662,11 +2662,11 @@ class _SugestoesIaVendasScreenState extends State<_SugestoesIaVendasScreen> {
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _enviando • null : () => _enviar(null),
+        onPressed: _enviando ? null : () => _enviar(null),
         tooltip: 'Enviar pergunta',
         backgroundColor: _primaryColor,
         child: _enviando
-            • const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.send, color: Colors.white),
       ),
       body: Scrollbar(
@@ -2692,19 +2692,19 @@ class _SugestoesIaVendasScreenState extends State<_SugestoesIaVendasScreen> {
               runSpacing: 8,
               children: [
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Como aumentar o ticket médio• Dê sugestões práticas.'),
+                  onPressed: _enviando ? null : () => _enviar('Como aumentar o ticket médio? Dê sugestões práticas.'),
                   icon: const Icon(Icons.trending_up, size: 18),
                   label: const Text('Aumentar ticket médio'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Sugestões para vender mais com base nos dados de vendas e vendedores.'),
+                  onPressed: _enviando ? null : () => _enviar('Sugestões para vender mais com base nos dados de vendas e vendedores.'),
                   icon: const Icon(Icons.point_of_sale, size: 18),
                   label: const Text('Vender mais'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _enviando • null : () => _enviar('Analise o desempenho dos vendedores e sugira melhorias ou incentivos.'),
+                  onPressed: _enviando ? null : () => _enviar('Analise o desempenho dos vendedores e sugira melhorias ou incentivos.'),
                   icon: const Icon(Icons.people, size: 18),
                   label: const Text('Desempenho vendedores'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
@@ -2725,9 +2725,9 @@ class _SugestoesIaVendasScreenState extends State<_SugestoesIaVendasScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _enviando • null : () => _enviar(null),
-              icon: _enviando • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-              label: Text(_enviando • 'Analisando…' : 'Enviar'),
+              onPressed: _enviando ? null : () => _enviar(null),
+              icon: _enviando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+              label: Text(_enviando ? 'Analisando…' : 'Enviar'),
               style: FilledButton.styleFrom(backgroundColor: _primaryColor),
             ),
             if (_resposta != null) ...[

@@ -30,7 +30,7 @@ class CatalogThumbnailService {
 
   /// Gera thumbnail a partir de bytes.
   /// Redimensiona mantendo proporção, centraliza, fundo branco, exporta PNG.
-  static Uint8List• generateFromBytes(Uint8List bytes) {
+  static Uint8List? generateFromBytes(Uint8List bytes) {
     try {
       final src = img.decodeImage(bytes);
       if (src == null) return null;
@@ -43,7 +43,7 @@ class CatalogThumbnailService {
   }
 
   /// Thumbnail em JPEG (menor tamanho, upload mais rápido).
-  static Uint8List• generateJpegFromBytes(Uint8List bytes, {int quality = 85}) {
+  static Uint8List? generateJpegFromBytes(Uint8List bytes, {int quality = 85}) {
     try {
       final src = img.decodeImage(bytes);
       if (src == null) return null;
@@ -54,7 +54,7 @@ class CatalogThumbnailService {
     }
   }
 
-  static Uint8List• _processToThumbnailJpeg(img.Image src, {int quality = 85}) {
+  static Uint8List? _processToThumbnailJpeg(img.Image src, {int quality = 85}) {
     const int targetWidth = 600;
     const int targetHeight = 800;
     final srcW = src.width;
@@ -78,7 +78,7 @@ class CatalogThumbnailService {
     return img.encodeJpg(canvas, quality: quality);
   }
 
-  static Uint8List• _processToThumbnail(img.Image src) {
+  static Uint8List? _processToThumbnail(img.Image src) {
     const int targetWidth = 600;
     const int targetHeight = 800; // 600/800 = 3/4
 

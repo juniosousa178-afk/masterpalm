@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 class SubscriptionStatus {
   final String plan;          // e.g. 'freelight', 'pro', ...
   final bool active;          // se o plano está ativo
-  final DateTime• expiresAt;  // validade, se houver
+  final DateTime? expiresAt;  // validade, se houver
   final Map<String, int> limits;
 
   const SubscriptionStatus({
@@ -17,16 +17,16 @@ class SubscriptionStatus {
   });
 
   SubscriptionStatus copyWith({
-    String• plan,
-    bool• active,
-    DateTime• expiresAt,
-    Map<String, int>• limits,
+    String? plan,
+    bool? active,
+    DateTime? expiresAt,
+    Map<String, int>? limits,
   }) {
     return SubscriptionStatus(
-      plan: plan ?• this.plan,
-      active: active ?• this.active,
-      expiresAt: expiresAt ?• this.expiresAt,
-      limits: limits ?• this.limits,
+      plan: plan ?? this.plan,
+      active: active ?? this.active,
+      expiresAt: expiresAt ?? this.expiresAt,
+      limits: limits ?? this.limits,
     );
   }
 
@@ -44,7 +44,7 @@ class SubscriptionStatus {
 
     // se vier aninhado, tipo { plan: { id: 'freelight', ... } }
     if (rawPlan is Map<String, dynamic>) {
-      rawPlan = rawPlan['id'] ?• rawPlan['planId'] ?• rawPlan['name'];
+      rawPlan = rawPlan['id'] ?? rawPlan['planId'] ?? rawPlan['name'];
     }
 
     // fallback: alguns sistemas gravam planId na raiz
@@ -111,7 +111,7 @@ class SubscriptionStatus {
     );
   }
 
-  static DateTime• _tsToDate(dynamic v) {
+  static DateTime? _tsToDate(dynamic v) {
     if (v == null) return null;
     if (v is Timestamp) return v.toDate();
     if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
@@ -199,7 +199,7 @@ class SubscriptionService {
         return SubscriptionStatus.free();
       }
 
-      final Map<String, dynamic> data = (doc.data() ?• <String, dynamic>{});
+      final Map<String, dynamic> data = (doc.data() ?? <String, dynamic>{});
       final status = SubscriptionStatus.fromData(data);
 
       dev.log('[SUBS] ok plan=${status.plan} active=${status.active}');
@@ -224,7 +224,7 @@ class SubscriptionService {
     try {
       yield* _db.doc('users/${user.uid}').snapshots().map((snap) {
         if (!snap.exists) return SubscriptionStatus.free();
-        final Map<String, dynamic> data = (snap.data() ?• <String, dynamic>{});
+        final Map<String, dynamic> data = (snap.data() ?? <String, dynamic>{});
         return SubscriptionStatus.fromData(data);
       });
     } on FirebaseException catch (e) {
@@ -249,7 +249,7 @@ class SubscriptionService {
         await ref.set({
           'uid': user.uid,
           'email': user.email,
-          'role': isRoot • 'owner' : role, // root vira owner por conveniência
+          'role': isRoot ? 'owner' : role, // root vira owner por conveniência
           'createdAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
         dev.log('[SUBS] members bootstrap criado para loja=$lojaId uid=${user.uid}');

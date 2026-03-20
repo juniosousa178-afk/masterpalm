@@ -38,7 +38,7 @@ String gerarSlug(String texto) {
 }
 
 class ProdutoFormScreen extends StatefulWidget {
-  final Produto• produto;
+  final Produto? produto;
   const ProdutoFormScreen({super.key, this.produto});
 
   @override
@@ -50,7 +50,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
   late Box<Produto> produtosBox;
   late Box _configBox;
-  String• lojaId;
+  String? lojaId;
   List<Map<String, dynamic>> _embalagensDisponiveis = [];
 
   final _nome = TextEditingController();
@@ -86,7 +86,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   bool _sugerindoDescricao = false;
 
   /// Produto existente encontrado por chave única (nome+categoria) - para modo "Atualizar"
-  Produto• _produtoExistenteAlvo;
+  Produto? _produtoExistenteAlvo;
 
   // Marketplaces selecionados
   final Set<String> _marketplacesSelecionados = {};
@@ -103,8 +103,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   String _tipoDesconto = 'percentual'; // 'percentual' ou 'fixo'
   final _percentualPromo = TextEditingController();
   final _valorPromo = TextEditingController();
-  DateTime• _dataInicioPromo;
-  DateTime• _dataFimPromo;
+  DateTime? _dataInicioPromo;
+  DateTime? _dataFimPromo;
 
   @override
   void initState() {
@@ -121,8 +121,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _categoria.text = p.categoria;
       _subcategoria.text = p.subcategoria;
       _descricao.text = p.descricao;
-      _peso.text = p.peso >= 1000 • (p.peso / 1000).toStringAsFixed(2) : p.peso.toStringAsFixed(0);
-      _pesoUnidade = p.peso >= 1000 • 'kg' : 'g';
+      _peso.text = p.peso >= 1000 ? (p.peso / 1000).toStringAsFixed(2) : p.peso.toStringAsFixed(0);
+      _pesoUnidade = p.peso >= 1000 ? 'kg' : 'g';
       _codigoBarras.text = p.codigoBarras;
       _tipoEmbalagem = p.tipoEmbalagem;
       _imagens.addAll(p.imagens);
@@ -130,7 +130,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _divideSemJuros = p.divideSemJuros;
       _maxParcelasSemJuros.text = p.maxParcelasSemJuros.toString();
       _percentualDescontoPix.text = (p.percentualDescontoPix > 0)
-          • p.percentualDescontoPix.toStringAsFixed(1)
+          ? p.percentualDescontoPix.toStringAsFixed(1)
           : '0';
 
       // 🔹 Preenche grade de variações (tamanho + cor + quantidade)
@@ -148,8 +148,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               final qtd = corEntry.value;
               debugPrint('  ➜ Adicionando linha: $tamanho + $cor = $qtd');
               _gradeVariacoes.add({
-                'tamanho': tamanho == 'sem-tamanho' • '' : tamanho,
-                'cor': cor == 'sem-cor' • '' : cor,
+                'tamanho': tamanho == 'sem-tamanho' ? '' : tamanho,
+                'cor': cor == 'sem-cor' ? '' : cor,
                 'qtd': qtd.toString(),
               });
             }
@@ -207,7 +207,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   Set<String> get _tamanhosUnicos {
     final set = <String>{};
     for (final c in _variacaoControllers) {
-      final t = (c['tamanho']?.text ?• '').trim();
+      final t = (c['tamanho']?.text ?? '').trim();
       if (t.isNotEmpty) set.add(t);
     }
     return set;
@@ -237,9 +237,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     _variacaoControllers.clear();
     for (final row in _gradeVariacoes) {
       _variacaoControllers.add({
-        'tamanho': TextEditingController(text: row['tamanho'] ?• ''),
-        'cor': TextEditingController(text: row['cor'] ?• ''),
-        'qtd': TextEditingController(text: row['qtd'] ?• ''),
+        'tamanho': TextEditingController(text: row['tamanho'] ?? ''),
+        'cor': TextEditingController(text: row['cor'] ?? ''),
+        'qtd': TextEditingController(text: row['qtd'] ?? ''),
       });
     }
     _initPrecoPorTamanhoControllers();
@@ -280,14 +280,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         final embalagensTemp = rawEmbalagens.map<Map<String, dynamic>>((e) {
           if (e is Map) {
             return {
-              'id': e['id']?.toString() ?• '',
-              'nome': e['nome']?.toString() ?• '',
+              'id': e['id']?.toString() ?? '',
+              'nome': e['nome']?.toString() ?? '',
               'peso': (e['peso'] is num)
-                  • (e['peso'] as num).toDouble()
-                  : double.tryParse('${e['peso']}') ?• 0.0,
+                  ? (e['peso'] as num).toDouble()
+                  : double.tryParse('${e['peso']}') ?? 0.0,
               'tamanho': (e['tamanho'] is num)
-                  • (e['tamanho'] as num).toInt()
-                  : int.tryParse('${e['tamanho']}') ?• 0,
+                  ? (e['tamanho'] as num).toInt()
+                  : int.tryParse('${e['tamanho']}') ?? 0,
             };
           }
           return {'id': '', 'nome': '', 'peso': 0.0, 'tamanho': 0};
@@ -346,8 +346,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
   /// Peso em gramas (converte de kg se _pesoUnidade for 'kg').
   double get _pesoEmGramas {
-    final v = double.tryParse(_peso.text.trim().replaceAll(',', '.')) ?• 0.0;
-    return _pesoUnidade == 'kg' • v * 1000 : v;
+    final v = double.tryParse(_peso.text.trim().replaceAll(',', '.')) ?? 0.0;
+    return _pesoUnidade == 'kg' ? v * 1000 : v;
   }
 
   void _verificarProdutoExistente() {
@@ -477,7 +477,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       } on TimeoutException catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.message ?• 'Operação demorou muito. Tente novamente.'), backgroundColor: Colors.orange),
+            SnackBar(content: Text(e.message ?? 'Operação demorou muito. Tente novamente.'), backgroundColor: Colors.orange),
           );
         }
       } catch (e) {
@@ -524,7 +524,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       ),
     );
 
-    if ((url ?• '').isNotEmpty && lojaId != null) {
+    if ((url ?? '').isNotEmpty && lojaId != null) {
       final guard = LimitsGuard();
       final pode = await guard.canAddImagemProduto(
         lojaId!,
@@ -551,7 +551,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   Future<void> _persistirProdutoAtual(Produto p) async {
     if (lojaId == null) return;
     try {
-      final qtdGeral = int.tryParse(_quantidade.text) ?• 0;
+      final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
       final custo = MoedaInputFormatter.parse(_custo.text);
       final preco = MoedaInputFormatter.parse(_preco.text);
       final Map<String, dynamic> variacoesMap = {};
@@ -560,21 +560,21 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       int quantidadeTotalVariacoes = 0;
       for (int i = 0; i < _variacaoControllers.length; i++) {
         final c = _variacaoControllers[i];
-        final tamanho = (c['tamanho']?.text ?• '').trim();
-        final cor = (c['cor']?.text ?• '').trim();
-        final qStr = (c['qtd']?.text ?• '').trim();
+        final tamanho = (c['tamanho']?.text ?? '').trim();
+        final cor = (c['cor']?.text ?? '').trim();
+        final qStr = (c['qtd']?.text ?? '').trim();
         if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
-        final qtd = int.tryParse(qStr) ?• 0;
+        final qtd = int.tryParse(qStr) ?? 0;
         if (qtd <= 0) continue;
         if (tamanho.isNotEmpty) tamanhosSet.add(tamanho);
         if (cor.isNotEmpty) coresSet.add(cor);
-        final chaveTamanho = tamanho.isEmpty • 'sem-tamanho' : tamanho;
-        final corFinal = cor.isEmpty • 'sem-cor' : cor;
+        final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
+        final corFinal = cor.isEmpty ? 'sem-cor' : cor;
         if (!variacoesMap.containsKey(chaveTamanho)) variacoesMap[chaveTamanho] = <String, int>{};
         (variacoesMap[chaveTamanho] as Map<String, int>)[corFinal] = qtd;
         quantidadeTotalVariacoes += qtd;
       }
-      final int quantidadeFinal = variacoesMap.isEmpty • qtdGeral : quantidadeTotalVariacoes;
+      final int quantidadeFinal = variacoesMap.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
       final List<String> tamanhosList = tamanhosSet.toList();
       final List<String> coresList = coresSet.toList();
       final Map<String, int> estoqueMapa = {};
@@ -583,10 +583,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         final m = variacoesMap[t] as Map<String, int>;
         estoqueMapa[t] = m.values.fold<int>(0, (a, b) => a + b);
       }
-      final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?• 0.0).clamp(0.0, 100.0);
-      final maxParcelasSemJuros = (int.tryParse(_maxParcelasSemJuros.text.trim()) ?• 12).clamp(1, 24);
-      double• percentualPromo;
-      double• valorPromo;
+      final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
+      final maxParcelasSemJuros = (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
+      double? percentualPromo;
+      double? valorPromo;
       if (_emPromocao) {
         if (_tipoDesconto == 'percentual') {
           percentualPromo = MoedaInputFormatter.parse(_percentualPromo.text);
@@ -609,10 +609,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..divideSemJuros = _divideSemJuros
         ..percentualDescontoPix = percentualDescontoPix
         ..maxParcelasSemJuros = maxParcelasSemJuros
-        ..slug = p.slug.isNotEmpty • p.slug : '${lojaId!}-${gerarSlug(_nome.text.trim())}'
+        ..slug = p.slug.isNotEmpty ? p.slug : '${lojaId!}-${gerarSlug(_nome.text.trim())}'
         ..tamanhos = tamanhosList
         ..estoquePorTamanho = estoqueMapa
-        ..lojaId = p.lojaId.isNotEmpty • p.lojaId : lojaId!
+        ..lojaId = p.lojaId.isNotEmpty ? p.lojaId : lojaId!
         ..emPromocao = _emPromocao
         ..percentualPromo = percentualPromo
         ..valorPromo = valorPromo
@@ -623,15 +623,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..tipoEmbalagem = _tipoEmbalagem
         ..cores = coresList
         ..marketplaces = _marketplacesSelecionados.toList()
-        ..variacoes = variacoesMap.isNotEmpty • variacoesMap : null
-        ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?• 0;
+        ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
+        ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0;
       _initPrecoPorTamanhoControllers();
       final precoPorTamanhoMap = <String, double>{};
       for (final e in _precoPorTamanhoCtrl.entries) {
         final v = MoedaInputFormatter.parse(e.value.text);
         if (v > 0) precoPorTamanhoMap[e.key] = v;
       }
-      p.precoPorTamanho = precoPorTamanhoMap.isNotEmpty • precoPorTamanhoMap : null;
+      p.precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
       if (variacoesMap.isNotEmpty) p.recalcularQuantidadeTotal();
       p.updatedAt = DateTime.now();
       await p.save();
@@ -650,7 +650,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     } on TimeoutException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?• 'Operação demorou. Tente novamente.'), backgroundColor: Colors.orange),
+          SnackBar(content: Text(e.message ?? 'Operação demorou. Tente novamente.'), backgroundColor: Colors.orange),
         );
       }
     } catch (e) {
@@ -683,8 +683,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     try {
       final descricao = await AiLojaService.sugerirDescricao(
         nome: nome,
-        categoria: _categoria.text.trim().isEmpty • null : _categoria.text.trim(),
-        subcategoria: _subcategoria.text.trim().isEmpty • null : _subcategoria.text.trim(),
+        categoria: _categoria.text.trim().isEmpty ? null : _categoria.text.trim(),
+        subcategoria: _subcategoria.text.trim().isEmpty ? null : _subcategoria.text.trim(),
       );
       if (mounted) {
         _descricao.text = descricao;
@@ -728,7 +728,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     try {
       final titulo = await AiLojaService.sugerirTitulo(
         nome: nome,
-        categoria: _categoria.text.trim().isEmpty • null : _categoria.text.trim(),
+        categoria: _categoria.text.trim().isEmpty ? null : _categoria.text.trim(),
       );
       if (mounted) {
         _nome.text = titulo;
@@ -765,14 +765,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     try {
       final out = await AiLojaService.sugerirCategoriaSubcategoria(
         nome: nome,
-        descricao: _descricao.text.trim().isEmpty • null : _descricao.text.trim(),
+        descricao: _descricao.text.trim().isEmpty ? null : _descricao.text.trim(),
       );
       if (mounted) {
-        _categoria.text = out['categoria'] ?• _categoria.text;
-        _subcategoria.text = out['subcategoria'] ?• _subcategoria.text;
+        _categoria.text = out['categoria'] ?? _categoria.text;
+        _subcategoria.text = out['subcategoria'] ?? _subcategoria.text;
         IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Categoria e subcategoria sugeridas. Tags: ${(out['tags'] as List?)?.join(", ") ?• ""}')),
+          SnackBar(content: Text('Categoria e subcategoria sugeridas. Tags: ${(out['tags'] as List?)?.join(", ") ?? ""}')),
         );
       }
     } catch (e) {
@@ -808,7 +808,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     try {
       final out = await AiLojaService.sugerirVariacoesDescricao(
         nome: nome,
-        descricaoAtual: _descricao.text.trim().isEmpty • null : _descricao.text.trim(),
+        descricaoAtual: _descricao.text.trim().isEmpty ? null : _descricao.text.trim(),
       );
       if (!mounted) return;
       IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
@@ -823,13 +823,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text('Feed/Catálogo', style: TextStyle(fontWeight: FontWeight.bold)),
-                SelectableText(out['paraFeed'] ?• ''),
+                SelectableText(out['paraFeed'] ?? ''),
                 const SizedBox(height: 12),
                 const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.bold)),
-                SelectableText(out['paraWhatsApp'] ?• ''),
+                SelectableText(out['paraWhatsApp'] ?? ''),
                 const SizedBox(height: 12),
                 const Text('Instagram', style: TextStyle(fontWeight: FontWeight.bold)),
-                SelectableText(out['paraInstagram'] ?• ''),
+                SelectableText(out['paraInstagram'] ?? ''),
               ],
             ),
           ),
@@ -837,7 +837,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
             FilledButton(
               onPressed: () {
-                _descricao.text = out['paraFeed'] ?• _descricao.text;
+                _descricao.text = out['paraFeed'] ?? _descricao.text;
                 Navigator.pop(ctx);
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -878,7 +878,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     try {
       final legenda = await AiLojaService.sugerirLegendaInstagram(
         produtoNome: nome,
-        descricao: _descricao.text.trim().isEmpty • null : _descricao.text.trim(),
+        descricao: _descricao.text.trim().isEmpty ? null : _descricao.text.trim(),
       );
       if (!mounted) return;
       IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
@@ -918,7 +918,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     setState(() => _salvando = true);
 
     try {
-      final qtdGeral = int.tryParse(_quantidade.text) ?• 0;
+      final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
       final custo = MoedaInputFormatter.parse(_custo.text);
       final preco = MoedaInputFormatter.parse(_preco.text);
 
@@ -931,14 +931,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
       for (int i = 0; i < _variacaoControllers.length; i++) {
         final c = _variacaoControllers[i];
-        final tamanho = (c['tamanho']?.text ?• '').trim();
-        final cor = (c['cor']?.text ?• '').trim();
-        final qStr = (c['qtd']?.text ?• '').trim();
+        final tamanho = (c['tamanho']?.text ?? '').trim();
+        final cor = (c['cor']?.text ?? '').trim();
+        final qStr = (c['qtd']?.text ?? '').trim();
 
         debugPrint('  Linha $i: tamanho="$tamanho" cor="$cor" qtd="$qStr"');
 
         if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
-        final qtd = int.tryParse(qStr) ?• 0;
+        final qtd = int.tryParse(qStr) ?? 0;
         if (qtd <= 0) continue;
 
         debugPrint('  ➜ Processando: $tamanho + $cor = $qtd');
@@ -946,8 +946,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         if (tamanho.isNotEmpty) tamanhosSet.add(tamanho);
         if (cor.isNotEmpty) coresSet.add(cor);
 
-        final chaveTamanho = tamanho.isEmpty • 'sem-tamanho' : tamanho;
-        final corFinal = cor.isEmpty • 'sem-cor' : cor;
+        final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
+        final corFinal = cor.isEmpty ? 'sem-cor' : cor;
         if (!variacoesMap.containsKey(chaveTamanho)) {
           variacoesMap[chaveTamanho] = <String, int>{};
         }
@@ -960,7 +960,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       debugPrint('  variacoesMap: $variacoesMap');
       debugPrint('  Total de variações: $quantidadeTotalVariacoes un');
 
-      int quantidadeFinal = variacoesMap.isEmpty • qtdGeral : quantidadeTotalVariacoes;
+      int quantidadeFinal = variacoesMap.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
       List<String> tamanhosList = tamanhosSet.toList();
       List<String> coresList = coresSet.toList();
 
@@ -973,9 +973,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         estoqueMapa[tamanho] = total;
       }
 
-      final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?• 0.0).clamp(0.0, 100.0);
+      final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
       final maxParcelasSemJuros =
-          (int.tryParse(_maxParcelasSemJuros.text.trim()) ?• 12).clamp(1, 24);
+          (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
 
       _initPrecoPorTamanhoControllers();
       final Map<String, double> precoPorTamanhoMap = {};
@@ -985,8 +985,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
 
       // 🔹 Calcula valores de promoção
-      double• percentualPromo;
-      double• valorPromo;
+      double? percentualPromo;
+      double? valorPromo;
       if (_emPromocao) {
         if (_tipoDesconto == 'percentual') {
           percentualPromo = MoedaInputFormatter.parse(_percentualPromo.text);
@@ -1033,10 +1033,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..tipoEmbalagem = _tipoEmbalagem
             ..cores = coresList
             ..marketplaces = _marketplacesSelecionados.toList()
-            ..variacoes = variacoesMap.isNotEmpty • variacoesMap : null
+            ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
             ..videoUrl = ''
-            ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?• 0
-            ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty • precoPorTamanhoMap : null;
+            ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
+            ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
 
           if (variacoesMap.isNotEmpty) {
             existente.recalcularQuantidadeTotal();
@@ -1103,10 +1103,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             codigoBarras: _codigoBarras.text.trim(),
             cores: coresList,
             marketplaces: _marketplacesSelecionados.toList(),
-            variacoes: variacoesMap.isNotEmpty • variacoesMap : null,
+            variacoes: variacoesMap.isNotEmpty ? variacoesMap : null,
             videoUrl: '',
-            estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?• 0,
-            precoPorTamanho: precoPorTamanhoMap.isNotEmpty • precoPorTamanhoMap : null,
+            estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?? 0,
+            precoPorTamanho: precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null,
             updatedAt: DateTime.now(),
           );
 
@@ -1138,11 +1138,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..percentualDescontoPix = percentualDescontoPix
           ..maxParcelasSemJuros = maxParcelasSemJuros
           ..slug = p.slug.isNotEmpty
-              • p.slug
+              ? p.slug
               : '${lojaId!}-${gerarSlug(_nome.text.trim())}'
           ..tamanhos = tamanhosList
           ..estoquePorTamanho = estoqueMapa
-          ..lojaId = p.lojaId.isNotEmpty • p.lojaId : lojaId!
+          ..lojaId = p.lojaId.isNotEmpty ? p.lojaId : lojaId!
           ..emPromocao = _emPromocao
           ..percentualPromo = percentualPromo
           ..valorPromo = valorPromo
@@ -1153,9 +1153,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..tipoEmbalagem = _tipoEmbalagem
           ..cores = coresList
           ..marketplaces = _marketplacesSelecionados.toList()
-          ..variacoes = variacoesMap.isNotEmpty • variacoesMap : null
-          ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?• 0
-          ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty • precoPorTamanhoMap : null;
+          ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
+          ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
+          ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
 
         // 🔹 Recalcular quantidade total com base nas variações
         if (variacoesMap.isNotEmpty) {
@@ -1179,7 +1179,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         SnackBar(
           content: Text(
             _publicar
-                • 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
+                ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
                 : 'Produto salvo e sincronizado com Hive e Firestore.',
           ),
         ),
@@ -1189,7 +1189,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     } on TimeoutException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message ?• 'Salvamento demorou muito. Tente novamente.'), backgroundColor: Colors.orange),
+        SnackBar(content: Text(e.message ?? 'Salvamento demorou muito. Tente novamente.'), backgroundColor: Colors.orange),
       );
     } catch (e) {
       if (!mounted) return;
@@ -1221,12 +1221,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       appBar: AppBar(
         title: Text(
           isEdit
-              • 'Editar Produto'
-              : (_produtoExistenteAlvo != null • 'Atualizar Produto' : 'Novo Produto'),
+              ? 'Editar Produto'
+              : (_produtoExistenteAlvo != null ? 'Atualizar Produto' : 'Novo Produto'),
         ),
         elevation: 0,
         actions: returnToVenda
-            • [
+            ? [
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: FilledButton.icon(
@@ -1264,7 +1264,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                         label: 'Nome do Produto *',
                         icon: Icons.shopping_bag_outlined,
                         validator: (v) => (v == null || v.trim().isEmpty)
-                            • 'Informe o nome'
+                            ? 'Informe o nome'
                             : null,
                       ),
                       const SizedBox(height: 12),
@@ -1359,15 +1359,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: FilledButton.tonalIcon(
-                          onPressed: _sugerindoDescricao • null : _sugerirDescricaoComIa,
+                          onPressed: _sugerindoDescricao ? null : _sugerirDescricaoComIa,
                           icon: _sugerindoDescricao
-                              • const SizedBox(
+                              ? const SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.auto_awesome, size: 20),
-                          label: Text(_sugerindoDescricao • 'Gerando…' : 'Sugerir com IA'),
+                          label: Text(_sugerindoDescricao ? 'Gerando…' : 'Sugerir com IA'),
                         ),
                       ),
                     ],
@@ -1378,19 +1378,19 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                     runSpacing: 8,
                     children: [
                       FilledButton.tonal(
-                        onPressed: _sugerindoIa • null : _sugerirTituloIa,
+                        onPressed: _sugerindoIa ? null : _sugerirTituloIa,
                         child: const Text('Título'),
                       ),
                       FilledButton.tonal(
-                        onPressed: _sugerindoIa • null : _sugerirCategoriaIa,
+                        onPressed: _sugerindoIa ? null : _sugerirCategoriaIa,
                         child: const Text('Categoria'),
                       ),
                       FilledButton.tonal(
-                        onPressed: _sugerindoIa • null : _sugerirVariacoesDescricaoIa,
+                        onPressed: _sugerindoIa ? null : _sugerirVariacoesDescricaoIa,
                         child: const Text('Variações'),
                       ),
                       FilledButton.tonal(
-                        onPressed: _sugerindoIa • null : _sugerirLegendaInstagramIa,
+                        onPressed: _sugerindoIa ? null : _sugerirLegendaInstagramIa,
                         child: const Text('Legenda IG'),
                       ),
                     ],
@@ -1644,7 +1644,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                           Expanded(
                             child: _buildTextField(
                               controller: _peso,
-                              label: _pesoUnidade == 'kg' • 'Peso (kg)' : 'Peso (g)',
+                              label: _pesoUnidade == 'kg' ? 'Peso (kg)' : 'Peso (g)',
                               icon: Icons.monitor_weight_outlined,
                               keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             ),
@@ -1660,7 +1660,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                               if (v.isNotEmpty) {
                                 final novaUnidade = v.first;
                                 if (novaUnidade == _pesoUnidade) return;
-                                final valorAtual = double.tryParse(_peso.text.trim().replaceAll(',', '.')) ?• 0.0;
+                                final valorAtual = double.tryParse(_peso.text.trim().replaceAll(',', '.')) ?? 0.0;
                                 setState(() {
                                   _pesoUnidade = novaUnidade;
                                   if (novaUnidade == 'kg') {
@@ -1771,14 +1771,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                             final src = _imagens[i];
                             final isBlobOtherOrigin = kIsWeb && src.startsWith('blob:');
                             final preview = isBlobOtherOrigin
-                                • Container(
+                                ? Container(
                                     width: 100,
                                     height: 100,
                                     color: Colors.grey[300],
                                     child: const Icon(Icons.broken_image),
                                   )
                                 : (src.startsWith('http') || kIsWeb)
-                                    • Image.network(
+                                    ? Image.network(
                                         src,
                                         width: 100,
                                         height: 100,
@@ -1802,8 +1802,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
-                                          color: i == 0 • Colors.teal : Colors.grey.shade300,
-                                          width: i == 0 • 3 : 2,
+                                          color: i == 0 ? Colors.teal : Colors.grey.shade300,
+                                          width: i == 0 ? 3 : 2,
                                         ),
                                       ),
                                       child: ClipRRect(
@@ -1849,7 +1849,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                           padding: EdgeInsets.zero,
                                           constraints: const BoxConstraints(),
                                           onPressed: _removendoImagem
-                                              • null
+                                              ? null
                                               : () async {
                                                   setState(() {
                                                     _removendoImagem = true;
@@ -1998,7 +1998,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                 onPressed: () async {
                                   final date = await showDatePicker(
                                     context: context,
-                                    initialDate: _dataInicioPromo ?• DateTime.now(),
+                                    initialDate: _dataInicioPromo ?? DateTime.now(),
                                     firstDate: DateTime(2020),
                                     lastDate: DateTime(2030),
                                   );
@@ -2009,7 +2009,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                 icon: const Icon(Icons.calendar_today, size: 16),
                                 label: Text(
                                   _dataInicioPromo == null
-                                      • 'Data início'
+                                      ? 'Data início'
                                       : '${_dataInicioPromo!.day}/${_dataInicioPromo!.month}/${_dataInicioPromo!.year}',
                                   style: const TextStyle(fontSize: 12),
                                 ),
@@ -2021,7 +2021,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                 onPressed: () async {
                                   final date = await showDatePicker(
                                     context: context,
-                                    initialDate: _dataFimPromo ?• DateTime.now(),
+                                    initialDate: _dataFimPromo ?? DateTime.now(),
                                     firstDate: DateTime(2020),
                                     lastDate: DateTime(2030),
                                   );
@@ -2032,7 +2032,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                 icon: const Icon(Icons.calendar_today, size: 16),
                                 label: Text(
                                   _dataFimPromo == null
-                                      • 'Data fim'
+                                      ? 'Data fim'
                                       : '${_dataFimPromo!.day}/${_dataFimPromo!.month}/${_dataFimPromo!.year}',
                                   style: const TextStyle(fontSize: 12),
                                 ),
@@ -2203,8 +2203,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                           icon: const Icon(Icons.save_outlined),
                           label: Text(
                             _produtoExistenteAlvo != null
-                                • 'Atualizar Produto'
-                                : (_publicar • 'Salvar e Publicar' : 'Salvar Rascunho'),
+                                ? 'Atualizar Produto'
+                                : (_publicar ? 'Salvar e Publicar' : 'Salvar Rascunho'),
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -2345,7 +2345,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     required IconData icon,
     required Color iconColor,
     required List<Widget> children,
-    Widget• trailing,
+    Widget? trailing,
   }) {
     return Card(
       elevation: 2,
@@ -2445,12 +2445,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
-    IconData• icon,
+    IconData? icon,
     int maxLines = 1,
-    TextInputType• keyboardType,
-    String• Function(String?)• validator,
-    String• helperText,
-    List<TextInputFormatter>• inputFormatters,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+    String? helperText,
+    List<TextInputFormatter>? inputFormatters,
   }) {
     return TextFormField(
       controller: controller,
@@ -2458,7 +2458,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       decoration: InputDecoration(
         labelText: label,
         helperText: helperText,
-        prefixIcon: icon != null • Icon(icon) : null,
+        prefixIcon: icon != null ? Icon(icon) : null,
         filled: true,
         fillColor: Colors.grey.shade50,
         border: OutlineInputBorder(
@@ -2498,12 +2498,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       checkmarkColor: color,
       backgroundColor: Colors.grey.shade100,
       labelStyle: TextStyle(
-        color: selecionado • color : Colors.black87,
-        fontWeight: selecionado • FontWeight.bold : FontWeight.normal,
+        color: selecionado ? color : Colors.black87,
+        fontWeight: selecionado ? FontWeight.bold : FontWeight.normal,
       ),
       side: BorderSide(
-        color: selecionado • color : Colors.grey.shade400,
-        width: selecionado • 2 : 1,
+        color: selecionado ? color : Colors.grey.shade400,
+        width: selecionado ? 2 : 1,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
     );

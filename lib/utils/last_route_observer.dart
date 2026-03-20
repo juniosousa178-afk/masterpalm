@@ -40,17 +40,17 @@ const Set<String> _restorableRoutes = {
 
 class LastRouteObserver extends NavigatorObserver {
   @override
-  void didPush(Route<dynamic> route, Route<dynamic>• previousRoute) {
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     _saveRoute(route);
   }
 
   @override
-  void didPop(Route<dynamic> route, Route<dynamic>• previousRoute) {
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     if (previousRoute != null) _saveRoute(previousRoute);
   }
 
   @override
-  void didReplace({Route<dynamic>• newRoute, Route<dynamic>• oldRoute}) {
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     if (newRoute != null) _saveRoute(newRoute);
   }
 

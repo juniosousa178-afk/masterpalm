@@ -12,9 +12,9 @@ class ConfigCatalogoScreen extends StatefulWidget {
 }
 
 class _ConfigCatalogoScreenState extends State<ConfigCatalogoScreen> {
-  Box<CatalogoConfig>• _configBox;
+  Box<CatalogoConfig>? _configBox;
   bool _loading = true;
-  String• _erro;
+  String? _erro;
 
   final corFundoController = TextEditingController();
   final corTextoController = TextEditingController();
@@ -61,7 +61,7 @@ class _ConfigCatalogoScreenState extends State<ConfigCatalogoScreen> {
         corFundoController.text = config.corFundo;
         corTextoController.text = config.corTexto;
         corBotaoController.text = config.corBotao;
-        corCabecalhoController.text = config.corCabecalho.isNotEmpty • config.corCabecalho : _defaultCabecalho;
+        corCabecalhoController.text = config.corCabecalho.isNotEmpty ? config.corCabecalho : _defaultCabecalho;
         fonteController.text = config.fonte;
         tamanhoFonte = config.tamanhoFonte;
       } else {
@@ -80,7 +80,7 @@ class _ConfigCatalogoScreenState extends State<ConfigCatalogoScreen> {
   }
 
   /// Aceita 0xFFRRGGBB, 0xAARRGGBB ou #RRGGBB / #AARRGGBB
-  static int• _parseCor(String value) {
+  static int? _parseCor(String value) {
     final t = value.trim();
     if (t.isEmpty) return null;
     if (t.startsWith('0x') || t.startsWith('0X')) {
@@ -129,7 +129,7 @@ class _ConfigCatalogoScreenState extends State<ConfigCatalogoScreen> {
         corFundo: corFundoController.text.trim(),
         corTexto: corTextoController.text.trim(),
         corBotao: corBotaoController.text.trim(),
-        corCabecalho: corCabecalhoController.text.trim().isEmpty • _defaultCabecalho : corCabecalhoController.text.trim(),
+        corCabecalho: corCabecalhoController.text.trim().isEmpty ? _defaultCabecalho : corCabecalhoController.text.trim(),
         fonte: fonteController.text.trim(),
         tamanhoFonte: tamanhoFonte,
       );
@@ -292,14 +292,14 @@ class _ConfigCatalogoScreenState extends State<ConfigCatalogoScreen> {
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _salvando • null : _salvarConfiguracoes,
-                    icon: _salvando • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
-                    label: Text(_salvando • 'Salvando...' : 'Salvar Configurações'),
+                    onPressed: _salvando ? null : _salvarConfiguracoes,
+                    icon: _salvando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
+                    label: Text(_salvando ? 'Salvando...' : 'Salvar Configurações'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 OutlinedButton.icon(
-                  onPressed: _salvando • null : () {
+                  onPressed: _salvando ? null : () {
                     _aplicarPadroes();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Padrões restaurados. Toque em Salvar para aplicar.')),
@@ -327,16 +327,16 @@ class _ConfigCatalogoScreenState extends State<ConfigCatalogoScreen> {
                 return Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Color(corFundo ?• 0xFF000000),
+                    color: Color(corFundo ?? 0xFF000000),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Column(
                     children: [
                       Text(
-                        corTexto == null • 'Prévia (cor do texto inválida)' : 'Prévia do Catálogo',
+                        corTexto == null ? 'Prévia (cor do texto inválida)' : 'Prévia do Catálogo',
                         style: TextStyle(
-                          color: Color(corTexto ?• 0xFFFFFFFF),
-                          fontFamily: fonteController.text.trim().isEmpty • null : fonteController.text,
+                          color: Color(corTexto ?? 0xFFFFFFFF),
+                          fontFamily: fonteController.text.trim().isEmpty ? null : fonteController.text,
                           fontSize: tamanhoFonte,
                           fontWeight: FontWeight.bold,
                         ),
@@ -344,7 +344,7 @@ class _ConfigCatalogoScreenState extends State<ConfigCatalogoScreen> {
                       const SizedBox(height: 12),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(corBotao ?• 0xFF1E88E5),
+                          backgroundColor: Color(corBotao ?? 0xFF1E88E5),
                         ),
                         onPressed: () {},
                         child: const Text('Botão Exemplo'),

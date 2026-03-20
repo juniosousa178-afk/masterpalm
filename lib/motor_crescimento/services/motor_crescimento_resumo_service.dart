@@ -40,7 +40,7 @@ class MotorCrescimentoResumoService {
 
       try {
         final vendasBoxName = HiveBoxNames.vendas(lojaId);
-        Box<Venda>• vendasBox;
+        Box<Venda>? vendasBox;
         if (Hive.isBoxOpen(vendasBoxName)) {
           vendasBox = Hive.box<Venda>(vendasBoxName);
         } else {
@@ -58,11 +58,11 @@ class MotorCrescimentoResumoService {
           for (final item in v.itensOuVazio) {
             final nome = item.produtoNome.trim();
             if (nome.isEmpty) continue;
-            qtdPorProduto[nome] = (qtdPorProduto[nome] ?• 0) + item.quantidade;
+            qtdPorProduto[nome] = (qtdPorProduto[nome] ?? 0) + item.quantidade;
           }
           if (v.itensOuVazio.isEmpty && v.produtosDescricao.trim().isNotEmpty) {
             final nome = v.produtosDescricao.trim();
-            qtdPorProduto[nome] = (qtdPorProduto[nome] ?• 0) + v.quantidade;
+            qtdPorProduto[nome] = (qtdPorProduto[nome] ?? 0) + v.quantidade;
           }
         }
         final ordenados = qtdPorProduto.entries.toList()
@@ -72,7 +72,7 @@ class MotorCrescimentoResumoService {
 
       try {
         final metaBoxName = 'metas_$lojaId';
-        Box<Meta>• metaBox;
+        Box<Meta>? metaBox;
         if (Hive.isBoxOpen(metaBoxName)) {
           metaBox = Hive.box<Meta>(metaBoxName);
         } else {

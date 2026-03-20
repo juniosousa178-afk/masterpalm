@@ -5,7 +5,7 @@ import '../widgets/dashboard_insights_section.dart';
 class DashboardInsightsScreen extends StatelessWidget {
   final String lojaId;
   final bool isVendedor;
-  final String• vendedorNome;
+  final String? vendedorNome;
 
   const DashboardInsightsScreen({
     super.key,

@@ -27,7 +27,7 @@ class _BackupScreenState extends State<BackupScreen>
   static const Color surfaceColor = Color(0xFFF8FAFC);
   static const Color cardColor = Colors.white;
 
-  String• _storeId;
+  String? _storeId;
   bool _isLoading = false;
   List<File> _backupFiles = [];
 
@@ -63,7 +63,7 @@ class _BackupScreenState extends State<BackupScreen>
           id = Hive.box('sessao').get('store_id')?.toString().trim();
         }
       }
-      _storeId = (id != null && id.isNotEmpty) • id : null;
+      _storeId = (id != null && id.isNotEmpty) ? id : null;
     } catch (_) {
       _storeId = null;
     }
@@ -604,7 +604,7 @@ class _BackupScreenState extends State<BackupScreen>
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  _storeId != null • 'Loja: $_storeId' : 'Nenhuma loja selecionada',
+                                  _storeId != null ? 'Loja: $_storeId' : 'Nenhuma loja selecionada',
                                   style: TextStyle(
                                     color: Colors.white.withValues(alpha:0.9),
                                     fontSize: 14,
@@ -679,7 +679,7 @@ class _BackupScreenState extends State<BackupScreen>
                                 title: 'Criar Backup',
                                 subtitle: 'Salvar dados atuais',
                                 color: successColor,
-                                onTap: _isLoading • null : _fazerBackupLoja,
+                                onTap: _isLoading ? null : _fazerBackupLoja,
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -689,7 +689,7 @@ class _BackupScreenState extends State<BackupScreen>
                                 title: 'Restaurar',
                                 subtitle: 'Recuperar backup',
                                 color: primaryColor,
-                                onTap: _isLoading • null : _restaurarBackupLoja,
+                                onTap: _isLoading ? null : _restaurarBackupLoja,
                               ),
                             ),
                           ],
@@ -737,7 +737,7 @@ class _BackupScreenState extends State<BackupScreen>
     required String title,
     required String subtitle,
     required Color color,
-    VoidCallback• onTap,
+    VoidCallback? onTap,
   }) {
     return Material(
       color: cardColor,

@@ -11,7 +11,7 @@ part 'cliente.g.dart';
 class Cliente extends HiveObject {
   // avatar salvo localmente (foto do cliente)
   @HiveField(6)
-  String• avatarPath;
+  String? avatarPath;
 
   @HiveField(0)
   String nome;
@@ -30,13 +30,13 @@ class Cliente extends HiveObject {
 
   /// Histórico de vendas deste cliente (HIVELIST)
   @HiveField(5)
-  HiveList<Venda>• historico;
+  HiveList<Venda>? historico;
 
   @HiveField(7)
-  String• email;
+  String? email;
 
   @HiveField(8)
-  String• endereco;
+  String? endereco;
 
   // ============================================================
   // 🔥 MULTI-LOJAS: cada cliente pertence a APENAS UMA loja
@@ -46,7 +46,7 @@ class Cliente extends HiveObject {
 
   /// ID único no Firestore (UUID). Primário para identificação. Compatível com clientes antigos.
   @HiveField(10)
-  String• idFirebase;
+  String? idFirebase;
 
   Cliente({
     required this.nome,
@@ -63,7 +63,7 @@ class Cliente extends HiveObject {
   });
 
   /// Nome da box de vendas: vendasBoxName se informado, senão vendas_$lojaId, senão 'vendas' (legado).
-  static String _vendasBoxName({String• lojaId, String• boxName}) {
+  static String _vendasBoxName({String? lojaId, String? boxName}) {
     if (boxName != null && boxName.trim().isNotEmpty) return boxName.trim();
     if (lojaId != null && lojaId.trim().isNotEmpty) return HiveBoxNames.vendas(lojaId.trim());
     return 'vendas';
@@ -71,7 +71,7 @@ class Cliente extends HiveObject {
 
   /// Adiciona uma venda ao histórico do cliente.
   /// [lojaId] / [vendasBoxName] opcionais: se não informados, usa box 'vendas' (legado).
-  void adicionarHistorico(Venda venda, {String• lojaId, String• vendasBoxName}) {
+  void adicionarHistorico(Venda venda, {String? lojaId, String? vendasBoxName}) {
     final name = _vendasBoxName(lojaId: lojaId, boxName: vendasBoxName);
     try {
       if (!Hive.isBoxOpen(name)) return;
@@ -86,11 +86,11 @@ class Cliente extends HiveObject {
 
   /// Cria um cliente vazio com histórico inicializado, já vinculado à loja atual.
   /// [lojaId] / [vendasBoxName] opcionais: se não informados, usa LojaIdService (StoreResolver) > Hive sessao (fallback offline).
-  static Future<Cliente> vazioAsync({String• lojaId, String• vendasBoxName}) async {
-    String• lojaIdResolvido = (lojaId != null && lojaId.trim().isNotEmpty) • lojaId.trim() : null;
+  static Future<Cliente> vazioAsync({String? lojaId, String? vendasBoxName}) async {
+    String? lojaIdResolvido = (lojaId != null && lojaId.trim().isNotEmpty) ? lojaId.trim() : null;
     lojaIdResolvido ??= (await LojaIdService.get())?.trim();
     if (lojaIdResolvido == null || lojaIdResolvido.isEmpty) {
-      lojaIdResolvido = Hive.isBoxOpen('sessao') • normalizeFromBox(Hive.box('sessao')) : null;
+      lojaIdResolvido = Hive.isBoxOpen('sessao') ? normalizeFromBox(Hive.box('sessao')) : null;
     }
     if (lojaIdResolvido == null || lojaIdResolvido.isEmpty) {
       throw StateError('Não foi possível identificar a loja para criar cliente. Faça login ou informe lojaId.');

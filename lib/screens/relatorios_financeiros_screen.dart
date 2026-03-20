@@ -43,16 +43,16 @@ class _RelatoriosFinanceirosScreenState
 
   // Filtros
   String _filtroTempo = 'mes';
-  DateTime• _dataInicio;
-  DateTime• _dataFim;
+  DateTime? _dataInicio;
+  DateTime? _dataFim;
   String _filtroVendedor = 'GERAL';
 
   // Dados
   List<Venda> _todasVendas = [];
   List<Venda> _vendasFiltradas = [];
   List<String> _vendedoresDisponiveis = [];
-  Box<Meta>• _metasBox;
-  Meta• _metaAtual;
+  Box<Meta>? _metasBox;
+  Meta? _metaAtual;
 
   // Taxas configuráveis
   double _taxaCartao = 5.0;
@@ -90,14 +90,14 @@ class _RelatoriosFinanceirosScreenState
     try {
       final sessao = await Hive.openBox('sessao');
       _usuarioLogado =
-          (sessao.get('usuario_logado') ?• '').toString().trim().toLowerCase();
-      _tipoUsuario = (sessao.get('tipo_usuario') ?• 'vendedor')
+          (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      _tipoUsuario = (sessao.get('tipo_usuario') ?? 'vendedor')
           .toString()
           .trim()
           .toLowerCase();
       _isAdmin = _tipoUsuario == 'programador' || _tipoUsuario == 'admin';
 
-      _lojaId = (await StoreResolverFacade.resolveForAdminApp()) ?• '';
+      _lojaId = (await StoreResolverFacade.resolveForAdminApp()) ?? '';
       if (_lojaId.isEmpty) {
         throw Exception('Loja não encontrada. Faça login novamente.');
       }
@@ -151,14 +151,14 @@ class _RelatoriosFinanceirosScreenState
       final configBox =
           await Hive.openBox(HiveBoxNames.relatorioFinanceiro(_lojaId));
       // Lê draft_config (rascunho em Loja Config) com fallback para config (publicado)
-      final config = configBox.get('draft_config') ?• configBox.get('config');
+      final config = configBox.get('draft_config') ?? configBox.get('config');
       if (config is Map) {
         final taxas = config['taxas'];
         if (taxas is Map) {
-          _taxaCartao = (taxas['cartao'] ?• _taxaCartao).toDouble();
-          _taxaMEI = (taxas['mei'] ?• _taxaMEI).toDouble();
-          _custosFixos = (taxas['custosFixos'] ?• _custosFixos).toDouble();
-          _custoEmbalagem = (taxas['embalagem'] ?• _custoEmbalagem).toDouble();
+          _taxaCartao = (taxas['cartao'] ?? _taxaCartao).toDouble();
+          _taxaMEI = (taxas['mei'] ?? _taxaMEI).toDouble();
+          _custosFixos = (taxas['custosFixos'] ?? _custosFixos).toDouble();
+          _custoEmbalagem = (taxas['embalagem'] ?? _custoEmbalagem).toDouble();
         }
       }
     } catch (_) {}
@@ -191,7 +191,7 @@ class _RelatoriosFinanceirosScreenState
 
   double get _qtdVendas => _vendasFiltradas.length.toDouble();
 
-  double get _ticketMedio => _qtdVendas > 0 • _totalVendido / _qtdVendas : 0;
+  double get _ticketMedio => _qtdVendas > 0 ? _totalVendido / _qtdVendas : 0;
 
   double get _totalTaxas {
     double taxas = 0;
@@ -207,7 +207,7 @@ class _RelatoriosFinanceirosScreenState
         }
         taxas += v.total * (_taxaMEI / 100);
         taxas += v.total * (_custosFixos / 100);
-        final qtdItens = v.itens?.length ?• 1;
+        final qtdItens = v.itens?.length ?? 1;
         taxas += qtdItens * _custoEmbalagem;
       }
     }
@@ -238,7 +238,7 @@ class _RelatoriosFinanceirosScreenState
     final soma = v.pagamentoDinheiro + v.pagamentoPix + v.pagamentoCartao;
     if (soma > 0) return 0;
     // fallback: parsing formasPagamento para vendas antigas
-    final linhas = (v.formasPagamento.isNotEmpty • v.formasPagamento : '')
+    final linhas = (v.formasPagamento.isNotEmpty ? v.formasPagamento : '')
         .split('\n')
         .map((l) => l.trim())
         .where((l) => l.isNotEmpty);
@@ -248,7 +248,7 @@ class _RelatoriosFinanceirosScreenState
           .replaceAll(RegExp(r'[^0-9,.\-]'), '')
           .replaceAll('.', '')
           .replaceAll(',', '.');
-      final val = double.tryParse(numStr) ?• 0.0;
+      final val = double.tryParse(numStr) ?? 0.0;
       if (val <= 0) continue;
       if (forma == 'dinheiro' && low.contains('dinheiro')) return val;
       if (forma == 'pix' && low.contains('pix')) return val;
@@ -261,7 +261,7 @@ class _RelatoriosFinanceirosScreenState
 
   // =================== METAS ===================
 
-  double get _metaMensal => _metaAtual?.metaMensal ?• 0;
+  double get _metaMensal => _metaAtual?.metaMensal ?? 0;
 
   double get _metaDiariaBase {
     if (_metaMensal <= 0) return 0;
@@ -308,7 +308,7 @@ class _RelatoriosFinanceirosScreenState
   double _calcularMetaSugerida() {
     final agora = DateTime.now();
     final mesAnterior = agora.month == 1
-        • DateTime(agora.year - 1, 12)
+        ? DateTime(agora.year - 1, 12)
         : DateTime(agora.year, agora.month - 1);
     final vendasMesAnterior = _todasVendas.where((v) {
       if (_filtroVendedor != 'GERAL' &&
@@ -318,7 +318,7 @@ class _RelatoriosFinanceirosScreenState
       return v.data.year == mesAnterior.year &&
           v.data.month == mesAnterior.month;
     }).fold(0.0, (s, v) => s + v.total);
-    final crescimento = _metaAtual?.crescimentoPercent ?• 7.0;
+    final crescimento = _metaAtual?.crescimentoPercent ?? 7.0;
     return vendasMesAnterior * (1 + crescimento / 100);
   }
 
@@ -363,7 +363,7 @@ class _RelatoriosFinanceirosScreenState
         content: Row(
           children: [
             Icon(
-              isError • Icons.error_outline : Icons.check_circle_outline,
+              isError ? Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -371,7 +371,7 @@ class _RelatoriosFinanceirosScreenState
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError • _dangerColor : _successColor,
+        backgroundColor: isError ? _dangerColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -410,10 +410,10 @@ class _RelatoriosFinanceirosScreenState
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
             child: _carregando
-                • const Center(
+                ? const Center(
                     child: CircularProgressIndicator(color: _primaryColor))
                 : _erro.isNotEmpty
-                    • _buildErro()
+                    ? _buildErro()
                     : _buildConteudo(),
           ),
         ),
@@ -510,10 +510,10 @@ class _RelatoriosFinanceirosScreenState
   /// Mostra APENAS progresso percentual da meta - SEM valores em R$
   Widget _buildConteudoVendedor() {
     final progressoMeta = _metaMensal > 0
-        • ((_vendidoMesAtual / _metaMensal) * 100).clamp(0, 100)
+        ? ((_vendidoMesAtual / _metaMensal) * 100).clamp(0, 100)
         : 0.0;
     final progressoHoje = _metaDiariaAjustada > 0
-        • ((_vendidoHoje / _metaDiariaAjustada) * 100).clamp(0, 100)
+        ? ((_vendidoHoje / _metaDiariaAjustada) * 100).clamp(0, 100)
         : 0.0;
 
     return RefreshIndicator(
@@ -536,7 +536,7 @@ class _RelatoriosFinanceirosScreenState
                 color: _cardColor,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: progressoMeta >= 100 • _successColor : _primaryColor,
+                  color: progressoMeta >= 100 ? _successColor : _primaryColor,
                   width: 2,
                 ),
               ),
@@ -563,7 +563,7 @@ class _RelatoriosFinanceirosScreenState
                           backgroundColor: Colors.white.withValues(alpha:0.1),
                           valueColor: AlwaysStoppedAnimation(
                             progressoMeta >= 100
-                                • _successColor
+                                ? _successColor
                                 : _primaryColor,
                           ),
                         ),
@@ -575,7 +575,7 @@ class _RelatoriosFinanceirosScreenState
                                 '${progressoMeta.toStringAsFixed(1)}%',
                                 style: TextStyle(
                                   color: progressoMeta >= 100
-                                      • _successColor
+                                      ? _successColor
                                       : _primaryColor,
                                   fontSize: 36,
                                   fontWeight: FontWeight.bold,
@@ -583,7 +583,7 @@ class _RelatoriosFinanceirosScreenState
                               ),
                               Text(
                                 progressoMeta >= 100
-                                    • 'Meta Batida!'
+                                    ? 'Meta Batida!'
                                     : 'concluído',
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha:0.6),
@@ -650,7 +650,7 @@ class _RelatoriosFinanceirosScreenState
                         '${progressoHoje.toStringAsFixed(1)}%',
                         style: TextStyle(
                           color: progressoHoje >= 100
-                              • _successColor
+                              ? _successColor
                               : _warningColor,
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -665,7 +665,7 @@ class _RelatoriosFinanceirosScreenState
                       value: (progressoHoje / 100).clamp(0, 1),
                       backgroundColor: Colors.white.withValues(alpha:0.1),
                       valueColor: AlwaysStoppedAnimation(
-                        progressoHoje >= 100 • _successColor : _warningColor,
+                        progressoHoje >= 100 ? _successColor : _warningColor,
                       ),
                       minHeight: 10,
                     ),
@@ -908,10 +908,10 @@ class _RelatoriosFinanceirosScreenState
       backgroundColor: _bgColor,
       selectedColor: _primaryColor.withValues(alpha:0.3),
       labelStyle: TextStyle(
-        color: selecionado • _primaryColor : Colors.white70,
-        fontWeight: selecionado • FontWeight.bold : FontWeight.normal,
+        color: selecionado ? _primaryColor : Colors.white70,
+        fontWeight: selecionado ? FontWeight.bold : FontWeight.normal,
       ),
-      side: BorderSide(color: selecionado • _primaryColor : Colors.white24),
+      side: BorderSide(color: selecionado ? _primaryColor : Colors.white24),
       checkmarkColor: _primaryColor,
     );
   }
@@ -948,12 +948,12 @@ class _RelatoriosFinanceirosScreenState
   }
 
   Widget _buildBotaoData(
-      String label, DateTime• data, Function(DateTime) onSelect) {
+      String label, DateTime? data, Function(DateTime) onSelect) {
     return InkWell(
       onTap: () async {
         final picked = await showDatePicker(
           context: context,
-          initialDate: data ?• DateTime.now(),
+          initialDate: data ?? DateTime.now(),
           firstDate: DateTime(2020),
           lastDate: DateTime.now().add(const Duration(days: 365)),
           builder: (ctx, child) => Theme(
@@ -977,7 +977,7 @@ class _RelatoriosFinanceirosScreenState
                 style: const TextStyle(color: Colors.white70, fontSize: 12)),
             const Spacer(),
             Text(
-              data != null • _fmtData(data) : 'Selecionar',
+              data != null ? _fmtData(data) : 'Selecionar',
               style: const TextStyle(color: Colors.white),
             ),
             const SizedBox(width: 8),
@@ -1057,7 +1057,7 @@ class _RelatoriosFinanceirosScreenState
                     'Lucro Est.',
                     'R\$ ${_fmt(_lucroEstimado)}',
                     Icons.trending_up,
-                    _lucroEstimado >= 0 • _successColor : _dangerColor)),
+                    _lucroEstimado >= 0 ? _successColor : _dangerColor)),
           ],
         ),
         const SizedBox(height: 12),
@@ -1241,7 +1241,7 @@ class _RelatoriosFinanceirosScreenState
                     backgroundColor: Colors.white12,
                     valueColor: AlwaysStoppedAnimation(
                       _vendidoMesAtual >= _metaMensal
-                          • _successColor
+                          ? _successColor
                           : _primaryColor,
                     ),
                     minHeight: 8,
@@ -1348,7 +1348,7 @@ class _RelatoriosFinanceirosScreenState
 
   Widget _buildCardProgresso(
       String titulo, String valor, bool positivo, IconData icon) {
-    final cor = positivo • _successColor : _warningColor;
+    final cor = positivo ? _successColor : _warningColor;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1434,7 +1434,7 @@ class _RelatoriosFinanceirosScreenState
                     barRods: [
                       BarChartRodData(
                         toY: vendido,
-                        color: isHoje • _successColor : _primaryColor,
+                        color: isHoje ? _successColor : _primaryColor,
                         width: 8,
                         borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(4)),
@@ -1463,7 +1463,7 @@ class _RelatoriosFinanceirosScreenState
                             child: Text('$dia',
                                 style: TextStyle(
                                     color: dia == hoje
-                                        • _successColor
+                                        ? _successColor
                                         : Colors.white54,
                                     fontSize: 10)),
                           );
@@ -1523,10 +1523,10 @@ class _RelatoriosFinanceirosScreenState
                                   fontWeight: FontWeight.normal)),
                           TextSpan(
                             text: diff >= 0
-                                • '+R\$ ${_fmt(diff)}'
+                                ? '+R\$ ${_fmt(diff)}'
                                 : '-R\$ ${_fmt(diff.abs())}',
                             style: TextStyle(
-                                color: diff >= 0 • _successColor : _dangerColor,
+                                color: diff >= 0 ? _successColor : _dangerColor,
                                 fontWeight: FontWeight.bold),
                           ),
                         ],
@@ -1572,10 +1572,10 @@ class _RelatoriosFinanceirosScreenState
   Future<void> _editarMeta(double sugerida) async {
     final controller = TextEditingController(
       text:
-          MoedaInputFormatter.format(_metaMensal > 0 • _metaMensal : sugerida),
+          MoedaInputFormatter.format(_metaMensal > 0 ? _metaMensal : sugerida),
     );
     final crescimentoCtrl = TextEditingController(
-        text: (_metaAtual?.crescimentoPercent ?• 7.0).toStringAsFixed(1));
+        text: (_metaAtual?.crescimentoPercent ?? 7.0).toStringAsFixed(1));
     try {
       final result = await showModalBottomSheet<bool>(
         context: context,
@@ -1606,7 +1606,7 @@ class _RelatoriosFinanceirosScreenState
                     const SizedBox(width: 12),
                     Expanded(
                         child: Text(
-                            'Definir Meta - ${_filtroVendedor == 'GERAL' • 'Geral' : _filtroVendedor}',
+                            'Definir Meta - ${_filtroVendedor == 'GERAL' ? 'Geral' : _filtroVendedor}',
                             style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 18,
@@ -1723,7 +1723,7 @@ class _RelatoriosFinanceirosScreenState
       if (result == true) {
         final valor = MoedaInputFormatter.parse(controller.text);
         final crescimento =
-            double.tryParse(crescimentoCtrl.text.replaceAll(',', '.')) ?• 7.0;
+            double.tryParse(crescimentoCtrl.text.replaceAll(',', '.')) ?? 7.0;
         if (valor > 0) {
           final agora = DateTime.now();
           final mesRef =
@@ -1757,7 +1757,7 @@ class _RelatoriosFinanceirosScreenState
     final fmt =
         NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2);
     final periodo =
-        '${_dataInicio?.day ?• 1}/${_dataInicio?.month ?• 0}/${_dataInicio?.year ?• 0} a ${_dataFim?.day ?• 0}/${_dataFim?.month ?• 0}/${_dataFim?.year ?• 0}';
+        '${_dataInicio?.day ?? 1}/${_dataInicio?.month ?? 0}/${_dataInicio?.year ?? 0} a ${_dataFim?.day ?? 0}/${_dataFim?.month ?? 0}/${_dataFim?.year ?? 0}';
     final sb = StringBuffer();
     sb.writeln('Período selecionado: $periodo.');
     sb.writeln('Quantidade de vendas: ${_vendasFiltradas.length}.');
@@ -1933,7 +1933,7 @@ class _SugestoesIaFinanceiroScreen extends StatefulWidget {
 class _SugestoesIaFinanceiroScreenState
     extends State<_SugestoesIaFinanceiroScreen> {
   final _perguntaCtrl = TextEditingController();
-  String• _resposta;
+  String? _resposta;
   bool _enviando = false;
   static const _primaryColor = Color(0xFF00A8FF);
   static const _cardColor = Color(0xFF12121A);
@@ -1944,8 +1944,8 @@ class _SugestoesIaFinanceiroScreenState
     super.dispose();
   }
 
-  Future<void> _enviarPergunta(String• perguntaFixa) async {
-    final pergunta = perguntaFixa ?• _perguntaCtrl.text.trim();
+  Future<void> _enviarPergunta(String? perguntaFixa) async {
+    final pergunta = perguntaFixa ?? _perguntaCtrl.text.trim();
     if (pergunta.isEmpty || _enviando) return;
     final lojaId = await LojaIdService.get();
     if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.financeiro)) {
@@ -2000,11 +2000,11 @@ class _SugestoesIaFinanceiroScreenState
             onPressed: () => Navigator.pop(context)),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _enviando • null : () => _enviarPergunta(null),
+        onPressed: _enviando ? null : () => _enviarPergunta(null),
         tooltip: 'Enviar pergunta',
         backgroundColor: _primaryColor,
         child: _enviando
-            • const SizedBox(
+            ? const SizedBox(
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
@@ -2036,7 +2036,7 @@ class _SugestoesIaFinanceiroScreenState
                 children: [
                   FilledButton.tonalIcon(
                     onPressed: _enviando
-                        • null
+                        ? null
                         : () => _enviarPergunta(
                             'Gere um DRE (Demonstrativo de Resultados) do faturamento mensal com os dados abaixo, formatado de forma clara.'),
                     icon: const Icon(Icons.receipt_long, size: 18),
@@ -2046,9 +2046,9 @@ class _SugestoesIaFinanceiroScreenState
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _enviando
-                        • null
+                        ? null
                         : () => _enviarPergunta(
-                            'O que fazer para bater a meta• Dê sugestões práticas.'),
+                            'O que fazer para bater a meta? Dê sugestões práticas.'),
                     icon: const Icon(Icons.flag, size: 18),
                     label: const Text('Bater a meta'),
                     style: FilledButton.styleFrom(
@@ -2056,7 +2056,7 @@ class _SugestoesIaFinanceiroScreenState
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _enviando
-                        • null
+                        ? null
                         : () => _enviarPergunta(
                             'Sugestões de corte de gastos com base nos dados abaixo. Onde posso reduzir custos sem prejudicar as vendas?'),
                     icon: const Icon(Icons.savings, size: 18),
@@ -2066,9 +2066,9 @@ class _SugestoesIaFinanceiroScreenState
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _enviando
-                        • null
+                        ? null
                         : () => _enviarPergunta(
-                            'Como melhorar a lucratividade com base nesses números• Dê sugestões práticas.'),
+                            'Como melhorar a lucratividade com base nesses números? Dê sugestões práticas.'),
                     icon: const Icon(Icons.trending_up, size: 18),
                     label: const Text('Melhorar lucratividade'),
                     style: FilledButton.styleFrom(
@@ -2076,9 +2076,9 @@ class _SugestoesIaFinanceiroScreenState
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _enviando
-                        • null
+                        ? null
                         : () => _enviarPergunta(
-                            'Estou com lucro alto. Onde posso reinvestir, dar desconto ou mexer nos preços para equilibrar• Sugestões.'),
+                            'Estou com lucro alto. Onde posso reinvestir, dar desconto ou mexer nos preços para equilibrar? Sugestões.'),
                     icon: const Icon(Icons.balance, size: 18),
                     label: const Text('Lucro alto - onde mexer?'),
                     style: FilledButton.styleFrom(
@@ -2091,7 +2091,7 @@ class _SugestoesIaFinanceiroScreenState
                 controller: _perguntaCtrl,
                 decoration: InputDecoration(
                   hintText:
-                      'Ex: Por que meu lucro caiu• Análise do PIX vs cartão?',
+                      'Ex: Por que meu lucro caiu? Análise do PIX vs cartão?',
                   border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: Colors.white.withValues(alpha:0.05),
@@ -2101,15 +2101,15 @@ class _SugestoesIaFinanceiroScreenState
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
-                onPressed: _enviando • null : () => _enviarPergunta(null),
+                onPressed: _enviando ? null : () => _enviarPergunta(null),
                 icon: _enviando
-                    • const SizedBox(
+                    ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.send),
-                label: Text(_enviando • 'Analisando…' : 'Enviar pergunta'),
+                label: Text(_enviando ? 'Analisando…' : 'Enviar pergunta'),
                 style: FilledButton.styleFrom(backgroundColor: _primaryColor),
               ),
               if (_resposta != null) ...[

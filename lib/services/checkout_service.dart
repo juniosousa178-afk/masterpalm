@@ -31,7 +31,7 @@ class CheckoutService {
         throw Exception('Usuário não autenticado');
       }
 
-      final email = user.email?.toLowerCase().trim() ?• '';
+      final email = user.email?.toLowerCase().trim() ?? '';
 
       // Busca configurações do Mercado Pago da Tela Master
       final accessToken = await MasterConfigService.getMercadoPagoAccessToken();
@@ -177,7 +177,7 @@ class CheckoutService {
 
       final doc = snapshot.docs.first;
       final data = doc.data();
-      return data['status']?.toString() ?• 'pending';
+      return data['status']?.toString() ?? 'pending';
     } catch (e) {
       debugPrint('❌ Erro ao verificar status (type=${e.runtimeType})');
       return 'error';

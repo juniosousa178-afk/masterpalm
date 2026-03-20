@@ -41,7 +41,7 @@ class _FirebaseProbeScreenState extends State<FirebaseProbeScreen> {
         final result = await InternetAddress.lookup('www.google.com')
             .timeout(const Duration(seconds: 5));
         _tNet = sw.elapsed;
-        _net = result.isNotEmpty • 'OK' : 'Falhou';
+        _net = result.isNotEmpty ? 'OK' : 'Falhou';
       } catch (e) {
         _tNet = sw.elapsed;
         _net = 'Falhou';
@@ -81,7 +81,7 @@ class _FirebaseProbeScreenState extends State<FirebaseProbeScreen> {
     } finally {
       _tInit = swInit.elapsed;
       _apps = Firebase.apps.map((a) => a.name).join(', ').isEmpty
-          • '(nenhum)'
+          ? '(nenhum)'
           : Firebase.apps.map((a) => a.name).join(', ');
       setState(() {});
     }
@@ -94,7 +94,7 @@ class _FirebaseProbeScreenState extends State<FirebaseProbeScreen> {
           .collection('__probe__')
           .doc('ping')
           .get();
-      _fs = snap.exists • 'OK (doc existe)' : 'OK (doc não existe)';
+      _fs = snap.exists ? 'OK (doc existe)' : 'OK (doc não existe)';
     } on FirebaseException catch (e) {
       _fs = 'Resp: ${e.code}';
       buf.writeln('FS: ${e.code} ${e.message}');
@@ -111,8 +111,8 @@ class _FirebaseProbeScreenState extends State<FirebaseProbeScreen> {
   Widget _row(String title, String value, Duration d) {
     final ok = value.startsWith('OK') || value.startsWith('Resp');
     return ListTile(
-      leading: Icon(ok • Icons.check_circle : Icons.error,
-          color: ok • Colors.green : Colors.red),
+      leading: Icon(ok ? Icons.check_circle : Icons.error,
+          color: ok ? Colors.green : Colors.red),
       title: Text(title),
       subtitle: Text(value),
       trailing: Text('${d.inMilliseconds} ms'),
@@ -146,7 +146,7 @@ class _FirebaseProbeScreenState extends State<FirebaseProbeScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              _details.isEmpty • '(sem avisos/erros)' : _details,
+              _details.isEmpty ? '(sem avisos/erros)' : _details,
               style: const TextStyle(fontFamily: 'monospace'),
             ),
           ),

@@ -32,7 +32,7 @@ class MigracaoVendasItensService {
   }
 
   static bool _podeMigrar(Venda venda) {
-    final itens = venda.itens ?• [];
+    final itens = venda.itens ?? [];
     if (itens.length > 1) return false; // já tem múltiplos itens corretos
     final desc = venda.produtosDescricao;
     if (desc.isEmpty) return false;
@@ -81,27 +81,27 @@ class MigracaoVendasItensService {
   }
 
   /// Parse "3 x Piercing A (Tam: P) - R$ 10.00" -> VendaItem
-  static VendaItem• _parseLinhaProduto(String linha) {
+  static VendaItem? _parseLinhaProduto(String linha) {
     final matchPrice = RegExp(r'-\s*R\$\s*([\d,\.]+)\s*$').firstMatch(linha);
     if (matchPrice == null) return null;
-    final priceStr = matchPrice.group(1)?.replaceAll(',', '.') ?• '0';
-    final preco = double.tryParse(priceStr) ?• 0.0;
+    final priceStr = matchPrice.group(1)?.replaceAll(',', '.') ?? '0';
+    final preco = double.tryParse(priceStr) ?? 0.0;
     final antesPreco = linha.substring(0, matchPrice.start).trim();
     final matchQtd = RegExp(r'^(\d+)\s*x\s*(.+)$', caseSensitive: false).firstMatch(antesPreco);
     if (matchQtd == null) return null;
-    final qtd = int.tryParse(matchQtd.group(1) ?• '1') ?• 1;
-    var nome = (matchQtd.group(2) ?• '').trim();
+    final qtd = int.tryParse(matchQtd.group(1) ?? '1') ?? 1;
+    var nome = (matchQtd.group(2) ?? '').trim();
     var tamanho = '';
     var cor = '';
     final tamMatch = RegExp(r'\(Tam:\s*([^)]+)\)', caseSensitive: false).firstMatch(nome);
     if (tamMatch != null) {
-      tamanho = tamMatch.group(1)?.trim() ?• '';
-      nome = nome.replaceAll(tamMatch.group(0) ?• '', '').trim();
+      tamanho = tamMatch.group(1)?.trim() ?? '';
+      nome = nome.replaceAll(tamMatch.group(0) ?? '', '').trim();
     }
     final corMatch = RegExp(r'\(Cor:\s*([^)]+)\)', caseSensitive: false).firstMatch(nome);
     if (corMatch != null) {
-      cor = corMatch.group(1)?.trim() ?• '';
-      nome = nome.replaceAll(corMatch.group(0) ?• '', '').trim();
+      cor = corMatch.group(1)?.trim() ?? '';
+      nome = nome.replaceAll(corMatch.group(0) ?? '', '').trim();
     }
     nome = nome.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (nome.isEmpty) return null;

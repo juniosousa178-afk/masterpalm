@@ -30,10 +30,10 @@ String formatarValor(double valor) {
 }
 
 /// Determina o tipo de prêmio da roleta a partir da descrição/código/desconto.
-String determinarTipoPremio(String• descricao, String• codigo, double• desconto) {
+String determinarTipoPremio(String? descricao, String? codigo, double? desconto) {
   if (descricao == null && codigo == null) return 'nenhum';
 
-  final desc = (descricao ?• '').toLowerCase();
+  final desc = (descricao ?? '').toLowerCase();
 
   // Verificar se é brinde
   if (desc.contains('brinde') ||

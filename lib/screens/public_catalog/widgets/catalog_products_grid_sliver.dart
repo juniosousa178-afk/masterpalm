@@ -14,21 +14,21 @@ import 'product_card.dart';
 Widget buildCatalogProductsGridSliver({
   required List<Map<String, dynamic>> products,
   /// Lista completa do catálogo (antes de filtro/página) para o modal "Configurar kit" encontrar cada item do combo.
-  List<Map<String, dynamic>>• todosProdutosParaCombo,
+  List<Map<String, dynamic>>? todosProdutosParaCombo,
   required String lojaId,
   required void Function(Map<String, dynamic>) onAdd,
-  void Function(String productId)• onProductViewed,
-  void Function(String productId)• onToggleFavorito,
-  VoidCallback• onAbrirLoginParaFavorito,
-  VoidCallback• onAbrirCarrinho,
-  String• clienteId,
+  void Function(String productId)? onProductViewed,
+  void Function(String productId)? onToggleFavorito,
+  VoidCallback? onAbrirLoginParaFavorito,
+  VoidCallback? onAbrirCarrinho,
+  String? clienteId,
   List<String> favoritosIds = const [],
   required bool mostrarEstoqueNoCatalogo,
   required bool mostrarQuantidadeNoCatalogo,
   required double cardBorderRadius,
   required bool cardShowShadow,
-  String• prazoEntregaTexto,
-  double• jurosParcelamento,
+  String? prazoEntregaTexto,
+  double? jurosParcelamento,
   required int maxParcelas,
   int imageCacheWidth = 360,
   int imageCacheHeight = 480,
@@ -40,13 +40,13 @@ Widget buildCatalogProductsGridSliver({
   int desktopCols = 4,
   int mobileCols = 2,
   /// URL do catálogo para compartilhar (pode incluir ref/indicacao). Se null, o card usa padrão por lojaId.
-  String• catalogShareUrl,
+  String? catalogShareUrl,
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida.
   bool useMinimalLayout = false,
   String productCardSize = CatalogProductCardSize.medium,
 }) {
-  final listaParaCombo = todosProdutosParaCombo ?• products;
-  final cols = isDesktop • desktopCols : mobileCols;
+  final listaParaCombo = todosProdutosParaCombo ?? products;
+  final cols = isDesktop ? desktopCols : mobileCols;
   final gridDelegate = SliverGridDelegateWithFixedCrossAxisCount(
     crossAxisCount: cols,
     mainAxisSpacing: mainAxisSpacing,
@@ -67,7 +67,7 @@ Widget buildCatalogProductsGridSliver({
               onAdd: onAdd,
               onProductViewed: onProductViewed,
               onToggleFavorito: clienteId != null
-                  • () => onToggleFavorito?.call(safeStr(p['id']))
+                  ? () => onToggleFavorito?.call(safeStr(p['id']))
                   : onAbrirLoginParaFavorito,
               onAbrirCarrinho: onAbrirCarrinho,
               clienteId: clienteId,

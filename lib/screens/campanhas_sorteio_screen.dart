@@ -9,7 +9,7 @@ class CampanhasSorteioScreen extends StatelessWidget {
 
   Future<String> _getLojaId() async {
     final id = await StoreResolverFacade.resolveForAdminApp();
-    return (id ?• '').trim();
+    return (id ?? '').trim();
   }
 
   @override

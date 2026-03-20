@@ -4,15 +4,15 @@
 // ============================================================================
 // AUDITORIA DO PROJETO (Flutter / Firestore)
 // ============================================================================
-// • Nenhum serviço Dart analisado grava contador de "unidades vendidas" no doc
+// ? Nenhum serviço Dart analisado grava contador de "unidades vendidas" no doc
 //   `lojas/{lojaId}/produtos/{id}` ao concluir venda.
-// • Baixa de estoque (`EstoqueTransactionService`) atualiza `quantidade`,
+// ? Baixa de estoque (`EstoqueTransactionService`) atualiza `quantidade`,
 //   `variacoes`, `estoquePorTamanho`, `updatedAt` — não há campo de vendas.
-// • `CatalogoVendaService` / vendas persistem itens com `productId` na coleção
+// ? `CatalogoVendaService` / vendas persistem itens com `productId` na coleção
 //   de vendas (Hive/Firestore), não denormalizados no produto.
-// • O app incrementa **`vendasCatalogoTotal`** ao concluir venda do catálogo
+// ? O app incrementa **`vendasCatalogoTotal`** ao concluir venda do catálogo
 //   (`CatalogoVendaService.registrarVendaCatalogo` / `finalizarPedidoComPagamento`).
-// • Vendas fora desse fluxo podem não atualizar o campo (retrocompatível com fallbacks).
+// ? Vendas fora desse fluxo podem não atualizar o campo (retrocompatível com fallbacks).
 // ============================================================================
 
 /// Chaves no **nível raiz** do produto — grupo 1: prioridade (catálogo / vendas online).
@@ -41,7 +41,7 @@ const List<String> _fallbackVendasRaiz = [
   'unidadesVendidas',
 ];
 
-int• _parsePositiveOrZeroInt(dynamic v) {
+int? _parsePositiveOrZeroInt(dynamic v) {
   if (v is num) return v.round();
   if (v is String) return int.tryParse(v.trim());
   return null;
@@ -108,9 +108,9 @@ List<Map<String, dynamic>> pickBestSellersForMinimalCatalog(
 }) {
   if (produtos.isEmpty) return [];
   final copy = List<Map<String, dynamic>>.from(produtos);
-  final anyScore = copy.any((p) => (p['vendasScoreCatalogo'] as int• ?• 0) > 0);
+  final anyScore = copy.any((p) => (p['vendasScoreCatalogo'] as int? ?? 0) > 0);
 
-  int scoreOf(Map<String, dynamic> p) => p['vendasScoreCatalogo'] as int• ?• 0;
+  int scoreOf(Map<String, dynamic> p) => p['vendasScoreCatalogo'] as int? ?? 0;
 
   copy.sort((a, b) {
     if (anyScore) {
@@ -118,11 +118,11 @@ List<Map<String, dynamic>> pickBestSellersForMinimalCatalog(
       if (s != 0) return s;
     }
     // Fallback documentado: destaque comercial + novidade + recência
-    final promoA = a['emPromocao'] == true • 1 : 0;
-    final promoB = b['emPromocao'] == true • 1 : 0;
+    final promoA = a['emPromocao'] == true ? 1 : 0;
+    final promoB = b['emPromocao'] == true ? 1 : 0;
     if (promoA != promoB) return promoB.compareTo(promoA);
-    final novoA = a['isNovo'] == true • 1 : 0;
-    final novoB = b['isNovo'] == true • 1 : 0;
+    final novoA = a['isNovo'] == true ? 1 : 0;
+    final novoB = b['isNovo'] == true ? 1 : 0;
     if (novoA != novoB) return novoB.compareTo(novoA);
     final da = a['dataCriacao'];
     final db = b['dataCriacao'];
@@ -130,8 +130,8 @@ List<Map<String, dynamic>> pickBestSellersForMinimalCatalog(
       final c = db.compareTo(da);
       if (c != 0) return c;
     }
-    final na = (a['nome'] ?• '').toString();
-    final nb = (b['nome'] ?• '').toString();
+    final na = (a['nome'] ?? '').toString();
+    final nb = (b['nome'] ?? '').toString();
     return na.compareTo(nb);
   });
 

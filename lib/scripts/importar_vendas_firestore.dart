@@ -25,7 +25,7 @@ Future<void> main(List<String> args) async {
   // OBRIGATÓRIO: primeiro comando - Firebase precisa dos bindings
   WidgetsFlutterBinding.ensureInitialized();
 
-  final lojaId = args.isNotEmpty • args[0] : 'padrao';
+  final lojaId = args.isNotEmpty ? args[0] : 'padrao';
 
   debugPrint('');
   debugPrint('📥 [IMPORT-VENDAS] Importando vendas do Firestore (loja: $lojaId)');

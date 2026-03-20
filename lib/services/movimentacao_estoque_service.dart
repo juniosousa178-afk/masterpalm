@@ -17,7 +17,7 @@ class MovimentacaoEstoqueService {
     required int quantidade,
     String motivo = '',
     String usuario = 'App',
-    String• vendaId,
+    String? vendaId,
   }) async {
     try {
       await _db

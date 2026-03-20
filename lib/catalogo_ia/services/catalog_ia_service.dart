@@ -76,9 +76,9 @@ class CatalogIaService {
     return CatalogIaResposta(
       texto: textoResp,
       produtos: matches,
-      sugestoesRelacionadas: sugestoes.where((s) => !matches.any((m) => (m['id'] ?• '') == (s['id'] ?• ''))).take(4).toList(),
-      emPromocaoDestaque: emPromo.where((e) => !matches.any((m) => (m['id'] ?• '') == (e['id'] ?• ''))).take(3).toList(),
-      combosSugeridos: combos.where((c) => !matches.any((m) => (m['id'] ?• '') == (c['id'] ?• ''))).take(3).toList(),
+      sugestoesRelacionadas: sugestoes.where((s) => !matches.any((m) => (m['id'] ?? '') == (s['id'] ?? ''))).take(4).toList(),
+      emPromocaoDestaque: emPromo.where((e) => !matches.any((m) => (m['id'] ?? '') == (e['id'] ?? ''))).take(3).toList(),
+      combosSugeridos: combos.where((c) => !matches.any((m) => (m['id'] ?? '') == (c['id'] ?? ''))).take(3).toList(),
     );
   }
 
@@ -95,33 +95,33 @@ class CatalogIaService {
     if (maisBaratoQ && matches.isNotEmpty) {
       final primeiro = matches.first;
       final preco = _fmtPreco(primeiro);
-      return 'Os mais baratos são: ${matches.take(3).map((p) => (p['nome'] ?• 'Produto').toString()).join(', ')}. O menor preço é $preco.';
+      return 'Os mais baratos são: ${matches.take(3).map((p) => (p['nome'] ?? 'Produto').toString()).join(', ')}. O menor preço é $preco.';
     }
     if (presenteQ && matches.isNotEmpty) {
-      return 'Ótimas opções de presente: ${matches.take(5).map((p) => (p['nome'] ?• 'Produto').toString()).join(', ')}.';
+      return 'Ótimas opções de presente: ${matches.take(5).map((p) => (p['nome'] ?? 'Produto').toString()).join(', ')}.';
     }
     if (comboQ && matches.isNotEmpty) {
       return 'Encontrei ${matches.length} combo(s) disponíveis. Confira abaixo.';
     }
     if (tamanhoCorQ && matches.isNotEmpty) {
-      return 'Produtos com variações de tamanho e cor: ${matches.take(5).map((p) => (p['nome'] ?• 'Produto').toString()).join(', ')}.';
+      return 'Produtos com variações de tamanho e cor: ${matches.take(5).map((p) => (p['nome'] ?? 'Produto').toString()).join(', ')}.';
     }
     if (matches.length == 1) {
       final prod = matches.first;
-      final nome = (prod['nome'] ?• 'Produto').toString();
+      final nome = (prod['nome'] ?? 'Produto').toString();
       final preco = _fmtPreco(prod);
       final emPromo = prod['emPromocao'] == true;
       if (emPromo) return 'Encontrei: $nome. $preco – está em promoção!';
       return 'Encontrei: $nome. $preco';
     }
-    final nomes = matches.take(5).map((p) => (p['nome'] ?• 'Produto').toString()).join(', ');
+    final nomes = matches.take(5).map((p) => (p['nome'] ?? 'Produto').toString()).join(', ');
     return 'Encontrei ${matches.length} produto(s): $nomes. Confira abaixo.';
   }
 
   static String _fmtPreco(Map<String, dynamic> p) {
-    final pr = p['preco'] ?• p['precoFinal'] ?• p['priceMin'];
+    final pr = p['preco'] ?? p['precoFinal'] ?? p['priceMin'];
     if (pr == null) return '';
-    final v = pr is num • pr.toDouble() : double.tryParse(pr.toString());
+    final v = pr is num ? pr.toDouble() : double.tryParse(pr.toString());
     if (v == null) return '';
     return 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
   }

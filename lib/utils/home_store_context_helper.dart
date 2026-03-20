@@ -33,7 +33,7 @@ Future<HomeStoreContext> resolveHomeStoreContext() async {
   String lojaIdInterno = '';
   try {
     final id = await StoreResolverFacade.resolveForAdminApp();
-    final trimmed = (id ?• '').trim();
+    final trimmed = (id ?? '').trim();
     if (isValidForPublicLink(trimmed)) {
       lojaIdInterno = trimmed;
       logD('[CATALOGO-CONTEXT] resolveHomeStoreContext: StoreResolver → $lojaIdInterno');
@@ -48,16 +48,16 @@ Future<HomeStoreContext> resolveHomeStoreContext() async {
         return HomeStoreContext(lojaIdInterno: '', slugPublico: '');
       }
       final Box sessao = Hive.isBoxOpen('sessao')
-          • Hive.box('sessao')
+          ? Hive.box('sessao')
           : await Hive.openBox('sessao');
-      final cachedUser = (sessao.get('usuario_logado') ?• '').toString().trim().toLowerCase();
-      final currentEmail = (current.email ?• '').trim().toLowerCase();
+      final cachedUser = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final currentEmail = (current.email ?? '').trim().toLowerCase();
       if (cachedUser.isEmpty || currentEmail != cachedUser) {
         // Sessão de outra conta: não usar
         return HomeStoreContext(lojaIdInterno: '', slugPublico: '');
       }
       final raw = normalizeFromBox(sessao);
-      final trimmed = (raw ?• '').trim();
+      final trimmed = (raw ?? '').trim();
       if (isValidForPublicLink(trimmed)) {
         lojaIdInterno = trimmed;
         logD('[CATALOGO-CONTEXT] resolveHomeStoreContext: Hive fallback (user match) → $lojaIdInterno');

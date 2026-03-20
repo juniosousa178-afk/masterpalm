@@ -20,6 +20,6 @@ Future<Uint8List> readFileBytes(String path) async {
 }
 
 /// No web, não precisa - file_picker já retorna bytes
-Uint8List• getBytesFromPickerResult(dynamic platformFile) {
+Uint8List? getBytesFromPickerResult(dynamic platformFile) {
   return null;
 }

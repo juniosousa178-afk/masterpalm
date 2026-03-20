@@ -55,7 +55,7 @@ class NumeroSorteService {
       if (participantesSnap.docs.isNotEmpty) {
         final ultimoNumero = participantesSnap.docs.first.data()['numeroSorte'] as String?;
         if (ultimoNumero != null) {
-          final numeroInt = int.tryParse(ultimoNumero) ?• 0;
+          final numeroInt = int.tryParse(ultimoNumero) ?? 0;
           proximoNumero = numeroInt + 1;
         }
       }

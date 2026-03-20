@@ -156,7 +156,7 @@ class CatalogCacheDiskStore {
   }
 
   /// Lê config do disco. Retorna nulls se não existir ou erro.
-  Future<({Map<String, dynamic>• cfg, int• updatedAtMs})> readConfig(
+  Future<({Map<String, dynamic>? cfg, int? updatedAtMs})> readConfig(
     String lojaId, {
     bool preview = false,
   }) async {
@@ -171,11 +171,11 @@ class CatalogCacheDiskStore {
         return (cfg: null, updatedAtMs: null);
       }
       final cfg = jsonDecode(jsonStr) as Map<String, dynamic>?;
-      final updatedAtMs = meta is Map • meta['updatedAtMs'] as int• : null;
+      final updatedAtMs = meta is Map ? meta['updatedAtMs'] as int? : null;
       if (kEnableCatalogDiskCacheAuditLogs) {
         logD(
           '[CACHE-DISK] read_ok preview=$preview temCfg=${cfg != null} '
-          'updatedAtMs=$updatedAtMs topKeys=${cfg?.keys.length ?• 0}',
+          'updatedAtMs=$updatedAtMs topKeys=${cfg?.keys.length ?? 0}',
           tag: 'CACHE-DISK',
         );
       }

@@ -50,14 +50,14 @@ class _ConfigPinScreenState extends State<ConfigPinScreen> {
                 obscureText: true,
                 decoration: const InputDecoration(labelText: 'Novo PIN'),
                 validator: (value) =>
-                    value!.isEmpty • 'Digite o novo PIN' : null,
+                    value!.isEmpty ? 'Digite o novo PIN' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _confirmarPinController,
                 obscureText: true,
                 decoration: const InputDecoration(labelText: 'Confirmar PIN'),
-                validator: (value) => value!.isEmpty • 'Confirme o PIN' : null,
+                validator: (value) => value!.isEmpty ? 'Confirme o PIN' : null,
               ),
               const SizedBox(height: 24),
               ElevatedButton(

@@ -15,7 +15,7 @@ import 'store_resolver_service.dart';
 class AdminWebSessionHydrator {
   AdminWebSessionHydrator._();
 
-  static Future<void>• _inFlight;
+  static Future<void>? _inFlight;
 
   /// Garante `usuario_logado` / `usuario_logado_email` alinhados ao Auth e `store_id` resolvido.
   static Future<void> ensureHydrated() async {
@@ -43,7 +43,7 @@ class AdminWebSessionHydrator {
     );
 
     final auth = FirebaseAuth.instance;
-    User• u = auth.currentUser;
+    User? u = auth.currentUser;
     if (u == null) {
       logD('[STORE_BOOTSTRAP] currentUser null → aguardando authStateChanges (até 20s)');
       try {
@@ -60,17 +60,17 @@ class AdminWebSessionHydrator {
 
     if (u == null || u.isAnonymous) {
       logW(
-        '[STORE_BOOTSTRAP] abort: sem usuário autenticado após espera (uid=${u?.uid ?• "null"})',
+        '[STORE_BOOTSTRAP] abort: sem usuário autenticado após espera (uid=${u?.uid ?? "null"})',
       );
       return;
     }
 
-    final email = (u.email ?• '').trim().toLowerCase();
+    final email = (u.email ?? '').trim().toLowerCase();
     final Box sessao = Hive.isBoxOpen('sessao')
-        • Hive.box('sessao')
+        ? Hive.box('sessao')
         : await Hive.openBox('sessao');
     final Box config = Hive.isBoxOpen('config')
-        • Hive.box('config')
+        ? Hive.box('config')
         : await Hive.openBox('config');
 
     sessao.put('usuario_logado', email);
@@ -78,17 +78,17 @@ class AdminWebSessionHydrator {
       sessao.put('usuario_logado_email', email);
     }
 
-    final sidBefore = (sessao.get('store_id') ?• '').toString().trim();
+    final sidBefore = (sessao.get('store_id') ?? '').toString().trim();
     logD(
       '[STORE_BOOTSTRAP] principal gravado email=$email sessao.store_id(antes)=$sidBefore authUid=${u.uid}',
     );
 
     // Fast path: sessão já consistente com o usuário atual
     final cachedPrincipal = [
-      (sessao.get('usuario_logado_email') ?• '').toString().trim().toLowerCase(),
-      (sessao.get('usuario_logado') ?• '').toString().trim().toLowerCase(),
+      (sessao.get('usuario_logado_email') ?? '').toString().trim().toLowerCase(),
+      (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase(),
     ].firstWhere((s) => s.isNotEmpty, orElse: () => '');
-    final storeFast = (sessao.get('store_id') ?• '').toString().trim();
+    final storeFast = (sessao.get('store_id') ?? '').toString().trim();
     if (email.isNotEmpty &&
         cachedPrincipal == email &&
         storeFast.isNotEmpty &&
@@ -97,7 +97,7 @@ class AdminWebSessionHydrator {
       return;
     }
 
-    String• lojaId;
+    String? lojaId;
     try {
       lojaId = await StoreResolverFacade.resolveForAdminApp()
           .timeout(const Duration(seconds: 25), onTimeout: () => null);
@@ -106,14 +106,14 @@ class AdminWebSessionHydrator {
     }
     lojaId = lojaId?.trim();
     if (lojaId == null || lojaId.isEmpty) {
-      final fromSessao = (sessao.get('store_id') ?• '').toString().trim();
+      final fromSessao = (sessao.get('store_id') ?? '').toString().trim();
       if (fromSessao.isNotEmpty && isValidForPublicLink(fromSessao)) {
         lojaId = fromSessao;
         logD('[STORE_BOOTSTRAP] fallback sessao.store_id=$lojaId');
       }
     }
     if (lojaId == null || lojaId.isEmpty) {
-      final fromCfg = (config.get('store_id') ?• config.get('last_loja_id') ?• '')
+      final fromCfg = (config.get('store_id') ?? config.get('last_loja_id') ?? '')
           .toString()
           .trim();
       if (fromCfg.isNotEmpty && isValidForPublicLink(fromCfg)) {
