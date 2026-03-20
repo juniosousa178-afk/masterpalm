@@ -233,6 +233,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   final TextEditingController _catImgModaCtrl = TextEditingController();
   final TextEditingController _catImgCalcadosCtrl = TextEditingController();
   final TextEditingController _catImgBolsasCtrl = TextEditingController();
+  final TextEditingController _catImgCategoriaCtrl = TextEditingController();
+  final TextEditingController _catImgCategoriaIdCtrl = TextEditingController();
+  final TextEditingController _catImgUrlCtrl = TextEditingController();
+  String? _catSelectedFromStore;
+  Map<String, String> _categoryImagesByName = {};
+  Map<String, String> _categoryImagesById = {};
+  List<String> _knownCategoryNames = [];
 
   // ---------------------------------
   // FRETES
@@ -359,9 +366,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _heroBannerButtonLinkCtrl.addListener(_scheduleAutoSave);
     _heroBannerImageCtrl.addListener(_scheduleAutoSave);
     _heroBannerMobileImageCtrl.addListener(_scheduleAutoSave);
-    _catImgModaCtrl.addListener(_scheduleAutoSave);
-    _catImgCalcadosCtrl.addListener(_scheduleAutoSave);
-    _catImgBolsasCtrl.addListener(_scheduleAutoSave);
+    _catImgCategoriaCtrl.addListener(_scheduleAutoSave);
+    _catImgCategoriaIdCtrl.addListener(_scheduleAutoSave);
+    _catImgUrlCtrl.addListener(_scheduleAutoSave);
     _minimalBestSellersTitleCtrl.addListener(_scheduleAutoSave);
     _minimalBestSellersCountCtrl.addListener(_scheduleAutoSave);
 
@@ -449,6 +456,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // Isso garante que logo e banner não sejam perdidos após flutter run
       logD('📥 [LOJA CONFIG] Carregando configuração do Firestore...');
       await _loadFromFirestore();
+      await _loadKnownCategoryNamesFromStore();
 
       // 3.1) Carrega status de campanhas e roleta
       await _carregarStatusCampanhasERoleta();
@@ -1079,6 +1087,45 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final catImgs = catImgsRaw is Map
           ? Map<String, dynamic>.from(catImgsRaw)
           : <String, dynamic>{};
+      final catImgsByIdRaw = catVisual['imagesById'];
+      final catImgsById = catImgsByIdRaw is Map
+          ? Map<String, dynamic>.from(catImgsByIdRaw)
+          : <String, dynamic>{};
+      final catImgsByNormRaw = catVisual['imagesByNameNorm'];
+      final catImgsByNorm = catImgsByNormRaw is Map
+          ? Map<String, dynamic>.from(catImgsByNormRaw)
+          : <String, dynamic>{};
+      final mergedByName = <String, String>{};
+      for (final e in catImgs.entries) {
+        final k = e.key.toString().trim();
+        final v = e.value?.toString().trim() ?? '';
+        if (k.isNotEmpty && v.isNotEmpty) {
+          mergedByName[k] = v;
+        }
+      }
+      for (final e in catImgsByNorm.entries) {
+        final k = e.key.toString().trim();
+        final v = e.value?.toString().trim() ?? '';
+        if (k.isNotEmpty && v.isNotEmpty) {
+          mergedByName[k] = v;
+          mergedByName['name:$k'] = v;
+        }
+      }
+      final mergedById = <String, String>{};
+      for (final e in catImgsById.entries) {
+        final k = e.key.toString().trim();
+        final v = e.value?.toString().trim() ?? '';
+        if (k.isNotEmpty && v.isNotEmpty) mergedById[k] = v;
+      }
+      _categoryImagesByName = mergedByName;
+      _categoryImagesById = mergedById;
+      final known = <String>{..._knownCategoryNames};
+      for (final k in mergedByName.keys) {
+        if (k.startsWith('name:')) continue;
+        if (k == _normalizeCategoryKey(k)) continue;
+        known.add(k);
+      }
+      _knownCategoryNames = known.toList()..sort();
       _catImgModaCtrl.text = (catImgs['Moda'] ?? '').toString();
       _catImgCalcadosCtrl.text = (catImgs['Calcados'] ?? '').toString();
       _catImgBolsasCtrl.text = (catImgs['Bolsas'] ?? '').toString();
@@ -1226,6 +1273,68 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v.replaceAll(',', '.'));
     return null;
+  }
+
+  String _normalizeCategoryKey(String raw) {
+    final s = raw
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'[àáâãä]'), 'a')
+        .replaceAll(RegExp(r'[èéêë]'), 'e')
+        .replaceAll(RegExp(r'[ìíîï]'), 'i')
+        .replaceAll(RegExp(r'[òóôõö]'), 'o')
+        .replaceAll(RegExp(r'[ùúûü]'), 'u')
+        .replaceAll('ç', 'c');
+    return s
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+  }
+
+  Future<void> _loadKnownCategoryNamesFromStore() async {
+    final lojaId = _resolvedLojaId;
+    if (lojaId == null || lojaId.isEmpty) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('produtos')
+          .where('ativo', isEqualTo: true)
+          .limit(1000)
+          .get();
+      final names = <String>{};
+      for (final d in snap.docs) {
+        final m = d.data();
+        final c = (m['categoria'] ?? m['categoria_nome'] ?? '').toString().trim();
+        if (c.isNotEmpty) names.add(c);
+      }
+      if (!mounted) return;
+      setState(() {
+        _knownCategoryNames = names.toList()..sort();
+      });
+    } catch (_) {
+      // Catálogo segue funcionando; em erro, mantém fallback por digitação.
+    }
+  }
+
+  void _upsertCategoryImageConfig() {
+    final selected = _catSelectedFromStore?.trim() ?? '';
+    final categoryName =
+        selected.isNotEmpty ? selected : _catImgCategoriaCtrl.text.trim();
+    final categoryId = _catImgCategoriaIdCtrl.text.trim();
+    final imageUrl = _catImgUrlCtrl.text.trim();
+    if (categoryName.isEmpty || imageUrl.isEmpty) return;
+
+    final normalized = _normalizeCategoryKey(categoryName);
+    _categoryImagesByName[categoryName] = imageUrl;
+    _categoryImagesByName[normalized] = imageUrl;
+    _categoryImagesByName['name:$normalized'] = imageUrl;
+    if (categoryId.isNotEmpty) {
+      _categoryImagesById[categoryId] = imageUrl;
+    }
+
+    if (!_knownCategoryNames.contains(categoryName)) {
+      _knownCategoryNames = [..._knownCategoryNames, categoryName]..sort();
+    }
   }
 
   // ✅ ESTRUTURA ALINHADA COM PUBLIC_CATALOG
@@ -1387,6 +1496,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'imageSize': 76,
         'spacing': 12,
         'images': {
+          ..._categoryImagesByName,
           if (_catImgModaCtrl.text.trim().isNotEmpty)
             'Moda': _catImgModaCtrl.text.trim(),
           if (_catImgCalcadosCtrl.text.trim().isNotEmpty)
@@ -1394,7 +1504,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           if (_catImgBolsasCtrl.text.trim().isNotEmpty)
             'Bolsas': _catImgBolsasCtrl.text.trim(),
         },
-        'imagesById': const <String, String>{},
+        'imagesById': {
+          ..._categoryImagesById,
+        },
+        'imagesByNameNorm': {
+          for (final e in _categoryImagesByName.entries)
+            if (!e.key.startsWith('name:'))
+              _normalizeCategoryKey(e.key): e.value,
+        },
       },
       'minimalProductGrid': {
         'aspectRatio': 0.56,
@@ -4786,30 +4903,159 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Imagens de categorias (atalhos):',
+                  'Imagens por categoria (1 foto por categoria):',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Você pode selecionar uma categoria já existente da loja ou digitar o nome. '
+                'A imagem fica vinculada direto à categoria e mantém compatibilidade com configurações antigas.',
+                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+              ),
               const SizedBox(height: 8),
-              _ImageFieldWithGallery(
-                label: 'Categoria Moda',
-                controller: _catImgModaCtrl,
-                onChanged: _scheduleAutoSave,
-                onPickImage: () => _pickAndUploadLayoutImage('cat_moda'),
+              DropdownButtonFormField<String>(
+                initialValue: (_catSelectedFromStore != null &&
+                        _knownCategoryNames.contains(_catSelectedFromStore))
+                    ? _catSelectedFromStore
+                    : null,
+                items: _knownCategoryNames
+                    .map((c) => DropdownMenuItem<String>(
+                          value: c,
+                          child: Text(c),
+                        ))
+                    .toList(),
+                onChanged: (v) {
+                  setState(() {
+                    _catSelectedFromStore = v;
+                    if (v != null) {
+                      _catImgCategoriaCtrl.text = v;
+                    }
+                  });
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Selecionar categoria existente (opcional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _catImgCategoriaCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nome da categoria',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _catImgCategoriaIdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'ID da categoria (opcional, para matching por id)',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => _scheduleAutoSave(),
               ),
               const SizedBox(height: 8),
               _ImageFieldWithGallery(
-                label: 'Categoria Calcados',
-                controller: _catImgCalcadosCtrl,
+                label: 'Imagem da categoria',
+                controller: _catImgUrlCtrl,
                 onChanged: _scheduleAutoSave,
-                onPickImage: () => _pickAndUploadLayoutImage('cat_calcados'),
+                onPickImage: () => _pickAndUploadLayoutImage('cat_dynamic'),
               ),
               const SizedBox(height: 8),
-              _ImageFieldWithGallery(
-                label: 'Categoria Bolsas',
-                controller: _catImgBolsasCtrl,
-                onChanged: _scheduleAutoSave,
-                onPickImage: () => _pickAndUploadLayoutImage('cat_bolsas'),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _upsertCategoryImageConfig();
+                    });
+                    _salvarRascunho(validar: false);
+                  },
+                  icon: const Icon(Icons.save_outlined, size: 18),
+                  label: const Text('Salvar categoria'),
+                ),
+              ),
+              if (_categoryImagesByName.isNotEmpty || _categoryImagesById.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Categorias configuradas',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                ..._categoryImagesByName.entries
+                    .where((e) => !e.key.startsWith('name:'))
+                    .map((e) => Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            leading: e.value.trim().isEmpty
+                                ? const Icon(Icons.image_not_supported_outlined)
+                                : ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Image(
+                                      image: mpImageProvider(e.value),
+                                      width: 42,
+                                      height: 42,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported_outlined),
+                                    ),
+                                  ),
+                            title: Text(e.key),
+                            subtitle: Text(
+                              e.value,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () {
+                                final norm = _normalizeCategoryKey(e.key);
+                                setState(() {
+                                  _categoryImagesByName.remove(e.key);
+                                  _categoryImagesByName.remove(norm);
+                                  _categoryImagesByName.remove('name:$norm');
+                                });
+                                _salvarRascunho(validar: false);
+                              },
+                            ),
+                          ),
+                        )),
+              ],
+              if (_categoryImagesById.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ..._categoryImagesById.entries.map(
+                  (e) => ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('ID: ${e.key}'),
+                    subtitle: Text(
+                      e.value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () {
+                        setState(() => _categoryImagesById.remove(e.key));
+                        _salvarRascunho(validar: false);
+                      },
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _loadKnownCategoryNamesFromStore,
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Atualizar categorias da loja'),
+                ),
               ),
               const SizedBox(height: 16),
               const Align(
@@ -6398,6 +6644,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _catImgModaCtrl.dispose();
     _catImgCalcadosCtrl.dispose();
     _catImgBolsasCtrl.dispose();
+    _catImgCategoriaCtrl.dispose();
+    _catImgCategoriaIdCtrl.dispose();
+    _catImgUrlCtrl.dispose();
     _minimalBestSellersTitleCtrl.dispose();
     _minimalBestSellersCountCtrl.dispose();
     _melhorEnvioTokenCtrl.dispose();

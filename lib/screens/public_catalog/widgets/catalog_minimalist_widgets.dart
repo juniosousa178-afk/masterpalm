@@ -227,15 +227,15 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
     String imageFor(String cat) {
       final imgs = categoryVisuals['images'];
       final imgsById = categoryVisuals['imagesById'];
+      final imgsByNorm = categoryVisuals['imagesByNameNorm'];
       final keyNorm = norm(cat);
       if (imgs is Map) {
         if (imgs[cat] != null) return imgs[cat].toString();
         if (imgs[keyNorm] != null) return imgs[keyNorm].toString();
-        for (final e in imgs.entries) {
-          if (norm(e.key.toString()) == keyNorm && e.value != null) {
-            return e.value.toString();
-          }
-        }
+        if (imgs['name:$keyNorm'] != null) return imgs['name:$keyNorm'].toString();
+      }
+      if (imgsByNorm is Map) {
+        if (imgsByNorm[keyNorm] != null) return imgsByNorm[keyNorm].toString();
       }
       if (imgsById is Map) {
         final aliases = categoryAliasesByName[cat] ?? const <String>{};

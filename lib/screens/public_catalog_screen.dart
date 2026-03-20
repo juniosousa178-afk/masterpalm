@@ -4514,6 +4514,19 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 maxParcelas: maxParcelasClamped,
                                                 textColor: textColor,
                                                 useMinimalLayout: useMinimalLayout,
+                                                cardColor: cardColor,
+                                                priceColor: productPriceColor,
+                                                catalogShareUrl:
+                                                    CatalogShareService
+                                                        .buildUrlWithParams(
+                                                  '$_baseUrlCatalogo/$lojaId',
+                                                  ref: widget.vendedorRef,
+                                                  indicacao: widget
+                                                      .indicacaoClienteRef,
+                                                ),
+                                                nomeLoja: lojaNome,
+                                                contatoWhatsapp: whatsappVendedor,
+                                                politicaFrete: null,
                                               ),
                                             buildCatalogProductsGridSliver(
                                               products: listaPaginated,

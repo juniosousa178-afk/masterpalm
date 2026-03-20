@@ -74,22 +74,22 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
         final w = constraints.maxWidth;
         final narrow = w < 420;
         final hPad = narrow ? 12.0 : 16.0;
-        final rowPad = narrow ? 10.0 : 12.0;
+        final rowPad = narrow ? 12.0 : 12.0;
         final gap = narrow ? 10.0 : 12.0;
-        final cardW = narrow ? 118.0 : 128.0;
-        final listHeight = narrow ? 186.0 : 198.0;
+        final cardW = narrow ? 120.0 : 128.0;
+        final listHeight = narrow ? 192.0 : 198.0;
         final radius = narrow ? 12.0 : 14.0;
         final titleSize = narrow ? 13.5 : 14.5;
         final bodyNameSize = narrow ? 11.5 : 12.0;
         final priceSize = narrow ? 11.0 : 11.5;
 
         return Padding(
-          padding: EdgeInsets.only(bottom: narrow ? 6 : 10),
+          padding: EdgeInsets.only(bottom: narrow ? 8 : 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: EdgeInsets.fromLTRB(hPad, 2, hPad, narrow ? 8 : 10),
+                padding: EdgeInsets.fromLTRB(hPad, narrow ? 4 : 2, hPad, narrow ? 8 : 10),
                 child: Row(
                   children: [
                     Expanded(

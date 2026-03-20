@@ -192,6 +192,19 @@ class CatalogProductDetailScreen extends StatelessWidget {
   String _fmt2(num v) =>
       v.toStringAsFixed(2).replaceAll('.', ',');
 
+  void _openFullscreenGallery(BuildContext context, int initialIndex) {
+    if (imagens.isEmpty || imagens.every((e) => e.trim().isEmpty)) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _CatalogFullscreenGallery(
+          images: imagens.where((e) => e.trim().isNotEmpty).toList(),
+          initialIndex: initialIndex,
+          heroPrefix: id,
+        ),
+      ),
+    );
+  }
+
   void _addToCart(BuildContext context) {
     if (ehCombo && comboProductMap != null && todosProdutosForCombo != null) {
       showCatalogComboVariationSheet(
@@ -280,6 +293,8 @@ class CatalogProductDetailScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
     final imgList = imagens.isNotEmpty ? imagens : [''];
+    final hasManyImages = imgList.where((e) => e.trim().isNotEmpty).length > 1;
+    final galleryHeight = MediaQuery.of(context).size.width < 420 ? 300.0 : 340.0;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -321,7 +336,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
           children: [
             // Galeria
             SizedBox(
-              height: 320,
+              height: galleryHeight,
               child: imgList.first.isEmpty
                   ? Container(
                       color: theme.cardColor,
@@ -331,12 +346,45 @@ class CatalogProductDetailScreen extends StatelessWidget {
                         color: Colors.grey[400],
                       ),
                     )
-                  : PageView.builder(
-                      itemCount: imgList.length,
-                      itemBuilder: (_, i) => Image(
-                        image: mpImageProvider(imgList[i]),
-                        fit: BoxFit.contain,
-                      ),
+                  : Stack(
+                      children: [
+                        PageView.builder(
+                          itemCount: imgList.length,
+                          itemBuilder: (_, i) => GestureDetector(
+                            onTap: () => _openFullscreenGallery(context, i),
+                            child: Hero(
+                              tag: 'catalog_detail_img_${id}_$i',
+                              child: Image(
+                                image: mpImageProvider(imgList[i]),
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (hasManyImages)
+                          Positioned(
+                            right: 12,
+                            bottom: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.38),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'Deslize para ver mais',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
             ),
             Padding(
@@ -447,26 +495,29 @@ class CatalogProductDetailScreen extends StatelessWidget {
                       ],
                     ),
                   ],
-                  if (descricao.trim().isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Descrição',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Descrição',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      descricao,
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 14,
-                        height: 1.5,
-                      ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    descricao.trim().isEmpty
+                        ? 'Sem descrição disponível para este produto.'
+                        : descricao,
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 14,
+                      height: 1.5,
+                      fontStyle: descricao.trim().isEmpty
+                          ? FontStyle.italic
+                          : FontStyle.normal,
                     ),
-                  ],
-                  const SizedBox(height: 24),
+                  ),
+                  const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -489,7 +540,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: () => _abrirDuvidasPergunte(context),
                     icon: const Icon(Icons.help_outline, size: 18),
@@ -522,6 +573,73 @@ class CatalogProductDetailScreen extends StatelessWidget {
         politicaFrete: politicaFrete,
         perguntaCtrl: perguntaCtrl,
         lojaId: lojaId,
+      ),
+    );
+  }
+}
+
+class _CatalogFullscreenGallery extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+  final String heroPrefix;
+
+  const _CatalogFullscreenGallery({
+    required this.images,
+    required this.initialIndex,
+    required this.heroPrefix,
+  });
+
+  @override
+  State<_CatalogFullscreenGallery> createState() =>
+      _CatalogFullscreenGalleryState();
+}
+
+class _CatalogFullscreenGalleryState extends State<_CatalogFullscreenGallery> {
+  late final PageController _pageController;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex.clamp(0, widget.images.length - 1);
+    _pageController = PageController(initialPage: _index);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: Text('${_index + 1}/${widget.images.length}'),
+      ),
+      body: PageView.builder(
+        controller: _pageController,
+        itemCount: widget.images.length,
+        onPageChanged: (i) => setState(() => _index = i),
+        itemBuilder: (_, i) {
+          return InteractiveViewer(
+            minScale: 1,
+            maxScale: 4,
+            child: Center(
+              child: Hero(
+                tag: 'catalog_detail_img_${widget.heroPrefix}_$i',
+                child: Image(
+                  image: mpImageProvider(widget.images[i]),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

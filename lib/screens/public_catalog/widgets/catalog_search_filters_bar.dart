@@ -489,72 +489,61 @@ class CatalogSortFiltersSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasFilterAtivo = apenasEmEstoque || precoMin != null || precoMax != null;
+    final isSortPadrao = ordenacaoProdutos == 'nome';
+    final hasAlgoAtivo = hasFilterAtivo || !isSortPadrao;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _SortChip(
-                  value: 'nome',
-                  label: 'Nome',
-                  selected: ordenacaoProdutos == 'nome',
-                  primaryColor: primaryColor,
-                  cardColor: cardColor,
-                  textColor: textColor,
-                  onTap: () => onSortChanged('nome'),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _showFilterMenu(context),
+                icon: Icon(
+                  Icons.tune,
+                  size: 18,
+                  color: hasAlgoAtivo ? Colors.white : textColor,
                 ),
-                const SizedBox(width: 8),
-                _SortChip(
-                  value: 'novidade',
-                  label: 'Novidade',
-                  selected: ordenacaoProdutos == 'novidade',
-                  primaryColor: primaryColor,
-                  cardColor: cardColor,
-                  textColor: textColor,
-                  onTap: () => onSortChanged('novidade'),
+                label: Text(
+                  hasAlgoAtivo ? 'Filtro ativo' : 'Filtro',
+                  style: TextStyle(
+                    color: hasAlgoAtivo ? Colors.white : textColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-                const SizedBox(width: 8),
-                _SortChip(
-                  value: 'preco_asc',
-                  label: 'Menor pre�o',
-                  selected: ordenacaoProdutos == 'preco_asc',
-                  primaryColor: primaryColor,
-                  cardColor: cardColor,
-                  textColor: textColor,
-                  onTap: () => onSortChanged('preco_asc'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: hasAlgoAtivo ? primaryColor : cardColor,
+                  side: BorderSide(
+                    color: hasAlgoAtivo
+                        ? primaryColor
+                        : textColor.withValues(alpha: 0.12),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                 ),
-                const SizedBox(width: 8),
-                _SortChip(
-                  value: 'preco_desc',
-                  label: 'Maior pre�o',
-                  selected: ordenacaoProdutos == 'preco_desc',
-                  primaryColor: primaryColor,
-                  cardColor: cardColor,
-                  textColor: textColor,
-                  onTap: () => onSortChanged('preco_desc'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _labelResumoSelecionado(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: textColor.withValues(alpha: 0.72),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-                const SizedBox(width: 8),
-                _FilterEmEstoqueChip(
-                  selected: apenasEmEstoque,
-                  primaryColor: primaryColor,
-                  cardColor: cardColor,
-                  textColor: textColor,
-                  onTap: onFilterEmEstoqueToggled,
-                ),
-                const SizedBox(width: 8),
-                _FilterPrecoChip(
-                  ativo: precoMin != null || precoMax != null,
-                  primaryColor: primaryColor,
-                  cardColor: cardColor,
-                  textColor: textColor,
-                  onTap: onFilterPrecoTap,
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
           if (totalPaginas > 1 && kIsWeb) ...[
             const SizedBox(height: 8),
@@ -574,148 +563,205 @@ class CatalogSortFiltersSection extends StatelessWidget {
       ),
     );
   }
-}
 
-class _SortChip extends StatelessWidget {
-  final String value;
-  final String label;
-  final bool selected;
-  final Color primaryColor;
-  final Color cardColor;
-  final Color textColor;
-  final VoidCallback onTap;
+  String _labelResumoSelecionado() {
+    final sortLabel = switch (ordenacaoProdutos) {
+      'novidade' => 'Novidade',
+      'preco_asc' => 'Menor preço',
+      'preco_desc' => 'Maior preço',
+      _ => 'Nome',
+    };
+    final parts = <String>['Ordenar: $sortLabel'];
+    if (apenasEmEstoque) parts.add('Em estoque');
+    if (precoMin != null || precoMax != null) {
+      parts.add('Preço');
+    }
+    return parts.join(' • ');
+  }
 
-  const _SortChip({
-    required this.value,
-    required this.label,
-    required this.selected,
-    required this.primaryColor,
-    required this.cardColor,
-    required this.textColor,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? primaryColor : cardColor,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: selected ? Colors.white : textColor,
-              fontSize: 13,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+  Future<void> _showFilterMenu(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: false,
+      backgroundColor: cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: textColor.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Filtro',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _FilterActionTile(
+                  label: 'Nome',
+                  selected: ordenacaoProdutos == 'nome',
+                  textColor: textColor,
+                  primaryColor: primaryColor,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    onSortChanged('nome');
+                  },
+                ),
+                _FilterActionTile(
+                  label: 'Novidade',
+                  selected: ordenacaoProdutos == 'novidade',
+                  textColor: textColor,
+                  primaryColor: primaryColor,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    onSortChanged('novidade');
+                  },
+                ),
+                _FilterActionTile(
+                  label: 'Menor preço',
+                  selected: ordenacaoProdutos == 'preco_asc',
+                  textColor: textColor,
+                  primaryColor: primaryColor,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    onSortChanged('preco_asc');
+                  },
+                ),
+                _FilterActionTile(
+                  label: 'Maior preço',
+                  selected: ordenacaoProdutos == 'preco_desc',
+                  textColor: textColor,
+                  primaryColor: primaryColor,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    onSortChanged('preco_desc');
+                  },
+                ),
+                const SizedBox(height: 6),
+                _FilterSwitchTile(
+                  label: 'Apenas em estoque',
+                  value: apenasEmEstoque,
+                  textColor: textColor,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    onFilterEmEstoqueToggled();
+                  },
+                ),
+                _FilterActionTile(
+                  label: (precoMin != null || precoMax != null)
+                      ? 'Faixa de preço (ativo)'
+                      : 'Faixa de preço',
+                  selected: precoMin != null || precoMax != null,
+                  textColor: textColor,
+                  primaryColor: primaryColor,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    onFilterPrecoTap();
+                  },
+                ),
+              ],
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-class _FilterEmEstoqueChip extends StatelessWidget {
+class _FilterActionTile extends StatelessWidget {
+  final String label;
   final bool selected;
-  final Color primaryColor;
-  final Color cardColor;
   final Color textColor;
+  final Color primaryColor;
   final VoidCallback onTap;
 
-  const _FilterEmEstoqueChip({
+  const _FilterActionTile({
+    required this.label,
     required this.selected,
-    required this.primaryColor,
-    required this.cardColor,
     required this.textColor,
+    required this.primaryColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: selected ? primaryColor : cardColor,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                selected ? Icons.check_circle : Icons.inventory_2_outlined,
-                size: 16,
-                color: selected ? Colors.white : textColor,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Em estoque',
-                style: TextStyle(
-                  color: selected ? Colors.white : textColor,
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+    return ListTile(
+      dense: true,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      tileColor: selected ? primaryColor.withValues(alpha: 0.12) : null,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+      title: Text(
+        label,
+        style: TextStyle(
+          color: selected ? primaryColor : textColor,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          fontSize: 14,
         ),
       ),
+      trailing: selected
+          ? Icon(Icons.check_circle, color: primaryColor, size: 18)
+          : null,
+      onTap: onTap,
     );
   }
 }
 
-class _FilterPrecoChip extends StatelessWidget {
-  final bool ativo;
-  final Color primaryColor;
-  final Color cardColor;
+class _FilterSwitchTile extends StatelessWidget {
+  final String label;
+  final bool value;
   final Color textColor;
   final VoidCallback onTap;
 
-  const _FilterPrecoChip({
-    required this.ativo,
-    required this.primaryColor,
-    required this.cardColor,
+  const _FilterSwitchTile({
+    required this.label,
+    required this.value,
     required this.textColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: ativo ? primaryColor : cardColor,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.tune, size: 16, color: ativo ? Colors.white : textColor),
-              const SizedBox(width: 6),
-              Text(
-                'Pre�o${ativo ? ' ?' : ''}',
-                style: TextStyle(
-                  color: ativo ? Colors.white : textColor,
-                  fontSize: 13,
-                  fontWeight: ativo ? FontWeight.w600 : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+      title: Text(
+        label,
+        style: TextStyle(
+          color: textColor,
+          fontWeight: value ? FontWeight.w700 : FontWeight.w500,
+          fontSize: 14,
         ),
       ),
+      trailing: Icon(
+        value ? Icons.check_box : Icons.check_box_outline_blank,
+        size: 20,
+        color: value ? Colors.green : textColor.withValues(alpha: 0.6),
+      ),
+      onTap: onTap,
     );
   }
 }
 
-/// Linha de pagina��o (Anterior | P�gina X de Y | Pr�xima).
+/// Linha de paginação (Anterior | Página X de Y | Próxima).
 class CatalogPaginacaoRow extends StatelessWidget {
   final int paginaAtual;
   final int totalPaginas;
