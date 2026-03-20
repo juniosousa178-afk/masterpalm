@@ -31,7 +31,6 @@ import '../services/firestore_critical_listener_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/clientes_firestore_service.dart';
 import '../services/sync_queue_service.dart';
-import '../services/store_resolver_facade.dart';
 import '../utils/responsive.dart';
 import '../widgets/empty_state_cta.dart';
 import 'nova_venda_modal.dart';
@@ -78,6 +77,8 @@ class _VendasScreenState extends State<VendasScreen>
   String ordenacaoVendas = 'data_desc'; // data_desc | data_asc | cliente_asc | cliente_desc
   bool _carregando = true;
   bool _erroResolucaoLoja = false;
+  bool _erroHiveCacheLocal = false;
+  String? _erroHiveCacheDetalhe;
   /// FASE 3: true quando sync em background falhou (lista local permanece; usuário vê aviso)
   bool _syncFalhou = false;
   bool _importandoVendas = false;
@@ -138,13 +139,37 @@ class _VendasScreenState extends State<VendasScreen>
 
   void _onReturnToScreen() {
     if (!mounted) return;
-    if (_erroResolucaoLoja) {
+    if (_erroResolucaoLoja || _erroHiveCacheLocal) {
       if (kDebugMode) logD('[STORE-RETURN] Vendas: em erro, reexecutando _init');
       setState(() {
         _erroResolucaoLoja = false;
+        _erroHiveCacheLocal = false;
+        _erroHiveCacheDetalhe = null;
         _carregando = true;
       });
       _init();
+    }
+  }
+
+  String _shortStack(StackTrace st) {
+    final lines = st.toString().trim().split('\n');
+    return lines.take(3).join(' | ');
+  }
+
+  Future<void> _repairHiveBoxOnWeb(String boxName, String origin) async {
+    if (!kIsWeb) return;
+    logW('[HIVE_REPAIR] origem=$origin tentando repair (box=$boxName) uri=${Uri.base}');
+    try {
+      if (Hive.isBoxOpen(boxName)) {
+        final opened = Hive.box(boxName);
+        logD('[HIVE_REPAIR] fechando box aberta (box=$boxName)');
+        await opened.close();
+      }
+      await Hive.deleteBoxFromDisk(boxName);
+      logD('[HIVE_REPAIR] deleteBoxFromDisk ok (box=$boxName)');
+    } catch (e, st) {
+      logE('[HIVE_REPAIR] falha ao reparar box (box=$boxName) type=${e.runtimeType}', error: e, st: st);
+      logD('[TRACE_ERRO] [HIVE_REPAIR] $origin box=$boxName stack=${_shortStack(st)}');
     }
   }
 
@@ -198,15 +223,6 @@ class _VendasScreenState extends State<VendasScreen>
     }
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
-      logD('[STORE_RESOLVE] origem=Vendas._init fallback final antes StoreResolverFacade.resolveForAdminApp');
-      final facadeId = (await StoreResolverFacade.resolveForAdminApp())?.trim();
-      logD('[STORE_RESOLVE] origem=Vendas._init fallback final depois StoreResolverFacade.resolveForAdminApp valor=${facadeId ?? "null"}');
-      if (facadeId != null && facadeId.isNotEmpty) {
-        lojaId = facadeId;
-      }
-    }
-    if (!mounted) return;
-    if (lojaId == null || lojaId!.trim().isEmpty) {
       // Web: Auth pode ter restaurado após o timeout; dar uma última chance
       if (kIsWeb && FirebaseAuth.instance.currentUser == null) {
         logD('[STORE-SCREEN-VENDAS] Web: aguardando Auth (3s) antes de exibir erro');
@@ -231,6 +247,8 @@ class _VendasScreenState extends State<VendasScreen>
           setState(() {
             _carregando = false;
             _erroResolucaoLoja = true;
+            _erroHiveCacheLocal = false;
+            _erroHiveCacheDetalhe = null;
           });
         }
         return;
@@ -238,39 +256,142 @@ class _VendasScreenState extends State<VendasScreen>
     }
     if (kDebugMode) logD('[STORE-RESOLVE] Vendas: lojaId=$lojaId');
 
+    // -----------------------------------------------------------------------
+    // HIVE: abre boxes em blocos separados (para identificar exatamente qual
+    // box está falhando no WEB e reparar somente vendas/clientes).
+    // -----------------------------------------------------------------------
     try {
+      logD('[HIVE_BOX] origem=Vendas.sessao antes abrir box=sessao uri=${Uri.base}');
       final sessao = await Hive.openBox('sessao');
+      logD('[HIVE_BOX] origem=Vendas.sessao depois abrir box=sessao');
       _tipoUsuario = sessao.get('tipo_usuario', defaultValue: 'vendedor');
-
-      final vendasBoxName = HiveBoxNames.vendas(lojaId!);
-      final clientesBoxName = HiveBoxNames.clientes(lojaId!);
-      final produtosBoxName = HiveBoxNames.produtos(lojaId!);
-
-      vendasBox = await Hive.openBox<Venda>(vendasBoxName);
-      clientesBox = await Hive.openBox<Cliente>(clientesBoxName);
-      produtosBox = await Hive.openBox<Produto>(produtosBoxName);
-
-      if (kDebugMode) {
-        logD('📌 [VENDAS_READ] lojaId=$lojaId | vendasLocais=${vendasBox.length} | clientesLocais=${clientesBox.length}');
-      }
-
-      // Mostrar tela imediatamente com dados locais (Hive); telas dependentes só "prontas" com lojaId válido
-      if (mounted) {
-        setState(() => _carregando = false);
-      }
-
-      // Sincronização em background (não bloqueia a abertura da tela)
-      _syncEmBackground();
-      _verificarSeTemVendasParaImportar();
     } catch (e, st) {
-      logE('[ERRO_LOJA] origem=Vendas._init catch ao abrir Hive/estado (type=${e.runtimeType})', error: e, st: st);
+      logE('[HIVE_BOX] origem=Vendas.sessao falha abrir (type=${e.runtimeType})', error: e, st: st);
+      logD('[TRACE_ERRO] [VENDAS] sessao box stack=${_shortStack(st)}');
       if (mounted) {
         setState(() {
           _carregando = false;
-          _erroResolucaoLoja = true;
+          _erroHiveCacheLocal = true;
+          _erroHiveCacheDetalhe = 'sessao';
         });
       }
+      return;
     }
+
+    final vendasBoxName = HiveBoxNames.vendas(lojaId!);
+    final clientesBoxName = HiveBoxNames.clientes(lojaId!);
+    final produtosBoxName = HiveBoxNames.produtos(lojaId!);
+
+    Object? vendasBoxError;
+    Object? clientesBoxError;
+
+    logD(
+      '[HIVE_BOX] adapters registradas Cliente(typeId=0)=${Hive.isAdapterRegistered(0)} Venda(typeId=1)=${Hive.isAdapterRegistered(1)}',
+    );
+
+    // ---- VENDAS box
+    try {
+      logD('[HIVE_VENDAS] antes abrir box=$vendasBoxName');
+      vendasBox = await Hive.openBox<Venda>(vendasBoxName);
+      logD('[HIVE_VENDAS] depois abrir box=$vendasBoxName length=${vendasBox.length}');
+    } catch (e, st) {
+      vendasBoxError = e;
+      logE('[HIVE_BOX] origem=Vendas.vendasBox falha ao abrir (box=$vendasBoxName type=${e.runtimeType})',
+          error: e, st: st);
+      logD('[TRACE_ERRO] [HIVE_VENDAS] stack=${_shortStack(st)}');
+
+      // Repair SOMENTE no WEB para esta box
+      await _repairHiveBoxOnWeb(vendasBoxName, 'Vendas.vendasBox');
+
+      // Re-tentativa 1x após repair
+      try {
+        logD('[HIVE_VENDAS] retry abrir box=$vendasBoxName após repair');
+        vendasBox = await Hive.openBox<Venda>(vendasBoxName);
+        logD('[HIVE_VENDAS] retry ok box=$vendasBoxName length=${vendasBox.length}');
+        vendasBoxError = null;
+      } catch (e2, st2) {
+        vendasBoxError = e2;
+        logE('[HIVE_BOX] retry falhou (box=$vendasBoxName type=${e2.runtimeType})', error: e2, st: st2);
+        logD('[TRACE_ERRO] [HIVE_VENDAS] retry stack=${_shortStack(st2)}');
+      }
+    }
+
+    // ---- CLIENTES box
+    try {
+      logD('[HIVE_CLIENTES] antes abrir box=$clientesBoxName');
+      clientesBox = await Hive.openBox<Cliente>(clientesBoxName);
+      logD('[HIVE_CLIENTES] depois abrir box=$clientesBoxName length=${clientesBox.length}');
+    } catch (e, st) {
+      clientesBoxError = e;
+      logE('[HIVE_BOX] origem=Vendas.clientesBox falha ao abrir (box=$clientesBoxName type=${e.runtimeType})',
+          error: e, st: st);
+      logD('[TRACE_ERRO] [HIVE_CLIENTES] stack=${_shortStack(st)}');
+
+      // Repair SOMENTE no WEB para esta box
+      await _repairHiveBoxOnWeb(clientesBoxName, 'Vendas.clientesBox');
+
+      // Re-tentativa 1x após repair
+      try {
+        logD('[HIVE_CLIENTES] retry abrir box=$clientesBoxName após repair');
+        clientesBox = await Hive.openBox<Cliente>(clientesBoxName);
+        logD('[HIVE_CLIENTES] retry ok box=$clientesBoxName length=${clientesBox.length}');
+        clientesBoxError = null;
+      } catch (e2, st2) {
+        clientesBoxError = e2;
+        logE('[HIVE_BOX] retry falhou (box=$clientesBoxName type=${e2.runtimeType})', error: e2, st: st2);
+        logD('[TRACE_ERRO] [HIVE_CLIENTES] retry stack=${_shortStack(st2)}');
+      }
+    }
+
+    // ---- PRODUTOS box (NÃO REPARAR aqui, somente abrir)
+    try {
+      logD('[HIVE_BOX] origem=Vendas.produtosBox antes abrir box=$produtosBoxName');
+      produtosBox = await Hive.openBox<Produto>(produtosBoxName);
+      logD('[HIVE_BOX] origem=Vendas.produtosBox depois abrir box=$produtosBoxName length=${produtosBox.length}');
+    } catch (e, st) {
+      logE('[HIVE_BOX] origem=Vendas.produtosBox falha ao abrir (box=$produtosBoxName type=${e.runtimeType})', error: e, st: st);
+      logD('[TRACE_ERRO] [VENDAS] produtosBox stack=${_shortStack(st)}');
+      // Falha de produtos também é Hive/cache local; mas não especificamos repair aqui.
+      if (mounted) {
+        setState(() {
+          _carregando = false;
+          _erroHiveCacheLocal = true;
+          _erroHiveCacheDetalhe = 'produtos_$lojaId';
+        });
+      }
+      return;
+    }
+
+    // Se qualquer um dos boxes críticos (vendas/clientes) ainda falhou, aborta.
+    if (vendasBoxError != null || clientesBoxError != null) {
+      logW('[HIVE_BOX] Vendas: falha persistente ao abrir boxes críticas. vendasError=${vendasBoxError != null} clientesError=${clientesBoxError != null}');
+      if (mounted) {
+        setState(() {
+          _carregando = false;
+          _erroHiveCacheLocal = true;
+          _erroResolucaoLoja = false;
+          _erroHiveCacheDetalhe = '${vendasBoxName}${clientesBoxError != null ? ' + ' + clientesBoxName : ''}';
+        });
+      }
+      return;
+    }
+
+    if (kDebugMode) {
+      logD('📌 [VENDAS_READ] lojaId=$lojaId | vendasLocais=${vendasBox.length} | clientesLocais=${clientesBox.length}');
+    }
+
+    // Mostrar tela imediatamente com dados locais (Hive); telas dependentes só "prontas"
+    if (mounted) {
+      setState(() {
+        _carregando = false;
+        _erroHiveCacheLocal = false;
+        _erroHiveCacheDetalhe = null;
+      });
+    }
+
+    // Sincronização em background (não bloqueia a abertura da tela)
+    _syncEmBackground();
+    _verificarSeTemVendasParaImportar();
   }
 
   Future<void> _verificarSeTemVendasParaImportar() async {
@@ -545,6 +666,25 @@ class _VendasScreenState extends State<VendasScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_erroHiveCacheLocal) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Vendas')),
+        backgroundColor: _backgroundColor,
+        body: _VendasHiveCacheErroLojaBody(
+          detalhe: _erroHiveCacheDetalhe ?? 'vendas/clientes',
+          onRetry: () {
+            if (kDebugMode) logD('[STORE-LIFECYCLE] Vendas: retry Hive cache');
+            setState(() {
+              _erroHiveCacheLocal = false;
+              _erroHiveCacheDetalhe = null;
+              _erroResolucaoLoja = false;
+              _carregando = true;
+            });
+            _init();
+          },
+        ),
+      );
+    }
     if (_erroResolucaoLoja) {
       return Scaffold(
         appBar: AppBar(title: const Text('Vendas')),
@@ -554,6 +694,8 @@ class _VendasScreenState extends State<VendasScreen>
             if (kDebugMode) logD('[STORE-LIFECYCLE] Vendas: clique em Tentar novamente');
             setState(() {
               _erroResolucaoLoja = false;
+              _erroHiveCacheLocal = false;
+              _erroHiveCacheDetalhe = null;
               _carregando = true;
             });
             _init();
@@ -2215,6 +2357,57 @@ class _VendasErroLojaBody extends StatelessWidget {
             Text(
               'Verifique sua conexão e tente novamente.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Tentar novamente'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Widget apenas visual: erro de cache local Hive (vendas/clientes) no navegador.
+class _VendasHiveCacheErroLojaBody extends StatelessWidget {
+  final String detalhe;
+  final VoidCallback onRetry;
+
+  const _VendasHiveCacheErroLojaBody({
+    required this.detalhe,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Falha ao carregar dados locais (cache Hive)',
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Problema em: $detalhe. No WEB, o cache pode estar corrompido. Clique em "Tentar novamente" para reparar.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: Colors.grey[600]),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
