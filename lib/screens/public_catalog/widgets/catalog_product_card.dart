@@ -468,8 +468,11 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     // precisamos garantir espaço vertical real no conteúdo, senão o rodapé fica
     // espremido/cortado em cards menores (360/390) e pode aparentar sobreposição.
     if (showComprarDiretoFooter) {
-      imageFlex = (imageFlex - 2).clamp(1, 999);
-      contentFlex = contentFlex + 2;
+      // Shift maior para garantir espaço fixo para os 2 CTAs (ícone + "Comprar")
+      // em cards mais curtos (ex.: 360px).
+      const int flexShift = 4;
+      imageFlex = (imageFlex - flexShift).clamp(1, 999);
+      contentFlex = contentFlex + flexShift;
     }
     final titleSizeBase = widget.minimalLayout
         ? (isLargeCard ? 14.0 : (isSmallCard ? 12.0 : 13.0))
@@ -495,9 +498,12 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final actionHeight = is360
         ? (actionHeightBase - 1.0)
         : actionHeightBase;
-    final contentVPad = widget.compact
+    double contentVPad = widget.compact
         ? (is360 ? 5.0 : 6.0)
         : (is360 ? 7.0 : 8.0);
+    if (showComprarDiretoFooter) {
+      contentVPad = (contentVPad - 1.0).clamp(0.0, 999.0);
+    }
     final spacingAfterTitle = widget.compact ? (is360 ? 1.0 : 2.0) : 4.0;
 
     return MouseRegion(
@@ -750,7 +756,9 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                       ),
                     ),
                   ),
-                    SizedBox(height: widget.compact ? 3 : 5),
+                    SizedBox(
+                      height: widget.compact ? 3 : (showComprarDiretoFooter ? 4 : 5),
+                    ),
                     Row(
                       children: [
                         if (!widget.minimalLayout)
@@ -842,7 +850,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                     ),
                     if (widget.onAbrirCarrinho != null && !widget.minimalLayout) ...[
                       SizedBox(
-                        height: widget.compact ? 3 : 4,
+                        height: widget.compact ? 3 : 3,
                       ),
                       SizedBox(
                         width: double.infinity,

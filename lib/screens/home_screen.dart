@@ -16,7 +16,6 @@ import '../utils/responsive.dart';
 import '../screens/admin_login.dart';
 import '../screens/relatorio_financeiro_screen.dart';
 import '../screens/relatorios_financeiros_screen.dart';
-import '../screens/public_catalog_screen.dart';
 import '../screens/pre_pedidos_screen.dart';
 import 'loja_config_screen.dart';
 import '../services/license_manager.dart';
@@ -1333,8 +1332,7 @@ class _HomeScreenState extends State<HomeScreen>
         _buildMenuTile(
           'Visualizar Loja',
           Icons.storefront,
-          '/loja',
-          pushWidget: PublicCatalogScreen(lojaId: _lojaSlugPublico),
+          '/loja/$_lojaSlugPublico',
           iconBgColor: _successColor.withValues(alpha:0.1),
           color: _successColor,
           sidebarMode: sidebarMode,

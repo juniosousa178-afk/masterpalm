@@ -2357,6 +2357,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     if (!mounted) return;
 
+    // Web: usa rota nomeada para manter histórico do browser (voltar no iPhone/Chrome).
+    if (kIsWeb) {
+      Navigator.of(context).pushNamed(
+        '/loja_preview',
+        arguments: <String, dynamic>{'lojaId': lojaId},
+      );
+      return;
+    }
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PublicCatalogScreen(

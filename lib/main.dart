@@ -1043,6 +1043,11 @@ class CatalogWebRoot extends StatelessWidget {
         inputDecorationTheme:
             const InputDecorationTheme(border: OutlineInputBorder()),
       ),
+      // Rotas mínimas para fallback (ex.: voltar para Home quando abrir por link).
+      routes: {
+        '/home': (_) => const HomeScreen(),
+        '/login': (_) => const LoginScreen(),
+      },
       home: PublicCatalogScreen(
         lojaId: lojaId,
         vendedorRef: vendedorRef,
@@ -2129,6 +2134,25 @@ class MyApp extends StatelessWidget {
                         initialCartId: cartId?.isNotEmpty == true ? cartId : null,
                         initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null);
                   },
+                );
+              },
+
+              // ✅ ROTA /loja_preview: pré-visualização interna (draft_config/produtos).
+              // Importante no Web: rota nomeada para manter histórico do browser (back funciona no iPhone).
+              '/loja_preview': (ctx) {
+                final rawArgs = ModalRoute.of(ctx)?.settings.arguments;
+                final args = rawArgs is Map ? rawArgs.cast<String, dynamic>() : <String, dynamic>{};
+                final lojaIdArg = args['lojaId']?.toString().trim() ?? '';
+
+                if (lojaIdArg.isEmpty) {
+                  return const ConfigureLojaPlaceholderScreen();
+                }
+                return PublicCatalogScreen(
+                  lojaId: lojaIdArg,
+                  initialCartId: null,
+                  initialPage: null,
+                  initialProdutoId: null,
+                  preview: true,
                 );
               },
             },

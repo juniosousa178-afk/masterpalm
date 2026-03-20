@@ -3947,6 +3947,21 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               ),
                             ),
 
+                            // ✅ Fallback para link direto: se não há histórico confiável,
+                            // permite voltar explicitamente para Home.
+                            if (kIsWeb && !Navigator.of(context).canPop())
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: IconButton(
+                                  icon: const Icon(Icons.home_outlined),
+                                  color: headerIconColor,
+                                  tooltip: 'Voltar para Home',
+                                  onPressed: () {
+                                    Navigator.of(context).pushNamed('/home');
+                                  },
+                                ),
+                              ),
+
                             // BOTÃO PUBLICAR (só no preview, dentro do app)
                             if (widget.preview)
                               Padding(

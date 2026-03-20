@@ -3548,9 +3548,21 @@ String _formatGradeTexto(Produto p) {
                 final nav = Navigator.of(context);
                 final lojaId = await StoreResolverFacade.resolveForAdminApp();
                 if (lojaId == null || !mounted) return;
+                // Web: rota nomeada para manter histórico do browser (back no iPhone/Chrome).
+                if (kIsWeb) {
+                  nav.pushNamed(
+                    '/loja_preview',
+                    arguments: <String, dynamic>{'lojaId': lojaId},
+                  );
+                  return;
+                }
+
                 nav.push(
                   MaterialPageRoute(
-                    builder: (_) => PublicCatalogScreen(lojaId: lojaId, preview: true),
+                    builder: (_) => PublicCatalogScreen(
+                      lojaId: lojaId,
+                      preview: true,
+                    ),
                   ),
                 );
               },
