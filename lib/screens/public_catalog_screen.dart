@@ -206,11 +206,13 @@ List<Map<String, dynamic>> _processDocsToProducts(
         final now = DateTime.now();
         bool promocaoAtiva = true;
         final dataInicio = m['dataInicioPromo'];
-        if (dataInicio is Timestamp && now.isBefore(dataInicio.toDate()))
+        if (dataInicio is Timestamp && now.isBefore(dataInicio.toDate())) {
           promocaoAtiva = false;
+        }
         final dataFim = m['dataFimPromo'];
-        if (dataFim is Timestamp && now.isAfter(dataFim.toDate()))
+        if (dataFim is Timestamp && now.isAfter(dataFim.toDate())) {
           promocaoAtiva = false;
+        }
         if (promocaoAtiva) {
           final percentualPromo = (m['percentualPromo'] is num)
               ? (m['percentualPromo'] as num).toDouble()
@@ -700,10 +702,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (cliente != null && lojaSessao == lid && lid != null) {
       final cid = cliente['clienteId']?.toString();
       final email = cliente['email']?.toString().trim() ?? '';
-      if (mounted) setState(() {
-        _clienteId = cid;
-        _clienteEmail = email;
-      });
+      if (mounted) {
+        setState(() {
+          _clienteId = cid;
+          _clienteEmail = email;
+        });
+      }
       await _loadFavoritos();
       await _loadCarrinho();
     } else if (mounted) {
@@ -1030,13 +1034,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.card_giftcard, color: _successColor, size: 28),
+                  const Icon(Icons.card_giftcard,
+                      color: _successColor, size: 28),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
                       'Indicar amigo',
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -1044,7 +1051,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Quando seu amigo comprar pelo link abaixo, você e ele ganham um cupom de desconto. Seu cupom será ativado quando ele usar o cupom dele na primeira compra.',
-                style: TextStyle(fontSize: 14, color: Colors.black87),
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
               ),
               const SizedBox(height: 16),
               Container(
@@ -2542,8 +2549,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               : colorFromTheme('card', const Color(0xFF020617));
           final textColor = uiColorsMap.isNotEmpty
               ? colorFromUiColors('textPrimary',
-                  colorFromTheme('texto', Colors.white.withOpacity(0.95)))
-              : colorFromTheme('texto', Colors.white.withOpacity(0.95));
+                  colorFromTheme(
+                      'texto', Colors.white.withValues(alpha: 0.95)))
+              : colorFromTheme(
+                  'texto', Colors.white.withValues(alpha: 0.95));
           final btnTextColor = uiColorsMap.isNotEmpty
               ? colorFromUiColors('buttonPrimaryText',
                   colorFromTheme('botaoTexto', Colors.white))
@@ -2631,8 +2640,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   colorFromCheckoutTheme('total', const Color(0xFF22C55E)))
               : colorFromCheckoutTheme('total', const Color(0xFF22C55E));
           final checkoutFieldBorder = uiColorsMap.isNotEmpty
-              ? colorFromUiColors('fieldBorder', Colors.white.withOpacity(0.25))
-              : Colors.white.withOpacity(0.25);
+              ? colorFromUiColors('fieldBorder', Colors.white.withValues(alpha: 0.25))
+              : Colors.white.withValues(alpha: 0.25);
 
           // ===== Cores de nome e preço do produto =====
           final productNameColor = cardTextPrimary;
@@ -3356,7 +3365,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               Icons.subdirectory_arrow_right,
                                               size: 18,
                                               color: primaryColor
-                                                  .withOpacity(0.7)),
+                                                  .withValues(alpha: 0.7)),
                                           title: Text(
                                             sub,
                                             style: TextStyle(
@@ -4767,11 +4776,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               ),
                                               decoration: BoxDecoration(
                                                 color:
-                                                    cardColor.withOpacity(0.4),
+                                                    cardColor.withValues(alpha: 0.4),
                                                 border: Border(
                                                   right: BorderSide(
                                                     color: textColor
-                                                        .withOpacity(0.12),
+                                                        .withValues(alpha: 0.12),
                                                     width: 1,
                                                   ),
                                                 ),
@@ -4793,7 +4802,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             FontWeight.w600,
                                                         letterSpacing: 0.8,
                                                         color: textColor
-                                                            .withOpacity(0.7),
+                                                            .withValues(alpha: 0.7),
                                                       ),
                                                     ),
                                                   ),
@@ -4881,7 +4890,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             bottom: _cart.isEmpty ? 24 : 88,
                             child: Material(
                               elevation: 4,
-                              color: primaryColor.withOpacity(0.9),
+                              color: primaryColor.withValues(alpha: 0.9),
                               borderRadius: BorderRadius.circular(28),
                               child: InkWell(
                                 onTap: () => _catalogScrollController.animateTo(

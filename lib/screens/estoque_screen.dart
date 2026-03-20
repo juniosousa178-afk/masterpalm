@@ -1885,7 +1885,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         estoqueMinimo: p.estoqueMinimo,
         precoPorTamanho: p.precoPorTamanho != null ? Map.from(p.precoPorTamanho!) : null,
         tipoProduto: p.tipoProduto,
-        itensCombo: p.itensCombo != null ? p.itensCombo!.map((e) => Map<String, dynamic>.from(e)).toList() : null,
+        itensCombo: p.itensCombo?.map((e) => Map<String, dynamic>.from(e)).toList(),
       );
       _box.add(copia);
       if (mounted) setState(() {});
@@ -2454,10 +2454,12 @@ Future<void> _importarProdutos() async {
 
       if (results['success']) {
         await CatalogPublishService.limparCatalogoPrecisaAtualizar();
-        if (mounted) setState(() {
-          _publicando = false;
-          _catalogoPrecisaAtualizar = false;
-        });
+        if (mounted) {
+          setState(() {
+            _publicando = false;
+            _catalogoPrecisaAtualizar = false;
+          });
+        }
         _showSnackBar(
           'Publicação completa! Produtos: ${results['products']}',
         );
@@ -2609,7 +2611,9 @@ Future<void> _unificarDuplicados() async {
     final msg = unificados > 0
         ? '$unificados grupo(s) unificado(s) • $deletados duplicata(s) removida(s)'
         : 'Nenhum duplicado encontrado';
-    _showSnackBar(falhasFirestore > 0 ? '$msg (${falhasFirestore} falha(s) ao sincronizar com a nuvem)' : msg);
+    _showSnackBar(
+      falhasFirestore > 0 ? '$msg ($falhasFirestore falha(s) ao sincronizar com a nuvem)' : msg,
+    );
     setState(() {});
   } catch (e) {
     if (!mounted) return;
@@ -4199,7 +4203,7 @@ String _formatGradeTexto(Produto p) {
                 color: _primaryColor.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.inventory_2_outlined, size: 56, color: _primaryColor),
+              child: const Icon(Icons.inventory_2_outlined, size: 56, color: _primaryColor),
             ),
             const SizedBox(height: 24),
             Text(

@@ -127,7 +127,7 @@ class _CatalogPromoMarqueeLineState extends State<_CatalogPromoMarqueeLine>
   @override
   void initState() {
     super.initState();
-    final gap = 56.0;
+    const gap = 56.0;
     final segment = widget.textWidth + gap;
     _ctrl = AnimationController(
       vsync: this,
@@ -158,9 +158,9 @@ class _CatalogPromoMarqueeLineState extends State<_CatalogPromoMarqueeLine>
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(widget.text, style: widget.style),
-                SizedBox(width: gap),
+                const SizedBox(width: gap),
                 Text(widget.text, style: widget.style),
-                SizedBox(width: gap),
+                const SizedBox(width: gap),
                 Text(widget.text, style: widget.style),
               ],
             ),

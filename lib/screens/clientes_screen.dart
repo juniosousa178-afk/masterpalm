@@ -344,7 +344,8 @@ class _ClientesScreenState extends State<ClientesScreen>
           _carregando = false;
           _erroResolucaoLoja = false;
           _erroHiveCacheLocal = true;
-          _erroHiveCacheDetalhe = '${clientesBoxName}${vendasBoxError != null ? ' + ' + vendasBoxName : ''}';
+          _erroHiveCacheDetalhe =
+              '$clientesBoxName${vendasBoxError != null ? ' + $vendasBoxName' : ''}';
         });
       }
       return;
