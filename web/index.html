@@ -17,6 +17,18 @@
   <base href="$FLUTTER_BASE_HREF">
   <!-- Em /loja/xxx os assets devem vir da raiz (evita ServiceWorker/JS com MIME text/html) -->
   <script>(function(){if(location.pathname.indexOf('/loja/')===0){var d=document,b=d.querySelector('base');if(b)b.href='/';}})();</script>
+  <script>
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          for (var i = 0; i < regs.length; i++) {
+            regs[i].update();
+          }
+        });
+      });
+    })();
+  </script>
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">

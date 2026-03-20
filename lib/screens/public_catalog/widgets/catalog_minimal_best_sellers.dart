@@ -49,6 +49,13 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
+  String _parceladoTexto(Map<String, dynamic> p, double precoBase) {
+    final divideSemJuros = safeBool(p['divideSemJuros']);
+    final n = safeInt(p['maxParcelasSemJuros'], 12).clamp(1, 24);
+    if (divideSemJuros) return '${n}x R\$ ${_fmt2(precoBase / n)}';
+    return '${n}x R\$ ${_fmt2(precoBase / n)}';
+  }
+
   void _openDetail(BuildContext context, Map<String, dynamic> p) {
     onProductViewed?.call(safeStr(p['id']));
     Navigator.of(context).push(
@@ -136,6 +143,15 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                         (safeDouble(p['priceMin']) - safeDouble(p['priceMax']))
                                 .abs() >
                             0.001;
+                    final precoBase = temFaixa
+                        ? safeDouble(p['priceMin'])
+                        : preco;
+                    final pixDesconto = safeDouble(p['percentualDescontoPix']);
+                    final hasPix = pixDesconto > 0;
+                    final pixTexto = hasPix
+                        ? 'PIX R\$ ${_fmt2(precoBase * (1 - pixDesconto / 100))}'
+                        : '';
+                    final parceladoTexto = _parceladoTexto(p, precoBase);
                     return Material(
                       color: Colors.transparent,
                       child: InkWell(
@@ -208,6 +224,43 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                                         fontWeight: FontWeight.w600,
                                         height: 1.1,
                                       ),
+                                    ),
+                                    SizedBox(height: narrow ? 2 : 3),
+                                    Row(
+                                      children: [
+                                        if (hasPix) ...[
+                                          Expanded(
+                                            child: Text(
+                                              pixTexto,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: Colors.green[700],
+                                                fontSize: narrow ? 9.2 : 9.6,
+                                                fontWeight: FontWeight.w700,
+                                                height: 1.1,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                        ],
+                                        Expanded(
+                                          child: Text(
+                                            parceladoTexto,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: hasPix
+                                                ? TextAlign.right
+                                                : TextAlign.left,
+                                            style: TextStyle(
+                                              color: textColor.withValues(alpha: 0.62),
+                                              fontSize: narrow ? 8.8 : 9.2,
+                                              fontWeight: FontWeight.w500,
+                                              height: 1.1,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),

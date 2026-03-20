@@ -179,6 +179,20 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     return '${prefix}ou em até ${n}x de R\$ ${_fmt2(p / n)}';
   }
 
+  String _buildParcelamentoTextoCompacto() {
+    final p = _precoParaParcelamento;
+    final n = widget.maxParcelas.clamp(1, 24);
+    if (widget.divideSemJuros) {
+      return '${n}x R\$ ${_fmt2(p / n)}';
+    }
+    final juros = widget.jurosParcelamento;
+    if (juros != null && juros > 0) {
+      final parcela = _parcelaComJuros(p, juros, n);
+      return '${n}x R\$ ${_fmt2(parcela)}';
+    }
+    return '${n}x R\$ ${_fmt2(p / n)}';
+  }
+
   Widget _buildBadge(String text, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -511,12 +525,23 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final pixFontSize = widget.minimalLayout
         ? 10.5
         : (widget.compact ? 8.0 : 9.0);
-    final afterPriceGap = widget.compact ? 1.0 : 2.0;
+    final afterPriceGap = widget.minimalLayout
+        ? (widget.compact ? 1.0 : 2.0)
+        : 1.0;
     final titleLineHeight = 1.2;
     final titleBlockHeight =
         (titleSize * titleLineHeight * 2) + (widget.compact ? 1.0 : 2.0);
-    final parcelamentoTexto = _buildParcelamentoTexto();
-    final hasParcelamento = parcelamentoTexto.trim().isNotEmpty;
+    final parcelamentoTexto = (widget.minimalLayout
+            ? _buildParcelamentoTexto()
+            : _buildParcelamentoTextoCompacto())
+        .trim();
+    final hasParcelamento = parcelamentoTexto.isNotEmpty;
+    final hasPix = widget.percentualDescontoPix > 0;
+    final pixTexto = hasPix
+        ? 'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off'
+        : '';
+    final hasLinhaSecundaria = hasPix || hasParcelamento;
+    final secondaryRowHeight = widget.compact ? 16.0 : 18.0;
 
     return MouseRegion(
       onEnter: (_) {
@@ -757,46 +782,91 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             SizedBox(height: afterPriceGap),
-                            Row(
-                              children: [
-                                if (widget.percentualDescontoPix > 0) ...[
-                                  Expanded(
-                                    flex: hasParcelamento ? 11 : 20,
-                                    child: Text(
-                                      'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off',
-                                      style: TextStyle(
-                                        color: Colors.green[700],
-                                        fontSize: pixFontSize,
-                                        fontWeight: FontWeight.w700,
-                                        height: 1.1,
+                            if (hasLinhaSecundaria)
+                              (widget.minimalLayout
+                                  ? SizedBox(
+                                      height: secondaryRowHeight,
+                                      child: Row(
+                                        children: [
+                                          if (hasPix) ...[
+                                            Expanded(
+                                              flex: hasParcelamento ? 11 : 20,
+                                              child: Text(
+                                                pixTexto,
+                                                style: TextStyle(
+                                                  color: Colors.green[700],
+                                                  fontSize: pixFontSize,
+                                                  fontWeight: FontWeight.w700,
+                                                  height: 1.1,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (hasParcelamento)
+                                              SizedBox(width: widget.compact ? 4 : 6),
+                                          ],
+                                          if (hasParcelamento)
+                                            Expanded(
+                                              flex: hasPix ? 9 : 20,
+                                              child: Text(
+                                                parcelamentoTexto,
+                                                textAlign: hasPix
+                                                    ? TextAlign.right
+                                                    : TextAlign.left,
+                                                style: TextStyle(
+                                                  color: Colors.grey[600],
+                                                  fontSize: parcelFontSize,
+                                                  fontWeight: FontWeight.w500,
+                                                  height: 1.1,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                        ],
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  if (hasParcelamento)
-                                    SizedBox(width: widget.compact ? 4 : 6),
-                                ],
-                                if (hasParcelamento)
-                                  Expanded(
-                                    flex: widget.percentualDescontoPix > 0 ? 9 : 20,
-                                    child: Text(
-                                      parcelamentoTexto,
-                                      textAlign: widget.percentualDescontoPix > 0
-                                          ? TextAlign.right
-                                          : TextAlign.left,
-                                      style: TextStyle(
-                                        color: Colors.grey[600],
-                                        fontSize: parcelFontSize,
-                                        fontWeight: FontWeight.w500,
-                                        height: 1.1,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                              ],
-                            ),
+                                    )
+                                  : Row(
+                                      children: [
+                                        if (hasPix) ...[
+                                          Expanded(
+                                            flex: hasParcelamento ? 11 : 20,
+                                            child: Text(
+                                              pixTexto,
+                                              style: TextStyle(
+                                                color: Colors.green[700],
+                                                fontSize: pixFontSize,
+                                                fontWeight: FontWeight.w700,
+                                                height: 1.1,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (hasParcelamento)
+                                            SizedBox(width: widget.compact ? 4 : 6),
+                                        ],
+                                        if (hasParcelamento)
+                                          Expanded(
+                                            flex: hasPix ? 9 : 20,
+                                            child: Text(
+                                              parcelamentoTexto,
+                                              textAlign: hasPix
+                                                  ? TextAlign.right
+                                                  : TextAlign.left,
+                                              style: TextStyle(
+                                                color: Colors.grey[600],
+                                                fontSize: parcelFontSize,
+                                                fontWeight: FontWeight.w500,
+                                                height: 1.1,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                      ],
+                                    )),
                         ],
                       ),
                     ),

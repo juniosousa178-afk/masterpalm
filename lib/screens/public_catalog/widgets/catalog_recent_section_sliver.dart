@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 
 import '../../../utils/safe_parse.dart';
 import '../catalog_product_card_size.dart';
-import 'catalog_minimal_best_sellers.dart';
 import 'product_card.dart';
 
 /// Retorna o Sliver da seção "Vistos recentemente" (SliverToBoxAdapter + Column + ListView horizontal).
@@ -43,29 +42,6 @@ Widget buildCatalogRecentSectionSliver({
 }) {
   if (recentProducts.isEmpty) {
     return const SliverToBoxAdapter(child: SizedBox.shrink());
-  }
-
-  if (useMinimalLayout) {
-    return SliverToBoxAdapter(
-      child: CatalogMinimalBestSellersSection(
-        title: 'Visto por último',
-        productCardSize: productCardSize,
-        products: recentProducts,
-        lojaId: lojaId,
-        todosProdutos: todosProdutos ?? recentProducts,
-        onAdd: onAdd,
-        onAbrirCarrinho: onAbrirCarrinho,
-        catalogShareUrl: catalogShareUrl,
-        textColor: textColor,
-        cardColor: cardColor ?? ThemeData.fallback().cardColor,
-        priceColor: priceColor ?? textColor,
-        prazoEntregaTexto: prazoEntregaTexto,
-        nomeLoja: nomeLoja,
-        contatoWhatsapp: contatoWhatsapp,
-        politicaFrete: politicaFrete,
-        onProductViewed: onProductViewed,
-      ),
-    );
   }
 
   return SliverToBoxAdapter(
