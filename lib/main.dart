@@ -41,6 +41,9 @@ import 'themes/app_colors.dart';
 import 'app_routes.dart' as app_routes;
 import 'utils/last_route_observer.dart';
 import 'utils/store_screen_route_observer.dart';
+import 'bootstrap/web_popstate_logger.dart';
+import 'utils/web_nav_log_observer.dart';
+import 'widgets/admin_web_route_shell.dart';
 
 // Telas
 import 'screens/splash_screen.dart';
@@ -768,6 +771,9 @@ void mpStoreDiag(String tag) {
 }
 
 Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
+  logD(
+    '[STORE_BOOTSTRAP] _ensureStoreIdOnBootstrap firebaseOk=$firebaseOk uri=${kIsWeb ? Uri.base : "(not web)"}',
+  );
   final sessao = Hive.box('sessao');
   final cfg = Hive.box('config');
 
@@ -1272,6 +1278,7 @@ Future<void> main() async {
         } else {
           logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
           runApp(const MyApp());
+          registerWebPopStateLogger();
         }
       } else {
         logD('📱 [MAIN] Rodando em Mobile/Desktop → iniciando MyApp()');
@@ -1815,6 +1822,9 @@ Future<void> _openRemainingHiveBoxes() async {
 // Observer para restaurar última tela ao voltar do segundo plano (ex: vendas).
 final LastRouteObserver _lastRouteObserver = LastRouteObserver();
 
+/// Web: correlaciona push/pop do Navigator com o histórico do browser.
+final WebNavLogObserver _webNavLogObserver = WebNavLogObserver();
+
 // ===========================================================================
 // 📱 APP PRINCIPAL (com Provider no topo)
 // ===========================================================================
@@ -1846,7 +1856,11 @@ class MyApp extends StatelessWidget {
           return MaterialApp(
             navigatorKey: navigatorKey,
             scaffoldMessengerKey: scaffoldMessengerKey,
-            navigatorObservers: [_lastRouteObserver, storeScreenRouteObserver],
+            navigatorObservers: [
+              _lastRouteObserver,
+              storeScreenRouteObserver,
+              _webNavLogObserver,
+            ],
             debugShowCheckedModeBanner: false,
             scrollBehavior: _SnappyScrollBehavior(),
             title: 'MasterPalm',
@@ -1960,8 +1974,12 @@ class MyApp extends StatelessWidget {
               },
               '/preconfig': (_) => const LojaPreconfigScreen(),
               '/fornecedores': (_) => const FornecedoresScreen(),
-              '/vendas': (_) => const VendasScreen(),
-              '/clientes': (_) => const ClientesScreen(),
+              '/vendas': (_) => kIsWeb
+                  ? const AdminWebRouteShell(child: VendasScreen())
+                  : const VendasScreen(),
+              '/clientes': (_) => kIsWeb
+                  ? const AdminWebRouteShell(child: ClientesScreen())
+                  : const ClientesScreen(),
               '/estoque': (_) => const EstoqueScreen(),
               '/historico_cliente': (_) => const HistoricoClientesScreen(),
               '/backup': (_) => const BackupScreen(),

@@ -103,6 +103,15 @@ class _ClientesScreenState extends State<ClientesScreen>
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      logD('[CLIENTES_LIFECYCLE] initState uri=${Uri.base}');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        logD(
+          '[CLIENTES_LIFECYCLE] initState postFrame route=${ModalRoute.of(context)?.settings.name ?? "null"}',
+        );
+      });
+    }
     if (kDebugMode) logD('[STORE-SCREEN-CLIENTES] initState → entrada da tela');
 
     _tabController = TabController(length: 2, vsync: this);
@@ -127,6 +136,11 @@ class _ClientesScreenState extends State<ClientesScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (kIsWeb) {
+      logD(
+        '[CLIENTES_LIFECYCLE] didChangeDependencies route=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${Uri.base}',
+      );
+    }
     final route = ModalRoute.of(context);
     if (route != null) {
       storeScreenRouteObserver.subscribe(this, route);
@@ -409,6 +423,9 @@ class _ClientesScreenState extends State<ClientesScreen>
 
   @override
   void dispose() {
+    if (kIsWeb) {
+      logD('[CLIENTES_LIFECYCLE] dispose uri=${Uri.base}');
+    }
     storeScreenRouteObserver.unsubscribe(this);
     if (kDebugMode) logD('[STORE-SCREEN-CLIENTES] dispose → saída da tela');
     _filtroDebounce?.cancel();

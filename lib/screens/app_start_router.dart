@@ -66,11 +66,17 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
   Future<void> _run() async {
     try {
+      logD(
+        '[ROUTE_GUARD] AppStartRouter._run inicio uri=${Uri.base} path=${Uri.base.path}',
+      );
       _setBusy('Verificando sessão...');
       logD('[BOOT-ROUTER] Iniciando verificação de sessão');
 
       final auth = FirebaseAuth.instance;
       final user = auth.currentUser;
+      logD(
+        '[ROUTE_GUARD] auth uid=${user?.uid ?? "null"} email=${user?.email ?? "null"}',
+      );
 
       // Usuário só desloga ao clicar em Sair, limpar dados do app ou reinstalar
       if (user == null) {
@@ -726,6 +732,9 @@ class _AppStartRouterState extends State<AppStartRouter> {
   /// Na Web: se o usuário abriu um link direto (ex: /clientes), também vai para home.
   Future<void> _goHomeOrRestore() async {
     if (!mounted) return;
+    logD(
+      '[ROUTE_GUARD] _goHomeOrRestore path="${Uri.base.path}" kIsWeb=$kIsWeb mounted=$mounted',
+    );
     // APK/mobile: sempre abrir na home para que o botão voltar leve à home ao sair de outras telas.
     if (!kIsWeb) {
       LastRouteObserver.getAndClearLastRoute();

@@ -91,6 +91,15 @@ class _VendasScreenState extends State<VendasScreen>
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      logD('[VENDAS_LIFECYCLE] initState uri=${Uri.base}');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        logD(
+          '[VENDAS_LIFECYCLE] initState postFrame route=${ModalRoute.of(context)?.settings.name ?? "null"}',
+        );
+      });
+    }
     if (kDebugMode) logD('[STORE-SCREEN-VENDAS] initState → entrada da tela');
     _init();
   }
@@ -98,6 +107,11 @@ class _VendasScreenState extends State<VendasScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (kIsWeb) {
+      logD(
+        '[VENDAS_LIFECYCLE] didChangeDependencies route=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${Uri.base}',
+      );
+    }
     final route = ModalRoute.of(context);
     if (route != null) {
       storeScreenRouteObserver.subscribe(this, route);
@@ -106,6 +120,9 @@ class _VendasScreenState extends State<VendasScreen>
 
   @override
   void dispose() {
+    if (kIsWeb) {
+      logD('[VENDAS_LIFECYCLE] dispose uri=${Uri.base}');
+    }
     storeScreenRouteObserver.unsubscribe(this);
     FirestoreCriticalListenerService.cancelProdutosListener();
     _searchController.dispose();

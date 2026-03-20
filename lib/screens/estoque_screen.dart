@@ -126,6 +126,11 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   Future<void> _setup() async {
     try {
+      if (kIsWeb) {
+        logD(
+          '[WEB_NAV] Estoque._setup inicio (referência) uri=${Uri.base} route=${ModalRoute.of(context)?.settings.name ?? "null"}',
+        );
+      }
       // Usa getWithTimeout para fallback Hive offline (igual Vendas/Clientes/Fornecedores)
       String? lojaId = await LojaIdService.getWithTimeout(
           timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
