@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/safe_parse.dart';
+import '../catalog_product_card_size.dart';
 import '../../../widgets/smart_image.dart';
 import 'catalog_product_detail_screen.dart';
 
@@ -24,6 +25,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
   final String? contatoWhatsapp;
   final String? politicaFrete;
   final void Function(String productId)? onProductViewed;
+  final String productCardSize;
 
   const CatalogMinimalBestSellersSection({
     super.key,
@@ -42,6 +44,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
     this.contatoWhatsapp,
     this.politicaFrete,
     this.onProductViewed,
+    this.productCardSize = CatalogProductCardSize.medium,
   });
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
@@ -76,8 +79,14 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
         final hPad = narrow ? 12.0 : 16.0;
         final rowPad = narrow ? 12.0 : 12.0;
         final gap = narrow ? 10.0 : 12.0;
-        final cardW = narrow ? 120.0 : 128.0;
-        final listHeight = narrow ? 192.0 : 198.0;
+        final cardW = CatalogProductCardSize.bestSellerCardWidth(
+          productCardSize,
+          screenWidth: w,
+        );
+        final listHeight = CatalogProductCardSize.bestSellerListHeight(
+          productCardSize,
+          screenWidth: w,
+        );
         final radius = narrow ? 12.0 : 14.0;
         final titleSize = narrow ? 13.5 : 14.5;
         final bodyNameSize = narrow ? 11.5 : 12.0;

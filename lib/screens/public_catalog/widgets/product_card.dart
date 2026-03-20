@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../services/public_store_link_helper.dart';
 import '../../../utils/safe_parse.dart';
+import '../catalog_product_card_size.dart';
 import 'catalog_product_card.dart';
 
 /// Converte Map (Firestore pode vir Map<dynamic,dynamic> na web) para Map<String, int>.
@@ -45,6 +46,7 @@ class PublicCatalogProductCard extends StatelessWidget {
   final String? catalogShareUrl;
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
   final bool minimalLayout;
+  final String productCardSize;
 
   const PublicCatalogProductCard({
     super.key,
@@ -69,6 +71,7 @@ class PublicCatalogProductCard extends StatelessWidget {
     this.imageCacheHeight,
     this.catalogShareUrl,
     this.minimalLayout = false,
+    this.productCardSize = CatalogProductCardSize.medium,
   });
 
   @override
@@ -155,6 +158,7 @@ class PublicCatalogProductCard extends StatelessWidget {
       comboProductMap: ehCombo ? p : null,
       todosProdutosForCombo: ehCombo ? (todosProdutos ?? []) : null,
       minimalLayout: minimalLayout,
+      productCardSize: productCardSize,
     );
   }
 }

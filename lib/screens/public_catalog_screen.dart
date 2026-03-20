@@ -34,6 +34,7 @@ import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart';
 import 'public_catalog/catalog_helpers.dart';
 import 'public_catalog/catalog_best_sellers_helper.dart';
+import 'public_catalog/catalog_product_card_size.dart';
 import 'public_catalog/catalog_estoque_helper.dart';
 import 'public_catalog/catalog_config_service.dart';
 import '../utils/safe_parse.dart';
@@ -3052,6 +3053,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final categoryVisualsCfg = mpMapDyn(cfg['categoryVisuals']);
                 final heroBannerCfg = mpMapDyn(cfg['heroBanner']);
                 final minimalGridCfg = mpMapDyn(cfg['minimalProductGrid']);
+                final productCardSize = CatalogProductCardSize.normalize(
+                  cfg['productCardSize'],
+                );
                 final minimalBestSellersCfg =
                     mpMapDyn(cfg['minimalBestSellers']);
                 final bestSellersSectionEnabled = safeBool(
@@ -4304,6 +4308,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     produtos.isNotEmpty)
                                                   CatalogMinimalBestSellersSection(
                                                     title: bestSellersTitle,
+                                                    productCardSize:
+                                                        productCardSize,
                                                     products:
                                                         pickBestSellersForMinimalCatalog(
                                                       produtos,
@@ -4514,6 +4520,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 maxParcelas: maxParcelasClamped,
                                                 textColor: textColor,
                                                 useMinimalLayout: useMinimalLayout,
+                                                productCardSize:
+                                                    productCardSize,
                                                 cardColor: cardColor,
                                                 priceColor: productPriceColor,
                                                 catalogShareUrl:
@@ -4614,9 +4622,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       'imageCacheHeight'], 860)
                                                   : 480,
                                               childAspectRatio: useMinimalLayout
-                                                  ? safeDouble(minimalGridCfg[
-                                                      'aspectRatio'], 0.52)
-                                                  : 0.38,
+                                                  ? safeDouble(
+                                                      minimalGridCfg[
+                                                          'aspectRatio'],
+                                                      CatalogProductCardSize
+                                                          .minimalAspectRatio(
+                                                              productCardSize),
+                                                    )
+                                                  : CatalogProductCardSize
+                                                      .standardAspectRatio(
+                                                          productCardSize),
                                               mainAxisSpacing: useMinimalLayout
                                                   ? safeDouble(minimalGridCfg[
                                                       'mainAxisSpacing'], 14)
@@ -4636,6 +4651,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 indicacao: widget.indicacaoClienteRef,
                                               ),
                                               useMinimalLayout: useMinimalLayout,
+                                              productCardSize: productCardSize,
                                             ),
                                             // Paginação: Anterior | Página X de Y | Próxima (sempre visível)
                                             if (totalPaginas > 1)

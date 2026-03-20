@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/safe_parse.dart';
+import '../catalog_product_card_size.dart';
 import 'product_card.dart';
 
 /// Retorna o Sliver do grid de produtos (SliverPadding + SliverGrid + SliverChildBuilderDelegate).
@@ -42,6 +43,7 @@ Widget buildCatalogProductsGridSliver({
   String? catalogShareUrl,
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida.
   bool useMinimalLayout = false,
+  String productCardSize = CatalogProductCardSize.medium,
 }) {
   final listaParaCombo = todosProdutosParaCombo ?? products;
   final cols = isDesktop ? desktopCols : mobileCols;
@@ -82,6 +84,7 @@ Widget buildCatalogProductsGridSliver({
               imageCacheHeight: imageCacheHeight,
               catalogShareUrl: catalogShareUrl,
               minimalLayout: useMinimalLayout,
+              productCardSize: productCardSize,
             ),
           );
         },

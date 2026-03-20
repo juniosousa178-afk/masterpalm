@@ -204,6 +204,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   bool _cardShowShadow = true;
   double _cardBorderRadius = 20;
   String _layoutCatalogo = 'padrao';
+  String _productCardSize = 'medium';
 
   bool _promoBarEnabled = false;
   final TextEditingController _promoBarTextCtrl = TextEditingController();
@@ -1037,6 +1038,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           .toString()
           .trim()
           .toLowerCase();
+      _productCardSize = (() {
+        final v = (data['productCardSize'] ?? 'medium')
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (v == 'small' || v == 'medium' || v == 'large') return v;
+        return 'medium';
+      })();
 
       final promoBarRaw = data['promoBar'];
       final promoBar = promoBarRaw is Map
@@ -1455,6 +1464,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       'cardShowShadow': _cardShowShadow,
       'cardBorderRadius': _cardBorderRadius,
       'layoutCatalogo': _layoutCatalogo,
+      'productCardSize': _productCardSize,
       'promoBar': {
         'enabled': _promoBarEnabled,
         'text': _promoBarTextCtrl.text.trim(),
@@ -4761,6 +4771,33 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 },
                 decoration: const InputDecoration(
                   labelText: 'Opção de layout',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _productCardSize,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'small',
+                    child: Text('Pequena (layout mais compacto)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'medium',
+                    child: Text('Média (equilíbrio)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'large',
+                    child: Text('Grande (foto em destaque)'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _productCardSize = v);
+                  _salvarRascunho(validar: false);
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Tamanho do card/foto do produto',
                   border: OutlineInputBorder(),
                 ),
               ),

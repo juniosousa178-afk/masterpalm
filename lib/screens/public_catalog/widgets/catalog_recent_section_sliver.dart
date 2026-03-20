@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/safe_parse.dart';
+import '../catalog_product_card_size.dart';
 import 'catalog_minimal_best_sellers.dart';
 import 'product_card.dart';
 
@@ -37,6 +38,7 @@ Widget buildCatalogRecentSectionSliver({
   String? nomeLoja,
   String? contatoWhatsapp,
   String? politicaFrete,
+  String productCardSize = CatalogProductCardSize.medium,
 }) {
   if (recentProducts.isEmpty) {
     return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -46,6 +48,7 @@ Widget buildCatalogRecentSectionSliver({
     return SliverToBoxAdapter(
       child: CatalogMinimalBestSellersSection(
         title: 'Visto por último',
+        productCardSize: productCardSize,
         products: recentProducts,
         lojaId: lojaId,
         todosProdutos: todosProdutos ?? recentProducts,
@@ -72,6 +75,14 @@ Widget buildCatalogRecentSectionSliver({
         final screenWidth = constraints.maxWidth;
         final cardWidth =
             (screenWidth - paddingHorizontal * 2 - gapBetweenCards * 2) / 3;
+        final size = CatalogProductCardSize.normalize(productCardSize);
+        final is360 = screenWidth <= 360;
+        final is390 = screenWidth > 360 && screenWidth <= 390;
+        final recentHeight = size == CatalogProductCardSize.large
+            ? (is360 ? 366.0 : (is390 ? 372.0 : 380.0))
+            : size == CatalogProductCardSize.small
+                ? (is360 ? 334.0 : (is390 ? 340.0 : 344.0))
+                : (is360 ? 352.0 : (is390 ? 356.0 : 360.0));
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,7 +99,7 @@ Widget buildCatalogRecentSectionSliver({
               ),
             ),
             SizedBox(
-              height: 360,
+              height: recentHeight,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
@@ -120,6 +131,7 @@ Widget buildCatalogRecentSectionSliver({
                         maxParcelas: maxParcelas,
                         compact: true,
                         minimalLayout: useMinimalLayout,
+                        productCardSize: productCardSize,
                       ),
                     ),
                   );

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../../../services/catalog_share_service.dart';
+import '../catalog_product_card_size.dart';
 import '../catalog_theme_extension.dart';
 import 'catalog_gallery_view.dart';
 import 'catalog_image_placeholder.dart';
@@ -72,6 +73,7 @@ class CatalogProductCard extends StatefulWidget {
   final String lojaId;
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
   final bool minimalLayout;
+  final String productCardSize;
 
   /// Construtor não-const para conversão defensiva num→double/int (evita TypeError em release).
   CatalogProductCard({
@@ -121,6 +123,7 @@ class CatalogProductCard extends StatefulWidget {
     this.todosProdutosForCombo,
     required this.lojaId,
     this.minimalLayout = false,
+    this.productCardSize = CatalogProductCardSize.medium,
   })  : price = price.toDouble(),
         peso = peso.toDouble(),
         precoOriginal = precoOriginal?.toDouble(),
@@ -424,6 +427,46 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final productPriceColor =
         catalogExt?.productPriceColor ?? theme.colorScheme.primary;
 
+    final normalizedCardSize =
+        CatalogProductCardSize.normalize(widget.productCardSize);
+    final screenW = MediaQuery.of(context).size.width;
+    final is360 = screenW <= 360;
+    final is390 = screenW > 360 && screenW <= 390;
+    final is412 = screenW > 390 && screenW <= 412;
+    final isSmallCard = normalizedCardSize == CatalogProductCardSize.small;
+    final isLargeCard = normalizedCardSize == CatalogProductCardSize.large;
+    final imageFlex = widget.compact
+        ? (isLargeCard ? 9 : (isSmallCard ? 7 : 8))
+        : (isLargeCard ? 14 : (isSmallCard ? 12 : 13));
+    final titleSizeBase = widget.minimalLayout
+        ? (isLargeCard ? 14.0 : (isSmallCard ? 12.0 : 13.0))
+        : (widget.compact ? (isLargeCard ? 13.0 : 12.0) : (isLargeCard ? 16.0 : 15.0));
+    final priceSizeBase = widget.minimalLayout
+        ? (isLargeCard ? 13.0 : 12.0)
+        : (widget.compact ? (isLargeCard ? 12.0 : 11.0) : (isLargeCard ? 15.0 : 14.0));
+    final actionHeightBase = widget.minimalLayout
+        ? (isLargeCard ? 38.0 : (isSmallCard ? 32.0 : 34.0))
+        : (widget.compact ? 32.0 : (isLargeCard ? 42.0 : 40.0));
+    final titleSize = is360
+        ? (titleSizeBase - 0.8)
+        : is390
+            ? (titleSizeBase - 0.5)
+            : is412
+                ? (titleSizeBase - 0.2)
+                : titleSizeBase;
+    final priceSize = is360
+        ? (priceSizeBase - 0.5)
+        : is390
+            ? (priceSizeBase - 0.3)
+            : priceSizeBase;
+    final actionHeight = is360
+        ? (actionHeightBase - 1.0)
+        : actionHeightBase;
+    final contentVPad = widget.compact
+        ? (is360 ? 5.0 : 6.0)
+        : (is360 ? 7.0 : 8.0);
+    final spacingAfterTitle = widget.compact ? (is360 ? 1.0 : 2.0) : 4.0;
+
     return MouseRegion(
       onEnter: (_) {
         if (!kIsWeb) return;
@@ -469,7 +512,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              flex: widget.compact ? 8 : 13,
+              flex: imageFlex,
               child: ClipRRect(
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(widget.borderRadius),
@@ -579,7 +622,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: widget.compact ? 4 : 10,
-                vertical: widget.compact ? 6 : 8,
+                vertical: contentVPad,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -599,18 +642,18 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontWeight: widget.minimalLayout ? FontWeight.w500 : FontWeight.w600,
-                                fontSize: widget.minimalLayout ? 13 : (widget.compact ? 12 : 15),
+                                fontSize: titleSize,
                                 color: productNameColor,
                                 height: 1.2,
                               ),
                             ),
-                            SizedBox(height: widget.compact ? 1 : 4),
+                            SizedBox(height: spacingAfterTitle),
                             if (_temFaixaPreco)
                               Text(
                                 'R\$ ${_fmt2(widget.priceMin!)} a R\$ ${_fmt2(widget.priceMax!)}',
                                 style: TextStyle(
                                   color: widget.emPromocao ? Colors.red[700] : productPriceColor,
-                                  fontSize: widget.minimalLayout ? 12 : (widget.compact ? 11 : 14),
+                                  fontSize: priceSize,
                                   fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                 ),
                               )
@@ -630,7 +673,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                     'R\$ ${_fmt2(widget.price)}',
                                     style: TextStyle(
                                       color: Colors.red[700],
-                                      fontSize: widget.minimalLayout ? 12 : (widget.compact ? 11 : 14),
+                                      fontSize: priceSize,
                                       fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                     ),
                                   ),
@@ -641,7 +684,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 'R\$ ${_fmt2(widget.price)}',
                                 style: TextStyle(
                                   color: productPriceColor,
-                                  fontSize: widget.minimalLayout ? 12 : (widget.compact ? 11 : 14),
+                                  fontSize: priceSize,
                                   fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                 ),
                               ),
@@ -714,7 +757,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                         if (!widget.minimalLayout) SizedBox(width: widget.compact ? 4 : 8),
                         Expanded(
                           child: SizedBox(
-                            height: widget.minimalLayout ? 34 : (widget.compact ? 32 : 40),
+                            height: actionHeight,
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: catalogExt?.buttonComprarBg ?? theme.colorScheme.primary,
