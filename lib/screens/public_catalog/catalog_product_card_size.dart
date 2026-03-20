@@ -13,12 +13,13 @@ class CatalogProductCardSize {
   }
 
   /// childAspectRatio para grid padrão (width/height).
+  /// Spread maior = diferença mais clara na altura da célula (foto + texto).
   static double standardAspectRatio(String size) {
     switch (normalize(size)) {
       case small:
-        return 0.42;
+        return 0.46;
       case large:
-        return 0.34;
+        return 0.31;
       case medium:
       default:
         return 0.38;
@@ -29,12 +30,12 @@ class CatalogProductCardSize {
   static double minimalAspectRatio(String size) {
     switch (normalize(size)) {
       case small:
-        return 0.56;
+        return 0.60;
       case large:
-        return 0.47;
+        return 0.44;
       case medium:
       default:
-        return 0.52;
+        return 0.51;
     }
   }
 
@@ -81,6 +82,80 @@ class CatalogProductCardSize {
         if (is360) return 186.0;
         if (is390) return 188.0;
         return screenWidth <= 420 ? 192.0 : 198.0;
+    }
+  }
+
+  /// Cache de imagem para cards do grid principal.
+  /// Escala por tamanho visual para evitar blur em cards maiores.
+  static ({int width, int height}) gridImageCache({
+    required String size,
+    required bool minimalLayout,
+    required bool isWeb,
+  }) {
+    final s = normalize(size);
+    if (minimalLayout) {
+      switch (s) {
+        case small:
+          return (
+            width: isWeb ? 760 : 680,
+            height: isWeb ? 1020 : 920,
+          );
+        case large:
+          return (
+            width: isWeb ? 1120 : 980,
+            height: isWeb ? 1500 : 1320,
+          );
+        case medium:
+        default:
+          return (
+            width: isWeb ? 920 : 820,
+            height: isWeb ? 1240 : 1100,
+          );
+      }
+    }
+
+    switch (s) {
+      case small:
+        return (
+          width: isWeb ? 680 : 620,
+          height: isWeb ? 920 : 840,
+        );
+      case large:
+        return (
+          width: isWeb ? 980 : 860,
+          height: isWeb ? 1320 : 1160,
+        );
+      case medium:
+      default:
+        return (
+          width: isWeb ? 820 : 740,
+          height: isWeb ? 1100 : 980,
+        );
+    }
+  }
+
+  /// Cache para cards horizontais (recentes/destaques compactos).
+  static ({int width, int height}) horizontalCardImageCache({
+    required String size,
+    required bool isWeb,
+  }) {
+    switch (normalize(size)) {
+      case small:
+        return (
+          width: isWeb ? 560 : 500,
+          height: isWeb ? 760 : 680,
+        );
+      case large:
+        return (
+          width: isWeb ? 820 : 720,
+          height: isWeb ? 1120 : 980,
+        );
+      case medium:
+      default:
+        return (
+          width: isWeb ? 680 : 600,
+          height: isWeb ? 920 : 820,
+        );
     }
   }
 }

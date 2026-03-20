@@ -4614,13 +4614,39 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   jurosParcelamento,
                                               maxParcelas: maxParcelasClamped,
                                               imageCacheWidth: useMinimalLayout
-                                                  ? safeInt(minimalGridCfg[
-                                                      'imageCacheWidth'], 640)
-                                                  : 360,
+                                                  ? safeInt(
+                                                      minimalGridCfg[
+                                                          'imageCacheWidth'],
+                                                      CatalogProductCardSize
+                                                          .gridImageCache(
+                                                        size: productCardSize,
+                                                        minimalLayout: true,
+                                                        isWeb: kIsWeb,
+                                                      ).width,
+                                                    )
+                                                  : CatalogProductCardSize
+                                                      .gridImageCache(
+                                                    size: productCardSize,
+                                                    minimalLayout: false,
+                                                    isWeb: kIsWeb,
+                                                  ).width,
                                               imageCacheHeight: useMinimalLayout
-                                                  ? safeInt(minimalGridCfg[
-                                                      'imageCacheHeight'], 860)
-                                                  : 480,
+                                                  ? safeInt(
+                                                      minimalGridCfg[
+                                                          'imageCacheHeight'],
+                                                      CatalogProductCardSize
+                                                          .gridImageCache(
+                                                        size: productCardSize,
+                                                        minimalLayout: true,
+                                                        isWeb: kIsWeb,
+                                                      ).height,
+                                                    )
+                                                  : CatalogProductCardSize
+                                                      .gridImageCache(
+                                                    size: productCardSize,
+                                                    minimalLayout: false,
+                                                    isWeb: kIsWeb,
+                                                  ).height,
                                               childAspectRatio: useMinimalLayout
                                                   ? safeDouble(
                                                       minimalGridCfg[

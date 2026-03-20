@@ -435,9 +435,33 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final is412 = screenW > 390 && screenW <= 412;
     final isSmallCard = normalizedCardSize == CatalogProductCardSize.small;
     final isLargeCard = normalizedCardSize == CatalogProductCardSize.large;
-    final imageFlex = widget.compact
-        ? (isLargeCard ? 9 : (isSmallCard ? 7 : 8))
-        : (isLargeCard ? 14 : (isSmallCard ? 12 : 13));
+    // Dois Expanded na Column (imagem + rodapé): só assim o flex altera a fração
+    // real da altura — um único Expanded recebe 100% do espaço restante e ignora flex.
+    final int imageFlex;
+    final int contentFlex;
+    if (widget.compact) {
+      if (isSmallCard) {
+        imageFlex = 7;
+        contentFlex = 15;
+      } else if (isLargeCard) {
+        imageFlex = 13;
+        contentFlex = 9;
+      } else {
+        imageFlex = 10;
+        contentFlex = 12;
+      }
+    } else {
+      if (isSmallCard) {
+        imageFlex = 10;
+        contentFlex = 18;
+      } else if (isLargeCard) {
+        imageFlex = 22;
+        contentFlex = 10;
+      } else {
+        imageFlex = 15;
+        contentFlex = 14;
+      }
+    }
     final titleSizeBase = widget.minimalLayout
         ? (isLargeCard ? 14.0 : (isSmallCard ? 12.0 : 13.0))
         : (widget.compact ? (isLargeCard ? 13.0 : 12.0) : (isLargeCard ? 16.0 : 15.0));
@@ -619,15 +643,18 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                 ),
               ),
             ),
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: widget.compact ? 4 : 10,
-                vertical: contentVPad,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
+            Expanded(
+              flex: contentFlex,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.compact ? 4 : 10,
+                  vertical: contentVPad,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
                   GestureDetector(
                     onTap: widget.minimalLayout ? _openDetails : null,
                     behavior: widget.minimalLayout ? HitTestBehavior.opaque : HitTestBehavior.deferToChild,
@@ -829,6 +856,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                   ],
                 ),
               ),
+            ),
           ],
         ),
       ),

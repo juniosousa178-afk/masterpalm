@@ -2,6 +2,7 @@
 // Sliver da seção "Vistos recentemente" (extraído de public_catalog_screen.dart). UI only.
 // A lista de produtos recentes deve ser calculada pelo chamador (algoritmo de recentes não alterado).
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../../utils/safe_parse.dart';
@@ -83,6 +84,10 @@ Widget buildCatalogRecentSectionSliver({
             : size == CatalogProductCardSize.small
                 ? (is360 ? 334.0 : (is390 ? 340.0 : 344.0))
                 : (is360 ? 352.0 : (is390 ? 356.0 : 360.0));
+        final cache = CatalogProductCardSize.horizontalCardImageCache(
+          size: productCardSize,
+          isWeb: kIsWeb,
+        );
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -132,6 +137,8 @@ Widget buildCatalogRecentSectionSliver({
                         compact: true,
                         minimalLayout: useMinimalLayout,
                         productCardSize: productCardSize,
+                        imageCacheWidth: cache.width,
+                        imageCacheHeight: cache.height,
                       ),
                     ),
                   );
