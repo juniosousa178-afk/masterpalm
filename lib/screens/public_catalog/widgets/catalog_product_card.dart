@@ -435,10 +435,12 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final is412 = screenW > 390 && screenW <= 412;
     final isSmallCard = normalizedCardSize == CatalogProductCardSize.small;
     final isLargeCard = normalizedCardSize == CatalogProductCardSize.large;
+    final bool showComprarDiretoFooter =
+        widget.onAbrirCarrinho != null && !widget.minimalLayout;
     // Dois Expanded na Column (imagem + rodapé): só assim o flex altera a fração
     // real da altura — um único Expanded recebe 100% do espaço restante e ignora flex.
-    final int imageFlex;
-    final int contentFlex;
+    int imageFlex;
+    int contentFlex;
     if (widget.compact) {
       if (isSmallCard) {
         imageFlex = 7;
@@ -461,6 +463,13 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
         imageFlex = 15;
         contentFlex = 14;
       }
+    }
+    // Quando o card exibe o rodapé "Comprar" (além do CTA do carrinho com ícone),
+    // precisamos garantir espaço vertical real no conteúdo, senão o rodapé fica
+    // espremido/cortado em cards menores (360/390) e pode aparentar sobreposição.
+    if (showComprarDiretoFooter) {
+      imageFlex = (imageFlex - 2).clamp(1, 999);
+      contentFlex = contentFlex + 2;
     }
     final titleSizeBase = widget.minimalLayout
         ? (isLargeCard ? 14.0 : (isSmallCard ? 12.0 : 13.0))
@@ -653,15 +662,16 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
-                  GestureDetector(
-                    onTap: widget.minimalLayout ? _openDetails : null,
-                    behavior: widget.minimalLayout ? HitTestBehavior.opaque : HitTestBehavior.deferToChild,
-                    child: Column(
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: widget.minimalLayout ? _openDetails : null,
+                      behavior: widget.minimalLayout
+                          ? HitTestBehavior.opaque
+                          : HitTestBehavior.deferToChild,
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.start,
                         children: [
                           Text(
@@ -739,6 +749,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                         ],
                       ),
                     ),
+                  ),
                     SizedBox(height: widget.compact ? 3 : 5),
                     Row(
                       children: [
@@ -830,7 +841,9 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                       ],
                     ),
                     if (widget.onAbrirCarrinho != null && !widget.minimalLayout) ...[
-                      SizedBox(height: widget.compact ? 3 : 4),
+                      SizedBox(
+                        height: widget.compact ? 3 : 4,
+                      ),
                       SizedBox(
                         width: double.infinity,
                         height: widget.compact ? 34 : 40,
