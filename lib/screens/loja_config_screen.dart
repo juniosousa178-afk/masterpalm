@@ -210,9 +210,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   final TextEditingController _promoBarLinkCtrl = TextEditingController();
   Color _promoBarBg = const Color(0xFFFF4F96);
   Color _promoBarText = Colors.white;
+  /// Texto longo do letreiro rola automaticamente (layout minimalista).
+  bool _promoBarMarquee = true;
 
   final TextEditingController _minimalSearchPlaceholderCtrl =
-      TextEditingController(text: 'O que voce esta procurando?');
+      TextEditingController(text: 'O que você está procurando?');
+
+  bool _minimalBestSellersEnabled = true;
+  final TextEditingController _minimalBestSellersTitleCtrl =
+      TextEditingController(text: 'Mais vendidos');
+  final TextEditingController _minimalBestSellersCountCtrl =
+      TextEditingController(text: '10');
 
   bool _heroBannerEnabled = false;
   final TextEditingController _heroBannerTitleCtrl = TextEditingController();
@@ -354,6 +362,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _catImgModaCtrl.addListener(_scheduleAutoSave);
     _catImgCalcadosCtrl.addListener(_scheduleAutoSave);
     _catImgBolsasCtrl.addListener(_scheduleAutoSave);
+    _minimalBestSellersTitleCtrl.addListener(_scheduleAutoSave);
+    _minimalBestSellersCountCtrl.addListener(_scheduleAutoSave);
 
     // Fretes e Cupons
     _melhorEnvioTokenCtrl.addListener(_scheduleAutoSave);
@@ -1033,6 +1043,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final promoText = colorToInt(promoBar['textColor']);
       if (promoBg != null) _promoBarBg = Color(promoBg);
       if (promoText != null) _promoBarText = Color(promoText);
+      _promoBarMarquee = (promoBar['marquee'] as bool?) ?? _promoBarMarquee;
 
       final minimalSearchRaw = data['minimalSearch'];
       final minimalSearch = minimalSearchRaw is Map
@@ -1071,6 +1082,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _catImgModaCtrl.text = (catImgs['Moda'] ?? '').toString();
       _catImgCalcadosCtrl.text = (catImgs['Calcados'] ?? '').toString();
       _catImgBolsasCtrl.text = (catImgs['Bolsas'] ?? '').toString();
+
+      final mbsRaw = data['minimalBestSellers'];
+      final mbs = mbsRaw is Map
+          ? Map<String, dynamic>.from(mbsRaw)
+          : <String, dynamic>{};
+      _minimalBestSellersEnabled =
+          (mbs['enabled'] as bool?) ?? _minimalBestSellersEnabled;
+      _minimalBestSellersTitleCtrl.text =
+          (mbs['title'] ?? _minimalBestSellersTitleCtrl.text).toString();
+      _minimalBestSellersCountCtrl.text =
+          '${mbs['count'] ?? _minimalBestSellersCountCtrl.text}';
 
       final presetStr = data['layoutPreset'] as String?;
       if (presetStr != null) {
@@ -1333,10 +1355,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'height': 34,
         'alignment': 'center',
         'bold': true,
+        'marquee': _promoBarMarquee,
       },
       'minimalSearch': {
         'placeholder': _minimalSearchPlaceholderCtrl.text.trim().isEmpty
-            ? 'O que voce esta procurando?'
+            ? 'O que você está procurando?'
             : _minimalSearchPlaceholderCtrl.text.trim(),
         'height': 44,
         'radius': 10,
@@ -1381,6 +1404,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'imageCacheHeight': 860,
         'cardShowShadow': false,
         'cardBorderRadius': 16,
+      },
+      'minimalBestSellers': {
+        'enabled': _minimalBestSellersEnabled,
+        'title': _minimalBestSellersTitleCtrl.text.trim().isEmpty
+            ? 'Mais vendidos'
+            : _minimalBestSellersTitleCtrl.text.trim(),
+        'count': int.tryParse(_minimalBestSellersCountCtrl.text.trim()) ?? 10,
       },
 
       // ✅ CORRIGIDO: Estrutura media.desktop / media.mobile (igual ao que o public_catalog lê)
@@ -4597,14 +4627,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     return Column(
       children: [
         _Section(
-          title: 'Layout do catalogo publico',
-          subtitle: 'O padrao atual continua igual; o novo layout entra apenas quando selecionado.',
+          title: 'Layout do catálogo público',
+          subtitle: 'O padrão atual continua igual; o novo layout entra apenas quando selecionado.',
           child: Column(
             children: [
               DropdownButtonFormField<String>(
                 initialValue: _layoutCatalogo,
                 items: const [
-                  DropdownMenuItem(value: 'padrao', child: Text('Padrao atual (retrocompativel)')),
+                  DropdownMenuItem(value: 'padrao', child: Text('Padrão atual (retrocompatível)')),
                   DropdownMenuItem(value: 'minimalista_nuvemshop', child: Text('Minimalista estilo Nuvemshop')),
                 ],
                 onChanged: (v) {
@@ -4613,7 +4643,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   _salvarRascunho(validar: false);
                 },
                 decoration: const InputDecoration(
-                  labelText: 'Opcao de layout',
+                  labelText: 'Opção de layout',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -4671,6 +4701,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   ),
                 ],
               ),
+              SwitchListTile(
+                value: _promoBarMarquee,
+                onChanged: (v) {
+                  setState(() => _promoBarMarquee = v);
+                  _salvarRascunho(validar: false);
+                },
+                title: const Text('Rolar texto longo no letreiro (minimalista)'),
+                subtitle: const Text(
+                  'Quando a frase não couber, ela passa automaticamente na horizontal.',
+                ),
+                contentPadding: EdgeInsets.zero,
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: _minimalSearchPlaceholderCtrl,
@@ -4709,22 +4751,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 onChanged: (_) => _scheduleAutoSave(),
               ),
               const SizedBox(height: 8),
-              TextField(
+              _ImageFieldWithGallery(
+                label: 'Imagem banner (desktop)',
                 controller: _heroBannerImageCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Imagem banner (desktop)',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
+                onChanged: _scheduleAutoSave,
+                onPickImage: () => _pickAndUploadLayoutImage('hero_desktop'),
               ),
               const SizedBox(height: 8),
-              TextField(
+              _ImageFieldWithGallery(
+                label: 'Imagem banner (mobile)',
                 controller: _heroBannerMobileImageCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Imagem banner (mobile)',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
+                onChanged: _scheduleAutoSave,
+                onPickImage: () => _pickAndUploadLayoutImage('hero_mobile'),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -4753,28 +4791,63 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              TextField(
+              _ImageFieldWithGallery(
+                label: 'Categoria Moda',
                 controller: _catImgModaCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Categoria Moda - URL da imagem',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
+                onChanged: _scheduleAutoSave,
+                onPickImage: () => _pickAndUploadLayoutImage('cat_moda'),
               ),
               const SizedBox(height: 8),
-              TextField(
+              _ImageFieldWithGallery(
+                label: 'Categoria Calcados',
                 controller: _catImgCalcadosCtrl,
+                onChanged: _scheduleAutoSave,
+                onPickImage: () => _pickAndUploadLayoutImage('cat_calcados'),
+              ),
+              const SizedBox(height: 8),
+              _ImageFieldWithGallery(
+                label: 'Categoria Bolsas',
+                controller: _catImgBolsasCtrl,
+                onChanged: _scheduleAutoSave,
+                onPickImage: () => _pickAndUploadLayoutImage('cat_bolsas'),
+              ),
+              const SizedBox(height: 16),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Seção Mais vendidos (layout minimalista)',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Usa métricas de venda no produto quando existirem; senão, destaque e novidades.',
+                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                value: _minimalBestSellersEnabled,
+                onChanged: (v) {
+                  setState(() => _minimalBestSellersEnabled = v);
+                  _salvarRascunho(validar: false);
+                },
+                title: const Text('Exibir carrossel de mais vendidos'),
+                contentPadding: EdgeInsets.zero,
+              ),
+              TextField(
+                controller: _minimalBestSellersTitleCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Categoria Calcados - URL da imagem',
+                  labelText: 'Título da seção',
                   border: OutlineInputBorder(),
                 ),
                 onChanged: (_) => _scheduleAutoSave(),
               ),
               const SizedBox(height: 8),
               TextField(
-                controller: _catImgBolsasCtrl,
+                controller: _minimalBestSellersCountCtrl,
+                keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
-                  labelText: 'Categoria Bolsas - URL da imagem',
+                  labelText: 'Quantidade de produtos (3 a 24)',
                   border: OutlineInputBorder(),
                 ),
                 onChanged: (_) => _scheduleAutoSave(),
@@ -6171,6 +6244,56 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     }
   }
 
+  /// Importa imagem da galeria para layout minimalista (hero, categorias); retorna URL ou null.
+  Future<String?> _pickAndUploadLayoutImage(String subpath) async {
+    String loja;
+    try {
+      loja = _activeStoreId();
+    } catch (_) {
+      _snack('Nenhuma loja ativa definida.', isError: true);
+      return null;
+    }
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: kIsWeb,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    final f = result.files.first;
+    try {
+      final fileName = f.name.isNotEmpty ? f.name : 'image.png';
+      final ext = _extFromName(fileName);
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final storagePath = 'lojas/$loja/midias/layout_minimal/$subpath-$ts-$safeName';
+      UploadResult up;
+      if (kIsWeb) {
+        final bytes = f.bytes;
+        if (bytes == null) return null;
+        up = await _uploader.enqueueBytes(
+          UploadBytesRequest(
+            bytes: bytes,
+            storagePath: storagePath,
+            metadata: SettableMetadata(contentType: 'image/$ext'),
+          ),
+        );
+      } else {
+        up = await _uploader.enqueue(
+          UploadRequest(
+            platformFile: f,
+            storagePath: storagePath,
+            metadata: SettableMetadata(contentType: 'image/$ext'),
+          ),
+        );
+      }
+      _snack('Imagem importada.');
+      return up.downloadUrl;
+    } catch (e) {
+      _snack('Erro ao importar imagem: $e', isError: true);
+      return null;
+    }
+  }
+
   /// Importa imagem da galeria para banner de dica; retorna URL ou null.
   Future<String?> _pickAndUploadDicaBanner() async {
     String loja;
@@ -6275,6 +6398,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _catImgModaCtrl.dispose();
     _catImgCalcadosCtrl.dispose();
     _catImgBolsasCtrl.dispose();
+    _minimalBestSellersTitleCtrl.dispose();
+    _minimalBestSellersCountCtrl.dispose();
     _melhorEnvioTokenCtrl.dispose();
     _correiosUserCtrl.dispose();
     _correiosSenhaCtrl.dispose();
@@ -6307,6 +6432,123 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     super.dispose();
   }
 }
+
+/// Campo de imagem com botão "Escolher imagem" (galeria), preview e opção de remover.
+class _ImageFieldWithGallery extends StatefulWidget {
+  final String label;
+  final TextEditingController controller;
+  final VoidCallback onChanged;
+  final Future<String?> Function() onPickImage;
+
+  const _ImageFieldWithGallery({
+    required this.label,
+    required this.controller,
+    required this.onChanged,
+    required this.onPickImage,
+  });
+
+  @override
+  State<_ImageFieldWithGallery> createState() => _ImageFieldWithGalleryState();
+}
+
+class _ImageFieldWithGalleryState extends State<_ImageFieldWithGallery> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = widget.controller.text.trim();
+    final hasImage = url.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: widget.controller,
+                decoration: InputDecoration(
+                  labelText: '${widget.label} (URL ou use Galeria)',
+                  border: const OutlineInputBorder(),
+                  hintText: 'Link ou escolha pela galeria',
+                ),
+                onChanged: (_) {
+                  setState(() {});
+                  widget.onChanged();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final urlResult = await widget.onPickImage();
+                    if (urlResult != null && context.mounted) {
+                      widget.controller.text = urlResult;
+                      setState(() {});
+                      widget.onChanged();
+                    }
+                  },
+                  icon: const Icon(Icons.photo_library, size: 18),
+                  label: const Text('Escolher imagem'),
+                ),
+                if (hasImage) ...[
+                  const SizedBox(height: 4),
+                  TextButton(
+                    onPressed: () {
+                      widget.controller.clear();
+                      setState(() {});
+                      widget.onChanged();
+                    },
+                    child: const Text('Remover'),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+        if (hasImage) ...[
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              height: 80,
+              width: 120,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.broken_image_outlined,
+                  size: 32,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
   // ============== WIDGETS HELPER ==============
 
 class _Section extends StatelessWidget {

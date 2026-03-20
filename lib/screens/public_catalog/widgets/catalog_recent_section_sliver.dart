@@ -29,6 +29,7 @@ Widget buildCatalogRecentSectionSliver({
   double? jurosParcelamento,
   required int maxParcelas,
   required Color textColor,
+  bool useMinimalLayout = false,
 }) {
   if (recentProducts.isEmpty) {
     return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -89,6 +90,7 @@ Widget buildCatalogRecentSectionSliver({
                         jurosParcelamento: jurosParcelamento,
                         maxParcelas: maxParcelas,
                         compact: true,
+                        minimalLayout: useMinimalLayout,
                       ),
                     ),
                   );

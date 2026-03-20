@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
-/// Barra de pesquisa do cat�logo (TextField).
+/// Barra de pesquisa do catálogo (TextField).
 class CatalogSearchBar extends StatelessWidget {
   final TextEditingController controller;
   final Color headerSearchText;
@@ -768,7 +768,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'P�gina ${paginaAtual + 1} de $totalPaginas',
+                'Página ${paginaAtual + 1} de $totalPaginas',
                 style: TextStyle(
                   color: textColor,
                   fontSize: 16,

@@ -43,6 +43,8 @@ class PublicCatalogProductCard extends StatelessWidget {
   final int? imageCacheHeight;
   /// URL do catálogo para compartilhar (máscara, link curto ou padrão)
   final String? catalogShareUrl;
+  /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
+  final bool minimalLayout;
 
   const PublicCatalogProductCard({
     super.key,
@@ -66,6 +68,7 @@ class PublicCatalogProductCard extends StatelessWidget {
     this.imageCacheWidth,
     this.imageCacheHeight,
     this.catalogShareUrl,
+    this.minimalLayout = false,
   });
 
   @override
@@ -151,6 +154,7 @@ class PublicCatalogProductCard extends StatelessWidget {
       itensCombo: itensCombo,
       comboProductMap: ehCombo ? p : null,
       todosProdutosForCombo: ehCombo ? (todosProdutos ?? []) : null,
+      minimalLayout: minimalLayout,
     );
   }
 }

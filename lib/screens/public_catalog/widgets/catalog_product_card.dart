@@ -11,6 +11,7 @@ import '../catalog_theme_extension.dart';
 import 'catalog_gallery_view.dart';
 import 'catalog_image_placeholder.dart';
 import 'catalog_product_details_sheet.dart';
+import 'catalog_product_detail_screen.dart';
 import 'catalog_product_selection_sheet.dart';
 import 'catalog_combo_variation_sheet.dart';
 
@@ -69,6 +70,8 @@ class CatalogProductCard extends StatefulWidget {
   final List<Map<String, dynamic>>? todosProdutosForCombo;
   /// Loja do catálogo (obrigatório para IA no sheet de detalhes). Contexto do catálogo, nunca admin.
   final String lojaId;
+  /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
+  final bool minimalLayout;
 
   /// Construtor não-const para conversão defensiva num→double/int (evita TypeError em release).
   CatalogProductCard({
@@ -117,6 +120,7 @@ class CatalogProductCard extends StatefulWidget {
     this.comboProductMap,
     this.todosProdutosForCombo,
     required this.lojaId,
+    this.minimalLayout = false,
   })  : price = price.toDouble(),
         peso = peso.toDouble(),
         precoOriginal = precoOriginal?.toDouble(),
@@ -239,32 +243,72 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
 
   void _openDetails() {
     widget.onProductViewed?.call(widget.id);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => CatalogProductDetailsSheet(
-          name: widget.name,
-          descricao: widget.descricao,
-          price: widget.price,
-          priceMin: widget.priceMin,
-          priceMax: widget.priceMax,
-          precoOriginal: widget.precoOriginal,
-          emPromocao: widget.emPromocao,
-          percentualPromo: widget.percentualPromo,
-          valorPromo: widget.valorPromo,
-          imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
-          quantidade: widget.quantidade,
-          estoquePorTamanho: widget.estoquePorTamanho,
-          estoquePorCor: widget.estoquePorCor,
-          variacoes: widget.variacoes,
-          catalogShareUrl: widget.catalogShareUrl,
-          prazoEntrega: widget.prazoEntrega,
-          percentualDescontoPix: widget.percentualDescontoPix,
-          itensCombo: widget.itensCombo,
-          lojaId: widget.lojaId,
+    if (widget.minimalLayout) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CatalogProductDetailScreen(
+            id: widget.id,
+            name: widget.name,
+            descricao: widget.descricao,
+            slug: widget.slug,
+            peso: widget.peso,
+            tipoEmbalagem: widget.tipoEmbalagem,
+            price: widget.price,
+            priceMin: widget.priceMin,
+            priceMax: widget.priceMax,
+            precoPorTamanho: widget.precoPorTamanho,
+            precoOriginal: widget.precoOriginal,
+            emPromocao: widget.emPromocao,
+            percentualPromo: widget.percentualPromo,
+            valorPromo: widget.valorPromo,
+            imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
+            quantidade: widget.quantidade,
+            estoquePorTamanho: widget.estoquePorTamanho,
+            estoquePorCor: widget.estoquePorCor,
+            variacoes: widget.variacoes,
+            prazoEntrega: widget.prazoEntrega,
+            percentualDescontoPix: widget.percentualDescontoPix,
+            divideSemJuros: widget.divideSemJuros,
+            maxParcelas: widget.maxParcelas,
+            catalogShareUrl: widget.catalogShareUrl,
+            lojaId: widget.lojaId,
+            ehCombo: widget.ehCombo,
+            itensCombo: widget.itensCombo,
+            comboProductMap: widget.comboProductMap,
+            todosProdutosForCombo: widget.todosProdutosForCombo,
+            onAdd: widget.onAdd,
+            onAbrirCarrinho: widget.onAbrirCarrinho,
+          ),
         ),
-    );
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => CatalogProductDetailsSheet(
+            name: widget.name,
+            descricao: widget.descricao,
+            price: widget.price,
+            priceMin: widget.priceMin,
+            priceMax: widget.priceMax,
+            precoOriginal: widget.precoOriginal,
+            emPromocao: widget.emPromocao,
+            percentualPromo: widget.percentualPromo,
+            valorPromo: widget.valorPromo,
+            imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
+            quantidade: widget.quantidade,
+            estoquePorTamanho: widget.estoquePorTamanho,
+            estoquePorCor: widget.estoquePorCor,
+            variacoes: widget.variacoes,
+            catalogShareUrl: widget.catalogShareUrl,
+            prazoEntrega: widget.prazoEntrega,
+            percentualDescontoPix: widget.percentualDescontoPix,
+            itensCombo: widget.itensCombo,
+            lojaId: widget.lojaId,
+          ),
+      );
+    }
   }
 
   void _openComboVariationSheet({bool abrirCarrinhoDepois = false}) {
@@ -436,7 +480,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                   children: [
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: _openGallery,
+                      onTap: widget.minimalLayout ? _openDetails : _openGallery,
                       child: Container(
                         color: cardColor,
                         width: double.infinity,
@@ -541,7 +585,10 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Column(
+                  GestureDetector(
+                    onTap: widget.minimalLayout ? _openDetails : null,
+                    behavior: widget.minimalLayout ? HitTestBehavior.opaque : HitTestBehavior.deferToChild,
+                    child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         mainAxisAlignment: MainAxisAlignment.start,
@@ -551,8 +598,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: widget.compact ? 12 : 15,
+                                fontWeight: widget.minimalLayout ? FontWeight.w500 : FontWeight.w600,
+                                fontSize: widget.minimalLayout ? 13 : (widget.compact ? 12 : 15),
                                 color: productNameColor,
                                 height: 1.2,
                               ),
@@ -563,8 +610,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 'R\$ ${_fmt2(widget.priceMin!)} a R\$ ${_fmt2(widget.priceMax!)}',
                                 style: TextStyle(
                                   color: widget.emPromocao ? Colors.red[700] : productPriceColor,
-                                  fontSize: widget.compact ? 11 : 14,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: widget.minimalLayout ? 12 : (widget.compact ? 11 : 14),
+                                  fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                 ),
                               )
                             else if (widget.emPromocao && widget.precoOriginal != null)
@@ -574,7 +621,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                     'R\$ ${_fmt2(widget.precoOriginal!)}',
                                     style: TextStyle(
                                       color: Colors.grey[500],
-                                      fontSize: widget.compact ? 9 : 10,
+                                      fontSize: widget.minimalLayout ? 10 : (widget.compact ? 9 : 10),
                                       decoration: TextDecoration.lineThrough,
                                     ),
                                   ),
@@ -583,8 +630,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                     'R\$ ${_fmt2(widget.price)}',
                                     style: TextStyle(
                                       color: Colors.red[700],
-                                      fontSize: widget.compact ? 11 : 14,
-                                      fontWeight: FontWeight.w700,
+                                      fontSize: widget.minimalLayout ? 12 : (widget.compact ? 11 : 14),
+                                      fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                     ),
                                   ),
                                 ],
@@ -594,15 +641,15 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 'R\$ ${_fmt2(widget.price)}',
                                 style: TextStyle(
                                   color: productPriceColor,
-                                  fontSize: widget.compact ? 11 : 14,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: widget.minimalLayout ? 12 : (widget.compact ? 11 : 14),
+                                  fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
                                 ),
                               ),
                             Text(
                               _buildParcelamentoTexto(),
                               style: TextStyle(
                                 color: Colors.grey[500],
-                                fontSize: widget.compact ? 7 : 8,
+                                fontSize: widget.minimalLayout ? 10 : (widget.compact ? 7 : 8),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -612,7 +659,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off',
                                 style: TextStyle(
                                   color: Colors.green[700],
-                                  fontSize: widget.compact ? 7 : 8,
+                                  fontSize: widget.minimalLayout ? 10 : (widget.compact ? 7 : 8),
                                   fontWeight: FontWeight.w600,
                                 ),
                                 maxLines: 1,
@@ -620,60 +667,62 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               ),
                         ],
                       ),
+                    ),
                     SizedBox(height: widget.compact ? 3 : 5),
                     Row(
                       children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: widget.compact ? 32 : 40,
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
-                                side: BorderSide(color: (catalogExt?.buttonVerText ?? theme.colorScheme.primary).withValues(alpha:0.7)),
-                                padding: EdgeInsets.symmetric(horizontal: widget.compact ? 4 : 8),
-                                minimumSize: Size.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(widget.compact ? 6 : 8),
+                        if (!widget.minimalLayout)
+                          Expanded(
+                            child: SizedBox(
+                              height: widget.compact ? 32 : 40,
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
+                                  side: BorderSide(color: (catalogExt?.buttonVerText ?? theme.colorScheme.primary).withValues(alpha:0.7)),
+                                  padding: EdgeInsets.symmetric(horizontal: widget.compact ? 4 : 8),
+                                  minimumSize: Size.zero,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(widget.compact ? 6 : 8),
+                                  ),
                                 ),
-                              ),
-                              onPressed: _openDetails,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.info_outline,
-                                      size: widget.compact ? 14 : 17,
-                                      color: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
-                                    ),
-                                    if (!widget.compact) const SizedBox(width: 4),
-                                    Text(
-                                      'Ver',
-                                      style: TextStyle(
-                                        fontSize: widget.compact ? 11 : 13,
-                                        fontWeight: FontWeight.w600,
+                                onPressed: _openDetails,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.info_outline,
+                                        size: widget.compact ? 14 : 17,
+                                        color: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
                                       ),
-                                    ),
-                                  ],
+                                      if (!widget.compact) const SizedBox(width: 4),
+                                      Text(
+                                        'Ver',
+                                        style: TextStyle(
+                                          fontSize: widget.compact ? 11 : 13,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        SizedBox(width: widget.compact ? 4 : 8),
+                        if (!widget.minimalLayout) SizedBox(width: widget.compact ? 4 : 8),
                         Expanded(
                           child: SizedBox(
-                            height: widget.compact ? 32 : 40,
+                            height: widget.minimalLayout ? 34 : (widget.compact ? 32 : 40),
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: catalogExt?.buttonComprarBg ?? theme.colorScheme.primary,
                                 foregroundColor: catalogExt?.buttonComprarText ?? Colors.white,
-                                padding: EdgeInsets.symmetric(horizontal: widget.compact ? 4 : 8),
+                                padding: EdgeInsets.symmetric(horizontal: widget.minimalLayout ? 6 : (widget.compact ? 4 : 8)),
                                 minimumSize: Size.zero,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(widget.compact ? 6 : 8),
+                                  borderRadius: BorderRadius.circular(widget.minimalLayout ? 8 : (widget.compact ? 6 : 8)),
                                 ),
                                 elevation: 0,
                               ),
@@ -701,7 +750,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               },
                               child: Icon(
                                 Icons.shopping_cart_outlined,
-                                size: widget.compact ? 18 : 22,
+                                size: widget.minimalLayout ? 18 : (widget.compact ? 18 : 22),
                                 color: catalogExt?.buttonComprarText ?? Colors.white,
                               ),
                             ),
@@ -709,7 +758,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                         ),
                       ],
                     ),
-                    if (widget.onAbrirCarrinho != null) ...[
+                    if (widget.onAbrirCarrinho != null && !widget.minimalLayout) ...[
                       SizedBox(height: widget.compact ? 3 : 4),
                       SizedBox(
                         width: double.infinity,

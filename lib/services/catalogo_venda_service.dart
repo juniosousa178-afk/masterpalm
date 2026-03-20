@@ -26,6 +26,7 @@ import 'estoque_transaction_service.dart';
 import 'notificacao_vendas_service.dart';
 import 'catalogo_venda_helpers.dart';
 import 'catalogo_venda_item_resolver.dart';
+import 'produto_vendas_catalogo_denorm_service.dart';
 
 /// Serviço para registrar vendas vindas do catálogo público
 /// Integra com o sistema de relatórios existente
@@ -580,6 +581,21 @@ class CatalogoVendaService {
       final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
       await vendasBox.add(venda);
 
+      // 6b. Denormalizar vendas no doc do produto (catálogo / "Mais vendidos") — não bloqueia o fluxo
+      try {
+        await ProdutoVendasCatalogoDenormService.incrementarAposVendaCatalogo(
+          lojaId: lojaId,
+          items: items,
+          produtosBox: produtosBox,
+        );
+      } catch (e, st) {
+        logE(
+          '⚠️ [VENDAS_CATALOGO_DENORM] Não crítico após registrarVendaCatalogo (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
+      }
+
       // 7. Adicionar venda ao histórico do cliente
       // ignore: experimental_member_use
       cliente.historico ??= HiveList(vendasBox);
@@ -1031,6 +1047,21 @@ class CatalogoVendaService {
       // 7. Salvar venda no Hive
       final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
       await vendasBox.add(venda);
+
+      // 7b. Denormalizar vendas no doc do produto (catálogo / "Mais vendidos") — não bloqueia o fluxo
+      try {
+        await ProdutoVendasCatalogoDenormService.incrementarAposVendaCatalogo(
+          lojaId: lojaId,
+          items: itens,
+          produtosBox: produtosBox,
+        );
+      } catch (e, st) {
+        logE(
+          '⚠️ [VENDAS_CATALOGO_DENORM] Não crítico após finalizarPedidoComPagamento (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
+      }
 
       // 8. Adicionar ao histórico do cliente
       // ignore: experimental_member_use

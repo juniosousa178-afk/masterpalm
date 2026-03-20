@@ -40,6 +40,8 @@ Widget buildCatalogProductsGridSliver({
   int mobileCols = 2,
   /// URL do catálogo para compartilhar (pode incluir ref/indicacao). Se null, o card usa padrão por lojaId.
   String? catalogShareUrl,
+  /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida.
+  bool useMinimalLayout = false,
 }) {
   final listaParaCombo = todosProdutosParaCombo ?? products;
   final cols = isDesktop ? desktopCols : mobileCols;
@@ -79,6 +81,7 @@ Widget buildCatalogProductsGridSliver({
               imageCacheWidth: imageCacheWidth,
               imageCacheHeight: imageCacheHeight,
               catalogShareUrl: catalogShareUrl,
+              minimalLayout: useMinimalLayout,
             ),
           );
         },

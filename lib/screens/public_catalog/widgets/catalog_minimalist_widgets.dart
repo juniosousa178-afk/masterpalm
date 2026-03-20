@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../widgets/smart_image.dart';
 
-class CatalogPromoBar extends StatelessWidget {
+/// Letreiro promocional; com [marqueeWhenOverflow] rola o texto quando não couber (layout minimalista).
+class CatalogPromoBar extends StatefulWidget {
   final bool enabled;
   final String text;
   final Color backgroundColor;
@@ -12,6 +13,7 @@ class CatalogPromoBar extends StatelessWidget {
   final TextAlign textAlign;
   final bool bold;
   final VoidCallback? onTap;
+  final bool marqueeWhenOverflow;
 
   const CatalogPromoBar({
     super.key,
@@ -24,40 +26,146 @@ class CatalogPromoBar extends StatelessWidget {
     required this.textAlign,
     required this.bold,
     this.onTap,
+    this.marqueeWhenOverflow = false,
   });
 
   @override
+  State<CatalogPromoBar> createState() => _CatalogPromoBarState();
+}
+
+class _CatalogPromoBarState extends State<CatalogPromoBar> {
+  TextStyle _textStyle() => TextStyle(
+        color: widget.textColor,
+        fontSize: 11.5,
+        fontWeight: widget.bold ? FontWeight.w600 : FontWeight.w500,
+      );
+
+  @override
   Widget build(BuildContext context) {
-    if (!enabled || text.trim().isEmpty) return const SizedBox.shrink();
+    if (!widget.enabled || widget.text.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final h = widget.height.clamp(28.0, 72.0).toDouble();
     return InkWell(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: Container(
-        height: height.clamp(28, 72),
+        height: h,
         width: double.infinity,
-        color: backgroundColor,
+        color: widget.backgroundColor,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (icon != null) ...[
-              Icon(icon, size: 16, color: textColor),
+            if (widget.icon != null) ...[
+              Icon(widget.icon, size: 16, color: widget.textColor),
               const SizedBox(width: 8),
             ],
             Expanded(
-              child: Text(
-                text,
-                textAlign: textAlign,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 12.5,
-                  fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final style = _textStyle();
+                  final tp = TextPainter(
+                    text: TextSpan(text: widget.text, style: style),
+                    maxLines: 1,
+                    textDirection: Directionality.of(context),
+                  )..layout(maxWidth: double.infinity);
+                  final iconW = widget.icon != null ? 24.0 : 0.0;
+                  final maxW =
+                      (constraints.maxWidth - iconW).clamp(40.0, 9999.0);
+                  final needMarquee = widget.marqueeWhenOverflow &&
+                      tp.width > maxW + 4;
+
+                  if (!needMarquee) {
+                    return Center(
+                      child: Text(
+                        widget.text,
+                        textAlign: widget.textAlign,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: style,
+                      ),
+                    );
+                  }
+
+                  return _CatalogPromoMarqueeLine(
+                    key: ValueKey(widget.text),
+                    text: widget.text,
+                    style: style,
+                    textWidth: tp.width,
+                  );
+                },
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Rolagem horizontal contínua — controller criado em [initState], nunca no [build].
+class _CatalogPromoMarqueeLine extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  final double textWidth;
+
+  const _CatalogPromoMarqueeLine({
+    super.key,
+    required this.text,
+    required this.style,
+    required this.textWidth,
+  });
+
+  @override
+  State<_CatalogPromoMarqueeLine> createState() =>
+      _CatalogPromoMarqueeLineState();
+}
+
+class _CatalogPromoMarqueeLineState extends State<_CatalogPromoMarqueeLine>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final gap = 56.0;
+    final segment = widget.textWidth + gap;
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: Duration(
+        milliseconds: (segment * 42).round().clamp(12000, 52000),
+      ),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const gap = 56.0;
+    final segment = widget.textWidth + gap;
+    return ClipRect(
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        builder: (_, __) {
+          final off = _ctrl.value * segment;
+          return Transform.translate(
+            offset: Offset(-off, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(widget.text, style: widget.style),
+                SizedBox(width: gap),
+                Text(widget.text, style: widget.style),
+                SizedBox(width: gap),
+                Text(widget.text, style: widget.style),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -239,8 +347,8 @@ class _CategoryItem extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: textColor,
-                  fontSize: 11.5,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 10.5,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
             ),
@@ -284,6 +392,16 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!enabled) return const SizedBox.shrink();
+    final hasImage = imageUrl.trim().isNotEmpty;
+    final hasCopy = title.trim().isNotEmpty ||
+        subtitle.trim().isNotEmpty ||
+        buttonText.trim().isNotEmpty;
+    if (!hasImage && !hasCopy) {
+      return const SizedBox.shrink();
+    }
+    final boxH = hasImage
+        ? height.clamp(120, 360).toDouble()
+        : (hasCopy ? 96.0 : 0.0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: ClipRRect(
@@ -293,15 +411,27 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
         child: Stack(
           children: [
             Container(
-              height: height.clamp(120, 360).toDouble(),
+              height: boxH,
               width: double.infinity,
-              color: backgroundColor,
-              child: imageUrl.trim().isEmpty
-                  ? null
-                  : SmartImage(src: imageUrl, fit: BoxFit.cover),
+              decoration: BoxDecoration(
+                color: backgroundColor,
+                gradient: !hasImage && hasCopy
+                    ? LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          backgroundColor,
+                          backgroundColor.withValues(alpha: 0.88),
+                        ],
+                      )
+                    : null,
+              ),
+              child: hasImage
+                  ? SmartImage(src: imageUrl, fit: BoxFit.cover)
+                  : null,
             ),
             Container(
-              height: height.clamp(120, 360).toDouble(),
+              height: boxH,
               width: double.infinity,
               color: Colors.black.withValues(alpha: overlayOpacity.clamp(0.0, 0.8)),
             ),
@@ -317,11 +447,11 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                         title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                        ),
+        style: TextStyle(
+          color: textColor,
+          fontSize: 17,
+          fontWeight: FontWeight.w600,
+        ),
                       ),
                     if (subtitle.trim().isNotEmpty) ...[
                       const SizedBox(height: 8),
@@ -331,16 +461,26 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: textColor.withValues(alpha: 0.96),
-                          fontSize: 14,
+                          fontSize: 13,
                         ),
                       ),
                     ],
                     if (buttonText.trim().isNotEmpty) ...[
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
                       FilledButton(
                         onPressed: onTap,
-                        style: FilledButton.styleFrom(backgroundColor: buttonColor),
-                        child: Text(buttonText),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: buttonColor,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          minimumSize: const Size(0, 36),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          buttonText,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
                       ),
                     ],
                   ],

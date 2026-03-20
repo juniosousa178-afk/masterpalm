@@ -33,6 +33,7 @@ import '../utils/instagram_launcher.dart';
 import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart';
 import 'public_catalog/catalog_helpers.dart';
+import 'public_catalog/catalog_best_sellers_helper.dart';
 import 'public_catalog/catalog_estoque_helper.dart';
 import 'public_catalog/catalog_config_service.dart';
 import '../utils/safe_parse.dart';
@@ -49,6 +50,7 @@ import 'public_catalog/widgets/catalog_products_grid_sliver.dart';
 import 'public_catalog/widgets/catalog_recent_section_sliver.dart';
 import 'public_catalog/widgets/catalog_skeleton_grid.dart';
 import 'public_catalog/widgets/catalog_minimalist_widgets.dart';
+import 'public_catalog/widgets/catalog_minimal_best_sellers.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import '../core/logger.dart';
@@ -331,6 +333,7 @@ List<Map<String, dynamic>> _processDocsToProducts(
                 ? (m['descontoComboPercentual'] as num).toDouble()
                 : 0.0,
         },
+        'vendasScoreCatalogo': vendasScoreFromFirestoreMap(m),
       });
     } catch (e, st) {
       if (kDebugMode) {
@@ -3049,6 +3052,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final categoryVisualsCfg = mpMapDyn(cfg['categoryVisuals']);
                 final heroBannerCfg = mpMapDyn(cfg['heroBanner']);
                 final minimalGridCfg = mpMapDyn(cfg['minimalProductGrid']);
+                final minimalBestSellersCfg =
+                    mpMapDyn(cfg['minimalBestSellers']);
+                final bestSellersSectionEnabled = safeBool(
+                    minimalBestSellersCfg['enabled'], true);
+                final bestSellersTitle =
+                    (minimalBestSellersCfg['title'] ?? 'Mais vendidos')
+                        .toString();
+                final bestSellersLimit = safeInt(
+                    minimalBestSellersCfg['count'], 10)
+                    .clamp(3, 24);
 
                 TextAlign parseTextAlign(dynamic raw, TextAlign fallback) {
                   final v = (raw ?? '').toString().trim().toLowerCase();
@@ -3986,6 +3999,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             textAlign: parseTextAlign(
                                 promoBarCfg['alignment'], TextAlign.center),
                             bold: safeBool(promoBarCfg['bold'], true),
+                            marqueeWhenOverflow: useMinimalLayout &&
+                                safeBool(promoBarCfg['marquee'], true),
                             onTap: () {
                               final link = (promoBarCfg['link'] ?? '')
                                   .toString()
@@ -4284,6 +4299,86 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       _openUrl(link);
                                                     },
                                                   ),
+                                                if (useMinimalLayout &&
+                                                    bestSellersSectionEnabled &&
+                                                    produtos.isNotEmpty)
+                                                  CatalogMinimalBestSellersSection(
+                                                    title: bestSellersTitle,
+                                                    products:
+                                                        pickBestSellersForMinimalCatalog(
+                                                      produtos,
+                                                      limit: bestSellersLimit,
+                                                    ),
+                                                    lojaId: lojaId,
+                                                    todosProdutos: produtos,
+                                                    onAdd: (it) =>
+                                                        _addToCart(
+                                                            it, produtos),
+                                                    onAbrirCarrinho: () =>
+                                                        _openCartSheet(
+                                                      fretes: fretes,
+                                                      cupons: cupons,
+                                                      primary: primaryColor,
+                                                      buttonText: btnTextColor,
+                                                      textColor: textColor,
+                                                      cardColor: cardColor,
+                                                      checkoutCardColor:
+                                                          checkoutCardColor,
+                                                      checkoutFieldBg:
+                                                          checkoutFieldBg,
+                                                      checkoutFieldBorder:
+                                                          checkoutFieldBorder,
+                                                      checkoutFieldTextColor:
+                                                          checkoutFieldTextColor,
+                                                      checkoutLabelColor:
+                                                          checkoutLabelColor,
+                                                      checkoutTotalColor:
+                                                          checkoutTotalColor,
+                                                      productNameColor:
+                                                          productNameColor,
+                                                      productPriceColor:
+                                                          productPriceColor,
+                                                      whatsappVendedor:
+                                                          whatsappVendedor,
+                                                      lojaNome: lojaNome,
+                                                      paymentAsset:
+                                                          paymentAssets,
+                                                      paymentCodes:
+                                                          paymentCodes,
+                                                      instagramUrl:
+                                                          instagramUrl,
+                                                      facebookUrl: facebookUrl,
+                                                      empresaRazao: empresaRazao,
+                                                      empresaCnpj: empresaCnpj,
+                                                      checkoutGateway:
+                                                          checkoutGateway,
+                                                      checkoutButtonLabel:
+                                                          checkoutButtonLabel,
+                                                      pixKey: pixKey,
+                                                      freightToken:
+                                                          freightToken,
+                                                    ),
+                                                    catalogShareUrl:
+                                                        CatalogShareService
+                                                            .buildUrlWithParams(
+                                                      '$_baseUrlCatalogo/$lojaId',
+                                                      ref: widget.vendedorRef,
+                                                      indicacao: widget
+                                                          .indicacaoClienteRef,
+                                                    ),
+                                                    textColor: textColor,
+                                                    cardColor: cardColor,
+                                                    priceColor:
+                                                        productPriceColor,
+                                                    prazoEntregaTexto:
+                                                        prazoEntregaTexto,
+                                                    nomeLoja: lojaNome,
+                                                    contatoWhatsapp:
+                                                        whatsappVendedor,
+                                                    politicaFrete: null,
+                                                    onProductViewed:
+                                                        _onProductViewed,
+                                                  ),
                                                 const SizedBox(height: 16),
 
                                                 // ✨ BANNER DE CAMPANHAS
@@ -4418,6 +4513,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     jurosParcelamento,
                                                 maxParcelas: maxParcelasClamped,
                                                 textColor: textColor,
+                                                useMinimalLayout: useMinimalLayout,
                                               ),
                                             buildCatalogProductsGridSliver(
                                               products: listaPaginated,
@@ -4526,6 +4622,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 ref: widget.vendedorRef,
                                                 indicacao: widget.indicacaoClienteRef,
                                               ),
+                                              useMinimalLayout: useMinimalLayout,
                                             ),
                                             // Paginação: Anterior | Página X de Y | Próxima (sempre visível)
                                             if (totalPaginas > 1)

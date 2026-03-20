@@ -206,6 +206,17 @@ service cloud.firestore {
         && request.resource.data.status.size() <= 32;
     }
 
+    // Denormalização "Mais vendidos" (catálogo): só altera vendasCatalogoTotal, sem apagar outros campos.
+    // Limite por request evita abuso (carrinho já limitado a ~50 itens).
+    function isVendasCatalogoTotalOnlySafeUpdate() {
+      let oldV = resource.data.get('vendasCatalogoTotal', 0);
+      let newV = request.resource.data.vendasCatalogoTotal;
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['vendasCatalogoTotal'])
+        && newV is number
+        && newV >= oldV
+        && newV <= oldV + 1000;
+    }
+
     // Pedidos: permite itens com itensComboComSelecao (combo + selecao de variacoes)
     function isValidPedidoCreate() {
       return request.resource.data.size() <= 55
@@ -410,7 +421,10 @@ service cloud.firestore {
       // Catalogo publico: produtos (simples e combo) com imagens, itensCombo, variacoes
       match /produtos/{prodId} {
         allow read: if resource != null;
-        allow create, update, delete: if isAdminOrSystem();
+        allow create, delete: if isAdminOrSystem();
+        // Update: admin total OU dono/vendedor apenas incrementando vendasCatalogoTotal (denorm pós-venda catálogo)
+        allow update: if isAdminOrSystem()
+          || (belongsToStore(lojaId) && isVendasCatalogoTotalOnlySafeUpdate());
       }
 
       match /vendas/{vendaId} {
