@@ -98,8 +98,8 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
       builder: (ctx) => AlertDialog(
         title: const Text('Excluir campanha?'),
         content: Text(
-          'A campanha "$nomeCampanha" ser? exclu?da permanentemente.\n\n'
-          'Participantes e hist?rico de sorteios ser?o removidos. Esta a??o n?o pode ser desfeita.',
+          'A campanha "$nomeCampanha" será excluída permanentemente.\n\n'
+          'Participantes e histórico de sorteios serão removidos. Esta ação não pode ser desfeita.',
         ),
         actions: [
           TextButton(
@@ -134,7 +134,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
       }
 
       await campanhaRef.delete();
-      _showModernSnackBar('Campanha exclu?da com sucesso!');
+      _showModernSnackBar('Campanha excluída com sucesso!');
       if (mounted) setState(() {});
     } catch (e) {
       _showModernSnackBar('Erro ao excluir campanha: $e', isError: true);
@@ -149,7 +149,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
         builder: (ctx) => AlertDialog(
           title: const Text('Desativar campanha?'),
           content: Text(
-            'A campanha "$nomeCampanha" ser? pausada. Os participantes j? cadastrados permanecem. Deseja continuar?',
+            'A campanha "$nomeCampanha" será pausada. Os participantes já cadastrados permanecem. Deseja continuar?',
           ),
           actions: [
             TextButton(
@@ -202,7 +202,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 children: [
                   Icon(Icons.wifi_off, size: 18, color: _warningColor),
                   SizedBox(width: 8),
-                  Text('Sem conex?o', style: TextStyle(color: _warningColor, fontWeight: FontWeight.w600)),
+                  Text('Sem conexão', style: TextStyle(color: _warningColor, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -441,7 +441,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                         controller: _buscaController,
                         onChanged: (v) => setState(() => _busca = v),
                         decoration: InputDecoration(
-                          hintText: 'Buscar por nome ou descri??o...',
+                          hintText: 'Buscar por nome ou descrição...',
                           prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
                           suffixIcon: _busca.isNotEmpty
                               ? IconButton(
@@ -596,14 +596,14 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               SizedBox(height: 12),
-              Text('1. Toque em "Abrir configura??es" para acessar as configura??es do aparelho.'),
+              Text('1. Toque em "Abrir configurações" para acessar as configurações do aparelho.'),
               SizedBox(height: 6),
-              Text('2. Em muitos celulares, a grava??o de tela fica na barra de notifica??es (arraste de cima para baixo) ? procure por "Gravar tela" ou "Screen record".'),
+              Text('2. Em muitos celulares, a gravação de tela fica na barra de notificações (arraste de cima para baixo) - procure por "Gravar tela" ou "Screen record".'),
               SizedBox(height: 6),
-              Text('3. Toque em "Abrir Roleta" abaixo, inicie a grava??o do sistema e depois gire a roleta.'),
+              Text('3. Toque em "Abrir Roleta" abaixo, inicie a gravação do sistema e depois gire a roleta.'),
               SizedBox(height: 12),
               Text(
-                'Assim o v?deo mostra o sorteio real, sem parecer combinado.',
+                'Assim o vídeo mostra o sorteio real, sem parecer combinado.',
                 style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54),
               ),
             ],
@@ -623,10 +623,10 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                   );
                   await intent.launch();
                 } catch (_) {}
-                // Mant?m o di?logo aberto para o usu?rio voltar e tocar em "Abrir Roleta"
+                // Mantém o diálogo aberto para o usuário voltar e tocar em "Abrir Roleta"
               },
               icon: const Icon(Icons.settings, size: 20),
-              label: const Text('Abrir configura??es'),
+              label: const Text('Abrir configurações'),
             ),
           FilledButton.icon(
             onPressed: () {
@@ -748,7 +748,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                '${_formatarData(dataInicio)} ? ${_formatarData(dataFim)} | Sorteio: ${_formatarData(dataSorteio)}',
+                                '${_formatarData(dataInicio)} - ${_formatarData(dataFim)} | Sorteio: ${_formatarData(dataSorteio)}',
                                 style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -885,7 +885,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 Expanded(
                   child: _buildActionButton(
                     icon: Icons.history,
-                    label: 'Hist?rico',
+                    label: 'Histórico',
                     color: _warningColor,
                     onTap: () {
                       Navigator.push(

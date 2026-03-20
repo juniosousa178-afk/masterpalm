@@ -156,6 +156,7 @@ class _PlanoScreenState extends State<PlanoScreen> {
           children: [
             DropdownButtonFormField<String>(
               initialValue: usuarioSelecionado,
+              isExpanded: true,
               dropdownColor: Colors.black,
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(
@@ -174,6 +175,8 @@ class _PlanoScreenState extends State<PlanoScreen> {
                         child: Text(
                           '${usuario['email']} • ${usuario['tipo']}',
                           style: const TextStyle(color: Colors.white),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ))
                   .toList(),

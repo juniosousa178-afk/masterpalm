@@ -1090,7 +1090,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
-                                            DateFormat('dd/MM/yyyy ? HH:mm')
+                                            DateFormat('dd/MM/yyyy - HH:mm')
                                                 .format(venda.data),
                                             style: TextStyle(
                                               color: Colors.grey[500],
@@ -2913,7 +2913,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       Text(
-                        DateFormat('dd/MM/yyyy ? HH:mm').format(venda.data),
+                        DateFormat('dd/MM/yyyy - HH:mm').format(venda.data),
                         style: TextStyle(
                           color: Colors.grey[500],
                           fontSize: 12,
