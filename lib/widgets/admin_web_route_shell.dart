@@ -17,7 +17,7 @@ class AdminWebRouteShell extends StatefulWidget {
 
 class _AdminWebRouteShellState extends State<AdminWebRouteShell> {
   bool _ready = !kIsWeb;
-  Object? _error;
+  Object• _error;
 
   @override
   void initState() {

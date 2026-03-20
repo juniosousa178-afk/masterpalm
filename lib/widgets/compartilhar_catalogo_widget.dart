@@ -9,22 +9,22 @@ import '../services/tracking_service.dart';
 /// Widget de botão para compartilhar catálogo com tracking
 class CompartilharCatalogoButton extends StatefulWidget {
   /// Telefone do cliente (opcional)
-  final String? clienteTelefone;
+  final String• clienteTelefone;
 
   /// Nome do cliente (opcional)
-  final String? clienteNome;
+  final String• clienteNome;
 
   /// Mensagem personalizada (opcional)
-  final String? mensagemPersonalizada;
+  final String• mensagemPersonalizada;
 
   /// Callback após compartilhar
-  final VoidCallback? onCompartilhado;
+  final VoidCallback• onCompartilhado;
 
   /// Se mostra opções expandidas
   final bool expandido;
 
   /// Cor do botão
-  final Color? cor;
+  final Color• cor;
 
   const CompartilharCatalogoButton({
     super.key,
@@ -42,8 +42,8 @@ class CompartilharCatalogoButton extends StatefulWidget {
 
 class _CompartilharCatalogoButtonState extends State<CompartilharCatalogoButton> {
   bool _carregando = false;
-  String? _linkGerado;
-  String? _erro;
+  String• _linkGerado;
+  String• _erro;
 
   Future<void> _gerarLink() async {
     setState(() {
@@ -120,7 +120,7 @@ class _CompartilharCatalogoButtonState extends State<CompartilharCatalogoButton>
 
   @override
   Widget build(BuildContext context) {
-    final corPrimaria = widget.cor ?? Theme.of(context).colorScheme.primary;
+    final corPrimaria = widget.cor ?• Theme.of(context).colorScheme.primary;
 
     if (widget.expandido) {
       return _buildExpandido(corPrimaria);
@@ -131,9 +131,9 @@ class _CompartilharCatalogoButtonState extends State<CompartilharCatalogoButton>
 
   Widget _buildCompacto(Color corPrimaria) {
     return ElevatedButton.icon(
-      onPressed: _carregando ? null : _compartilharWhatsApp,
+      onPressed: _carregando • null : _compartilharWhatsApp,
       icon: _carregando
-          ? const SizedBox(
+          • const SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(
@@ -192,9 +192,9 @@ class _CompartilharCatalogoButtonState extends State<CompartilharCatalogoButton>
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: _carregando ? null : _compartilharWhatsApp,
+                    onPressed: _carregando • null : _compartilharWhatsApp,
                     icon: _carregando
-                        ? const SizedBox(
+                        • const SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
@@ -212,7 +212,7 @@ class _CompartilharCatalogoButtonState extends State<CompartilharCatalogoButton>
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  onPressed: _carregando ? null : _compartilharOutros,
+                  onPressed: _carregando • null : _compartilharOutros,
                   icon: const Icon(Icons.share),
                   tooltip: 'Outras opções',
                   style: IconButton.styleFrom(
@@ -221,7 +221,7 @@ class _CompartilharCatalogoButtonState extends State<CompartilharCatalogoButton>
                 ),
                 const SizedBox(width: 4),
                 IconButton(
-                  onPressed: _carregando ? null : _copiarLink,
+                  onPressed: _carregando • null : _copiarLink,
                   icon: const Icon(Icons.copy),
                   tooltip: 'Copiar link',
                   style: IconButton.styleFrom(
@@ -262,8 +262,8 @@ class _CompartilharCatalogoButtonState extends State<CompartilharCatalogoButton>
 
 /// Dialog para compartilhar catálogo
 class CompartilharCatalogoDialog extends StatefulWidget {
-  final String? clienteTelefone;
-  final String? clienteNome;
+  final String• clienteTelefone;
+  final String• clienteNome;
 
   const CompartilharCatalogoDialog({
     super.key,
@@ -273,8 +273,8 @@ class CompartilharCatalogoDialog extends StatefulWidget {
 
   static Future<void> show(
     BuildContext context, {
-    String? clienteTelefone,
-    String? clienteNome,
+    String• clienteTelefone,
+    String• clienteNome,
   }) {
     return showDialog(
       context: context,
@@ -294,13 +294,13 @@ class _CompartilharCatalogoDialogState extends State<CompartilharCatalogoDialog>
   final _nomeController = TextEditingController();
   final _mensagemController = TextEditingController();
   bool _carregando = false;
-  String? _linkGerado;
+  String• _linkGerado;
 
   @override
   void initState() {
     super.initState();
-    _telefoneController.text = widget.clienteTelefone ?? '';
-    _nomeController.text = widget.clienteNome ?? '';
+    _telefoneController.text = widget.clienteTelefone ?• '';
+    _nomeController.text = widget.clienteNome ?• '';
     _mensagemController.text =
         'Olá! Confira nosso catálogo de produtos com ofertas especiais:';
   }
@@ -343,7 +343,7 @@ class _CompartilharCatalogoDialogState extends State<CompartilharCatalogoDialog>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(resultado.mensagemErro ?? 'Erro ao gerar link'),
+            content: Text(resultado.mensagemErro ?• 'Erro ao gerar link'),
             backgroundColor: Colors.red,
           ),
         );
@@ -426,13 +426,13 @@ class _CompartilharCatalogoDialogState extends State<CompartilharCatalogoDialog>
       ),
       actions: [
         TextButton(
-          onPressed: _carregando ? null : () => Navigator.of(context).pop(),
+          onPressed: _carregando • null : () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
         ElevatedButton.icon(
-          onPressed: _carregando ? null : _gerarECompartilhar,
+          onPressed: _carregando • null : _gerarECompartilhar,
           icon: _carregando
-              ? const SizedBox(
+              • const SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(
@@ -441,7 +441,7 @@ class _CompartilharCatalogoDialogState extends State<CompartilharCatalogoDialog>
                   ),
                 )
               : const Icon(Icons.send),
-          label: Text(_carregando ? 'Gerando...' : 'Enviar'),
+          label: Text(_carregando • 'Gerando...' : 'Enviar'),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF25D366),
             foregroundColor: Colors.white,

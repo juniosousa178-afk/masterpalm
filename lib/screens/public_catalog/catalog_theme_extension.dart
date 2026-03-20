@@ -28,30 +28,30 @@ class CatalogThemeExtension extends ThemeExtension<CatalogThemeExtension> {
 
   @override
   CatalogThemeExtension copyWith({
-    Color? productNameColor,
-    Color? productPriceColor,
-    Color? buttonComprarBg,
-    Color? buttonComprarText,
-    Color? buttonVerBg,
-    Color? buttonVerText,
-    Color? chipFilterSelectedBg,
-    Color? chipFilterSelectedText,
+    Color• productNameColor,
+    Color• productPriceColor,
+    Color• buttonComprarBg,
+    Color• buttonComprarText,
+    Color• buttonVerBg,
+    Color• buttonVerText,
+    Color• chipFilterSelectedBg,
+    Color• chipFilterSelectedText,
   }) {
     return CatalogThemeExtension(
-      productNameColor: productNameColor ?? this.productNameColor,
-      productPriceColor: productPriceColor ?? this.productPriceColor,
-      buttonComprarBg: buttonComprarBg ?? this.buttonComprarBg,
-      buttonComprarText: buttonComprarText ?? this.buttonComprarText,
-      buttonVerBg: buttonVerBg ?? this.buttonVerBg,
-      buttonVerText: buttonVerText ?? this.buttonVerText,
-      chipFilterSelectedBg: chipFilterSelectedBg ?? this.chipFilterSelectedBg,
-      chipFilterSelectedText: chipFilterSelectedText ?? this.chipFilterSelectedText,
+      productNameColor: productNameColor ?• this.productNameColor,
+      productPriceColor: productPriceColor ?• this.productPriceColor,
+      buttonComprarBg: buttonComprarBg ?• this.buttonComprarBg,
+      buttonComprarText: buttonComprarText ?• this.buttonComprarText,
+      buttonVerBg: buttonVerBg ?• this.buttonVerBg,
+      buttonVerText: buttonVerText ?• this.buttonVerText,
+      chipFilterSelectedBg: chipFilterSelectedBg ?• this.chipFilterSelectedBg,
+      chipFilterSelectedText: chipFilterSelectedText ?• this.chipFilterSelectedText,
     );
   }
 
   @override
   CatalogThemeExtension lerp(
-      ThemeExtension<CatalogThemeExtension>? other, double t) {
+      ThemeExtension<CatalogThemeExtension>• other, double t) {
     if (other is! CatalogThemeExtension) return this;
     return CatalogThemeExtension(
       productNameColor: Color.lerp(productNameColor, other.productNameColor, t)!,

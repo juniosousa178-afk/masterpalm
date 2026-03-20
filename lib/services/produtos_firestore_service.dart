@@ -33,18 +33,18 @@ class ProdutosFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// Sincroniza um produto para o Firestore (Hive → Firestore)
-  static Future<void> syncProduto(Produto produto, {String? lojaId}) async {
+  static Future<void> syncProduto(Produto produto, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) {
         logD('❌ [PRODUTOS-SYNC] LojaId vazio, não pode sincronizar');
         return;
       }
 
       final produtoId = produto.idFirebase.isNotEmpty
-          ? produto.idFirebase
+          • produto.idFirebase
           : produto.slug.isNotEmpty
-              ? produto.slug
+              • produto.slug
               : DateTime.now().millisecondsSinceEpoch.toString();
 
       // 📸 Fazer upload das imagens locais para Firebase Storage
@@ -54,7 +54,7 @@ class ProdutosFirestoreService {
       for (final imagemPath in produto.imagens) {
         if (ImageUploadService.isLocalPath(imagemPath)) {
           logD('📤 [PRODUTOS-SYNC] Fazendo upload da imagem: $imagemPath');
-          String? url;
+          String• url;
           final thumbBytes = await CatalogThumbnailService.generateFromPath(imagemPath);
           if (thumbBytes != null) {
             url = await ImageUploadService.uploadImageFromBytes(
@@ -157,10 +157,10 @@ class ProdutosFirestoreService {
         'percentualPromo': produto.percentualPromo,
         'valorPromo': produto.valorPromo,
         'dataInicioPromo': produto.dataInicioPromo != null
-            ? Timestamp.fromDate(produto.dataInicioPromo!)
+            • Timestamp.fromDate(produto.dataInicioPromo!)
             : null,
         'dataFimPromo': produto.dataFimPromo != null
-            ? Timestamp.fromDate(produto.dataFimPromo!)
+            • Timestamp.fromDate(produto.dataFimPromo!)
             : null,
 
         // Variações (tamanho + cor)
@@ -176,8 +176,8 @@ class ProdutosFirestoreService {
         'percentualDescontoPix': produto.percentualDescontoPix,
         'maxParcelasSemJuros': produto.maxParcelasSemJuros,
 
-        'videoUrl': produto.videoUrl.isNotEmpty ? produto.videoUrl : null,
-        'codigoBarras': produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
+        'videoUrl': produto.videoUrl.isNotEmpty • produto.videoUrl : null,
+        'codigoBarras': produto.codigoBarras.isNotEmpty • produto.codigoBarras : null,
         'estoqueMinimo': produto.estoqueMinimo,
 
         // Metadata
@@ -223,24 +223,24 @@ class ProdutosFirestoreService {
       logD('✅ [PRODUTOS-SYNC] Produto ${produto.nome} sincronizado');
     } catch (e, st) {
       logE('❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})', error: e, st: st);
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       final key = produto.key;
-      final boxName = produto.box?.name ?? (storeId != null ? HiveBoxNames.produtos(storeId) : null);
+      final boxName = produto.box?.name ?• (storeId != null • HiveBoxNames.produtos(storeId) : null);
       if (storeId != null && key != null && boxName != null) {
         await SyncQueueService.enqueue(
           type: SyncOperationType.upsertProduto,
           lojaId: storeId,
           boxName: boxName,
-          entityKey: key is int ? key : int.tryParse(key.toString()) ?? 0,
+          entityKey: key is int • key : int.tryParse(key.toString()) ?• 0,
         );
       }
     }
   }
 
-  static bool _isDataImageUrl(String? s) =>
+  static bool _isDataImageUrl(String• s) =>
       s != null && s.trim().startsWith('data:image');
 
-  static bool _isBlobUrl(String? s) =>
+  static bool _isBlobUrl(String• s) =>
       s != null && s.trim().toLowerCase().startsWith('blob:');
 
   static Future<String?> _uploadDataImageUrl(String dataUrl, String lojaId) async {
@@ -303,7 +303,7 @@ class ProdutosFirestoreService {
 
       const batchSize = 500;
       final allDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-      DocumentSnapshot<Map<String, dynamic>>? lastDoc;
+      DocumentSnapshot<Map<String, dynamic>>• lastDoc;
 
       while (true) {
         Query<Map<String, dynamic>> query = _db
@@ -332,8 +332,8 @@ class ProdutosFirestoreService {
           final produtoId = doc.id;
 
           // Buscar se já existe no Hive pelo idFirebase OU pelo slug
-          final slug = data['slug'] ?? '';
-          Produto? produtoExistente;
+          final slug = data['slug'] ?• '';
+          Produto• produtoExistente;
 
           // Primeiro tenta por idFirebase
           try {
@@ -355,27 +355,27 @@ class ProdutosFirestoreService {
             // Atualizar produto existente com todos os dados do Firestore,
             // para que alterações feitas em outro aparelho (custo, peso, etc.) apareçam aqui.
             final p = produtoExistente;
-            p.nome = data['nome'] ?? p.nome;
-            p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
-            p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
-            p.custoReal = (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
-            p.frete = (data['frete'] as num?)?.toDouble() ?? p.frete;
-            p.gastosFixos = (data['gastosFixos'] as num?)?.toDouble() ?? p.gastosFixos;
-            p.gastosVariaveis = (data['gastosVariaveis'] as num?)?.toDouble() ?? p.gastosVariaveis;
-            p.precoSugerido = (data['precoSugerido'] as num?)?.toDouble() ?? p.precoSugerido;
-            p.peso = (data['peso'] as num?)?.toDouble() ?? p.peso;
-            p.tipoEmbalagem = (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
-            p.categoria = data['categoria'] ?? p.categoria;
-            p.subcategoria = data['subcategoria'] ?? p.subcategoria;
-            p.descricao = data['descricao'] ?? p.descricao;
-            p.imagens = (data['imagens'] as List?)?.cast<String>() ?? p.imagens;
-            p.slug = data['slug'] ?? p.slug;
-            p.codigoBarras = (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
-            p.estoqueMinimo = (data['estoqueMinimo'] is num) ? (data['estoqueMinimo'] as num).toInt() : p.estoqueMinimo;
-            p.publicadoNoCatalogo = data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
-            p.tamanhos = (data['tamanhos'] as List?)?.cast<String>() ?? p.tamanhos;
-            p.estoquePorTamanho = Map<String, int>.from(data['estoquePorTamanho'] ?? p.estoquePorTamanho);
-            p.cores = (data['cores'] as List?)?.cast<String>() ?? p.cores;
+            p.nome = data['nome'] ?• p.nome;
+            p.precoFinal = (data['preco'] as num?)?.toDouble() ?• p.precoFinal;
+            p.quantidade = (data['quantidade'] as num?)?.toInt() ?• p.quantidade;
+            p.custoReal = (data['custoReal'] as num?)?.toDouble() ?• p.custoReal;
+            p.frete = (data['frete'] as num?)?.toDouble() ?• p.frete;
+            p.gastosFixos = (data['gastosFixos'] as num?)?.toDouble() ?• p.gastosFixos;
+            p.gastosVariaveis = (data['gastosVariaveis'] as num?)?.toDouble() ?• p.gastosVariaveis;
+            p.precoSugerido = (data['precoSugerido'] as num?)?.toDouble() ?• p.precoSugerido;
+            p.peso = (data['peso'] as num?)?.toDouble() ?• p.peso;
+            p.tipoEmbalagem = (data['tipoEmbalagem'] ?• p.tipoEmbalagem).toString();
+            p.categoria = data['categoria'] ?• p.categoria;
+            p.subcategoria = data['subcategoria'] ?• p.subcategoria;
+            p.descricao = data['descricao'] ?• p.descricao;
+            p.imagens = (data['imagens'] as List?)?.cast<String>() ?• p.imagens;
+            p.slug = data['slug'] ?• p.slug;
+            p.codigoBarras = (data['codigoBarras'] ?• p.codigoBarras ?• '').toString();
+            p.estoqueMinimo = (data['estoqueMinimo'] is num) • (data['estoqueMinimo'] as num).toInt() : p.estoqueMinimo;
+            p.publicadoNoCatalogo = data['publicadoNoCatalogo'] ?• p.publicadoNoCatalogo;
+            p.tamanhos = (data['tamanhos'] as List?)?.cast<String>() ?• p.tamanhos;
+            p.estoquePorTamanho = Map<String, int>.from(data['estoquePorTamanho'] ?• p.estoquePorTamanho);
+            p.cores = (data['cores'] as List?)?.cast<String>() ?• p.cores;
             final varData = data['variacoes'];
             if (varData != null && varData is Map) {
               p.variacoes = _parseVariacoesFromFirestore(varData);
@@ -383,13 +383,13 @@ class ProdutosFirestoreService {
             final ppt = data['precoPorTamanho'];
             if (ppt != null && ppt is Map) {
               p.precoPorTamanho = Map<String, double>.from(
-                ppt.map((k, v) => MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0)),
+                ppt.map((k, v) => MapEntry(k.toString(), (v is num) • v.toDouble() : 0.0)),
               );
             } else if (ppt == null) {
               p.precoPorTamanho = null;
             }
-            p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ?? (data['preco'] as num?)?.toDouble() ?? p.precoUnitario;
-            p.tipoProduto = (data['tipoProduto'] ?? p.tipoProduto).toString();
+            p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ?• (data['preco'] as num?)?.toDouble() ?• p.precoUnitario;
+            p.tipoProduto = (data['tipoProduto'] ?• p.tipoProduto).toString();
             final itc = data['itensCombo'];
             if (itc != null && itc is List && itc.isNotEmpty) {
               p.itensCombo = itc.map((e) {
@@ -397,16 +397,16 @@ class ProdutosFirestoreService {
                   return Map<String, dynamic>.from(Map.from(e));
                 }
                 return <String, dynamic>{};
-              }).where((m) => (m['nome'] ?? '').toString().isNotEmpty).toList();
+              }).where((m) => (m['nome'] ?• '').toString().isNotEmpty).toList();
             } else if (itc == null) {
               p.itensCombo = null;
             }
-            p.divideSemJuros = data['divideSemJuros'] ?? p.divideSemJuros;
+            p.divideSemJuros = data['divideSemJuros'] ?• p.divideSemJuros;
             p.percentualDescontoPix = (data['percentualDescontoPix'] is num)
-                ? (data['percentualDescontoPix'] as num).toDouble()
+                • (data['percentualDescontoPix'] as num).toDouble()
                 : p.percentualDescontoPix;
             p.maxParcelasSemJuros = (data['maxParcelasSemJuros'] is num)
-                ? (data['maxParcelasSemJuros'] as num).toInt()
+                • (data['maxParcelasSemJuros'] as num).toInt()
                 : p.maxParcelasSemJuros;
             final updatedAt = data['updatedAt'];
             if (updatedAt != null && updatedAt is Timestamp) {
@@ -421,44 +421,44 @@ class ProdutosFirestoreService {
           } else {
             // Criar novo produto
             final uAt = data['updatedAt'];
-            final updatedAtDt = uAt != null && uAt is Timestamp ? uAt.toDate() : null;
+            final updatedAtDt = uAt != null && uAt is Timestamp • uAt.toDate() : null;
             final produto = Produto(
               idFirebase: produtoId,
-              nome: data['nome'] ?? 'Produto sem nome',
-              custoReal: (data['custoReal'] as num?)?.toDouble() ?? 0.0,
-              frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
-              gastosFixos: (data['gastosFixos'] as num?)?.toDouble() ?? 0.0,
-              gastosVariaveis: (data['gastosVariaveis'] as num?)?.toDouble() ?? 0.0,
-              precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ?? (data['preco'] as num?)?.toDouble() ?? 0.0,
-              precoFinal: (data['preco'] as num?)?.toDouble() ?? 0.0,
-              precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?? (data['preco'] as num?)?.toDouble() ?? 0.0,
-              quantidade: (data['quantidade'] as num?)?.toInt() ?? 0,
-              categoria: data['categoria'] ?? '',
+              nome: data['nome'] ?• 'Produto sem nome',
+              custoReal: (data['custoReal'] as num?)?.toDouble() ?• 0.0,
+              frete: (data['frete'] as num?)?.toDouble() ?• 0.0,
+              gastosFixos: (data['gastosFixos'] as num?)?.toDouble() ?• 0.0,
+              gastosVariaveis: (data['gastosVariaveis'] as num?)?.toDouble() ?• 0.0,
+              precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ?• (data['preco'] as num?)?.toDouble() ?• 0.0,
+              precoFinal: (data['preco'] as num?)?.toDouble() ?• 0.0,
+              precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?• (data['preco'] as num?)?.toDouble() ?• 0.0,
+              quantidade: (data['quantidade'] as num?)?.toInt() ?• 0,
+              categoria: data['categoria'] ?• '',
               dataEntrada: DateTime.now(),
-              descricao: data['descricao'] ?? '',
-              imagens: (data['imagens'] as List?)?.cast<String>() ?? [],
-              slug: data['slug'] ?? '',
+              descricao: data['descricao'] ?• '',
+              imagens: (data['imagens'] as List?)?.cast<String>() ?• [],
+              slug: data['slug'] ?• '',
               lojaId: lojaId,
-              subcategoria: data['subcategoria'] ?? '',
-              publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
-              tamanhos: (data['tamanhos'] as List?)?.cast<String>() ?? [],
-              estoquePorTamanho: Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
-              cores: (data['cores'] as List?)?.cast<String>() ?? [],
+              subcategoria: data['subcategoria'] ?• '',
+              publicadoNoCatalogo: data['publicadoNoCatalogo'] ?• false,
+              tamanhos: (data['tamanhos'] as List?)?.cast<String>() ?• [],
+              estoquePorTamanho: Map<String, int>.from(data['estoquePorTamanho'] ?• {}),
+              cores: (data['cores'] as List?)?.cast<String>() ?• [],
               variacoes: _parseVariacoesFromFirestore(data['variacoes']),
               precoPorTamanho: _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
-              tipoProduto: (data['tipoProduto'] ?? 'simples').toString(),
+              tipoProduto: (data['tipoProduto'] ?• 'simples').toString(),
               itensCombo: _parseItensComboFromFirestore(data['itensCombo']),
               divideSemJuros: data['divideSemJuros'] == true,
               percentualDescontoPix: (data['percentualDescontoPix'] is num)
-                  ? (data['percentualDescontoPix'] as num).toDouble()
+                  • (data['percentualDescontoPix'] as num).toDouble()
                   : 0.0,
               maxParcelasSemJuros: (data['maxParcelasSemJuros'] is num)
-                  ? (data['maxParcelasSemJuros'] as num).toInt()
+                  • (data['maxParcelasSemJuros'] as num).toInt()
                   : 12,
-              codigoBarras: (data['codigoBarras'] ?? '').toString(),
-              estoqueMinimo: (data['estoqueMinimo'] is num) ? (data['estoqueMinimo'] as num).toInt() : 0,
-              peso: (data['peso'] as num?)?.toDouble() ?? 0.0,
-              tipoEmbalagem: (data['tipoEmbalagem'] ?? 'padrao').toString(),
+              codigoBarras: (data['codigoBarras'] ?• '').toString(),
+              estoqueMinimo: (data['estoqueMinimo'] is num) • (data['estoqueMinimo'] as num).toInt() : 0,
+              peso: (data['peso'] as num?)?.toDouble() ?• 0.0,
+              tipoEmbalagem: (data['tipoEmbalagem'] ?• 'padrao').toString(),
               updatedAt: updatedAtDt,
             );
 
@@ -495,49 +495,49 @@ class ProdutosFirestoreService {
     }
   }
 
-  static List<Map<String, dynamic>>? _parseItensComboFromFirestore(dynamic data) {
+  static List<Map<String, dynamic>>• _parseItensComboFromFirestore(dynamic data) {
     if (data == null || data is! List || data.isEmpty) return null;
     final result = <Map<String, dynamic>>[];
     for (final e in data) {
       if (e is! Map) continue;
       final m = Map<String, dynamic>.from(Map.from(e));
-      if ((m['nome'] ?? '').toString().trim().isEmpty) continue;
+      if ((m['nome'] ?• '').toString().trim().isEmpty) continue;
       result.add(m);
     }
-    return result.isEmpty ? null : result;
+    return result.isEmpty • null : result;
   }
 
   /// Converte mapa precoPorTamanho vindo do Firestore para Map<String, double>.
-  static Map<String, double>? _parsePrecoPorTamanhoFromFirestore(dynamic data) {
+  static Map<String, double>• _parsePrecoPorTamanhoFromFirestore(dynamic data) {
     if (data == null || data is! Map) return null;
     final result = <String, double>{};
     for (final entry in data.entries) {
-      final k = entry.key?.toString() ?? '';
+      final k = entry.key?.toString() ?• '';
       if (k.isEmpty) continue;
-      final v = entry.value is num ? (entry.value as num).toDouble() : 0.0;
+      final v = entry.value is num • (entry.value as num).toDouble() : 0.0;
       if (v > 0) result[k] = v;
     }
-    return result.isEmpty ? null : result;
+    return result.isEmpty • null : result;
   }
 
   /// Converte mapa de variações vindo do Firestore para Map<String, dynamic> (tamanho -> { cor -> qtd }).
-  static Map<String, dynamic>? _parseVariacoesFromFirestore(dynamic varData) {
+  static Map<String, dynamic>• _parseVariacoesFromFirestore(dynamic varData) {
     if (varData == null || varData is! Map) return null;
     final result = <String, dynamic>{};
     for (final entry in varData.entries) {
-      final tamanho = entry.key?.toString() ?? '';
+      final tamanho = entry.key?.toString() ?• '';
       if (tamanho.isEmpty) continue;
       final inner = entry.value;
       if (inner is! Map) continue;
       final mapaCorQtd = <String, int>{};
       for (final e in inner.entries) {
-        final cor = e.key?.toString() ?? '';
-        final qtd = e.value is num ? (e.value as num).toInt() : int.tryParse(e.value?.toString() ?? '') ?? 0;
+        final cor = e.key?.toString() ?• '';
+        final qtd = e.value is num • (e.value as num).toInt() : int.tryParse(e.value?.toString() ?• '') ?• 0;
         if (cor.isNotEmpty) mapaCorQtd[cor] = qtd;
       }
       if (mapaCorQtd.isNotEmpty) result[tamanho] = mapaCorQtd;
     }
-    return result.isEmpty ? null : result;
+    return result.isEmpty • null : result;
   }
 
   /// Atualiza apenas a quantidade de um produto no Firestore
@@ -545,8 +545,8 @@ class ProdutosFirestoreService {
     required String lojaId,
     required String produtoId,
     required int novaQuantidade,
-    Map<String, dynamic>? variacoes,
-    Map<String, int>? estoquePorTamanho,
+    Map<String, dynamic>• variacoes,
+    Map<String, int>• estoquePorTamanho,
   }) async {
     try {
       final updateData = <String, dynamic>{
@@ -587,7 +587,7 @@ class ProdutosFirestoreService {
           .collection(FSPaths.estoqueProdutosCol)
           .count();
       final snapshot = await aggregate.get();
-      final remoteCount = snapshot.count ?? 0;
+      final remoteCount = snapshot.count ?• 0;
       return remoteCount > localCount;
     } catch (e, st) {
       logE('❌ [PRODUTOS-SYNC] Erro ao verificar dados para importar (type=${e.runtimeType})', error: e, st: st);
@@ -609,7 +609,7 @@ class ProdutosFirestoreService {
 
       const batchSize = 500;
       final toDelete = <String>[];
-      DocumentSnapshot<Map<String, dynamic>>? lastDoc;
+      DocumentSnapshot<Map<String, dynamic>>• lastDoc;
 
       while (true) {
         Query<Map<String, dynamic>> query = _db
@@ -651,9 +651,9 @@ class ProdutosFirestoreService {
   }
 
   /// Deleta um produto do Firestore
-  static Future<void> deleteProduto(String produtoId, {String? lojaId}) async {
+  static Future<void> deleteProduto(String produtoId, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return;
 
       await _db

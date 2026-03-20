@@ -45,7 +45,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
   late Animation<double> _fadeAnimation;
 
   /// 🔹 Loja atual (multi-loja via Hive/sessao)
-  String? lojaId;
+  String• lojaId;
 
   /// 🔹 Estado de carregamento
   bool _carregando = true;
@@ -53,7 +53,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
   bool _importando = false;
   bool _sincronizando = false;
   bool _enviandoFornecedores = false;
-  bool? _temDadosParaImportar;
+  bool• _temDadosParaImportar;
   String _searchQuery = '';
 
   @override
@@ -133,7 +133,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
       await _verificarSeTemDadosParaImportar();
       if (!mounted) return;
       final msg = n > 0
-          ? 'Baixados $n novo(s) fornecedor(es)'
+          • 'Baixados $n novo(s) fornecedor(es)'
           : 'Nenhum fornecedor novo encontrado';
       _mostrarSnackBarModerno(msg, Icons.check_circle, successColor);
       setState(() {});
@@ -247,8 +247,8 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
 
   Widget _buildFormularioBottomSheet({
     bool isEditing = false,
-    Fornecedor? fornecedor,
-    int? index,
+    Fornecedor• fornecedor,
+    int• index,
   }) {
     return Container(
       padding: EdgeInsets.only(
@@ -288,14 +288,14 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    isEditing ? Icons.edit : Icons.person_add,
+                    isEditing • Icons.edit : Icons.person_add,
                     color: Colors.white,
                     size: 24,
                   ),
                 ),
                 const SizedBox(width: 16),
                 Text(
-                  isEditing ? 'Editar Fornecedor' : 'Novo Fornecedor',
+                  isEditing • 'Editar Fornecedor' : 'Novo Fornecedor',
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -390,10 +390,10 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(isEditing ? Icons.save : Icons.add, size: 20),
+                        Icon(isEditing • Icons.save : Icons.add, size: 20),
                         const SizedBox(width: 8),
                         Text(
-                          isEditing ? 'Salvar' : 'Adicionar',
+                          isEditing • 'Salvar' : 'Adicionar',
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 16,
@@ -418,7 +418,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
     bool isRequired = false,
-    String? hint,
+    String• hint,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -434,7 +434,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
           color: Color(0xFF1E293B),
         ),
         decoration: InputDecoration(
-          labelText: isRequired ? '$label *' : label,
+          labelText: isRequired • '$label *' : label,
           hintText: hint,
           prefixIcon: Icon(icon, color: primaryColor, size: 22),
           border: InputBorder.none,
@@ -732,15 +732,15 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
       for (int i = 1; i < sheet.maxRows; i++) {
         final row = sheet.row(i);
 
-        final nome = row[0]?.value?.toString().trim() ?? '';
+        final nome = row[0]?.value?.toString().trim() ?• '';
         final telefone =
-            row.length > 1 ? row[1]?.value?.toString().trim() ?? '' : '';
+            row.length > 1 • row[1]?.value?.toString().trim() ?• '' : '';
         final email =
-            row.length > 2 ? row[2]?.value?.toString().trim() ?? '' : '';
+            row.length > 2 • row[2]?.value?.toString().trim() ?• '' : '';
         final instagram =
-            row.length > 3 ? row[3]?.value?.toString().trim() ?? '' : '';
+            row.length > 3 • row[3]?.value?.toString().trim() ?• '' : '';
         final whatsapp =
-            row.length > 4 ? row[4]?.value?.toString().trim() ?? '' : '';
+            row.length > 4 • row[4]?.value?.toString().trim() ?• '' : '';
 
         if (nome.isEmpty || telefone.isEmpty) continue;
 
@@ -947,7 +947,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
               actions: [
                 IconButton(
                   icon: _enviandoFornecedores
-                      ? const SizedBox(
+                      • const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
@@ -957,11 +957,11 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                         )
                       : const Icon(Icons.cloud_upload, color: Colors.white),
                   tooltip: 'Enviar para Nuvem',
-                  onPressed: _enviandoFornecedores ? null : _enviarFornecedoresParaNuvem,
+                  onPressed: _enviandoFornecedores • null : _enviarFornecedoresParaNuvem,
                 ),
                 IconButton(
                   icon: _sincronizando
-                      ? const SizedBox(
+                      • const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
@@ -971,20 +971,20 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                         )
                       : const Icon(Icons.cloud_download, color: Colors.white),
                   tooltip: _temDadosParaImportar == true
-                      ? 'Baixar da Nuvem (há fornecedores novos)'
+                      • 'Baixar da Nuvem (há fornecedores novos)'
                       : 'Baixar da Nuvem',
-                  onPressed: _sincronizando ? null : _baixarFornecedoresDaNuvem,
+                  onPressed: _sincronizando • null : _baixarFornecedoresDaNuvem,
                 ),
                 IconButton(
                   icon: _importando
-                      ? const SizedBox(
+                      • const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
                       : const Icon(Icons.upload_file, color: Colors.white),
-                  tooltip: _importando ? 'Importando...' : 'Importar Excel',
-                  onPressed: _importando ? null : _importarExcel,
+                  tooltip: _importando • 'Importando...' : 'Importar Excel',
+                  onPressed: _importando • null : _importarExcel,
                 ),
               ],
               flexibleSpace: FlexibleSpaceBar(
@@ -1086,7 +1086,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                         color: primaryColor,
                       ),
                       suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
+                          • IconButton(
                               icon: const Icon(Icons.clear, color: Colors.grey),
                               onPressed: () {
                                 _searchController.clear();
@@ -1179,7 +1179,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
           const SizedBox(height: 8),
           Text(
             _searchQuery.isNotEmpty
-                ? 'Nenhum resultado para "$_searchQuery"'
+                • 'Nenhum resultado para "$_searchQuery"'
                 : 'Adicione seu primeiro fornecedor',
             style: TextStyle(
               fontSize: 14,
@@ -1211,10 +1211,10 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
 
   Widget _buildFornecedorCard(Fornecedor fornecedor, int index) {
     final iniciais = fornecedor.nome.isNotEmpty
-        ? fornecedor.nome
+        • fornecedor.nome
             .split(' ')
             .take(2)
-            .map((e) => e.isNotEmpty ? e[0].toUpperCase() : '')
+            .map((e) => e.isNotEmpty • e[0].toUpperCase() : '')
             .join()
         : '?';
 
@@ -1373,7 +1373,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String text, {VoidCallback? onTap}) {
+  Widget _buildInfoRow(IconData icon, String text, {VoidCallback• onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -1388,9 +1388,9 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                 text,
                 style: TextStyle(
                   fontSize: 14,
-                  color: onTap != null ? primaryColor : Colors.grey[700],
+                  color: onTap != null • primaryColor : Colors.grey[700],
                   decoration:
-                      onTap != null ? TextDecoration.underline : null,
+                      onTap != null • TextDecoration.underline : null,
                 ),
               ),
             ),

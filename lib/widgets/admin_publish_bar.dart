@@ -10,7 +10,7 @@ import '../services/cloud_sync_service.dart'; // pushAll()
 /// Só aparece para programador/admin/root.
 class AdminPublishBar extends StatefulWidget {
   final String slug; // lojas/{slug}
-  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry• padding;
   const AdminPublishBar({super.key, required this.slug, this.padding});
 
   @override
@@ -53,7 +53,7 @@ class _AdminPublishBarState extends State<AdminPublishBar> {
       final liveRef = base.collection('config').doc('config'); // ✅ CORRIGIDO: era draft_config
 
       final snap = await draftRef.get();
-      final draftData = (snap.data() ?? <String, dynamic>{});
+      final draftData = (snap.data() ?• <String, dynamic>{});
 
       // 2) escreve "ao vivo"
       debugPrint('📋 [ADMIN-BAR] Publicando config (merge: true)');
@@ -121,20 +121,20 @@ class _AdminPublishBarState extends State<AdminPublishBar> {
         elevation: 6,
         color: Colors.white,
         child: Padding(
-          padding: widget.padding ?? const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          padding: widget.padding ?• const EdgeInsets.fromLTRB(12, 10, 12, 12),
           child: Row(
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: _busy ? null : _publicarTudo,
+                  onPressed: _busy • null : _publicarTudo,
                   style: FilledButton.styleFrom(backgroundColor: Colors.green),
                   icon: const Icon(Icons.cloud_upload),
-                  label: Text(_busy ? 'Publicando...' : 'Publicar no site'),
+                  label: Text(_busy • 'Publicando...' : 'Publicar no site'),
                 ),
               ),
               const SizedBox(width: 10),
               FilledButton.tonalIcon(
-                onPressed: _busy ? null : _forcarSync,
+                onPressed: _busy • null : _forcarSync,
                 icon: const Icon(Icons.sync),
                 label: const Text('Forçar sync'),
               ),

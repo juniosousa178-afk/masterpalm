@@ -9,7 +9,7 @@ const String _keyOnboardingDone = 'onboarding_app_done';
 /// Retorna true se o onboarding já foi exibido.
 Future<bool> isOnboardingAppDone() async {
   final prefs = await SharedPreferences.getInstance();
-  return prefs.getBool(_keyOnboardingDone) ?? false;
+  return prefs.getBool(_keyOnboardingDone) ?• false;
 }
 
 /// Marca onboarding como concluído (chamar ao finalizar ou "Já conheço").
@@ -69,7 +69,7 @@ class _OnboardingAppScreenState extends State<OnboardingAppScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF121212) : Colors.white;
+    final bg = isDark • const Color(0xFF121212) : Colors.white;
     final onBg = theme.colorScheme.onSurface;
 
     return Scaffold(
@@ -139,10 +139,10 @@ class _OnboardingAppScreenState extends State<OnboardingAppScreen> {
                   final active = i == _currentPage;
                   return Container(
                     margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: active ? 24 : 8,
+                    width: active • 24 : 8,
                     height: 8,
                     decoration: BoxDecoration(
-                      color: active ? theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha:0.3),
+                      color: active • theme.colorScheme.primary : theme.colorScheme.onSurface.withValues(alpha:0.3),
                       borderRadius: BorderRadius.circular(4),
                     ),
                   );
@@ -165,7 +165,7 @@ class _OnboardingAppScreenState extends State<OnboardingAppScreen> {
                       _finish();
                     }
                   },
-                  child: Text(_currentPage < _pages.length - 1 ? 'Próximo' : 'Começar'),
+                  child: Text(_currentPage < _pages.length - 1 • 'Próximo' : 'Começar'),
                 ),
               ),
             ),

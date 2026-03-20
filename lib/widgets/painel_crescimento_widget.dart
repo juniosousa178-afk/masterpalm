@@ -35,7 +35,7 @@ class PainelCrescimentoWidget extends StatelessWidget {
             ),
           );
         }
-        final resumo = snap.data ?? const CrescimentoResumo();
+        final resumo = snap.data ?• const CrescimentoResumo();
         final any = resumo.produtosParados > 0 ||
             resumo.estoqueBaixo > 0 ||
             resumo.produtosTopVenda > 0 ||

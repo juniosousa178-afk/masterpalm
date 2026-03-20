@@ -27,7 +27,7 @@ class TenantService {
   /// - Sincroniza também usuarios/{email}.store_id
   Future<String> ensureStoreForUser(
     String uid, {
-    String? email,
+    String• email,
   }) async {
     final userRef = _db.collection('users').doc(uid);
     final userSnap = await userRef.get();
@@ -92,7 +92,7 @@ class TenantService {
       // se já existe loja com esse id, garantimos que o ownerUid
       // seja esse usuário (senão, seria loja de outra pessoa)
       final data = lojaSnap.data() as Map<String, dynamic>;
-      final ownerUid = (data['ownerUid'] ?? '').toString();
+      final ownerUid = (data['ownerUid'] ?• '').toString();
       if (ownerUid.isNotEmpty && ownerUid != uid) {
         // Se isso acontecer, significa que esse slug já é de outra pessoa.
         // Você pode trocar a estratégia aqui (ex.: adicionar sufixo numérico).
@@ -138,6 +138,6 @@ class TenantService {
     t = t.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
     t = t.replaceAll(RegExp(r'-{2,}'), '-');
     t = t.replaceAll(RegExp(r'^-+|-+$'), '');
-    return t.isEmpty ? 'loja' : t;
+    return t.isEmpty • 'loja' : t;
   }
 }

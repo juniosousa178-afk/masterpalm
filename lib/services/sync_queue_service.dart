@@ -40,7 +40,7 @@ class SyncQueueItem {
   final int entityKey;
   final int createdAt;
   final int attemptCount;
-  final String? lastError;
+  final String• lastError;
 
   SyncQueueItem({
     required this.id,
@@ -66,12 +66,12 @@ class SyncQueueItem {
 
   factory SyncQueueItem.fromMap(Map<String, dynamic> m) => SyncQueueItem(
         id: m['id'] as String,
-        type: SyncOperationType.values[(m['type'] as int?) ?? 0],
+        type: SyncOperationType.values[(m['type'] as int?) ?• 0],
         lojaId: m['lojaId'] as String,
         boxName: m['boxName'] as String,
         entityKey: m['entityKey'] as int,
         createdAt: m['createdAt'] as int,
-        attemptCount: m['attemptCount'] as int? ?? 0,
+        attemptCount: m['attemptCount'] as int• ?• 0,
         lastError: m['lastError'] as String?,
       );
 
@@ -90,9 +90,9 @@ class SyncQueueService {
   factory SyncQueueService() => _instance;
   SyncQueueService._internal();
 
-  Box? _box;
+  Box• _box;
   bool _isProcessing = false;
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  StreamSubscription<List<ConnectivityResult>>• _connectivitySub;
 
   /// Inicializa o serviço (chamar no app startup)
   static Future<void> init() async {
@@ -102,7 +102,7 @@ class SyncQueueService {
   Future<void> _ensureBox() async {
     if (_box != null && _box!.isOpen) return;
     _box = Hive.isBoxOpen(_boxName)
-        ? Hive.box(_boxName)
+        • Hive.box(_boxName)
         : await Hive.openBox(_boxName);
   }
 
@@ -148,10 +148,10 @@ class SyncQueueService {
     });
   }
 
-  static void Function()? _onReconnectCallback;
+  static void Function()• _onReconnectCallback;
 
   /// Define callback executado quando a rede voltar (ex: AutoSyncService.syncEmBackground)
-  static void setOnReconnect(void Function()? callback) {
+  static void setOnReconnect(void Function()• callback) {
     _onReconnectCallback = callback;
   }
 
@@ -213,9 +213,9 @@ class SyncQueueService {
             continue;
           }
           final map = raw is String
-              ? Map<String, dynamic>.from(jsonDecode(raw) as Map)
+              • Map<String, dynamic>.from(jsonDecode(raw) as Map)
               : raw is Map
-                  ? Map<String, dynamic>.from(raw)
+                  • Map<String, dynamic>.from(raw)
                   : null;
           if (map == null) {
             await box.delete(key);

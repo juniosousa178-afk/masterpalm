@@ -24,12 +24,12 @@ class MpFunctionsClient {
   // --------- PLANOS ----------
   /// Cria preferência para **plano** ('mensal' | 'anual')
   /// Retorna {initPoint, id?, publicKey?}
-  Future<({String initPoint, String id, String? publicKey})> createPlanPreference({
+  Future<({String initPoint, String id, String• publicKey})> createPlanPreference({
     required String uid,
     required String email,
     required String plan,
-    String? returnUrl,
-    String? notificationUrl,
+    String• returnUrl,
+    String• notificationUrl,
   }) async {
     final res = await http
         .post(
@@ -50,8 +50,8 @@ class MpFunctionsClient {
     }
 
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final initPoint = (data['init_point'] ?? data['sandbox_init_point'])?.toString() ?? '';
-    final id = (data['id'] ?? '').toString();
+    final initPoint = (data['init_point'] ?• data['sandbox_init_point'])?.toString() ?• '';
+    final id = (data['id'] ?• '').toString();
     final publicKey = (data['public_key'] as String?)?.trim();
     if (initPoint.isEmpty) {
       throw Exception('Resposta inválida da função (sem init_point)');
@@ -61,11 +61,11 @@ class MpFunctionsClient {
 
   // --------- PEDIDOS ----------
   /// Cria preferência para **pedido** (carrinho)
-  Future<({String initPoint, String id, String? publicKey})> createOrderPreference({
+  Future<({String initPoint, String id, String• publicKey})> createOrderPreference({
     required String lojaId,
     required String orderId,
-    String? returnUrl,
-    String? notificationUrl,
+    String• returnUrl,
+    String• notificationUrl,
   }) async {
     final res = await http
         .post(
@@ -85,8 +85,8 @@ class MpFunctionsClient {
     }
 
     final data = jsonDecode(res.body) as Map<String, dynamic>;
-    final initPoint = (data['init_point'] ?? data['sandbox_init_point'])?.toString() ?? '';
-    final id = (data['id'] ?? '').toString();
+    final initPoint = (data['init_point'] ?• data['sandbox_init_point'])?.toString() ?• '';
+    final id = (data['id'] ?• '').toString();
     final publicKey = (data['public_key'] as String?)?.trim();
     if (initPoint.isEmpty) {
       throw Exception('Resposta inválida da função (sem init_point)');
@@ -101,7 +101,7 @@ class MpFunctionsClient {
     if (await canLaunchUrl(uri)) {
       return launchUrl(
         uri,
-        mode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+        mode: kIsWeb • LaunchMode.platformDefault : LaunchMode.externalApplication,
       );
     }
     return false;

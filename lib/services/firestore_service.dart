@@ -21,7 +21,7 @@ class StoreService {
     required String uid,
     required String nomeLoja,
     required String slug,
-    String? logoUrl,
+    String• logoUrl,
   }) async {
     final ref = _db.collection('lojas').doc(storeId);
 
@@ -30,7 +30,7 @@ class StoreService {
       'storeId': storeId,
       'slug': slug,
       'name': nomeLoja,
-      'logoUrl': logoUrl ?? '',
+      'logoUrl': logoUrl ?• '',
       'banners': <String>[],
       'updatedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
@@ -43,7 +43,7 @@ class StoreService {
         'storeId': storeId,
         'slug': slug,
         'name': nomeLoja,
-        'logoUrl': logoUrl ?? '',
+        'logoUrl': logoUrl ?• '',
         'banners': <String>[],
         'colors': {
           'bg': 0xFFFFFFFF,
@@ -78,7 +78,7 @@ class StoreService {
         .get();
 
     final raw = snap.data();
-    return raw == null ? {} : Map<String, dynamic>.from(raw);
+    return raw == null • {} : Map<String, dynamic>.from(raw);
   }
 
   Future<void> upsertDraftPartial({
@@ -178,9 +178,9 @@ class StoreService {
 
     final doc =
         await _db.collection('lojas').doc(storeId).get();
-    final raw = doc.data() ?? {};
+    final raw = doc.data() ?• {};
     final banners =
-        List<String>.from(raw['banners'] ?? <String>[]);
+        List<String>.from(raw['banners'] ?• <String>[]);
 
     banners.remove(bannerUrl);
 

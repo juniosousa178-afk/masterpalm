@@ -176,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _mostrarSenha ? Icons.visibility : Icons.visibility_off,
+                          _mostrarSenha • Icons.visibility : Icons.visibility_off,
                         ),
                         onPressed: () {
                           setState(() => _mostrarSenha = !_mostrarSenha);
@@ -197,14 +197,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   // Botão Entrar
                   ElevatedButton(
-                    onPressed: _carregando ? null : _fazerLogin,
+                    onPressed: _carregando • null : _fazerLogin,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
                     ),
                     child: _carregando
-                        ? const SizedBox(
+                        • const SizedBox(
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(
@@ -228,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       );
                     },
-                    child: const Text('Não tem conta? Cadastre-se'),
+                    child: const Text('Não tem conta• Cadastre-se'),
                   ),
 
                   // Link para recuperar senha

@@ -11,4 +11,4 @@ import 'package:flutter/services.dart';
 /// Web (Safari iPhone): usa teclado texto → toque em "123" para números + ponto.
 /// Mobile nativo: teclado decimal com ponto/vírgula.
 TextInputType get kKeyboardDecimal =>
-    kIsWeb ? TextInputType.text : const TextInputType.numberWithOptions(decimal: true);
+    kIsWeb • TextInputType.text : const TextInputType.numberWithOptions(decimal: true);

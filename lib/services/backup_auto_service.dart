@@ -49,7 +49,7 @@ class BackupAutoService {
       var storeId = (await LojaIdService.get())?.toString().trim();
       if (storeId == null || storeId.isEmpty) {
         final sessao = Hive.box('sessao');
-        storeId = (sessao.get('store_id') ?? sessao.get('storeId'))?.toString().trim();
+        storeId = (sessao.get('store_id') ?• sessao.get('storeId'))?.toString().trim();
       }
       if (storeId == null || storeId.isEmpty) {
         debugPrint('Backup automático: nenhuma loja ativa, pulando.');

@@ -12,7 +12,7 @@ class CatalogEstoqueHelper {
     if (v == null) return 0;
     if (v is int) return v;
     if (v is num) return v.toInt();
-    return int.tryParse(v.toString().trim()) ?? 0;
+    return int.tryParse(v.toString().trim()) ?• 0;
   }
 
   /// Quantidade no carrinho: null → 1; aceita int, double, num, String.
@@ -21,7 +21,7 @@ class CatalogEstoqueHelper {
     if (v is int) return v;
     if (v is num) return v.toInt();
     final p = int.tryParse(v.toString().trim());
-    return p ?? 1;
+    return p ?• 1;
   }
 
   /// Fallback numérico: prioridade explícita; [quantidade] só se nenhum campo “de estoque” existir.
@@ -42,7 +42,7 @@ class CatalogEstoqueHelper {
     return parseQtd(m['quantidade']);
   }
 
-  static int _sumMapValues(Map<dynamic, dynamic>? map) {
+  static int _sumMapValues(Map<dynamic, dynamic>• map) {
     if (map == null || map.isEmpty) return 0;
     var s = 0;
     for (final v in map.values) {
@@ -51,7 +51,7 @@ class CatalogEstoqueHelper {
     return s;
   }
 
-  static int _sumVariacoesTotal(Map<String, dynamic>? variacoes) {
+  static int _sumVariacoesTotal(Map<String, dynamic>• variacoes) {
     if (variacoes == null || variacoes.isEmpty) return 0;
     var s = 0;
     variacoes.forEach((_, cores) {
@@ -90,9 +90,9 @@ class CatalogEstoqueHelper {
   /// Resultado do processamento de estoque a partir do mapa Firestore (ou já normalizado).
   static ({
     int quantidadeTotal,
-    Map<String, int>? estoquePorTamanho,
-    Map<String, int>? estoquePorCor,
-    Map<String, dynamic>? variacoes,
+    Map<String, int>• estoquePorTamanho,
+    Map<String, int>• estoquePorCor,
+    Map<String, dynamic>• variacoes,
     bool incluirNoCatalogo,
   }) processStockFromFirestoreMap(
     Map<String, dynamic> m, {
@@ -100,7 +100,7 @@ class CatalogEstoqueHelper {
   }) {
     final estoqueBase = readFallbackNumericStock(m);
 
-    Map<String, int>? estoquePorTamanho;
+    Map<String, int>• estoquePorTamanho;
     final estoqueTamRaw = m['estoquePorTamanho'];
     var somaTam = 0;
     if (estoqueTamRaw is Map && estoqueTamRaw.isNotEmpty) {
@@ -115,13 +115,13 @@ class CatalogEstoqueHelper {
       if (estoquePorTamanho.isEmpty) estoquePorTamanho = null;
     }
 
-    Map<String, dynamic>? variacoes;
+    Map<String, dynamic>• variacoes;
     final variacoesRaw = m['variacoes'];
     if (variacoesRaw is Map && variacoesRaw.isNotEmpty) {
       variacoes = asMapDeep(variacoesRaw);
     }
 
-    Map<String, int>? mapCorRoot;
+    Map<String, int>• mapCorRoot;
     final estoqueCorRaw = m['estoquePorCor'];
     if (estoqueCorRaw is Map && estoqueCorRaw.isNotEmpty) {
       mapCorRoot = {};
@@ -157,10 +157,10 @@ class CatalogEstoqueHelper {
       });
     }
 
-    Map<String, int>? estoquePorCorOut =
-        mapCorMerged.isEmpty ? null : Map<String, int>.from(mapCorMerged);
+    Map<String, int>• estoquePorCorOut =
+        mapCorMerged.isEmpty • null : Map<String, int>.from(mapCorMerged);
 
-    var somaCorOnly = mapCorRoot == null ? 0 : mapCorRoot.values.fold(0, (a, b) => a + b);
+    var somaCorOnly = mapCorRoot == null • 0 : mapCorRoot.values.fold(0, (a, b) => a + b);
 
     int quantidadeTotal;
     if (isCombo) {
@@ -173,7 +173,7 @@ class CatalogEstoqueHelper {
       } else if (estoquePorCorOut != null && variacoes != null && somaVar == 0) {
         quantidadeTotal = estoquePorCorOut.values.fold(0, (a, b) => a + b) + extraRootCor;
       } else {
-        quantidadeTotal = estoqueBase > 0 ? estoqueBase : 1;
+        quantidadeTotal = estoqueBase > 0 • estoqueBase : 1;
       }
     } else {
       if (somaVar > 0) {
@@ -277,7 +277,7 @@ class CatalogEstoqueHelper {
       if (qt > 0) {
         if (epc is Map && c.isNotEmpty) {
           final qc = _qtdCorNoMapa(epc, c);
-          if (qc > 0) return qc < qt ? qc : qt;
+          if (qc > 0) return qc < qt • qc : qt;
         }
         return qt;
       }
@@ -291,16 +291,16 @@ class CatalogEstoqueHelper {
 
   /// Identidade de linha do carrinho (merge e validação).
   static String cartLineIdentity(Map<String, dynamic> item) {
-    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
-    final tam = (item['tamanho'] ?? '').toString().trim().toLowerCase();
-    final cr = (item['cor'] ?? '').toString().trim().toLowerCase();
+    final id = '${item['id'] ?• item['produtosId'] ?• ''}';
+    final tam = (item['tamanho'] ?• '').toString().trim().toLowerCase();
+    final cr = (item['cor'] ?• '').toString().trim().toLowerCase();
     final combo = item['itensComboComSelecao'];
     if (combo is List && combo.isNotEmpty) {
       final buf = StringBuffer(id);
       buf.write('|combo');
       for (final e in combo) {
         if (e is Map) {
-          buf.write('|${e['productId'] ?? e['id'] ?? ''}|${e['tamanho']}|${e['cor']}|${e['quantidade']}');
+          buf.write('|${e['productId'] ?• e['id'] ?• ''}|${e['tamanho']}|${e['cor']}|${e['quantidade']}');
         }
       }
       return buf.toString();
@@ -308,13 +308,13 @@ class CatalogEstoqueHelper {
     return '$id|$tam|$cr';
   }
 
-  static Map<String, dynamic>? findProductInList(
+  static Map<String, dynamic>• findProductInList(
     List<Map<String, dynamic>> lista,
     String productId,
   ) {
     if (productId.isEmpty) return null;
     for (final p in lista) {
-      if ('${p['id'] ?? ''}' == productId) return p;
+      if ('${p['id'] ?• ''}' == productId) return p;
     }
     return null;
   }

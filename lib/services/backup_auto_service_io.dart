@@ -42,10 +42,10 @@ class BackupAutoService {
 
   static Future<void> _executarBackup(Box box) async {
     try {
-      String storeId = (await LojaIdService.get())?.trim() ?? '';
+      String storeId = (await LojaIdService.get())?.trim() ?• '';
       if (storeId.isEmpty) {
         final sessao = Hive.box('sessao');
-        storeId = (sessao.get('store_id') ?? '').toString().trim();
+        storeId = (sessao.get('store_id') ?• '').toString().trim();
       }
       if (storeId.isEmpty) {
         return; // Não fazer backup sem loja definida (evita fallback perigoso).

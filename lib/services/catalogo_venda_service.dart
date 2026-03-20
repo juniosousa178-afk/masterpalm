@@ -70,59 +70,59 @@ class CatalogoVendaService {
     required Map<String, dynamic> entrega,
     required String pagamento,
     String observacao = '',
-    String? cupomCodigo,
+    String• cupomCodigo,
     double desconto = 0.0,
-    String? cupomRoletaCodigo,
-    double? cupomRoletaDesconto,
-    String? premioRoletaDescricao,
+    String• cupomRoletaCodigo,
+    double• cupomRoletaDesconto,
+    String• premioRoletaDescricao,
     // ✅ NOVO: Tracking de vendedor para comissão
-    String? vendedorUid,
-    String? vendedorEmail,
-    String? vendedorNome,
-    String? trackingId,
+    String• vendedorUid,
+    String• vendedorEmail,
+    String• vendedorNome,
+    String• trackingId,
   }) async {
     try {
       // 1. Calcular totais (aplica desconto PIX quando pagamento é PIX)
       double subtotal = 0.0;
       final isPix = pagamento.toUpperCase() == 'PIX';
       for (final item in items) {
-        final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;  // ✅ CORRIGIDO
-        final price = (item['preco'] as num?)?.toDouble() ?? (item['price'] as num?)?.toDouble() ?? 0.0;  // ✅ CORRIGIDO
-        final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
-        final precoEfetivo = (isPix && pctPix > 0) ? price * (1 - pctPix / 100) : price;
+        final qty = (item['quantidade'] as int?) ?• (item['qty'] as int?) ?• 1;  // ✅ CORRIGIDO
+        final price = (item['preco'] as num?)?.toDouble() ?• (item['price'] as num?)?.toDouble() ?• 0.0;  // ✅ CORRIGIDO
+        final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?• 0.0;
+        final precoEfetivo = (isPix && pctPix > 0) • price * (1 - pctPix / 100) : price;
         subtotal += precoEfetivo * qty;
       }
 
       final freteGratis = entrega['freteGratis'] == true;
-      final freteValor = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
-      final total = subtotal + (freteGratis ? 0 : freteValor) - desconto;
+      final freteValor = (entrega['valor'] as num?)?.toDouble() ?• 0.0;
+      final total = subtotal + (freteGratis • 0 : freteValor) - desconto;
 
       // 2. Validar estoque (SEM baixar). Resolução: 1) productId, 2) slug, 3) nome
       final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
       final itemsComProductId = <Map<String, dynamic>>[];
 
       for (final item in items) {
-        final productId = (item['productId'] ?? item['id'] ?? '').toString().trim();
-        final nome = (item['nome'] ?? item['name'] ?? '').toString();
-        final slug = (item['slug'] ?? '').toString();
-        final qtd = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
-        final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
-        final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+        final productId = (item['productId'] ?• item['id'] ?• '').toString().trim();
+        final nome = (item['nome'] ?• item['name'] ?• '').toString();
+        final slug = (item['slug'] ?• '').toString();
+        final qtd = (item['quantidade'] as int?) ?• (item['qty'] as int?) ?• 1;
+        final tamanho = (item['tamanho'] ?• item['size'] ?• '').toString().trim();
+        final cor = (item['cor'] ?• item['color'] ?• '').toString().trim();
 
         var produto = VendasService.encontrarProdutoNoEstoque(
           produtosBox: produtosBox,
-          productId: productId.isNotEmpty ? productId : null,
-          slug: slug.isNotEmpty ? slug : null,
-          nome: nome.isNotEmpty ? nome : null,
+          productId: productId.isNotEmpty • productId : null,
+          slug: slug.isNotEmpty • slug : null,
+          nome: nome.isNotEmpty • nome : null,
           lojaId: lojaId,
         );
 
-        String? resolvedProductId;
+        String• resolvedProductId;
 
         if (produto == null) {
           logW('⚠️ [CATALOGO_ITEM] Produto não encontrado no Hive, buscando no Firestore: nome=$nome slug=$slug productId=$productId');
 
-          DocumentSnapshot? produtoDoc;
+          DocumentSnapshot• produtoDoc;
           bool matchedByNome = false;
 
           // 1) Tentar por productId (doc id) primeiro
@@ -157,8 +157,8 @@ class CatalogoVendaService {
 
             for (final doc in produtosSnapshot.docs) {
               final data = doc.data() as Map<String, dynamic>;
-              final docSlug = (data['slug'] ?? '').toString().trim().toLowerCase();
-              final docNome = (data['nome'] ?? '').toString().trim().toLowerCase();
+              final docSlug = (data['slug'] ?• '').toString().trim().toLowerCase();
+              final docNome = (data['nome'] ?• '').toString().trim().toLowerCase();
 
               final slugMatch = slug.isNotEmpty && docSlug == slug.trim().toLowerCase();
               final nomeMatch = nome.isNotEmpty && docNome == nome.trim().toLowerCase();
@@ -175,8 +175,8 @@ class CatalogoVendaService {
               lojaId: lojaId,
               fluxo: 'registrarVendaMulti_firestore_fallback',
               nome: nome,
-              slug: slug.isNotEmpty ? slug : null,
-              productIdRecebido: productId.isNotEmpty ? productId : null,
+              slug: slug.isNotEmpty • slug : null,
+              productIdRecebido: productId.isNotEmpty • productId : null,
             );
           }
 
@@ -196,8 +196,8 @@ class CatalogoVendaService {
             throw Exception(
               'ERRO: O produto "$nome" possui variações de tamanho e cor. '
               'É obrigatório informar TAMANHO e COR na venda. '
-              'Tamanho recebido: "${tamanho.isEmpty ? "VAZIO" : tamanho}", '
-              'Cor recebida: "${cor.isEmpty ? "VAZIO" : cor}". '
+              'Tamanho recebido: "${tamanho.isEmpty • "VAZIO" : tamanho}", '
+              'Cor recebida: "${cor.isEmpty • "VAZIO" : cor}". '
               'Verifique se o site está capturando corretamente a cor selecionada.'
             );
           }
@@ -206,21 +206,21 @@ class CatalogoVendaService {
           if (variacoesData != null && variacoesData.isNotEmpty && tamanho.isNotEmpty && cor.isNotEmpty) {
             // Produto com variações (tamanho + cor)
             final mapaTamanho = variacoesData[tamanho] as Map<String, dynamic>?;
-            qtdDisponivel = (mapaTamanho?[cor] as num?)?.toInt() ?? 0;
+            qtdDisponivel = (mapaTamanho?[cor] as num?)?.toInt() ?• 0;
 
             if (qtdDisponivel < qtd) {
               throw Exception('Estoque insuficiente para "$nome" no tamanho $tamanho - cor $cor (solicitado: $qtd, disponível: $qtdDisponivel)');
             }
           } else if (estoquePorTamanhoData != null && estoquePorTamanhoData.isNotEmpty && tamanho.isNotEmpty) {
             // Produto apenas com tamanhos
-            qtdDisponivel = (estoquePorTamanhoData[tamanho] as num?)?.toInt() ?? 0;
+            qtdDisponivel = (estoquePorTamanhoData[tamanho] as num?)?.toInt() ?• 0;
 
             if (qtdDisponivel < qtd) {
               throw Exception('Estoque insuficiente para "$nome" no tamanho $tamanho (solicitado: $qtd, disponível: $qtdDisponivel)');
             }
           } else {
             // Produto sem grades
-            qtdDisponivel = (produtoData['quantidade'] as num?)?.toInt() ?? 0;
+            qtdDisponivel = (produtoData['quantidade'] as num?)?.toInt() ?• 0;
 
             if (qtdDisponivel < qtd) {
               throw Exception('Estoque insuficiente para "$nome" (solicitado: $qtd, disponível: $qtdDisponivel)');
@@ -236,8 +236,8 @@ class CatalogoVendaService {
             throw Exception(
               'ERRO: O produto "$nome" possui variações de tamanho e cor. '
               'É obrigatório informar TAMANHO e COR na venda. '
-              'Tamanho recebido: "${tamanho.isEmpty ? "VAZIO" : tamanho}", '
-              'Cor recebida: "${cor.isEmpty ? "VAZIO" : cor}". '
+              'Tamanho recebido: "${tamanho.isEmpty • "VAZIO" : tamanho}", '
+              'Cor recebida: "${cor.isEmpty • "VAZIO" : cor}". '
               'Verifique se o site está capturando corretamente a cor selecionada.'
             );
           }
@@ -251,7 +251,7 @@ class CatalogoVendaService {
             }
           } else if (produto.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
             // Produto apenas com tamanhos
-            qtdDisponivel = produto.estoquePorTamanho[tamanho] ?? 0;
+            qtdDisponivel = produto.estoquePorTamanho[tamanho] ?• 0;
 
             if (qtdDisponivel < qtd) {
               throw Exception('Estoque insuficiente para "$nome" no tamanho $tamanho (solicitado: $qtd, disponível: $qtdDisponivel)');
@@ -288,21 +288,21 @@ class CatalogoVendaService {
         },
         'itens': itemsComProductId
             .map((item) {
-              final price = (item['preco'] ?? item['price'] ?? 0.0) as num;
-              final qty = (item['quantidade'] ?? item['qty'] ?? 1) as int;
-              final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
+              final price = (item['preco'] ?• item['price'] ?• 0.0) as num;
+              final qty = (item['quantidade'] ?• item['qty'] ?• 1) as int;
+              final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?• 0.0;
               final precoEfetivo = (isPix && pctPix > 0)
-                  ? (price.toDouble() * (1 - pctPix / 100))
+                  • (price.toDouble() * (1 - pctPix / 100))
                   : price.toDouble();
               return {
-                'nome': item['nome'] ?? item['name'] ?? '',
-                'slug': item['slug'] ?? '',
+                'nome': item['nome'] ?• item['name'] ?• '',
+                'slug': item['slug'] ?• '',
                 if (item['productId'] != null && (item['productId'] as String).isNotEmpty) 'productId': item['productId'],
                 'quantidade': qty,
                 'precoUnitario': precoEfetivo,
-                'tamanho': item['tamanho'] ?? item['size'] ?? '',
-                'cor': item['cor'] ?? item['color'] ?? '',
-                'imageUrl': item['imageUrl'] ?? item['url_foto'] ?? '',
+                'tamanho': item['tamanho'] ?• item['size'] ?• '',
+                'cor': item['cor'] ?• item['color'] ?• '',
+                'imageUrl': item['imageUrl'] ?• item['url_foto'] ?• '',
                 'total': precoEfetivo * qty,
               };
             })
@@ -315,22 +315,22 @@ class CatalogoVendaService {
           'tipo': entrega['tipo'],
         },
         'cupom': cupomCodigo != null
-            ? {
+            • {
                 'codigo': cupomCodigo,
                 'desconto': desconto,
               }
             : null,
         'cupomRoleta': cupomRoletaCodigo != null
-            ? {
+            • {
                 'codigo': cupomRoletaCodigo,
                 'desconto': cupomRoletaDesconto,
               }
             : null,
         'premioRoleta': premioRoletaDescricao != null || cupomRoletaCodigo != null
-            ? {
-                'descricao': premioRoletaDescricao ?? '',
+            • {
+                'descricao': premioRoletaDescricao ?• '',
                 'tipo': determinarTipoPremio(premioRoletaDescricao, cupomRoletaCodigo, cupomRoletaDesconto),
-                'valor': cupomRoletaDesconto ?? 0.0,
+                'valor': cupomRoletaDesconto ?• 0.0,
                 'codigo': cupomRoletaCodigo,
                 'status': 'pendente',
                 'dataGanho': FieldValue.serverTimestamp(),
@@ -361,11 +361,11 @@ class CatalogoVendaService {
       }
 
       // 🎉 Notificar admin sobre o novo pedido (com entusiasmo!)
-      final clienteNome = (customer['nome'] ?? customer['name'] ?? '').toString();
+      final clienteNome = (customer['nome'] ?• customer['name'] ?• '').toString();
       await NotificacaoVendasService().notificarAdminNovaVenda(
         storeId: lojaId,
         pedidoId: pedidoRef.id,
-        clienteNome: clienteNome.isNotEmpty ? clienteNome : 'Cliente',
+        clienteNome: clienteNome.isNotEmpty • clienteNome : 'Cliente',
         valorTotal: total,
         origem: 'catalogo_web',
         vendedorNome: vendedorNome,
@@ -400,19 +400,19 @@ class CatalogoVendaService {
     required Map<String, dynamic> entrega,
     required String pagamento,
     String observacao = '',
-    String? cupomCodigo,
+    String• cupomCodigo,
     double desconto = 0.0,
-    String? cupomRoletaCodigo,
-    double? cupomRoletaDesconto,
-    String? premioRoletaDescricao,
+    String• cupomRoletaCodigo,
+    double• cupomRoletaDesconto,
+    String• premioRoletaDescricao,
     // ✅ NOVO: Tracking de vendedor para comissão
-    String? vendedorUid,
-    String? vendedorEmail,
-    String? vendedorNome,
-    String? trackingId,
+    String• vendedorUid,
+    String• vendedorEmail,
+    String• vendedorNome,
+    String• trackingId,
     /// ✅ Total e subtotal já calculados (ex: do pre_pedido) — usa em vez de recalcular
-    double? totalOverride,
-    double? subtotalOverride,
+    double• totalOverride,
+    double• subtotalOverride,
   }) async {
     try {
       // 1. Calcular totais (aplica desconto PIX quando pagamento é PIX)
@@ -422,26 +422,26 @@ class CatalogoVendaService {
         subtotal = subtotalOverride;
       } else {
         for (final item in items) {
-          final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
-          final price = (item['preco'] as num?)?.toDouble() ?? (item['price'] as num?)?.toDouble() ?? 0.0;
-          final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
+          final qty = (item['quantidade'] as int?) ?• (item['qty'] as int?) ?• 1;
+          final price = (item['preco'] as num?)?.toDouble() ?• (item['price'] as num?)?.toDouble() ?• 0.0;
+          final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?• 0.0;
           // ✅ Se precoUnitario já vier como preco (do pre_pedido), preco já é efetivo
-          final precoEfetivo = (isPix && pctPix > 0) ? price * (1 - pctPix / 100) : price;
+          final precoEfetivo = (isPix && pctPix > 0) • price * (1 - pctPix / 100) : price;
           subtotal += precoEfetivo * qty;
         }
       }
 
       final freteGratis = entrega['freteGratis'] == true;
-      final freteValor = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
-      final total = totalOverride ?? (subtotal + (freteGratis ? 0 : freteValor) - desconto);
+      final freteValor = (entrega['valor'] as num?)?.toDouble() ?• 0.0;
+      final total = totalOverride ?• (subtotal + (freteGratis • 0 : freteValor) - desconto);
 
       // 2. Criar/Buscar cliente
       final clienteBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
-      Cliente? cliente;
+      Cliente• cliente;
 
       // Buscar cliente existente pelo email ou telefone
-      final telefone = (customer['telefone'] ?? '').toString().trim();
-      final email = (customer['email'] ?? '').toString().trim();
+      final telefone = (customer['telefone'] ?• '').toString().trim();
+      final email = (customer['email'] ?• '').toString().trim();
 
       for (final c in clienteBox.values) {
         if (c.lojaId == lojaId) {
@@ -457,13 +457,13 @@ class CatalogoVendaService {
       if (cliente == null) {
         final endereco = customer['endereco'] as Map<String, dynamic>?;
         cliente = Cliente(
-          nome: (customer['nome'] ?? '').toString(),
+          nome: (customer['nome'] ?• '').toString(),
           telefone: telefone,
           instagram: '',
           email: email,
-          endereco: (customer['enderecoFormatado'] ?? '').toString(),
-          cep: endereco?['cep']?.toString() ?? '',
-          cidade: endereco?['cidade']?.toString() ?? '',
+          endereco: (customer['enderecoFormatado'] ?• '').toString(),
+          cep: endereco?['cep']?.toString() ?• '',
+          cidade: endereco?['cidade']?.toString() ?• '',
           lojaId: lojaId,
         );
         await clienteBox.add(cliente);
@@ -507,14 +507,14 @@ class CatalogoVendaService {
       }
 
       for (final item in items) {
-        final nome = (item['nome'] ?? item['name'] ?? '').toString();
-        final qtd = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
-        final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
-        final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
-        final price = (item['preco'] as num?)?.toDouble() ?? (item['price'] as num?)?.toDouble() ?? 0.0;
-        final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
-        final precoUnitario = (isPix && pctPix > 0) ? price * (1 - pctPix / 100) : price;
-        final pid = (item['productId'] ?? item['id'] ?? '').toString().trim();
+        final nome = (item['nome'] ?• item['name'] ?• '').toString();
+        final qtd = (item['quantidade'] as int?) ?• (item['qty'] as int?) ?• 1;
+        final tamanho = (item['tamanho'] ?• item['size'] ?• '').toString().trim();
+        final cor = (item['cor'] ?• item['color'] ?• '').toString().trim();
+        final price = (item['preco'] as num?)?.toDouble() ?• (item['price'] as num?)?.toDouble() ?• 0.0;
+        final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?• 0.0;
+        final precoUnitario = (isPix && pctPix > 0) • price * (1 - pctPix / 100) : price;
+        final pid = (item['productId'] ?• item['id'] ?• '').toString().trim();
 
         vendaItens.add(VendaItem(
           produtoNome: nome,
@@ -523,7 +523,7 @@ class CatalogoVendaService {
           tamanho: tamanho,
           cor: cor,
           lojaId: lojaId,
-          productId: pid.isNotEmpty ? pid : null,
+          productId: pid.isNotEmpty • pid : null,
         ));
       }
 
@@ -556,7 +556,7 @@ class CatalogoVendaService {
         desconto: (desconto / subtotal * 100).clamp(0, 100), // Converter para %
         clienteNome: cliente.nome,
         produtosDescricao: gerarDescricaoProdutos(items),
-        quantidade: items.fold<int>(0, (prev, item) => prev + ((item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1)),  // ✅ CORRIGIDO
+        quantidade: items.fold<int>(0, (prev, item) => prev + ((item['quantidade'] as int?) ?• (item['qty'] as int?) ?• 1)),  // ✅ CORRIGIDO
         data: DateTime.now(),
         vendedor: 'Loja online',
         observacao: observacao,
@@ -631,19 +631,19 @@ class CatalogoVendaService {
           },
           'itens': items
               .map((item) {
-                final price = (item['preco'] ?? item['price'] ?? 0.0) as num;
-                final qty = (item['quantidade'] ?? item['qty'] ?? 1) as int;
-                final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
+                final price = (item['preco'] ?• item['price'] ?• 0.0) as num;
+                final qty = (item['quantidade'] ?• item['qty'] ?• 1) as int;
+                final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?• 0.0;
                 final precoEfetivo = (isPix && pctPix > 0)
-                    ? (price.toDouble() * (1 - pctPix / 100))
+                    • (price.toDouble() * (1 - pctPix / 100))
                     : price.toDouble();
                 return {
-                  'nome': item['nome'] ?? item['name'] ?? '',
+                  'nome': item['nome'] ?• item['name'] ?• '',
                   'quantidade': qty,
                   'precoUnitario': precoEfetivo,
-                  'tamanho': item['tamanho'] ?? item['size'] ?? '',
-                  'cor': item['cor'] ?? item['color'] ?? '',
-                  'imageUrl': item['imageUrl'] ?? item['url_foto'] ?? '',
+                  'tamanho': item['tamanho'] ?• item['size'] ?• '',
+                  'cor': item['cor'] ?• item['color'] ?• '',
+                  'imageUrl': item['imageUrl'] ?• item['url_foto'] ?• '',
                   'total': precoEfetivo * qty,
                 };
               })
@@ -656,23 +656,23 @@ class CatalogoVendaService {
             'tipo': entrega['tipo'],
           },
           'cupom': cupomCodigo != null
-              ? {
+              • {
                   'codigo': cupomCodigo,
                   'desconto': desconto,
                 }
               : null,
           'cupomRoleta': cupomRoletaCodigo != null
-              ? {
+              • {
                   'codigo': cupomRoletaCodigo,
                   'desconto': cupomRoletaDesconto,
                 }
               : null,
           // ✅ Prêmio da roleta com estrutura completa
           'premioRoleta': premioRoletaDescricao != null || cupomRoletaCodigo != null
-              ? {
-                  'descricao': premioRoletaDescricao ?? '',
+              • {
+                  'descricao': premioRoletaDescricao ?• '',
                   'tipo': determinarTipoPremio(premioRoletaDescricao, cupomRoletaCodigo, cupomRoletaDesconto),
-                  'valor': cupomRoletaDesconto ?? 0.0,
+                  'valor': cupomRoletaDesconto ?• 0.0,
                   'codigo': cupomRoletaCodigo,
                   'status': 'pendente', // pendente | ativo | usado
                   'dataGanho': FieldValue.serverTimestamp(),
@@ -734,8 +734,8 @@ class CatalogoVendaService {
           final emailNorm = email.trim().toLowerCase();
           final dataExpiracao = DateTime.now().add(const Duration(days: 60));
           final descricao = premioRoletaDescricao?.isNotEmpty == true
-              ? premioRoletaDescricao!
-              : '${(cupomRoletaDesconto ?? 0).toStringAsFixed(0)}% de desconto';
+              • premioRoletaDescricao!
+              : '${(cupomRoletaDesconto ?• 0).toStringAsFixed(0)}% de desconto';
 
           await FirebaseFirestore.instance
               .collection('lojas')
@@ -748,7 +748,7 @@ class CatalogoVendaService {
             'codigo': cupomRoletaCodigo,
             'descricao': descricao,
             'tipo': 'desconto',
-            'valor': cupomRoletaDesconto ?? 0.0,
+            'valor': cupomRoletaDesconto ?• 0.0,
             'dataGanho': FieldValue.serverTimestamp(),
             'dataExpiracao': Timestamp.fromDate(dataExpiracao),
             'usado': false,
@@ -908,19 +908,19 @@ class CatalogoVendaService {
       final frete = pedido['frete'] as Map<String, dynamic>;
       final subtotal = (pedido['subtotal'] as num).toDouble();
       final total = (pedido['total'] as num).toDouble();
-      final desconto = (pedido['desconto'] as num?)?.toDouble() ?? 0.0;
+      final desconto = (pedido['desconto'] as num?)?.toDouble() ?• 0.0;
       final pagamento = pedido['pagamento'] as String;
-      final observacao = (pedido['observacao'] ?? '') as String;
+      final observacao = (pedido['observacao'] ?• '') as String;
       final cupom = pedido['cupom'] as Map<String, dynamic>?;
       final cupomRoleta = pedido['cupomRoleta'] as Map<String, dynamic>?;
       final premioRoleta = pedido['premioRoleta'] as Map<String, dynamic>?;
 
       // 3. Criar/Buscar cliente
       final clienteBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
-      Cliente? cliente;
+      Cliente• cliente;
 
-      final telefone = (customer['telefone'] ?? '').toString().trim();
-      final email = (customer['email'] ?? '').toString().trim();
+      final telefone = (customer['telefone'] ?• '').toString().trim();
+      final email = (customer['email'] ?• '').toString().trim();
 
       for (final c in clienteBox.values) {
         if (c.lojaId == lojaId) {
@@ -934,11 +934,11 @@ class CatalogoVendaService {
 
       if (cliente == null) {
         cliente = Cliente(
-          nome: (customer['nome'] ?? '').toString(),
+          nome: (customer['nome'] ?• '').toString(),
           telefone: telefone,
           instagram: '',
           email: email,
-          endereco: (customer['enderecoFormatado'] ?? '').toString(),
+          endereco: (customer['enderecoFormatado'] ?• '').toString(),
           cep: '',
           cidade: '',
           lojaId: lojaId,
@@ -981,20 +981,20 @@ class CatalogoVendaService {
       }
 
       for (final item in itens) {
-        final nome = (item['nome'] ?? '').toString();
+        final nome = (item['nome'] ?• '').toString();
         final qtd = (item['quantidade'] as num).toInt();
-        final tamanho = (item['tamanho'] ?? '').toString().trim();
-        final cor = (item['cor'] ?? '').toString().trim();
-        final pid = (item['productId'] ?? item['id'] ?? '').toString().trim();
+        final tamanho = (item['tamanho'] ?• '').toString().trim();
+        final cor = (item['cor'] ?• '').toString().trim();
+        final pid = (item['productId'] ?• item['id'] ?• '').toString().trim();
 
         vendaItens.add(VendaItem(
           produtoNome: nome,
           quantidade: qtd,
-          precoUnitario: (item['precoUnitario'] as num?)?.toDouble() ?? 0.0,
+          precoUnitario: (item['precoUnitario'] as num?)?.toDouble() ?• 0.0,
           tamanho: tamanho,
           cor: cor,
           lojaId: lojaId,
-          productId: pid.isNotEmpty ? pid : null,
+          productId: pid.isNotEmpty • pid : null,
         ));
       }
 
@@ -1020,14 +1020,14 @@ class CatalogoVendaService {
       }
 
       // 6. Criar venda
-      final freteValor = (frete['valor'] as num?)?.toDouble() ?? 0.0;
+      final freteValor = (frete['valor'] as num?)?.toDouble() ?• 0.0;
       final venda = Venda(
         preco: subtotal,
         total: total,
-        desconto: subtotal > 0 ? (desconto / subtotal * 100).clamp(0, 100) : 0,
+        desconto: subtotal > 0 • (desconto / subtotal * 100).clamp(0, 100) : 0,
         clienteNome: cliente.nome,
         produtosDescricao: gerarDescricaoProdutosFromItens(itens),
-        quantidade: itens.fold<int>(0, (prev, item) => prev + ((item['quantidade'] as num?)?.toInt() ?? 1)),
+        quantidade: itens.fold<int>(0, (prev, item) => prev + ((item['quantidade'] as num?)?.toInt() ?• 1)),
         data: DateTime.now(),
         vendedor: 'Loja online',
         observacao: observacao,
@@ -1096,7 +1096,7 @@ class CatalogoVendaService {
           'cupom': cupom,
           'cupomRoleta': cupomRoleta,
           'premioRoleta': premioRoleta != null
-              ? {
+              • {
                   ...premioRoleta,
                   'status': 'ativo',
                   'valido': true,
@@ -1153,14 +1153,14 @@ class CatalogoVendaService {
       logD('✅ Pedido finalizado com sucesso: $pedidoId -> Venda: ${venda.key}');
 
       // 🎉 Notificar admin sobre pedido PAGO (com entusiasmo!)
-      final clienteNome = (customer['nome'] ?? '').toString();
+      final clienteNome = (customer['nome'] ?• '').toString();
       await NotificacaoVendasService().notificarAdminNovaVenda(
         storeId: lojaId,
         pedidoId: pedidoId,
-        clienteNome: clienteNome.isNotEmpty ? clienteNome : 'Cliente',
+        clienteNome: clienteNome.isNotEmpty • clienteNome : 'Cliente',
         valorTotal: total,
         origem: 'catalogo_web',
-        vendedorNome: (pedido['vendedorNome'] ?? '').toString().isEmpty ? null : (pedido['vendedorNome'] as String?),
+        vendedorNome: (pedido['vendedorNome'] ?• '').toString().isEmpty • null : (pedido['vendedorNome'] as String?),
         pagamentoConfirmado: true,
       );
 
@@ -1228,14 +1228,14 @@ class CatalogoVendaService {
       final db = FirebaseFirestore.instance;
       final lojaDoc = await db.collection('lojas').doc(lojaId).get();
       if (lojaDoc.exists) {
-        final d = lojaDoc.data() ?? {};
-        final nome = (d['nome_loja'] ?? d['nomeLoja'] ?? d['nome'] ?? d['name'] ?? '').toString().trim();
+        final d = lojaDoc.data() ?• {};
+        final nome = (d['nome_loja'] ?• d['nomeLoja'] ?• d['nome'] ?• d['name'] ?• '').toString().trim();
         if (nome.isNotEmpty) return nome;
       }
       final configDoc = await db.collection('lojas').doc(lojaId).collection('config').doc('config').get();
       if (configDoc.exists) {
-        final d = configDoc.data() ?? {};
-        final nome = (d['nome_loja'] ?? d['nomeLoja'] ?? d['nome'] ?? d['name'] ?? '').toString().trim();
+        final d = configDoc.data() ?• {};
+        final nome = (d['nome_loja'] ?• d['nomeLoja'] ?• d['nome'] ?• d['name'] ?• '').toString().trim();
         if (nome.isNotEmpty) return nome;
       }
     } catch (e, st) {

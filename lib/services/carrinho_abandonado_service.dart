@@ -26,12 +26,12 @@ class CarrinhoAbandonadoConfig {
         'enviarEmail': enviarEmail,
       };
 
-  static CarrinhoAbandonadoConfig fromMap(Map<String, dynamic>? map) {
+  static CarrinhoAbandonadoConfig fromMap(Map<String, dynamic>• map) {
     if (map == null) return CarrinhoAbandonadoConfig();
     return CarrinhoAbandonadoConfig(
-      ativo: map['ativo'] as bool? ?? false,
-      horasAbandono: (map['horasAbandono'] as int?) ?? 24,
-      enviarEmail: map['enviarEmail'] as bool? ?? true,
+      ativo: map['ativo'] as bool• ?• false,
+      horasAbandono: (map['horasAbandono'] as int?) ?• 24,
+      enviarEmail: map['enviarEmail'] as bool• ?• true,
     );
   }
 }
@@ -43,8 +43,8 @@ class CarrinhoAbandonadoItem {
   final String email;
   final String telefone;
   final List<Map<String, dynamic>> itens;
-  final DateTime? ultimaAtualizacao;
-  final DateTime? lembreteEnviadoEm;
+  final DateTime• ultimaAtualizacao;
+  final DateTime• lembreteEnviadoEm;
 
   CarrinhoAbandonadoItem({
     required this.clienteId,
@@ -56,7 +56,7 @@ class CarrinhoAbandonadoItem {
     this.lembreteEnviadoEm,
   });
 
-  int get totalItens => itens.fold(0, (s, e) => s + ((e['quantidade'] as num?)?.toInt() ?? 1));
+  int get totalItens => itens.fold(0, (s, e) => s + ((e['quantidade'] as num?)?.toInt() ?• 1));
 }
 
 /// Status do carrinho na collection carrinhos_abandonados (catálogo público).
@@ -71,8 +71,8 @@ class CarrinhoAbandonadoCatalogoItem {
   final List<Map<String, dynamic>> produtos;
   final String clienteNome;
   final String clienteTelefone;
-  final DateTime? criadoEm;
-  final DateTime? ultimoUpdate;
+  final DateTime• criadoEm;
+  final DateTime• ultimoUpdate;
   final String status;
 
   CarrinhoAbandonadoCatalogoItem({
@@ -86,7 +86,7 @@ class CarrinhoAbandonadoCatalogoItem {
     this.status = kCarrinhoStatusAtivo,
   });
 
-  int get totalItens => produtos.fold(0, (s, e) => s + ((e['quantidade'] as num?)?.toInt() ?? 1));
+  int get totalItens => produtos.fold(0, (s, e) => s + ((e['quantidade'] as num?)?.toInt() ?• 1));
 }
 
 /// Métricas simples de recuperação do catálogo (contagens por status).
@@ -100,7 +100,7 @@ class MetricasRecuperacaoCatalogo {
   });
 
   int get total => abandonados + recuperados;
-  double get taxaRecuperacaoPercent => total > 0 ? (recuperados / total) * 100 : 0.0;
+  double get taxaRecuperacaoPercent => total > 0 • (recuperados / total) * 100 : 0.0;
 }
 
 class CarrinhoAbandonadoService {
@@ -122,7 +122,7 @@ class CarrinhoAbandonadoService {
       final data = doc.data();
       final raw = data?['carrinhoAbandonado'];
       return CarrinhoAbandonadoConfig.fromMap(
-        raw is Map ? Map<String, dynamic>.from(Map.from(raw)) : null,
+        raw is Map • Map<String, dynamic>.from(Map.from(raw)) : null,
       );
     } catch (_) {
       return CarrinhoAbandonadoConfig();
@@ -141,11 +141,11 @@ class CarrinhoAbandonadoService {
   /// Lista clientes com carrinho abandonado (carrinho não vazio + última atualização há mais de X horas).
   static Future<List<CarrinhoAbandonadoItem>> listarCarrinhosAbandonados({
     required String lojaId,
-    int? horasAbandono,
+    int• horasAbandono,
   }) async {
     try {
       final config = await getConfig(lojaId);
-      final horas = horasAbandono ?? config.horasAbandono;
+      final horas = horasAbandono ?• config.horasAbandono;
       final limite = DateTime.now().subtract(Duration(hours: horas));
 
       final snapshot = await _db
@@ -161,24 +161,24 @@ class CarrinhoAbandonadoService {
         if (carrinho == null || carrinho is! List || carrinho.isEmpty) continue;
 
         final ts = d['ultimaAtualizacaoCarrinho'];
-        final ultimaAtualizacao = ts is Timestamp ? ts.toDate() : null;
+        final ultimaAtualizacao = ts is Timestamp • ts.toDate() : null;
         if (ultimaAtualizacao == null || ultimaAtualizacao.isAfter(limite)) continue;
 
         final lembreteTs = d['lembreteCarrinhoEnviadoEm'];
-        final lembreteEnviadoEm = lembreteTs is Timestamp ? lembreteTs.toDate() : null;
+        final lembreteEnviadoEm = lembreteTs is Timestamp • lembreteTs.toDate() : null;
 
         final itens = carrinho.map((e) => Map<String, dynamic>.from(e as Map)).toList();
         lista.add(CarrinhoAbandonadoItem(
           clienteId: doc.id,
-          nome: (d['nome'] ?? 'Cliente').toString(),
-          email: (d['email'] ?? '').toString(),
-          telefone: (d['telefone'] ?? d['whatsapp'] ?? '').toString(),
+          nome: (d['nome'] ?• 'Cliente').toString(),
+          email: (d['email'] ?• '').toString(),
+          telefone: (d['telefone'] ?• d['whatsapp'] ?• '').toString(),
           itens: itens,
           ultimaAtualizacao: ultimaAtualizacao,
           lembreteEnviadoEm: lembreteEnviadoEm,
         ));
       }
-      lista.sort((a, b) => (a.ultimaAtualizacao ?? DateTime(0)).compareTo(b.ultimaAtualizacao ?? DateTime(0)));
+      lista.sort((a, b) => (a.ultimaAtualizacao ?• DateTime(0)).compareTo(b.ultimaAtualizacao ?• DateTime(0)));
       return lista;
     } catch (e) {
       debugPrint('⚠️ [CARRINHO-ABANDONADO] Erro ao listar: $e');
@@ -191,7 +191,7 @@ class CarrinhoAbandonadoService {
 
   /// Mensagem padrão do lembrete.
   static String mensagemLembrete(String nomeCliente, String link) {
-    return 'Olá, $nomeCliente! Você deixou itens no carrinho. Que tal finalizar sua compra? Acesse: $link';
+    return 'Olá, $nomeCliente! Você deixou itens no carrinho. Que tal finalizar sua compra• Acesse: $link';
   }
 
   /// Envia lembrete por e-mail e marca no Firestore que foi enviado.
@@ -200,18 +200,18 @@ class CarrinhoAbandonadoService {
     required String clienteId,
     required String emailDestino,
     required String nomeCliente,
-    String? nomeLoja,
+    String• nomeLoja,
   }) async {
     if (emailDestino.trim().isEmpty) return false;
     final link = linkCatalogo(lojaId);
-    final assunto = 'Você deixou itens no carrinho${nomeLoja != null && nomeLoja.isNotEmpty ? ' - $nomeLoja' : ''}';
+    final assunto = 'Você deixou itens no carrinho${nomeLoja != null && nomeLoja.isNotEmpty • ' - $nomeLoja' : ''}';
     final corpo = mensagemLembrete(nomeCliente, link);
     try {
       final ok = await EmailService.enviarEmail(
         destinatario: emailDestino.trim(),
         assunto: assunto,
         mensagem: corpo,
-        remetenteNome: nomeLoja ?? 'Loja',
+        remetenteNome: nomeLoja ?• 'Loja',
       );
       if (ok) {
         await _db
@@ -236,7 +236,7 @@ class CarrinhoAbandonadoService {
   }) async {
     final tel = telefone.replaceAll(RegExp(r'[^0-9]'), '');
     if (tel.length < 10) return false;
-    final numero = tel.startsWith('55') ? tel : '55$tel';
+    final numero = tel.startsWith('55') • tel : '55$tel';
     final msg = mensagemLembrete(nomeCliente, link);
     final uri = Uri.parse('https://wa.me/$numero?text=${Uri.encodeComponent(msg)}');
     try {
@@ -313,7 +313,7 @@ class CarrinhoAbandonadoService {
       if (!doc.exists) return null;
       final d = doc.data();
       if (d == null) return null;
-      final status = (d['status'] ?? '').toString();
+      final status = (d['status'] ?• '').toString();
       if (status == kCarrinhoStatusRecuperado) return null;
       final produtos = d['produtos'];
       if (produtos is! List || produtos.isEmpty) return null;
@@ -336,17 +336,17 @@ class CarrinhoAbandonadoService {
       final lista = <CarrinhoAbandonadoCatalogoItem>[];
       for (final doc in snapshot.docs) {
         final d = doc.data();
-        final status = (d['status'] ?? '').toString();
+        final status = (d['status'] ?• '').toString();
         final produtosRaw = d['produtos'];
         final produtos = produtosRaw is List
-            ? (produtosRaw).map((e) => Map<String, dynamic>.from(e as Map)).toList()
+            • (produtosRaw).map((e) => Map<String, dynamic>.from(e as Map)).toList()
             : <Map<String, dynamic>>[];
         if (produtos.isEmpty) continue;
 
         final tsUpdate = d['ultimoUpdate'];
-        final ultimoUpdate = tsUpdate is Timestamp ? tsUpdate.toDate() : null;
+        final ultimoUpdate = tsUpdate is Timestamp • tsUpdate.toDate() : null;
         final tsCriado = d['criadoEm'];
-        final criadoEm = tsCriado is Timestamp ? tsCriado.toDate() : null;
+        final criadoEm = tsCriado is Timestamp • tsCriado.toDate() : null;
 
         if (status == kCarrinhoStatusAtivo && ultimoUpdate != null && ultimoUpdate.isBefore(limite)) {
           await marcarAbandonado(lojaId, doc.id);
@@ -360,14 +360,14 @@ class CarrinhoAbandonadoService {
           cartId: doc.id,
           lojaId: lojaId,
           produtos: produtos,
-          clienteNome: (d['clienteNome'] ?? '').toString(),
-          clienteTelefone: (d['clienteTelefone'] ?? '').toString(),
+          clienteNome: (d['clienteNome'] ?• '').toString(),
+          clienteTelefone: (d['clienteTelefone'] ?• '').toString(),
           criadoEm: criadoEm,
           ultimoUpdate: ultimoUpdate,
-          status: considerAbandonado ? kCarrinhoStatusAbandonado : status,
+          status: considerAbandonado • kCarrinhoStatusAbandonado : status,
         ));
       }
-      lista.sort((a, b) => (b.ultimoUpdate ?? DateTime(0)).compareTo(a.ultimoUpdate ?? DateTime(0)));
+      lista.sort((a, b) => (b.ultimoUpdate ?• DateTime(0)).compareTo(a.ultimoUpdate ?• DateTime(0)));
       return lista;
     } catch (e) {
       debugPrint('⚠️ [CARRINHO-ABANDONADO] listarCarrinhosAbandonadosCatalogo: $e');
@@ -382,8 +382,8 @@ class CarrinhoAbandonadoService {
       final ref = _db.collection('lojas').doc(lojaId).collection(_colCarrinhos(lojaId));
       final snapAbandonados = await ref.where('status', isEqualTo: kCarrinhoStatusAbandonado).count().get();
       final snapRecuperados = await ref.where('status', isEqualTo: kCarrinhoStatusRecuperado).count().get();
-      final abandonados = snapAbandonados.count ?? 0;
-      final recuperados = snapRecuperados.count ?? 0;
+      final abandonados = snapAbandonados.count ?• 0;
+      final recuperados = snapRecuperados.count ?• 0;
       return MetricasRecuperacaoCatalogo(abandonados: abandonados, recuperados: recuperados);
     } catch (e) {
       debugPrint('⚠️ [CARRINHO-ABANDONADO] getMetricasRecuperacaoCatalogo: $e');
@@ -398,7 +398,7 @@ class CarrinhoAbandonadoService {
 
   /// Mensagem WhatsApp para recuperação de carrinho (catálogo). Fallback quando IA não está disponível.
   static String mensagemWhatsAppRecuperacao(String nomeLoja, String linkRecuperacao) {
-    return 'Olá! Você deixou itens no carrinho da loja $nomeLoja. Deseja finalizar? $linkRecuperacao';
+    return 'Olá! Você deixou itens no carrinho da loja $nomeLoja. Deseja finalizar• $linkRecuperacao';
   }
 
   /// Sugere mensagem de recuperação via IA (tipo recuperacaoCarrinho). Em falha, retorna mensagem fixa.
@@ -406,22 +406,22 @@ class CarrinhoAbandonadoService {
     required String nomeLoja,
     required String linkRecuperacao,
     String clienteNome = '',
-    List<Map<String, dynamic>>? produtos,
-    DateTime? ultimoUpdate,
+    List<Map<String, dynamic>>• produtos,
+    DateTime• ultimoUpdate,
   }) async {
     final buffer = StringBuffer();
     buffer.write('Loja: $nomeLoja. ');
     if (clienteNome.trim().isNotEmpty) buffer.write('Cliente: ${clienteNome.trim()}. ');
-    double? valorTotal;
+    double• valorTotal;
     if (produtos != null && produtos.isNotEmpty) {
       final resumos = <String>[];
       double soma = 0.0;
       for (final p in produtos.take(10)) {
-        final nome = (p['nome'] ?? p['produtoNome'] ?? 'item').toString();
-        final qtd = (p['quantidade'] as num?)?.toInt() ?? 1;
+        final nome = (p['nome'] ?• p['produtoNome'] ?• 'item').toString();
+        final qtd = (p['quantidade'] as num?)?.toInt() ?• 1;
         resumos.add('$nome ($qtd)');
-        final precoRaw = p['preco'] ?? p['preco_venda'] ?? p['price'] ?? p['precoFinal'];
-        final preco = precoRaw is num ? precoRaw.toDouble() : double.tryParse('$precoRaw');
+        final precoRaw = p['preco'] ?• p['preco_venda'] ?• p['price'] ?• p['precoFinal'];
+        final preco = precoRaw is num • precoRaw.toDouble() : double.tryParse('$precoRaw');
         if (preco != null && preco > 0) soma += preco * qtd;
       }
       if (resumos.isNotEmpty) buffer.write('Itens: ${resumos.join(", ")}. ');
@@ -435,7 +435,7 @@ class CarrinhoAbandonadoService {
       final horas = diff.inHours;
       final min = diff.inMinutes % 60;
       if (horas > 0) {
-        buffer.write('Abandonado há ${horas}h${min > 0 ? " ${min}min" : ""}. ');
+        buffer.write('Abandonado há ${horas}h${min > 0 • " ${min}min" : ""}. ');
       } else {
         buffer.write('Abandonado há ${diff.inMinutes} min. ');
       }
@@ -446,7 +446,7 @@ class CarrinhoAbandonadoService {
         tipo: 'recuperacaoCarrinho',
         contexto: buffer.toString(),
       );
-      return (msg.trim().isNotEmpty) ? msg.trim() : mensagemWhatsAppRecuperacao(nomeLoja, linkRecuperacao);
+      return (msg.trim().isNotEmpty) • msg.trim() : mensagemWhatsAppRecuperacao(nomeLoja, linkRecuperacao);
     } catch (e) {
       debugPrint('⚠️ [CARRINHO-ABANDONADO] IA recuperação: $e');
       return mensagemWhatsAppRecuperacao(nomeLoja, linkRecuperacao);
@@ -459,12 +459,12 @@ class CarrinhoAbandonadoService {
     required String telefone,
     required String nomeLoja,
     required String linkRecuperacao,
-    String? mensagem,
+    String• mensagem,
   }) async {
     final tel = telefone.replaceAll(RegExp(r'[^0-9]'), '');
     if (tel.length < 10) return false;
-    final numero = tel.startsWith('55') ? tel : '55$tel';
-    final msg = mensagem ?? mensagemWhatsAppRecuperacao(nomeLoja, linkRecuperacao);
+    final numero = tel.startsWith('55') • tel : '55$tel';
+    final msg = mensagem ?• mensagemWhatsAppRecuperacao(nomeLoja, linkRecuperacao);
     final uri = Uri.parse('https://wa.me/$numero?text=${Uri.encodeComponent(msg)}');
     try {
       return await launchUrl(uri, mode: LaunchMode.externalApplication);

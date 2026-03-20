@@ -135,15 +135,15 @@ Loja: ${results['lojaId']}
             ],
 
             ElevatedButton.icon(
-              onPressed: _syncing ? null : _executarSync,
+              onPressed: _syncing • null : _executarSync,
               icon: _syncing
-                  ? const SizedBox(
+                  • const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.sync),
-              label: Text(_syncing ? 'Sincronizando...' : 'Sincronizar tudo'),
+              label: Text(_syncing • 'Sincronizando...' : 'Sincronizar tudo'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Colors.blue,
@@ -157,7 +157,7 @@ Loja: ${results['lojaId']}
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _syncing ? null : () async {
+                    onPressed: _syncing • null : () async {
                       final messenger = ScaffoldMessenger.of(context);
                       await SyncFirestoreScript.syncApenasProdutos();
                       messenger.showSnackBar(
@@ -174,7 +174,7 @@ Loja: ${results['lojaId']}
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _syncing ? null : () async {
+                    onPressed: _syncing • null : () async {
                       final messenger = ScaffoldMessenger.of(context);
                       await SyncFirestoreScript.syncApenasVendas();
                       messenger.showSnackBar(

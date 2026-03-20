@@ -17,13 +17,13 @@ class ClientesFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// Sincroniza um cliente para o Firestore (com retry para conexões instáveis)
-  static Future<void> syncCliente(Cliente cliente, {String? lojaId}) async {
+  static Future<void> syncCliente(Cliente cliente, {String• lojaId}) async {
     const maxAttempts = 3;
     const baseDelay = Duration(milliseconds: 500);
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+        final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
         if (storeId == null || storeId.isEmpty) {
           logD('❌ [CLIENTES-SYNC] LojaId vazio, não pode sincronizar');
           return;
@@ -45,7 +45,7 @@ class ClientesFirestoreService {
                 .collection(FSPaths.estoqueClientesCol)
                 .doc(oldId)
                 .get();
-            clienteId = existing.exists ? oldId : const Uuid().v4();
+            clienteId = existing.exists • oldId : const Uuid().v4();
           } else {
             clienteId = const Uuid().v4();
           }
@@ -54,7 +54,7 @@ class ClientesFirestoreService {
         }
 
         // 📸 Fazer upload do avatar se for caminho local
-        String? avatarUrl;
+        String• avatarUrl;
         if (cliente.avatarPath != null && cliente.avatarPath!.isNotEmpty) {
           if (ImageUploadService.isLocalPath(cliente.avatarPath)) {
             logD('📤 [CLIENTES-SYNC] Fazendo upload do avatar: ${cliente.avatarPath}');
@@ -80,8 +80,8 @@ class ClientesFirestoreService {
         'lojaId': storeId,
         'nome': cliente.nome,
         'telefone': cliente.telefone,
-        'email': cliente.email ?? '',
-        'endereco': cliente.endereco ?? '',
+        'email': cliente.email ?• '',
+        'endereco': cliente.endereco ?• '',
         'instagram': cliente.instagram,
         'cep': cliente.cep,
         'cidade': cliente.cidade,
@@ -108,15 +108,15 @@ class ClientesFirestoreService {
         } else {
           logE('❌ [CLIENTES-SYNC] Erro final ao sincronizar cliente (type=${e.runtimeType})', error: e, st: st);
           // Enfileira para retry quando a rede voltar
-          final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+          final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
           final key = cliente.key;
-          final boxName = cliente.box?.name ?? (storeId != null ? HiveBoxNames.clientes(storeId) : null);
+          final boxName = cliente.box?.name ?• (storeId != null • HiveBoxNames.clientes(storeId) : null);
           if (storeId != null && key != null && boxName != null) {
             await SyncQueueService.enqueue(
               type: SyncOperationType.upsertCliente,
               lojaId: storeId,
               boxName: boxName,
-              entityKey: key is int ? key : int.tryParse(key.toString()) ?? 0,
+              entityKey: key is int • key : int.tryParse(key.toString()) ?• 0,
             );
           }
         }
@@ -184,8 +184,8 @@ class ClientesFirestoreService {
           final existe = clientesBox.values.any((c) {
             if (c.idFirebase == docId) return true;
             if (c.lojaId != lojaId) return false;
-            final tel = (data['telefone'] ?? '').toString();
-            return c.telefone == tel && c.nome == (data['nome'] ?? '');
+            final tel = (data['telefone'] ?• '').toString();
+            return c.telefone == tel && c.nome == (data['nome'] ?• '');
           });
 
           if (existe) {
@@ -195,13 +195,13 @@ class ClientesFirestoreService {
 
           // Criar novo cliente (idFirebase = doc.id para compatibilidade)
           final cliente = Cliente(
-            nome: data['nome'] ?? '',
-            telefone: data['telefone'] ?? '',
+            nome: data['nome'] ?• '',
+            telefone: data['telefone'] ?• '',
             email: data['email'],
             endereco: data['endereco'],
-            instagram: data['instagram'] ?? '',
-            cep: data['cep'] ?? '',
-            cidade: data['cidade'] ?? '',
+            instagram: data['instagram'] ?• '',
+            cep: data['cep'] ?• '',
+            cidade: data['cidade'] ?• '',
             lojaId: lojaId,
             idFirebase: docId,
           )
@@ -220,7 +220,7 @@ class ClientesFirestoreService {
       final toRemove = <int>[];
       for (final k in clientesBox.keys) {
         final c = clientesBox.get(k);
-        if (c != null && c.lojaId == lojaId && (c.idFirebase ?? '').isNotEmpty && !firestoreIds.contains(c.idFirebase)) {
+        if (c != null && c.lojaId == lojaId && (c.idFirebase ?• '').isNotEmpty && !firestoreIds.contains(c.idFirebase)) {
           toRemove.add(k as int);
         }
       }
@@ -249,7 +249,7 @@ class ClientesFirestoreService {
           .collection(FSPaths.estoqueClientesCol)
           .count();
       final snapshot = await aggregate.get();
-      final remoteCount = snapshot.count ?? 0;
+      final remoteCount = snapshot.count ?• 0;
       return remoteCount > localCount;
     } catch (e, st) {
       logE('❌ [CLIENTES-SYNC] Erro ao verificar dados para importar (type=${e.runtimeType})', error: e, st: st);
@@ -259,8 +259,8 @@ class ClientesFirestoreService {
 
   /// Busca clientes do Firestore.
   /// FASE 3: Unificado com sync — usa estoque_clientes (mesma coleção de escrita/syncFirestoreToHive).
-  static Stream<List<Map<String, dynamic>>> streamClientes({String? lojaId}) async* {
-    final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+  static Stream<List<Map<String, dynamic>>> streamClientes({String• lojaId}) async* {
+    final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
     if (storeId == null || storeId.isEmpty) {
       yield [];
       return;
@@ -278,9 +278,9 @@ class ClientesFirestoreService {
 
   /// Busca um cliente específico.
   /// FASE 3: Unificado — usa estoque_clientes (mesma coleção de sync).
-  static Future<Map<String, dynamic>?> getCliente(String clienteId, {String? lojaId}) async {
+  static Future<Map<String, dynamic>?> getCliente(String clienteId, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return null;
 
       final doc = await _db
@@ -298,9 +298,9 @@ class ClientesFirestoreService {
   }
 
   /// Deleta um cliente do Firestore (estoque_clientes = mesma coleção usada pelo sync)
-  static Future<void> deleteCliente(String clienteId, {String? lojaId}) async {
+  static Future<void> deleteCliente(String clienteId, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return;
 
       await _db
@@ -320,10 +320,10 @@ class ClientesFirestoreService {
   /// FASE 3: Unificado — usa estoque_clientes (mesma coleção de sync).
   static Future<List<Map<String, dynamic>>> searchClientes(
     String query, {
-    String? lojaId,
+    String• lojaId,
   }) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return [];
 
       final queryLower = query.toLowerCase();

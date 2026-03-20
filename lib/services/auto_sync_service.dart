@@ -24,7 +24,7 @@ import 'vendas_firestore_service.dart';
 /// Resultado da sincronização automática
 class AutoSyncResult {
   bool sucesso = false;
-  String? erro;
+  String• erro;
   int produtosSincronizados = 0;
   int clientesSincronizados = 0;
   int vendasSincronizadas = 0;
@@ -39,10 +39,10 @@ class AutoSyncService {
   AutoSyncService._();
 
   static bool _isRunning = false;
-  static DateTime? _lastSyncAt;
+  static DateTime• _lastSyncAt;
 
   /// Última execução (para evitar sync redundante em curto intervalo)
-  static DateTime? get lastSyncAt => _lastSyncAt;
+  static DateTime• get lastSyncAt => _lastSyncAt;
 
   /// Se a sync está em execução
   static bool get isRunning => _isRunning;
@@ -63,14 +63,14 @@ class AutoSyncService {
       logD('🔄 [AUTO-SYNC] INICIANDO SINCRONIZAÇÃO AUTOMÁTICA');
       logD('═══════════════════════════════════════════════════════════');
 
-      String? lojaId = await StoreResolverFacade.resolveForAdminApp()
+      String• lojaId = await StoreResolverFacade.resolveForAdminApp()
           .timeout(const Duration(seconds: 12), onTimeout: () => null);
       if (lojaId == null || lojaId.isEmpty) {
         try {
           final sessao = Hive.isBoxOpen('sessao')
-              ? Hive.box('sessao')
+              • Hive.box('sessao')
               : await Hive.openBox('sessao');
-          lojaId = (sessao.get('store_id') ?? sessao.get('storeId') ?? '')
+          lojaId = (sessao.get('store_id') ?• sessao.get('storeId') ?• '')
               .toString()
               .trim();
         } catch (e) {
@@ -100,13 +100,13 @@ class AutoSyncService {
 
       // 3. Abrir boxes necessárias
       final clientesBox = Hive.isBoxOpen(HiveBoxNames.clientes(lojaId))
-          ? Hive.box<Cliente>(HiveBoxNames.clientes(lojaId))
+          • Hive.box<Cliente>(HiveBoxNames.clientes(lojaId))
           : await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
       final vendasBox = Hive.isBoxOpen(HiveBoxNames.vendas(lojaId))
-          ? Hive.box<Venda>(HiveBoxNames.vendas(lojaId))
+          • Hive.box<Venda>(HiveBoxNames.vendas(lojaId))
           : await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
       final fornecedoresBox = Hive.isBoxOpen(HiveBoxNames.fornecedores(lojaId))
-          ? Hive.box<Fornecedor>(HiveBoxNames.fornecedores(lojaId))
+          • Hive.box<Fornecedor>(HiveBoxNames.fornecedores(lojaId))
           : await Hive.openBox<Fornecedor>(HiveBoxNames.fornecedores(lojaId));
 
       // 4. Sync vendas Firestore → Hive

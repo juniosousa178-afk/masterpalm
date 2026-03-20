@@ -77,7 +77,7 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
   }
 
   Future<void> _save() async {
-    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    final email = FirebaseAuth.instance.currentUser?.email ?• '';
     final rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com'};
     if (!rootEmails.contains(email.toLowerCase().trim())) {
       _showSnack('Acesso negado. Apenas conta root.', isError: true);
@@ -113,14 +113,14 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError • Colors.red : Colors.green,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    final email = FirebaseAuth.instance.currentUser?.email ?• '';
     final rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com'};
     if (!rootEmails.contains(email.toLowerCase().trim())) {
       return Scaffold(
@@ -144,13 +144,13 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
         actions: [
           if (!_loading)
             IconButton(
-              icon: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
-              onPressed: _saving ? null : _save,
+              icon: _saving • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+              onPressed: _saving • null : _save,
             ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          • const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Form(
@@ -177,9 +177,9 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
                     ]),
                     const SizedBox(height: 32),
                     ElevatedButton.icon(
-                      onPressed: _saving ? null : _save,
-                      icon: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
-                      label: Text(_saving ? 'Salvando...' : 'Salvar configurações'),
+                      onPressed: _saving • null : _save,
+                      icon: _saving • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
+                      label: Text(_saving • 'Salvando...' : 'Salvar configurações'),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         backgroundColor: Colors.indigo,
@@ -211,7 +211,7 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
     );
   }
 
-  Widget _buildField(String label, TextEditingController ctrl, String hint, {TextInputType? keyboardType}) {
+  Widget _buildField(String label, TextEditingController ctrl, String hint, {TextInputType• keyboardType}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(

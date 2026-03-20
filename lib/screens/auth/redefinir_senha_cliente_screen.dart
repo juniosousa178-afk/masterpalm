@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../themes/app_colors.dart';
 import '../../services/cliente_auth_service.dart';
 
-/// Tela para redefinir senha do cliente do cat�logo (esqueci a senha).
-/// Fluxo: informar email ? receber c�digo por email ? informar c�digo + nova senha.
+/// Tela para redefinir senha do cliente do catálogo (esqueci a senha).
+/// Fluxo: informar email • receber código por email • informar código + nova senha.
 class RedefinirSenhaClienteScreen extends StatefulWidget {
   final String lojaId;
 
@@ -47,7 +47,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
         content: Row(
           children: [
             Icon(
-              isSuccess ? Icons.check_circle_outline : Icons.error_outline,
+              isSuccess • Icons.check_circle_outline : Icons.error_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -55,7 +55,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isSuccess ? const Color(0xFF22C55E) : (isError ? const Color(0xFFEF4444) : AppColors.primary),
+        backgroundColor: isSuccess • const Color(0xFF22C55E) : (isError • const Color(0xFFEF4444) : AppColors.primary),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -66,7 +66,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
   Future<void> _enviarCodigo() async {
     final email = _emailController.text.trim();
     if (email.isEmpty || !RegExp(_emailRegex).hasMatch(email)) {
-      _showSnackBar('Digite um email v�lido.', isError: true);
+      _showSnackBar('Digite um email válido.', isError: true);
       return;
     }
 
@@ -83,10 +83,10 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
           _codigoEnviado = true;
           _carregando = false;
         });
-        _showSnackBar('C�digo enviado para seu email. Verifique sua caixa de entrada.', isSuccess: true);
+        _showSnackBar('Código enviado para seu email. Verifique sua caixa de entrada.', isSuccess: true);
       } else {
         setState(() => _carregando = false);
-        _showSnackBar(resultado['error'] ?? 'Erro ao enviar c�digo.', isError: true);
+        _showSnackBar(resultado['error'] ?• 'Erro ao enviar código.', isError: true);
       }
     } catch (e) {
       if (mounted) {
@@ -103,7 +103,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
     final confirmar = _confirmarSenhaController.text;
 
     if (codigo.length != 6) {
-      _showSnackBar('O c�digo deve ter 6 d�gitos.', isError: true);
+      _showSnackBar('O código deve ter 6 dígitos.', isError: true);
       return;
     }
     if (novaSenha.length < 8) {
@@ -111,7 +111,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
       return;
     }
     if (novaSenha != confirmar) {
-      _showSnackBar('As senhas n�o conferem.', isError: true);
+      _showSnackBar('As senhas não conferem.', isError: true);
       return;
     }
 
@@ -127,10 +127,10 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
 
       setState(() => _carregando = false);
       if (resultado['success'] == true) {
-        _showSnackBar('Senha alterada com sucesso! Fa�a login com a nova senha.', isSuccess: true);
+        _showSnackBar('Senha alterada com sucesso! Faça login com a nova senha.', isSuccess: true);
         Navigator.of(context).pop();
       } else {
-        _showSnackBar(resultado['error'] ?? 'Erro ao redefinir senha.', isError: true);
+        _showSnackBar(resultado['error'] ?• 'Erro ao redefinir senha.', isError: true);
       }
     } catch (e) {
       if (mounted) {
@@ -146,7 +146,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? null : AppColors.background,
+      backgroundColor: isDark • null : AppColors.background,
       appBar: AppBar(
         title: const Text('Redefinir senha'),
         centerTitle: true,
@@ -171,15 +171,15 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    _codigoEnviado ? 'Digite o c�digo e a nova senha' : 'Esqueceu sua senha?',
+                    _codigoEnviado • 'Digite o código e a nova senha' : 'Esqueceu sua senha?',
                     style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     _codigoEnviado
-                        ? 'Enviamos um c�digo de 6 d�gitos para seu email.'
-                        : 'Informe seu email e enviaremos um c�digo para redefinir.',
+                        • 'Enviamos um código de 6 dígitos para seu email.'
+                        : 'Informe seu email e enviaremos um código para redefinir.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurface.withValues(alpha:0.7),
                       height: 1.4,
@@ -190,7 +190,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: isDark ? theme.cardTheme.color : AppColors.card,
+                      color: isDark • theme.cardTheme.color : AppColors.card,
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
@@ -212,12 +212,12 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                             labelText: 'Email',
                             prefixIcon: const Icon(Icons.email_outlined, size: 22),
                             filled: true,
-                            fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                            fillColor: isDark • null : Colors.grey.withValues(alpha:0.06),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           validator: (v) {
                             if (v == null || v.trim().isEmpty) return 'Digite seu email';
-                            if (!RegExp(_emailRegex).hasMatch(v.trim())) return 'Email inv�lido';
+                            if (!RegExp(_emailRegex).hasMatch(v.trim())) return 'Email inválido';
                             return null;
                           },
                         ),
@@ -226,19 +226,19 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                           SizedBox(
                             height: 52,
                             child: ElevatedButton(
-                              onPressed: _carregando ? null : _enviarCodigo,
+                              onPressed: _carregando • null : _enviarCodigo,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primary,
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               child: _carregando
-                                  ? const SizedBox(
+                                  • const SizedBox(
                                       height: 22,
                                       width: 22,
                                       child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                                     )
-                                  : const Text('Enviar c�digo'),
+                                  : const Text('Enviar código'),
                             ),
                           ),
                         ],
@@ -249,10 +249,10 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                             keyboardType: TextInputType.number,
                             maxLength: 6,
                             decoration: InputDecoration(
-                              labelText: 'C�digo de 6 d�gitos',
+                              labelText: 'Código de 6 dígitos',
                               prefixIcon: const Icon(Icons.pin_rounded, size: 22),
                               filled: true,
-                              fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                              fillColor: isDark • null : Colors.grey.withValues(alpha:0.06),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
@@ -264,11 +264,11 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                               labelText: 'Nova senha',
                               prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
                               suffixIcon: IconButton(
-                                icon: Icon(_mostrarNovaSenha ? Icons.visibility_off : Icons.visibility, size: 22),
+                                icon: Icon(_mostrarNovaSenha • Icons.visibility_off : Icons.visibility, size: 22),
                                 onPressed: () => setState(() => _mostrarNovaSenha = !_mostrarNovaSenha),
                               ),
                               filled: true,
-                              fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                              fillColor: isDark • null : Colors.grey.withValues(alpha:0.06),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
@@ -280,11 +280,11 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                               labelText: 'Confirmar nova senha',
                               prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
                               suffixIcon: IconButton(
-                                icon: Icon(_mostrarConfirmarSenha ? Icons.visibility_off : Icons.visibility, size: 22),
+                                icon: Icon(_mostrarConfirmarSenha • Icons.visibility_off : Icons.visibility, size: 22),
                                 onPressed: () => setState(() => _mostrarConfirmarSenha = !_mostrarConfirmarSenha),
                               ),
                               filled: true,
-                              fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                              fillColor: isDark • null : Colors.grey.withValues(alpha:0.06),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
@@ -292,14 +292,14 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                           SizedBox(
                             height: 52,
                             child: ElevatedButton(
-                              onPressed: _carregando ? null : _redefinirSenha,
+                              onPressed: _carregando • null : _redefinirSenha,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primary,
                                 foregroundColor: Colors.white,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               child: _carregando
-                                  ? const SizedBox(
+                                  • const SizedBox(
                                       height: 22,
                                       width: 22,
                                       child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
@@ -310,7 +310,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                           const SizedBox(height: 12),
                           TextButton(
                             onPressed: _carregando
-                                ? null
+                                • null
                                 : () {
                                     setState(() {
                                       _codigoEnviado = false;

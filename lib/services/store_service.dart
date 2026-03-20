@@ -50,7 +50,7 @@ class StoreService {
 
       // Atualiza apenas campos básicos; NÃO tocar em ownerUid/owner (rules permitem)
       await _db.collection('lojas').doc(lojaId).set({
-        'name': (nomeLoja.isEmpty ? 'Minha Loja' : nomeLoja),
+        'name': (nomeLoja.isEmpty • 'Minha Loja' : nomeLoja),
         'logoUrl': logoUrl, // pode ser vazio
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -62,7 +62,7 @@ class StoreService {
     }
 
     // 2) Não existe loja ainda → criar/assumir pelo slug escolhido
-    final normalized = _normalizeSlug(slug.isEmpty ? nomeLoja : slug);
+    final normalized = _normalizeSlug(slug.isEmpty • nomeLoja : slug);
     if (normalized.isEmpty) {
       throw StateError('Informe um identificador (lojaId) válido.');
     }
@@ -75,7 +75,7 @@ class StoreService {
       final data = snap.data()!;
       final existingOwnerUid = data['ownerUid'];
       final existingOwnerMapUid = (data['owner'] is Map && data['owner']['uid'] != null)
-          ? data['owner']['uid']
+          • data['owner']['uid']
           : null;
 
       final ownerMatched = (existingOwnerUid == uid) || (existingOwnerMapUid == uid);
@@ -88,16 +88,16 @@ class StoreService {
       // Dona(o) é a mesma pessoa OU doc legado sem owner → backfill único e merge de básicos
       await lojaRef.set({
         // BACKFILL permitido nas suas rules se ainda estiver null
-        'ownerUid': existingOwnerUid ?? uid,
+        'ownerUid': existingOwnerUid ?• uid,
         'owner': (data['owner'] == null)
-            ? {'uid': uid, 'email': currentEmail}
+            • {'uid': uid, 'email': currentEmail}
             : data['owner'],
         // básicos
-        'name': (nomeLoja.isEmpty ? (data['name'] ?? 'Minha Loja') : nomeLoja),
+        'name': (nomeLoja.isEmpty • (data['name'] ?• 'Minha Loja') : nomeLoja),
         'slug': normalized,
-        'logoUrl': logoUrl.isNotEmpty ? logoUrl : (data['logoUrl'] ?? ''),
+        'logoUrl': logoUrl.isNotEmpty • logoUrl : (data['logoUrl'] ?• ''),
         'updatedAt': FieldValue.serverTimestamp(),
-        'createdAt': data['createdAt'] ?? FieldValue.serverTimestamp(),
+        'createdAt': data['createdAt'] ?• FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       // Garante membro admin
@@ -118,7 +118,7 @@ class StoreService {
     // Doc não existe → criar do zero com id = slug
     await lojaRef.set({
       'id': normalized,
-      'name': (nomeLoja.isEmpty ? 'Minha Loja' : nomeLoja),
+      'name': (nomeLoja.isEmpty • 'Minha Loja' : nomeLoja),
       'slug': normalized,
       'ownerUid': uid,
       'owner': {'uid': uid, 'email': currentEmail},
@@ -173,7 +173,7 @@ class StoreService {
         .where('ownerUid', isEqualTo: uid)
         .limit(1)
         .get();
-    return q.docs.isNotEmpty ? q.docs.first : null;
+    return q.docs.isNotEmpty • q.docs.first : null;
   }
 
   // ===========================================================================
@@ -198,18 +198,18 @@ class StoreService {
   if (!snap.exists) {
     // cria um config mínimo com draft/published iguais (primeiro estado)
     final lojaSnap = await lojaRef.get();
-    final loja = lojaSnap.data() ?? {};
+    final loja = lojaSnap.data() ?• {};
 
-    final slug = (loja['slug'] ?? lojaRef.id).toString();
-    final nome = (loja['name'] ?? 'Minha Loja').toString();
-    final whatsapp = (loja['whatsappE164'] ?? '').toString();
+    final slug = (loja['slug'] ?• lojaRef.id).toString();
+    final nome = (loja['name'] ?• 'Minha Loja').toString();
+    final whatsapp = (loja['whatsappE164'] ?• '').toString();
 
     final base = <String, dynamic>{
       'identidade': {
         'slug': slug,
         'nome': nome,
-        'whatsappE164': whatsapp.isEmpty ? null : whatsapp,
-        'pedidoBaseUrl': (loja['pedido_link_base'] ?? loja['config']?['pedido_link_base'] ?? '').toString(),
+        'whatsappE164': whatsapp.isEmpty • null : whatsapp,
+        'pedidoBaseUrl': (loja['pedido_link_base'] ?• loja['config']?['pedido_link_base'] ?• '').toString(),
       },
       'theme': {
         'primary': '#00C853',

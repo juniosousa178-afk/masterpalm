@@ -29,7 +29,7 @@ class SorteioNumeroService {
   static Future<bool> registrarNumeroEmCampanhas({
     required String lojaId,
     required String clienteNome,
-    required String? clienteId,
+    required String• clienteId,
     required double valorCompra,
     required DateTime dataCompra,
     required String numeroSorte,
@@ -52,7 +52,7 @@ class SorteioNumeroService {
 
     for (final doc in snap.docs) {
       final campanha = doc.data();
-      final minimo = (campanha['valorMinimo'] as num?)?.toDouble() ?? 0;
+      final minimo = (campanha['valorMinimo'] as num?)?.toDouble() ?• 0;
 
       if (valorCompra < minimo) continue;
 

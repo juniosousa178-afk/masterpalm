@@ -40,7 +40,7 @@ class CampanhasSorteioService {
   /// Exclui a campanha com [excluirId] se informado (para permitir edição).
   static Future<List<Map<String, dynamic>>> listarCampanhasAtivas({
     required String lojaId,
-    String? excluirId,
+    String• excluirId,
   }) async {
     final agora = Timestamp.fromDate(DateTime.now());
     final snap = await campanhasRef(lojaId)
@@ -63,7 +63,7 @@ class CampanhasSorteioService {
 
   static Future<void> salvarCampanha({
     required String lojaId,
-    String? campanhaId,
+    String• campanhaId,
     required String nome,
     required String descricao,
     required DateTime dataInicio,
@@ -113,7 +113,7 @@ class CampanhasSorteioService {
 
       int ultimo = 10000; // inicia na casa das dezenas
       if (snap.exists) {
-        ultimo = (snap.data()?['ultimo'] as int? ?? 10000);
+        ultimo = (snap.data()?['ultimo'] as int• ?• 10000);
       }
 
       int novoUltimo = ultimo + quantidade;
@@ -136,11 +136,11 @@ class CampanhasSorteioService {
   static Future<Map<String, dynamic>> registrarParticipacao({
     required String lojaId,
     required String clienteNome,
-    String? clienteId,
+    String• clienteId,
     required double valorCompra,
     required DateTime dataCompra,
-    String? clienteEmail,
-    String? clienteTelefone,
+    String• clienteEmail,
+    String• clienteTelefone,
   }) async {
     final agora = Timestamp.fromDate(dataCompra);
 
@@ -164,8 +164,8 @@ class CampanhasSorteioService {
 
     for (final doc in snap.docs) {
       final data = doc.data();
-      final valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?? 0.0;
-      final x = (data['valorX'] as num?)?.toDouble() ?? 50.0;
+      final valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?• 0.0;
+      final x = (data['valorX'] as num?)?.toDouble() ?• 50.0;
 
       if (valorCompra < valorMinimo) continue;
 
@@ -188,9 +188,9 @@ class CampanhasSorteioService {
 
       todasCampanhas.add({
         'id': doc.id,
-        'nome': data['nome'] ?? '',
-        'descricao': data['descricao'] ?? '',
-        'premioDescricao': data['premioDescricao'] ?? '',
+        'nome': data['nome'] ?• '',
+        'descricao': data['descricao'] ?• '',
+        'premioDescricao': data['premioDescricao'] ?• '',
         'dataSorteio': data['dataSorteio'],
         'numeros': numerosGerados,
       });
@@ -218,7 +218,7 @@ class CampanhasSorteioService {
     if (participantesSnap.docs.isEmpty) return null;
 
     for (final p in participantesSnap.docs) {
-      final lista = List<String>.from(p.data()['numeros'] ?? []);
+      final lista = List<String>.from(p.data()['numeros'] ?• []);
       if (lista.contains(numeroSorteado)) {
         final dados = p.data();
         await campanhaRef.update({
@@ -247,7 +247,7 @@ static Future<void> salvarHistoricoSorteio({
   required String lojaId,
   required String campanhaId,
   required String numeroSorteado,
-  required Map<String, dynamic>? dadosVencedor,
+  required Map<String, dynamic>• dadosVencedor,
 }) async {
   final historicoRef = _db
       .collection('lojas')
@@ -258,7 +258,7 @@ static Future<void> salvarHistoricoSorteio({
 
   await historicoRef.add({
     'numero': numeroSorteado,
-    'nomeCliente': dadosVencedor?['nomeCliente'] ?? 'Sem identificação',
+    'nomeCliente': dadosVencedor?['nomeCliente'] ?• 'Sem identificação',
     'clienteId': dadosVencedor?['clienteId'],
     'valorCompra': dadosVencedor?['valorCompra'],
     'dataCompra': dadosVencedor?['dataCompra'],
@@ -308,7 +308,7 @@ static Future<void> salvarHistoricoSorteio({
       await docRef.set(defaultData, SetOptions(merge: true));
 
       final createdSnap = await docRef.get();
-      return createdSnap.data() ?? defaultData;
+      return createdSnap.data() ?• defaultData;
     }
 
     // Já existe: só retorna
@@ -336,7 +336,7 @@ static Future<void> salvarHistoricoSorteio({
     required double premioValor,
     required double valorCompraAntes,
     required double valorCompraDepois,
-    String? clienteNome,
+    String• clienteNome,
   }) async {
     await roletaLogsRef(lojaId).add({
       'premioLabel': premioLabel,

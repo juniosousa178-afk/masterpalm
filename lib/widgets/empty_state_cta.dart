@@ -7,7 +7,7 @@ class EmptyStateCta extends StatelessWidget {
   final String subtitle;
   final String buttonLabel;
   final VoidCallback onPressed;
-  final Color? accentColor;
+  final Color• accentColor;
 
   const EmptyStateCta({
     super.key,
@@ -22,7 +22,7 @@ class EmptyStateCta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = accentColor ?? theme.colorScheme.primary;
+    final color = accentColor ?• theme.colorScheme.primary;
 
     return Center(
       child: Padding(

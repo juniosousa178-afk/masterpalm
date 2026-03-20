@@ -36,10 +36,10 @@ class HttpClientHelper {
   /// Executa GET com timeout (sem retry - GET é idempotente, mas retry é opcional)
   static Future<http.Response> get(
     Uri url, {
-    Map<String, String>? headers,
-    Duration? timeout,
+    Map<String, String>• headers,
+    Duration• timeout,
   }) async {
-    final t = timeout ?? HttpTimeouts.standard;
+    final t = timeout ?• HttpTimeouts.standard;
     return http.get(url, headers: headers).timeout(
           t,
           onTimeout: () => throw TimeoutException('GET $url excedeu ${t.inSeconds}s'),
@@ -49,11 +49,11 @@ class HttpClientHelper {
   /// Executa POST com timeout (sem retry por padrão - operações de criação podem duplicar)
   static Future<http.Response> post(
     Uri url, {
-    Map<String, String>? headers,
-    Object? body,
-    Duration? timeout,
+    Map<String, String>• headers,
+    Object• body,
+    Duration• timeout,
   }) async {
-    final t = timeout ?? HttpTimeouts.standard;
+    final t = timeout ?• HttpTimeouts.standard;
     return http.post(url, headers: headers, body: body).timeout(
           t,
           onTimeout: () => throw TimeoutException('POST $url excedeu ${t.inSeconds}s'),
@@ -63,11 +63,11 @@ class HttpClientHelper {
   /// Executa PUT com timeout
   static Future<http.Response> put(
     Uri url, {
-    Map<String, String>? headers,
-    Object? body,
-    Duration? timeout,
+    Map<String, String>• headers,
+    Object• body,
+    Duration• timeout,
   }) async {
-    final t = timeout ?? HttpTimeouts.standard;
+    final t = timeout ?• HttpTimeouts.standard;
     return http.put(url, headers: headers, body: body).timeout(
           t,
           onTimeout: () => throw TimeoutException('PUT $url excedeu ${t.inSeconds}s'),
@@ -77,11 +77,11 @@ class HttpClientHelper {
   /// Executa DELETE com timeout
   static Future<http.Response> delete(
     Uri url, {
-    Map<String, String>? headers,
-    Object? body,
-    Duration? timeout,
+    Map<String, String>• headers,
+    Object• body,
+    Duration• timeout,
   }) async {
-    final t = timeout ?? HttpTimeouts.standard;
+    final t = timeout ?• HttpTimeouts.standard;
     return http.delete(url, headers: headers, body: body).timeout(
           t,
           onTimeout: () => throw TimeoutException('DELETE $url excedeu ${t.inSeconds}s'),
@@ -92,13 +92,13 @@ class HttpClientHelper {
   /// [maxAttempts] padrão 3, [baseDelay] 500ms
   static Future<http.Response> getWithRetry(
     Uri url, {
-    Map<String, String>? headers,
-    Duration? timeout,
+    Map<String, String>• headers,
+    Duration• timeout,
     int maxAttempts = 3,
     Duration baseDelay = const Duration(milliseconds: 500),
   }) async {
-    final t = timeout ?? HttpTimeouts.standard;
-    Exception? lastError;
+    final t = timeout ?• HttpTimeouts.standard;
+    Exception• lastError;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         final resp = await http.get(url, headers: headers).timeout(
@@ -108,28 +108,28 @@ class HttpClientHelper {
         if (resp.statusCode < 500) return resp; // Não retry em 4xx
         lastError = Exception('Status ${resp.statusCode}');
       } catch (e) {
-        lastError = e is Exception ? e : Exception(e.toString());
+        lastError = e is Exception • e : Exception(e.toString());
         debugPrint('⚠️ [HTTP] GET $url tentativa $attempt/$maxAttempts (type=${e.runtimeType})');
       }
       if (attempt < maxAttempts) {
         await Future<void>.delayed(baseDelay * (1 << (attempt - 1)));
       }
     }
-    throw lastError ?? Exception('getWithRetry falhou');
+    throw lastError ?• Exception('getWithRetry falhou');
   }
 
   /// POST com retry exponencial - USAR APENAS para operações idempotentes
   /// (ex: criar preferência de checkout que gera link, não cobrança)
   static Future<http.Response> postWithRetry(
     Uri url, {
-    Map<String, String>? headers,
-    Object? body,
-    Duration? timeout,
+    Map<String, String>• headers,
+    Object• body,
+    Duration• timeout,
     int maxAttempts = 3,
     Duration baseDelay = const Duration(milliseconds: 500),
   }) async {
-    final t = timeout ?? HttpTimeouts.standard;
-    Exception? lastError;
+    final t = timeout ?• HttpTimeouts.standard;
+    Exception• lastError;
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         final resp = await http.post(url, headers: headers, body: body).timeout(
@@ -139,26 +139,26 @@ class HttpClientHelper {
         if (resp.statusCode < 500) return resp;
         lastError = Exception('Status ${resp.statusCode}');
       } catch (e) {
-        lastError = e is Exception ? e : Exception(e.toString());
+        lastError = e is Exception • e : Exception(e.toString());
         debugPrint('⚠️ [HTTP] POST $url tentativa $attempt/$maxAttempts (type=${e.runtimeType})');
       }
       if (attempt < maxAttempts) {
         await Future<void>.delayed(baseDelay * (1 << (attempt - 1)));
       }
     }
-    throw lastError ?? Exception('postWithRetry falhou');
+    throw lastError ?• Exception('postWithRetry falhou');
   }
 
   /// Executa request com timeout - wrapper genérico
   static Future<T> runWithTimeout<T>(
     Future<T> Function() fn, {
     required Duration timeout,
-    String? operationName,
+    String• operationName,
   }) async {
     return fn().timeout(
       timeout,
       onTimeout: () => throw TimeoutException(
-        '${operationName ?? "Operação"} excedeu ${timeout.inSeconds}s',
+        '${operationName ?• "Operação"} excedeu ${timeout.inSeconds}s',
       ),
     );
   }

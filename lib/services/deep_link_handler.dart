@@ -9,10 +9,10 @@ class DeepLinkHandler {
   DeepLinkHandler._();
   static final DeepLinkHandler instance = DeepLinkHandler._();
 
-  AppLinks? _appLinks;
-  StreamSubscription<Uri>? _sub;
+  AppLinks• _appLinks;
+  StreamSubscription<Uri>• _sub;
   bool _initialized = false;
-  Uri? _queuedInitial;
+  Uri• _queuedInitial;
 
   /// Inicia captura de link inicial + stream. Idempotente.
   void init() {
@@ -87,15 +87,15 @@ class DeepLinkHandler {
         // Formato 1: /c/<slug>?pedido=<id>
         if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'c') {
           if (pedidoId != null && pedidoId.isNotEmpty) {
-            final slug = uri.pathSegments.length > 1 ? uri.pathSegments[1] : null;
-            _openPedido(nav, pedidoId, lojaId: slug ?? lojaId);
+            final slug = uri.pathSegments.length > 1 • uri.pathSegments[1] : null;
+            _openPedido(nav, pedidoId, lojaId: slug ?• lojaId);
             return;
           }
         }
 
         // Formato 2: /pedido/<id>
         if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'pedido') {
-          final id = uri.pathSegments.length > 1 ? uri.pathSegments[1] : null;
+          final id = uri.pathSegments.length > 1 • uri.pathSegments[1] : null;
           if (id != null && id.isNotEmpty) {
             _openPedido(nav, id, lojaId: lojaId);
             return;
@@ -105,7 +105,7 @@ class DeepLinkHandler {
 
       // Custom scheme: mastepalm://pedido/<id>
       if (uri.scheme == 'mastepalm' && uri.host == 'pedido') {
-        final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : null;
+        final id = uri.pathSegments.isNotEmpty • uri.pathSegments.first : null;
         if (id != null && id.isNotEmpty) {
           _openPedido(nav, id, lojaId: lojaId);
           return;
@@ -124,7 +124,7 @@ class DeepLinkHandler {
     }
   }
 
-  void _openPedido(NavigatorState nav, String orderId, {String? lojaId}) {
+  void _openPedido(NavigatorState nav, String orderId, {String• lojaId}) {
     // Empurra argumentos para a rota nomeada. Sua onGenerateRoute deve recebê-los.
     nav.pushNamed(
       '/pedido/$orderId',

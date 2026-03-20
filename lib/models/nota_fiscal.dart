@@ -15,7 +15,7 @@ class NotaFiscal extends HiveObject {
 
   /// Chave de acesso da NF-e (44 dígitos)
   @HiveField(2)
-  String? chaveAcesso;
+  String• chaveAcesso;
 
   /// Status da nota (emitida, cancelada, rejeitada, etc)
   @HiveField(3)
@@ -23,7 +23,7 @@ class NotaFiscal extends HiveObject {
 
   /// ID da venda vinculada
   @HiveField(4)
-  String? vendaId;
+  String• vendaId;
 
   /// Dados do cliente
   @HiveField(5)
@@ -33,16 +33,16 @@ class NotaFiscal extends HiveObject {
   String clienteCpfCnpj;
 
   @HiveField(7)
-  String? clienteEndereco;
+  String• clienteEndereco;
 
   @HiveField(8)
-  String? clienteCidade;
+  String• clienteCidade;
 
   @HiveField(9)
-  String? clienteEstado;
+  String• clienteEstado;
 
   @HiveField(10)
-  String? clienteCep;
+  String• clienteCep;
 
   /// Dados da nota
   @HiveField(11)
@@ -72,18 +72,18 @@ class NotaFiscal extends HiveObject {
   double valorIcms;
 
   @HiveField(19)
-  String? protocoloAutorizacao;
+  String• protocoloAutorizacao;
 
   @HiveField(20)
-  DateTime? dataAutorizacao;
+  DateTime• dataAutorizacao;
 
   /// URL do XML da nota
   @HiveField(21)
-  String? xmlUrl;
+  String• xmlUrl;
 
   /// URL do PDF/DANFE
   @HiveField(22)
-  String? pdfUrl;
+  String• pdfUrl;
 
   /// ID da loja emitente
   @HiveField(23)
@@ -91,11 +91,11 @@ class NotaFiscal extends HiveObject {
 
   /// ID no Firestore
   @HiveField(24)
-  String? idFirebase;
+  String• idFirebase;
 
   /// Observações
   @HiveField(25)
-  String? observacoes;
+  String• observacoes;
 
   NotaFiscal({
     required this.numero,
@@ -132,18 +132,18 @@ class NotaFiscal extends HiveObject {
     required String serie,
     required String clienteNome,
     required String clienteCpfCnpj,
-    String? clienteEndereco,
-    String? clienteCidade,
-    String? clienteEstado,
-    String? clienteCep,
+    String• clienteEndereco,
+    String• clienteCidade,
+    String• clienteEstado,
+    String• clienteCep,
     required double valorTotal,
     required double valorProdutos,
     double valorFrete = 0.0,
     double valorDesconto = 0.0,
     required List<NotaFiscalItem> itens,
     required String lojaId,
-    String? vendaId,
-    String? observacoes,
+    String• vendaId,
+    String• observacoes,
   }) {
     return NotaFiscal(
       numero: numero,
@@ -205,7 +205,7 @@ class NotaFiscalItem extends HiveObject {
   String produtoNome;
 
   @HiveField(1)
-  String? codigoProduto;
+  String• codigoProduto;
 
   @HiveField(2)
   int quantidade;
@@ -220,13 +220,13 @@ class NotaFiscalItem extends HiveObject {
   String unidade; // UN, KG, M, etc
 
   @HiveField(6)
-  String? ncm; // Código NCM
+  String• ncm; // Código NCM
 
   @HiveField(7)
-  String? cfop; // Código CFOP
+  String• cfop; // Código CFOP
 
   @HiveField(8)
-  double? aliquotaIcms;
+  double• aliquotaIcms;
 
   NotaFiscalItem({
     required this.produtoNome,

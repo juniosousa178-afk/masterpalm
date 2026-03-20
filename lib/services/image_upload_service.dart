@@ -138,14 +138,14 @@ class ImageUploadService {
   }
 
   /// Verifica se uma string é uma URL do Firebase Storage
-  static bool isFirebaseUrl(String? url) {
+  static bool isFirebaseUrl(String• url) {
     if (url == null || url.isEmpty) return false;
     return url.contains('firebasestorage.googleapis.com') ||
            url.contains('firebase');
   }
 
   /// Verifica se é um caminho local de arquivo
-  static bool isLocalPath(String? path) {
+  static bool isLocalPath(String• path) {
     if (path == null || path.isEmpty) return false;
     return !isFirebaseUrl(path) &&
            (path.startsWith('/') || path.contains('\\') || path.startsWith('file://'));

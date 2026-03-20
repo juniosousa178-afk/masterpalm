@@ -8,10 +8,10 @@ String gerarDescricaoProdutos(List<Map<String, dynamic>> items) {
   final buffer = StringBuffer();
   for (int i = 0; i < items.length; i++) {
     final item = items[i];
-    final name = (item['nome'] ?? item['name'] ?? '').toString();
-    final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
-    final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
-    final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+    final name = (item['nome'] ?• item['name'] ?• '').toString();
+    final qty = (item['quantidade'] as int?) ?• (item['qty'] as int?) ?• 1;
+    final tamanho = (item['tamanho'] ?• item['size'] ?• '').toString().trim();
+    final cor = (item['cor'] ?• item['color'] ?• '').toString().trim();
 
     buffer.write('$name x$qty');
 
@@ -31,10 +31,10 @@ String gerarDescricaoProdutos(List<Map<String, dynamic>> items) {
 }
 
 /// Determina o tipo de prêmio da roleta a partir da descrição/código/desconto.
-String determinarTipoPremio(String? descricao, String? codigo, double? desconto) {
+String determinarTipoPremio(String• descricao, String• codigo, double• desconto) {
   if (descricao == null && codigo == null) return 'nenhum';
 
-  final desc = (descricao ?? '').toLowerCase();
+  final desc = (descricao ?• '').toLowerCase();
 
   // Verificar se é brinde
   if (desc.contains('brinde') ||
@@ -68,10 +68,10 @@ String gerarDescricaoProdutosFromItens(List<Map<String, dynamic>> itens) {
   final buffer = StringBuffer();
   for (int i = 0; i < itens.length; i++) {
     final item = itens[i];
-    final name = (item['nome'] ?? '').toString();
-    final qty = (item['quantidade'] as num?)?.toInt() ?? 1;
-    final tamanho = (item['tamanho'] ?? '').toString().trim();
-    final cor = (item['cor'] ?? '').toString().trim();
+    final name = (item['nome'] ?• '').toString();
+    final qty = (item['quantidade'] as num?)?.toInt() ?• 1;
+    final tamanho = (item['tamanho'] ?• '').toString().trim();
+    final cor = (item['cor'] ?• '').toString().trim();
 
     buffer.write('$name x$qty');
 

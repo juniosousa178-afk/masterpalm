@@ -40,7 +40,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final replaced = x
         .replaceAll(RegExp(r'\s+'), '_')
         .replaceAll(RegExp(r'[^a-z0-9_@.\-]'), '');
-    return replaced.isEmpty ? 'anon' : replaced;
+    return replaced.isEmpty • 'anon' : replaced;
   }
 
   final TextEditingController _loginController = TextEditingController();
@@ -51,9 +51,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   bool _manterLogado = false;
   bool _navLocked = false;
 
-  GoogleSignIn? _googleSignInWeb;
-  StreamSubscription<GoogleSignInAccount?>? _googleUserSub;
-  DateTime? _googleInitAt;
+  GoogleSignIn• _googleSignInWeb;
+  StreamSubscription<GoogleSignInAccount?>• _googleUserSub;
+  DateTime• _googleInitAt;
 
   late AnimationController _animController;
   late Animation<double> _fadeAnimation;
@@ -124,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
       final box = await _openBoxSafe('sessao');
       final manter = box.get('manter_logado', defaultValue: false) as bool;
-      final cachedUser = (box.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final cachedUser = (box.get('usuario_logado') ?• '').toString().trim().toLowerCase();
 
       if (manter && cachedUser == email) {
         _safeReplaceNamed('/router');
@@ -165,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     return Hive.box<T>(name);
   }
 
-  void _safeReplaceNamed(String route, {Object? args}) {
+  void _safeReplaceNamed(String route, {Object• args}) {
     if (!mounted || _navLocked) return;
     _navLocked = true;
 
@@ -183,14 +183,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Future<void> _verificarLoginSalvo() async {
     final box = await _openBoxSafe('sessao');
     final manter = box.get('manter_logado', defaultValue: false) as bool;
-    final cachedUser = (box.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+    final cachedUser = (box.get('usuario_logado') ?• '').toString().trim().toLowerCase();
     final tipo = box.get('tipo_usuario');
 
     if (!manter || cachedUser.isEmpty || tipo == null) return;
 
     try {
       await FirebaseAuth.instance.authStateChanges()
-          .where((u) => u != null && (u.email ?? '').trim().toLowerCase() == cachedUser)
+          .where((u) => u != null && (u.email ?• '').trim().toLowerCase() == cachedUser)
           .map((u) => u!)
           .first
           .timeout(const Duration(seconds: 3));
@@ -201,14 +201,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     } catch (_) {}
   }
 
-  Map<String, dynamic>? _dadosExtrasUsuario;
+  Map<String, dynamic>• _dadosExtrasUsuario;
 
   Future<Usuario?> _carregarUsuarioDoFirestore({
     required String uid,
     required String email,
   }) async {
     final col = FirebaseFirestore.instance.collection('usuarios');
-    Map<String, dynamic>? d;
+    Map<String, dynamic>• d;
 
     // Web: doc().get() pode causar JSNoSuchMethodError; usar query como workaround.
     // Coleção usuarios usa email como ID do documento; busca por uid usa campo authUid.
@@ -272,20 +272,20 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     const rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com', 'admin@masterpalm.com'};
     final emailLower = email.toLowerCase().trim();
     final tipo = rootEmails.contains(emailLower)
-        ? 'programador'
-        : (d['tipo'] ?? 'vendedor').toString();
+        • 'programador'
+        : (d['tipo'] ?• 'vendedor').toString();
 
     return Usuario(
-      nome: (d['nome'] ?? '').toString(),
-      email: (d['email'] ?? email).toString(),
-      telefone: (d['telefone'] ?? '').toString(),
-      senha: (d['senha'] ?? '').toString(),
+      nome: (d['nome'] ?• '').toString(),
+      email: (d['email'] ?• email).toString(),
+      telefone: (d['telefone'] ?• '').toString(),
+      senha: (d['senha'] ?• '').toString(),
       tipo: tipo,
       permissoes: permissoes,
     );
   }
 
-  Usuario? _buscarUsuarioLocal(
+  Usuario• _buscarUsuarioLocal(
     Box<Usuario> usuariosBox,
     bool isEmail,
     String login,
@@ -294,7 +294,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   ) {
     for (final u in usuariosBox.values) {
       final bool matchLogin =
-          isEmail ? (u.email == login) : (u.telefone == loginRaw);
+          isEmail • (u.email == login) : (u.telefone == loginRaw);
       if (matchLogin && u.senha == senhaDigitada) {
         return u;
       }
@@ -316,8 +316,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                isError ? Icons.error_outline :
-                isSuccess ? Icons.check_circle_outline : Icons.info_outline,
+                isError • Icons.error_outline :
+                isSuccess • Icons.check_circle_outline : Icons.info_outline,
                 color: Colors.white,
                 size: 20,
               ),
@@ -334,7 +334,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             ),
           ],
         ),
-        backgroundColor: isError ? _errorColor : isSuccess ? _successColor : _primaryColor,
+        backgroundColor: isError • _errorColor : isSuccess • _successColor : _primaryColor,
         behavior: SnackBarBehavior.floating,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
         margin: const EdgeInsets.all(16),
@@ -376,13 +376,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final usuariosBox = await _openBoxSafe<Usuario>('usuarios');
     final sessao = await _openBoxSafe<dynamic>('sessao');
 
-    Usuario? usuario;
+    Usuario• usuario;
     final bool isEmail = login.contains('@');
 
     try {
       if (isEmail) {
         // Até 2 tentativas: evita bloquear cliente quando reCAPTCHA/400 falha com credenciais corretas
-        UserCredential? cred;
+        UserCredential• cred;
         for (int attempt = 1; attempt <= 2; attempt++) {
           if (kDebugMode) debugPrint('[LOGIN-FIREBASE] signInWithEmailAndPassword tentativa $attempt');
           try {
@@ -403,8 +403,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 (code == 'captcha-check-failed' ||
                     code == 'app-not-authorized' ||
                     code == 'too-many-requests' ||
-                    (e.message ?? '').toLowerCase().contains('400') ||
-                    (e.message ?? '').toLowerCase().contains('bad request'))) {
+                    (e.message ?• '').toLowerCase().contains('400') ||
+                    (e.message ?• '').toLowerCase().contains('bad request'))) {
               if (kDebugMode) debugPrint('[LOGIN-FIREBASE] 400/reCAPTCHA, aguardando e retentando...');
               await Future<void>.delayed(const Duration(milliseconds: 1500));
               continue;
@@ -426,7 +426,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           }
         }
 
-        final uid = cred?.user?.uid ?? '';
+        final uid = cred?.user?.uid ?• '';
         if (uid.isEmpty) throw Exception("UID vazio");
 
         usuario = await _carregarUsuarioDoFirestore(uid: uid, email: login);
@@ -455,7 +455,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       if (kDebugMode) {
         debugPrint('[LOGIN-FIREBASE] FirebaseAuthException: code=${e.code} message=${e.message}');
       }
-      final msg = (e.message ?? '').toLowerCase();
+      final msg = (e.message ?• '').toLowerCase();
       final code = e.code.toLowerCase();
 
       // 1) Credenciais inválidas — única vez que falamos em senha incorreta
@@ -468,7 +468,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         final isRoot = rootEmailsAuth.contains(login);
         _showModernSnackBar(
           isRoot
-              ? 'E-mail ou senha incorretos. Contas programador: use "Entrar com Google" ou defina senha no Firebase Console.'
+              • 'E-mail ou senha incorretos. Contas programador: use "Entrar com Google" ou defina senha no Firebase Console.'
               : 'E-mail ou senha incorretos.',
           isError: true,
         );
@@ -545,8 +545,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       final isRootEmail = rootEmailsCheck.contains(login);
       _showModernSnackBar(
         isRootEmail
-            ? 'Use o botão "Entrar com Google" para acessar com masterpalm26@gmail.com (ou verifique a senha no Firebase Console).'
-            : (isEmail ? 'E-mail ou senha incorretos. Tente novamente ou use o botão Google.' : 'Usuário ou senha inválidos.'),
+            • 'Use o botão "Entrar com Google" para acessar com masterpalm26@gmail.com (ou verifique a senha no Firebase Console).'
+            : (isEmail • 'E-mail ou senha incorretos. Tente novamente ou use o botão Google.' : 'Usuário ou senha inválidos.'),
         isError: true,
       );
       return;
@@ -566,12 +566,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       );
     }
 
-    String? lojaId;
+    String• lojaId;
     try {
       if (!isRoot && usuario.tipo == 'vendedor') {
         final ownerStoreId = (_dadosExtrasUsuario?['store_id'] ??
                              _dadosExtrasUsuario?['lojaId'] ??
-                             _dadosExtrasUsuario?['ownerStoreId'] ?? '').toString().trim();
+                             _dadosExtrasUsuario?['ownerStoreId'] ?• '').toString().trim();
 
         if (ownerStoreId.isEmpty) {
           setState(() => _carregando = false);
@@ -638,7 +638,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       debugPrint('🔑 ROOT USER: ${usuario.email} - acesso total ativado');
 
       // ✅ Corrigir Firestore se estiver com tipo errado (await para evitar crash)
-      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final uid = FirebaseAuth.instance.currentUser?.uid ?• '';
       if (uid.isNotEmpty) {
         try {
           await RoleUtils.migrateIfNeeded(uid: uid, email: usuario.email);
@@ -700,7 +700,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       final GoogleSignIn googleSignIn =
           GoogleSignIn(serverClientId: _webGoogleClientId);
       await googleSignIn.signOut();
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      final GoogleSignInAccount• googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
         if (kDebugMode) debugPrint('[LOGIN-GOOGLE] Usuário cancelou ou null.');
         setState(() => _carregando = false);
@@ -724,7 +724,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
       if (kDebugMode) {
-        debugPrint('[LOGIN-GOOGLE] idToken=${googleAuth.idToken != null ? "ok" : "null"} accessToken=${googleAuth.accessToken != null ? "ok" : "null"}');
+        debugPrint('[LOGIN-GOOGLE] idToken=${googleAuth.idToken != null • "ok" : "null"} accessToken=${googleAuth.accessToken != null • "ok" : "null"}');
       }
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
@@ -738,7 +738,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         throw Exception('Falha ao obter dados do usuário Google');
       }
 
-      final email = (user.email ?? '').trim().toLowerCase();
+      final email = (user.email ?• '').trim().toLowerCase();
       if (email.isEmpty) {
         setState(() => _carregando = false);
         if (!mounted) return;
@@ -749,11 +749,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         return;
       }
 
-      Usuario? usuario = await _carregarUsuarioDoFirestore(uid: user.uid, email: email);
+      Usuario• usuario = await _carregarUsuarioDoFirestore(uid: user.uid, email: email);
       usuario ??= await _criarUsuarioGoogle(
         uid: user.uid,
         email: email,
-        nome: user.displayName ?? email.split('@').first,
+        nome: user.displayName ?• email.split('@').first,
       );
 
       if (usuario == null) {
@@ -781,11 +781,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         );
       }
 
-      String? lojaId;
+      String• lojaId;
       if (!isRoot && usuarioFinal.tipo == 'vendedor') {
         final ownerStoreId = (_dadosExtrasUsuario?['store_id'] ??
                 _dadosExtrasUsuario?['lojaId'] ??
-                _dadosExtrasUsuario?['ownerStoreId'] ?? '')
+                _dadosExtrasUsuario?['ownerStoreId'] ?• '')
             .toString()
             .trim();
         if (ownerStoreId.isEmpty) {
@@ -802,7 +802,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       } else {
         lojaId = await StoreResolverFacade.resolveForAdminApp();
         if (lojaId == null || lojaId.isEmpty) {
-          lojaId = (_dadosExtrasUsuario?['store_id'] ?? 'loja_uid_${user.uid}').toString();
+          lojaId = (_dadosExtrasUsuario?['store_id'] ?• 'loja_uid_${user.uid}').toString();
           await sessao.put('store_id', lojaId);
           debugPrint('Nova loja criada para admin Google: $lojaId');
         }
@@ -817,7 +817,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         await sessao.put('tipo_usuario', 'programador');
         await sessao.put('is_root', true);
         await sessao.put('role', 'programador');
-        final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+        final uid = FirebaseAuth.instance.currentUser?.uid ?• '';
         if (uid.isNotEmpty) {
           try {
             await RoleUtils.migrateIfNeeded(uid: uid, email: usuarioFinal.email);
@@ -882,7 +882,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final is403 = msg.contains('403') || msg.contains('access_denied') || msg.contains('Access denied');
     _showModernSnackBar(
       is403
-          ? 'Google bloqueou o acesso. Ative o People API e confira as origens em Google Cloud Console.'
+          • 'Google bloqueou o acesso. Ative o People API e confira as origens em Google Cloud Console.'
           : 'Erro ao entrar com Google. Tente novamente.',
       isError: true,
     );
@@ -897,7 +897,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }) async {
     final db = FirebaseFirestore.instance;
     final base = email.split('@').first.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'-{2,}'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
-    String slug = base.isEmpty ? 'minha-loja' : base;
+    String slug = base.isEmpty • 'minha-loja' : base;
     int i = 0;
     while (true) {
       final snap = await db.collection('lojas').doc(slug).get();
@@ -910,8 +910,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       await db.collection('lojas').doc(slug).set({
         'id': slug,
         'lojaId': slug,
-        'name': nome.isNotEmpty ? nome : 'Minha Loja',
-        'nome': nome.isNotEmpty ? nome : 'Minha Loja',
+        'name': nome.isNotEmpty • nome : 'Minha Loja',
+        'nome': nome.isNotEmpty • nome : 'Minha Loja',
         'slug': slug,
         'ownerUid': uid,
         'ownerEmail': email,
@@ -924,7 +924,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       await db.collection('lojas').doc(slug).collection('config').doc('config').set({
         'lojaId': slug,
         'slug': slug,
-        'nome': nome.isNotEmpty ? nome : 'Minha Loja',
+        'nome': nome.isNotEmpty • nome : 'Minha Loja',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -1282,7 +1282,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             autofillHints: const [AutofillHints.password],
             suffixIcon: IconButton(
               icon: Icon(
-                _mostrarSenha ? Icons.visibility : Icons.visibility_off,
+                _mostrarSenha • Icons.visibility : Icons.visibility_off,
                 color: Colors.white.withValues(alpha:0.6),
               ),
               onPressed: () => setState(() => _mostrarSenha = !_mostrarSenha),
@@ -1302,15 +1302,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     width: 24,
                     height: 24,
                     decoration: BoxDecoration(
-                      color: _manterLogado ? _primaryColor : Colors.transparent,
+                      color: _manterLogado • _primaryColor : Colors.transparent,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: _manterLogado ? _primaryColor : Colors.white.withValues(alpha:0.4),
+                        color: _manterLogado • _primaryColor : Colors.white.withValues(alpha:0.4),
                         width: 2,
                       ),
                     ),
                     child: _manterLogado
-                        ? const Icon(Icons.check, size: 16, color: Colors.white)
+                        • const Icon(Icons.check, size: 16, color: Colors.white)
                         : null,
                   ),
                   const SizedBox(width: 12),
@@ -1349,7 +1349,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: _carregando
-                      ? null
+                      • null
                       : () {
                           FocusScope.of(context).unfocus();
                           HapticFeedback.selectionClick();
@@ -1358,7 +1358,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   borderRadius: BorderRadius.circular(16),
                   child: Center(
                     child: _carregando
-                        ? const SizedBox(
+                        • const SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(
@@ -1397,10 +1397,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     required String label,
     required IconData icon,
     bool obscureText = false,
-    Widget? suffixIcon,
-    TextInputType? keyboardType,
-    TextInputAction? textInputAction,
-    Iterable<String>? autofillHints,
+    Widget• suffixIcon,
+    TextInputType• keyboardType,
+    TextInputAction• textInputAction,
+    Iterable<String>• autofillHints,
     bool autofocus = false,
   }) {
     return Container(
@@ -1458,10 +1458,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
         // Google Sign-In Button
         kIsWeb
-            ? IgnorePointer(
+            • IgnorePointer(
                 ignoring: disableNav || _carregando,
                 child: Opacity(
-                  opacity: (disableNav || _carregando) ? 0.5 : 1,
+                  opacity: (disableNav || _carregando) • 0.5 : 1,
                   child: buildGoogleSignInButtonWeb(),
                 ),
               )
@@ -1470,7 +1470,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 height: 52,
                 child: OutlinedButton.icon(
                   onPressed: disableNav || _carregando
-                      ? null
+                      • null
                       : () {
                           FocusScope.of(context).unfocus();
                           HapticFeedback.selectionClick();
@@ -1502,7 +1502,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           height: 52,
           child: OutlinedButton.icon(
             onPressed: disableNav
-                ? null
+                • null
                 : () => Navigator.pushNamed(context, '/register'),
             icon: const Icon(Icons.person_add_outlined, color: _successColor),
             label: const Text(
@@ -1524,7 +1524,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
         // Forgot Password
         TextButton(
-          onPressed: disableNav ? null : _recuperarSenha,
+          onPressed: disableNav • null : _recuperarSenha,
           child: Text(
             'Esqueci minha senha',
             style: TextStyle(

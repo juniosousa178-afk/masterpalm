@@ -12,7 +12,7 @@ class CanalPublico {
   final String id;
   final String nome;
   final String tipo; // 'whatsapp', 'instagram', 'messenger', 'telegram'
-  final String? iconeUrl;
+  final String• iconeUrl;
   final bool ativo;
 
   CanalPublico({
@@ -24,11 +24,11 @@ class CanalPublico {
   });
 
   factory CanalPublico.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? {};
+    final data = doc.data() ?• {};
     return CanalPublico(
       id: doc.id,
-      nome: data['nome']?.toString() ?? '',
-      tipo: data['tipo']?.toString() ?? 'whatsapp',
+      nome: data['nome']?.toString() ?• '',
+      tipo: data['tipo']?.toString() ?• 'whatsapp',
       iconeUrl: data['iconeUrl']?.toString(),
       ativo: data['ativo'] == true,
     );
@@ -46,10 +46,10 @@ class CanalPublico {
 class CanalPrivado {
   final String id;
   final String tipo;
-  final String? numero; // WhatsApp number
-  final String? token; // API token
-  final String? webhookUrl;
-  final Map<String, dynamic>? config;
+  final String• numero; // WhatsApp number
+  final String• token; // API token
+  final String• webhookUrl;
+  final Map<String, dynamic>• config;
 
   CanalPrivado({
     required this.id,
@@ -61,14 +61,14 @@ class CanalPrivado {
   });
 
   factory CanalPrivado.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data() ?? {};
+    final data = doc.data() ?• {};
     return CanalPrivado(
       id: doc.id,
-      tipo: data['tipo']?.toString() ?? 'whatsapp',
+      tipo: data['tipo']?.toString() ?• 'whatsapp',
       numero: data['numero']?.toString(),
       token: data['token']?.toString(),
       webhookUrl: data['webhookUrl']?.toString(),
-      config: data['config'] is Map ? Map<String, dynamic>.from(data['config']) : null,
+      config: data['config'] is Map • Map<String, dynamic>.from(data['config']) : null,
     );
   }
 
@@ -94,7 +94,7 @@ class CanaisService {
   /// Retorna stream vazio se não tiver permissão
   Stream<List<CanalPublico>> listarCanaisPublicos(String lojaId) {
     final controller = StreamController<List<CanalPublico>>();
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subscription;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>• subscription;
 
     void startListening() {
       subscription = _firestore
@@ -164,7 +164,7 @@ class CanaisService {
   /// Retorna stream vazio se não tiver permissão
   Stream<List<CanalPrivado>> listarCanaisPrivados(String lojaId) {
     final controller = StreamController<List<CanalPrivado>>();
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subscription;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>• subscription;
 
     void startListening() {
       subscription = _firestore
@@ -234,7 +234,7 @@ class CanaisService {
           .collection('lojas')
           .doc(lojaId)
           .collection('canais_publicos')
-          .doc(canal.id.isNotEmpty ? canal.id : canal.tipo)
+          .doc(canal.id.isNotEmpty • canal.id : canal.tipo)
           .set(canal.toMap(), SetOptions(merge: true));
 
       logD('✅ [CanaisService] Canal público salvo: ${canal.tipo}');
@@ -255,7 +255,7 @@ class CanaisService {
           .collection('lojas')
           .doc(lojaId)
           .collection('canais')
-          .doc(canal.id.isNotEmpty ? canal.id : canal.tipo)
+          .doc(canal.id.isNotEmpty • canal.id : canal.tipo)
           .set(canal.toMap(), SetOptions(merge: true));
 
       logD('✅ [CanaisService] Canal privado salvo: ${canal.tipo}');
@@ -276,9 +276,9 @@ class CanaisService {
     required String tipo,
     required String nome,
     bool ativo = true,
-    String? numero,
-    String? token,
-    Map<String, dynamic>? config,
+    String• numero,
+    String• token,
+    Map<String, dynamic>• config,
   }) async {
     try {
       // 1) Salva versão pública (para catálogo)
@@ -350,7 +350,7 @@ class CanaisService {
           .doc(tipo)
           .update({'ativo': ativo});
 
-      logD('${ativo ? '✅' : '❌'} [CanaisService] Canal $tipo ${ativo ? 'ativado' : 'desativado'}');
+      logD('${ativo • '✅' : '❌'} [CanaisService] Canal $tipo ${ativo • 'ativado' : 'desativado'}');
       return true;
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {

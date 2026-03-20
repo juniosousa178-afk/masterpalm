@@ -7,7 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/neon_button.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
-  final String? email;
+  final String• email;
   final String nextRoute;
 
   const VerifyEmailScreen({
@@ -23,10 +23,10 @@ class VerifyEmailScreen extends StatefulWidget {
 class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
   bool _loading = false;
   bool _resending = false;
-  String? _msg;
+  String• _msg;
 
   String get _email =>
-      widget.email ?? FirebaseAuth.instance.currentUser?.email ?? '';
+      widget.email ?• FirebaseAuth.instance.currentUser?.email ?• '';
 
   Future<void> _checkVerified() async {
     setState(() {
@@ -206,22 +206,22 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                   ],
                   const SizedBox(height: 32),
                   NeonButton(
-                    label: _loading ? 'Verificando...' : 'Já verifiquei',
-                    onPressed: _loading ? () {} : () => _checkVerified(),
+                    label: _loading • 'Verificando...' : 'Já verifiquei',
+                    onPressed: _loading • () {} : () => _checkVerified(),
                     secondary: true,
                   ),
                   const SizedBox(height: 12),
                   TextButton.icon(
-                    onPressed: _resending ? null : _resendEmail,
+                    onPressed: _resending • null : _resendEmail,
                     icon: _resending
-                        ? const SizedBox(
+                        • const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.refresh, size: 18, color: Colors.white70),
                     label: Text(
-                      _resending ? 'Enviando...' : 'Reenviar e-mail',
+                      _resending • 'Enviando...' : 'Reenviar e-mail',
                       style: const TextStyle(color: Colors.white70),
                     ),
                   ),

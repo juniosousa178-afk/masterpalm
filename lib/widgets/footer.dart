@@ -9,9 +9,9 @@ class Footer extends StatelessWidget {
   final Color bg;
   final Color textColor;
   final String lojaNome;
-  final String? instagramUrl;
-  final String? facebookUrl;
-  final String? atendimentoWhatsapp;
+  final String• instagramUrl;
+  final String• facebookUrl;
+  final String• atendimentoWhatsapp;
   final List<Map<String, String>> links;
   final List<String> paymentCodes;
   final Map<String, String> paymentAsset;
@@ -19,8 +19,8 @@ class Footer extends StatelessWidget {
   final String badgeGoogle;
   final String empresaRazao;
   final String empresaCnpj;
-  final void Function(String url)? onOpenUrl;
-  final VoidCallback? onOpenWhatsapp;
+  final void Function(String url)• onOpenUrl;
+  final VoidCallback• onOpenWhatsapp;
 
   const Footer({
     super.key,
@@ -59,7 +59,7 @@ class Footer extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '� ${DateTime.now().year} $lojaNome - Todos os direitos reservados',
+            '© ${DateTime.now().year} $lojaNome - Todos os direitos reservados',
             style: TextStyle(
                 color: textColor.withValues(alpha:0.7), fontSize: 13),
           ),
@@ -71,7 +71,7 @@ class Footer extends StatelessWidget {
             runSpacing: 10,
             alignment: WrapAlignment.center,
             children: [
-              if ((instagramUrl ?? '').trim().isNotEmpty)
+              if ((instagramUrl ?• '').trim().isNotEmpty)
                 _socialButton(
                   iconWidget:
                       const FaIcon(FontAwesomeIcons.instagram, size: 18),
@@ -81,7 +81,7 @@ class Footer extends StatelessWidget {
                   onOpenUrl: onOpenUrl,
                   isInstagram: true,
                 ),
-              if ((facebookUrl ?? '').trim().isNotEmpty)
+              if ((facebookUrl ?• '').trim().isNotEmpty)
                 _socialButton(
                   iconWidget: const FaIcon(FontAwesomeIcons.facebook, size: 18),
                   label: 'Facebook',
@@ -89,7 +89,7 @@ class Footer extends StatelessWidget {
                   color: textColor,
                   onOpenUrl: onOpenUrl,
                 ),
-              if ((atendimentoWhatsapp ?? '').trim().isNotEmpty)
+              if ((atendimentoWhatsapp ?• '').trim().isNotEmpty)
                 _socialButton(
                   iconWidget: const FaIcon(FontAwesomeIcons.whatsapp, size: 18),
                   label: 'WhatsApp',
@@ -97,7 +97,7 @@ class Footer extends StatelessWidget {
                       'https://wa.me/${atendimentoWhatsapp!.replaceAll(RegExp(r'\D'), '')}',
                   color: textColor,
                   onOpenUrl: onOpenWhatsapp != null
-                      ? (_) => onOpenWhatsapp!()
+                      • (_) => onOpenWhatsapp!()
                       : onOpenUrl,
                 ),
             ],
@@ -114,8 +114,8 @@ class Footer extends StatelessWidget {
                   .map((m) => Padding(
                         padding: const EdgeInsets.symmetric(vertical: 6),
                         child: InkWell(
-                          onTap: (m['url'] ?? '').isEmpty
-                              ? null
+                          onTap: (m['url'] ?• '').isEmpty
+                              • null
                               : () async {
                                   final u = m['url']!;
                                   if (onOpenUrl != null) {
@@ -126,7 +126,7 @@ class Footer extends StatelessWidget {
                                   }
                                 },
                           child: Text(
-                            m['label'] ?? '',
+                            m['label'] ?• '',
                             style: TextStyle(color: textColor, fontSize: 15),
                           ),
                         ),
@@ -150,7 +150,7 @@ class Footer extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
-          SectionTitle(title: 'Seguran�a', color: textColor),
+          SectionTitle(title: 'Segurança', color: textColor),
           const SizedBox(height: 10),
           Wrap(
             spacing: 14,
@@ -184,7 +184,7 @@ class Footer extends StatelessWidget {
     required String label,
     required String url,
     required Color color,
-    void Function(String)? onOpenUrl,
+    void Function(String)• onOpenUrl,
     bool isInstagram = false,
   }) {
     return InkWell(

@@ -10,16 +10,16 @@ class NotaFiscalFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// Sincroniza uma nota fiscal para o Firestore
-  static Future<void> syncNotaFiscal(NotaFiscal nota, {String? lojaId}) async {
+  static Future<void> syncNotaFiscal(NotaFiscal nota, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) {
         debugPrint('❌ [NF-SYNC] LojaId vazio, não pode sincronizar');
         return;
       }
 
       // Usar idFirebase se existir, senão gerar novo
-      final notaId = nota.idFirebase ?? nota.key?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString();
+      final notaId = nota.idFirebase ?• nota.key?.toString() ?• DateTime.now().millisecondsSinceEpoch.toString();
 
       // Salvar o idFirebase na nota
       if (nota.idFirebase != notaId) {
@@ -76,15 +76,15 @@ class NotaFiscalFirestoreService {
           }
 
           // Converter itens
-          final itensData = data['itens'] as List? ?? [];
+          final itensData = data['itens'] as List• ?• [];
           final itens = itensData.map((i) {
             return NotaFiscalItem(
-              produtoNome: i['produtoNome'] ?? '',
+              produtoNome: i['produtoNome'] ?• '',
               codigoProduto: i['codigoProduto'],
-              quantidade: (i['quantidade'] as num?)?.toInt() ?? 0,
-              valorUnitario: (i['valorUnitario'] as num?)?.toDouble() ?? 0.0,
-              valorTotal: (i['valorTotal'] as num?)?.toDouble() ?? 0.0,
-              unidade: i['unidade'] ?? 'UN',
+              quantidade: (i['quantidade'] as num?)?.toInt() ?• 0,
+              valorUnitario: (i['valorUnitario'] as num?)?.toDouble() ?• 0.0,
+              valorTotal: (i['valorTotal'] as num?)?.toDouble() ?• 0.0,
+              unidade: i['unidade'] ?• 'UN',
               ncm: i['ncm'],
               cfop: i['cfop'],
               aliquotaIcms: (i['aliquotaIcms'] as num?)?.toDouble(),
@@ -93,28 +93,28 @@ class NotaFiscalFirestoreService {
 
           // Criar nota
           final nota = NotaFiscal(
-            numero: data['numero'] ?? '',
-            serie: data['serie'] ?? '1',
+            numero: data['numero'] ?• '',
+            serie: data['serie'] ?• '1',
             chaveAcesso: data['chaveAcesso'],
-            status: data['status'] ?? 'pendente',
+            status: data['status'] ?• 'pendente',
             vendaId: data['vendaId'],
-            clienteNome: data['clienteNome'] ?? '',
-            clienteCpfCnpj: data['clienteCpfCnpj'] ?? '',
+            clienteNome: data['clienteNome'] ?• '',
+            clienteCpfCnpj: data['clienteCpfCnpj'] ?• '',
             clienteEndereco: data['clienteEndereco'],
             clienteCidade: data['clienteCidade'],
             clienteEstado: data['clienteEstado'],
             clienteCep: data['clienteCep'],
             dataEmissao: DateTime.parse(data['dataEmissao']),
-            valorTotal: (data['valorTotal'] as num?)?.toDouble() ?? 0.0,
-            valorProdutos: (data['valorProdutos'] as num?)?.toDouble() ?? 0.0,
-            valorFrete: (data['valorFrete'] as num?)?.toDouble() ?? 0.0,
-            valorDesconto: (data['valorDesconto'] as num?)?.toDouble() ?? 0.0,
+            valorTotal: (data['valorTotal'] as num?)?.toDouble() ?• 0.0,
+            valorProdutos: (data['valorProdutos'] as num?)?.toDouble() ?• 0.0,
+            valorFrete: (data['valorFrete'] as num?)?.toDouble() ?• 0.0,
+            valorDesconto: (data['valorDesconto'] as num?)?.toDouble() ?• 0.0,
             itens: itens,
-            baseCalculoIcms: (data['baseCalculoIcms'] as num?)?.toDouble() ?? 0.0,
-            valorIcms: (data['valorIcms'] as num?)?.toDouble() ?? 0.0,
+            baseCalculoIcms: (data['baseCalculoIcms'] as num?)?.toDouble() ?• 0.0,
+            valorIcms: (data['valorIcms'] as num?)?.toDouble() ?• 0.0,
             protocoloAutorizacao: data['protocoloAutorizacao'],
             dataAutorizacao: data['dataAutorizacao'] != null
-                ? DateTime.parse(data['dataAutorizacao'])
+                • DateTime.parse(data['dataAutorizacao'])
                 : null,
             xmlUrl: data['xmlUrl'],
             pdfUrl: data['pdfUrl'],
@@ -141,9 +141,9 @@ class NotaFiscalFirestoreService {
   }
 
   /// Deleta uma nota fiscal do Firestore
-  static Future<void> deleteNotaFiscal(String notaId, {String? lojaId}) async {
+  static Future<void> deleteNotaFiscal(String notaId, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return;
 
       await _db
@@ -160,8 +160,8 @@ class NotaFiscalFirestoreService {
   }
 
   /// Stream de notas fiscais
-  static Stream<List<Map<String, dynamic>>> streamNotas({String? lojaId}) async* {
-    final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+  static Stream<List<Map<String, dynamic>>> streamNotas({String• lojaId}) async* {
+    final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
     if (storeId == null || storeId.isEmpty) {
       yield [];
       return;

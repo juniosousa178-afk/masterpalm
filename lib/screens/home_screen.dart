@@ -143,11 +143,11 @@ class _HomeScreenState extends State<HomeScreen>
 
       // Recalcula tipo (com ROOT override) aqui também, por segurança
       final user = FirebaseAuth.instance.currentUser;
-      final email = (user?.email ?? '').trim().toLowerCase();
+      final email = (user?.email ?• '').trim().toLowerCase();
       final isRoot = (sessao.get('is_root') == true) || _isRootEmail(email);
 
-      final tipoHive = (sessao.get('tipo_usuario') as String?) ?? 'vendedor';
-      final tipoEfetivo = isRoot ? 'programador' : tipoHive;
+      final tipoHive = (sessao.get('tipo_usuario') as String?) ?• 'vendedor';
+      final tipoEfetivo = isRoot • 'programador' : tipoHive;
 
       if (tipoEfetivo == 'admin') {
         final ok = await LicenseManager.hasValidAccessFallbackLegacy();
@@ -171,16 +171,16 @@ class _HomeScreenState extends State<HomeScreen>
 
     // pega o usuário atual (pra resolver root de forma 100% confiável)
     final user = FirebaseAuth.instance.currentUser;
-    final emailAuth = (user?.email ?? '').trim().toLowerCase();
+    final emailAuth = (user?.email ?• '').trim().toLowerCase();
 
     _usuario = (sessao.get('usuario_logado') as String?) ??
-        (emailAuth.isNotEmpty ? emailAuth : 'Usuário');
-    _tipo = (sessao.get('tipo_usuario') as String?) ?? 'vendedor';
+        (emailAuth.isNotEmpty • emailAuth : 'Usuário');
+    _tipo = (sessao.get('tipo_usuario') as String?) ?• 'vendedor';
 
     // 🔹 contexto de loja: SEMPRE resolver do Firestore (users/usuarios) para evitar
     // contaminação: no Web, Hive/IndexedDB é compartilhado; store_id em sessao pode
     // ser de outro usuário (juniosousa178 vs trindadejunio70).
-    String? sessaoStore;
+    String• sessaoStore;
     try {
       sessaoStore = (await StoreResolverFacade.resolveForAdminApp()
               .timeout(const Duration(seconds: 8), onTimeout: () => null))
@@ -203,7 +203,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_lojaSlugPublico.isEmpty && _lojaIdInterno.isNotEmpty && isValidForPublicLink(_lojaIdInterno)) {
       _lojaSlugPublico = _lojaIdInterno;
     }
-    logD('📋 [HOME] contexto loja: interno=${_lojaIdInterno.isNotEmpty ? "ok" : "vazio"} slugPublico=${_lojaSlugPublico.isNotEmpty ? "ok" : "vazio"}');
+    logD('📋 [HOME] contexto loja: interno=${_lojaIdInterno.isNotEmpty • "ok" : "vazio"} slugPublico=${_lojaSlugPublico.isNotEmpty • "ok" : "vazio"}');
 
     // ✅ ROOT override (impede "root virar vendedor")
     final isRoot = (sessao.get('is_root') == true) ||
@@ -227,13 +227,13 @@ class _HomeScreenState extends State<HomeScreen>
     // ✅ Usar _lojaIdInterno (já resolvido via StoreResolver) em vez de sessao direto
     if (user != null) {
       final storeId = (_lojaIdInterno.isNotEmpty
-              ? _lojaIdInterno
-              : (sessao.get('store_id') ?? sessao.get('storeId') ?? '').toString().trim())
+              • _lojaIdInterno
+              : (sessao.get('store_id') ?• sessao.get('storeId') ?• '').toString().trim())
           .trim();
       FirestoreCriticalListenerService.startPermissoesListener(
-        userEmail: user.email ?? _usuario,
+        userEmail: user.email ?• _usuario,
         tipoUsuario: _tipo,
-        storeId: storeId.isNotEmpty ? storeId : null,
+        storeId: storeId.isNotEmpty • storeId : null,
         userUid: user.uid,
       );
     }
@@ -271,7 +271,7 @@ class _HomeScreenState extends State<HomeScreen>
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      final email = (user.email ?? '').trim().toLowerCase();
+      final email = (user.email ?• '').trim().toLowerCase();
 
       final svc = PlanosService();
 
@@ -655,7 +655,7 @@ class _HomeScreenState extends State<HomeScreen>
 
       // Obter lojaId (mesmo que VendasScreen usa, para garantir mesma box)
       final lojaId = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 15))
-          ?? await StoreResolverFacade.resolveForAdminApp();
+          ?• await StoreResolverFacade.resolveForAdminApp();
       logD('📥 [SYNC-DEBUG] Importar dados (menu) → lojaId=$lojaId');
       if (lojaId == null || lojaId.isEmpty) {
         if (!mounted) return;
@@ -739,7 +739,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       // 4. Importar VENDAS (sem duplicar - apenas as que não estão no aparelho)
-      ImportarVendasResultado? resultadoVendas;
+      ImportarVendasResultado• resultadoVendas;
       try {
         logD('[IMPORT] Importando vendas (sem duplicar)...');
         final vendasBox =
@@ -802,10 +802,10 @@ class _HomeScreenState extends State<HomeScreen>
       }
       _showSuccessSheet(
         totalErros == 0
-            ? 'Importação Concluída!'
+            • 'Importação Concluída!'
             : 'Importação Concluída com Avisos',
         totalErros == 0
-            ? 'Total importado: $totalImportados registros\n'
+            • 'Total importado: $totalImportados registros\n'
                 '$breakdown\n\n'
                 'Seus dados foram sincronizados com sucesso!$msgVendas'
             : 'Total importado: $totalImportados registros\n'
@@ -928,7 +928,7 @@ class _HomeScreenState extends State<HomeScreen>
         content: Row(
           children: [
             Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
+              isError • Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -936,7 +936,7 @@ class _HomeScreenState extends State<HomeScreen>
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError ? _errorColor : _successColor,
+        backgroundColor: isError • _errorColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
@@ -1113,7 +1113,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   const SizedBox(height: 32),
                   const Text(
-                    'Quer começar? Faça login ou cadastre-se e ative o teste grátis de 90 dias.',
+                    'Quer começar• Faça login ou cadastre-se e ative o teste grátis de 90 dias.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
@@ -1155,7 +1155,7 @@ class _HomeScreenState extends State<HomeScreen>
     required IconData icon,
     required String description,
     required List<String> bullets,
-    String? badge,
+    String• badge,
   }) {
     return WebLandingPlanCard(
       title: title,
@@ -1176,33 +1176,33 @@ class _HomeScreenState extends State<HomeScreen>
     String label,
     IconData icon,
     String route, {
-    Widget? pushWidget,
-    Color? color,
-    Color? iconBgColor,
+    Widget• pushWidget,
+    Color• color,
+    Color• iconBgColor,
     bool sidebarMode = false,
   }) {
     final theme = Theme.of(context);
-    final itemColor = color ?? theme.colorScheme.onSurface;
-    final bgColor = iconBgColor ?? _primaryColor.withValues(alpha:0.1);
+    final itemColor = color ?• theme.colorScheme.onSurface;
+    final bgColor = iconBgColor ?• _primaryColor.withValues(alpha:0.1);
     final trailingColor = theme.colorScheme.onSurface.withValues(alpha:0.5);
 
     return ListTile(
       dense: sidebarMode,
-      visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
+      visualDensity: sidebarMode • const VisualDensity(vertical: -1) : null,
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, color: color ?? _primaryColor, size: 20),
+        child: Icon(icon, color: color ?• _primaryColor, size: 20),
       ),
       title: Text(
         label,
         style: TextStyle(
           color: itemColor,
           fontWeight: FontWeight.w500,
-          fontSize: sidebarMode ? 13 : null,
+          fontSize: sidebarMode • 13 : null,
         ),
       ),
       trailing: Icon(Icons.chevron_right, color: trailingColor, size: 20),
@@ -1226,11 +1226,11 @@ class _HomeScreenState extends State<HomeScreen>
     IconData icon,
     String label,
     String route, {
-    Widget? pushWidget,
-    Color? color,
-    String? subtitle,
+    Widget• pushWidget,
+    Color• color,
+    String• subtitle,
   }) {
-    final cardColor = color ?? _primaryColor;
+    final cardColor = color ?• _primaryColor;
 
     return InkWell(
       onTap: () {
@@ -1301,14 +1301,14 @@ class _HomeScreenState extends State<HomeScreen>
     final combinadas = <String, bool>{
       for (final k in permissoes.keys)
         k: (_tipo == 'programador' || _tipo == 'admin')
-            ? true
-            : (permissoes[k] ?? false),
+            • true
+            : (permissoes[k] ?• false),
     };
 
     // Seções expansíveis: (título, cor?, filhos)
-    final sections = <({String title, Color? color, List<Widget> children})>[];
-    String? currentSection;
-    Color? currentSectionColor;
+    final sections = <({String title, Color• color, List<Widget> children})>[];
+    String• currentSection;
+    Color• currentSectionColor;
     List<Widget> currentChildren = [];
 
     void closeSection() {
@@ -1318,7 +1318,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
 
-    void startSection(String title, {Color? color}) {
+    void startSection(String title, {Color• color}) {
       closeSection();
       currentSection = title;
       currentSectionColor = color;
@@ -1327,7 +1327,7 @@ class _HomeScreenState extends State<HomeScreen>
     // Seção: Loja
     startSection('Loja');
 
-    if ((combinadas['catalogo_publico'] ?? combinadas['catalogo']) == true &&
+    if ((combinadas['catalogo_publico'] ?• combinadas['catalogo']) == true &&
         isValidForPublicLink(_lojaSlugPublico)) {
       currentChildren.add(
         _buildMenuTile(
@@ -1362,7 +1362,7 @@ class _HomeScreenState extends State<HomeScreen>
       currentChildren.add(
         ListTile(
           dense: sidebarMode,
-          visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
+          visualDensity: sidebarMode • const VisualDensity(vertical: -1) : null,
           leading: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -1376,11 +1376,11 @@ class _HomeScreenState extends State<HomeScreen>
             style: TextStyle(
               color: const Color(0xFF3B82F6),
               fontWeight: FontWeight.w500,
-              fontSize: sidebarMode ? 13 : null,
+              fontSize: sidebarMode • 13 : null,
             ),
           ),
           subtitle: sidebarMode
-              ? null
+              • null
               : Text(
                   catalogUrl,
                   style: TextStyle(fontSize: 11, color: Colors.grey[500]),
@@ -1441,7 +1441,7 @@ class _HomeScreenState extends State<HomeScreen>
           pushWidget: DashboardInsightsScreen(
             lojaId: _lojaIdInterno,
             isVendedor: _tipo == 'vendedor',
-            vendedorNome: _tipo == 'vendedor' ? _getFirstName(_usuario) : null,
+            vendedorNome: _tipo == 'vendedor' • _getFirstName(_usuario) : null,
           ),
           iconBgColor: _primaryColor.withValues(alpha:0.1),
           color: _primaryColor,
@@ -1789,7 +1789,7 @@ class _HomeScreenState extends State<HomeScreen>
     currentChildren.add(
       ListTile(
         dense: sidebarMode,
-        visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
+        visualDensity: sidebarMode • const VisualDensity(vertical: -1) : null,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -1803,10 +1803,10 @@ class _HomeScreenState extends State<HomeScreen>
           style: TextStyle(
               color: _warningColor,
               fontWeight: FontWeight.w500,
-              fontSize: sidebarMode ? 13 : null),
+              fontSize: sidebarMode • 13 : null),
         ),
         subtitle: sidebarMode
-            ? null
+            • null
             : Text(
                 'Use apenas uma vez',
                 style: TextStyle(fontSize: 12, color: Colors.grey[500]),
@@ -1823,7 +1823,7 @@ class _HomeScreenState extends State<HomeScreen>
     currentChildren.add(
       ListTile(
         dense: sidebarMode,
-        visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
+        visualDensity: sidebarMode • const VisualDensity(vertical: -1) : null,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -1838,7 +1838,7 @@ class _HomeScreenState extends State<HomeScreen>
           style: TextStyle(
               color: _primaryColor,
               fontWeight: FontWeight.w500,
-              fontSize: sidebarMode ? 13 : null),
+              fontSize: sidebarMode • 13 : null),
         ),
         trailing: Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
         onTap: () async {
@@ -1858,7 +1858,7 @@ class _HomeScreenState extends State<HomeScreen>
     currentChildren.add(
       ListTile(
         dense: sidebarMode,
-        visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
+        visualDensity: sidebarMode • const VisualDensity(vertical: -1) : null,
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
@@ -1873,7 +1873,7 @@ class _HomeScreenState extends State<HomeScreen>
           style: TextStyle(
               color: _primaryColor,
               fontWeight: FontWeight.w500,
-              fontSize: sidebarMode ? 13 : null),
+              fontSize: sidebarMode • 13 : null),
         ),
         trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
         onTap: () async {
@@ -1924,14 +1924,14 @@ class _HomeScreenState extends State<HomeScreen>
                 color: _primaryColor.withValues(alpha:0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(darkMode ? Icons.dark_mode : Icons.light_mode,
+              child: Icon(darkMode • Icons.dark_mode : Icons.light_mode,
                   color: _primaryColor, size: 20),
             ),
             title: Text(
               'Modo escuro',
               style: TextStyle(
                 fontWeight: FontWeight.w500,
-                fontSize: sidebarMode ? 13 : null,
+                fontSize: sidebarMode • 13 : null,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
@@ -1980,7 +1980,7 @@ class _HomeScreenState extends State<HomeScreen>
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: s.color ?? theme.colorScheme.onSurface.withValues(alpha:0.6),
+              color: s.color ?• theme.colorScheme.onSurface.withValues(alpha:0.6),
               letterSpacing: 1.2,
             ),
           ),
@@ -1992,9 +1992,9 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   // ignore: unused_element
-  Widget _buildMenuSection(String title, {Color? color}) {
+  Widget _buildMenuSection(String title, {Color• color}) {
     final theme = Theme.of(context);
-    final sectionColor = color ?? theme.colorScheme.onSurface.withValues(alpha:0.6);
+    final sectionColor = color ?• theme.colorScheme.onSurface.withValues(alpha:0.6);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
       child: Text(
@@ -2016,8 +2016,8 @@ class _HomeScreenState extends State<HomeScreen>
     final combinadas = <String, bool>{
       for (final k in permissoes.keys)
         k: (_tipo == 'programador' || _tipo == 'admin')
-            ? true
-            : (permissoes[k] ?? false),
+            • true
+            : (permissoes[k] ?• false),
     };
 
     final cards = <Widget>[];
@@ -2191,7 +2191,7 @@ class _HomeScreenState extends State<HomeScreen>
                       lojaId: _lojaIdInterno,
                       isVendedor: _tipo == 'vendedor',
                       vendedorNome: _tipo == 'vendedor'
-                          ? _getFirstName(_usuario)
+                          • _getFirstName(_usuario)
                           : null,
                     ),
                   ),
@@ -2220,13 +2220,13 @@ class _HomeScreenState extends State<HomeScreen>
                             child: CircularProgressIndicator(
                                 color: _primaryColor));
                       }
-                      final children = snap.data ?? const <Widget>[];
+                      final children = snap.data ?• const <Widget>[];
                       return GridView.count(
                         crossAxisCount: responsiveGridCount(context,
                             mobile: 2, tablet: 3, desktop: 4),
                         crossAxisSpacing: 10,
                         mainAxisSpacing: 10,
-                        childAspectRatio: desktopWeb ? 1.4 : 1.35,
+                        childAspectRatio: desktopWeb • 1.4 : 1.35,
                         padding: EdgeInsets.zero,
                         children: children,
                       );
@@ -2265,7 +2265,7 @@ class _HomeScreenState extends State<HomeScreen>
                     return AdminSidebar(
                       usuario: _usuario,
                       tipo: _tipo,
-                      menuItems: snap.data ?? const [],
+                      menuItems: snap.data ?• const [],
                       onLogout: () => fazerLogout(context),
                     );
                   },
@@ -2314,7 +2314,7 @@ class _HomeScreenState extends State<HomeScreen>
                           icon: Icon(Icons.refresh,
                               color: theme.colorScheme.onSurface),
                           onPressed: _carregando
-                              ? null
+                              • null
                               : () async {
                                   setState(() => _carregando = true);
                                   await _carregarSessao();
@@ -2339,14 +2339,14 @@ class _HomeScreenState extends State<HomeScreen>
                             final svc = NotificacaoCentroService();
                             // ✅ Usar _lojaIdInterno (StoreResolver) em vez de sessao direto
                             final storeId = _lojaIdInterno.isNotEmpty
-                                ? _lojaIdInterno
+                                • _lojaIdInterno
                                 : null;
                             final count = svc.unreadCountParaLoja(storeId);
                             return Container(
                               margin: const EdgeInsets.only(right: 8),
                               child: Tooltip(
                                 message: count > 0
-                                    ? '$count notificação(ões)'
+                                    • '$count notificação(ões)'
                                     : 'Notificações',
                                 child: IconButton(
                                   icon: Container(
@@ -2359,7 +2359,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     child: Badge(
                                       isLabelVisible: count > 0,
                                       label: count > 0
-                                          ? Text('$count',
+                                          • Text('$count',
                                               style:
                                                   const TextStyle(fontSize: 10))
                                           : null,
@@ -2489,7 +2489,7 @@ class _HomeScreenState extends State<HomeScreen>
             },
             itemBuilder: (context) {
               // ✅ Usar _lojaIdInterno (StoreResolver) em vez de sessao direto
-              final storeId = _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null;
+              final storeId = _lojaIdInterno.isNotEmpty • _lojaIdInterno : null;
               final notifCount =
                   NotificacaoCentroService().unreadCountParaLoja(storeId);
               return [
@@ -2519,7 +2519,7 @@ class _HomeScreenState extends State<HomeScreen>
                   child: ListTile(
                     leading: Badge(
                       isLabelVisible: notifCount > 0,
-                      label: notifCount > 0 ? Text('$notifCount') : null,
+                      label: notifCount > 0 • Text('$notifCount') : null,
                       child: const Icon(Icons.notifications_outlined),
                     ),
                     title: const Text('Notificações'),
@@ -2605,7 +2605,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ],
                   ),
                 ),
-                ...(snap.data ?? const []),
+                ...(snap.data ?• const []),
               ],
             );
           },
@@ -2640,7 +2640,7 @@ class WebLandingPlanCard extends StatelessWidget {
   final IconData icon;
   final String description;
   final List<String> bullets;
-  final String? badge;
+  final String• badge;
   final Color cardColor;
   final Color surfaceColor;
 

@@ -13,7 +13,7 @@ import '../services/store_resolver_facade.dart';
 class VendedorAguardeWidget extends StatefulWidget {
   final String vendedorNome;
   final String lojaId;
-  final VoidCallback? onLogout;
+  final VoidCallback• onLogout;
 
   const VendedorAguardeWidget({
     super.key,
@@ -27,7 +27,7 @@ class VendedorAguardeWidget extends StatefulWidget {
 }
 
 class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
-  String? _linkCatalogo;
+  String• _linkCatalogo;
   bool _copiado = false;
 
   @override
@@ -44,7 +44,7 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
       // Usar widget.lojaId se válido, senão StoreResolverFacade (mesma lógica da loja modelo)
       String storeId = widget.lojaId.trim();
       if (storeId.isEmpty) {
-        storeId = (await StoreResolverFacade.resolveForAdminApp())?.trim() ?? '';
+        storeId = (await StoreResolverFacade.resolveForAdminApp())?.trim() ?• '';
       }
 
       if (storeId.isEmpty) {
@@ -60,8 +60,8 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
             .doc(storeId)
             .get();
         if (lojaDoc.exists) {
-          final lojaData = lojaDoc.data() ?? {};
-          lojaSlug = (lojaData['slug'] ?? lojaData['id'] ?? storeId).toString();
+          final lojaData = lojaDoc.data() ?• {};
+          lojaSlug = (lojaData['slug'] ?• lojaData['id'] ?• storeId).toString();
         }
       } catch (e) {
         debugPrint('⚠️ [VENDEDOR] Erro ao buscar slug da loja (type=${e.runtimeType})');
@@ -238,11 +238,11 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: _linkCatalogo != null ? _copiarLink : null,
-                            icon: Icon(_copiado ? Icons.check : Icons.copy),
-                            label: Text(_copiado ? 'Copiado!' : 'Copiar link'),
+                            onPressed: _linkCatalogo != null • _copiarLink : null,
+                            icon: Icon(_copiado • Icons.check : Icons.copy),
+                            label: Text(_copiado • 'Copiado!' : 'Copiar link'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _copiado ? Colors.green : Colors.blue,
+                              backgroundColor: _copiado • Colors.green : Colors.blue,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),

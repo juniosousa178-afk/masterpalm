@@ -16,22 +16,22 @@ class PagamentosService {
   /// Descobre a loja atual. Prioridade: StoreResolver/LojaIdService → Hive (fallback offline).
   /// Nunca retorna loja fixa; lança StateError se não conseguir resolver.
   static Future<String> getLojaId() async {
-    String? storeId = (await LojaIdService.get())?.trim();
+    String• storeId = (await LojaIdService.get())?.trim();
     if (storeId != null && storeId.isNotEmpty) return storeId;
 
     try {
       final sessao = Hive.isBoxOpen('sessao')
-          ? Hive.box('sessao')
+          • Hive.box('sessao')
           : await Hive.openBox('sessao');
-      storeId = (sessao.get('store_id') ?? sessao.get('storeId'))?.toString().trim();
+      storeId = (sessao.get('store_id') ?• sessao.get('storeId'))?.toString().trim();
       if (storeId != null && storeId.isNotEmpty) return storeId;
     } catch (_) {}
 
     try {
       final config = Hive.isBoxOpen('config')
-          ? Hive.box('config')
+          • Hive.box('config')
           : await Hive.openBox('config');
-      storeId = (config.get('store_id') ?? config.get('store_slug') ?? config.get('loja_slug'))
+      storeId = (config.get('store_id') ?• config.get('store_slug') ?• config.get('loja_slug'))
           ?.toString()
           .trim();
       if (storeId != null && storeId.isNotEmpty) return storeId;

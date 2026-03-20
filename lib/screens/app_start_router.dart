@@ -50,7 +50,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
       rcRootAdminEmailsJson,
       fallback: _rootAdminEmailsHardcoded.toList(),
     );
-    return list.isEmpty ? _rootAdminEmailsHardcoded : list.toSet();
+    return list.isEmpty • _rootAdminEmailsHardcoded : list.toSet();
   }
 
   /// Resolve perfil do usuário atual via UserProfileResolver (só usado quando flag ON).
@@ -75,7 +75,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
       final auth = FirebaseAuth.instance;
       final user = auth.currentUser;
       logD(
-        '[ROUTE_GUARD] auth uid=${user?.uid ?? "null"} email=${user?.email ?? "null"}',
+        '[ROUTE_GUARD] auth uid=${user?.uid ?• "null"} email=${user?.email ?• "null"}',
       );
 
       // Usuário só desloga ao clicar em Sair, limpar dados do app ou reinstalar
@@ -104,11 +104,11 @@ class _AppStartRouterState extends State<AppStartRouter> {
         return;
       }
 
-      final email = (user.email ?? '').trim().toLowerCase();
+      final email = (user.email ?• '').trim().toLowerCase();
       final uid = user.uid;
       logD('[BOOT-AUTH] Usuário logado: $email (uid: $uid)');
-      final storeInSessao = (sessao.get('store_id') ?? sessao.get('lojaId') ?? '').toString().trim();
-      logD('[BOOT-STORE] Boxes Hive abertos | store_id em sessao=${storeInSessao.isNotEmpty ? storeInSessao : "vazio"}');
+      final storeInSessao = (sessao.get('store_id') ?• sessao.get('lojaId') ?• '').toString().trim();
+      logD('[BOOT-STORE] Boxes Hive abertos | store_id em sessao=${storeInSessao.isNotEmpty • storeInSessao : "vazio"}');
 
       sessao.put('usuario_logado', email);
 
@@ -134,10 +134,10 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
       // ✅ Atalho VENDEDOR: se já tem store_id em cache, abre home e atualiza em background
       final cachedTipo =
-          (sessao.get('tipo_usuario') ?? sessao.get('role') ?? '')
+          (sessao.get('tipo_usuario') ?• sessao.get('role') ?• '')
               .toString()
               .trim();
-      final cachedStore = (sessao.get('store_id') ?? sessao.get('lojaId') ?? '')
+      final cachedStore = (sessao.get('store_id') ?• sessao.get('lojaId') ?• '')
           .toString()
           .trim();
       if (cachedTipo == 'vendedor' && cachedStore.isNotEmpty) {
@@ -172,7 +172,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
       // ✅ Timeout 5s + retry: evita tratar admin como vendedor quando Firestore demora (cold start)
       _setBusy('Verificando perfil...');
       String userRole = 'vendedor';
-      String? vendedorStoreId;
+      String• vendedorStoreId;
       bool gotProfileFromResolver = false;
       if (kEnableUnifiedUserProfileResolver) {
         final profile = await _resolveUserProfile(isRootEmail: isRootEmail);
@@ -206,20 +206,20 @@ class _AppStartRouterState extends State<AppStartRouter> {
             .timeout(timeout);
 
         String role = 'vendedor';
-        String? storeId;
+        String• storeId;
 
         if (userDoc.exists) {
-          final d = userDoc.data() ?? <String, dynamic>{};
-          role = (d['role'] ?? d['tipo'] ?? d['tipo_usuario'] ?? 'vendedor')
+          final d = userDoc.data() ?• <String, dynamic>{};
+          role = (d['role'] ?• d['tipo'] ?• d['tipo_usuario'] ?• 'vendedor')
               .toString().trim().toLowerCase();
-          storeId = (d['store_id'] ?? d['storeId'] ?? d['ownerStoreId'] ?? '')
+          storeId = (d['store_id'] ?• d['storeId'] ?• d['ownerStoreId'] ?• '')
               .toString().trim();
         }
         if ((role == 'vendedor' || storeId == null || storeId.isEmpty) &&
             usuarioDoc.exists) {
-          final d = usuarioDoc.data() ?? <String, dynamic>{};
-          role = (d['tipo'] ?? d['role'] ?? role).toString().trim().toLowerCase();
-          storeId = (d['store_id'] ?? d['ownerStoreId'] ?? storeId ?? '')
+          final d = usuarioDoc.data() ?• <String, dynamic>{};
+          role = (d['tipo'] ?• d['role'] ?• role).toString().trim().toLowerCase();
+          storeId = (d['store_id'] ?• d['ownerStoreId'] ?• storeId ?• '')
               .toString().trim();
         }
         // Conta criada no login (Google) cria loja mas pode não ter users/{uid}.
@@ -238,13 +238,13 @@ class _AppStartRouterState extends State<AppStartRouter> {
             }
           } catch (_) {}
         }
-        return {'role': role, 'storeId': storeId?.isEmpty == true ? null : storeId};
+        return {'role': role, 'storeId': storeId?.isEmpty == true • null : storeId};
       }
 
       try {
         var data = await fetchRoleAndStore();
         if (data != null) {
-          userRole = data['role'] as String? ?? 'vendedor';
+          userRole = data['role'] as String• ?• 'vendedor';
           vendedorStoreId = data['storeId'] as String?;
         }
       } on TimeoutException catch (e) {
@@ -253,7 +253,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
           logD('🔄 [ROUTER] Retentando busca do role (2ª tentativa)...');
           final data = await fetchRoleAndStore();
           if (data != null) {
-            userRole = data['role'] as String? ?? 'vendedor';
+            userRole = data['role'] as String• ?• 'vendedor';
             vendedorStoreId = data['storeId'] as String?;
           }
         } catch (e2) {
@@ -270,8 +270,8 @@ class _AppStartRouterState extends State<AppStartRouter> {
                   .get()
                   .timeout(const Duration(seconds: 3));
               if (userDoc.exists) {
-                final d = userDoc.data() ?? {};
-                userRole = (d['role'] ?? d['tipo'] ?? d['tipo_usuario'] ?? userRole)
+                final d = userDoc.data() ?• {};
+                userRole = (d['role'] ?• d['tipo'] ?• d['tipo_usuario'] ?• userRole)
                     .toString().trim().toLowerCase();
                 logD('📋 [ROUTER] Role obtido no fallback: $userRole');
               }
@@ -291,8 +291,8 @@ class _AppStartRouterState extends State<AppStartRouter> {
                 .get()
                 .timeout(const Duration(seconds: 3));
             if (userDoc.exists) {
-              final d = userDoc.data() ?? {};
-              userRole = (d['role'] ?? d['tipo'] ?? d['tipo_usuario'] ?? userRole)
+              final d = userDoc.data() ?• {};
+              userRole = (d['role'] ?• d['tipo'] ?• d['tipo_usuario'] ?• userRole)
                   .toString().trim().toLowerCase();
               logD('📋 [ROUTER] Role obtido no fallback: $userRole');
             }
@@ -303,14 +303,14 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
       // 📴 Offline: usar role e store da sessão quando Firestore não respondeu
       if (vendedorStoreId == null || vendedorStoreId.isEmpty) {
-        final cachedStore = (sessao.get('store_id') ?? sessao.get('lojaId') ?? '').toString().trim();
+        final cachedStore = (sessao.get('store_id') ?• sessao.get('lojaId') ?• '').toString().trim();
         if (cachedStore.isNotEmpty) {
           vendedorStoreId = cachedStore;
           logD('📴 [ROUTER] Store da sessão (offline)');
         }
       }
-      if (userRole == 'vendedor' && (sessao.get('tipo_usuario') ?? sessao.get('role')) != null) {
-        userRole = (sessao.get('tipo_usuario') ?? sessao.get('role') ?? userRole).toString().trim().toLowerCase();
+      if (userRole == 'vendedor' && (sessao.get('tipo_usuario') ?• sessao.get('role')) != null) {
+        userRole = (sessao.get('tipo_usuario') ?• sessao.get('role') ?• userRole).toString().trim().toLowerCase();
       }
 
       logD('📋 [ROUTER] Role do usuário: $userRole');
@@ -354,11 +354,11 @@ class _AppStartRouterState extends State<AppStartRouter> {
           !planExpired;
 
       final planos = PlanosService();
-      PlanInfo? plan;
+      PlanInfo• plan;
       if (cacheValid) {
         logD('✅ [ROUTER] Plano em cache, entrando na home');
         plan = PlanInfo(
-          planId: (sessao.get('plan_plan_id') ?? 'free_limited').toString(),
+          planId: (sessao.get('plan_plan_id') ?• 'free_limited').toString(),
           status: 'active',
           trialing: false,
           currentPeriodEnd: null,
@@ -382,7 +382,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
       if (plan == null) {
         // Offline ou timeout: usar plano em cache se existir
-        final cachedPlanId = (sessao.get('plan_plan_id') ?? 'free_limited').toString();
+        final cachedPlanId = (sessao.get('plan_plan_id') ?• 'free_limited').toString();
         if (cachedPlanId.isNotEmpty) {
           logD('📴 [ROUTER] Usando plano em cache (offline/timeout): $cachedPlanId');
           plan = PlanInfo(
@@ -498,7 +498,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
       final raw = doc.data();
       final Map<String, dynamic> data =
-          raw == null ? <String, dynamic>{} : Map<String, dynamic>.from(raw);
+          raw == null • <String, dynamic>{} : Map<String, dynamic>.from(raw);
 
       final firestoreRole = (data['role'] ??
               data['tipo_usuario'] ??
@@ -509,7 +509,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
           .trim()
           .toLowerCase();
 
-      final localRole = (sessao.get('tipo_usuario') ?? '').toString();
+      final localRole = (sessao.get('tipo_usuario') ?• '').toString();
 
       // ✅ Usar RoleUtils para resolver o role corretamente
       final resolvedRole = RoleUtils.resolveRole(
@@ -553,32 +553,32 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
     try {
       // FASE 3: Timeout maior no Web (cold start Firestore); fallback sessão quando resolve() null
-      const timeoutSeconds = kIsWeb ? 6 : 3;
-      String? loja = await StoreResolverFacade.resolveForRouter(baseUri: Uri.base)
+      const timeoutSeconds = kIsWeb • 6 : 3;
+      String• loja = await StoreResolverFacade.resolveForRouter(baseUri: Uri.base)
           .timeout(const Duration(seconds: timeoutSeconds), onTimeout: () {
         logW('⚠️ [ROUTER_GUARD] Timeout ao resolver loja (${timeoutSeconds}s)');
         return null;
       });
 
       if (kDebugMode) {
-        logD('📌 [STORE_RESOLVE] resolveForRouter retornou: ${loja != null && loja.isNotEmpty ? loja : "null/vazio"}');
+        logD('📌 [STORE_RESOLVE] resolveForRouter retornou: ${loja != null && loja.isNotEmpty • loja : "null/vazio"}');
       }
 
       if (loja == null || loja.isEmpty) {
         if (isRoot) {
-          loja = (config.get('last_loja_id') ?? '').toString().trim();
+          loja = (config.get('last_loja_id') ?• '').toString().trim();
           logD('🔄 [ROUTER_GUARD] Root user, usando last_loja_id');
         }
       }
 
       // FASE 3: Não sair sem gravar quando já existir loja válida em sessão/config (evita perda no Web)
       if (loja == null || loja.isEmpty) {
-        final fromSessao = (sessao.get('store_id') ?? sessao.get('lojaId') ?? '').toString().trim();
-        final fromConfig = (config.get('last_loja_id') ?? config.get('store_id') ?? '').toString().trim();
+        final fromSessao = (sessao.get('store_id') ?• sessao.get('lojaId') ?• '').toString().trim();
+        final fromConfig = (config.get('last_loja_id') ?• config.get('store_id') ?• '').toString().trim();
 
         final current = FirebaseAuth.instance.currentUser;
-        final currentEmail = (current?.email ?? '').trim().toLowerCase();
-        final cachedUsuario = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+        final currentEmail = (current?.email ?• '').trim().toLowerCase();
+        final cachedUsuario = (sessao.get('usuario_logado') ?• '').toString().trim().toLowerCase();
 
         final sameUser = currentEmail.isNotEmpty &&
             cachedUsuario.isNotEmpty &&
@@ -655,19 +655,19 @@ class _AppStartRouterState extends State<AppStartRouter> {
       final userDoc = results[0];
       final usuarioDoc = results[1];
 
-      String? vendedorStoreId;
+      String• vendedorStoreId;
       if (userDoc.exists) {
-        final d = userDoc.data() ?? {};
+        final d = userDoc.data() ?• {};
         vendedorStoreId =
-            (d['store_id'] ?? d['storeId'] ?? d['ownerStoreId'] ?? '')
+            (d['store_id'] ?• d['storeId'] ?• d['ownerStoreId'] ?• '')
                 .toString()
                 .trim();
       }
       if ((vendedorStoreId == null || vendedorStoreId.isEmpty) &&
           usuarioDoc.exists) {
-        final d = usuarioDoc.data() ?? {};
+        final d = usuarioDoc.data() ?• {};
         vendedorStoreId =
-            (d['store_id'] ?? d['ownerStoreId'] ?? '').toString().trim();
+            (d['store_id'] ?• d['ownerStoreId'] ?• '').toString().trim();
       }
       if (vendedorStoreId != null && vendedorStoreId.isNotEmpty) {
         sessao.put('store_id', vendedorStoreId);
@@ -682,12 +682,12 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
   Future<void> _routeByRoleAndLoja(Box sessao) async {
     final role =
-        (sessao.get('role') ?? sessao.get('tipo_usuario') ?? 'vendedor')
+        (sessao.get('role') ?• sessao.get('tipo_usuario') ?• 'vendedor')
             .toString()
             .trim()
             .toLowerCase();
 
-    final isRoot = (sessao.get('is_root') ?? false) == true;
+    final isRoot = (sessao.get('is_root') ?• false) == true;
 
     logD('🎯 [ROUTER] Role: $role, isRoot: $isRoot');
 
@@ -767,7 +767,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
       backgroundColor: const Color(0xFF101010),
       body: Center(
         child: _busy
-            ? Column(
+            • Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const CircularProgressIndicator(),

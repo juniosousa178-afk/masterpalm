@@ -23,7 +23,7 @@ class ImportarVendasResultado {
   final int importadas;
   final int erros;
   /// Mensagem de erro se a query falhou (ex: índice Firestore ausente)
-  final String? erroMensagem;
+  final String• erroMensagem;
 
   ImportarVendasResultado({
     required this.totalNoFirestore,
@@ -56,13 +56,13 @@ class ImportarVendasFirestoreService {
     int jaExistentes = 0;
     int importadas = 0;
     int erros = 0;
-    String? erroMensagem;
+    String• erroMensagem;
 
     try {
       logD('📥 [IMPORT-VENDAS] Iniciando importação (lojaId=$lojaId, locais=${vendasBox.length})');
 
       const batchSize = 200;
-      DocumentSnapshot? lastDoc;
+      DocumentSnapshot• lastDoc;
       bool usarOrderBy = true;
 
       // Loop: com orderBy ou fallback sem orderBy (se índice Firestore faltar)
@@ -112,8 +112,8 @@ class ImportarVendasFirestoreService {
             final dataFirestore = (data['data'] as Timestamp?)?.toDate() ??
                 (data['createdAt'] as Timestamp?)?.toDate() ??
                 DateTime.now();
-            final totalFirestore = (data['total'] as num?)?.toDouble() ?? 0.0;
-            final clienteNome = (data['clienteNome'] ?? '').toString().trim();
+            final totalFirestore = (data['total'] as num?)?.toDouble() ?• 0.0;
+            final clienteNome = (data['clienteNome'] ?• '').toString().trim();
 
             // 1) Verificar por idFirebase (funciona para UUID e IDs numéricos "0","1","74" etc)
             final existentePorId = vendasBox.values.firstWhereOrNull((v) => v.idFirebase == vendaId);
@@ -162,40 +162,40 @@ class ImportarVendasFirestoreService {
             }
 
             // 3) Converter e salvar (venda nova)
-            final itensRaw = data['itens'] as List? ?? [];
+            final itensRaw = data['itens'] as List• ?• [];
             final itens = itensRaw.map((e) {
               final m = Map<String, dynamic>.from(e as Map);
               final pid = m['productId'] as String?;
               return VendaItem(
-                produtoNome: m['produtoNome'] as String? ?? '',
-                quantidade: (m['quantidade'] as num?)?.toInt() ?? 0,
-                precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ?? 0.0,
-                tamanho: m['tamanho'] as String? ?? '',
-                cor: m['cor'] as String? ?? '',
-                productId: pid != null && pid.trim().isNotEmpty ? pid : null,
+                produtoNome: m['produtoNome'] as String• ?• '',
+                quantidade: (m['quantidade'] as num?)?.toInt() ?• 0,
+                precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ?• 0.0,
+                tamanho: m['tamanho'] as String• ?• '',
+                cor: m['cor'] as String• ?• '',
+                productId: pid != null && pid.trim().isNotEmpty • pid : null,
               );
             }).toList();
 
             final venda = Venda(
-              clienteNome: data['clienteNome'] ?? '',
-              produtosDescricao: data['produtosDescricao'] ?? '',
-              quantidade: (data['quantidade'] as num?)?.toInt() ?? itens.length,
-              preco: (data['preco'] as num?)?.toDouble() ?? 0.0,
-              total: (data['total'] as num?)?.toDouble() ?? 0.0,
-              formasPagamento: data['formasPagamento'] ?? '',
+              clienteNome: data['clienteNome'] ?• '',
+              produtosDescricao: data['produtosDescricao'] ?• '',
+              quantidade: (data['quantidade'] as num?)?.toInt() ?• itens.length,
+              preco: (data['preco'] as num?)?.toDouble() ?• 0.0,
+              total: (data['total'] as num?)?.toDouble() ?• 0.0,
+              formasPagamento: data['formasPagamento'] ?• '',
               data: dataFirestore,
-              tamanho: data['tamanho'] ?? '',
-              vendedor: data['vendedor'] ?? '',
-              frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
-              desconto: (data['desconto'] as num?)?.toDouble() ?? 0.0,
-              observacao: data['observacao'] ?? '',
-              itens: itens.isNotEmpty ? itens : null,
-              pagamentoDinheiro: (data['pagamentoDinheiro'] as num?)?.toDouble() ?? 0.0,
-              pagamentoPix: (data['pagamentoPix'] as num?)?.toDouble() ?? 0.0,
-              pagamentoCartao: (data['pagamentoCartao'] as num?)?.toDouble() ?? 0.0,
-              taxas: (data['taxas'] as num?)?.toDouble() ?? 0.0,
-              custoProdutos: (data['custoProdutos'] as num?)?.toDouble() ?? 0.0,
-              descontoValor: (data['descontoValor'] as num?)?.toDouble() ?? 0.0,
+              tamanho: data['tamanho'] ?• '',
+              vendedor: data['vendedor'] ?• '',
+              frete: (data['frete'] as num?)?.toDouble() ?• 0.0,
+              desconto: (data['desconto'] as num?)?.toDouble() ?• 0.0,
+              observacao: data['observacao'] ?• '',
+              itens: itens.isNotEmpty • itens : null,
+              pagamentoDinheiro: (data['pagamentoDinheiro'] as num?)?.toDouble() ?• 0.0,
+              pagamentoPix: (data['pagamentoPix'] as num?)?.toDouble() ?• 0.0,
+              pagamentoCartao: (data['pagamentoCartao'] as num?)?.toDouble() ?• 0.0,
+              taxas: (data['taxas'] as num?)?.toDouble() ?• 0.0,
+              custoProdutos: (data['custoProdutos'] as num?)?.toDouble() ?• 0.0,
+              descontoValor: (data['descontoValor'] as num?)?.toDouble() ?• 0.0,
               lojaId: lojaId,
               idFirebase: vendaId,
               clienteId: data['clienteId'] as String?,

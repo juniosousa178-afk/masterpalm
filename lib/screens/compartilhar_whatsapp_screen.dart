@@ -18,8 +18,8 @@ class CompartilharWhatsAppScreen extends StatefulWidget {
 }
 
 class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen> {
-  String? _lojaId;
-  String? _erro;
+  String• _lojaId;
+  String• _erro;
   bool _loading = true;
 
   final _campanhaNomeCtrl = TextEditingController();
@@ -140,13 +140,13 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                   Row(
                     children: [
                       FilledButton.icon(
-                        onPressed: urlCatalogo.isEmpty ? null : () => _copiar(msgCatalogo),
+                        onPressed: urlCatalogo.isEmpty • null : () => _copiar(msgCatalogo),
                         icon: const Icon(Icons.copy, size: 18),
                         label: const Text('Copiar'),
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
-                        onPressed: urlCatalogo.isEmpty ? null : () => _abrirWhatsApp(msgCatalogo),
+                        onPressed: urlCatalogo.isEmpty • null : () => _abrirWhatsApp(msgCatalogo),
                         icon: const Icon(Icons.chat, size: 18),
                         label: const Text('Abrir no WhatsApp'),
                         style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366)),
@@ -200,10 +200,10 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                       final nome = _campanhaNomeCtrl.text.trim();
                       final desc = _campanhaDescricaoCtrl.text.trim();
                       final msgCampanha = nome.isEmpty
-                          ? null
+                          • null
                           : CatalogShareService.buildCampaignShareMessage(
                               nomeCampanha: nome,
-                              descricao: desc.isEmpty ? null : desc,
+                              descricao: desc.isEmpty • null : desc,
                               url: urlCatalogo,
                             );
                       return Column(

@@ -25,7 +25,7 @@ class ContasReceberScreen extends StatefulWidget {
 class _ContasReceberScreenState extends State<ContasReceberScreen> {
   bool _loading = true;
   bool _erroResolucaoLoja = false;
-  String? _lojaId;
+  String• _lojaId;
   late Box<ContaReceber> _box;
   String _filtro = 'pendentes'; // pendentes | pagas | vencidas | todas
   final _currency = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
@@ -50,7 +50,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
     }
     try {
       final name = HiveBoxNames.contasReceber(_lojaId!);
-      _box = Hive.isBoxOpen(name) ? Hive.box(name) : await Hive.openBox(name);
+      _box = Hive.isBoxOpen(name) • Hive.box(name) : await Hive.openBox(name);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -142,8 +142,8 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    final valor = double.tryParse(valorCtrl.text.replaceAll(',', '.')) ?? 0;
-    final dias = int.tryParse(diasCtrl.text) ?? 30;
+    final valor = double.tryParse(valorCtrl.text.replaceAll(',', '.')) ?• 0;
+    final dias = int.tryParse(diasCtrl.text) ?• 30;
     if (valor <= 0 && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Informe um valor maior que zero.'), backgroundColor: Colors.orange),
@@ -250,13 +250,13 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
             ),
           Expanded(
             child: list.isEmpty
-                ? Center(
+                • Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade400),
                         const SizedBox(height: 16),
-                        Text('Nenhuma conta ${_filtro == "pendentes" ? "pendente" : _filtro == "vencidas" ? "vencida" : _filtro == "pagas" ? "paga" : ""}.', style: TextStyle(color: Colors.grey.shade600)),
+                        Text('Nenhuma conta ${_filtro == "pendentes" • "pendente" : _filtro == "vencidas" • "vencida" : _filtro == "pagas" • "paga" : ""}.', style: TextStyle(color: Colors.grey.shade600)),
                         if (_filtro != 'todas')
                           TextButton.icon(
                             onPressed: _adicionarManual,
@@ -277,22 +277,22 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
                         color: _cardColor,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
-                          side: vencida ? const BorderSide(color: _warningColor, width: 1) : BorderSide.none,
+                          side: vencida • const BorderSide(color: _warningColor, width: 1) : BorderSide.none,
                         ),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: c.pago ? _successColor.withValues(alpha:0.2) : _primaryColor.withValues(alpha:0.2),
-                            child: Icon(c.pago ? Icons.check : Icons.schedule, color: c.pago ? _successColor : _primaryColor),
+                            backgroundColor: c.pago • _successColor.withValues(alpha:0.2) : _primaryColor.withValues(alpha:0.2),
+                            child: Icon(c.pago • Icons.check : Icons.schedule, color: c.pago • _successColor : _primaryColor),
                           ),
                           title: Text(c.clienteNome, style: const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text(
-                            'Venc: ${DateFormat('dd/MM/yyyy').format(c.dataVencimento)}${c.observacao.isNotEmpty ? " · ${c.observacao}" : ""}',
+                            'Venc: ${DateFormat('dd/MM/yyyy').format(c.dataVencimento)}${c.observacao.isNotEmpty • " · ${c.observacao}" : ""}',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(_currency.format(c.valor), style: TextStyle(fontWeight: FontWeight.bold, color: c.pago ? Colors.grey : _primaryColor)),
+                              Text(_currency.format(c.valor), style: TextStyle(fontWeight: FontWeight.bold, color: c.pago • Colors.grey : _primaryColor)),
                               if (!c.pago) ...[
                                 const SizedBox(width: 8),
                                 IconButton(

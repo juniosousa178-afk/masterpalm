@@ -30,10 +30,10 @@ class UploadRequest {
 
   final PlatformFile platformFile;
   final String storagePath;
-  final SettableMetadata? metadata;
+  final SettableMetadata• metadata;
 
-  final void Function(double p)? onProgress;
-  final void Function(TaskState s)? onState;
+  final void Function(double p)• onProgress;
+  final void Function(TaskState s)• onState;
 }
 
 
@@ -52,13 +52,13 @@ class UploadBytesRequest {
   /// Ex.: 'lojas/masterpalm/midias/banners/IMG_001.jpg'
   final String storagePath;
 
-  final SettableMetadata? metadata;
+  final SettableMetadata• metadata;
 
   /// 0.0 → 1.0
-  final void Function(double progress)? onProgress;
+  final void Function(double progress)• onProgress;
 
   /// Estados do Firebase Storage (running, success, error…)
-  final void Function(TaskState state)? onState;
+  final void Function(TaskState state)• onState;
 }
 
 /// Resultado final de um upload

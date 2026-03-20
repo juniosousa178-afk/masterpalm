@@ -36,9 +36,9 @@ class NovaVendaModal extends StatefulWidget {
   final String lojaId; // 🔹 loja atual (vem da VendasScreen)
   final VoidCallback onVendaFinalizada;
   /// Chamado se o salvamento falhar depois do modal fechar (venda já confirmada pelo usuário).
-  final void Function(String message)? onErroAoFinalizar;
+  final void Function(String message)• onErroAoFinalizar;
   /// Quando informado, abre em modo edição: desfaz a venda antiga e registra nova com dados editados.
-  final Venda? vendaParaEditar;
+  final Venda• vendaParaEditar;
 
   const NovaVendaModal({
     super.key,
@@ -62,7 +62,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   double valorMinimoRoleta = 150.0;
   double descontoRoletaValor = 0.0;
   bool roletaPremioAplicado = false;
-  Map<String, dynamic>? premioRoleta;
+  Map<String, dynamic>• premioRoleta;
 
   // Prêmios carregados do Firebase (ou padrão)
   List<Map<String, dynamic>> _premiosRoleta = [];
@@ -148,7 +148,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       double precoLegado = v.preco;
       try {
         final linhas = v.produtosDescricao.split('\n');
-        final linha = linhas.isNotEmpty ? linhas.first.trim() : '';
+        final linha = linhas.isNotEmpty • linhas.first.trim() : '';
         if (linha.isEmpty) {
           nomeProd = 'Produto';
         } else {
@@ -157,19 +157,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           if (idxX >= 0) {
             final rest = linha.substring(idxX + 3);
             final idxDelim = rest.indexOf(' - R\$');
-            nomeProd = idxDelim >= 0 ? rest.substring(0, idxDelim).trim() : rest.trim();
+            nomeProd = idxDelim >= 0 • rest.substring(0, idxDelim).trim() : rest.trim();
             final qtdStr = linha.substring(0, idxX).trim();
-            qtdLegado = int.tryParse(qtdStr) ?? v.quantidade;
+            qtdLegado = int.tryParse(qtdStr) ?• v.quantidade;
           }
         }
       } catch (_) {
-        nomeProd = v.produtosDescricao.trim().isNotEmpty ? v.produtosDescricao.split('\n').first.trim() : 'Produto';
+        nomeProd = v.produtosDescricao.trim().isNotEmpty • v.produtosDescricao.split('\n').first.trim() : 'Produto';
       }
       produtosSelecionados = [
         {
           'produto': nomeProd,
           'preco': precoLegado,
-          'quantidade': qtdLegado < 1 ? 1 : qtdLegado,
+          'quantidade': qtdLegado < 1 • 1 : qtdLegado,
           'tamanho': v.tamanho,
           'cor': '',
         },
@@ -187,7 +187,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
     _valorControllers.clear();
     for (final p in pagamentos) {
-      final val = (p['valor'] as num?)?.toDouble() ?? 0.0;
+      final val = (p['valor'] as num?)?.toDouble() ?• 0.0;
       _valorControllers.add(TextEditingController(text: MoedaInputFormatter.format(val)));
     }
     for (final c in _quantityControllers) {
@@ -195,8 +195,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
     _quantityControllers.clear();
     for (final item in produtosSelecionados) {
-      final q = item['quantidade'] ?? 1;
-      _quantityControllers.add(TextEditingController(text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+      final q = item['quantidade'] ?• 1;
+      _quantityControllers.add(TextEditingController(text: (q is int • q : int.tryParse(q.toString()) ?• 1).toString()));
     }
 
     setState(() {});
@@ -214,21 +214,21 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final vm = (data['valorMinimo'] as num?)?.toDouble() ?? 150.0;
-        final premiosRaw = (data['premios'] as List?) ?? [];
+        final vm = (data['valorMinimo'] as num?)?.toDouble() ?• 150.0;
+        final premiosRaw = (data['premios'] as List?) ?• [];
         final roletaAtiva = data['ativa'] == true;
 
         setState(() {
           _roletaAtiva = roletaAtiva;
           valorMinimoRoleta = vm;
           _premiosRoleta = premiosRaw
-              .where((p) => (p['ativo'] ?? true) == true)
+              .where((p) => (p['ativo'] ?• true) == true)
               .map<Map<String, dynamic>>(
             (p) {
               return {
-                'label': p['label'] ?? '',
-                'tipo': p['tipo'] ?? 'percent',
-                'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
+                'label': p['label'] ?• '',
+                'tipo': p['tipo'] ?• 'percent',
+                'valor': (p['valor'] as num?)?.toDouble() ?• 0.0,
               };
             },
           ).toList();
@@ -281,7 +281,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     return pagamentos.fold(0.0, (acc, p) {
       final v = p['valor'];
       if (v is num) return acc + v.toDouble();
-      return acc + (double.tryParse(v?.toString() ?? '') ?? 0.0);
+      return acc + (double.tryParse(v?.toString() ?• '') ?• 0.0);
     });
   }
 
@@ -295,8 +295,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     double subtotal = 0.0;
 
     for (var item in produtosSelecionados) {
-      final preco = (item['preco'] ?? 0.0) as double;
-      final qtd = (item['quantidade'] ?? 1) as int;
+      final preco = (item['preco'] ?• 0.0) as double;
+      final qtd = (item['quantidade'] ?• 1) as int;
       subtotal += preco * qtd;
     }
 
@@ -306,16 +306,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   double _calcularTotal() {
     final semRoleta = _calcularTotalSemRoleta();
     final total = semRoleta - descontoRoletaValor;
-    return total < 0 ? 0.0 : total;
+    return total < 0 • 0.0 : total;
   }
 
   double _precoDoProduto(Produto p) =>
-      p.precoFinal > 0 ? p.precoFinal : (p.precoUnitario > 0 ? p.precoUnitario : 0.0);
+      p.precoFinal > 0 • p.precoFinal : (p.precoUnitario > 0 • p.precoUnitario : 0.0);
 
   // ---------------------------------------------------------------------------
   // 🔹 BUSCAR CLIENTE PELO NOME (RESTRINGINDO POR LOJA)
   // ---------------------------------------------------------------------------
-  Cliente? _buscarClientePorNome(String nome) {
+  Cliente• _buscarClientePorNome(String nome) {
     final lower = nome.trim().toLowerCase();
     for (final c in widget.clientesBox.values) {
       if (c.lojaId == lojaId && c.nome.trim().toLowerCase() == lower) {
@@ -344,12 +344,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       if (v.lojaId != null && v.lojaId != lojaId) continue;
       if (v.itens != null && v.itens!.isNotEmpty) {
         for (final item in v.itens!) {
-          contagem[item.produtoNome] = (contagem[item.produtoNome] ?? 0) + item.quantidade;
+          contagem[item.produtoNome] = (contagem[item.produtoNome] ?• 0) + item.quantidade;
         }
       } else if (v.produtosDescricao.isNotEmpty) {
         final nome = v.produtosDescricao.split('\n').first.trim();
         if (nome.isNotEmpty) {
-          contagem[nome] = (contagem[nome] ?? 0) + v.quantidade;
+          contagem[nome] = (contagem[nome] ?• 0) + v.quantidade;
         }
       }
     }
@@ -374,7 +374,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     required Map<String, dynamic> item,
     required List<Produto> produtosDaLoja,
   }) {
-    final nome = (item['produto'] ?? '').toString().trim();
+    final nome = (item['produto'] ?• '').toString().trim();
     if (nome.isEmpty) return const SizedBox.shrink();
 
     final prod = produtosDaLoja.firstWhereOrNull(
@@ -383,8 +383,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     final ehCombo = prod != null && prod.ehCombo;
     final temVariacao = prod != null &&
         (prod.usaVariacoes || prod.estoquePorTamanho.isNotEmpty || prod.temVariacaoSoloCor);
-    final tam = (item['tamanho'] ?? '').toString();
-    final cor = (item['cor'] ?? '').toString();
+    final tam = (item['tamanho'] ?• '').toString();
+    final cor = (item['cor'] ?• '').toString();
     final sel = item['itensComboComSelecao'];
     final temComboSelecao = sel is List && sel.isNotEmpty;
     final temSelecao = tam.isNotEmpty || cor.isNotEmpty || temComboSelecao;
@@ -396,7 +396,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     String label;
     IconData icon;
     if (ehCombo) {
-      label = temComboSelecao ? 'Combo configurado' : 'Configurar combo';
+      label = temComboSelecao • 'Combo configurado' : 'Configurar combo';
       icon = Icons.card_giftcard;
     } else {
       if (temSelecao) {
@@ -421,14 +421,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             await ComboVariacaoSelectionSheet.show(
               context,
               combo: prod,
-              quantidade: (item['quantidade'] ?? 1) as int,
-              preco: (item['preco'] ?? 0.0) as double,
+              quantidade: (item['quantidade'] ?• 1) as int,
+              preco: (item['preco'] ?• 0.0) as double,
               produtosBox: widget.produtosBox,
               lojaId: lojaId,
               onConfirmar: (selecao, qtd, preco) {
                 setState(() {
                   produtosSelecionados[index]['produto'] = prod.nome;
-                  produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null;
+                  produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty • prod.idFirebase : null;
                   produtosSelecionados[index]['preco'] = preco;
                   produtosSelecionados[index]['quantidade'] = qtd;
                   produtosSelecionados[index]['tamanho'] = '';
@@ -457,18 +457,18 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: ehCombo ? Colors.orange.shade50 : Colors.blue.shade50,
+            color: ehCombo • Colors.orange.shade50 : Colors.blue.shade50,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: ehCombo ? Colors.orange.shade200 : Colors.blue.shade200),
+            border: Border.all(color: ehCombo • Colors.orange.shade200 : Colors.blue.shade200),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 16, color: ehCombo ? Colors.orange.shade700 : Colors.blue.shade700),
+              Icon(icon, size: 16, color: ehCombo • Colors.orange.shade700 : Colors.blue.shade700),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: TextStyle(fontSize: 13, color: ehCombo ? Colors.orange.shade900 : Colors.blue.shade900, fontWeight: FontWeight.w500),
+                style: TextStyle(fontSize: 13, color: ehCombo • Colors.orange.shade900 : Colors.blue.shade900, fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -483,7 +483,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       return p.obterEstoqueVariacao(tamanho, cor);
     }
     if (p.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
-      return p.estoquePorTamanho[tamanho] ?? 0;
+      return p.estoquePorTamanho[tamanho] ?• 0;
     }
     return p.quantidade;
   }
@@ -517,8 +517,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         }
         _quantityControllers.clear();
         for (final item in produtosSelecionados) {
-          final q = item['quantidade'] ?? 1;
-          _quantityControllers.add(TextEditingController(text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+          final q = item['quantidade'] ?• 1;
+          _quantityControllers.add(TextEditingController(text: (q is int • q : int.tryParse(q.toString()) ?• 1).toString()));
         }
       });
     } else {
@@ -547,8 +547,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         }
         _quantityControllers.clear();
         for (final item in produtosSelecionados) {
-          final q = item['quantidade'] ?? 1;
-          _quantityControllers.add(TextEditingController(text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+          final q = item['quantidade'] ?• 1;
+          _quantityControllers.add(TextEditingController(text: (q is int • q : int.tryParse(q.toString()) ?• 1).toString()));
         }
       });
     }
@@ -558,8 +558,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   // 🔹 ROLETA DA SORTE – aplica prêmio no total da venda + registra no Firebase
   // ---------------------------------------------------------------------------
   void _aplicarPremioRoleta(Map<String, dynamic> premio) {
-    final tipo = (premio['tipo'] ?? 'nenhum').toString();
-    final valor = (premio['valor'] as num?)?.toDouble() ?? 0.0;
+    final tipo = (premio['tipo'] ?• 'nenhum').toString();
+    final valor = (premio['valor'] as num?)?.toDouble() ?• 0.0;
 
     // total ANTES de aplicar o prêmio
     final totalAntes = _calcularTotalSemRoleta();
@@ -589,13 +589,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     // 🔹 Log no Firebase (roleta_vendas)
     CampanhasSorteioService.registrarResultadoRoleta(
       lojaId: lojaId,
-      premioLabel: (premio['label'] ?? '').toString(),
+      premioLabel: (premio['label'] ?• '').toString(),
       premioTipo: tipo,
       premioValor: valor,
       valorCompraAntes: totalAntes,
       valorCompraDepois: totalDepois,
       clienteNome: clienteController.text.trim().isEmpty
-          ? null
+          • null
           : clienteController.text.trim(),
     );
   }
@@ -664,8 +664,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   Future<String?> _registrarNumeroSorteio({
     required double totalCompra,
     required String nomeClienteFinal,
-    String? clienteId,
-    Cliente? cliente,
+    String• clienteId,
+    Cliente• cliente,
   }) async {
     try {
       // Gera número 5 dígitos
@@ -676,7 +676,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final registrou = await SorteioNumeroService.registrarNumeroEmCampanhas(
         lojaId: lojaId,
         clienteNome: nomeClienteFinal,
-        clienteId: clienteId ?? cliente?.idFirebase,
+        clienteId: clienteId ?• cliente?.idFirebase,
         valorCompra: totalCompra,
         dataCompra: DateTime.now(),
         numeroSorte: numeroSorte,
@@ -859,11 +859,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
     final total = _calcularTotal();
     final resumoProdutos = produtosSelecionados
-        .where((p) => (p['produto'] ?? '').toString().trim().isNotEmpty)
+        .where((p) => (p['produto'] ?• '').toString().trim().isNotEmpty)
         .map((p) => {
               'produto': p['produto'],
-              'quantidade': p['quantidade'] ?? 1,
-              'preco': p['preco'] ?? 0.0,
+              'quantidade': p['quantidade'] ?• 1,
+              'preco': p['preco'] ?• 0.0,
             })
         .toList();
 
@@ -881,8 +881,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       pagamentos[i]['valor'] = v;
     }
     for (var i = 0; i < produtosSelecionados.length && i < _quantityControllers.length; i++) {
-      final q = int.tryParse(_quantityControllers[i].text) ?? 1;
-      produtosSelecionados[i]['quantidade'] = q < 1 ? 1 : q;
+      final q = int.tryParse(_quantityControllers[i].text) ?• 1;
+      produtosSelecionados[i]['quantidade'] = q < 1 • 1 : q;
     }
 
     // Abre dialog de confirmação com pagamento split e troco
@@ -895,7 +895,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       desconto: descontoValor,
       initialPagamentos: pagamentos.map((p) => {
         'forma': p['forma'],
-        'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
+        'valor': (p['valor'] as num?)?.toDouble() ?• 0.0,
       }).toList(),
     );
 
@@ -913,7 +913,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     pagamentos = result.pagamentos.map((p) {
       return {
         'forma': p['forma'],
-        'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
+        'valor': (p['valor'] as num?)?.toDouble() ?• 0.0,
       };
     }).toList();
 
@@ -922,7 +922,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _valorControllers.add(TextEditingController());
     }
     for (var i = 0; i < pagamentos.length; i++) {
-      final v = (pagamentos[i]['valor'] as num?)?.toDouble() ?? 0.0;
+      final v = (pagamentos[i]['valor'] as num?)?.toDouble() ?• 0.0;
       pagamentos[i]['valor'] = v;
       if (i < _valorControllers.length) {
         _valorControllers[i].text = MoedaInputFormatter.format(v);
@@ -954,7 +954,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     // 1) Cliente: garante cadastro rápido se não existir
-    Cliente? cliente = await _garantirCliente(nomeClienteDigitado);
+    Cliente• cliente = await _garantirCliente(nomeClienteDigitado);
     if (!mounted) return;
     if (cliente == null) {
       await _mostrarErro(
@@ -976,10 +976,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     // 3) Validação dos produtos (estoque + produto não cadastrado + tamanho + cor)
     for (var i = 0; i < produtosSelecionados.length; i++) {
       final item = produtosSelecionados[i];
-      final nome = (item['produto'] ?? '').toString().trim();
-      final qtd = (item['quantidade'] ?? 1) as int;
-      final tamanho = (item['tamanho'] ?? '').toString().trim();
-      final cor = (item['cor'] ?? '').toString().trim();
+      final nome = (item['produto'] ?• '').toString().trim();
+      final qtd = (item['quantidade'] ?• 1) as int;
+      final tamanho = (item['tamanho'] ?• '').toString().trim();
+      final cor = (item['cor'] ?• '').toString().trim();
 
       if (nome.isEmpty || qtd <= 0) {
         await _mostrarErro('Preencha os produtos corretamente.');
@@ -1070,12 +1070,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         disponivel = prod.obterEstoqueVariacao('', cor);
         msgEstoque = 'cor $cor';
       } else if (prod.usaVariacoes && (tamanho.isNotEmpty || cor.isNotEmpty)) {
-        final tamKey = tamanho.isEmpty ? '' : tamanho;
-        final corKey = cor.isEmpty ? 'sem-cor' : cor;
+        final tamKey = tamanho.isEmpty • '' : tamanho;
+        final corKey = cor.isEmpty • 'sem-cor' : cor;
         disponivel = prod.obterEstoqueVariacao(tamKey, corKey);
-        msgEstoque = tamanho.isNotEmpty ? 'tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}' : 'cor $cor';
+        msgEstoque = tamanho.isNotEmpty • 'tamanho $tamanho${cor.isEmpty • '' : ' - cor $cor'}' : 'cor $cor';
       } else if (prod.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
-        disponivel = prod.estoquePorTamanho[tamanho] ?? 0;
+        disponivel = prod.estoquePorTamanho[tamanho] ?• 0;
         msgEstoque = 'tamanho $tamanho';
       } else {
         disponivel = prod.quantidade;
@@ -1084,7 +1084,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
       if (disponivel < qtd) {
         final msg = msgEstoque.isNotEmpty
-            ? 'Estoque insuficiente para "$nome" no $msgEstoque. Disponível: $disponivel.'
+            • 'Estoque insuficiente para "$nome" no $msgEstoque. Disponível: $disponivel.'
             : 'Estoque insuficiente para "$nome". Disponível: $disponivel.';
 
         if (!mounted) return;
@@ -1144,7 +1144,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final itensComboSelecaoPorIndice = <int, List<Map<String, dynamic>>>{};
       for (var i = 0; i < produtosSelecionados.length; i++) {
         final m = produtosSelecionados[i];
-        final nome = (m['produto'] ?? '').toString().trim();
+        final nome = (m['produto'] ?• '').toString().trim();
         if (nome.isEmpty) continue;
         final sel = m['itensComboComSelecao'];
         if (sel is List && sel.isNotEmpty) {
@@ -1165,12 +1165,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         final productId = (m['productId'] as String?)?.trim();
         itens.add(VendaItem(
           produtoNome: nome,
-          quantidade: (m['quantidade'] ?? 1) as int,
-          precoUnitario: (m['preco'] ?? 0.0) as double,
-          tamanho: (m['tamanho'] ?? '').toString(),
-          cor: (m['cor'] ?? '').toString(),
+          quantidade: (m['quantidade'] ?• 1) as int,
+          precoUnitario: (m['preco'] ?• 0.0) as double,
+          tamanho: (m['tamanho'] ?• '').toString(),
+          cor: (m['cor'] ?• '').toString(),
           lojaId: lojaId,
-          productId: productId != null && productId.isNotEmpty ? productId : null,
+          productId: productId != null && productId.isNotEmpty • productId : null,
         ));
       }
       if (itens.isEmpty) {
@@ -1179,32 +1179,32 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       }
 
       double valorPagamento(dynamic v) =>
-          (v is num) ? v.toDouble() : (double.tryParse(v?.toString() ?? '') ?? 0.0);
+          (v is num) • v.toDouble() : (double.tryParse(v?.toString() ?• '') ?• 0.0);
 
       double valorDinheiro = _pendenteFiado
-          ? 0.0
+          • 0.0
           : pagamentos
-              .where((p) => (p['forma'] ?? '') == 'Dinheiro')
+              .where((p) => (p['forma'] ?• '') == 'Dinheiro')
               .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
 
       double valorPix = _pendenteFiado
-          ? 0.0
+          • 0.0
           : pagamentos
-              .where((p) => (p['forma'] ?? '') == 'Pix')
+              .where((p) => (p['forma'] ?• '') == 'Pix')
               .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
 
       double valorCartao = _pendenteFiado
-          ? 0.0
+          • 0.0
           : pagamentos
-              .where((p) => (p['forma'] ?? '') == 'Cartão')
+              .where((p) => (p['forma'] ?• '') == 'Cartão')
               .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
 
       logD('💰 [VENDA] Pagamentos - Dinheiro: R\$ ${valorDinheiro.toStringAsFixed(2)}, Pix: R\$ ${valorPix.toStringAsFixed(2)}, Cartão: R\$ ${valorCartao.toStringAsFixed(2)}');
 
       // 🔹 Nome que será usado tanto na venda quanto no número da sorte (cliente não é null aqui)
       final nomeClienteFinal = cliente.nome.isNotEmpty
-          ? cliente.nome
-          : (nomeClienteDigitado.isEmpty ? 'Cliente' : capitalizeWords(nomeClienteDigitado.trim()));
+          • cliente.nome
+          : (nomeClienteDigitado.isEmpty • 'Cliente' : capitalizeWords(nomeClienteDigitado.trim()));
 
       // Captura referências antes de qualquer await; não usar widget/context após pop.
       final onErro = widget.onErroAoFinalizar;
@@ -1224,7 +1224,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         nomeClienteFinal: nomeClienteFinal,
         cliente: cliente,
         itens: itens,
-        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice.isEmpty ? null : itensComboSelecaoPorIndice,
+        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice.isEmpty • null : itensComboSelecaoPorIndice,
         valorDinheiro: valorDinheiro,
         valorPix: valorPix,
         valorCartao: valorCartao,
@@ -1261,21 +1261,21 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     required Box<Venda> vendasBox,
     required String vendedor,
     required String nomeClienteFinal,
-    required Cliente? cliente,
+    required Cliente• cliente,
     required List<VendaItem> itens,
-    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
+    Map<int, List<Map<String, dynamic>>>• itensComboSelecaoPorIndice,
     required double valorDinheiro,
     required double valorPix,
     required double valorCartao,
     required double total,
     required String observacao,
-    void Function(String message)? onErro,
+    void Function(String message)• onErro,
     bool isFiado = false,
     int diasVencimentoFiado = 30,
-    Venda? vendaParaEditar,
+    Venda• vendaParaEditar,
   }) async {
     try {
-      String? idFirebaseToReuse;
+      String• idFirebaseToReuse;
       if (vendaParaEditar != null) {
         idFirebaseToReuse = vendaParaEditar.idFirebase;
         await VendasService.desfazerVenda(
@@ -1313,7 +1313,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         idFirebaseToReuse: idFirebaseToReuse,
         onSyncError: onErro,
         isFiado: isFiado,
-        dataVencimentoFiado: isFiado ? DateTime.now().add(Duration(days: diasVencimentoFiado)) : null,
+        dataVencimentoFiado: isFiado • DateTime.now().add(Duration(days: diasVencimentoFiado)) : null,
         itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
       );
 
@@ -1326,8 +1326,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
       // Enviar número da sorte ao cliente por WhatsApp e e-mail (quando houver contato)
       if (numeroSorte != null) {
-        final email = (cliente?.email ?? '').trim();
-        final telefone = (cliente?.telefone ?? '').trim();
+        final email = (cliente?.email ?• '').trim();
+        final telefone = (cliente?.telefone ?• '').trim();
         if (email.isNotEmpty || telefone.isNotEmpty) {
           final vendaId = venda.key.toString();
           final customer = <String, dynamic>{
@@ -1359,8 +1359,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   Widget build(BuildContext context) {
     final total = _calcularTotal();
     final totalPago = _somarPagamentos();
-    final troco = totalPago > total ? totalPago - total : 0.0;
-    final falta = total > totalPago ? total - totalPago : 0.0;
+    final troco = totalPago > total • totalPago - total : 0.0;
+    final falta = total > totalPago • total - totalPago : 0.0;
 
     return Container(
       decoration: BoxDecoration(
@@ -1402,7 +1402,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                       ),
                     ),
                     Text(
-                      _modoEdicao ? 'Editar venda' : 'Nova Venda',
+                      _modoEdicao • 'Editar venda' : 'Nova Venda',
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.5,
@@ -1512,8 +1512,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                       final produtosDaLoja = widget.produtosBox.values
                           .where((p) => p.lojaId == lojaId)
                           .toList();
-                      final valorAtual = (item['produto'] ?? '').toString();
-                      final precoVal = (item['preco'] ?? 0.0) as num;
+                      final valorAtual = (item['produto'] ?• '').toString();
+                      final precoVal = (item['preco'] ?• 0.0) as num;
                       final precoStr = 'R\$ ${precoVal.toDouble().toStringAsFixed(2).replaceAll('.', ',')}';
 
                       return Container(
@@ -1567,7 +1567,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         onConfirmar: (selecao, qtd, preco) {
                                           setState(() {
                                             produtosSelecionados[index]['produto'] = combo.nome;
-                                            produtosSelecionados[index]['productId'] = combo.idFirebase.trim().isNotEmpty ? combo.idFirebase : null;
+                                            produtosSelecionados[index]['productId'] = combo.idFirebase.trim().isNotEmpty • combo.idFirebase : null;
                                             produtosSelecionados[index]['preco'] = preco;
                                             produtosSelecionados[index]['quantidade'] = qtd;
                                             produtosSelecionados[index]['tamanho'] = '';
@@ -1585,7 +1585,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         onConfirmar: (tam, cor, qtd) {
                                           setState(() {
                                             produtosSelecionados[index]['produto'] = produto.nome;
-                                            produtosSelecionados[index]['productId'] = produto.idFirebase.trim().isNotEmpty ? produto.idFirebase : null;
+                                            produtosSelecionados[index]['productId'] = produto.idFirebase.trim().isNotEmpty • produto.idFirebase : null;
                                             produtosSelecionados[index]['preco'] = _precoDoProduto(produto);
                                             produtosSelecionados[index]['tamanho'] = tam;
                                             produtosSelecionados[index]['cor'] = cor;
@@ -1603,7 +1603,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         );
                                         if (p != null) {
                                           produtosSelecionados[index]['preco'] = _precoDoProduto(p);
-                                          produtosSelecionados[index]['productId'] = p.idFirebase.trim().isNotEmpty ? p.idFirebase : null;
+                                          produtosSelecionados[index]['productId'] = p.idFirebase.trim().isNotEmpty • p.idFirebase : null;
                                         } else {
                                           produtosSelecionados[index].remove('productId');
                                         }
@@ -1646,7 +1646,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                               if (!mounted) return;
                                               setState(() {
                                                 produtosSelecionados[index]['produto'] = prod.nome;
-                                                produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null;
+                                                produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty • prod.idFirebase : null;
                                                 produtosSelecionados[index]['preco'] = preco;
                                                 produtosSelecionados[index]['quantidade'] = qtd;
                                                 produtosSelecionados[index]['tamanho'] = '';
@@ -1664,7 +1664,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                               if (!mounted) return;
                                               setState(() {
                                                 produtosSelecionados[index]['produto'] = prod.nome;
-                                                produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null;
+                                                produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty • prod.idFirebase : null;
                                                 produtosSelecionados[index]['preco'] = _precoDoProduto(prod);
                                                 produtosSelecionados[index]['tamanho'] = tam;
                                                 produtosSelecionados[index]['cor'] = cor;
@@ -1675,7 +1675,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         } else {
                                           setState(() {
                                             produtosSelecionados[index]['produto'] = prod.nome;
-                                            produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null;
+                                            produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty • prod.idFirebase : null;
                                             produtosSelecionados[index]['preco'] = _precoDoProduto(prod);
                                             produtosSelecionados[index]['tamanho'] = '';
                                             produtosSelecionados[index]['cor'] = '';
@@ -1725,14 +1725,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   width: 70,
                                   child: TextFormField(
                                     controller: index < _quantityControllers.length
-                                        ? _quantityControllers[index]
+                                        • _quantityControllers[index]
                                         : null,
                                     key: index < _quantityControllers.length
-                                        ? null
+                                        • null
                                         : ValueKey('qtd_$index'),
                                     initialValue: index < _quantityControllers.length
-                                        ? null
-                                        : (item['quantidade'] ?? 1).toString(),
+                                        • null
+                                        : (item['quantidade'] ?• 1).toString(),
                                     keyboardType: TextInputType.number,
                                     decoration: InputDecoration(
                                       labelText: 'Qtd',
@@ -1746,8 +1746,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     ),
                                     onChanged: (value) {
                                       setState(() {
-                                        final qtd = int.tryParse(value) ?? 1;
-                                        produtosSelecionados[index]['quantidade'] = qtd < 1 ? 1 : qtd;
+                                        final qtd = int.tryParse(value) ?• 1;
+                                        produtosSelecionados[index]['quantidade'] = qtd < 1 • 1 : qtd;
                                       });
                                     },
                                   ),
@@ -1774,28 +1774,28 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 ),
                                 Builder(
                                   builder: (context) {
-                                    final nomeProd = (item['produto'] ?? '').toString().trim();
+                                    final nomeProd = (item['produto'] ?• '').toString().trim();
                                     if (nomeProd.isEmpty) return const SizedBox.shrink();
                                     final prod = produtosDaLoja.firstWhereOrNull(
                                       (p) => p.lojaId == lojaId && p.nome.toLowerCase() == nomeProd.toLowerCase(),
                                     );
                                     if (prod == null) return const SizedBox.shrink();
-                                    final tam = (item['tamanho'] ?? '').toString();
-                                    final cor = (item['cor'] ?? '').toString();
+                                    final tam = (item['tamanho'] ?• '').toString();
+                                    final cor = (item['cor'] ?• '').toString();
                                     final disp = _obterEstoqueProduto(prod, tam, cor);
                                     final isBaixo = disp < 3 && disp > 0;
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: disp == 0 ? Colors.red.shade50 : (isBaixo ? Colors.orange.shade50 : Colors.grey.shade100),
+                                        color: disp == 0 • Colors.red.shade50 : (isBaixo • Colors.orange.shade50 : Colors.grey.shade100),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
-                                        'Est. $disp${isBaixo ? ' ⚠' : ''}',
+                                        'Est. $disp${isBaixo • ' ⚠' : ''}',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: disp == 0 ? Colors.red.shade700 : (isBaixo ? Colors.orange.shade800 : Colors.grey.shade700),
-                                          fontWeight: isBaixo ? FontWeight.w600 : FontWeight.normal,
+                                          color: disp == 0 • Colors.red.shade700 : (isBaixo • Colors.orange.shade800 : Colors.grey.shade700),
+                                          fontWeight: isBaixo • FontWeight.w600 : FontWeight.normal,
                                         ),
                                       ),
                                     );
@@ -2044,7 +2044,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: roletaPremioAplicado
-                                          ? Colors.grey
+                                          • Colors.grey
                                           : const Color(0xFF6366F1),
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -2052,16 +2052,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
-                                    onPressed: roletaPremioAplicado ? null : _abrirRoleta,
+                                    onPressed: roletaPremioAplicado • null : _abrirRoleta,
                                     icon: const Icon(Icons.casino),
                                     label: Text(
-                                      roletaPremioAplicado ? 'Prêmio já aplicado' : 'Girar roleta',
+                                      roletaPremioAplicado • 'Prêmio já aplicado' : 'Girar roleta',
                                     ),
                                   ),
                                   if (premioRoleta != null) ...[
                                     const SizedBox(height: 8),
                                     Text(
-                                      'Prêmio: ${premioRoleta!['label'] ?? ''}',
+                                      'Prêmio: ${premioRoleta!['label'] ?• ''}',
                                       style: const TextStyle(
                                         color: Colors.amber,
                                         fontWeight: FontWeight.bold,
@@ -2116,7 +2116,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           child: OutlinedButton.icon(
                             onPressed: () async {
                               final temItens = produtosSelecionados.any(
-                                (p) => (p['produto'] ?? '').toString().trim().isNotEmpty,
+                                (p) => (p['produto'] ?• '').toString().trim().isNotEmpty,
                               );
                               if (temItens) {
                                 if (!mounted) return;
@@ -2163,7 +2163,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           child: ElevatedButton.icon(
                             onPressed: _finalizarVenda,
                             icon: const Icon(Icons.check_circle, size: 20),
-                            label: Text(_modoEdicao ? 'Salvar alterações' : 'Finalizar venda'),
+                            label: Text(_modoEdicao • 'Salvar alterações' : 'Finalizar venda'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green.shade600,
                               foregroundColor: Colors.white,
@@ -2210,7 +2210,7 @@ class RoletaPremiosDialog extends StatefulWidget {
 class _RoletaPremiosDialogState extends State<RoletaPremiosDialog> {
   final StreamController<int> _controller = StreamController<int>.broadcast();
   bool _girando = false;
-  Map<String, dynamic>? _premioFinal;
+  Map<String, dynamic>• _premioFinal;
 
   @override
   void dispose() {
@@ -2281,7 +2281,7 @@ class _RoletaPremiosDialogState extends State<RoletaPremiosDialog> {
                           child: Padding(
                             padding: const EdgeInsets.all(4.0),
                             child: Text(
-                              premio['label']?.toString() ?? '',
+                              premio['label']?.toString() ?• '',
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 fontSize: 11,
@@ -2339,20 +2339,20 @@ class _RoletaPremiosDialogState extends State<RoletaPremiosDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _girando ? null : () => Navigator.pop(context),
+          onPressed: _girando • null : () => Navigator.pop(context),
           child: const Text(
             'Fechar',
             style: TextStyle(color: Colors.white70),
           ),
         ),
         ElevatedButton.icon(
-          onPressed: _girando ? null : _girar,
+          onPressed: _girando • null : _girar,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF22C55E),
             foregroundColor: Colors.white,
           ),
           icon: const Icon(Icons.casino),
-          label: Text(_girando ? 'Girando...' : 'Girar'),
+          label: Text(_girando • 'Girando...' : 'Girar'),
         ),
       ],
     );
@@ -2367,8 +2367,8 @@ class _ProdutoDropdown extends StatelessWidget {
   final String lojaId;
   final List<String> produtosFavoritos;
   final void Function(String nome, double preco) onChanged;
-  final Future<void> Function(Produto produto)? onProductNeedsVariation;
-  final Future<void> Function(Produto combo)? onProductIsCombo;
+  final Future<void> Function(Produto produto)• onProductNeedsVariation;
+  final Future<void> Function(Produto combo)• onProductIsCombo;
   final void Function(String texto) onTextChanged;
   final double Function(Produto) precoDoProduto;
 

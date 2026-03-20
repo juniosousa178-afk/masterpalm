@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../themes/app_colors.dart';
 import '../services/cliente_web_service.dart';
 
-/// Tela de login/cadastro para clientes do cat�logo web
+/// Tela de login/cadastro para clientes do catálogo web
 class ClienteLoginScreen extends StatefulWidget {
   final String lojaId;
   final String lojaNome;
@@ -39,14 +39,14 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
     super.dispose();
   }
 
-  String? _getCpfDigits() {
+  String• _getCpfDigits() {
     final cpf = _cpfController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    return cpf.isEmpty ? null : cpf;
+    return cpf.isEmpty • null : cpf;
   }
 
-  String? _getTelefoneDigits() {
+  String• _getTelefoneDigits() {
     final tel = _telefoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    return tel.isEmpty ? null : tel;
+    return tel.isEmpty • null : tel;
   }
 
   Future<void> _fazerLogin() async {
@@ -90,7 +90,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
         content: Row(
           children: [
             Icon(
-              isSuccess ? Icons.check_circle_outline : Icons.error_outline,
+              isSuccess • Icons.check_circle_outline : Icons.error_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -98,7 +98,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isSuccess ? const Color(0xFF22C55E) : (isError ? const Color(0xFFEF4444) : AppColors.primary),
+        backgroundColor: isSuccess • const Color(0xFF22C55E) : (isError • const Color(0xFFEF4444) : AppColors.primary),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -114,7 +114,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: isDark ? null : AppColors.background,
+        backgroundColor: isDark • null : AppColors.background,
         appBar: AppBar(
           title: const Text('Minha Conta'),
           centerTitle: true,
@@ -150,7 +150,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Fa�a login para acompanhar seus pedidos e usar cupons de desconto',
+                        'Faça login para acompanhar seus pedidos e usar cupons de desconto',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurface.withValues(alpha:0.6),
                           height: 1.4,
@@ -159,11 +159,11 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                       ),
                       const SizedBox(height: 32),
 
-                      // Card do formul�rio
+                      // Card do formulário
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: isDark ? theme.cardTheme.color : AppColors.card,
+                          color: isDark • theme.cardTheme.color : AppColors.card,
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
@@ -179,7 +179,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                             _buildTextField(
                               controller: _nomeController,
                               label: 'Nome completo *',
-                              hint: 'Jo�o da Silva',
+                              hint: 'João da Silva',
                               icon: Icons.person_outline_rounded,
                               textCapitalization: TextCapitalization.words,
                               autofillHints: const [AutofillHints.name],
@@ -200,7 +200,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                               autofillHints: const [AutofillHints.email],
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) return 'Digite seu email';
-                                if (!RegExp(_emailRegex).hasMatch(value.trim())) return 'Email inv�lido';
+                                if (!RegExp(_emailRegex).hasMatch(value.trim())) return 'Email inválido';
                                 return null;
                               },
                             ),
@@ -231,7 +231,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) return null;
                                 final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-                                if (digits.length != 11) return 'CPF deve ter 11 d�gitos';
+                                if (digits.length != 11) return 'CPF deve ter 11 dígitos';
                                 return null;
                               },
                             ),
@@ -239,7 +239,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                             SizedBox(
                               height: 52,
                               child: ElevatedButton(
-                                onPressed: _carregando ? null : _fazerLogin,
+                                onPressed: _carregando • null : _fazerLogin,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppColors.primary,
                                   foregroundColor: Colors.white,
@@ -250,7 +250,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                                   ),
                                 ),
                                 child: _carregando
-                                    ? const SizedBox(
+                                    • const SizedBox(
                                         height: 22,
                                         width: 22,
                                         child: CircularProgressIndicator(
@@ -292,7 +292,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Usamos seu email apenas para identifica��o. Sem spam!',
+                                'Usamos seu email apenas para identificação. Sem spam!',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurface.withValues(alpha:0.8),
                                   height: 1.3,
@@ -318,12 +318,12 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
     required String label,
     required String hint,
     required IconData icon,
-    TextInputType? keyboardType,
+    TextInputType• keyboardType,
     bool autocorrect = true,
     TextCapitalization textCapitalization = TextCapitalization.none,
-    List<String>? autofillHints,
-    List<TextInputFormatter>? inputFormatters,
-    String? Function(String?)? validator,
+    List<String>• autofillHints,
+    List<TextInputFormatter>• inputFormatters,
+    String• Function(String?)• validator,
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -341,7 +341,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
         hintText: hint,
         prefixIcon: Icon(icon, size: 22),
         filled: true,
-        fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+        fillColor: isDark • null : Colors.grey.withValues(alpha:0.06),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

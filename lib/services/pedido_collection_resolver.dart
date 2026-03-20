@@ -62,7 +62,7 @@ class PedidoCollectionResolver {
 
   static String collectionPath({
     required PedidoFlowType flowType,
-    String? lojaId,
+    String• lojaId,
   }) {
     final collection = collectionName(flowType);
     if (isRootFlow(flowType)) return collection;
@@ -73,7 +73,7 @@ class PedidoCollectionResolver {
   static String docPath({
     required PedidoFlowType flowType,
     required String pedidoId,
-    String? lojaId,
+    String• lojaId,
   }) {
     return '${collectionPath(flowType: flowType, lojaId: lojaId)}/$pedidoId';
   }
@@ -81,7 +81,7 @@ class PedidoCollectionResolver {
   static CollectionReference<Map<String, dynamic>> collectionRef(
     FirebaseFirestore db, {
     required PedidoFlowType flowType,
-    String? lojaId,
+    String• lojaId,
   }) {
     if (isRootFlow(flowType)) {
       return db.collection(collectionName(flowType));
@@ -97,7 +97,7 @@ class PedidoCollectionResolver {
     FirebaseFirestore db, {
     required PedidoFlowType flowType,
     required String pedidoId,
-    String? lojaId,
+    String• lojaId,
   }) {
     return collectionRef(db, flowType: flowType, lojaId: lojaId).doc(pedidoId);
   }
@@ -105,7 +105,7 @@ class PedidoCollectionResolver {
   static List<DocumentReference<Map<String, dynamic>>> tempPedidoDocRefs(
     FirebaseFirestore db, {
     required String pedidoId,
-    String? lojaId,
+    String• lojaId,
     Iterable<String> fallbackLojaIds = const [],
     bool includeRoot = true,
     bool includeLegacy = true,
@@ -150,7 +150,7 @@ class PedidoCollectionResolver {
     return refs;
   }
 
-  static String _requireLojaId(String? lojaId, PedidoFlowType flowType) {
+  static String _requireLojaId(String• lojaId, PedidoFlowType flowType) {
     final resolved = lojaId?.trim();
     if (resolved == null || resolved.isEmpty) {
       throw ArgumentError(

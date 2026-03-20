@@ -13,7 +13,7 @@ void showCatalogComboVariationSheet({
   required Map<String, dynamic> comboProduct,
   required List<Map<String, dynamic>> todosProdutos,
   required void Function(Map<String, dynamic> item) onAdd,
-  VoidCallback? onAbrirCarrinho,
+  VoidCallback• onAbrirCarrinho,
 }) {
   showModalBottomSheet<void>(
     context: context,
@@ -32,7 +32,7 @@ class CatalogComboVariationSheet extends StatefulWidget {
   final Map<String, dynamic> comboProduct;
   final List<Map<String, dynamic>> todosProdutos;
   final void Function(Map<String, dynamic> item) onAdd;
-  final VoidCallback? onAbrirCarrinho;
+  final VoidCallback• onAbrirCarrinho;
 
   const CatalogComboVariationSheet({
     super.key,
@@ -57,14 +57,14 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
     final list = <Map<String, dynamic>>[];
     for (final e in raw) {
       if (e is! Map) continue;
-      final nome = (e['nome'] ?? e['name'] ?? '').toString().trim();
+      final nome = (e['nome'] ?• e['name'] ?• '').toString().trim();
       if (nome.isEmpty) continue;
-      final slug = (e['slug'] ?? '').toString().trim();
-      final id = (e['id'] ?? e['produtoId'] ?? '').toString().trim();
+      final slug = (e['slug'] ?• '').toString().trim();
+      final id = (e['id'] ?• e['produtoId'] ?• '').toString().trim();
       list.add({
         'nome': nome,
         'slug': slug,
-        'quantidade': (e['quantidade'] is num) ? (e['quantidade'] as num).toInt() : int.tryParse('${e['quantidade']}') ?? 1,
+        'quantidade': (e['quantidade'] is num) • (e['quantidade'] as num).toInt() : int.tryParse('${e['quantidade']}') ?• 1,
         if (id.isNotEmpty) 'id': id,
       });
     }
@@ -77,37 +77,37 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
     _selecoes = List.generate(_itensCombo.length, (_) => {'tamanho': '', 'cor': ''});
   }
 
-  Map<String, dynamic>? _findProductByNomeOuSlug(String nome, String slug) {
+  Map<String, dynamic>• _findProductByNomeOuSlug(String nome, String slug) {
     final n = nome.trim().toLowerCase();
     final s = slug.trim();
     for (final p in widget.todosProdutos) {
-      final pNome = (p['nome'] ?? '').toString().trim().toLowerCase();
-      final pSlug = (p['slug'] ?? '').toString().trim();
+      final pNome = (p['nome'] ?• '').toString().trim().toLowerCase();
+      final pSlug = (p['slug'] ?• '').toString().trim();
       if (n.isNotEmpty && pNome == n) return p;
       if (s.isNotEmpty && pSlug == s) return p;
     }
     return null;
   }
 
-  Map<String, dynamic>? _findProductById(String id) {
+  Map<String, dynamic>• _findProductById(String id) {
     final sid = id.trim();
     if (sid.isEmpty) return null;
     for (final p in widget.todosProdutos) {
-      final pId = (p['id'] ?? '').toString().trim();
+      final pId = (p['id'] ?• '').toString().trim();
       if (pId == sid) return p;
     }
     return null;
   }
 
   /// Resolve o produto do catálogo para um item do combo (por id, depois nome, depois slug).
-  Map<String, dynamic>? _produtoParaItem(Map<String, dynamic> item) {
-    final id = (item['id'] ?? '').toString().trim();
+  Map<String, dynamic>• _produtoParaItem(Map<String, dynamic> item) {
+    final id = (item['id'] ?• '').toString().trim();
     if (id.isNotEmpty) {
       final byId = _findProductById(id);
       if (byId != null) return byId;
     }
-    final nome = (item['nome'] ?? '').toString().trim();
-    final slug = (item['slug'] ?? '').toString().trim();
+    final nome = (item['nome'] ?• '').toString().trim();
+    final slug = (item['slug'] ?• '').toString().trim();
     return _findProductByNomeOuSlug(nome, slug);
   }
 
@@ -145,10 +145,10 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
     for (var i = 0; i < _itensCombo.length; i++) {
       final item = _itensCombo[i];
       final p = _produtoParaItem(item);
-      final qtd = (item['quantidade'] is num) ? (item['quantidade'] as num).toInt() : 1;
+      final qtd = (item['quantidade'] is num) • (item['quantidade'] as num).toInt() : 1;
       if (p != null) {
-        final tam = (_selecoes[i]['tamanho'] ?? '').toString().trim();
-        final cor = (_selecoes[i]['cor'] ?? '').toString().trim();
+        final tam = (_selecoes[i]['tamanho'] ?• '').toString().trim();
+        final cor = (_selecoes[i]['cor'] ?• '').toString().trim();
         soma += _precoDoProdutoParaSelecao(p, tam, cor) * qtd;
       }
     }
@@ -157,11 +157,11 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
 
   double get _descontoComboValor =>
       (widget.comboProduct['descontoComboValor'] is num)
-          ? (widget.comboProduct['descontoComboValor'] as num).toDouble()
+          • (widget.comboProduct['descontoComboValor'] as num).toDouble()
           : 0.0;
   double get _descontoComboPercentual =>
       (widget.comboProduct['descontoComboPercentual'] is num)
-          ? (widget.comboProduct['descontoComboPercentual'] as num).toDouble()
+          • (widget.comboProduct['descontoComboPercentual'] as num).toDouble()
           : 0.0;
 
   /// Preço final de uma unidade do kit (subtotal com desconto aplicado — o mais atrativo: valor ou %).
@@ -173,7 +173,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
     if (dValor <= 0 && dPerc <= 0) return sub;
     final comValor = (sub - dValor).clamp(0.0, double.infinity);
     final comPerc = sub * (1 - dPerc / 100).clamp(0.0, double.infinity);
-    return comValor < comPerc ? comValor : comPerc;
+    return comValor < comPerc • comValor : comPerc;
   }
 
   bool get _podeConfirmar {
@@ -197,22 +197,22 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
       }
       final semTamMap = variacoes['sem-tamanho'];
       final temSoCorPorSemTamanho =
-          semTamMap is Map ? semTamMap.isNotEmpty : false;
+          semTamMap is Map • semTamMap.isNotEmpty : false;
       final temSoCorPorMapa =
           !temTamanhos && !temSoCorPorSemTamanho && estoquePorCor.isNotEmpty;
 
       if (temTamanhos) {
-        final tam = (_selecoes[i]['tamanho'] ?? '').trim();
+        final tam = (_selecoes[i]['tamanho'] ?• '').trim();
         if (tam.isEmpty) return false;
         if (variacoes.containsKey(tam)) {
           final mapaCor = variacoes[tam];
           if (mapaCor is Map && mapaCor.isNotEmpty) {
-            final cor = (_selecoes[i]['cor'] ?? '').trim();
+            final cor = (_selecoes[i]['cor'] ?• '').trim();
             if (cor.isEmpty) return false;
           }
         }
       } else if (temSoCorPorSemTamanho || temSoCorPorMapa) {
-        final cor = (_selecoes[i]['cor'] ?? '').trim();
+        final cor = (_selecoes[i]['cor'] ?• '').trim();
         if (cor.isEmpty) return false;
       }
     }
@@ -223,16 +223,16 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
     final resultado = <Map<String, dynamic>>[];
     for (var i = 0; i < _itensCombo.length; i++) {
       final item = _itensCombo[i];
-      final nome = (item['nome'] ?? '').toString();
-      final slug = (item['slug'] ?? '').toString();
-      final pid = (item['productId'] ?? item['id'] ?? '').toString().trim();
-      final qtdBase = (item['quantidade'] is num) ? (item['quantidade'] as num).toInt() : 1;
+      final nome = (item['nome'] ?• '').toString();
+      final slug = (item['slug'] ?• '').toString();
+      final pid = (item['productId'] ?• item['id'] ?• '').toString().trim();
+      final qtdBase = (item['quantidade'] is num) • (item['quantidade'] as num).toInt() : 1;
       resultado.add({
         'nome': nome,
         'slug': slug,
         'quantidade': qtdBase * _qtd,
-        'tamanho': (_selecoes[i]['tamanho'] ?? '').trim(),
-        'cor': (_selecoes[i]['cor'] ?? '').trim(),
+        'tamanho': (_selecoes[i]['tamanho'] ?• '').trim(),
+        'cor': (_selecoes[i]['cor'] ?• '').trim(),
         if (pid.isNotEmpty) 'productId': pid,
       });
     }
@@ -247,21 +247,21 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
       'cinza': Colors.grey, 'marrom': Colors.brown, 'bege': Color(0xFFF5F5DC),
       'dourado': Color(0xFFFFD700), 'prata': Color(0xFFC0C0C0),
     };
-    return coresMap[nome.toLowerCase()] ?? Colors.grey;
+    return coresMap[nome.toLowerCase()] ?• Colors.grey;
   }
 
   void _confirmar() {
     for (var i = 0; i < _itensCombo.length; i++) {
       final item = _itensCombo[i];
       final p = _produtoParaItem(item);
-      final nomeItem = (item['nome'] ?? '').toString();
+      final nomeItem = (item['nome'] ?• '').toString();
       final qtdBase = (item['quantidade'] is num)
-          ? (item['quantidade'] as num).toInt()
+          • (item['quantidade'] as num).toInt()
           : 1;
       final need = qtdBase * _qtd;
       if (p != null) {
-        final tam = (_selecoes[i]['tamanho'] ?? '').trim();
-        final cor = (_selecoes[i]['cor'] ?? '').trim();
+        final tam = (_selecoes[i]['tamanho'] ?• '').trim();
+        final cor = (_selecoes[i]['cor'] ?• '').trim();
         final avail =
             CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor);
         if (avail < need) {
@@ -269,7 +269,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(avail <= 0
-                  ? 'Sem estoque: $nomeItem'
+                  • 'Sem estoque: $nomeItem'
                   : 'Estoque insuficiente para $nomeItem (disponível: $avail).'),
             ),
           );
@@ -280,7 +280,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
 
     final preco = _precoFinalUnidade;
     final img = safeListString(widget.comboProduct['imagens']).isNotEmpty
-        ? safeListString(widget.comboProduct['imagens']).first
+        • safeListString(widget.comboProduct['imagens']).first
         : safeStr(widget.comboProduct['imageUrl']);
     final item = {
       'produtosId': widget.comboProduct['id'],
@@ -369,7 +369,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                 children: [
                   ...List.generate(itens.length, (i) {
                     final item = itens[i];
-                    final nome = (item['nome'] ?? '').toString();
+                    final nome = (item['nome'] ?• '').toString();
                     final p = _produtoParaItem(item);
 
                     Map<String, int> tamanhosDisponiveis = {};
@@ -394,7 +394,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                           if (e.value is Map) {
                             int total = 0;
                             for (final v in (e.value as Map).values) {
-                              total += v is num ? v.truncate() : 0;
+                              total += v is num • v.truncate() : 0;
                             }
                             if (total > 0) {
                               tamanhosDisponiveis[e.key.toString()] = total;
@@ -406,26 +406,26 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                             variacoes['sem-tamanho'] is Map) {
                           final sm = variacoes['sem-tamanho'] as Map;
                           sm.forEach((k, v) {
-                            final q = v is num ? v.truncate() : 0;
+                            final q = v is num • v.truncate() : 0;
                             if (q > 0) {
                               coresDisponiveis[k.toString()] = q;
                             }
                           });
                         }
-                        final tamSel = _selecoes[i]['tamanho'] ?? '';
+                        final tamSel = _selecoes[i]['tamanho'] ?• '';
                         if (tamSel.isNotEmpty && variacoes.containsKey(tamSel)) {
                           coresDisponiveis.clear();
                           final mapa = variacoes[tamSel];
                           if (mapa is Map) {
                             mapa.forEach((k, v) {
-                              final q = v is num ? v.truncate() : 0;
+                              final q = v is num • v.truncate() : 0;
                               if (q > 0) coresDisponiveis[k.toString()] = q;
                             });
                           }
                         }
                       } else if (estoqueTam.isNotEmpty) {
                         estoqueTam.forEach((k, v) {
-                          final q = v is num ? v.truncate() : 0;
+                          final q = v is num • v.truncate() : 0;
                           if (q > 0) tamanhosDisponiveis[k.toString()] = q;
                         });
                         temTamanhos = tamanhosDisponiveis.isNotEmpty;
@@ -450,7 +450,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                       if (!temTamanhos && coresDisponiveis.isEmpty) {
                         final ec = asMap(p['estoquePorCor']);
                         ec.forEach((k, v) {
-                          final q = v is num ? v.truncate() : 0;
+                          final q = v is num • v.truncate() : 0;
                           if (q > 0) {
                             coresDisponiveis[k.toString()] = q;
                           }
@@ -540,10 +540,10 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                   spacing: 10,
                                   runSpacing: 10,
                                   children: tamanhosDisponiveis.entries.map((e) {
-                                    final sel = (_selecoes[i]['tamanho'] ?? '') == e.key;
+                                    final sel = (_selecoes[i]['tamanho'] ?• '') == e.key;
                                     final precoTamanho = precoPorTamanho[e.key];
                                     final label = precoTamanho != null && precoTamanho > 0
-                                        ? '${e.key} (R\$ ${precoTamanho.toStringAsFixed(2).replaceAll('.', ',')})'
+                                        • '${e.key} (R\$ ${precoTamanho.toStringAsFixed(2).replaceAll('.', ',')})'
                                         : e.key;
                                     return FilterChip(
                                       label: Padding(
@@ -554,15 +554,15 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                       onSelected: (v) {
                                         setState(() {
                                           _selecoes[i] = Map.from(_selecoes[i]);
-                                          _selecoes[i]['tamanho'] = v ? e.key : '';
+                                          _selecoes[i]['tamanho'] = v • e.key : '';
                                           _selecoes[i]['cor'] = '';
                                         });
                                       },
                                       selectedColor: primaryColor.withValues(alpha:0.25),
                                       checkmarkColor: primaryColor,
                                       side: BorderSide(
-                                        color: sel ? primaryColor : theme.dividerColor,
-                                        width: sel ? 2 : 1,
+                                        color: sel • primaryColor : theme.dividerColor,
+                                        width: sel • 2 : 1,
                                       ),
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                     );
@@ -595,7 +595,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                   spacing: 10,
                                   runSpacing: 10,
                                   children: coresDisponiveis.entries.map((e) {
-                                    final sel = (_selecoes[i]['cor'] ?? '') == e.key;
+                                    final sel = (_selecoes[i]['cor'] ?• '') == e.key;
                                     return FilterChip(
                                       avatar: CircleAvatar(
                                         backgroundColor: _getColorFromName(e.key),
@@ -609,14 +609,14 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                       onSelected: (v) {
                                         setState(() {
                                           _selecoes[i] = Map.from(_selecoes[i]);
-                                          _selecoes[i]['cor'] = v ? e.key : '';
+                                          _selecoes[i]['cor'] = v • e.key : '';
                                         });
                                       },
                                       selectedColor: primaryColor.withValues(alpha:0.25),
                                       checkmarkColor: primaryColor,
                                       side: BorderSide(
-                                        color: sel ? primaryColor : theme.dividerColor,
-                                        width: sel ? 2 : 1,
+                                        color: sel • primaryColor : theme.dividerColor,
+                                        width: sel • 2 : 1,
                                       ),
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                     );
@@ -636,7 +636,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                       const SizedBox(width: 12),
                       IconButton(
                         icon: const Icon(Icons.remove_circle_outline),
-                        onPressed: _qtd > 1 ? () => setState(() => _qtd--) : null,
+                        onPressed: _qtd > 1 • () => setState(() => _qtd--) : null,
                       ),
                       Text('$_qtd', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       IconButton(
@@ -663,7 +663,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                     width: double.infinity,
                     height: 52,
                     child: ElevatedButton.icon(
-                      onPressed: _podeConfirmar ? _confirmar : null,
+                      onPressed: _podeConfirmar • _confirmar : null,
                       icon: const Icon(Icons.shopping_cart_checkout, size: 22),
                       label: const Text('Adicionar kit ao carrinho'),
                       style: ElevatedButton.styleFrom(

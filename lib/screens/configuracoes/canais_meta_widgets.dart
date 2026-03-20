@@ -71,14 +71,14 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               suffixIcon: IconButton(
                 icon: Icon(
                   _whatsappTokenVisible
-                      ? Icons.visibility_off
+                      • Icons.visibility_off
                       : Icons.visibility,
                   color: _CanaisMetaScreenState._primaryColor,
                 ),
                 onPressed: () =>
                     _setWhatsAppTokenVisible(!_whatsappTokenVisible),
                 tooltip:
-                    _whatsappTokenVisible ? 'Ocultar token' : 'Mostrar token',
+                    _whatsappTokenVisible • 'Ocultar token' : 'Mostrar token',
               ),
             ),
 
@@ -96,7 +96,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
 
             const SizedBox(height: 24),
 
-            // Bot�es de a��o
+            // Botões de ação
             Row(
               children: [
                 Expanded(
@@ -121,7 +121,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                     icon: const Icon(Icons.wifi_tethering),
                     label: const Text('Testar'),
                     onPressed:
-                        _whatsappEnabled ? _testWhatsAppConnection : null,
+                        _whatsappEnabled • _testWhatsAppConnection : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -142,7 +142,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               width: double.infinity,
               child: ElevatedButton.icon(
                 icon: _savingWhatsApp
-                    ? const SizedBox(
+                    • const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
@@ -152,7 +152,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                       )
                     : const Icon(Icons.save),
                 label: Text(
-                    _savingWhatsApp ? 'Salvando...' : 'Salvar Configura��es'),
+                    _savingWhatsApp • 'Salvando...' : 'Salvar Configurações'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.all(16),
                   backgroundColor: _CanaisMetaScreenState._whatsappColor,
@@ -162,7 +162,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                   ),
                 ),
                 onPressed: _whatsappEnabled && !_savingWhatsApp
-                    ? _saveWhatsAppConfig
+                    • _saveWhatsAppConfig
                     : null,
               ),
             ),
@@ -227,7 +227,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               label: 'Page ID',
               hint: '108316244769394',
               icon: Icons.pages,
-              helperText: 'ID da p�gina vinculada ao Instagram',
+              helperText: 'ID da página vinculada ao Instagram',
               enabled: _instagramEnabled,
               required: true,
             ),
@@ -240,27 +240,27 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               label: 'Page Access Token',
               hint: 'EAAxxxxxxxxxxxxxxxxxxxxx',
               icon: Icons.key,
-              helperText: 'Token da p�gina no Meta Developers',
+              helperText: 'Token da página no Meta Developers',
               enabled: _instagramEnabled,
               required: true,
               obscureText: !_instagramTokenVisible,
               suffixIcon: IconButton(
                 icon: Icon(
                   _instagramTokenVisible
-                      ? Icons.visibility_off
+                      • Icons.visibility_off
                       : Icons.visibility,
                   color: _CanaisMetaScreenState._primaryColor,
                 ),
                 onPressed: () =>
                     _setInstagramTokenVisible(!_instagramTokenVisible),
                 tooltip:
-                    _instagramTokenVisible ? 'Ocultar token' : 'Mostrar token',
+                    _instagramTokenVisible • 'Ocultar token' : 'Mostrar token',
               ),
             ),
 
             const SizedBox(height: 24),
 
-            // Bot�es
+            // Botões
             Row(
               children: [
                 Expanded(
@@ -288,7 +288,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                     icon: const Icon(Icons.wifi_tethering),
                     label: const Text('Testar'),
                     onPressed:
-                        _instagramEnabled ? _testInstagramConnection : null,
+                        _instagramEnabled • _testInstagramConnection : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _CanaisMetaScreenState._instagramColor,
                       foregroundColor: Colors.white,
@@ -309,7 +309,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               width: double.infinity,
               child: ElevatedButton.icon(
                 icon: _savingInstagram
-                    ? const SizedBox(
+                    • const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
@@ -319,7 +319,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                       )
                     : const Icon(Icons.save),
                 label: Text(
-                    _savingInstagram ? 'Salvando...' : 'Salvar Configura��es'),
+                    _savingInstagram • 'Salvando...' : 'Salvar Configurações'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.all(16),
                   backgroundColor: _CanaisMetaScreenState._instagramColor,
@@ -329,7 +329,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                   ),
                 ),
                 onPressed: _instagramEnabled && !_savingInstagram
-                    ? _saveInstagramConfig
+                    • _saveInstagramConfig
                     : null,
               ),
             ),
@@ -381,7 +381,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               label: 'Page ID',
               hint: '108316244769394',
               icon: Icons.pages,
-              helperText: 'ID da p�gina do Facebook',
+              helperText: 'ID da página do Facebook',
               enabled: _messengerEnabled,
               required: true,
             ),
@@ -394,27 +394,27 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               label: 'Page Access Token',
               hint: 'EAAxxxxxxxxxxxxxxxxxxxxx',
               icon: Icons.key,
-              helperText: 'Token da p�gina no Meta Developers',
+              helperText: 'Token da página no Meta Developers',
               enabled: _messengerEnabled,
               required: true,
               obscureText: !_messengerTokenVisible,
               suffixIcon: IconButton(
                 icon: Icon(
                   _messengerTokenVisible
-                      ? Icons.visibility_off
+                      • Icons.visibility_off
                       : Icons.visibility,
                   color: _CanaisMetaScreenState._primaryColor,
                 ),
                 onPressed: () =>
                     _setMessengerTokenVisible(!_messengerTokenVisible),
                 tooltip:
-                    _messengerTokenVisible ? 'Ocultar token' : 'Mostrar token',
+                    _messengerTokenVisible • 'Ocultar token' : 'Mostrar token',
               ),
             ),
 
             const SizedBox(height: 24),
 
-            // Bot�es
+            // Botões
             Row(
               children: [
                 Expanded(
@@ -442,7 +442,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                     icon: const Icon(Icons.wifi_tethering),
                     label: const Text('Testar'),
                     onPressed:
-                        _messengerEnabled ? _testMessengerConnection : null,
+                        _messengerEnabled • _testMessengerConnection : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -463,7 +463,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               width: double.infinity,
               child: ElevatedButton.icon(
                 icon: _savingMessenger
-                    ? const SizedBox(
+                    • const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
@@ -473,7 +473,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                       )
                     : const Icon(Icons.save),
                 label: Text(
-                    _savingMessenger ? 'Salvando...' : 'Salvar Configura��es'),
+                    _savingMessenger • 'Salvando...' : 'Salvar Configurações'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.all(16),
                   backgroundColor: _CanaisMetaScreenState._messengerColor,
@@ -483,7 +483,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                   ),
                 ),
                 onPressed: _messengerEnabled && !_savingMessenger
-                    ? _saveMessengerConfig
+                    • _saveMessengerConfig
                     : null,
               ),
             ),
@@ -586,12 +586,12 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isSuccess
-            ? _CanaisMetaScreenState._successColor.withValues(alpha:0.1)
+            • _CanaisMetaScreenState._successColor.withValues(alpha:0.1)
             : _CanaisMetaScreenState._errorColor.withValues(alpha:0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isSuccess
-              ? _CanaisMetaScreenState._successColor.withValues(alpha:0.3)
+              • _CanaisMetaScreenState._successColor.withValues(alpha:0.3)
               : _CanaisMetaScreenState._errorColor.withValues(alpha:0.3),
         ),
       ),
@@ -601,14 +601,14 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isSuccess
-                  ? _CanaisMetaScreenState._successColor.withValues(alpha:0.2)
+                  • _CanaisMetaScreenState._successColor.withValues(alpha:0.2)
                   : _CanaisMetaScreenState._errorColor.withValues(alpha:0.2),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              isSuccess ? Icons.check_circle : Icons.error,
+              isSuccess • Icons.check_circle : Icons.error,
               color: isSuccess
-                  ? _CanaisMetaScreenState._successColor
+                  • _CanaisMetaScreenState._successColor
                   : _CanaisMetaScreenState._errorColor,
               size: 20,
             ),
@@ -616,10 +616,10 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              status.replaceAll('? ', '').replaceAll('? ', ''),
+              status.replaceAll('• ', '').replaceAll('• ', ''),
               style: TextStyle(
                 color: isSuccess
-                    ? _CanaisMetaScreenState._successColor
+                    • _CanaisMetaScreenState._successColor
                     : _CanaisMetaScreenState._errorColor,
                 fontWeight: FontWeight.w500,
               ),
@@ -639,19 +639,19 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
     required bool enabled,
     bool required = false,
     bool obscureText = false,
-    Widget? suffixIcon,
+    Widget• suffixIcon,
   }) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor =
-        isDark ? cs.primary : _CanaisMetaScreenState._primaryColor;
+        isDark • cs.primary : _CanaisMetaScreenState._primaryColor;
     return Container(
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withValues(alpha:isDark ? 0.2 : 0.05),
+            color: cs.shadow.withValues(alpha:isDark • 0.2 : 0.05),
             blurRadius: 10,
           ),
         ],
@@ -662,7 +662,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
         obscureText: obscureText,
         style: TextStyle(color: cs.onSurface),
         decoration: InputDecoration(
-          labelText: required ? '$label *' : label,
+          labelText: required • '$label *' : label,
           labelStyle: TextStyle(color: cs.onSurfaceVariant),
           hintText: hint,
           hintStyle: TextStyle(color: cs.onSurfaceVariant),
@@ -673,7 +673,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
           suffixIcon: suffixIcon,
           filled: true,
           fillColor:
-              enabled ? cs.surfaceContainerHigh : cs.surfaceContainerHighest,
+              enabled • cs.surfaceContainerHigh : cs.surfaceContainerHighest,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
@@ -720,7 +720,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
               Icon(Icons.webhook, color: color, size: 20),
               const SizedBox(width: 8),
               Text(
-                'Configura��o do Webhook',
+                'Configuração do Webhook',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 15,
@@ -847,7 +847,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Cole estas informa��es no Meta Developers ao configurar o webhook.',
+                    'Cole estas informações no Meta Developers ao configurar o webhook.',
                     style: TextStyle(
                       fontSize: 12,
                       color: color,

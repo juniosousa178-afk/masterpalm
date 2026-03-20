@@ -22,10 +22,10 @@ class NotificacaoCentro {
   final TipoNotificacaoCentro tipo;
   final DateTime criadaEm;
   final bool lida;
-  final String? acaoRota; // ex: '/pedidos'
-  final Map<String, dynamic>? acaoArgs;
+  final String• acaoRota; // ex: '/pedidos'
+  final Map<String, dynamic>• acaoArgs;
   /// Loja a que a notificação pertence (filtro: só exibir da loja atual)
-  final String? storeId;
+  final String• storeId;
 
   NotificacaoCentro({
     required this.id,
@@ -52,14 +52,14 @@ class NotificacaoCentro {
       };
 
   factory NotificacaoCentro.fromMap(Map<String, dynamic> m) {
-    final tipoIdx = m['tipo'] as int? ?? 0;
+    final tipoIdx = m['tipo'] as int• ?• 0;
     return NotificacaoCentro(
-      id: m['id'] as String? ?? '',
-      titulo: m['titulo'] as String? ?? '',
-      corpo: m['corpo'] as String? ?? '',
+      id: m['id'] as String• ?• '',
+      titulo: m['titulo'] as String• ?• '',
+      corpo: m['corpo'] as String• ?• '',
       tipo: TipoNotificacaoCentro.values[tipoIdx.clamp(0, TipoNotificacaoCentro.values.length - 1)],
-      criadaEm: DateTime.fromMillisecondsSinceEpoch(m['criadaEm'] as int? ?? 0),
-      lida: m['lida'] as bool? ?? false,
+      criadaEm: DateTime.fromMillisecondsSinceEpoch(m['criadaEm'] as int• ?• 0),
+      lida: m['lida'] as bool• ?• false,
       acaoRota: m['acaoRota'] as String?,
       acaoArgs: m['acaoArgs'] as Map<String, dynamic>?,
       storeId: m['storeId'] as String?,
@@ -108,7 +108,7 @@ class NotificacaoCentroService extends ChangeNotifier {
       }
       List<dynamic> list;
       if (raw is String) {
-        list = jsonDecode(raw) as List<dynamic>? ?? [];
+        list = jsonDecode(raw) as List<dynamic>• ?• [];
       } else if (raw is List) {
         list = raw;
       } else {
@@ -116,7 +116,7 @@ class NotificacaoCentroService extends ChangeNotifier {
         return;
       }
       _items = list
-          .map((e) => e is Map ? NotificacaoCentro.fromMap(Map<String, dynamic>.from(e)) : null)
+          .map((e) => e is Map • NotificacaoCentro.fromMap(Map<String, dynamic>.from(e)) : null)
           .whereType<NotificacaoCentro>()
           .toList();
       _cleanOld();
@@ -148,9 +148,9 @@ class NotificacaoCentroService extends ChangeNotifier {
     required String titulo,
     required String corpo,
     TipoNotificacaoCentro tipo = TipoNotificacaoCentro.outro,
-    String? acaoRota,
-    Map<String, dynamic>? acaoArgs,
-    String? storeId,
+    String• acaoRota,
+    Map<String, dynamic>• acaoArgs,
+    String• storeId,
   }) async {
     await _ensureInit();
     _cleanOld();
@@ -209,18 +209,18 @@ class NotificacaoCentroService extends ChangeNotifier {
   }
 
   /// Retorna notificações filtradas pela loja atual (só da loja ou sem storeId para compat)
-  List<NotificacaoCentro> itemsParaLoja(String? currentStoreId) {
+  List<NotificacaoCentro> itemsParaLoja(String• currentStoreId) {
     if (currentStoreId == null || currentStoreId.isEmpty) return items;
     return _items.where((n) => n.storeId == null || n.storeId == currentStoreId).toList();
   }
 
   /// Contagem de não lidas para uma loja (para badge no centro)
-  int unreadCountParaLoja(String? currentStoreId) {
+  int unreadCountParaLoja(String• currentStoreId) {
     return itemsParaLoja(currentStoreId).where((n) => !n.lida).length;
   }
 
   /// Marca como lidas apenas as notificações da loja atual
-  Future<void> markAllAsReadParaLoja(String? currentStoreId) async {
+  Future<void> markAllAsReadParaLoja(String• currentStoreId) async {
     await _ensureInit();
     if (currentStoreId == null || currentStoreId.isEmpty) {
       await markAllAsRead();

@@ -33,7 +33,7 @@ class ContaReceber extends HiveObject {
   int vendaKey;
 
   @HiveField(8)
-  String? idFirebase;
+  String• idFirebase;
 
   ContaReceber({
     required this.lojaId,

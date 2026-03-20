@@ -19,10 +19,10 @@ class CatalogChatWidget extends StatefulWidget {
   final bool habilitado;
 
   /// Telefone ou URL do WhatsApp (extrai dígitos). Fallback: rodape['whatsapp'] ou whatsapp_vendedor.
-  final String? whatsappUrl;
+  final String• whatsappUrl;
 
   /// Callback quando o usuário toca em um produto sugerido.
-  final void Function(Map<String, dynamic> produto)? onProdutoTap;
+  final void Function(Map<String, dynamic> produto)• onProdutoTap;
 
   const CatalogChatWidget({
     super.key,
@@ -44,7 +44,7 @@ class _CatalogChatWidgetState extends State<CatalogChatWidget> {
 
   static String _montarMensagemWhatsapp(List<Map<String, dynamic>> produtos) {
     if (produtos.isEmpty) return 'Olá! Vim pelo catálogo e gostaria de saber mais.';
-    final nomes = produtos.take(5).map((p) => (p['nome'] ?? 'Produto').toString()).join(', ');
+    final nomes = produtos.take(5).map((p) => (p['nome'] ?• 'Produto').toString()).join(', ');
     return 'Olá! Vim pelo catálogo e gostaria de saber mais sobre: $nomes';
   }
 
@@ -85,7 +85,7 @@ class _CatalogChatWidgetState extends State<CatalogChatWidget> {
     final unicos = <Map<String, dynamic>>[];
     final ids = <String>{};
     for (final p in todosProdutos) {
-      final id = (p['id'] ?? p['nome'] ?? '').toString();
+      final id = (p['id'] ?• p['nome'] ?• '').toString();
       if (!ids.contains(id)) {
         ids.add(id);
         unicos.add(p);
@@ -93,14 +93,14 @@ class _CatalogChatWidgetState extends State<CatalogChatWidget> {
     }
     final produtosExibir = unicos.take(8).toList();
     final msg = resp.produtos.isNotEmpty
-        ? _montarMensagemWhatsapp(resp.produtos)
+        • _montarMensagemWhatsapp(resp.produtos)
         : null;
 
     setState(() {
       _mensagens.add(_Msg(
         isUser: false,
         texto: resp.texto,
-        produtos: produtosExibir.isNotEmpty ? produtosExibir : null,
+        produtos: produtosExibir.isNotEmpty • produtosExibir : null,
         mensagemWhatsapp: msg,
       ));
     });
@@ -190,7 +190,7 @@ class _CatalogChatWidgetState extends State<CatalogChatWidget> {
                     produtos: m.produtos,
                     whatsappPhone: widget.whatsappUrl,
                     mensagemWhatsapp: m.mensagemWhatsapp,
-                    onProdutoTap: m.produtos != null ? widget.onProdutoTap : null,
+                    onProdutoTap: m.produtos != null • widget.onProdutoTap : null,
                   );
                 },
               ),
@@ -245,8 +245,8 @@ class _CatalogChatWidgetState extends State<CatalogChatWidget> {
 class _Msg {
   final bool isUser;
   final String texto;
-  final List<Map<String, dynamic>>? produtos;
-  final String? mensagemWhatsapp;
+  final List<Map<String, dynamic>>• produtos;
+  final String• mensagemWhatsapp;
 
   _Msg({
     required this.isUser,

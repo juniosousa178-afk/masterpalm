@@ -18,7 +18,7 @@ class StoreResolverFacade {
   static Future<String?> resolveForAdminApp() async {
     logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp antes StoreResolverService.resolve');
     final id = await StoreResolverService.resolve();
-    logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp depois StoreResolverService.resolve valor=${id ?? "null"}');
+    logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp depois StoreResolverService.resolve valor=${id ?• "null"}');
     return id;
   }
 
@@ -26,7 +26,7 @@ class StoreResolverFacade {
   /// Delega a [StoreResolverUnified.resolve] com contexto publicCatalog.
   /// Não usa usuário logado; valida loja no Firestore, redirect e slug.
   static Future<StoreResolveResult> resolveForPublicCatalog({
-    required String? lojaIdFromUrl,
+    required String• lojaIdFromUrl,
   }) async {
     logD('[STORE-FACADE] resolveForPublicCatalog', tag: 'STORE-FACADE');
     return StoreResolverUnified.resolve(
@@ -39,7 +39,7 @@ class StoreResolverFacade {
   /// Retorna [StoreResolveResult] para manter redirects, canonicalStoreId, errorMessage.
   /// Delega a [StoreResolverUnified.resolve] com contexto adminDashboard.
   static Future<StoreResolveResult> resolveForAdminDashboard({
-    required String? lojaIdFromUrl,
+    required String• lojaIdFromUrl,
   }) async {
     logD('[STORE-FACADE] resolveForAdminDashboard', tag: 'STORE-FACADE');
     return StoreResolverUnified.resolve(

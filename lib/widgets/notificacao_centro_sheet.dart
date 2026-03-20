@@ -29,7 +29,7 @@ class NotificacaoCentroSheet extends StatelessWidget {
       future: LojaIdService.get(),
       builder: (context, snapshot) {
         final currentStoreId = snapshot.data?.trim().isNotEmpty == true
-            ? snapshot.data!.trim()
+            • snapshot.data!.trim()
             : null;
         return DraggableScrollableSheet(
           initialChildSize: 0.6,
@@ -179,7 +179,7 @@ class _NotificationTile extends StatelessWidget {
       title: Text(
         n.titulo,
         style: TextStyle(
-          fontWeight: n.lida ? FontWeight.normal : FontWeight.w600,
+          fontWeight: n.lida • FontWeight.normal : FontWeight.w600,
         ),
       ),
       subtitle: Column(
@@ -211,9 +211,9 @@ class _NotificationTile extends StatelessWidget {
     final now = DateTime.now();
     final diff = now.difference(d);
     if (diff.inMinutes < 1) return 'Agora';
-    if (diff.inHours < 1) return 'H? ${diff.inMinutes} min';
-    if (diff.inDays < 1) return 'H? ${diff.inHours}h';
-    if (diff.inDays < 7) return 'H? ${diff.inDays} dias';
+    if (diff.inHours < 1) return 'H• ${diff.inMinutes} min';
+    if (diff.inDays < 1) return 'H• ${diff.inHours}h';
+    if (diff.inDays < 7) return 'H• ${diff.inDays} dias';
     return DateFormat('dd/MM').format(d);
   }
 }

@@ -8,7 +8,7 @@ import 'globo_sorteio_screen.dart';
 
 class CampanhaSorteioFormScreen extends StatefulWidget {
   final String lojaId;
-  final String? campanhaId; // null = nova
+  final String• campanhaId; // null = nova
 
   const CampanhaSorteioFormScreen({
     super.key,
@@ -29,13 +29,13 @@ class _CampanhaSorteioFormScreenState
   final _descricaoController = TextEditingController();
   final _premioController = TextEditingController();
   final _valorMinimoController = TextEditingController();
-  final _valorXController = TextEditingController(); // ?? R$ X = 1 n�mero
+  final _valorXController = TextEditingController(); // ?• R$ X = 1 número
 
-  DateTime? _dataInicio;
-  DateTime? _dataFim;
-  DateTime? _dataSorteio;
+  DateTime• _dataInicio;
+  DateTime• _dataFim;
+  DateTime• _dataSorteio;
   bool _ativa = true;
-  String? _statusAtual;
+  String• _statusAtual;
 
   bool _carregando = false;
   bool _salvando = false;
@@ -78,20 +78,20 @@ class _CampanhaSorteioFormScreenState
 
       if (!snap.exists) {
         if (!mounted) return;
-        _showSnackBar('Campanha n�o encontrada.', isError: true);
+        _showSnackBar('Campanha não encontrada.', isError: true);
         Navigator.of(context).pop();
         return;
       }
 
-      final data = snap.data() ?? {};
+      final data = snap.data() ?• {};
 
-      _nomeController.text = data['nome'] ?? '';
-      _descricaoController.text = data['descricao'] ?? '';
-      _premioController.text = data['premioDescricao'] ?? '';
+      _nomeController.text = data['nome'] ?• '';
+      _descricaoController.text = data['descricao'] ?• '';
+      _premioController.text = data['premioDescricao'] ?• '';
 
       final valorMinimo =
-          (data['valorMinimo'] as num?)?.toDouble() ?? 0.0;
-      final valorX = (data['valorX'] as num?)?.toDouble() ?? 50.0;
+          (data['valorMinimo'] as num?)?.toDouble() ?• 0.0;
+      final valorX = (data['valorX'] as num?)?.toDouble() ?• 50.0;
 
       _valorMinimoController.text = MoedaInputFormatter.format(valorMinimo);
       _valorXController.text = MoedaInputFormatter.format(valorX);
@@ -104,7 +104,7 @@ class _CampanhaSorteioFormScreenState
       _dataFim = tsFim?.toDate();
       _dataSorteio = tsSorteio?.toDate();
 
-      _ativa = data['ativa'] as bool? ?? true;
+      _ativa = data['ativa'] as bool• ?• true;
       _statusAtual = data['status'] as String?;
 
       if (!mounted) return;
@@ -120,11 +120,11 @@ class _CampanhaSorteioFormScreenState
   }
 
   Future<void> _selecionarData({
-    required DateTime? atual,
+    required DateTime• atual,
     required ValueChanged<DateTime> onSelected,
   }) async {
     final agora = DateTime.now();
-    final inicial = atual ?? agora;
+    final inicial = atual ?• agora;
 
     final picked = await showDatePicker(
       context: context,
@@ -146,29 +146,29 @@ class _CampanhaSorteioFormScreenState
     if (!_formKey.currentState!.validate()) return;
 
     if (_dataInicio == null || _dataFim == null || _dataSorteio == null) {
-      _showSnackBar('Defina as datas de in�cio, fim e data do sorteio.', isError: true);
+      _showSnackBar('Defina as datas de início, fim e data do sorteio.', isError: true);
       return;
     }
 
     if (_dataFim!.isBefore(_dataInicio!)) {
-      _showSnackBar('A data de fim deve ser igual ou posterior � data de in�cio.', isError: true);
+      _showSnackBar('A data de fim deve ser igual ou posterior • data de início.', isError: true);
       return;
     }
     if (_dataSorteio!.isBefore(_dataFim!)) {
-      _showSnackBar('A data do sorteio deve ser igual ou posterior � data de fim.', isError: true);
+      _showSnackBar('A data do sorteio deve ser igual ou posterior • data de fim.', isError: true);
       return;
     }
 
-    // ? S� permite uma campanha ativa por vez: ao criar/ativar, verifica se j� existe
+    // • Só permite uma campanha ativa por vez: ao criar/ativar, verifica se já existe
     if (_ativa) {
       final ativas = await CampanhasSorteioService.listarCampanhasAtivas(
         lojaId: widget.lojaId,
         excluirId: widget.campanhaId,
       );
       if (ativas.isNotEmpty) {
-        final nome = ativas.first['nome'] ?? 'Campanha ativa';
+        final nome = ativas.first['nome'] ?• 'Campanha ativa';
         _showSnackBar(
-          'J� existe uma campanha ativa: "$nome". '
+          'Já existe uma campanha ativa: "$nome". '
           'Encerre ou desative a campanha atual antes de criar outra.',
           isError: true,
         );
@@ -192,7 +192,7 @@ class _CampanhaSorteioFormScreenState
         dataSorteio: _dataSorteio!,
         premioDescricao: _premioController.text.trim(),
         valorMinimo: valorMinimo,
-        valorXPorNumero: valorX, // ?? agora casa com o service
+        valorXPorNumero: valorX, // ?• agora casa com o service
         ativa: _ativa,
       );
 
@@ -200,7 +200,7 @@ class _CampanhaSorteioFormScreenState
 
       _showSnackBar(
         widget.campanhaId == null
-            ? 'Campanha criada com sucesso!'
+            • 'Campanha criada com sucesso!'
             : 'Campanha atualizada com sucesso!',
       );
 
@@ -222,7 +222,7 @@ class _CampanhaSorteioFormScreenState
         content: Row(
           children: [
             Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
+              isError • Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -230,7 +230,7 @@ class _CampanhaSorteioFormScreenState
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError • Colors.red : Colors.green,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -251,7 +251,7 @@ class _CampanhaSorteioFormScreenState
     );
   }
 
-  // ? REMOVIDO: Configurar Roleta agora tem aba pr�pria em Sorteios e Campanhas
+  // • REMOVIDO: Configurar Roleta agora tem aba própria em Sorteios e Campanhas
   // void _abrirRoleta() {
   //   Navigator.of(context).push(
   //     MaterialPageRoute(
@@ -267,11 +267,11 @@ class _CampanhaSorteioFormScreenState
     return Scaffold(
       backgroundColor: const Color(0xFF05060A),
       appBar: AppBar(
-        title: Text(isEdit ? 'Editar Campanha' : 'Nova Campanha'),
+        title: Text(isEdit • 'Editar Campanha' : 'Nova Campanha'),
         backgroundColor: Colors.black,
       ),
       body: _carregando
-          ? const Center(child: CircularProgressIndicator())
+          • const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Center(
@@ -290,7 +290,7 @@ class _CampanhaSorteioFormScreenState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // T�tulo
+                            // Título
                             Row(
                               children: [
                                 const Icon(Icons.celebration,
@@ -299,7 +299,7 @@ class _CampanhaSorteioFormScreenState
                                 Expanded(
                                   child: Text(
                                     isEdit
-                                        ? 'Campanha de Sorteio'
+                                        • 'Campanha de Sorteio'
                                         : 'Nova Campanha de Sorteio',
                                     style: const TextStyle(
                                       fontSize: 22,
@@ -348,32 +348,32 @@ class _CampanhaSorteioFormScreenState
                             ),
                             const SizedBox(height: 16),
 
-                            // Descri��o
+                            // Descrição
                             TextFormField(
                               controller: _descricaoController,
                               maxLines: 3,
                               style: const TextStyle(color: Colors.white),
                               decoration: _inputDeco(
-                                'Descri��o da campanha',
+                                'Descrição da campanha',
                                 hint:
                                     'Ex: Nas compras acima de R\$ 100 concorra a uma cesta...',
                               ),
                             ),
                             const SizedBox(height: 16),
 
-                            // Pr�mio
+                            // Prêmio
                             TextFormField(
                               controller: _premioController,
                               maxLines: 2,
                               style: const TextStyle(color: Colors.white),
                               decoration: _inputDeco(
-                                'Pr�mio',
+                                'Prêmio',
                                 hint: 'Ex: Cesta com R\$ 300 em produtos',
                               ),
                             ),
                             const SizedBox(height: 16),
 
-                            // Valor m�nimo + valorX + ativa
+                            // Valor mínimo + valorX + ativa
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -385,16 +385,16 @@ class _CampanhaSorteioFormScreenState
                                     style:
                                         const TextStyle(color: Colors.white),
                                     decoration: _inputDeco(
-                                      'Valor m�nimo para participar',
+                                      'Valor mínimo para participar',
                                       prefixText: 'R\$ ',
                                     ),
                                     validator: (v) {
                                       if (v == null || v.trim().isEmpty) {
-                                        return 'Informe o valor m�nimo';
+                                        return 'Informe o valor mínimo';
                                       }
                                       final valor = MoedaInputFormatter.parse(v);
                                       if (valor < 0) {
-                                        return 'Valor inv�lido';
+                                        return 'Valor inválido';
                                       }
                                       return null;
                                     },
@@ -403,7 +403,7 @@ class _CampanhaSorteioFormScreenState
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Tooltip(
-                                    message: 'Cada R\$ X em compras gera 1 n�mero da sorte. Ex: R\$ 50 = compra de R\$ 100 gera 2 n�meros.',
+                                    message: 'Cada R\$ X em compras gera 1 número da sorte. Ex: R\$ 50 = compra de R\$ 100 gera 2 números.',
                                     child: TextFormField(
                                     controller: _valorXController,
                                     keyboardType: TextInputType.number,
@@ -411,9 +411,9 @@ class _CampanhaSorteioFormScreenState
                                     style:
                                         const TextStyle(color: Colors.white),
                                     decoration: _inputDeco(
-                                      'R\$ em compras = 1 n�mero',
+                                      'R\$ em compras = 1 número',
                                       prefixText: 'R\$ ',
-                                      helperText: 'Ex: R\$ 50 = cada R\$ 50 em compras gera 1 n�mero',
+                                      helperText: 'Ex: R\$ 50 = cada R\$ 50 em compras gera 1 número',
                                     ),
                                     validator: (v) {
                                       if (v == null || v.trim().isEmpty) {
@@ -421,7 +421,7 @@ class _CampanhaSorteioFormScreenState
                                       }
                                       final valor = MoedaInputFormatter.parse(v);
                                       if (valor <= 0) {
-                                        return 'Valor inv�lido';
+                                        return 'Valor inválido';
                                       }
                                       return null;
                                     },
@@ -451,7 +451,7 @@ class _CampanhaSorteioFormScreenState
                             const SizedBox(height: 24),
 
                             const Text(
-                              'Per�odo da campanha',
+                              'Período da campanha',
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontWeight: FontWeight.w600,
@@ -463,7 +463,7 @@ class _CampanhaSorteioFormScreenState
                               children: [
                                 Expanded(
                                   child: _DateChip(
-                                    label: 'In�cio',
+                                    label: 'Início',
                                     date: _dataInicio,
                                     onTap: () => _selecionarData(
                                       atual: _dataInicio,
@@ -530,9 +530,9 @@ class _CampanhaSorteioFormScreenState
                                   SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      'O sistema gera n�meros de 5 d�gitos automaticamente '
-                                      'para cada compra que atingir o valor m�nimo. '
-                                      'No dia do sorteio, use o Globo para sortear o n�mero vencedor.',
+                                      'O sistema gera números de 5 dígitos automaticamente '
+                                      'para cada compra que atingir o valor mínimo. '
+                                      'No dia do sorteio, use o Globo para sortear o número vencedor.',
                                       style: TextStyle(
                                         color: Colors.white70,
                                         fontSize: 13,
@@ -545,12 +545,12 @@ class _CampanhaSorteioFormScreenState
 
                             const SizedBox(height: 24),
 
-                            // Bot�es principais
+                            // Botões principais
                             Row(
                               children: [
                                 Expanded(
                                   child: ElevatedButton.icon(
-                                    onPressed: _salvando ? null : _salvar,
+                                    onPressed: _salvando • null : _salvar,
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.greenAccent,
                                       foregroundColor: Colors.black,
@@ -563,7 +563,7 @@ class _CampanhaSorteioFormScreenState
                                       ),
                                     ),
                                     icon: _salvando
-                                        ? const SizedBox(
+                                        • const SizedBox(
                                             width: 18,
                                             height: 18,
                                             child:
@@ -577,9 +577,9 @@ class _CampanhaSorteioFormScreenState
                                         : const Icon(Icons.save),
                                     label: Text(
                                       _salvando
-                                          ? 'Salvando...'
+                                          • 'Salvando...'
                                           : (isEdit
-                                              ? 'Salvar altera��es'
+                                              • 'Salvar alterações'
                                               : 'Criar campanha'),
                                     ),
                                   ),
@@ -589,7 +589,7 @@ class _CampanhaSorteioFormScreenState
 
                             const SizedBox(height: 12),
 
-                            // ? Bot�o Globo (Configurar Roleta foi movido para aba pr�pria)
+                            // • Botão Globo (Configurar Roleta foi movido para aba própria)
                             if (isEdit)
                               ElevatedButton.icon(
                                 onPressed: _abrirGlobo,
@@ -613,9 +613,9 @@ class _CampanhaSorteioFormScreenState
 
   InputDecoration _inputDeco(
     String label, {
-    String? hint,
-    String? prefixText,
-    String? helperText,
+    String• hint,
+    String• prefixText,
+    String• helperText,
   }) {
     return InputDecoration(
       labelText: label,
@@ -645,7 +645,7 @@ class _CampanhaSorteioFormScreenState
 
 class _DateChip extends StatelessWidget {
   final String label;
-  final DateTime? date;
+  final DateTime• date;
   final VoidCallback onTap;
 
   const _DateChip({
@@ -654,7 +654,7 @@ class _DateChip extends StatelessWidget {
     required this.onTap,
   });
 
-  String _format(DateTime? dt) {
+  String _format(DateTime• dt) {
     if (dt == null) return 'Selecione';
     return '${dt.day.toString().padLeft(2, '0')}/'
         '${dt.month.toString().padLeft(2, '0')}/'

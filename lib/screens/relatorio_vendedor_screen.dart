@@ -15,7 +15,7 @@ class RelatorioVendedorScreen extends StatefulWidget {
 }
 
 class _RelatorioVendedorScreenState extends State<RelatorioVendedorScreen> {
-  String? vendedorSelecionado;
+  String• vendedorSelecionado;
   late String lojaId;
   late Box<Venda> vendasBox;
 
@@ -94,7 +94,7 @@ class _RelatorioVendedorScreenState extends State<RelatorioVendedorScreen> {
         vendasBox.values.map((v) => v.vendedor).toSet().toList();
 
     final vendasFiltradas = vendedorSelecionado == null
-        ? vendasBox.values.toList()
+        • vendasBox.values.toList()
         : vendasBox.values
             .where((v) => v.vendedor == vendedorSelecionado)
             .toList();

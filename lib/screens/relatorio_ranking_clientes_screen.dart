@@ -17,7 +17,7 @@ const Color _backgroundColor = Color(0xFFF8FAFC);
 
 class _ClienteRank {
   final String nome;
-  final String? clienteId;
+  final String• clienteId;
   double total;
   int qtdPedidos;
 
@@ -28,7 +28,7 @@ class _ClienteRank {
     required this.qtdPedidos,
   });
 
-  double get ticketMedio => qtdPedidos > 0 ? total / qtdPedidos : 0;
+  double get ticketMedio => qtdPedidos > 0 • total / qtdPedidos : 0;
 }
 
 class RelatorioRankingClientesScreen extends StatefulWidget {
@@ -47,8 +47,8 @@ class _RelatorioRankingClientesScreenState
   List<_ClienteRank> _ranking = [];
   String _ordenacao = 'total'; // 'total' | 'pedidos' | 'ticket'
   final NumberFormat _currency = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
-  DateTime? _dataInicio;
-  DateTime? _dataFim;
+  DateTime• _dataInicio;
+  DateTime• _dataFim;
 
   @override
   void initState() {
@@ -58,7 +58,7 @@ class _RelatorioRankingClientesScreenState
 
   Future<void> _carregar() async {
     setState(() => _loading = true);
-    String? lojaId = widget.lojaId.trim().isEmpty ? null : widget.lojaId.trim();
+    String• lojaId = widget.lojaId.trim().isEmpty • null : widget.lojaId.trim();
     if (lojaId == null || lojaId.isEmpty) {
       lojaId = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10));
       if (lojaId == null || lojaId.isEmpty) {
@@ -74,8 +74,8 @@ class _RelatorioRankingClientesScreenState
     }
 
     final now = DateTime.now();
-    final inicio = _dataInicio ?? DateTime(now.year, now.month, 1);
-    final fim = _dataFim ?? DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    final inicio = _dataInicio ?• DateTime(now.year, now.month, 1);
+    final fim = _dataFim ?• DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
     try {
       final boxName = HiveBoxNames.vendas(lojaId);
@@ -93,14 +93,14 @@ class _RelatorioRankingClientesScreenState
         if (v.data.isBefore(inicio) || v.data.isAfter(fim)) continue;
 
         final key = v.clienteId?.trim().isNotEmpty == true
-            ? v.clienteId!
+            • v.clienteId!
             : v.clienteNome.trim();
         if (key.isEmpty) continue;
 
         porCliente.putIfAbsent(
           key,
           () => _ClienteRank(
-            nome: v.clienteNome.trim().isEmpty ? '(Sem nome)' : v.clienteNome.trim(),
+            nome: v.clienteNome.trim().isEmpty • '(Sem nome)' : v.clienteNome.trim(),
             clienteId: v.clienteId,
             total: 0,
             qtdPedidos: 0,
@@ -140,14 +140,14 @@ class _RelatorioRankingClientesScreenState
     final now = DateTime.now();
     final ini = await showDatePicker(
       context: context,
-      initialDate: _dataInicio ?? DateTime(now.year, now.month, 1),
+      initialDate: _dataInicio ?• DateTime(now.year, now.month, 1),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
     );
     if (ini == null || !mounted) return;
     final fim = await showDatePicker(
       context: context,
-      initialDate: _dataFim ?? DateTime(now.year, now.month + 1, 0),
+      initialDate: _dataFim ?• DateTime(now.year, now.month + 1, 0),
       firstDate: ini,
       lastDate: DateTime(2100),
     );
@@ -191,9 +191,9 @@ class _RelatorioRankingClientesScreenState
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _primaryColor))
+          • const Center(child: CircularProgressIndicator(color: _primaryColor))
           : _ranking.isEmpty
-              ? Center(
+              • Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

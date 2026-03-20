@@ -106,12 +106,12 @@ class _VisualizarPermissoesScreenState
                 children: permissoes.entries.map((entry) {
                   return ListTile(
                     title: Text(
-                      nomes[entry.key] ?? entry.key,
+                      nomes[entry.key] ?• entry.key,
                       style: const TextStyle(color: Colors.white),
                     ),
                     trailing: Icon(
-                      entry.value ? Icons.check_circle : Icons.cancel_outlined,
-                      color: entry.value ? Colors.green : Colors.red,
+                      entry.value • Icons.check_circle : Icons.cancel_outlined,
+                      color: entry.value • Colors.green : Colors.red,
                     ),
                   );
                 }).toList(),

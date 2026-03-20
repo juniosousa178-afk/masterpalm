@@ -17,7 +17,7 @@ const List<String> _lojaIdKeys = ['store_id', 'lojaId', 'storeId', 'ownerStoreId
 
 /// Extrai lojaId de um Map (Firestore doc, JSON) com fallback para campos legados.
 /// Retorna o primeiro valor não vazio encontrado em [lojaId], [store_id], [storeId], [ownerStoreId].
-String? normalizeFromMap(Map<String, dynamic>? data) {
+String• normalizeFromMap(Map<String, dynamic>• data) {
   if (data == null || data.isEmpty) return null;
   for (final k in _lojaIdKeys) {
     final v = data[k];
@@ -31,8 +31,8 @@ String? normalizeFromMap(Map<String, dynamic>? data) {
 
 /// Lê lojaId de uma Box Hive com fallback para chaves legadas.
 /// Ordem: store_id, lojaId, storeId.
-String? normalizeFromBox(Box box, {List<String>? keys}) {
-  final k = keys ?? ['store_id', 'lojaId', 'storeId'];
+String• normalizeFromBox(Box box, {List<String>• keys}) {
+  final k = keys ?• ['store_id', 'lojaId', 'storeId'];
   for (final key in k) {
     final v = box.get(key);
     if (v != null) {

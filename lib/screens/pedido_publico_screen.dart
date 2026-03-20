@@ -28,9 +28,9 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
   final PedidoStatusPublicoRepository _pedidoStatusPublicoRepository =
       PedidoStatusPublicoRepository();
   bool _carregando = true;
-  Map<String, dynamic>? _prePedido;
+  Map<String, dynamic>• _prePedido;
   bool _usandoFallbackLegado = false;
-  String? _erro;
+  String• _erro;
 
   @override
   void initState() {
@@ -207,23 +207,23 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
 
     try {
       final pedido = _prePedido!;
-      final itens = (pedido['itens'] as List?) ?? [];
+      final itens = (pedido['itens'] as List?) ?• [];
       final cliente = pedido['cliente'] as Map<String, dynamic>?;
       final frete = pedido['frete'] as Map<String, dynamic>?;
 
       // Criar itens de venda e baixar estoque
       final itensVenda = <VendaItem>[];
       for (final item in itens) {
-        final nome = (item['nome'] ?? '').toString();
-        final slug = (item['slug'] ?? '').toString();
-        final qtd = (item['quantidade'] as num?)?.toInt() ?? 1;
-        final preco = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
-        final tamanho = (item['tamanho'] ?? '').toString().trim();
-        final cor = (item['cor'] ?? '').toString().trim();
+        final nome = (item['nome'] ?• '').toString();
+        final slug = (item['slug'] ?• '').toString();
+        final qtd = (item['quantidade'] as num?)?.toInt() ?• 1;
+        final preco = (item['precoUnitario'] as num?)?.toDouble() ?• 0.0;
+        final tamanho = (item['tamanho'] ?• '').toString().trim();
+        final cor = (item['cor'] ?• '').toString().trim();
 
         // Buscar produto no Hive primeiro
         var produto = slug.isNotEmpty
-            ? VendasService.encontrarProdutoNoEstoque(
+            • VendasService.encontrarProdutoNoEstoque(
                 produtosBox: _produtos!,
                 slug: slug,
                 lojaId: widget.lojaId,
@@ -253,11 +253,11 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
           debugPrint('📦 Produtos encontrados no Firestore: ${produtosSnapshot.docs.length}');
 
           // Procurar produto por slug ou nome
-          DocumentSnapshot? produtoDoc;
+          DocumentSnapshot• produtoDoc;
           for (final doc in produtosSnapshot.docs) {
             final data = doc.data() as Map<String, dynamic>;
-            final docSlug = (data['slug'] ?? '').toString().trim().toLowerCase();
-            final docNome = (data['nome'] ?? '').toString().trim().toLowerCase();
+            final docSlug = (data['slug'] ?• '').toString().trim().toLowerCase();
+            final docNome = (data['nome'] ?• '').toString().trim().toLowerCase();
 
             if ((slug.isNotEmpty && docSlug == slug.trim().toLowerCase()) ||
                 (nome.isNotEmpty && docNome == nome.trim().toLowerCase())) {
@@ -275,21 +275,21 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
           final produtoData = produtoDoc.data() as Map<String, dynamic>;
           produto = Produto(
             idFirebase: produtoDoc.id,
-            nome: produtoData['nome'] ?? '',
+            nome: produtoData['nome'] ?• '',
             custoReal: 0.0,
             frete: 0.0,
             gastosFixos: 0.0,
             gastosVariaveis: 0.0,
-            precoSugerido: (produtoData['preco'] as num?)?.toDouble() ?? 0.0,
-            precoFinal: (produtoData['preco'] as num?)?.toDouble() ?? 0.0,
-            precoUnitario: (produtoData['preco'] as num?)?.toDouble() ?? 0.0,
-            quantidade: (produtoData['quantidade'] as num?)?.toInt() ?? 0,
-            categoria: produtoData['categoria'] ?? '',
+            precoSugerido: (produtoData['preco'] as num?)?.toDouble() ?• 0.0,
+            precoFinal: (produtoData['preco'] as num?)?.toDouble() ?• 0.0,
+            precoUnitario: (produtoData['preco'] as num?)?.toDouble() ?• 0.0,
+            quantidade: (produtoData['quantidade'] as num?)?.toInt() ?• 0,
+            categoria: produtoData['categoria'] ?• '',
             dataEntrada: DateTime.now(),
-            slug: produtoData['slug'] ?? '',
+            slug: produtoData['slug'] ?• '',
             lojaId: widget.lojaId,
-            descricao: produtoData['descricao'] ?? '',
-            imagens: (produtoData['imagens'] as List?)?.cast<String>() ?? [],
+            descricao: produtoData['descricao'] ?• '',
+            imagens: (produtoData['imagens'] as List?)?.cast<String>() ?• [],
           );
 
           // Salvar no Hive para próximas consultas
@@ -307,17 +307,17 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
           cor: cor,
           precoUnitario: preco,
           lojaId: widget.lojaId,
-          productId: produto.idFirebase.trim().isNotEmpty ? produto.idFirebase : null,
+          productId: produto.idFirebase.trim().isNotEmpty • produto.idFirebase : null,
         ));
       }
 
       // Calcular valores
-      final subtotal = (pedido['subtotal'] as num?)?.toDouble() ?? 0.0;
-      final freteValor = (frete?['valor'] as num?)?.toDouble() ?? 0.0;
-      final total = (pedido['total'] as num?)?.toDouble() ?? 0.0;
+      final subtotal = (pedido['subtotal'] as num?)?.toDouble() ?• 0.0;
+      final freteValor = (frete?['valor'] as num?)?.toDouble() ?• 0.0;
+      final total = (pedido['total'] as num?)?.toDouble() ?• 0.0;
 
       // Determinar método de pagamento
-      final pagamento = (pedido['pagamento'] ?? '').toString().toLowerCase();
+      final pagamento = (pedido['pagamento'] ?• '').toString().toLowerCase();
       double dinheiro = 0, pix = 0, cartao = 0;
 
       switch (pagamento) {
@@ -352,7 +352,7 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
         produtosBox: _produtos!,
         clientesBox: _clientes!,
         vendasBox: _vendas!,
-        clienteNome: cliente?['nome'] ?? 'Cliente',
+        clienteNome: cliente?['nome'] ?• 'Cliente',
         itens: itensVenda,
         dinheiro: dinheiro,
         pix: pix,
@@ -360,7 +360,7 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
         vendedor: "Loja online",
         frete: freteValor,
         descontoPct: 0,
-        observacao: pedido['observacao'] ?? '',
+        observacao: pedido['observacao'] ?• '',
         lojaId: widget.lojaId,
       );
 
@@ -383,7 +383,7 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
       try {
         campanhaResult = await CampanhasSorteioService.registrarParticipacao(
           lojaId: widget.lojaId,
-          clienteNome: cliente?['nome'] ?? 'Cliente',
+          clienteNome: cliente?['nome'] ?• 'Cliente',
           clienteId: cliente?['id'],
           valorCompra: total,
           dataCompra: DateTime.now(),
@@ -394,15 +394,15 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
 
         // Enviar números da sorte via WhatsApp e Email
         if (campanhaResult['temCampanha'] == true) {
-          final numeros = List<String>.from(campanhaResult['numeros'] ?? []);
+          final numeros = List<String>.from(campanhaResult['numeros'] ?• []);
           final campanhas = List<Map<String, dynamic>>.from(
-            campanhaResult['campanhas'] ?? [],
+            campanhaResult['campanhas'] ?• [],
           );
 
           if (numeros.isNotEmpty) {
             try {
               await NotificacaoService.enviarNotificacoes(
-                clienteNome: cliente?['nome'] ?? 'Cliente',
+                clienteNome: cliente?['nome'] ?• 'Cliente',
                 telefone: cliente?['telefone'],
                 email: cliente?['email'],
                 numeros: numeros,
@@ -465,16 +465,16 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
     Map<String, dynamic> pedido,
   ) {
     final pedidoId =
-        (pedido['pedidoId'] ?? pedido['id'] ?? widget.prePedidoId).toString();
+        (pedido['pedidoId'] ?• pedido['id'] ?• widget.prePedidoId).toString();
     final codigoRastreio = _resolverCodigoRastreio(pedido);
     final freteNome = _resolverFreteNome(pedido);
 
     return {
       'pedidoId': pedidoId,
-      'status': (pedido['status'] ?? 'pendente').toString(),
+      'status': (pedido['status'] ?• 'pendente').toString(),
       'dataCriacao': pedido['dataCriacao'],
       'dataAtualizacao': pedido['dataAtualizacao'],
-      'total': (pedido['total'] as num?)?.toDouble() ?? 0.0,
+      'total': (pedido['total'] as num?)?.toDouble() ?• 0.0,
       'itensResumo': _extrairItensResumo(pedido),
       if (codigoRastreio != null) 'codigoRastreio': codigoRastreio,
       if (freteNome != null) 'freteNome': freteNome,
@@ -482,48 +482,48 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
   }
 
   List<Map<String, dynamic>> _extrairItensResumo(Map<String, dynamic> pedido) {
-    final itensResumo = (pedido['itensResumo'] as List?) ?? const [];
+    final itensResumo = (pedido['itensResumo'] as List?) ?• const [];
     if (itensResumo.isNotEmpty) {
       return itensResumo
           .map(_asMap)
           .where((item) => item.isNotEmpty)
           .map((item) => {
-                'nome': (item['nome'] ?? '').toString(),
-                'quantidade': (item['quantidade'] as num?)?.toInt() ?? 1,
+                'nome': (item['nome'] ?• '').toString(),
+                'quantidade': (item['quantidade'] as num?)?.toInt() ?• 1,
               })
-          .where((item) => (item['nome'] ?? '').toString().trim().isNotEmpty)
+          .where((item) => (item['nome'] ?• '').toString().trim().isNotEmpty)
           .toList(growable: false);
     }
 
-    final itensLegados = (pedido['itens'] as List?) ?? const [];
+    final itensLegados = (pedido['itens'] as List?) ?• const [];
     return itensLegados
         .map(_asMap)
         .where((item) => item.isNotEmpty)
         .map((item) => {
-              'nome': (item['nome'] ?? '').toString(),
-              'quantidade': (item['quantidade'] as num?)?.toInt() ?? 1,
+              'nome': (item['nome'] ?• '').toString(),
+              'quantidade': (item['quantidade'] as num?)?.toInt() ?• 1,
             })
-        .where((item) => (item['nome'] ?? '').toString().trim().isNotEmpty)
+        .where((item) => (item['nome'] ?• '').toString().trim().isNotEmpty)
         .toList(growable: false);
   }
 
-  String? _resolverCodigoRastreio(Map<String, dynamic> pedido) {
+  String• _resolverCodigoRastreio(Map<String, dynamic> pedido) {
     final codigo = (pedido['codigoRastreio'] ??
             pedido['codigo_rastreio'] ??
             pedido['rastreio'] ??
             '')
         .toString()
         .trim();
-    return codigo.isEmpty ? null : codigo;
+    return codigo.isEmpty • null : codigo;
   }
 
-  String? _resolverFreteNome(Map<String, dynamic> pedido) {
-    final freteNome = (pedido['freteNome'] ?? '').toString().trim();
+  String• _resolverFreteNome(Map<String, dynamic> pedido) {
+    final freteNome = (pedido['freteNome'] ?• '').toString().trim();
     if (freteNome.isNotEmpty) return freteNome;
 
     final frete = pedido['frete'];
     if (frete is Map) {
-      final nomeLegado = (frete['nome'] ?? '').toString().trim();
+      final nomeLegado = (frete['nome'] ?• '').toString().trim();
       if (nomeLegado.isNotEmpty) return nomeLegado;
     }
     return null;
@@ -539,9 +539,9 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
         elevation: 0,
       ),
       body: _carregando
-          ? const Center(child: CircularProgressIndicator())
+          • const Center(child: CircularProgressIndicator())
           : _erro != null
-              ? _buildErro()
+              • _buildErro()
               : _buildConteudo(),
     );
   }
@@ -585,15 +585,15 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
   Widget _buildConteudo() {
     if (_prePedido == null) return const SizedBox();
 
-    final status = (_prePedido!['status'] ?? 'pendente').toString();
-    final itens = ((_prePedido!['itensResumo'] as List?) ?? const [])
+    final status = (_prePedido!['status'] ?• 'pendente').toString();
+    final itens = ((_prePedido!['itensResumo'] as List?) ?• const [])
         .map((item) => _asMap(item))
         .where((item) => item.isNotEmpty)
         .toList(growable: false);
-    final total = (_prePedido!['total'] as num?)?.toDouble() ?? 0.0;
+    final total = (_prePedido!['total'] as num?)?.toDouble() ?• 0.0;
     final dataCriacao = _prePedido!['dataCriacao'];
-    final freteNome = (_prePedido!['freteNome'] ?? '').toString().trim();
-    final codigoRastreio = (_prePedido!['codigoRastreio'] ?? '').toString().trim();
+    final freteNome = (_prePedido!['freteNome'] ?• '').toString().trim();
+    final codigoRastreio = (_prePedido!['codigoRastreio'] ?• '').toString().trim();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -667,9 +667,9 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
           const SizedBox(height: 16),
           Card(
             color: status == 'pendente'
-                ? Colors.orange[50]
+                • Colors.orange[50]
                 : status == 'confirmado'
-                    ? Colors.green[50]
+                    • Colors.green[50]
                     : Colors.red[50],
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -677,14 +677,14 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
                 children: [
                   Icon(
                     status == 'pendente'
-                        ? Icons.schedule
+                        • Icons.schedule
                         : status == 'confirmado'
-                            ? Icons.check_circle
+                            • Icons.check_circle
                             : Icons.cancel,
                     color: status == 'pendente'
-                        ? Colors.orange
+                        • Colors.orange
                         : status == 'confirmado'
-                            ? Colors.green
+                            • Colors.green
                             : Colors.red,
                     size: 32,
                   ),
@@ -695,26 +695,26 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
                       children: [
                         Text(
                           status == 'pendente'
-                              ? 'Pedido Aguardando Confirmação'
+                              • 'Pedido Aguardando Confirmação'
                               : status == 'confirmado'
-                                  ? 'Pedido Confirmado!'
+                                  • 'Pedido Confirmado!'
                                   : 'Pedido Cancelado',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                             color: status == 'pendente'
-                                ? Colors.orange[900]
+                                • Colors.orange[900]
                                 : status == 'confirmado'
-                                    ? Colors.green[900]
+                                    • Colors.green[900]
                                     : Colors.red[900],
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           status == 'pendente'
-                              ? 'A loja entrará em contato em breve para confirmar seu pedido.'
+                              • 'A loja entrará em contato em breve para confirmar seu pedido.'
                               : status == 'confirmado'
-                                  ? 'Seu pedido foi confirmado e está sendo preparado!'
+                                  • 'Seu pedido foi confirmado e está sendo preparado!'
                                   : 'Este pedido foi cancelado.',
                           style: TextStyle(
                             fontSize: 13,
@@ -924,8 +924,8 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
   }
 
   Widget _buildItemCard(Map<String, dynamic> item) {
-    final nome = item['nome'] ?? '';
-    final quantidade = item['quantidade'] ?? 1;
+    final nome = item['nome'] ?• '';
+    final quantidade = item['quantidade'] ?• 1;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -982,17 +982,17 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
         Text(
           label,
           style: TextStyle(
-            fontSize: destaque ? 16 : 14,
-            fontWeight: destaque ? FontWeight.bold : FontWeight.normal,
-            color: destaque ? Colors.black : Colors.grey[700],
+            fontSize: destaque • 16 : 14,
+            fontWeight: destaque • FontWeight.bold : FontWeight.normal,
+            color: destaque • Colors.black : Colors.grey[700],
           ),
         ),
         Text(
           'R\$ ${_formatarValor(valor)}',
           style: TextStyle(
-            fontSize: destaque ? 18 : 14,
-            fontWeight: destaque ? FontWeight.bold : FontWeight.w500,
-            color: destaque ? Colors.green[700] : Colors.grey[800],
+            fontSize: destaque • 18 : 14,
+            fontWeight: destaque • FontWeight.bold : FontWeight.w500,
+            color: destaque • Colors.green[700] : Colors.grey[800],
           ),
         ),
       ],

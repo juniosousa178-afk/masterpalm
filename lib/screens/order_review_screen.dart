@@ -27,7 +27,7 @@ import '../services/vendas_service.dart';
 
 class OrderReviewScreen extends StatefulWidget {
   final String orderId;
-  final String? lojaId; // opcional (?loja= no link)
+  final String• lojaId; // opcional (?loja= no link)
 
   const OrderReviewScreen({
     super.key,
@@ -41,11 +41,11 @@ class OrderReviewScreen extends StatefulWidget {
 
 class _OrderReviewScreenState extends State<OrderReviewScreen> {
   final PedidoRepository _pedidoRepository = PedidoRepository();
-  Map<String, dynamic>? _order;
-  Box<Produto>? _produtos;
-  Box<Cliente>? _clientes;
-  Box<Venda>? _vendas;
-  Box? _config;
+  Map<String, dynamic>• _order;
+  Box<Produto>• _produtos;
+  Box<Cliente>• _clientes;
+  Box<Venda>• _vendas;
+  Box• _config;
   bool _loading = true;
 
   @override
@@ -63,7 +63,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
       }
     }
 
-    Map<String, dynamic>? o;
+    Map<String, dynamic>• o;
 
     // 1) Carrega pedido primeiro (para resolver lojaId)
     try {
@@ -72,7 +72,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
       debugPrint('OrderReviewScreen: TempOrderService.get falhou (type=${e.runtimeType})');
     }
 
-    if (o == null && (widget.lojaId?.isNotEmpty ?? false)) {
+    if (o == null && (widget.lojaId?.isNotEmpty ?• false)) {
       try {
         o = await _pedidoRepository.getTempPedidoById(
           pedidoId: widget.orderId,
@@ -84,8 +84,8 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
     }
 
     // 2) Resolve lojaId para usar boxes corretas (multi-loja)
-    String? lojaId = widget.lojaId?.trim().isNotEmpty == true
-        ? widget.lojaId!.trim()
+    String• lojaId = widget.lojaId?.trim().isNotEmpty == true
+        • widget.lojaId!.trim()
         : (o?['lojaId']?.toString().trim());
     if (lojaId == null || lojaId.isEmpty) {
       try {
@@ -138,28 +138,28 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
 
   // ---------------- Helpers numéricos e imagens ----------------
 
-  static bool _isHttpImage(String? v) =>
+  static bool _isHttpImage(String• v) =>
       v != null &&
       v.isNotEmpty &&
       (v.startsWith('http://') || v.startsWith('https://'));
 
   static double _numAsDouble(dynamic v) =>
-      (v is num) ? v.toDouble() : double.tryParse('$v') ?? 0.0;
+      (v is num) • v.toDouble() : double.tryParse('$v') ?• 0.0;
 
   static int _numAsInt(dynamic v) =>
-      (v is num) ? v.toInt() : int.tryParse('$v') ?? 1;
+      (v is num) • v.toInt() : int.tryParse('$v') ?• 1;
 
   double _subtotal() {
-    final items = (_order?['items'] as List?) ?? const [];
+    final items = (_order?['items'] as List?) ?• const [];
     return items.fold<double>(0.0, (s, it) {
-      final preco = _numAsDouble(it['preco'] ?? it['price'] ?? 0);
-      final qtd = _numAsInt(it['qtd'] ?? it['qty'] ?? 1);
+      final preco = _numAsDouble(it['preco'] ?• it['price'] ?• 0);
+      final qtd = _numAsInt(it['qtd'] ?• it['qty'] ?• 1);
       return s + (preco * qtd);
     });
   }
 
   double _freteValor() => _numAsDouble(_order?['frete']?['valor']);
-  String _freteNome() => (_order?['frete']?['nome']?.toString() ?? 'Entrega');
+  String _freteNome() => (_order?['frete']?['nome']?.toString() ?• 'Entrega');
 
   // ---------------- WhatsApp ----------------
 
@@ -189,15 +189,15 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
   List<Map<String, dynamic>> _itensComEstoqueInsuficiente() {
     if (_order == null || _produtos == null) return const [];
     final items =
-        List<Map<String, dynamic>>.from(_order!['items'] as List? ?? []);
+        List<Map<String, dynamic>>.from(_order!['items'] as List• ?• []);
     final insuficientes = <Map<String, dynamic>>[];
 
     for (final it in items) {
-      final nome = (it['nome'] ?? it['product'] ?? '').toString();
+      final nome = (it['nome'] ?• it['product'] ?• '').toString();
       if (nome.isEmpty) continue;
 
-      final qtd = _numAsInt(it['qtd'] ?? it['qty'] ?? 1);
-      final tam = (it['tamanho']?.toString() ?? '').trim().toLowerCase();
+      final qtd = _numAsInt(it['qtd'] ?• it['qty'] ?• 1);
+      final tam = (it['tamanho']?.toString() ?• '').trim().toLowerCase();
 
       final prod = _produtos!.values.firstWhere(
         (p) => p.nome.trim().toLowerCase() == nome.trim().toLowerCase(),
@@ -219,7 +219,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
       final disponivel = prod.quantidade; // se não existir, será 0
       if (disponivel < qtd) {
         insuficientes.add({
-          'nome': prod.nome.isNotEmpty ? prod.nome : nome,
+          'nome': prod.nome.isNotEmpty • prod.nome : nome,
           'tamanho': tam,
           'solicitado': qtd,
           'disponivel': disponivel,
@@ -248,7 +248,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
             ...faltas.map((f) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
-                    '- ${f['nome']}${(f['tamanho'] as String).isEmpty ? '' : ' (tam. ${f['tamanho']})'}: '
+                    '- ${f['nome']}${(f['tamanho'] as String).isEmpty • '' : ' (tam. ${f['tamanho']})'}: '
                     'solicitado ${f['solicitado']}, disponível ${f['disponivel']}',
                   ),
                 )),
@@ -274,25 +274,25 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
     }
 
     final items =
-        List<Map<String, dynamic>>.from((_order!['items'] as List?) ?? []);
-    final pagamento = _order!['pagamento']?.toString() ?? 'Dinheiro';
+        List<Map<String, dynamic>>.from((_order!['items'] as List?) ?• []);
+    final pagamento = _order!['pagamento']?.toString() ?• 'Dinheiro';
     final clienteMap =
-        Map<String, dynamic>.from(_order!['cliente'] as Map? ?? {});
-    final clienteNome = clienteMap['nome']?.toString() ?? 'Cliente (Link)';
-    final endereco = clienteMap['endereco']?.toString() ?? '';
-    final telefone = clienteMap['telefone']?.toString() ?? '';
+        Map<String, dynamic>.from(_order!['cliente'] as Map• ?• {});
+    final clienteNome = clienteMap['nome']?.toString() ?• 'Cliente (Link)';
+    final endereco = clienteMap['endereco']?.toString() ?• '';
+    final telefone = clienteMap['telefone']?.toString() ?• '';
     final freteNome = _freteNome();
     final freteVal = _freteValor();
 
     // Monta itens respeitando cadastro local quando existir
     final vendaItens = <VendaItem>[];
     for (final it in items) {
-      final nome = (it['nome'] ?? it['product'] ?? '').toString();
+      final nome = (it['nome'] ?• it['product'] ?• '').toString();
       if (nome.isEmpty) continue;
 
-      final qtd = _numAsInt(it['qtd'] ?? it['qty'] ?? 1);
-      final preco = _numAsDouble(it['preco'] ?? it['price'] ?? 0);
-      final tam = (it['tamanho']?.toString() ?? '');
+      final qtd = _numAsInt(it['qtd'] ?• it['qty'] ?• 1);
+      final preco = _numAsDouble(it['preco'] ?• it['price'] ?• 0);
+      final tam = (it['tamanho']?.toString() ?• '');
 
       final prod = _produtos!.values.firstWhere(
         (p) => p.nome.trim().toLowerCase() == nome.trim().toLowerCase(),
@@ -312,13 +312,13 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
       );
 
       vendaItens.add(VendaItem(
-        produtoNome: prod.nome.isNotEmpty ? prod.nome : nome,
+        produtoNome: prod.nome.isNotEmpty • prod.nome : nome,
         quantidade: qtd,
         precoUnitario: prod.precoFinal > 0
-            ? prod.precoFinal
-            : (prod.precoUnitario > 0 ? prod.precoUnitario : preco),
+            • prod.precoFinal
+            : (prod.precoUnitario > 0 • prod.precoUnitario : preco),
         tamanho: tam,
-        productId: prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null,
+        productId: prod.idFirebase.trim().isNotEmpty • prod.idFirebase : null,
       ));
     }
 
@@ -339,7 +339,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
 
     // Salva venda completa (estoque, histórico, totais, etc.)
     try {
-      String? lojaId = widget.lojaId;
+      String• lojaId = widget.lojaId;
       if (lojaId == null || lojaId.trim().isEmpty) {
         lojaId = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10));
       }
@@ -417,7 +417,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
 
     // Abre WhatsApp com resumo (se configurado)
     final receiver =
-        (_config!.get('whatsapp_phone') ?? _config!.get('whatsapp') ?? '')
+        (_config!.get('whatsapp_phone') ?• _config!.get('whatsapp') ?• '')
             .toString();
     if (receiver.isNotEmpty) {
       final resumo = StringBuffer()
@@ -505,8 +505,8 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
     }
 
     final items =
-        List<Map<String, dynamic>>.from((_order!['items'] as List?) ?? []);
-    final cliente = Map<String, dynamic>.from(_order!['cliente'] as Map? ?? {});
+        List<Map<String, dynamic>>.from((_order!['items'] as List?) ?• []);
+    final cliente = Map<String, dynamic>.from(_order!['cliente'] as Map• ?• {});
     final total = _subtotal() + _freteValor();
     final temFalta = _temEstoqueInsuficiente;
 
@@ -532,7 +532,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
                     ),
                     const SizedBox(height: 6),
                     ..._itensComEstoqueInsuficiente().map((f) => Text(
-                          '- ${f['nome']}${(f['tamanho'] as String).isEmpty ? '' : ' (tam. ${f['tamanho']})'}: '
+                          '- ${f['nome']}${(f['tamanho'] as String).isEmpty • '' : ' (tam. ${f['tamanho']})'}: '
                           'solicitado ${f['solicitado']}, disponível ${f['disponivel']}',
                           style: const TextStyle(color: Colors.red),
                         )),
@@ -544,10 +544,10 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
           const SizedBox(height: 8),
           ...items.map((it) {
             final img = it['img']?.toString();
-            final nome = (it['nome'] ?? it['product'] ?? '').toString();
-            final qtd = _numAsInt(it['qtd'] ?? it['qty'] ?? 1);
-            final preco = _numAsDouble(it['preco'] ?? it['price'] ?? 0);
-            final tamanho = (it['tamanho']?.toString() ?? '');
+            final nome = (it['nome'] ?• it['product'] ?• '').toString();
+            final qtd = _numAsInt(it['qtd'] ?• it['qty'] ?• 1);
+            final preco = _numAsDouble(it['preco'] ?• it['price'] ?• 0);
+            final tamanho = (it['tamanho']?.toString() ?• '');
 
             Widget leading;
             if (img == null || img.isEmpty) {
@@ -575,7 +575,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
               leading: leading,
               title: Text(nome),
               subtitle: Text(
-                '${tamanho.isEmpty ? '' : 'Tam.: $tamanho  •  '}R\$ ${preco.toStringAsFixed(2)}',
+                '${tamanho.isEmpty • '' : 'Tam.: $tamanho  •  '}R\$ ${preco.toStringAsFixed(2)}',
               ),
               trailing: Text('x$qtd'),
               contentPadding: const EdgeInsets.symmetric(horizontal: 8),
@@ -588,9 +588,9 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           const Text('Cliente', style: TextStyle(fontWeight: FontWeight.bold)),
-          Text('Nome: ${cliente['nome'] ?? ''}'),
-          Text('Telefone: ${cliente['telefone'] ?? ''}'),
-          Text('Endereço: ${cliente['endereco'] ?? ''}'),
+          Text('Nome: ${cliente['nome'] ?• ''}'),
+          Text('Telefone: ${cliente['telefone'] ?• ''}'),
+          Text('Endereço: ${cliente['endereco'] ?• ''}'),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -603,7 +603,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: temFalta ? null : _finalizar,
+                  onPressed: temFalta • null : _finalizar,
                   child: const Text('Finalizar venda'),
                 ),
               ),

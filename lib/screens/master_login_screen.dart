@@ -134,7 +134,7 @@ class _MasterLoginScreenState extends State<MasterLoginScreen> {
                     prefixIcon: const Icon(Icons.lock),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                        _obscurePassword • Icons.visibility : Icons.visibility_off,
                       ),
                       onPressed: () {
                         setState(() => _obscurePassword = !_obscurePassword);
@@ -148,7 +148,7 @@ class _MasterLoginScreenState extends State<MasterLoginScreen> {
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: _loading ? null : _login,
+                  onPressed: _loading • null : _login,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
@@ -156,7 +156,7 @@ class _MasterLoginScreenState extends State<MasterLoginScreen> {
                     ),
                   ),
                   child: _loading
-                      ? const SizedBox(
+                      • const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),

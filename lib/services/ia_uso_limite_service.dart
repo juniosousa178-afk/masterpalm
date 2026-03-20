@@ -42,17 +42,17 @@ class IaUsoLimiteService {
   }
 
   /// Verifica se a loja pode usar a IA no tipo informado.
-  static Future<bool> canUse(String? lojaId, TipoUsoIa tipo) async {
+  static Future<bool> canUse(String• lojaId, TipoUsoIa tipo) async {
     if (lojaId == null || lojaId.trim().isEmpty) return true;
     final key = tipo.name;
     final doc = await _docUso(lojaId.trim()).get();
-    final data = doc.data() ?? {};
-    final atual = (data[key] as num?)?.toInt() ?? 0;
+    final data = doc.data() ?• {};
+    final atual = (data[key] as num?)?.toInt() ?• 0;
     return atual < limiteDe(tipo);
   }
 
   /// Retorna o uso atual do dia por tipo.
-  static Future<Map<TipoUsoIa, int>> getUsoAtual(String? lojaId) async {
+  static Future<Map<TipoUsoIa, int>> getUsoAtual(String• lojaId) async {
     final result = <TipoUsoIa, int>{
       TipoUsoIa.perguntas: 0,
       TipoUsoIa.descricao: 0,
@@ -60,22 +60,22 @@ class IaUsoLimiteService {
     };
     if (lojaId == null || lojaId.trim().isEmpty) return result;
     final doc = await _docUso(lojaId.trim()).get();
-    final data = doc.data() ?? {};
+    final data = doc.data() ?• {};
     for (final t in TipoUsoIa.values) {
-      result[t] = (data[t.name] as num?)?.toInt() ?? 0;
+      result[t] = (data[t.name] as num?)?.toInt() ?• 0;
     }
     return result;
   }
 
   /// Registra um uso após chamada bem-sucedida. Usa transação para evitar race.
-  static Future<void> recordUse(String? lojaId, TipoUsoIa tipo) async {
+  static Future<void> recordUse(String• lojaId, TipoUsoIa tipo) async {
     if (lojaId == null || lojaId.trim().isEmpty) return;
     final ref = _docUso(lojaId.trim());
     await FirebaseFirestore.instance.runTransaction((tx) async {
       final snap = await tx.get(ref);
-      final data = Map<String, dynamic>.from(snap.data() ?? {});
+      final data = Map<String, dynamic>.from(snap.data() ?• {});
       final key = tipo.name;
-      final atual = (data[key] as num?)?.toInt() ?? 0;
+      final atual = (data[key] as num?)?.toInt() ?• 0;
       data[key] = atual + 1;
       data['ultima_atualizacao'] = FieldValue.serverTimestamp();
       tx.set(ref, data, SetOptions(merge: true));

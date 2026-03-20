@@ -12,7 +12,7 @@ class Subcategoria extends HiveObject {
   String categoriaId;
 
   @HiveField(2)
-  String? icone;
+  String• icone;
 
   @HiveField(3)
   bool ativa;
@@ -25,8 +25,8 @@ class Subcategoria extends HiveObject {
     required this.categoriaId,
     this.icone,
     this.ativa = true,
-    DateTime? dataCriacao,
-  }) : dataCriacao = dataCriacao ?? DateTime.now();
+    DateTime• dataCriacao,
+  }) : dataCriacao = dataCriacao ?• DateTime.now();
 
   Map<String, dynamic> toMap() {
     return {
@@ -40,12 +40,12 @@ class Subcategoria extends HiveObject {
 
   factory Subcategoria.fromMap(Map<String, dynamic> map) {
     return Subcategoria(
-      nome: map['nome'] ?? '',
-      categoriaId: map['categoriaId'] ?? '',
+      nome: map['nome'] ?• '',
+      categoriaId: map['categoriaId'] ?• '',
       icone: map['icone'],
-      ativa: map['ativa'] ?? true,
+      ativa: map['ativa'] ?• true,
       dataCriacao: map['dataCriacao'] != null
-          ? DateTime.parse(map['dataCriacao'])
+          • DateTime.parse(map['dataCriacao'])
           : DateTime.now(),
     );
   }

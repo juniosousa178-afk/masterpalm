@@ -13,9 +13,9 @@ import 'notificacao_centro_service.dart';
 import 'site_config_service.dart';
 
 class FcmPedidoService {
-  static GlobalKey<NavigatorState>? _navKey;
+  static GlobalKey<NavigatorState>• _navKey;
   static bool _inicializado = false;
-  static RemoteMessage? _pendingInitialMessage;
+  static RemoteMessage• _pendingInitialMessage;
   static const String _topicAppUpdates = 'masterpalm_app_updates';
 
   static void setNavigatorKey(GlobalKey<NavigatorState> key) {
@@ -32,23 +32,23 @@ class FcmPedidoService {
   }
 
   static void _handleMessage(RemoteMessage message) {
-    final type = (message.data['type'] ?? '').toString();
+    final type = (message.data['type'] ?• '').toString();
     if (type == 'app_update') {
       _aoClicarNotificacaoAtualizacao();
       return;
     }
     // Novo pedido: adicionar ao centro de notificações (por loja)
-    final lojaId = (message.data['lojaId'] ?? message.data['storeId'] ?? '').toString();
-    final pedidoId = (message.data['pedidoId'] ?? '').toString();
-    final titulo = (message.notification?.title ?? message.data['title'] ?? 'Novo pedido').toString();
-    final corpo = (message.notification?.body ?? message.data['body'] ?? 'Você recebeu um novo pedido.').toString();
+    final lojaId = (message.data['lojaId'] ?• message.data['storeId'] ?• '').toString();
+    final pedidoId = (message.data['pedidoId'] ?• '').toString();
+    final titulo = (message.notification?.title ?• message.data['title'] ?• 'Novo pedido').toString();
+    final corpo = (message.notification?.body ?• message.data['body'] ?• 'Você recebeu um novo pedido.').toString();
     NotificacaoCentroService().add(
       titulo: titulo,
       corpo: corpo,
       tipo: TipoNotificacaoCentro.novoPedido,
       acaoRota: '/pedidos',
-      acaoArgs: lojaId.isNotEmpty ? {'lojaId': lojaId, 'pedidoId': pedidoId.isNotEmpty ? pedidoId : null} : null,
-      storeId: lojaId.isNotEmpty ? lojaId : null,
+      acaoArgs: lojaId.isNotEmpty • {'lojaId': lojaId, 'pedidoId': pedidoId.isNotEmpty • pedidoId : null} : null,
+      storeId: lojaId.isNotEmpty • lojaId : null,
     );
     _abrirTelaPedidos(message);
   }
@@ -83,7 +83,7 @@ class FcmPedidoService {
   }
 
   static Future<void> _adicionarNotificacaoAtualizacaoComUrl() async {
-    String? downloadUrl;
+    String• downloadUrl;
     try {
       final config = await SiteConfigService.load();
       final url = (config.apkDownloadUrl).trim();
@@ -93,7 +93,7 @@ class FcmPedidoService {
       titulo: 'Atualização disponível',
       corpo: 'Uma nova versão do MasterPalm está disponível. Toque para ir ao site e baixar.',
       tipo: TipoNotificacaoCentro.atualizacaoApk,
-      acaoArgs: downloadUrl != null ? {'url': downloadUrl} : null,
+      acaoArgs: downloadUrl != null • {'url': downloadUrl} : null,
     );
   }
 
@@ -131,7 +131,7 @@ class FcmPedidoService {
 
       // App em primeiro plano: notificação de atualização → adicionar ao centro e mostrar diálogo
       FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
-        if ((msg.data['type'] ?? '').toString() == 'app_update') {
+        if ((msg.data['type'] ?• '').toString() == 'app_update') {
           _mostrarDialogoAtualizacao();
         }
       });
@@ -166,10 +166,10 @@ class FcmPedidoService {
   }
 
   static void _abrirTelaPedidos(RemoteMessage message) {
-    final lojaId = (message.data['lojaId'] ?? message.data['storeId'] ?? '').toString();
+    final lojaId = (message.data['lojaId'] ?• message.data['storeId'] ?• '').toString();
     if (lojaId.isEmpty) return;
 
-    final pedidoId = (message.data['pedidoId'] ?? '').toString();
+    final pedidoId = (message.data['pedidoId'] ?• '').toString();
     final key = _navKey;
     if (key?.currentState == null) return;
 
@@ -177,7 +177,7 @@ class FcmPedidoService {
     key!.currentState!.pushNamedAndRemoveUntil(
       '/pedidos',
       ModalRoute.withName('/'),
-      arguments: {'lojaId': lojaId, 'pedidoId': pedidoId.isNotEmpty ? pedidoId : null},
+      arguments: {'lojaId': lojaId, 'pedidoId': pedidoId.isNotEmpty • pedidoId : null},
     );
   }
 }

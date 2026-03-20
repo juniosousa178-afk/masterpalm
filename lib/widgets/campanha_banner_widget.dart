@@ -8,7 +8,7 @@ import 'dart:math' as math;
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
 
-/// Widget de banner para exibir campanhas ativas no topo do cat�logo
+/// Widget de banner para exibir campanhas ativas no topo do catálogo
 class CampanhaBannerWidget extends StatefulWidget {
   final String lojaId;
 
@@ -28,7 +28,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
   List<Map<String, dynamic>> _campanhas = [];
   bool _loading = true;
   int _currentPage = 0;
-  Timer? _autoScrollTimer;
+  Timer• _autoScrollTimer;
 
   @override
   void initState() {
@@ -50,15 +50,15 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
     try {
       // Validar lojaId
       if (widget.lojaId.trim().isEmpty) {
-        logW('?? [BANNER] lojaId vazio! N�o � poss�vel carregar campanhas.');
+        logW('?• [BANNER] lojaId vazio! Não • possível carregar campanhas.');
         if (mounted) setState(() => _loading = false);
         return;
       }
 
-      logD('?? [BANNER] Carregando campanhas para loja: ${widget.lojaId}');
+      logD('?• [BANNER] Carregando campanhas para loja: ${widget.lojaId}');
 
-      // Estrat�gia: Buscar campanhas com limite (banner exibe poucas; reduz custo Firestore)
-      // (evita problemas de �ndice composto do Firestore)
+      // Estratégia: Buscar campanhas com limite (banner exibe poucas; reduz custo Firestore)
+      // (evita problemas de índice composto do Firestore)
       final snapshot = await _db
           .collection('lojas')
           .doc(widget.lojaId)
@@ -66,7 +66,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
           .limit(30)
           .get();
 
-      logD('?? [BANNER] Total de campanhas: ${snapshot.docs.length}');
+      logD('?• [BANNER] Total de campanhas: ${snapshot.docs.length}');
 
       final now = DateTime.now();
       final campanhasAtivas = <Map<String, dynamic>>[];
@@ -75,17 +75,17 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
         final data = asMap(doc.data());
         data['id'] = doc.id;
 
-        // Verificar se est� ativa (campo booleano ou status string)
+        // Verificar se está ativa (campo booleano ou status string)
         final isAtiva = asBool(data['ativa'], defaultValue: false) ||
                         asString(data['status']) == 'aberta' ||
                         asString(data['status']) == 'ativa';
 
         if (!isAtiva) {
-          logD('   ?? ${doc.id}: n�o est� ativa');
+          logD('   ?• ${doc.id}: não está ativa');
           continue;
         }
 
-        // Verificar per�odo (Timestamp, DateTime, String, int)
+        // Verificar período (Timestamp, DateTime, String, int)
         final dataInicio = asDateTime(data['dataInicio']);
         final dataFim = asDateTime(data['dataFim']);
 
@@ -94,23 +94,23 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
                                dataInicio.isAtSameMomentAs(now);
         final dentroDoFim = dataFim == null || dataFim.isAfter(now);
 
-        logD('   ?? ${doc.id}: ativa=$isAtiva, inicio=$dataInicio, fim=$dataFim');
+        logD('   ?• ${doc.id}: ativa=$isAtiva, inicio=$dataInicio, fim=$dataFim');
         logD('      dentroDoInicio=$dentroDoInicio, dentroDoFim=$dentroDoFim');
 
         if (dentroDoInicio && dentroDoFim) {
           campanhasAtivas.add(asMapDeep(data));
-          logD('   ? Campanha ativa: ${data['nome'] ?? doc.id}');
+          logD('   • Campanha ativa: ${data['nome'] ?• doc.id}');
         }
       }
 
       // Ordenar por dataFim (campanhas que terminam primeiro aparecem primeiro)
       campanhasAtivas.sort((a, b) {
-        final dataFimA = asDateTime(a['dataFim']) ?? DateTime(2099);
-        final dataFimB = asDateTime(b['dataFim']) ?? DateTime(2099);
+        final dataFimA = asDateTime(a['dataFim']) ?• DateTime(2099);
+        final dataFimB = asDateTime(b['dataFim']) ?• DateTime(2099);
         return dataFimA.compareTo(dataFimB);
       });
 
-      logD('?? [BANNER] Campanhas ativas para exibir: ${campanhasAtivas.length}');
+      logD('?• [BANNER] Campanhas ativas para exibir: ${campanhasAtivas.length}');
 
       if (!mounted) return;
       setState(() {
@@ -123,7 +123,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
         _startAutoScroll();
       }
     } catch (e, st) {
-      logE('? [BANNER] Erro ao carregar campanhas (type=${e.runtimeType})', error: e, st: st);
+      logE('• [BANNER] Erro ao carregar campanhas (type=${e.runtimeType})', error: e, st: st);
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -177,7 +177,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
             },
           ),
 
-          // Indicadores de p�gina
+          // Indicadores de página
           if (_campanhas.length > 1)
             Positioned(
               bottom: 12,
@@ -194,7 +194,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: _currentPage == index
-                          ? Colors.white
+                          • Colors.white
                           : Colors.white.withValues(alpha:0.4),
                     ),
                   ),
@@ -207,14 +207,14 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
   }
 
   Widget _buildCampanhaBanner(Map<String, dynamic> campanha) {
-    final nome = asString(campanha['nome']) ?? 'Campanha Especial';
-    final descricao = asString(campanha['descricao']) ?? 'Participe e concorra a pr�mios!';
-    final valorMinimo = asNum(campanha['valorMinimo'])?.toDouble() ?? 0.0;
+    final nome = asString(campanha['nome']) ?• 'Campanha Especial';
+    final descricao = asString(campanha['descricao']) ?• 'Participe e concorra a prêmios!';
+    final valorMinimo = asNum(campanha['valorMinimo'])?.toDouble() ?• 0.0;
     final dataFim = asDateTime(campanha['dataFim']);
 
     // Calcula dias restantes
     final diasRestantes = dataFim != null
-        ? dataFim.difference(DateTime.now()).inDays
+        • dataFim.difference(DateTime.now()).inDays
         : 0;
 
     return Container(
@@ -240,19 +240,19 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
       ),
       child: Stack(
         children: [
-          // Padr�o de fundo
+          // Padrão de fundo
           Positioned.fill(
             child: CustomPaint(
               painter: _StarsPainter(),
             ),
           ),
 
-          // Conte�do
+          // Conteúdo
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // �cone
+                // Ícone
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -305,7 +305,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              'M�n: R\$ ${valorMinimo.toStringAsFixed(2)}',
+                              'Mín: R\$ ${valorMinimo.toStringAsFixed(2)}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 11,
@@ -322,7 +322,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '$diasRestantes ${diasRestantes == 1 ? 'dia' : 'dias'}',
+                              '$diasRestantes ${diasRestantes == 1 • 'dia' : 'dias'}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 11,
@@ -359,7 +359,7 @@ class _StarsPainter extends CustomPainter {
       ..color = Colors.white.withValues(alpha:0.1)
       ..style = PaintingStyle.fill;
 
-    // Desenha algumas estrelas aleat�rias
+    // Desenha algumas estrelas aleatórias
     final stars = [
       Offset(size.width * 0.2, size.height * 0.3),
       Offset(size.width * 0.5, size.height * 0.2),
@@ -379,7 +379,7 @@ class _StarsPainter extends CustomPainter {
 
     for (int i = 0; i < 10; i++) {
       final angle = i * angleStep - 3.14159 / 2;
-      final radius = i.isEven ? size : size / 2;
+      final radius = i.isEven • size : size / 2;
       final x = center.dx + radius * (angle.cos());
       final y = center.dy + radius * (angle.sin());
 
@@ -398,7 +398,7 @@ class _StarsPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// Extens�o para cos/sin usando dart:math
+// Extensão para cos/sin usando dart:math
 extension on double {
   double cos() => math.cos(this);
   double sin() => math.sin(this);

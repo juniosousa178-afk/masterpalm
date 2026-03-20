@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../models/cupom_cliente.dart';
 import 'package:intl/intl.dart';
 
-/// Card que mostra o resultado da roleta com todas as informações do cupom
+/// Card que mostra o resultado da roleta com todas as informaÃ§Ãµes do cupom
 class ResultadoRoletaCard extends StatelessWidget {
   final CupomCliente cupom;
-  final VoidCallback? onFechar;
+  final VoidCallbackâ€¢ onFechar;
 
   const ResultadoRoletaCard({
     super.key,
@@ -45,8 +45,8 @@ class ResultadoRoletaCard extends StatelessWidget {
   String _getTextoValidade() {
     final dias = cupom.diasParaExpirar;
     if (dias == 0) return 'Expirado';
-    if (dias == 1) return 'Expira amanhã';
-    return 'Válido por $dias dias';
+    if (dias == 1) return 'Expira amanhÃ£';
+    return 'VÃ¡lido por $dias dias';
   }
 
   @override
@@ -87,7 +87,7 @@ class ResultadoRoletaCard extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  // Ícone grande
+                  // Ãcone grande
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -110,9 +110,9 @@ class ResultadoRoletaCard extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // Texto "Parabéns!"
+                  // Texto "ParabÃ©ns!"
                   const Text(
-                    '?? PARABÉNS! ??',
+                    '?â€¢ PARABÃ‰NS! ??',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 28,
@@ -125,7 +125,7 @@ class ResultadoRoletaCard extends StatelessWidget {
                   const SizedBox(height: 8),
 
                   const Text(
-                    'Você ganhou:',
+                    'VocÃª ganhou:',
                     style: TextStyle(
                       color: Colors.white70,
                       fontSize: 16,
@@ -135,12 +135,12 @@ class ResultadoRoletaCard extends StatelessWidget {
               ),
             ),
 
-            // Conteúdo do prêmio
+            // ConteÃºdo do prÃªmio
             Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  // Título do prêmio
+                  // TÃ­tulo do prÃªmio
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -169,7 +169,7 @@ class ResultadoRoletaCard extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // Código do cupom
+                  // CÃ³digo do cupom
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -184,7 +184,7 @@ class ResultadoRoletaCard extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      'Código: ${cupom.codigo}',
+                      'CÃ³digo: ${cupom.codigo}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -196,7 +196,7 @@ class ResultadoRoletaCard extends StatelessWidget {
 
                   const SizedBox(height: 20),
 
-                  // Informações de uso
+                  // InformaÃ§Ãµes de uso
                   _buildInfoRow(
                     Icons.info_outline,
                     'Como usar',
@@ -214,7 +214,7 @@ class ResultadoRoletaCard extends StatelessWidget {
 
                   const SizedBox(height: 12),
 
-                  // Data de expiração
+                  // Data de expiraÃ§Ã£o
                   _buildInfoRow(
                     Icons.event,
                     'Expira em',
@@ -243,7 +243,7 @@ class ResultadoRoletaCard extends StatelessWidget {
                         const SizedBox(width: 12),
                         const Expanded(
                           child: Text(
-                            'Este cupom será aplicado automaticamente na sua próxima compra!',
+                            'Este cupom serÃ¡ aplicado automaticamente na sua prÃ³xima compra!',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -257,12 +257,12 @@ class ResultadoRoletaCard extends StatelessWidget {
 
                   const SizedBox(height: 20),
 
-                  // Botão de fechar
+                  // BotÃ£o de fechar
                   SizedBox(
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: onFechar ?? () => Navigator.of(context).pop(),
+                      onPressed: onFechar ?â€¢ () => Navigator.of(context).pop(),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: cor,

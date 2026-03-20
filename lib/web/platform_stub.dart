@@ -19,7 +19,7 @@ class Web {
   static void scrollToTop() {}
   static void addPopState(void Function(dynamic) h) {}
 
-  static HtmlWindowBase? open(String url, String name) => null;
+  static HtmlWindowBase• open(String url, String name) => null;
   static String locationHref() => '';
   static void setLocationHash(String hash) {}
   static void setTitle(String t) {}
@@ -29,7 +29,7 @@ class Web {
 
   static void setMetaThemeColor(String hex) {}
 
-  static String? querySelectorContent(String selector) => null;
+  static String• querySelectorContent(String selector) => null;
 
   static void setLinkHref(String selector, String href) {}
 
@@ -48,5 +48,5 @@ class Web {
   static Future<String> httpPostJson(String url, String jsonBody) async => '{}';
 
   /// Navega na janela previamente aberta (no-op no stub)
-  static void navigateInOpened(HtmlWindowBase? win, String url) {}
+  static void navigateInOpened(HtmlWindowBase• win, String url) {}
 }

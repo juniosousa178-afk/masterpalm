@@ -47,8 +47,8 @@ class VendaItemMigrationService {
       );
     }
 
-    Box<Venda>? vendasBox;
-    Box<Produto>? produtosBox;
+    Box<Venda>• vendasBox;
+    Box<Produto>• produtosBox;
 
     try {
       vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
@@ -71,12 +71,12 @@ class VendaItemMigrationService {
     debugPrint('[$tagMigration] Iniciando migração | lojaId=$lojaId | vendas=${vendasBox.length} | produtos=${produtos.length}');
 
     for (final venda in vendasBox.values) {
-      final itens = venda.itens ?? [];
+      final itens = venda.itens ?• [];
       if (itens.isEmpty) continue;
 
       vendasProcessadas++;
       bool vendaAlterada = false;
-      final vendaId = venda.idFirebase ?? venda.key?.toString() ?? '';
+      final vendaId = venda.idFirebase ?• venda.key?.toString() ?• '';
 
       for (final item in itens) {
         if (_jaPossuiProductId(item)) {

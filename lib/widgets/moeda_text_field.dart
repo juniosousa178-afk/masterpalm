@@ -11,10 +11,10 @@ import '../utils/moeda_input_formatter.dart';
 /// No mobile web, exibe um teclado numérico customizado ao focar.
 class MoedaTextField extends StatefulWidget {
   final TextEditingController controller;
-  final String? labelText;
-  final String? hintText;
-  final ValueChanged<double>? onChanged;
-  final InputDecoration? decoration;
+  final String• labelText;
+  final String• hintText;
+  final ValueChanged<double>• onChanged;
+  final InputDecoration• decoration;
   final bool enabled;
 
   const MoedaTextField({
@@ -57,7 +57,7 @@ class _MoedaTextFieldState extends State<MoedaTextField> {
 
   @override
   Widget build(BuildContext context) {
-    final dec = widget.decoration ?? InputDecoration(
+    final dec = widget.decoration ?• InputDecoration(
       labelText: widget.labelText,
       hintText: widget.hintText,
     );
@@ -72,7 +72,7 @@ class _MoedaTextFieldState extends State<MoedaTextField> {
           final vazio = texto.isEmpty;
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: widget.enabled ? () => _abrirTecladoCustom(context) : null,
+            onTap: widget.enabled • () => _abrirTecladoCustom(context) : null,
             child: IgnorePointer(
               ignoring: !widget.enabled,
               child: InputDecorator(
@@ -80,10 +80,10 @@ class _MoedaTextFieldState extends State<MoedaTextField> {
                   suffixIcon: const Icon(Icons.keyboard, size: 20, color: Colors.grey),
                 ),
                 child: Text(
-                  vazio ? (widget.hintText ?? '') : texto,
+                  vazio • (widget.hintText ?• '') : texto,
                   style: TextStyle(
                     fontSize: 16,
-                    color: vazio ? Theme.of(context).hintColor : null,
+                    color: vazio • Theme.of(context).hintColor : null,
                   ),
                 ),
               ),
@@ -149,7 +149,7 @@ class _TecladoMoedaSheetState extends State<_TecladoMoedaSheet> {
   @override
   Widget build(BuildContext context) {
     final valor = _centavos / 100.0;
-    final texto = valor == 0 ? '0,00' : MoedaInputFormatter.format(valor);
+    final texto = valor == 0 • '0,00' : MoedaInputFormatter.format(valor);
 
     return Container(
       decoration: const BoxDecoration(
@@ -225,7 +225,7 @@ class _TecladoMoedaSheetState extends State<_TecladoMoedaSheet> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Material(
-          color: primary ? Theme.of(context).colorScheme.primary : Colors.grey.shade200,
+          color: primary • Theme.of(context).colorScheme.primary : Colors.grey.shade200,
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             onTap: onTap,
@@ -238,7 +238,7 @@ class _TecladoMoedaSheetState extends State<_TecladoMoedaSheet> {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w600,
-                  color: primary ? Colors.white : Colors.black87,
+                  color: primary • Colors.white : Colors.black87,
                 ),
               ),
             ),

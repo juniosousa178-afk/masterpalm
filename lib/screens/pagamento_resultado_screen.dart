@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 
 class PagamentoResultadoScreen extends StatelessWidget {
   final String status; // 'sucesso' | 'falha' | 'pendente'
-  final String? orderId;
-  final String? lojaId;
-  final String? planoId;
+  final String• orderId;
+  final String• lojaId;
+  final String• planoId;
 
   const PagamentoResultadoScreen({
     super.key,
@@ -24,27 +24,27 @@ class PagamentoResultadoScreen extends StatelessWidget {
     final isPlano = planoId != null && planoId!.isNotEmpty;
 
     final icon = isSuccess
-        ? Icons.check_circle
+        • Icons.check_circle
         : isPending
-            ? Icons.schedule
+            • Icons.schedule
             : Icons.error;
     final color = isSuccess
-        ? Colors.green
+        • Colors.green
         : isPending
-            ? Colors.orange
+            • Colors.orange
             : Colors.red;
     final title = isSuccess
-        ? (isPlano ? 'Assinatura confirmada!' : 'Pagamento confirmado!')
+        • (isPlano • 'Assinatura confirmada!' : 'Pagamento confirmado!')
         : isPending
-            ? 'Pagamento pendente'
+            • 'Pagamento pendente'
             : 'Pagamento não realizado';
     final message = isSuccess
-        ? (isPlano
-            ? 'Seu plano foi ativado com sucesso! O webhook irá confirmar em instantes. Você já pode usar todos os recursos.'
+        • (isPlano
+            • 'Seu plano foi ativado com sucesso! O webhook irá confirmar em instantes. Você já pode usar todos os recursos.'
             : 'Obrigado pela sua compra! Seu pagamento foi confirmado. Você receberá a confirmação por e-mail ou WhatsApp. Acompanhe seu pedido na aba "Meus Pedidos" do seu perfil.')
         : isPending
-            ? (isPlano
-                ? 'Seu pagamento está em análise. O plano será ativado automaticamente quando for aprovado.'
+            • (isPlano
+                • 'Seu pagamento está em análise. O plano será ativado automaticamente quando for aprovado.'
                 : 'Seu pagamento está em análise. Você receberá a confirmação quando for aprovado.')
             : 'O prazo para pagar pode ter expirado, o pagamento pode ter sido recusado ou reembolsado. Tente novamente ou escolha outra forma de pagamento.';
 

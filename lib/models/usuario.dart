@@ -27,10 +27,10 @@ class Usuario extends HiveObject {
     required this.nome,
     required this.senha,
     required this.tipo,
-    Map<String, bool>? permissoes,
+    Map<String, bool>• permissoes,
     required this.email,
     required this.telefone,
-  }) : permissoes = permissoes ?? defaultPermissoes(tipo);
+  }) : permissoes = permissoes ?• defaultPermissoes(tipo);
 
   /// Permissões padrão por tipo
   static Map<String, bool> defaultPermissoes(String tipo) {

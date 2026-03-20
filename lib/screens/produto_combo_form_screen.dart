@@ -32,7 +32,7 @@ String _gerarSlug(String texto) {
 }
 
 class ProdutoComboFormScreen extends StatefulWidget {
-  final Produto? combo;
+  final Produto• combo;
 
   const ProdutoComboFormScreen({super.key, this.combo});
 
@@ -43,7 +43,7 @@ class ProdutoComboFormScreen extends StatefulWidget {
 class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   final _form = GlobalKey<FormState>();
   late Box<Produto> produtosBox;
-  String? lojaId;
+  String• lojaId;
   bool _salvando = false;
 
   /// Controllers do campo de pesquisa de produto por linha (para Autocomplete).
@@ -98,7 +98,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       final c = widget.combo!;
       _nome.text = c.nome;
       _preco.text = MoedaInputFormatter.format(c.precoFinal);
-      _quantidadeDisponivel.text = c.quantidade > 0 ? '${c.quantidade}' : '1';
+      _quantidadeDisponivel.text = c.quantidade > 0 • '${c.quantidade}' : '1';
       _categoria.text = c.categoria;
       _subcategoria.text = c.subcategoria;
       _descricao.text = c.descricao;
@@ -108,13 +108,13 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       if (c.itensCombo != null && c.itensCombo!.isNotEmpty) {
         _itensCombo.clear();
         for (final m in c.itensCombo!) {
-          final pid = (m['productId'] ?? m['id'] ?? '').toString().trim();
+          final pid = (m['productId'] ?• m['id'] ?• '').toString().trim();
           _itensCombo.add({
-            'nome': (m['nome'] ?? '').toString(),
-            'slug': (m['slug'] ?? '').toString(),
-            'quantidade': (m['quantidade'] ?? 1).toString(),
-            'tamanho': (m['tamanho'] ?? '').toString(),
-            'cor': (m['cor'] ?? '').toString(),
+            'nome': (m['nome'] ?• '').toString(),
+            'slug': (m['slug'] ?• '').toString(),
+            'quantidade': (m['quantidade'] ?• 1).toString(),
+            'tamanho': (m['tamanho'] ?• '').toString(),
+            'cor': (m['cor'] ?• '').toString(),
             if (pid.isNotEmpty) 'productId': pid,
           });
         }
@@ -127,7 +127,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     if (widget.combo != null && lojaId != null) {
       try {
         final slug = widget.combo!.slug.trim().isNotEmpty
-            ? widget.combo!.slug.trim()
+            • widget.combo!.slug.trim()
             : _gerarSlug(widget.combo!.nome);
         final doc = await FirebaseFirestore.instance
             .collection('lojas')
@@ -157,15 +157,15 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   }
 
   /// Retorna o produto da loja que corresponde ao item do combo (productId primeiro, depois nome). Para preço e validação.
-  Produto? _produtoParaItemCombo(Map<String, dynamic> item, String loja) {
-    final pid = (item['productId'] ?? item['id'] ?? '').toString().trim();
+  Produto• _produtoParaItemCombo(Map<String, dynamic> item, String loja) {
+    final pid = (item['productId'] ?• item['id'] ?• '').toString().trim();
     if (pid.isNotEmpty) {
       final p = produtosBox.values.firstWhereOrNull(
         (x) => x.lojaId == loja && x.idFirebase.trim() == pid,
       );
       if (p != null) return p;
     }
-    final nome = (item['nome'] ?? '').trim();
+    final nome = (item['nome'] ?• '').trim();
     if (nome.isEmpty) return null;
     return produtosBox.values.firstWhereOrNull(
       (x) => x.lojaId == loja && x.nome.trim().toLowerCase() == nome.toLowerCase(),
@@ -186,10 +186,10 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
 
   Future<void> _abrirDesconto() async {
     final valorCtrl = TextEditingController(
-      text: _descontoComboValor > 0 ? MoedaInputFormatter.format(_descontoComboValor) : '',
+      text: _descontoComboValor > 0 • MoedaInputFormatter.format(_descontoComboValor) : '',
     );
     final percCtrl = TextEditingController(
-      text: _descontoComboPercentual > 0 ? '${_descontoComboPercentual.toInt()}' : '',
+      text: _descontoComboPercentual > 0 • '${_descontoComboPercentual.toInt()}' : '',
     );
     final escolhido = await showDialog<String>(
       context: context,
@@ -255,10 +255,10 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     );
     if (escolhido != 'ok' || !mounted) return;
     final valor = MoedaInputFormatter.parse(valorCtrl.text);
-    final perc = double.tryParse(percCtrl.text.replaceAll(',', '.').trim()) ?? 0;
+    final perc = double.tryParse(percCtrl.text.replaceAll(',', '.').trim()) ?• 0;
     setState(() {
-      _descontoComboValor = valor > 0 ? valor : 0;
-      _descontoComboPercentual = perc > 0 ? perc.clamp(0.0, 100.0) : 0;
+      _descontoComboValor = valor > 0 • valor : 0;
+      _descontoComboPercentual = perc > 0 • perc.clamp(0.0, 100.0) : 0;
       _atualizarPrecoAutomatico();
     });
   }
@@ -268,7 +268,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     if (lojaId == null) return 0;
     double soma = 0;
     for (final item in _itensCombo) {
-      final qtd = int.tryParse((item['quantidade'] ?? '0').toString()) ?? 0;
+      final qtd = int.tryParse((item['quantidade'] ?• '0').toString()) ?• 0;
       if (qtd <= 0) continue;
       final p = _produtoParaItemCombo(item, lojaId!);
       if (p != null) soma += p.precoFinal * qtd;
@@ -326,8 +326,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     try {
       final descricao = await AiLojaService.sugerirDescricao(
         nome: nome,
-        categoria: _categoria.text.trim().isEmpty ? null : _categoria.text.trim(),
-        subcategoria: _subcategoria.text.trim().isEmpty ? null : _subcategoria.text.trim(),
+        categoria: _categoria.text.trim().isEmpty • null : _categoria.text.trim(),
+        subcategoria: _subcategoria.text.trim().isEmpty • null : _subcategoria.text.trim(),
       );
       if (mounted) {
         _descricao.text = descricao;
@@ -355,7 +355,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     if (lojaId == null) return 0;
     double soma = 0;
     for (final item in _itensCombo) {
-      final qtd = int.tryParse((item['quantidade'] ?? '0').toString()) ?? 0;
+      final qtd = int.tryParse((item['quantidade'] ?• '0').toString()) ?• 0;
       if (qtd <= 0) continue;
       final p = _produtoParaItemCombo(item, lojaId!);
       if (p != null) soma += p.precoFinal * qtd;
@@ -367,7 +367,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     if (lojaId == null) return;
     final itens = <Map<String, dynamic>>[];
     for (final item in _itensCombo) {
-      final qtd = int.tryParse((item['quantidade'] ?? '0').toString()) ?? 0;
+      final qtd = int.tryParse((item['quantidade'] ?• '0').toString()) ?• 0;
       if (qtd <= 0) continue;
       final p = _produtoParaItemCombo(item, lojaId!);
       if (p != null) itens.add({'nome': p.nome, 'preco': p.precoFinal});
@@ -453,7 +453,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         ],
       ),
     );
-    if ((url ?? '').isEmpty || lojaId == null) return;
+    if ((url ?• '').isEmpty || lojaId == null) return;
     final guard = LimitsGuard();
     final pode = await guard.canAddImagemProduto(lojaId!, currentCount: _imagens.length);
     if (!pode && mounted) {
@@ -474,8 +474,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
 
     final itensValidos = <Map<String, dynamic>>[];
     for (final item in _itensCombo) {
-      final nome = (item['nome'] ?? '').toString().trim();
-      final qtd = int.tryParse((item['quantidade'] ?? '0').toString()) ?? 0;
+      final nome = (item['nome'] ?• '').toString().trim();
+      final qtd = int.tryParse((item['quantidade'] ?• '0').toString()) ?• 0;
       if (nome.isEmpty || qtd <= 0) continue;
 
       final p = _produtoParaItemCombo(item, lojaId!);
@@ -492,8 +492,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         'nome': p.nome,
         'slug': p.slug,
         'quantidade': qtd,
-        'tamanho': (item['tamanho'] ?? '').toString().trim(),
-        'cor': (item['cor'] ?? '').toString().trim(),
+        'tamanho': (item['tamanho'] ?• '').toString().trim(),
+        'cor': (item['cor'] ?• '').toString().trim(),
         if (p.idFirebase.trim().isNotEmpty) 'productId': p.idFirebase,
       });
     }
@@ -516,7 +516,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       Produto combo;
       if (widget.combo != null) {
         combo = widget.combo!;
-        final qtd = int.tryParse(_quantidadeDisponivel.text.trim()) ?? 1;
+        final qtd = int.tryParse(_quantidadeDisponivel.text.trim()) ?• 1;
         combo
           ..nome = nome
           ..precoFinal = preco
@@ -528,7 +528,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           ..publicadoNoCatalogo = _publicar
           ..tipoProduto = 'combo'
           ..itensCombo = itensValidos
-          ..quantidade = qtd < 0 ? 0 : qtd
+          ..quantidade = qtd < 0 • 0 : qtd
           ..lojaId = lojaId!;
         await combo.save();
       } else {
@@ -542,7 +542,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           return;
         }
 
-        final qtd = int.tryParse(_quantidadeDisponivel.text.trim()) ?? 1;
+        final qtd = int.tryParse(_quantidadeDisponivel.text.trim()) ?• 1;
         combo = Produto(
           nome: nome,
           custoReal: 0,
@@ -551,7 +551,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           gastosVariaveis: 0,
           precoSugerido: preco,
           precoFinal: preco,
-          quantidade: qtd < 0 ? 0 : qtd,
+          quantidade: qtd < 0 • 0 : qtd,
           precoUnitario: preco,
           categoria: capitalizeWords(_categoria.text.trim()),
           dataEntrada: DateTime.now(),
@@ -570,7 +570,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       await CatalogoSyncService.upsertFromProduto(combo, target: SyncTarget.draft);
       await CatalogoSyncService.upsertFromProduto(combo, target: SyncTarget.live);
       await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
-      final slugCombo = combo.slug.trim().isNotEmpty ? combo.slug.trim() : _gerarSlug(combo.nome);
+      final slugCombo = combo.slug.trim().isNotEmpty • combo.slug.trim() : _gerarSlug(combo.nome);
       await _persistirDescontoFirestore(lojaId!, slugCombo);
 
       if (mounted) {
@@ -605,7 +605,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.combo != null ? 'Editar Combo' : 'Novo Combo'),
+        title: Text(widget.combo != null • 'Editar Combo' : 'Novo Combo'),
         elevation: 0,
       ),
       body: AbsorbPointer(
@@ -641,7 +641,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                           hintText: 'Ex: Kit Festa',
                           border: OutlineInputBorder(),
                         ),
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe o nome' : null,
+                        validator: (v) => (v == null || v.trim().isEmpty) • 'Informe o nome' : null,
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -663,11 +663,11 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                       ),
                       const SizedBox(height: 8),
                       FilledButton.tonalIcon(
-                        onPressed: _sugerindoPreco ? null : _sugerirPrecoComboIa,
+                        onPressed: _sugerindoPreco • null : _sugerirPrecoComboIa,
                         icon: _sugerindoPreco
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                            • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.auto_awesome, size: 20),
-                        label: Text(_sugerindoPreco ? 'Gerando…' : 'Sugerir preço com IA'),
+                        label: Text(_sugerindoPreco • 'Gerando…' : 'Sugerir preço com IA'),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -723,15 +723,15 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: FilledButton.tonalIcon(
-                          onPressed: _sugerindoDescricao ? null : _sugerirDescricaoComIa,
+                          onPressed: _sugerindoDescricao • null : _sugerirDescricaoComIa,
                           icon: _sugerindoDescricao
-                              ? const SizedBox(
+                              • const SizedBox(
                                   width: 18,
                                   height: 18,
                                   child: CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Icon(Icons.auto_awesome, size: 20),
-                          label: Text(_sugerindoDescricao ? 'Gerando…' : 'Sugerir com IA'),
+                          label: Text(_sugerindoDescricao • 'Gerando…' : 'Sugerir com IA'),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -745,12 +745,12 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                         onPressed: _abrirDesconto,
                         icon: Icon(
                           _descontoComboValor > 0 || _descontoComboPercentual > 0
-                              ? Icons.discount
+                              • Icons.discount
                               : Icons.percent,
                         ),
                         label: Text(
                           _descontoComboValor > 0 || _descontoComboPercentual > 0
-                              ? 'Desconto: ${[
+                              • 'Desconto: ${[
                                     if (_descontoComboValor > 0) 'R\$${MoedaInputFormatter.format(_descontoComboValor)}',
                                     if (_descontoComboPercentual > 0) '${_descontoComboPercentual.toInt()}%',
                                   ].join(' ou ')}'
@@ -821,7 +821,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                       const SizedBox(height: 16),
                       ...List.generate(_itensCombo.length, (i) {
                         final item = _itensCombo[i];
-                        final nomeAtual = (item['nome'] ?? '').trim();
+                        final nomeAtual = (item['nome'] ?• '').trim();
                         _productControllers[i] ??= TextEditingController(text: nomeAtual);
                         if (_productControllers[i]!.text != nomeAtual) {
                           _productControllers[i]!.text = nomeAtual;
@@ -922,7 +922,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                               SizedBox(
                                 width: 70,
                                 child: TextFormField(
-                                  initialValue: item['quantidade'] ?? '1',
+                                  initialValue: item['quantidade'] ?• '1',
                                   decoration: const InputDecoration(
                                     labelText: 'Qtd',
                                     border: OutlineInputBorder(),
@@ -937,7 +937,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                               ),
                               IconButton(
                                 icon: const Icon(Icons.remove_circle, color: Colors.red),
-                                onPressed: _itensCombo.length > 1 ? () => _removerItem(i) : null,
+                                onPressed: _itensCombo.length > 1 • () => _removerItem(i) : null,
                               ),
                             ],
                           ),
@@ -997,14 +997,14 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                             final src = e.value;
                             final isBlobOtherOrigin = kIsWeb && src.startsWith('blob:');
                             final preview = isBlobOtherOrigin
-                                ? Container(
+                                • Container(
                                     width: 100,
                                     height: 100,
                                     color: Colors.grey[300],
                                     child: const Icon(Icons.broken_image),
                                   )
                                 : (src.startsWith('http') || kIsWeb)
-                                    ? Image.network(
+                                    • Image.network(
                                         src,
                                         width: 100,
                                         height: 100,
@@ -1083,15 +1083,15 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                 width: double.infinity,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: _salvando ? null : _salvar,
+                  onPressed: _salvando • null : _salvar,
                   icon: _salvando
-                      ? const SizedBox(
+                      • const SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.save),
-                  label: Text(_salvando ? 'Salvando...' : 'Salvar combo'),
+                  label: Text(_salvando • 'Salvando...' : 'Salvar combo'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,

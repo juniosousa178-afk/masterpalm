@@ -19,12 +19,12 @@ extension CatalogoConfigFirestore on CatalogoConfig {
 /// Cria um CatalogoConfig a partir do Map do Firestore
 CatalogoConfig catalogoConfigFromFirestore(Map<String, dynamic> data) {
   return CatalogoConfig(
-    corFundo: data['corFundo'] as String? ?? '#000000',
-    corTexto: data['corTexto'] as String? ?? '#FFFFFF',
-    corBotao: data['corBotao'] as String? ?? '#FFD600',
-    fonte: data['fonte'] as String? ?? 'Roboto',
-    tamanhoFonte: (data['tamanhoFonte'] as num?)?.toDouble() ?? 14.0,
-    corCabecalho: data['corCabecalho'] as String? ?? '',
+    corFundo: data['corFundo'] as String• ?• '#000000',
+    corTexto: data['corTexto'] as String• ?• '#FFFFFF',
+    corBotao: data['corBotao'] as String• ?• '#FFD600',
+    fonte: data['fonte'] as String• ?• 'Roboto',
+    tamanhoFonte: (data['tamanhoFonte'] as num?)?.toDouble() ?• 14.0,
+    corCabecalho: data['corCabecalho'] as String• ?• '',
   );
 }
 

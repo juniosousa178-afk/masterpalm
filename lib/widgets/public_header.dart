@@ -2,16 +2,16 @@
 import 'package:flutter/material.dart';
 
 class PublicHeader extends StatelessWidget {
-  final String? logoUrl;
+  final String• logoUrl;
   final double logoAltura;
   final double logoLargura;
   final Color bg;
   final Color textColor;
 
   final TextEditingController searchController;
-  final ValueChanged<String>? onSearchChanged;
+  final ValueChanged<String>• onSearchChanged;
 
-  final List<String> categorias; // ex.: ['Todas', 'Camisetas', 'Cal�as'...]
+  final List<String> categorias; // ex.: ['Todas', 'Camisetas', 'Calças'...]
   final String categoriaSelecionada;
   final ValueChanged<String> onCategoriaChanged;
 
@@ -40,7 +40,7 @@ class PublicHeader extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 8),
-          if ((logoUrl ?? '').trim().isNotEmpty)
+          if ((logoUrl ?• '').trim().isNotEmpty)
             SizedBox(
               height: logoAltura,
               width: logoW,

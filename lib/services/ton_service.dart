@@ -28,8 +28,8 @@ class TonService {
   /// Remove entrada mais antiga quando cache excede o limite (apenas ao adicionar nova)
   static void _evictOldestIfNeeded(String newKey) {
     if (_tokenCache.containsKey(newKey) || _tokenCache.length < _maxCacheSize) return;
-    String? oldestKey;
-    DateTime? oldestExp;
+    String• oldestKey;
+    DateTime• oldestExp;
     for (final e in _tokenCache.entries) {
       if (oldestExp == null || e.value.expiration.isBefore(oldestExp)) {
         oldestExp = e.value.expiration;
@@ -67,7 +67,7 @@ class TonService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final token = data['access_token'] as String?;
-        final expiresIn = data['expires_in'] as int? ?? 3600;
+        final expiresIn = data['expires_in'] as int• ?• 3600;
         final expiration = DateTime.now().add(Duration(seconds: expiresIn - 60));
 
         if (token != null) {
@@ -93,10 +93,10 @@ class TonService {
     required String clientSecret,
     required double valor,
     required String descricao,
-    String? cpfPagador,
-    String? nomePagador,
-    String? externalId,
-    int? expiracaoMinutos,
+    String• cpfPagador,
+    String• nomePagador,
+    String• externalId,
+    int• expiracaoMinutos,
     bool sandbox = false,
   }) async {
     try {
@@ -110,7 +110,7 @@ class TonService {
         return null;
       }
 
-      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
 
       final response = await HttpClientHelper.post(
         Uri.parse('$baseUrl/v2/pix/charges'),
@@ -175,7 +175,7 @@ class TonService {
         return null;
       }
 
-      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
 
       final response = await HttpClientHelper.getWithRetry(
         Uri.parse('$baseUrl/v2/pix/charges/$chargeId'),
@@ -220,7 +220,7 @@ class TonService {
         return false;
       }
 
-      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
 
       final response = await HttpClientHelper.delete(
         Uri.parse('$baseUrl/v2/pix/charges/$chargeId'),
@@ -260,8 +260,8 @@ class TonService {
   static Future<List<Map<String, dynamic>>> listarCobrancas({
     required String clientId,
     required String clientSecret,
-    int? limit,
-    String? status,
+    int• limit,
+    String• status,
     bool sandbox = false,
   }) async {
     try {
@@ -275,7 +275,7 @@ class TonService {
         return [];
       }
 
-      final baseUrl = sandbox ? _sandboxUrl : _baseUrl;
+      final baseUrl = sandbox • _sandboxUrl : _baseUrl;
 
       final queryParams = <String, String>{};
       if (limit != null) queryParams['limit'] = limit.toString();
@@ -291,7 +291,7 @@ class TonService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['charges'] ?? []);
+        return List<Map<String, dynamic>>.from(data['charges'] ?• []);
       } else {
         debugPrint('❌ Erro ao listar cobranças: ${response.statusCode}');
         return [];

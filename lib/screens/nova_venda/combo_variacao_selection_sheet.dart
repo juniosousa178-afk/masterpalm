@@ -62,19 +62,19 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
   void initState() {
     super.initState();
     _qtd = widget.quantidade;
-    final itens = widget.combo.itensCombo ?? [];
+    final itens = widget.combo.itensCombo ?• [];
     _selecoes = List.generate(itens.length, (_) => {'tamanho': '', 'cor': ''});
   }
 
   bool get _podeConfirmar {
-    final itens = widget.combo.itensCombo ?? [];
+    final itens = widget.combo.itensCombo ?• [];
     for (var i = 0; i < itens.length; i++) {
       final item = itens[i];
-      final nome = (item['nome'] ?? '').toString();
-      final pid = (item['productId'] ?? item['id'] ?? '').toString().trim();
+      final nome = (item['nome'] ?• '').toString();
+      final pid = (item['productId'] ?• item['id'] ?• '').toString().trim();
       if (nome.isEmpty && pid.isEmpty) continue;
 
-      Produto? p;
+      Produto• p;
       if (pid.isNotEmpty) {
         p = widget.produtosBox.values.firstWhereOrNull(
           (x) => x.lojaId == widget.lojaId && x.idFirebase.trim() == pid,
@@ -87,8 +87,8 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
       }
       if (p == null) continue;
 
-      final tam = (_selecoes[i]['tamanho'] ?? '').trim();
-      final cor = (_selecoes[i]['cor'] ?? '').trim();
+      final tam = (_selecoes[i]['tamanho'] ?• '').trim();
+      final cor = (_selecoes[i]['cor'] ?• '').trim();
 
       final usaVariacoes = p.usaVariacoes && p.variacoes != null && p.variacoes!.isNotEmpty;
       final temTamanhos = p.estoquePorTamanho.isNotEmpty || (usaVariacoes && p.variacoes!.keys.isNotEmpty);
@@ -103,24 +103,24 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
   }
 
   List<Map<String, dynamic>> _buildSelecao() {
-    final itens = widget.combo.itensCombo ?? [];
+    final itens = widget.combo.itensCombo ?• [];
     final resultado = <Map<String, dynamic>>[];
     for (var i = 0; i < itens.length; i++) {
       final item = itens[i];
-      final nome = (item['nome'] ?? '').toString();
-      final slug = (item['slug'] ?? '').toString();
-      final pid = (item['productId'] ?? item['id'] ?? '').toString().trim();
+      final nome = (item['nome'] ?• '').toString();
+      final slug = (item['slug'] ?• '').toString();
+      final pid = (item['productId'] ?• item['id'] ?• '').toString().trim();
       final qtdBase = (item['quantidade'] is num)
-          ? (item['quantidade'] as num).toInt()
-          : int.tryParse('${item['quantidade']}') ?? 1;
+          • (item['quantidade'] as num).toInt()
+          : int.tryParse('${item['quantidade']}') ?• 1;
       if (nome.isEmpty || qtdBase <= 0) continue;
 
       resultado.add({
         'nome': nome,
         'slug': slug,
         'quantidade': qtdBase * _qtd,
-        'tamanho': (_selecoes[i]['tamanho'] ?? '').trim(),
-        'cor': (_selecoes[i]['cor'] ?? '').trim(),
+        'tamanho': (_selecoes[i]['tamanho'] ?• '').trim(),
+        'cor': (_selecoes[i]['cor'] ?• '').trim(),
         if (pid.isNotEmpty) 'productId': pid,
       });
     }
@@ -135,12 +135,12 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
       'cinza': Colors.grey, 'marrom': Colors.brown, 'bege': Color(0xFFF5F5DC),
       'dourado': Color(0xFFFFD700), 'prata': Color(0xFFC0C0C0),
     };
-    return coresMap[nome.toLowerCase()] ?? Colors.grey;
+    return coresMap[nome.toLowerCase()] ?• Colors.grey;
   }
 
   @override
   Widget build(BuildContext context) {
-    final itens = widget.combo.itensCombo ?? [];
+    final itens = widget.combo.itensCombo ?• [];
     final theme = Theme.of(context);
 
     return Container(
@@ -189,7 +189,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                 children: [
                   ...List.generate(itens.length, (i) {
                     final item = itens[i];
-                    final nome = (item['nome'] ?? '').toString();
+                    final nome = (item['nome'] ?• '').toString();
                     if (nome.isEmpty) return const SizedBox.shrink();
 
                     final p = widget.produtosBox.values.firstWhereOrNull(
@@ -207,17 +207,17 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                         if (e.value is Map) {
                           int total = 0;
                           for (final v in (e.value as Map).values) {
-                            total += (v as num?)?.toInt() ?? 0;
+                            total += (v as num?)?.toInt() ?• 0;
                           }
                           if (total > 0) tamanhosDisponiveis[e.key.toString()] = total;
                         }
                       }
-                      final tamSel = _selecoes[i]['tamanho'] ?? '';
+                      final tamSel = _selecoes[i]['tamanho'] ?• '';
                       if (tamSel.isNotEmpty) {
                         final mapa = p.variacoes![tamSel];
                         if (mapa is Map) {
                           coresDisponiveis = Map<String, int>.from(
-                            mapa.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0)),
+                            mapa.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?• 0)),
                           );
                         }
                       }
@@ -254,7 +254,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                                     onSelected: (v) {
                                       setState(() {
                                         _selecoes[i] = Map.from(_selecoes[i]);
-                                        _selecoes[i]['tamanho'] = v ? e.key : '';
+                                        _selecoes[i]['tamanho'] = v • e.key : '';
                                         _selecoes[i]['cor'] = '';
                                       });
                                     },
@@ -281,7 +281,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                                     onSelected: (v) {
                                       setState(() {
                                         _selecoes[i] = Map.from(_selecoes[i]);
-                                        _selecoes[i]['cor'] = v ? e.key : '';
+                                        _selecoes[i]['cor'] = v • e.key : '';
                                       });
                                     },
                                   );
@@ -301,7 +301,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                       IconButton(
                         icon: const Icon(Icons.remove_circle_outline),
                         onPressed: _qtd > 1
-                            ? () => setState(() => _qtd--)
+                            • () => setState(() => _qtd--)
                             : null,
                       ),
                       Text('$_qtd', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -317,7 +317,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                     height: 52,
                     child: ElevatedButton.icon(
                       onPressed: _podeConfirmar
-                          ? () {
+                          • () {
                               widget.onConfirmar(_buildSelecao(), _qtd, widget.preco);
                               Navigator.pop(context);
                             }

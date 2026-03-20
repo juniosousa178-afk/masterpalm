@@ -29,8 +29,8 @@ int responsiveGridCount(BuildContext context, {int mobile = 2, int tablet = 3, i
 /// Widget que builda diferente para mobile vs desktop
 class ResponsiveBuilder extends StatelessWidget {
   final Widget Function(BuildContext context) mobile;
-  final Widget Function(BuildContext context)? tablet;
-  final Widget Function(BuildContext context)? desktop;
+  final Widget Function(BuildContext context)• tablet;
+  final Widget Function(BuildContext context)• desktop;
 
   const ResponsiveBuilder({
     super.key,

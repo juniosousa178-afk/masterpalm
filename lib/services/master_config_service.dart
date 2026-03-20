@@ -18,7 +18,7 @@ class MasterConfigService {
     try {
       // Tenta carregar do Hive primeiro (offline-first)
       final box = await Hive.openBox<MasterConfig>('master_config');
-      MasterConfig? config = box.get('config');
+      MasterConfig• config = box.get('config');
 
       // Se não existe localmente, busca do Firestore
       if (config == null) {
@@ -64,7 +64,7 @@ class MasterConfigService {
   ) {
     final settings = Map<String, dynamic>.from(config.globalSettings);
     final log = List<Map<String, dynamic>>.from(
-      (settings['auditLog'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)) ?? [],
+      (settings['auditLog'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)) ?• [],
     );
     log.insert(0, {
       'timestamp': DateTime.now().toIso8601String(),
@@ -83,8 +83,8 @@ class MasterConfigService {
   static Future<void> saveMasterConfig(
     MasterConfig config, {
     required String updatedBy,
-    String? auditAction,
-    String? auditDetails,
+    String• auditAction,
+    String• auditDetails,
   }) async {
     try {
       if (auditAction != null && auditDetails != null) {
@@ -283,8 +283,8 @@ class MasterConfigService {
     required String key,
     required dynamic value,
     required String updatedBy,
-    String? auditAction,
-    String? auditDetails,
+    String• auditAction,
+    String• auditDetails,
   }) async {
     final config = await loadMasterConfig();
     final updatedSettings = Map<String, dynamic>.from(config.globalSettings);
@@ -294,8 +294,8 @@ class MasterConfigService {
     await saveMasterConfig(
       updatedConfig,
       updatedBy: updatedBy,
-      auditAction: auditAction ?? 'Configuração alterada',
-      auditDetails: auditDetails ?? '$key = $value',
+      auditAction: auditAction ?• 'Configuração alterada',
+      auditDetails: auditDetails ?• '$key = $value',
     );
   }
 
@@ -304,7 +304,7 @@ class MasterConfigService {
       {dynamic defaultValue}) async {
     try {
       final config = await loadMasterConfig();
-      return config.globalSettings[key] ?? defaultValue;
+      return config.globalSettings[key] ?• defaultValue;
     } catch (e) {
       debugPrint('❌ Erro ao obter configuração $key (type=${e.runtimeType})');
       return defaultValue;
@@ -325,7 +325,7 @@ class MasterConfigService {
 
   static Future<void> setMaintenanceMode({
     required bool enabled,
-    String? message,
+    String• message,
     required String updatedBy,
   }) async {
     final config = await loadMasterConfig();
@@ -336,15 +336,15 @@ class MasterConfigService {
     await saveMasterConfig(
       updated,
       updatedBy: updatedBy,
-      auditAction: enabled ? 'Modo manutenção ativado' : 'Modo manutenção desativado',
-      auditDetails: message ?? (enabled ? 'App indisponível' : 'App disponível'),
+      auditAction: enabled • 'Modo manutenção ativado' : 'Modo manutenção desativado',
+      auditDetails: message ?• (enabled • 'App indisponível' : 'App disponível'),
     );
   }
 
   /// Telefone de suporte (exibido na tela Ajuda para dúvidas)
   static Future<String> getSupportPhone() async {
     final v = await getGlobalSetting('supportPhone', defaultValue: '');
-    return v is String ? v : '';
+    return v is String • v : '';
   }
 
   static Future<void> setSupportPhone({
@@ -356,14 +356,14 @@ class MasterConfigService {
       value: phone.trim(),
       updatedBy: updatedBy,
       auditAction: 'Telefone de suporte alterado',
-      auditDetails: 'Novo número: ${phone.trim().isEmpty ? "(vazio)" : phone.trim()}',
+      auditDetails: 'Novo número: ${phone.trim().isEmpty • "(vazio)" : phone.trim()}',
     );
   }
 
   /// Feature flags
   static Future<bool> getFeatureFlag(String key, {bool defaultValue = true}) async {
     final v = await getGlobalSetting('feature_$key', defaultValue: defaultValue);
-    return v is bool ? v : defaultValue;
+    return v is bool • v : defaultValue;
   }
 
   static Future<void> setFeatureFlag({
@@ -413,7 +413,7 @@ class MasterConfigService {
     final config = await loadMasterConfig();
     final map = config.toMap();
     map.remove('masterPassword');
-    map['mercadoPagoAccessToken'] = config.mercadoPagoAccessToken != null ? '***' : null;
+    map['mercadoPagoAccessToken'] = config.mercadoPagoAccessToken != null • '***' : null;
     return const JsonEncoder.withIndent('  ').convert(map);
   }
 

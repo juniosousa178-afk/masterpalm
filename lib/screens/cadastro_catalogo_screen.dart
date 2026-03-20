@@ -18,7 +18,7 @@ import '../services/loja_id_service.dart';
 import '../services/produtos_firestore_service.dart';
 
 class CadastroCatalogoScreen extends StatefulWidget {
-  final ProdutoCatalogo? produto;
+  final ProdutoCatalogo• produto;
 
   const CadastroCatalogoScreen({super.key, this.produto});
 
@@ -50,21 +50,21 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
     // ---------------------------
     lojaId = '';
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      String? id = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 8));
+      String• id = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 8));
       if (id == null || id.trim().isEmpty) {
         try {
           final current = FirebaseAuth.instance.currentUser;
           if (current != null && Hive.isBoxOpen('sessao')) {
             final sessao = Hive.box('sessao');
-            final cachedUser = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
-            final currentEmail = (current.email ?? '').trim().toLowerCase();
+            final cachedUser = (sessao.get('usuario_logado') ?• '').toString().trim().toLowerCase();
+            final currentEmail = (current.email ?• '').trim().toLowerCase();
             if (cachedUser.isNotEmpty && currentEmail == cachedUser) {
               id = sessao.get('store_id')?.toString().trim();
             }
           }
         } catch (_) {}
       }
-      if (mounted && (id?.trim().isNotEmpty ?? false)) {
+      if (mounted && (id?.trim().isNotEmpty ?• false)) {
         setState(() => lojaId = id!.trim());
       }
     });
@@ -72,13 +72,13 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
     final p = widget.produto;
     if (p != null) {
       nomeController.text = p.nome;
-      descricaoController.text = p.descricao ?? '';
-      sobreController.text = p.sobre ?? '';
+      descricaoController.text = p.descricao ?• '';
+      sobreController.text = p.sobre ?• '';
       quantidadeController.text = p.quantidade.toString();
       precoController.text = MoedaInputFormatter.format(p.precoFinal);
       tamanhosController.text = p.tamanhos.join(', ');
       categoriaController.text = p.categoria;
-      subcategoriaController.text = p.subcategoria ?? '';
+      subcategoriaController.text = p.subcategoria ?• '';
 
       if (!kIsWeb) {
         midiasSelecionadas.addAll(
@@ -113,7 +113,7 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
     final nome = nomeController.text.trim();
     final descricao = descricaoController.text.trim();
     final sobre = sobreController.text.trim();
-    final quantidade = int.tryParse(quantidadeController.text.trim()) ?? 0;
+    final quantidade = int.tryParse(quantidadeController.text.trim()) ?• 0;
     final preco = MoedaInputFormatter.parse(precoController.text);
     final tamanhos = tamanhosController.text.trim();
     final categoria = categoriaController.text.trim();
@@ -153,7 +153,7 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
       descricao: descricao,
       sobre: sobre,
       tamanhos: tamanhos.isEmpty
-          ? <String>[]
+          • <String>[]
           : tamanhos.split(',').map((e) => e.trim()).toList(),
       quantidade: quantidade,
       precoFinal: preco,
@@ -173,7 +173,7 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
     // MULTI-LOJAS: Catálogo por loja
     // ---------------------------
     final catalogoBox = Hive.isBoxOpen('catalogo_$lojaId')
-        ? Hive.box<ProdutoCatalogo>('catalogo_$lojaId')
+        • Hive.box<ProdutoCatalogo>('catalogo_$lojaId')
         : await Hive.openBox<ProdutoCatalogo>('catalogo_$lojaId');
 
     if (widget.produto != null) {
@@ -185,16 +185,16 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
     // MULTI-LOJAS: Estoque por loja + sync para catálogo Firestore
     // ---------------------------
     final estoqueBox = Hive.isBoxOpen(HiveBoxNames.produtos(lojaId))
-        ? Hive.box<Produto>(HiveBoxNames.produtos(lojaId))
+        • Hive.box<Produto>(HiveBoxNames.produtos(lojaId))
         : await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
 
     final tamanhosList = tamanhos.isEmpty
-        ? <String>[]
+        • <String>[]
         : tamanhos.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
     final imagensPaths = midiasSelecionadas.map((f) => f.path).toList();
     final slug = '$lojaId-${CatalogoSyncService.slugify(nome)}';
 
-    Produto? existente;
+    Produto• existente;
     for (final p in estoqueBox.values) {
       if (p.nome.toLowerCase() == nome.toLowerCase()) {
         existente = p;
@@ -210,7 +210,7 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
         ..precoUnitario = preco
         ..descricao = descricao
         ..imagens = imagensPaths
-        ..categoria = categoria.isEmpty ? 'Catálogo' : categoria
+        ..categoria = categoria.isEmpty • 'Catálogo' : categoria
         ..subcategoria = subcategoria
         ..tamanhos = tamanhosList
         ..slug = slug
@@ -229,7 +229,7 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
         precoFinal: preco,
         quantidade: quantidade,
         precoUnitario: preco,
-        categoria: categoria.isEmpty ? 'Catálogo' : categoria,
+        categoria: categoria.isEmpty • 'Catálogo' : categoria,
         dataEntrada: DateTime.now(),
         descricao: descricao,
         imagens: imagensPaths,
@@ -283,7 +283,7 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
 
     return Scaffold(
       appBar: AppBar(
-          title: Text(isEdit ? 'Editar Produto' : 'Cadastrar Produto')),
+          title: Text(isEdit • 'Editar Produto' : 'Cadastrar Produto')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(

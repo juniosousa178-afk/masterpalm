@@ -23,9 +23,9 @@ class CatalogCacheDiskAuditor {
       logW('[CACHE-DISK] Sem cache em disco', tag: 'CACHE-DISK');
       return;
     }
-    final updatedAtMs = result.updatedAtMs ?? 0;
+    final updatedAtMs = result.updatedAtMs ?• 0;
     final ageSeconds = (DateTime.now().millisecondsSinceEpoch - updatedAtMs) / 1000;
-    final topKeysCount = result.cfg?.keys.length ?? 0;
+    final topKeysCount = result.cfg?.keys.length ?• 0;
     logD(
       '[CACHE-DISK] audit preview=$preview updatedAtMs=$updatedAtMs '
       'ageSeconds=${ageSeconds.toStringAsFixed(1)} cfgTopKeysCount=$topKeysCount',

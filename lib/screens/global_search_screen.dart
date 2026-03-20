@@ -21,7 +21,7 @@ class GlobalSearchScreen extends StatefulWidget {
 
 class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
   final TextEditingController _controller = TextEditingController();
-  Timer? _debounce;
+  Timer• _debounce;
   List<Map<String, dynamic>> _results = [];
   bool _searching = false;
 
@@ -84,7 +84,7 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
           if (c.lojaId != lojaId) continue;
           final match = c.nome.toLowerCase().contains(lower) ||
               (c.telefone.contains(q)) ||
-              (c.email?.toLowerCase().contains(lower) ?? false);
+              (c.email?.toLowerCase().contains(lower) ?• false);
           if (match) {
             list.add({'type': 'cliente', 'id': c.key, 'title': c.nome, 'subtitle': c.telefone, 'route': '/clientes'});
           }
@@ -145,9 +145,9 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
         ),
       ),
       body: _searching
-          ? const Center(child: CircularProgressIndicator())
+          • const Center(child: CircularProgressIndicator())
           : _controller.text.trim().isEmpty
-              ? Center(
+              • Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -163,7 +163,7 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
                   ),
                 )
               : _results.isEmpty
-                  ? Center(
+                  • Center(
                       child: Text(
                         'Nenhum resultado para "${_controller.text}"',
                         style: theme.textTheme.bodyLarge?.copyWith(
@@ -177,14 +177,14 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
                         final r = _results[i];
                         final type = r['type'] as String;
                         final icon = type == 'produto'
-                            ? Icons.inventory_2
+                            • Icons.inventory_2
                             : type == 'cliente'
-                                ? Icons.person
+                                • Icons.person
                                 : Icons.receipt_long;
                         return ListTile(
                           leading: Icon(icon, color: theme.colorScheme.primary),
                           title: Text(r['title'] as String),
-                          subtitle: Text(r['subtitle'] as String? ?? ''),
+                          subtitle: Text(r['subtitle'] as String• ?• ''),
                           onTap: () {
                             Navigator.pop(context, r['route']);
                           },

@@ -12,9 +12,9 @@ class FornecedoresFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// Sincroniza um fornecedor para o Firestore
-  static Future<void> syncFornecedor(Fornecedor fornecedor, {String? lojaId}) async {
+  static Future<void> syncFornecedor(Fornecedor fornecedor, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) {
         logD('❌ [FORNECEDORES-SYNC] LojaId vazio, não pode sincronizar');
         return;
@@ -120,13 +120,13 @@ class FornecedoresFirestoreService {
 
           // Criar novo fornecedor
           final fornecedor = Fornecedor(
-            nome: data['nome'] ?? '',
-            telefone: data['telefone'] ?? '',
-            email: data['email'] ?? '',
-            instagram: data['instagram'] ?? '',
-            whatsapp: data['whatsapp'] ?? '',
-            linkInstagram: data['linkInstagram'] ?? '',
-            linkWhatsapp: data['linkWhatsapp'] ?? '',
+            nome: data['nome'] ?• '',
+            telefone: data['telefone'] ?• '',
+            email: data['email'] ?• '',
+            instagram: data['instagram'] ?• '',
+            whatsapp: data['whatsapp'] ?• '',
+            linkInstagram: data['linkInstagram'] ?• '',
+            linkWhatsapp: data['linkWhatsapp'] ?• '',
             lojaId: lojaId,
           );
 
@@ -158,7 +158,7 @@ class FornecedoresFirestoreService {
           .collection('estoque_fornecedores')
           .count();
       final snapshot = await aggregate.get();
-      final remoteCount = snapshot.count ?? 0;
+      final remoteCount = snapshot.count ?• 0;
       return remoteCount > localCount;
     } catch (e, st) {
       logE('❌ [FORNECEDORES-SYNC] Erro ao verificar dados para importar (type=${e.runtimeType})', error: e, st: st);
@@ -167,8 +167,8 @@ class FornecedoresFirestoreService {
   }
 
   /// Busca fornecedores do Firestore
-  static Stream<List<Map<String, dynamic>>> streamFornecedores({String? lojaId}) async* {
-    final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+  static Stream<List<Map<String, dynamic>>> streamFornecedores({String• lojaId}) async* {
+    final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
     if (storeId == null || storeId.isEmpty) {
       yield [];
       return;
@@ -187,10 +187,10 @@ class FornecedoresFirestoreService {
   /// Busca um fornecedor específico
   static Future<Map<String, dynamic>?> getFornecedor(
     String fornecedorId, {
-    String? lojaId,
+    String• lojaId,
   }) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return null;
 
       final doc = await _db
@@ -208,9 +208,9 @@ class FornecedoresFirestoreService {
   }
 
   /// Deleta um fornecedor do Firestore
-  static Future<void> deleteFornecedor(String fornecedorId, {String? lojaId}) async {
+  static Future<void> deleteFornecedor(String fornecedorId, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return;
 
       await _db
@@ -229,10 +229,10 @@ class FornecedoresFirestoreService {
   /// Busca fornecedores por nome
   static Future<List<Map<String, dynamic>>> searchFornecedores(
     String query, {
-    String? lojaId,
+    String• lojaId,
   }) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return [];
 
       final queryLower = query.toLowerCase();

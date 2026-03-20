@@ -25,7 +25,7 @@ class Meta extends HiveObject {
 
   /// ID da loja (multi-store support)
   @HiveField(4)
-  String? lojaId;
+  String• lojaId;
 
   /// Data de criação
   @HiveField(5)
@@ -37,7 +37,7 @@ class Meta extends HiveObject {
 
   /// ID do documento no Firestore (para sync)
   @HiveField(7)
-  String? idFirebase;
+  String• idFirebase;
 
   Meta({
     required this.mesRef,
@@ -45,32 +45,32 @@ class Meta extends HiveObject {
     this.crescimentoPercent = 7.0,
     required this.vendedorId,
     this.lojaId,
-    DateTime? criadoEm,
-    DateTime? atualizadoEm,
+    DateTime• criadoEm,
+    DateTime• atualizadoEm,
     this.idFirebase,
-  })  : criadoEm = criadoEm ?? DateTime.now(),
-        atualizadoEm = atualizadoEm ?? DateTime.now();
+  })  : criadoEm = criadoEm ?• DateTime.now(),
+        atualizadoEm = atualizadoEm ?• DateTime.now();
 
   /// Cria uma cópia com modificações
   Meta copyWith({
-    String? mesRef,
-    double? metaMensal,
-    double? crescimentoPercent,
-    String? vendedorId,
-    String? lojaId,
-    DateTime? criadoEm,
-    DateTime? atualizadoEm,
-    String? idFirebase,
+    String• mesRef,
+    double• metaMensal,
+    double• crescimentoPercent,
+    String• vendedorId,
+    String• lojaId,
+    DateTime• criadoEm,
+    DateTime• atualizadoEm,
+    String• idFirebase,
   }) {
     return Meta(
-      mesRef: mesRef ?? this.mesRef,
-      metaMensal: metaMensal ?? this.metaMensal,
-      crescimentoPercent: crescimentoPercent ?? this.crescimentoPercent,
-      vendedorId: vendedorId ?? this.vendedorId,
-      lojaId: lojaId ?? this.lojaId,
-      criadoEm: criadoEm ?? this.criadoEm,
-      atualizadoEm: atualizadoEm ?? DateTime.now(),
-      idFirebase: idFirebase ?? this.idFirebase,
+      mesRef: mesRef ?• this.mesRef,
+      metaMensal: metaMensal ?• this.metaMensal,
+      crescimentoPercent: crescimentoPercent ?• this.crescimentoPercent,
+      vendedorId: vendedorId ?• this.vendedorId,
+      lojaId: lojaId ?• this.lojaId,
+      criadoEm: criadoEm ?• this.criadoEm,
+      atualizadoEm: atualizadoEm ?• DateTime.now(),
+      idFirebase: idFirebase ?• this.idFirebase,
     );
   }
 
@@ -88,18 +88,18 @@ class Meta extends HiveObject {
   }
 
   /// Cria Meta a partir de Map (do Firestore)
-  factory Meta.fromMap(Map<String, dynamic> map, {String? docId}) {
+  factory Meta.fromMap(Map<String, dynamic> map, {String• docId}) {
     return Meta(
-      mesRef: map['mesRef'] ?? '',
-      metaMensal: (map['metaMensal'] as num?)?.toDouble() ?? 0.0,
-      crescimentoPercent: (map['crescimentoPercent'] as num?)?.toDouble() ?? 7.0,
-      vendedorId: map['vendedorId'] ?? 'GERAL',
+      mesRef: map['mesRef'] ?• '',
+      metaMensal: (map['metaMensal'] as num?)?.toDouble() ?• 0.0,
+      crescimentoPercent: (map['crescimentoPercent'] as num?)?.toDouble() ?• 7.0,
+      vendedorId: map['vendedorId'] ?• 'GERAL',
       lojaId: map['lojaId'],
       criadoEm: map['criadoEm'] != null
-          ? DateTime.tryParse(map['criadoEm'].toString()) ?? DateTime.now()
+          • DateTime.tryParse(map['criadoEm'].toString()) ?• DateTime.now()
           : DateTime.now(),
       atualizadoEm: map['atualizadoEm'] != null
-          ? DateTime.tryParse(map['atualizadoEm'].toString()) ?? DateTime.now()
+          • DateTime.tryParse(map['atualizadoEm'].toString()) ?• DateTime.now()
           : DateTime.now(),
       idFirebase: docId,
     );

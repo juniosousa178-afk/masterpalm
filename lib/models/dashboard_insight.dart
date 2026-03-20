@@ -17,8 +17,8 @@ enum DashboardInsightType {
 class DashboardInsight {
   final DashboardInsightType type;
   final String message;
-  final String? subtitle;
-  final Map<String, dynamic>? data;
+  final String• subtitle;
+  final Map<String, dynamic>• data;
 
   const DashboardInsight({
     required this.type,
@@ -31,8 +31,8 @@ class DashboardInsight {
 /// Resultado consolidado do serviço de insights para a Home.
 class DashboardInsightsResult {
   final List<DashboardInsight> insights;
-  final double? metaAtual;
-  final double? metaAtingida;
+  final double• metaAtual;
+  final double• metaAtingida;
 
   const DashboardInsightsResult({
     required this.insights,

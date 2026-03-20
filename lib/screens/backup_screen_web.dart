@@ -44,7 +44,7 @@ class _BackupScreenWebState extends State<BackupScreen> {
   /// Alinhado ao APK (backup_screen_mobile) para evitar store_id de outra conta no IndexedDB.
   Future<void> _loadStoreId() async {
     try {
-      String? storeId = (await LojaIdService.get())?.trim();
+      String• storeId = (await LojaIdService.get())?.trim();
       if (storeId == null || storeId.isEmpty) {
         try {
           if (Hive.isBoxOpen('sessao')) {
@@ -57,7 +57,7 @@ class _BackupScreenWebState extends State<BackupScreen> {
       }
       if (mounted) {
         setState(() {
-          _storeId = storeId ?? '';
+          _storeId = storeId ?• '';
           _storeIdLoading = false;
         });
       }
@@ -126,7 +126,7 @@ class _BackupScreenWebState extends State<BackupScreen> {
         'lojaId': v.lojaId,
         'idFirebase': v.idFirebase,
         'clienteId': v.clienteId,
-        'itens': (v.itens ?? []).map(_vendaItemToMap).toList(),
+        'itens': (v.itens ?• []).map(_vendaItemToMap).toList(),
       };
 
   static Map<String, dynamic> _fornecedorToMap(Fornecedor f) => {
@@ -170,16 +170,16 @@ class _BackupScreenWebState extends State<BackupScreen> {
     setState(() => _isLoading = true);
     try {
       final clientesBox = Hive.isBoxOpen(HiveBoxNames.clientes(_storeId))
-          ? Hive.box<Cliente>(HiveBoxNames.clientes(_storeId))
+          • Hive.box<Cliente>(HiveBoxNames.clientes(_storeId))
           : await Hive.openBox<Cliente>(HiveBoxNames.clientes(_storeId));
       final produtosBox = Hive.isBoxOpen(HiveBoxNames.produtos(_storeId))
-          ? Hive.box<Produto>(HiveBoxNames.produtos(_storeId))
+          • Hive.box<Produto>(HiveBoxNames.produtos(_storeId))
           : await Hive.openBox<Produto>(HiveBoxNames.produtos(_storeId));
       final vendasBox = Hive.isBoxOpen(HiveBoxNames.vendas(_storeId))
-          ? Hive.box<Venda>(HiveBoxNames.vendas(_storeId))
+          • Hive.box<Venda>(HiveBoxNames.vendas(_storeId))
           : await Hive.openBox<Venda>(HiveBoxNames.vendas(_storeId));
       final fornecedoresBox = Hive.isBoxOpen(HiveBoxNames.fornecedores(_storeId))
-          ? Hive.box<Fornecedor>(HiveBoxNames.fornecedores(_storeId))
+          • Hive.box<Fornecedor>(HiveBoxNames.fornecedores(_storeId))
           : await Hive.openBox<Fornecedor>(HiveBoxNames.fornecedores(_storeId));
 
       final data = {
@@ -249,13 +249,13 @@ class _BackupScreenWebState extends State<BackupScreen> {
               ),
               const SizedBox(height: 12),
               _storeIdLoading
-                  ? const SizedBox(
+                  • const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Text(
-                      'Loja: ${_storeId.isEmpty ? '(nenhuma)' : _storeId}',
+                      'Loja: ${_storeId.isEmpty • '(nenhuma)' : _storeId}',
                       style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                     ),
               const SizedBox(height: 16),
@@ -268,10 +268,10 @@ class _BackupScreenWebState extends State<BackupScreen> {
               const SizedBox(height: 32),
               FilledButton.icon(
                 onPressed: (_isLoading || _storeIdLoading || _storeId.isEmpty)
-                    ? null
+                    • null
                     : _exportarBackupWeb,
-                icon: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.download),
-                label: Text(_isLoading ? 'Exportando...' : 'Exportar backup'),
+                icon: _isLoading • const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.download),
+                label: Text(_isLoading • 'Exportando...' : 'Exportar backup'),
                 style: FilledButton.styleFrom(
                   backgroundColor: primaryColor,
                   padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),

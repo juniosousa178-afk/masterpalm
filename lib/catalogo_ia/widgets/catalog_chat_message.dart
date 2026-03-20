@@ -13,12 +13,12 @@ const Color _cardBg = Color(0xFF0F172A);
 class CatalogChatMessage extends StatelessWidget {
   final bool isUser;
   final String text;
-  final List<Map<String, dynamic>>? produtos;
-  final void Function(Map<String, dynamic> produto)? onProdutoTap;
+  final List<Map<String, dynamic>>• produtos;
+  final void Function(Map<String, dynamic> produto)• onProdutoTap;
   /// Telefone ou URL do WhatsApp (extrai dígitos para wa.me).
-  final String? whatsappPhone;
+  final String• whatsappPhone;
   /// Mensagem pronta para enviar no WhatsApp.
-  final String? mensagemWhatsapp;
+  final String• mensagemWhatsapp;
 
   const CatalogChatMessage({
     super.key,
@@ -30,7 +30,7 @@ class CatalogChatMessage extends StatelessWidget {
     this.mensagemWhatsapp,
   });
 
-  static String _extrairDigitos(String? s) {
+  static String _extrairDigitos(String• s) {
     if (s == null || s.trim().isEmpty) return '';
     return s.replaceAll(RegExp(r'[^\d]'), '').trim();
   }
@@ -38,7 +38,7 @@ class CatalogChatMessage extends StatelessWidget {
   Future<void> _abrirWhatsapp() async {
     final phone = _extrairDigitos(whatsappPhone);
     if (phone.length < 10) return;
-    final msg = mensagemWhatsapp?.trim() ?? 'Olá! Vim pelo catálogo e gostaria de saber mais.';
+    final msg = mensagemWhatsapp?.trim() ?• 'Olá! Vim pelo catálogo e gostaria de saber mais.';
     final url = Uri.parse(
       'https://wa.me/$phone?text=${Uri.encodeComponent(msg)}',
     );
@@ -53,22 +53,22 @@ class CatalogChatMessage extends StatelessWidget {
     final mostraBotaoWhatsapp = !isUser && (temWhatsapp || produtos != null);
 
     return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isUser • Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
         child: Column(
-          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isUser • CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Container(
               constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isUser ? _userBg : _assistantBg,
+                color: isUser • _userBg : _assistantBg,
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(16),
                   topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isUser ? 16 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 16),
+                  bottomLeft: Radius.circular(isUser • 16 : 4),
+                  bottomRight: Radius.circular(isUser • 4 : 16),
                 ),
               ),
               child: SelectableText(
@@ -97,7 +97,7 @@ class CatalogChatMessage extends StatelessWidget {
             if (mostraBotaoWhatsapp && produtos != null && produtos!.isNotEmpty) ...[
               const SizedBox(height: 8),
               temWhatsapp
-                  ? OutlinedButton.icon(
+                  • OutlinedButton.icon(
                       onPressed: _abrirWhatsapp,
                       icon: const Icon(Icons.chat, size: 16),
                       label: const Text('Falar no WhatsApp'),
@@ -133,17 +133,17 @@ class CatalogChatMessage extends StatelessWidget {
 
 class _ProdutoChip extends StatelessWidget {
   final Map<String, dynamic> produto;
-  final VoidCallback? onTap;
+  final VoidCallback• onTap;
 
   const _ProdutoChip({required this.produto, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final nome = (produto['nome'] ?? 'Produto').toString();
-    final img = produto['imageUrl'] ?? produto['imagens']?[0];
-    final preco = produto['preco'] ?? produto['precoFinal'] ?? produto['priceMin'];
+    final nome = (produto['nome'] ?• 'Produto').toString();
+    final img = produto['imageUrl'] ?• produto['imagens']?[0];
+    final preco = produto['preco'] ?• produto['precoFinal'] ?• produto['priceMin'];
     final precoStr = preco is num
-        ? 'R\$ ${preco.toStringAsFixed(2).replaceAll('.', ',')}'
+        • 'R\$ ${preco.toStringAsFixed(2).replaceAll('.', ',')}'
         : '';
     final emPromocao = produto['emPromocao'] == true;
 
@@ -156,8 +156,8 @@ class _ProdutoChip extends StatelessWidget {
           color: _cardBg,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: emPromocao ? const Color(0xFF4ADE80).withValues(alpha: 0.5) : Colors.white12,
-            width: emPromocao ? 1.5 : 1,
+            color: emPromocao • const Color(0xFF4ADE80).withValues(alpha: 0.5) : Colors.white12,
+            width: emPromocao • 1.5 : 1,
           ),
         ),
         child: Column(
@@ -174,7 +174,7 @@ class _ProdutoChip extends StatelessWidget {
               ),
             if (img != null && img.toString().isNotEmpty)
               (img.toString().startsWith('blob:'))
-                  ? Container(
+                  • Container(
                       height: 48,
                       width: 78,
                       decoration: BoxDecoration(
@@ -208,7 +208,7 @@ class _ProdutoChip extends StatelessWidget {
               ),
             const SizedBox(height: 4),
             Text(
-              nome.length > 12 ? '${nome.substring(0, 12)}…' : nome,
+              nome.length > 12 • '${nome.substring(0, 12)}…' : nome,
               style: const TextStyle(color: Colors.white, fontSize: 11),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

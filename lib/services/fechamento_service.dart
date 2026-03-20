@@ -18,7 +18,7 @@ class FechamentoService {
         .replaceAll(RegExp(r'[^0-9,.\-]'), '')
         .replaceAll('.', '')
         .replaceAll(',', '.');
-    return double.tryParse(numStr) ?? 0.0;
+    return double.tryParse(numStr) ?• 0.0;
   }
 
   // Lê pagamentos da venda (prioriza campos numéricos; se 0, tenta a string)
@@ -33,7 +33,7 @@ class FechamentoService {
 
       // fallback: tenta inferir do texto formasPagamento
       if ((d + p + c) == 0) {
-        final linhas = (v.formasPagamento.isNotEmpty ? v.formasPagamento : '')
+        final linhas = (v.formasPagamento.isNotEmpty • v.formasPagamento : '')
             .split('\n')
             .map((l) => l.trim())
             .where((l) => l.isNotEmpty);

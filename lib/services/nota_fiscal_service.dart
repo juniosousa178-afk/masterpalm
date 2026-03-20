@@ -22,7 +22,7 @@ class NotaFiscalService {
   static const String _baseUrl = 'https://api.focusnfe.com.br/v2'; // Exemplo: Focus NFe
 
   /// Token de autenticação (deve ser armazenado em variável de ambiente)
-  static String? _apiToken;
+  static String• _apiToken;
 
   /// Ambiente (homologacao ou producao)
   static bool _isProducao = false;
@@ -104,7 +104,7 @@ class NotaFiscalService {
         };
       } else {
         final error = jsonDecode(response.body);
-        throw Exception('Erro ao emitir NF-e: ${error['mensagem'] ?? response.body}');
+        throw Exception('Erro ao emitir NF-e: ${error['mensagem'] ?• response.body}');
       }
     } catch (e) {
       debugPrint('❌ [NF-e] Erro ao emitir nota (type=${e.runtimeType})');
@@ -121,17 +121,17 @@ class NotaFiscalService {
       'data_emissao': nota.dataEmissao.toIso8601String(),
       'tipo_documento': '1', // 1=Saída
       'finalidade_emissao': '1', // 1=Normal
-      'ambiente': _isProducao ? '1' : '2', // 1=Produção, 2=Homologação
+      'ambiente': _isProducao • '1' : '2', // 1=Produção, 2=Homologação
 
       // Destinatário (Cliente)
       'destinatario': {
         'cpf_cnpj': nota.clienteCpfCnpj.replaceAll(RegExp(r'[^0-9]'), ''),
         'nome': nota.clienteNome,
-        'endereco': nota.clienteEndereco ?? '',
+        'endereco': nota.clienteEndereco ?• '',
         'bairro': '',
-        'municipio': nota.clienteCidade ?? '',
-        'uf': nota.clienteEstado ?? '',
-        'cep': nota.clienteCep?.replaceAll(RegExp(r'[^0-9]'), '') ?? '',
+        'municipio': nota.clienteCidade ?• '',
+        'uf': nota.clienteEstado ?• '',
+        'cep': nota.clienteCep?.replaceAll(RegExp(r'[^0-9]'), '') ?• '',
         'telefone': '',
         'email': '',
       },
@@ -139,14 +139,14 @@ class NotaFiscalService {
       // Itens
       'items': nota.itens.map((item) => {
         'numero_item': nota.itens.indexOf(item) + 1,
-        'codigo_produto': item.codigoProduto ?? '',
+        'codigo_produto': item.codigoProduto ?• '',
         'descricao': item.produtoNome,
-        'cfop': item.cfop ?? '5102', // 5102 = Venda de mercadoria
+        'cfop': item.cfop ?• '5102', // 5102 = Venda de mercadoria
         'unidade_comercial': item.unidade,
         'quantidade_comercial': item.quantidade.toString(),
         'valor_unitario_comercial': item.valorUnitario.toStringAsFixed(2),
         'valor_bruto': item.valorTotal.toStringAsFixed(2),
-        'ncm': item.ncm ?? '00000000',
+        'ncm': item.ncm ?• '00000000',
 
         // Tributação (simplificado - ajustar conforme regime tributário)
         'icms_origem': '0',
@@ -160,7 +160,7 @@ class NotaFiscalService {
       'valor_total': nota.valorTotal.toStringAsFixed(2),
 
       // Informações adicionais
-      'informacoes_adicionais_contribuinte': nota.observacoes ?? '',
+      'informacoes_adicionais_contribuinte': nota.observacoes ?• '',
     };
   }
 
@@ -293,7 +293,7 @@ class NotaFiscalService {
           final snap = await tx.get(ref);
           int proximo = 1;
           if (snap.exists && snap.data() != null) {
-            final atual = (snap.data()!['serie_$serie'] as num?)?.toInt() ?? 0;
+            final atual = (snap.data()!['serie_$serie'] as num?)?.toInt() ?• 0;
             proximo = atual + 1;
           }
           tx.set(ref, {'serie_$serie': proximo}, SetOptions(merge: true));

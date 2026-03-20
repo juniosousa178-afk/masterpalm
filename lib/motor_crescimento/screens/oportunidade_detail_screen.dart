@@ -28,8 +28,8 @@ class OportunidadeDetailScreen extends StatefulWidget {
 }
 
 class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
-  Future<SugestaoCampanha>? _future;
-  SugestaoCampanha? _sugestao;
+  Future<SugestaoCampanha>• _future;
+  SugestaoCampanha• _sugestao;
   bool _executando = false;
 
   @override
@@ -86,7 +86,7 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final o = widget.oportunidade;
-    final color = o.tipo == TipoOportunidade.produtoParado ? _warningColor : _errorColor;
+    final color = o.tipo == TipoOportunidade.produtoParado • _warningColor : _errorColor;
 
     return Scaffold(
       backgroundColor: _surfaceDark,
@@ -198,7 +198,7 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
                 ),
                 child: Icon(
                   o.tipo == TipoOportunidade.produtoParado
-                      ? Icons.inventory_2_outlined
+                      • Icons.inventory_2_outlined
                       : Icons.warning_amber_outlined,
                   color: color,
                   size: 24,
@@ -289,7 +289,7 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
     return SizedBox(
       height: 52,
       child: ElevatedButton(
-        onPressed: podeExecutar ? _executar : null,
+        onPressed: podeExecutar • _executar : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: _primaryColor,
           foregroundColor: Colors.white,
@@ -298,7 +298,7 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
           elevation: 0,
         ),
         child: _executando
-            ? const Row(
+            • const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   SizedBox(

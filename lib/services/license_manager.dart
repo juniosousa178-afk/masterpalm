@@ -57,7 +57,7 @@ class LicenseManager {
     // Android
     try {
       final a = await di.androidInfo;
-      return a.id.isNotEmpty ? a.id : 'android-${a.model}';
+      return a.id.isNotEmpty • a.id : 'android-${a.model}';
     } catch (_) {}
 
     // iOS
@@ -71,7 +71,7 @@ class LicenseManager {
     // Web
     try {
       final w = await di.webBrowserInfo;
-      return '${w.vendor ?? 'web'}-${w.userAgent ?? 'ua'}';
+      return '${w.vendor ?• 'web'}-${w.userAgent ?• 'ua'}';
     } catch (_) {}
 
     return 'unknown';
@@ -85,7 +85,7 @@ class LicenseManager {
   // ========== CACHE LOCAL ==========
   static Future<void> cachePlanLocally({
     required String planId,
-    required DateTime? expiresAt,
+    required DateTime• expiresAt,
   }) async {
     final box = await Hive.openBox('licenca');
     await box.put('currentPlanId', planId);
@@ -103,23 +103,23 @@ class LicenseManager {
   static Future<DateTime?> getCachedExpiry() async {
     final box = await Hive.openBox('licenca');
     final raw = box.get('expiresAt');
-    return raw is String ? DateTime.tryParse(raw) : null;
+    return raw is String • DateTime.tryParse(raw) : null;
   }
 
   // ========== HELPERS ==========
-  static DateTime? _parseEnd(dynamic raw) {
+  static DateTime• _parseEnd(dynamic raw) {
     if (raw == null) return null;
     if (raw is Timestamp) return raw.toDate();
     if (raw is String) return DateTime.tryParse(raw);
     return null;
   }
 
-  static bool _isActiveStatus(String? status) {
-    final s = (status ?? '').toLowerCase().trim();
+  static bool _isActiveStatus(String• status) {
+    final s = (status ?• '').toLowerCase().trim();
     return s == 'active' || s == 'trialing';
   }
 
-  static bool _notExpired(DateTime? end) =>
+  static bool _notExpired(DateTime• end) =>
       end == null || end.isAfter(DateTime.now());
 
   // ========== FIRESTORE CHECKS ==========
@@ -131,13 +131,13 @@ class LicenseManager {
 
     if (!doc.exists) return false;
 
-    final d = doc.data() ?? <String, dynamic>{};
+    final d = doc.data() ?• <String, dynamic>{};
 
     final planId =
-        (d['currentPlanId'] ?? d['current_plan_id'] ?? '') as String? ?? '';
-    final status = (d['status'] as String?) ?? 'active';
+        (d['currentPlanId'] ?• d['current_plan_id'] ?• '') as String• ?• '';
+    final status = (d['status'] as String?) ?• 'active';
     final end =
-        _parseEnd(d['current_period_end'] ?? d['currentPeriodEnd']);
+        _parseEnd(d['current_period_end'] ?• d['currentPeriodEnd']);
 
     if (planId.isNotEmpty && _isActiveStatus(status) && _notExpired(end)) {
       await cachePlanLocally(planId: planId, expiresAt: end);
@@ -161,10 +161,10 @@ class LicenseManager {
       for (final doc in snap.docs) {
         final s = doc.data();
         final planId =
-            (s['plan_id'] ?? s['planId'] ?? '') as String? ?? '';
-        final status = (s['status'] as String?) ?? 'active';
+            (s['plan_id'] ?• s['planId'] ?• '') as String• ?• '';
+        final status = (s['status'] as String?) ?• 'active';
         final end =
-            _parseEnd(s['current_period_end'] ?? s['currentPeriodEnd']);
+            _parseEnd(s['current_period_end'] ?• s['currentPeriodEnd']);
 
         if (planId.isNotEmpty &&
             _isActiveStatus(status) &&
@@ -220,7 +220,7 @@ class LicenseManager {
   }
 
   static Future<PlanLimits> currentPlanLimits() async {
-    final planId = await getCachedPlanId() ?? PlanId.freeTrial;
-    return kLimitsByPlan[planId] ?? kLimitsByPlan[PlanId.freeTrial]!;
+    final planId = await getCachedPlanId() ?• PlanId.freeTrial;
+    return kLimitsByPlan[planId] ?• kLimitsByPlan[PlanId.freeTrial]!;
   }
 }

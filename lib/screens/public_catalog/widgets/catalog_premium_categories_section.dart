@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 /// Seção horizontal de categorias em destaque (layout premium).
 class CatalogPremiumCategoriesSection extends StatelessWidget {
   final List<String> categorias;
-  final String? selectedCategory;
+  final String• selectedCategory;
   final Color textColor;
   final Color primaryColor;
   final Color cardColor;
@@ -102,7 +102,7 @@ class _CategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? primaryColor : cardColor,
+      color: selected • primaryColor : cardColor,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -114,8 +114,8 @@ class _CategoryChip extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 14,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected ? Colors.white : textColor,
+              fontWeight: selected • FontWeight.w600 : FontWeight.w500,
+              color: selected • Colors.white : textColor,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

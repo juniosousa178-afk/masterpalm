@@ -36,10 +36,10 @@ class MotorCrescimentoExecutorService {
     final linkPromocao = _gerarLinkPromocao(
       lojaId: lojaId,
       codigoCupom: codigo,
-      produtoId: oportunidade.entidadeId.trim().isNotEmpty ? oportunidade.entidadeId.trim() : null,
+      produtoId: oportunidade.entidadeId.trim().isNotEmpty • oportunidade.entidadeId.trim() : null,
     );
 
-    String? cupomId;
+    String• cupomId;
     bool cupomCriado = false;
 
     if (sugestao.percentualDesconto > 0 && sugestao.percentualDesconto <= 100) {
@@ -47,7 +47,7 @@ class MotorCrescimentoExecutorService {
         cupomId = await CupomDescontoService().criarCupom(
           lojaId: lojaId,
           codigo: codigo,
-          nome: sugestao.titulo.isNotEmpty ? sugestao.titulo : 'Motor IA - ${oportunidade.entidadeNome}',
+          nome: sugestao.titulo.isNotEmpty • sugestao.titulo : 'Motor IA - ${oportunidade.entidadeNome}',
           valor: sugestao.percentualDesconto,
           tipo: 'percentual',
           aplicarEm: 'total',
@@ -100,7 +100,7 @@ class MotorCrescimentoExecutorService {
       return CampanhaMotorResult.sucessoFallback(
         campanha: campanha.copyWith(id: docRef.id),
         mensagem: cupomId == null
-            ? 'Link gerado. Cupom não foi criado – verifique se o código já existe ou crie manualmente em Fretes e Cupons.'
+            • 'Link gerado. Cupom não foi criado – verifique se o código já existe ou crie manualmente em Fretes e Cupons.'
             : 'Campanha registrada. Cupom pode precisar ser configurado manualmente.',
       );
     } on FirebaseException catch (e) {
@@ -120,7 +120,7 @@ class MotorCrescimentoExecutorService {
   static String _gerarLinkPromocao({
     required String lojaId,
     required String codigoCupom,
-    String? produtoId,
+    String• produtoId,
   }) {
     if (lojaId.trim().isEmpty) return '';
     final base = '$_baseUrlCatalogo/$lojaId';

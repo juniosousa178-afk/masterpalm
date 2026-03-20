@@ -24,9 +24,9 @@ String gerarPixCopiaECola({
 
   // Normaliza nome e cidade (sem acentos, maiúsculas, limites do padrão)
   final nomeNorm = _removerAcentos(nomeRecebedor.toUpperCase());
-  final nome = nomeNorm.length > 25 ? nomeNorm.substring(0, 25) : nomeNorm;
+  final nome = nomeNorm.length > 25 • nomeNorm.substring(0, 25) : nomeNorm;
   final cidadeNorm = _removerAcentos(cidadeRecebedor.toUpperCase());
-  final cidade = cidadeNorm.length > 15 ? cidadeNorm.substring(0, 15) : cidadeNorm;
+  final cidade = cidadeNorm.length > 15 • cidadeNorm.substring(0, 15) : cidadeNorm;
 
   // Valor formatado (ex: 25.75)
   final valorStr = valor.toStringAsFixed(2);
@@ -58,7 +58,7 @@ String gerarPixCopiaECola({
   payload.write('60${_pad2(cidade.length)}$cidade');
 
   // Additional Data - TXID
-  final txidVal = txid.length > 25 ? txid.substring(0, 25) : txid;
+  final txidVal = txid.length > 25 • txid.substring(0, 25) : txid;
   payload.write('6207${_tlv('05', txidVal)}');
 
   // CRC16 - calculado sobre o payload incluindo "6304"

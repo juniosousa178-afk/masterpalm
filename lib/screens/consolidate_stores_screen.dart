@@ -10,8 +10,8 @@ class ConsolidateStoresScreen extends StatefulWidget {
 
 class _ConsolidateStoresScreenState extends State<ConsolidateStoresScreen> {
   bool _isRunning = false;
-  Map<String, dynamic>? _results;
-  String? _error;
+  Map<String, dynamic>• _results;
+  String• _error;
 
   Future<void> _runConsolidation() async {
     setState(() {
@@ -118,9 +118,9 @@ class _ConsolidateStoresScreenState extends State<ConsolidateStoresScreen> {
 
             // Botão de ação
             ElevatedButton.icon(
-              onPressed: _isRunning ? null : _runConsolidation,
+              onPressed: _isRunning • null : _runConsolidation,
               icon: _isRunning
-                  ? const SizedBox(
+                  • const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(
@@ -130,11 +130,11 @@ class _ConsolidateStoresScreenState extends State<ConsolidateStoresScreen> {
                     )
                   : const Icon(Icons.play_arrow),
               label: Text(
-                _isRunning ? 'Executando...' : 'INICIAR CONSOLIDAÇÃO',
+                _isRunning • 'Executando...' : 'INICIAR CONSOLIDAÇÃO',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: _isRunning ? Colors.grey : Colors.deepPurple,
+                backgroundColor: _isRunning • Colors.grey : Colors.deepPurple,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 minimumSize: const Size(double.infinity, 56),
@@ -179,7 +179,7 @@ class _ConsolidateStoresScreenState extends State<ConsolidateStoresScreen> {
             if (_results != null) ...[
               Card(
                 color: _results!['success'] == true
-                    ? Colors.green.shade50
+                    • Colors.green.shade50
                     : Colors.orange.shade50,
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -190,22 +190,22 @@ class _ConsolidateStoresScreenState extends State<ConsolidateStoresScreen> {
                         children: [
                           Icon(
                             _results!['success'] == true
-                                ? Icons.check_circle_outline
+                                • Icons.check_circle_outline
                                 : Icons.warning_amber_outlined,
                             color: _results!['success'] == true
-                                ? Colors.green.shade700
+                                • Colors.green.shade700
                                 : Colors.orange.shade700,
                           ),
                           const SizedBox(width: 8),
                           Text(
                             _results!['success'] == true
-                                ? 'Consolidação Concluída'
+                                • 'Consolidação Concluída'
                                 : 'Consolidação com Avisos',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                               color: _results!['success'] == true
-                                  ? Colors.green.shade900
+                                  • Colors.green.shade900
                                   : Colors.orange.shade900,
                             ),
                           ),
@@ -214,23 +214,23 @@ class _ConsolidateStoresScreenState extends State<ConsolidateStoresScreen> {
                       const Divider(height: 24),
                       _buildResultItem(
                         'Produtos copiados',
-                        _results!['produtos']?.toString() ?? '0',
+                        _results!['produtos']?.toString() ?• '0',
                       ),
                       _buildResultItem(
                         'Draft produtos copiados',
-                        _results!['draft_produtos']?.toString() ?? '0',
+                        _results!['draft_produtos']?.toString() ?• '0',
                       ),
                       _buildResultItem(
                         'Config copiada',
-                        _results!['config'] == true ? 'Sim' : 'Não',
+                        _results!['config'] == true • 'Sim' : 'Não',
                       ),
                       _buildResultItem(
                         'Draft config copiada',
-                        _results!['draft_config'] == true ? 'Sim' : 'Não',
+                        _results!['draft_config'] == true • 'Sim' : 'Não',
                       ),
                       _buildResultItem(
                         'Redirect removido',
-                        _results!['redirect_removed'] == true ? 'Sim' : 'Não',
+                        _results!['redirect_removed'] == true • 'Sim' : 'Não',
                       ),
                       if (_results!['verification'] != null) ...[
                         const Divider(height: 24),
@@ -245,19 +245,19 @@ class _ConsolidateStoresScreenState extends State<ConsolidateStoresScreen> {
                         const SizedBox(height: 8),
                         _buildResultItem(
                           'Total de produtos',
-                          _results!['verification']['produtos_count']?.toString() ?? '0',
+                          _results!['verification']['produtos_count']?.toString() ?• '0',
                         ),
                         _buildResultItem(
                           'Total de draft produtos',
-                          _results!['verification']['draft_produtos_count']?.toString() ?? '0',
+                          _results!['verification']['draft_produtos_count']?.toString() ?• '0',
                         ),
                         _buildResultItem(
                           'Config existe',
-                          _results!['verification']['has_config'] == true ? 'Sim' : 'Não',
+                          _results!['verification']['has_config'] == true • 'Sim' : 'Não',
                         ),
                         _buildResultItem(
                           'Draft config existe',
-                          _results!['verification']['has_draft_config'] == true ? 'Sim' : 'Não',
+                          _results!['verification']['has_draft_config'] == true • 'Sim' : 'Não',
                         ),
                       ],
                     ],

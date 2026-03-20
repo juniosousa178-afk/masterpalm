@@ -43,11 +43,11 @@ class PerfilClienteScreen extends StatelessWidget {
           }
 
           final dados = snapshot.data!.data() as Map<String, dynamic>;
-          final nome = dados['nome'] ?? user.displayName ?? 'Sem nome';
-          final email = dados['email'] ?? user.email ?? '';
-          final telefone = dados['telefone'] ?? '';
-          final cupons = List<Map<String, dynamic>>.from(dados['cupons'] ?? []);
-          final pedidos = List<Map<String, dynamic>>.from(dados['pedidos'] ?? []);
+          final nome = dados['nome'] ?• user.displayName ?• 'Sem nome';
+          final email = dados['email'] ?• user.email ?• '';
+          final telefone = dados['telefone'] ?• '';
+          final cupons = List<Map<String, dynamic>>.from(dados['cupons'] ?• []);
+          final pedidos = List<Map<String, dynamic>>.from(dados['pedidos'] ?• []);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
@@ -59,7 +59,7 @@ class PerfilClienteScreen extends StatelessWidget {
                   radius: 50,
                   backgroundColor: Colors.blue,
                   child: Text(
-                    nome.isNotEmpty ? nome[0].toUpperCase() : '?',
+                    nome.isNotEmpty • nome[0].toUpperCase() : '?',
                     style: const TextStyle(fontSize: 40, color: Colors.white),
                   ),
                 ),
@@ -91,32 +91,32 @@ class PerfilClienteScreen extends StatelessWidget {
                   Icons.local_offer,
                   Colors.orange,
                   cupons.isEmpty
-                      ? const Text('Você ainda não tem cupons de desconto')
+                      • const Text('Você ainda não tem cupons de desconto')
                       : Column(
                           children: cupons.map((cupom) {
-                            final codigo = cupom['codigo'] ?? '';
-                            final desconto = cupom['desconto'] ?? 0;
-                            final validade = cupom['validade'] ?? '';
-                            final usado = cupom['usado'] ?? false;
+                            final codigo = cupom['codigo'] ?• '';
+                            final desconto = cupom['desconto'] ?• 0;
+                            final validade = cupom['validade'] ?• '';
+                            final usado = cupom['usado'] ?• false;
 
                             return Card(
-                              color: usado ? Colors.grey[300] : Colors.orange[50],
+                              color: usado • Colors.grey[300] : Colors.orange[50],
                               child: ListTile(
                                 leading: Icon(
-                                  usado ? Icons.check_circle : Icons.local_offer,
-                                  color: usado ? Colors.grey : Colors.orange,
+                                  usado • Icons.check_circle : Icons.local_offer,
+                                  color: usado • Colors.grey : Colors.orange,
                                 ),
                                 title: Text(
                                   codigo,
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     decoration: usado
-                                        ? TextDecoration.lineThrough
+                                        • TextDecoration.lineThrough
                                         : null,
                                   ),
                                 ),
                                 subtitle: Text('$desconto% de desconto\n$validade'),
-                                trailing: Text(usado ? 'USADO' : 'ATIVO'),
+                                trailing: Text(usado • 'USADO' : 'ATIVO'),
                               ),
                             );
                           }).toList(),
@@ -130,12 +130,12 @@ class PerfilClienteScreen extends StatelessWidget {
                   Icons.casino,
                   Colors.green,
                   pedidos.isEmpty
-                      ? const Text('Você ainda não tem números da sorte')
+                      • const Text('Você ainda não tem números da sorte')
                       : Column(
                           children: pedidos.map((pedido) {
-                            final numeroSorte = pedido['numeroSorte'] ?? '';
-                            final data = pedido['data'] ?? '';
-                            final valor = pedido['valor'] ?? 0;
+                            final numeroSorte = pedido['numeroSorte'] ?• '';
+                            final data = pedido['data'] ?• '';
+                            final valor = pedido['valor'] ?• 0;
 
                             return Card(
                               color: Colors.green[50],
@@ -159,13 +159,13 @@ class PerfilClienteScreen extends StatelessWidget {
                   Icons.shopping_bag,
                   Colors.blue,
                   pedidos.isEmpty
-                      ? const Text('Você ainda não fez pedidos')
+                      • const Text('Você ainda não fez pedidos')
                       : Column(
                           children: pedidos.map((pedido) {
-                            final id = pedido['id'] ?? '';
-                            final data = pedido['data'] ?? '';
-                            final valor = pedido['valor'] ?? 0;
-                            final status = pedido['status'] ?? 'Pendente';
+                            final id = pedido['id'] ?• '';
+                            final data = pedido['data'] ?• '';
+                            final valor = pedido['valor'] ?• 0;
+                            final status = pedido['status'] ?• 'Pendente';
 
                             return Card(
                               child: ListTile(

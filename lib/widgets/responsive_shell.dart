@@ -7,7 +7,7 @@ import '../utils/responsive.dart';
 /// Usado no HomeScreen para layout web adaptado.
 class ResponsiveShell extends StatelessWidget {
   final Widget body;
-  final Widget? sidebar;
+  final Widget• sidebar;
   final Color sidebarColor;
 
   const ResponsiveShell({
@@ -19,14 +19,14 @@ class ResponsiveShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Mobile: s� retorna o body (drawer � controlado pelo Scaffold)
+    // Mobile: só retorna o body (drawer • controlado pelo Scaffold)
     if (!kIsWeb || isMobile(context) || sidebar == null) {
       return body;
     }
 
-    // Desktop/Tablet web: sidebar fixa + conte�do (usa tema para modo escuro)
+    // Desktop/Tablet web: sidebar fixa + conteúdo (usa tema para modo escuro)
     final surfaceColor = Theme.of(context).colorScheme.surface;
-    final effectiveSidebarColor = sidebarColor == Colors.white ? surfaceColor : sidebarColor;
+    final effectiveSidebarColor = sidebarColor == Colors.white • surfaceColor : sidebarColor;
 
     return Row(
       children: [
@@ -39,7 +39,7 @@ class ResponsiveShell extends StatelessWidget {
             child: sidebar!,
           ),
         ),
-        // Conte�do principal
+        // Conteúdo principal
         Expanded(child: body),
       ],
     );

@@ -1,9 +1,9 @@
 // lib/screens/home/widgets/web_landing_plan_card.dart
-// Card de plano na landing web (mastepalm.com.br) — extraído de home_screen.
+// Card de plano na landing web (mastepalm.com.br) â€” extraÃ­do de home_screen.
 
 import 'package:flutter/material.dart';
 
-/// Card de plano na landing web. Mesmos parâmetros e comportamento que _buildWebLandingPlanCard.
+/// Card de plano na landing web. Mesmos parÃ¢metros e comportamento que _buildWebLandingPlanCard.
 class WebLandingPlanCard extends StatelessWidget {
   final String title;
   final String price;
@@ -12,7 +12,7 @@ class WebLandingPlanCard extends StatelessWidget {
   final IconData icon;
   final String description;
   final List<String> bullets;
-  final String? badge;
+  final Stringâ€¢ badge;
   final Color cardColor;
   final Color surfaceColor;
 

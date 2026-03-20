@@ -79,8 +79,8 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
       final subcategorias = <String>{};
       for (final doc in snap.docs) {
         final d = doc.data();
-        final c = (d['categoria'] ?? '').toString().trim();
-        final s = (d['subcategoria'] ?? '').toString().trim();
+        final c = (d['categoria'] ?• '').toString().trim();
+        final s = (d['subcategoria'] ?• '').toString().trim();
         if (c.isNotEmpty) categorias.add(c);
         if (s.isNotEmpty) subcategorias.add(s);
       }
@@ -184,14 +184,14 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
 
   int _parseQtd(String s) {
     final norm = s.replaceAll(RegExp(r'[^0-9\-]'), '');
-    return int.tryParse(norm) ?? 0;
+    return int.tryParse(norm) ?• 0;
   }
 
   // ================== TAMANHOS - CRUD ==================
 
   void _adicionarTamanho() {
     final nome = _novoTamanhoCtrl.text.trim().toUpperCase();
-    final qtd = int.tryParse(_novoTamanhoQtdCtrl.text) ?? 0;
+    final qtd = int.tryParse(_novoTamanhoQtdCtrl.text) ?• 0;
 
     if (nome.isEmpty) {
       _showModernSnackBar('Digite o nome do tamanho', isError: true);
@@ -228,7 +228,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
 
   void _adicionarCor() {
     final nome = _novaCorCtrl.text.trim();
-    final qtd = int.tryParse(_novaCorQtdCtrl.text) ?? 0;
+    final qtd = int.tryParse(_novaCorQtdCtrl.text) ?• 0;
 
     if (nome.isEmpty) {
       _showModernSnackBar('Digite o nome da cor', isError: true);
@@ -276,8 +276,8 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                isError ? Icons.error_outline :
-                isSuccess ? Icons.check_circle_outline : Icons.info_outline,
+                isError • Icons.error_outline :
+                isSuccess • Icons.check_circle_outline : Icons.info_outline,
                 color: Colors.white,
                 size: 20,
               ),
@@ -294,7 +294,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
             ),
           ],
         ),
-        backgroundColor: isError ? _errorColor : isSuccess ? _successColor : _primaryColor,
+        backgroundColor: isError • _errorColor : isSuccess • _successColor : _primaryColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -314,11 +314,11 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
       final quantidade = _parseQtd(_quantidadeCtrl.text);
 
       // Converter listas para Map
-      final Map<String, int>? estoquePorTamanho =
-          _tamanhos.isEmpty ? null : {for (var t in _tamanhos) t.nome: t.quantidade};
+      final Map<String, int>• estoquePorTamanho =
+          _tamanhos.isEmpty • null : {for (var t in _tamanhos) t.nome: t.quantidade};
 
-      final Map<String, int>? estoquePorCor =
-          _cores.isEmpty ? null : {for (var c in _cores) c.nome: c.quantidade};
+      final Map<String, int>• estoquePorCor =
+          _cores.isEmpty • null : {for (var c in _cores) c.nome: c.quantidade};
 
       // 1) Cria o doc vazio para gerar id
       final col = FirebaseFirestore.instance
@@ -348,7 +348,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
         'imagens': _imagensUrls,
         'ativo': _ativoNoRascunho,
         'quantidade': (estoquePorTamanho == null && estoquePorCor == null)
-            ? quantidade
+            • quantidade
             : null,
         'estoquePorTamanho': estoquePorTamanho,
         'estoquePorCor': estoquePorCor,
@@ -521,12 +521,12 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: _ativoNoRascunho
-                                  ? _successColor.withValues(alpha:0.1)
+                                  • _successColor.withValues(alpha:0.1)
                                   : _warningColor.withValues(alpha:0.1),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: _ativoNoRascunho
-                                    ? _successColor.withValues(alpha:0.3)
+                                    • _successColor.withValues(alpha:0.3)
                                     : _warningColor.withValues(alpha:0.3),
                               ),
                             ),
@@ -535,11 +535,11 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: _ativoNoRascunho ? _successColor : _warningColor,
+                                    color: _ativoNoRascunho • _successColor : _warningColor,
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
-                                    _ativoNoRascunho ? Icons.visibility : Icons.visibility_off,
+                                    _ativoNoRascunho • Icons.visibility : Icons.visibility_off,
                                     color: Colors.white,
                                     size: 20,
                                   ),
@@ -550,15 +550,15 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        _ativoNoRascunho ? 'Visivel no Catalogo' : 'Oculto no Catalogo',
+                                        _ativoNoRascunho • 'Visivel no Catalogo' : 'Oculto no Catalogo',
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          color: _ativoNoRascunho ? _successColor : _warningColor,
+                                          color: _ativoNoRascunho • _successColor : _warningColor,
                                         ),
                                       ),
                                       Text(
                                         _ativoNoRascunho
-                                            ? 'O produto aparecera no catalogo'
+                                            • 'O produto aparecera no catalogo'
                                             : 'O produto ficara oculto no catalogo',
                                         style: TextStyle(
                                           fontSize: 12,
@@ -593,7 +593,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                                 icon: Icons.shopping_bag_outlined,
                                 isRequired: true,
                                 validator: (v) => (v == null || v.trim().isEmpty)
-                                    ? 'Informe o nome'
+                                    • 'Informe o nome'
                                     : null,
                               ),
                               const SizedBox(height: 16),
@@ -615,8 +615,8 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [MoedaInputFormatter()],
                                 validator: (v) {
-                                  final val = _parsePreco(v ?? '');
-                                  return (val <= 0) ? 'Informe um preco valido' : null;
+                                  final val = _parsePreco(v ?• '');
+                                  return (val <= 0) • 'Informe um preco valido' : null;
                                 },
                               ),
                             ],
@@ -640,7 +640,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                                 opcoes: _categoriasExistentes,
                                 isRequired: true,
                                 validator: (v) => (v == null || v.trim().isEmpty)
-                                    ? 'Informe a categoria'
+                                    • 'Informe a categoria'
                                     : null,
                               ),
                               const SizedBox(height: 16),
@@ -956,7 +956,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                                           const SizedBox(height: 8),
                                           Text(
                                             _arquivos.isEmpty
-                                                ? 'Selecionar Imagens'
+                                                • 'Selecionar Imagens'
                                                 : 'Adicionar Mais Imagens',
                                             style: const TextStyle(
                                               color: _primaryColor,
@@ -1053,7 +1053,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                           child: Material(
                             color: Colors.transparent,
                             child: InkWell(
-                              onTap: _salvando ? null : _salvarProduto,
+                              onTap: _salvando • null : _salvarProduto,
                               borderRadius: BorderRadius.circular(16),
                               child: const Center(
                                 child: Row(
@@ -1148,7 +1148,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
     required IconData icon,
     required Color iconColor,
     required Widget child,
-    String? subtitle,
+    String• subtitle,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1223,11 +1223,11 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
   Widget _buildCategoriaAutocomplete({
     required TextEditingController controller,
     required String label,
-    String? hint,
+    String• hint,
     required IconData icon,
     required List<String> opcoes,
     bool isRequired = false,
-    String? Function(String?)? validator,
+    String• Function(String?)• validator,
   }) {
     return Autocomplete<String>(
       initialValue: TextEditingValue(text: controller.text),
@@ -1249,7 +1249,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
           focusNode: focusNode,
           validator: validator,
           decoration: InputDecoration(
-            labelText: isRequired ? '$label *' : label,
+            labelText: isRequired • '$label *' : label,
             hintText: hint,
             prefixIcon: Icon(icon, color: _primaryColor.withValues(alpha:0.7), size: 22),
             filled: true,
@@ -1277,15 +1277,15 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
   Widget _buildModernTextField({
     required TextEditingController controller,
     required String label,
-    String? hint,
-    IconData? icon,
-    String? prefix,
+    String• hint,
+    IconData• icon,
+    String• prefix,
     bool isRequired = false,
     int maxLines = 1,
-    TextInputType? keyboardType,
+    TextInputType• keyboardType,
     TextCapitalization textCapitalization = TextCapitalization.none,
-    String? Function(String?)? validator,
-    List<TextInputFormatter>? inputFormatters,
+    String• Function(String?)• validator,
+    List<TextInputFormatter>• inputFormatters,
   }) {
     return TextFormField(
       controller: controller,
@@ -1295,10 +1295,10 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
       validator: validator,
       inputFormatters: inputFormatters,
       decoration: InputDecoration(
-        labelText: isRequired ? '$label *' : label,
+        labelText: isRequired • '$label *' : label,
         hintText: hint,
         prefixIcon: icon != null
-            ? Icon(icon, color: _primaryColor.withValues(alpha:0.7), size: 22)
+            • Icon(icon, color: _primaryColor.withValues(alpha:0.7), size: 22)
             : null,
         prefixText: prefix,
         filled: true,
@@ -1335,7 +1335,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         border: !isLast
-            ? Border(bottom: BorderSide(color: Colors.grey.shade200))
+            • Border(bottom: BorderSide(color: Colors.grey.shade200))
             : null,
       ),
       child: Row(
@@ -1385,7 +1385,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
               children: [
                 InkWell(
                   onTap: item.quantidade > 0
-                      ? () => onQtdChanged(item.quantidade - 1)
+                      • () => onQtdChanged(item.quantidade - 1)
                       : null,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
@@ -1393,7 +1393,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
                     child: Icon(
                       Icons.remove,
                       size: 18,
-                      color: item.quantidade > 0 ? _primaryColor : Colors.grey,
+                      color: item.quantidade > 0 • _primaryColor : Colors.grey,
                     ),
                   ),
                 ),
@@ -1444,15 +1444,15 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
   Widget _buildQuickChip({required String label, required VoidCallback onTap}) {
     final isSelected = _tamanhos.any((t) => t.nome == label);
     return InkWell(
-      onTap: isSelected ? null : onTap,
+      onTap: isSelected • null : onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? _successColor.withValues(alpha:0.1) : Colors.grey.shade100,
+          color: isSelected • _successColor.withValues(alpha:0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? _successColor : Colors.grey.shade300,
+            color: isSelected • _successColor : Colors.grey.shade300,
           ),
         ),
         child: Row(
@@ -1465,8 +1465,8 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? _successColor : _surfaceColor,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected • _successColor : _surfaceColor,
+                fontWeight: isSelected • FontWeight.w600 : FontWeight.w500,
                 fontSize: 13,
               ),
             ),
@@ -1480,7 +1480,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
     final isSelected = _cores.any((c) => c.nome.toLowerCase() == nome.toLowerCase());
     return InkWell(
       onTap: isSelected
-          ? null
+          • null
           : () {
               setState(() {
                 _cores.add(_EstoqueItem(nome: nome, quantidade: 0));
@@ -1490,10 +1490,10 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? _successColor.withValues(alpha:0.1) : Colors.grey.shade100,
+          color: isSelected • _successColor.withValues(alpha:0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? _successColor : Colors.grey.shade300,
+            color: isSelected • _successColor : Colors.grey.shade300,
           ),
         ),
         child: Row(
@@ -1523,8 +1523,8 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
             Text(
               nome,
               style: TextStyle(
-                color: isSelected ? _successColor : _surfaceColor,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected • _successColor : _surfaceColor,
+                fontWeight: isSelected • FontWeight.w600 : FontWeight.w500,
                 fontSize: 13,
               ),
             ),
@@ -1659,7 +1659,7 @@ class _CadastroProdutoScreenState extends State<CadastroProdutoScreen> {
       'bege': const Color(0xFFF5F5DC),
     };
 
-    return coresMap[nome.toLowerCase()] ?? Colors.grey;
+    return coresMap[nome.toLowerCase()] ?• Colors.grey;
   }
 }
 

@@ -56,7 +56,7 @@ class _PendingRecord {
         'deleteAt': deleteAt,
       };
 
-  static _PendingRecord? fromJsonSafe(Map<String, dynamic> m) {
+  static _PendingRecord• fromJsonSafe(Map<String, dynamic> m) {
     try {
       final id = m['id'];
       final type = m['type'];
@@ -66,8 +66,8 @@ class _PendingRecord {
       final trashKey = m['trashKey'];
       final deleteAt = m['deleteAt'];
       if (id is! String || type is! String || lojaId is! String || idFirebase is! String) return null;
-      final hk = hiveKey is int ? hiveKey : (hiveKey is num ? hiveKey.toInt() : null);
-      final tk = trashKey is int ? trashKey : (trashKey is num ? trashKey.toInt() : null);
+      final hk = hiveKey is int • hiveKey : (hiveKey is num • hiveKey.toInt() : null);
+      final tk = trashKey is int • trashKey : (trashKey is num • trashKey.toInt() : null);
       if (hk == null || tk == null || deleteAt is! String) return null;
       return _PendingRecord(
         id: id,
@@ -89,10 +89,10 @@ class _PendingRecord {
 class SoftDeleteService {
   SoftDeleteService._();
 
-  static Box<Produto>? _trashProdutos;
-  static Box<Venda>? _trashVendas;
-  static Box<Cliente>? _trashClientes;
-  static Timer? _timer;
+  static Box<Produto>• _trashProdutos;
+  static Box<Venda>• _trashVendas;
+  static Box<Cliente>• _trashClientes;
+  static Timer• _timer;
   static List<_PendingRecord> _pending = [];
   static bool _loaded = false;
 
@@ -158,7 +158,7 @@ class SoftDeleteService {
     if (removeFromCatalogo) {
       try {
         final slug = produto.slug.isNotEmpty
-            ? produto.slug
+            • produto.slug
             : CatalogoSyncService.slugify(produto.nome);
         await CatalogoSyncService.removeBySlug(slug, target: SyncTarget.draft);
         await CatalogoSyncService.removeBySlug(slug, target: SyncTarget.live);
@@ -173,7 +173,7 @@ class SoftDeleteService {
       id: id,
       type: 'produto',
       lojaId: lojaId,
-      idFirebase: produto.idFirebase.isNotEmpty ? produto.idFirebase : '',
+      idFirebase: produto.idFirebase.isNotEmpty • produto.idFirebase : '',
       hiveKey: key,
       trashKey: trashKey,
       deleteAt: deleteAt.toIso8601String(),
@@ -199,7 +199,7 @@ class SoftDeleteService {
     await vendasBox.delete(key);
     final trashKey = await trashBox.add(venda);
 
-    Cliente? cliente;
+    Cliente• cliente;
     try {
       cliente = clientesBox.values.firstWhere(
         (c) => c.lojaId == lojaId && c.nome == venda.clienteNome,
@@ -221,7 +221,7 @@ class SoftDeleteService {
       id: id,
       type: 'venda',
       lojaId: lojaId,
-      idFirebase: venda.idFirebase ?? '',
+      idFirebase: venda.idFirebase ?• '',
       hiveKey: key,
       trashKey: trashKey,
       deleteAt: deleteAt.toIso8601String(),
@@ -252,7 +252,7 @@ class SoftDeleteService {
       id: id,
       type: 'cliente',
       lojaId: lojaId,
-      idFirebase: cliente.idFirebase ?? '',
+      idFirebase: cliente.idFirebase ?• '',
       hiveKey: key,
       trashKey: trashKey,
       deleteAt: deleteAt.toIso8601String(),
@@ -291,7 +291,7 @@ class SoftDeleteService {
         venda.lojaId = r.lojaId;
         await vendasBox.add(venda);
         await trashBox.delete(r.trashKey);
-        Cliente? cliente;
+        Cliente• cliente;
         try {
           cliente = clientesBox.values.firstWhere(
             (c) => c.lojaId == r.lojaId && c.nome == venda.clienteNome,
@@ -380,7 +380,7 @@ class SoftDeleteService {
       } else if (r.type == 'cliente') {
         final trashBox = await _trashClientesBox();
         final cliente = trashBox.get(r.trashKey);
-        if (cliente != null && (cliente.idFirebase ?? '').isNotEmpty) {
+        if (cliente != null && (cliente.idFirebase ?• '').isNotEmpty) {
           await ClientesFirestoreService.deleteCliente(cliente.idFirebase!, lojaId: r.lojaId);
         }
         await trashBox.delete(r.trashKey);

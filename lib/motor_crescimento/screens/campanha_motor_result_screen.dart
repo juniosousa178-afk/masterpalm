@@ -122,7 +122,7 @@ class CampanhaMotorResultScreen extends StatelessWidget {
                 onCopiar: () => _copiar(c.linkPromocao, 'Link', context),
               ),
             ],
-            if (c.textos['textoPromocao']?.isNotEmpty ?? false) ...[
+            if (c.textos['textoPromocao']?.isNotEmpty ?• false) ...[
               const SizedBox(height: 16),
               _buildCard(
                 context: context,

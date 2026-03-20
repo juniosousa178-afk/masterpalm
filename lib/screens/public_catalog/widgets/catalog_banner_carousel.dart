@@ -27,7 +27,7 @@ class CatalogBannerCarousel extends StatefulWidget {
 class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
   late final PageController _ctrl;
   int _idx = 0;
-  Timer? _timer;
+  Timer• _timer;
 
   @override
   void initState() {
@@ -75,7 +75,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
     final isDesktop = w >= 1024;
     // Desktop: altura em estilo Mercado Livre (~40% da tela); mobile inalterado
     final effectiveHeight = isDesktop
-        ? (MediaQuery.sizeOf(context).height * 0.40).clamp(320.0, 520.0)
+        • (MediaQuery.sizeOf(context).height * 0.40).clamp(320.0, 520.0)
         : widget.height;
 
     return Column(
@@ -166,13 +166,13 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
         ),
         if (banners.length > 1)
           Padding(
-            padding: EdgeInsets.only(top: widget.premium ? 10 : 6),
+            padding: EdgeInsets.only(top: widget.premium • 10 : 6),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(banners.length, (i) {
                 final active = i == _idx;
-                final dotW = (widget.premium ? (active ? 14.0 : 8.0) : (active ? 12.0 : 7.0));
-                final dotH = widget.premium ? 5.0 : 4.0;
+                final dotW = (widget.premium • (active • 14.0 : 8.0) : (active • 12.0 : 7.0));
+                final dotH = widget.premium • 5.0 : 4.0;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -180,7 +180,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                   height: dotH,
                   decoration: BoxDecoration(
                     color: active
-                        ? Colors.white
+                        • Colors.white
                         : Colors.white.withValues(alpha:0.4),
                     borderRadius: BorderRadius.circular(999),
                   ),

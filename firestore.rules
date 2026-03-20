@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================
-    // FUNÃ‡Ã•ES AUXILIARES
+    // FUNÇÕES AUXILIARES
     // =========================
     function isSignedIn() {
       return request.auth != null;
@@ -19,13 +19,13 @@ service cloud.firestore {
         ];
     }
 
-    // Doc de usuÃ¡rio "legado" (coleÃ§Ã£o usuarios/{email})
+    // Doc de usuário "legado" (coleção usuarios/{email})
     function isSelfUserDoc(emailDocId) {
       return isSignedIn()
         && emailDocId == request.auth.token.email;
     }
 
-    // Admin / Programador baseado na coleÃ§Ã£o "usuarios"
+    // Admin / Programador baseado na coleção "usuarios"
     function isUserAdminTipo() {
       return isSignedIn() && (
         isRootAdmin() ||
@@ -40,7 +40,7 @@ service cloud.firestore {
       );
     }
 
-    // âœ… NOVO: Admin / Programador baseado na coleÃ§Ã£o "users/{uid}"
+    // ✅ NOVO: Admin / Programador baseado na coleção "users/{uid}"
     function isUserAdminByUid() {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
@@ -65,26 +65,26 @@ service cloud.firestore {
         );
     }
 
-    // âœ… NOVO: Verifica se Ã© vendedor da loja
+    // ✅ NOVO: Verifica se é vendedor da loja
     function isSellerOfStore(lojaId) {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)).data.ativo == true;
     }
 
-    // âœ… NOVO: Verifica se vendedor tem permissÃ£o especÃ­fica
+    // ✅ NOVO: Verifica se vendedor tem permissão específica
     function sellerHasPermission(lojaId, permissao) {
       return isSellerOfStore(lojaId) &&
         get(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)).data.permissoes[permissao] == true;
     }
 
-    // âœ… NOVO: Verifica se pertence Ã  loja (admin ou vendedor)
+    // ✅ NOVO: Verifica se pertence à loja (admin ou vendedor)
     function belongsToStore(lojaId) {
       return isAdminOrSystem() || isOwnerOfStore(lojaId) || isSellerOfStore(lojaId) || userResolvedStoreMatches(lojaId);
     }
 
     // =========================
-    // VALIDAÃ‡Ã•ES PARA WRITES PÃšBLICOS (anti-abuso)
+    // VALIDAÇÕES PARA WRITES PÚBLICOS (anti-abuso)
     // =========================
 
     function isValidClienteCreate() {
@@ -250,7 +250,7 @@ service cloud.firestore {
     }
 
     // =========================
-    // SISTEMA: rate limits e idempotÃªncia
+    // SISTEMA: rate limits e idempotência
     // =========================
     match /_rate_limits/{doc} {
       allow read, write: if false;
@@ -325,7 +325,7 @@ service cloud.firestore {
     }
 
     // =========================
-    // LOJAS + SUBCOLEÃ‡Ã•ES
+    // LOJAS + SUBCOLEÇÕES
     // =========================
     match /lojas/{lojaId} {
       // Leitura: público apenas para lojas publicadas (catálogo); demais exigem auth

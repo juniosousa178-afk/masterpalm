@@ -136,10 +136,10 @@ class _CatalogGalleryViewState extends State<CatalogGalleryView> {
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: active ? 10 : 7,
-                  height: active ? 10 : 7,
+                  width: active • 10 : 7,
+                  height: active • 10 : 7,
                   decoration: BoxDecoration(
-                    color: active ? Colors.white : Colors.white38,
+                    color: active • Colors.white : Colors.white38,
                     shape: BoxShape.circle,
                   ),
                 );

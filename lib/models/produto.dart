@@ -78,16 +78,16 @@ class Produto extends HiveObject {
   bool emPromocao;
 
   @HiveField(22)
-  double? percentualPromo;
+  double• percentualPromo;
 
   @HiveField(23)
-  double? valorPromo;
+  double• valorPromo;
 
   @HiveField(24)
-  DateTime? dataInicioPromo;
+  DateTime• dataInicioPromo;
 
   @HiveField(25)
-  DateTime? dataFimPromo;
+  DateTime• dataFimPromo;
 
   // ==============================
   // PESO PARA CÁLCULO DE FRETE
@@ -108,7 +108,7 @@ class Produto extends HiveObject {
   // VARIAÇÕES (TAMANHO + COR)
   // ==============================
   @HiveField(30)
-  Map<String, dynamic>? variacoes; // Estrutura: {tamanho: {cor: quantidade}}
+  Map<String, dynamic>• variacoes; // Estrutura: {tamanho: {cor: quantidade}}
 
   // ==============================
   // PARCELAMENTO
@@ -136,7 +136,7 @@ class Produto extends HiveObject {
   /// Preço por tamanho. Quando preenchido, cada tamanho tem seu próprio preço (ex: P=50, M=75, G=100).
   /// No catálogo exibe "R$ 50,00 até R$ 100,00".
   @HiveField(37)
-  Map<String, double>? precoPorTamanho;
+  Map<String, double>• precoPorTamanho;
 
   /// Tipo: 'simples' (padrão) ou 'combo'. Combo = produto virtual que agrupa outros; ao vender dá baixa em cada item.
   @HiveField(38, defaultValue: 'simples')
@@ -145,11 +145,11 @@ class Produto extends HiveObject {
   /// Itens do combo. Cada mapa: {nome, slug, quantidade, tamanho?, cor?, productId?}.
   /// productId (opcional) = idFirebase do produto; quando presente, expansão/baixa preferem ID. Só usado quando tipoProduto == 'combo'.
   @HiveField(39)
-  List<Map<String, dynamic>>? itensCombo;
+  List<Map<String, dynamic>>• itensCombo;
 
   /// Data da última alteração (salvo/sincronizado). Usado para filtro "recentemente alterados".
   @HiveField(40)
-  DateTime? updatedAt;
+  DateTime• updatedAt;
 
   Produto({
     required this.nome,
@@ -279,9 +279,9 @@ class Produto extends HiveObject {
   }
 
   /// Retorna o preço para uma variação (tamanho ou tamanho+cor). Usa precoPorTamanho se houver, senão precoFinal.
-  double precoParaVariacao(String tamanho, [String? cor]) {
+  double precoParaVariacao(String tamanho, [String• cor]) {
     if (precoPorTamanho != null && precoPorTamanho!.containsKey(tamanho)) {
-      return precoPorTamanho![tamanho] ?? precoFinal;
+      return precoPorTamanho![tamanho] ?• precoFinal;
     }
     return precoFinal;
   }
@@ -293,12 +293,12 @@ class Produto extends HiveObject {
     }
     final precos = precoPorTamanho!.values.where((v) => v > 0).toList();
     if (precos.isEmpty) return (precoFinal, precoFinal);
-    return (precos.reduce((a, b) => a < b ? a : b), precos.reduce((a, b) => a > b ? a : b));
+    return (precos.reduce((a, b) => a < b • a : b), precos.reduce((a, b) => a > b • a : b));
   }
 
   /// Considera estoque baixo: se estoqueMinimo > 0 usa ele, senão usa padrão 5. Não altera dados existentes.
   bool get isEstoqueBaixo {
-    final minimo = estoqueMinimo > 0 ? estoqueMinimo : 5;
+    final minimo = estoqueMinimo > 0 • estoqueMinimo : 5;
     return quantidade >= 0 && quantidade <= minimo;
   }
 
@@ -329,7 +329,7 @@ class Produto extends HiveObject {
 
     final mapa = Map<String, int>.from(estoquePorTamanho);
 
-    final atual = mapa[tamanho] ?? 0;
+    final atual = mapa[tamanho] ?• 0;
     if (atual < qtd) {
       throw Exception(
         'Estoque insuficiente para o tamanho $tamanho. Em estoque: $atual, venda: $qtd',
@@ -350,7 +350,7 @@ class Produto extends HiveObject {
     if (qtd <= 0) return;
 
     final mapa = Map<String, int>.from(estoquePorTamanho);
-    mapa[tamanho] = (mapa[tamanho] ?? 0) + qtd;
+    mapa[tamanho] = (mapa[tamanho] ?• 0) + qtd;
 
     estoquePorTamanho = mapa;
     _recalcularQuantidadeAPartirDoMapa();
@@ -401,7 +401,7 @@ class Produto extends HiveObject {
     if (!usaVariacoes) return {};
     final semTamanho = variacoes!['sem-tamanho'];
     if (semTamanho == null || semTamanho is! Map) return {};
-    return semTamanho.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0));
+    return semTamanho.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?• 0));
   }
 
   /// Obtém o estoque de uma variação específica (tamanho + cor)
@@ -417,14 +417,14 @@ class Produto extends HiveObject {
     if (tam.isEmpty && corTrim.isNotEmpty) {
       final mapaCor = variacoes!['sem-tamanho'];
       if (mapaCor == null || mapaCor is! Map) return 0;
-      return (mapaCor[corTrim] as num?)?.toInt() ?? 0;
+      return (mapaCor[corTrim] as num?)?.toInt() ?• 0;
     }
 
     if (tam.isNotEmpty) {
       final mapaTamanho = variacoes![tam];
       if (mapaTamanho == null || mapaTamanho is! Map) return 0;
-      final corKey = corTrim.isEmpty ? 'sem-cor' : corTrim;
-      return (mapaTamanho[corKey] as num?)?.toInt() ?? 0;
+      final corKey = corTrim.isEmpty • 'sem-cor' : corTrim;
+      return (mapaTamanho[corKey] as num?)?.toInt() ?• 0;
     }
 
     return 0;
@@ -440,7 +440,7 @@ class Produto extends HiveObject {
       final semTam = variacoes!['sem-tamanho'];
       if (semTam is! Map) return [];
       return semTam.keys
-          .where((c) => ((semTam[c] as num?)?.toInt() ?? 0) > 0)
+          .where((c) => ((semTam[c] as num?)?.toInt() ?• 0) > 0)
           .cast<String>()
           .toList();
     }
@@ -449,7 +449,7 @@ class Produto extends HiveObject {
     if (mapaTamanho == null || mapaTamanho is! Map) return [];
 
     return mapaTamanho.keys
-        .where((c) => ((mapaTamanho[c] as num?)?.toInt() ?? 0) > 0)
+        .where((c) => ((mapaTamanho[c] as num?)?.toInt() ?• 0) > 0)
         .cast<String>()
         .toList();
   }
@@ -460,16 +460,16 @@ class Produto extends HiveObject {
     if (!usaVariacoes) return;
 
     final tam = tamanho.trim();
-    final corKey = cor.trim().isEmpty ? 'sem-cor' : cor.trim();
-    final chaveTamanho = tam.isEmpty ? 'sem-tamanho' : tam;
+    final corKey = cor.trim().isEmpty • 'sem-cor' : cor.trim();
+    final chaveTamanho = tam.isEmpty • 'sem-tamanho' : tam;
 
     final mapa = Map<String, dynamic>.from(variacoes!);
-    final mapaInterno = Map<String, dynamic>.from(mapa[chaveTamanho] ?? {});
+    final mapaInterno = Map<String, dynamic>.from(mapa[chaveTamanho] ?• {});
 
-    final atual = (mapaInterno[corKey] as num?)?.toInt() ?? 0;
+    final atual = (mapaInterno[corKey] as num?)?.toInt() ?• 0;
     if (atual < qtd) {
       throw Exception(
-        'Estoque insuficiente para ${tam.isEmpty ? "cor" : tam}${cor.isEmpty ? "" : " - $cor"}. Em estoque: $atual, venda: $qtd',
+        'Estoque insuficiente para ${tam.isEmpty • "cor" : tam}${cor.isEmpty • "" : " - $cor"}. Em estoque: $atual, venda: $qtd',
       );
     }
 
@@ -493,13 +493,13 @@ class Produto extends HiveObject {
     if (!usaVariacoes) return;
 
     final tam = tamanho.trim();
-    final corKey = cor.trim().isEmpty ? 'sem-cor' : cor.trim();
-    final chaveTamanho = tam.isEmpty ? 'sem-tamanho' : tam;
+    final corKey = cor.trim().isEmpty • 'sem-cor' : cor.trim();
+    final chaveTamanho = tam.isEmpty • 'sem-tamanho' : tam;
 
     final mapa = Map<String, dynamic>.from(variacoes!);
-    final mapaInterno = Map<String, dynamic>.from(mapa[chaveTamanho] ?? {});
+    final mapaInterno = Map<String, dynamic>.from(mapa[chaveTamanho] ?• {});
 
-    final atual = (mapaInterno[corKey] as num?)?.toInt() ?? 0;
+    final atual = (mapaInterno[corKey] as num?)?.toInt() ?• 0;
     mapaInterno[corKey] = atual + qtd;
 
     mapa[chaveTamanho] = mapaInterno;
@@ -515,7 +515,7 @@ class Produto extends HiveObject {
     for (final mapaTamanho in variacoes!.values) {
       if (mapaTamanho is! Map) continue;
       for (final qtd in mapaTamanho.values) {
-        total += (qtd as num?)?.toInt() ?? 0;
+        total += (qtd as num?)?.toInt() ?• 0;
       }
     }
     quantidade = total;

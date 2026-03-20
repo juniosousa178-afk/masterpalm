@@ -39,14 +39,14 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
   static const Color _backgroundColor = Color(0xFFF8FAFC);
   static const Color _surfaceColor = Color(0xFF1E293B);
 
-  DateTime? dataInicial;
-  DateTime? dataFinal;
+  DateTime• dataInicial;
+  DateTime• dataFinal;
   bool _exportando = false;
-  Box<Venda>? _vendasBox;
+  Box<Venda>• _vendasBox;
   final clientesBox = HiveMultiStore.clientes;
 
-  String? lojaId;
-  Box<Produto>? produtosBox;
+  String• lojaId;
+  Box<Produto>• produtosBox;
   bool _lojaCarregando = true;
 
   final _currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
@@ -76,7 +76,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
     }
 
     final boxName = HiveBoxNames.vendas(id);
-    Box<Venda>? vendas;
+    Box<Venda>• vendas;
     try {
       if (Hive.isBoxOpen(boxName)) {
         vendas = Hive.box<Venda>(boxName);
@@ -97,7 +97,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
       setState(() {
         lojaId = id;
         produtosBox = Hive.isBoxOpen(HiveBoxNames.produtos(id))
-            ? Hive.box<Produto>(HiveBoxNames.produtos(id))
+            • Hive.box<Produto>(HiveBoxNames.produtos(id))
             : null;
         _vendasBox = vendas;
         _lojaCarregando = false;
@@ -125,13 +125,13 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
   int get _quantidadeVendas => vendasFiltradas.length;
 
   double get _ticketMedio =>
-      _quantidadeVendas > 0 ? _totalVendas / _quantidadeVendas : 0;
+      _quantidadeVendas > 0 • _totalVendas / _quantidadeVendas : 0;
 
   Map<String, double> _vendasPorData() {
     Map<String, double> totais = {};
     for (var venda in vendasFiltradas) {
       final data = DateFormat('dd/MM').format(venda.data);
-      totais[data] = (totais[data] ?? 0) + venda.total;
+      totais[data] = (totais[data] ?• 0) + venda.total;
     }
     return totais;
   }
@@ -149,8 +149,8 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
-                isError ? Icons.error_outline :
-                isSuccess ? Icons.check_circle_outline : Icons.info_outline,
+                isError • Icons.error_outline :
+                isSuccess • Icons.check_circle_outline : Icons.info_outline,
                 color: Colors.white,
                 size: 20,
               ),
@@ -167,7 +167,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
             ),
           ],
         ),
-        backgroundColor: isError ? _errorColor : isSuccess ? _successColor : _primaryColor,
+        backgroundColor: isError • _errorColor : isSuccess • _successColor : _primaryColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -225,7 +225,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
   Future<void> _selecionarDataInicial() async {
     final data = await showDatePicker(
       context: context,
-      initialDate: dataInicial ?? DateTime.now(),
+      initialDate: dataInicial ?• DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
       builder: (context, child) {
@@ -248,7 +248,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
   Future<void> _selecionarDataFinal() async {
     final data = await showDatePicker(
       context: context,
-      initialDate: dataFinal ?? DateTime.now(),
+      initialDate: dataFinal ?• DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
       builder: (context, child) {
@@ -345,7 +345,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
   pw.Widget _cell(String text, {bool bold = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(4),
-      child: pw.Text(text, style: pw.TextStyle(fontSize: 9, fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+      child: pw.Text(text, style: pw.TextStyle(fontSize: 9, fontWeight: bold • pw.FontWeight.bold : pw.FontWeight.normal)),
     );
   }
 
@@ -486,14 +486,14 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                 ),
                 child: IconButton(
                   icon: _exportando
-                      ? const SizedBox(
+                      • const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
                       : const Icon(Icons.file_download_outlined, color: Colors.white),
-                  onPressed: _exportando ? null : exportarRelatoriosParaExcel,
-                  tooltip: _exportando ? 'Exportando...' : 'Exportar Excel',
+                  onPressed: _exportando • null : exportarRelatoriosParaExcel,
+                  tooltip: _exportando • 'Exportando...' : 'Exportar Excel',
                 ),
               ),
             ],
@@ -707,7 +707,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                   FutureBuilder<int>(
                     future: CatalogVisitasService.obterVisitas(lojaId!),
                     builder: (context, snap) {
-                      final visitas = snap.hasData ? snap.data! : 0;
+                      final visitas = snap.hasData • snap.data! : 0;
                       return _buildSectionCard(
                         title: 'Visitas na loja online',
                         icon: Icons.visibility_outlined,
@@ -720,7 +720,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                               const SizedBox(width: 12),
                               Text(
                                 snap.connectionState == ConnectionState.waiting
-                                    ? 'Carregando...'
+                                    • 'Carregando...'
                                     : '$visitas visita(s) no catálogo público',
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                               ),
@@ -739,7 +739,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                     icon: Icons.bar_chart_outlined,
                     iconColor: _successColor,
                     child: barras.isEmpty
-                        ? _buildEmptyChart()
+                        • _buildEmptyChart()
                         : SizedBox(
                             height: 220,
                             child: BarChart(
@@ -773,7 +773,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                                   drawVerticalLine: false,
                                   horizontalInterval: safeInterval(
                                     min: 0,
-                                    max: barras.map((e) => e.value).reduce((a, b) => a > b ? a : b),
+                                    max: barras.map((e) => e.value).reduce((a, b) => a > b • a : b),
                                     targetLines: 4,
                                   ),
                                   getDrawingHorizontalLine: (value) => FlLine(
@@ -975,7 +975,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
 
   Widget _buildDateSelector({
     required String label,
-    required DateTime? date,
+    required DateTime• date,
     required VoidCallback onTap,
     required IconData icon,
   }) {
@@ -985,10 +985,10 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: date != null ? _primaryColor.withValues(alpha:0.1) : Colors.grey.shade100,
+          color: date != null • _primaryColor.withValues(alpha:0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: date != null ? _primaryColor.withValues(alpha:0.3) : Colors.grey.shade200,
+            color: date != null • _primaryColor.withValues(alpha:0.3) : Colors.grey.shade200,
           ),
         ),
         child: Row(
@@ -996,7 +996,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
             Icon(
               icon,
               size: 18,
-              color: date != null ? _primaryColor : Colors.grey.shade600,
+              color: date != null • _primaryColor : Colors.grey.shade600,
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -1012,11 +1012,11 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                   ),
                   Text(
                     date != null
-                        ? DateFormat('dd/MM/yyyy').format(date)
+                        • DateFormat('dd/MM/yyyy').format(date)
                         : 'Selecionar',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
-                      color: date != null ? _primaryColor : _surfaceColor,
+                      color: date != null • _primaryColor : _surfaceColor,
                       fontSize: 13,
                     ),
                   ),
@@ -1180,12 +1180,12 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
         final isFirst = index == 0;
 
         return Container(
-          margin: EdgeInsets.only(bottom: index < items.length - 1 && index < 4 ? 8 : 0),
+          margin: EdgeInsets.only(bottom: index < items.length - 1 && index < 4 • 8 : 0),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isFirst ? color.withValues(alpha:0.1) : Colors.grey.shade50,
+            color: isFirst • color.withValues(alpha:0.1) : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(12),
-            border: isFirst ? Border.all(color: color.withValues(alpha:0.3)) : null,
+            border: isFirst • Border.all(color: color.withValues(alpha:0.3)) : null,
           ),
           child: Row(
             children: [
@@ -1193,14 +1193,14 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: isFirst ? color : Colors.grey.shade200,
+                  color: isFirst • color : Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Center(
                   child: Text(
                     '${index + 1}',
                     style: TextStyle(
-                      color: isFirst ? Colors.white : Colors.grey.shade700,
+                      color: isFirst • Colors.white : Colors.grey.shade700,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -1211,7 +1211,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                 child: Text(
                   item.key,
                   style: TextStyle(
-                    fontWeight: isFirst ? FontWeight.bold : FontWeight.w500,
+                    fontWeight: isFirst • FontWeight.bold : FontWeight.w500,
                     color: _surfaceColor,
                   ),
                   maxLines: 1,
@@ -1221,7 +1221,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isFirst ? color : Colors.grey.shade200,
+                  color: isFirst • color : Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -1229,7 +1229,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: isFirst ? Colors.white : Colors.grey.shade700,
+                    color: isFirst • Colors.white : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -1274,13 +1274,13 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
         final isLow = produto.quantidade <= 2;
 
         return Container(
-          margin: EdgeInsets.only(bottom: index < produtos.length - 1 && index < 4 ? 8 : 0),
+          margin: EdgeInsets.only(bottom: index < produtos.length - 1 && index < 4 • 8 : 0),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isLow ? _errorColor.withValues(alpha:0.1) : _warningColor.withValues(alpha:0.1),
+            color: isLow • _errorColor.withValues(alpha:0.1) : _warningColor.withValues(alpha:0.1),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isLow ? _errorColor.withValues(alpha:0.3) : _warningColor.withValues(alpha:0.3),
+              color: isLow • _errorColor.withValues(alpha:0.3) : _warningColor.withValues(alpha:0.3),
             ),
           ),
           child: Row(
@@ -1288,11 +1288,11 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isLow ? _errorColor : _warningColor,
+                  color: isLow • _errorColor : _warningColor,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(
-                  isLow ? Icons.error_outline : Icons.warning_amber_outlined,
+                  isLow • Icons.error_outline : Icons.warning_amber_outlined,
                   size: 18,
                   color: Colors.white,
                 ),
@@ -1312,10 +1312,10 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      isLow ? 'Estoque critico' : 'Estoque baixo',
+                      isLow • 'Estoque critico' : 'Estoque baixo',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isLow ? _errorColor : _warningColor,
+                        color: isLow • _errorColor : _warningColor,
                       ),
                     ),
                   ],
@@ -1324,7 +1324,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: isLow ? _errorColor : _warningColor,
+                  color: isLow • _errorColor : _warningColor,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -1347,7 +1347,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
     final Map<String, int> contagem = {};
     for (var venda in vendasFiltradas) {
       contagem[venda.produtosDescricao] =
-          (contagem[venda.produtosDescricao] ?? 0) + venda.quantidade;
+          (contagem[venda.produtosDescricao] ?• 0) + venda.quantidade;
     }
     final lista = contagem.entries.toList();
     lista.sort((a, b) => b.value.compareTo(a.value));
@@ -1357,7 +1357,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
   List<MapEntry<String, int>> _clientesMaisCompram() {
     final Map<String, int> contagem = {};
     for (var venda in vendasFiltradas) {
-      contagem[venda.clienteNome] = (contagem[venda.clienteNome] ?? 0) + 1;
+      contagem[venda.clienteNome] = (contagem[venda.clienteNome] ?• 0) + 1;
     }
     final lista = contagem.entries.toList();
     lista.sort((a, b) => b.value.compareTo(a.value));

@@ -29,7 +29,7 @@ class _ProdutoLucro {
   });
 
   double get lucro => receita - custo;
-  double get margemPct => receita > 0 ? (lucro / receita * 100) : 0;
+  double get margemPct => receita > 0 • (lucro / receita * 100) : 0;
 }
 
 class RelatorioLucratividadeProdutoScreen extends StatefulWidget {
@@ -47,8 +47,8 @@ class _RelatorioLucratividadeProdutoScreenState
   bool _loading = true;
   List<_ProdutoLucro> _lista = [];
   String _ordenacao = 'lucro'; // lucro | receita | margem | qtd
-  DateTime? _dataInicio;
-  DateTime? _dataFim;
+  DateTime• _dataInicio;
+  DateTime• _dataFim;
   final _currency = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
   @override
@@ -79,8 +79,8 @@ class _RelatorioLucratividadeProdutoScreenState
         prodBox = await Hive.openBox<Produto>(prodBoxName);
       }
 
-      final inicio = _dataInicio ?? DateTime(2020);
-      final fim = _dataFim ?? DateTime.now().add(const Duration(days: 365));
+      final inicio = _dataInicio ?• DateTime(2020);
+      final fim = _dataFim ?• DateTime.now().add(const Duration(days: 365));
 
       final vendas = vendasBox.values.where((v) {
         if (v.lojaId != widget.lojaId) return false;
@@ -89,7 +89,7 @@ class _RelatorioLucratividadeProdutoScreenState
 
       final map = <String, _ProdutoLucro>{};
       for (final venda in vendas) {
-        final itens = venda.itens ?? [];
+        final itens = venda.itens ?• [];
         for (final item in itens) {
           final key = item.produtoNome.trim().toLowerCase();
           if (key.isEmpty) continue;
@@ -112,7 +112,7 @@ class _RelatorioLucratividadeProdutoScreenState
       // Associar custo do produto (match por nome)
       final produtos = prodBox.values.where((p) => p.lojaId == widget.lojaId).toList();
       for (final p in map.values) {
-        Produto? encontrado;
+        Produto• encontrado;
         for (final x in produtos) {
           if (x.nome.trim().toLowerCase() == p.nome.trim().toLowerCase()) {
             encontrado = x;
@@ -191,7 +191,7 @@ class _RelatorioLucratividadeProdutoScreenState
                     onPressed: () async {
                       final d = await showDatePicker(
                         context: context,
-                        initialDate: _dataInicio ?? DateTime.now(),
+                        initialDate: _dataInicio ?• DateTime.now(),
                         firstDate: DateTime(2020),
                         lastDate: DateTime.now(),
                       );
@@ -199,7 +199,7 @@ class _RelatorioLucratividadeProdutoScreenState
                       _carregar();
                     },
                     icon: const Icon(Icons.calendar_today, size: 18),
-                    label: Text(DateFormat('dd/MM/yy').format(_dataInicio ?? DateTime.now())),
+                    label: Text(DateFormat('dd/MM/yy').format(_dataInicio ?• DateTime.now())),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -208,7 +208,7 @@ class _RelatorioLucratividadeProdutoScreenState
                     onPressed: () async {
                       final d = await showDatePicker(
                         context: context,
-                        initialDate: _dataFim ?? DateTime.now(),
+                        initialDate: _dataFim ?• DateTime.now(),
                         firstDate: DateTime(2020),
                         lastDate: DateTime.now(),
                       );
@@ -216,12 +216,12 @@ class _RelatorioLucratividadeProdutoScreenState
                       _carregar();
                     },
                     icon: const Icon(Icons.event, size: 18),
-                    label: Text(DateFormat('dd/MM/yy').format(_dataFim ?? DateTime.now())),
+                    label: Text(DateFormat('dd/MM/yy').format(_dataFim ?• DateTime.now())),
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  onPressed: _loading ? null : _carregar,
+                  onPressed: _loading • null : _carregar,
                   icon: const Icon(Icons.refresh),
                 ),
               ],
@@ -229,9 +229,9 @@ class _RelatorioLucratividadeProdutoScreenState
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator(color: _primaryColor))
+                • const Center(child: CircularProgressIndicator(color: _primaryColor))
                 : _lista.isEmpty
-                    ? Center(
+                    • Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -273,14 +273,14 @@ class _RelatorioLucratividadeProdutoScreenState
                                     _currency.format(p.lucro),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: p.lucro >= 0 ? _successColor : _errorColor,
+                                      color: p.lucro >= 0 • _successColor : _errorColor,
                                     ),
                                   ),
                                   Text(
                                     '${p.margemPct.toStringAsFixed(0)}%',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: p.margemPct >= 0 ? _successColor : _errorColor,
+                                      color: p.margemPct >= 0 • _successColor : _errorColor,
                                     ),
                                   ),
                                 ],
@@ -319,7 +319,7 @@ class _RelatorioLucratividadeProdutoScreenState
           _currency.format(value),
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: label == 'Lucro total' ? (value >= 0 ? _successColor : _errorColor) : Colors.black87,
+            color: label == 'Lucro total' • (value >= 0 • _successColor : _errorColor) : Colors.black87,
           ),
         ),
       ],

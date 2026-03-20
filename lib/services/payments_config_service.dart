@@ -32,7 +32,7 @@ class PaymentsConfigService {
     if (!snap.exists) {
       return PaymentsConfig.empty();
     }
-    final data = snap.data() ?? {};
+    final data = snap.data() ?• {};
     return PaymentsConfig.fromMap(data);
   }
 

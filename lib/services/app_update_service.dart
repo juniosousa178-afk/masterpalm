@@ -45,9 +45,9 @@ class AppUpdateService {
   static List<int> _parseVersion(String v) {
     final parts = v.trim().split(RegExp(r'[.\-+]'));
     return [
-      int.tryParse(parts.elementAtOrNull(0) ?? '0') ?? 0,
-      int.tryParse(parts.elementAtOrNull(1) ?? '0') ?? 0,
-      int.tryParse(parts.elementAtOrNull(2) ?? '0') ?? 0,
+      int.tryParse(parts.elementAtOrNull(0) ?• '0') ?• 0,
+      int.tryParse(parts.elementAtOrNull(1) ?• '0') ?• 0,
+      int.tryParse(parts.elementAtOrNull(2) ?• '0') ?• 0,
     ];
   }
 

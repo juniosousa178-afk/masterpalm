@@ -3,14 +3,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/pedido_collection_resolver.dart';
 
 class PedidoRepository {
-  PedidoRepository({FirebaseFirestore? db})
-      : _db = db ?? FirebaseFirestore.instance;
+  PedidoRepository({FirebaseFirestore• db})
+      : _db = db ?• FirebaseFirestore.instance;
 
   final FirebaseFirestore _db;
 
   CollectionReference<Map<String, dynamic>> collectionRef({
     required PedidoFlowType flowType,
-    String? lojaId,
+    String• lojaId,
   }) {
     return PedidoCollectionResolver.collectionRef(
       _db,
@@ -22,7 +22,7 @@ class PedidoRepository {
   DocumentReference<Map<String, dynamic>> docRef({
     required PedidoFlowType flowType,
     required String pedidoId,
-    String? lojaId,
+    String• lojaId,
   }) {
     return PedidoCollectionResolver.docRef(
       _db,
@@ -35,7 +35,7 @@ class PedidoRepository {
   Future<DocumentReference<Map<String, dynamic>>> createPedido({
     required PedidoFlowType flowType,
     required Map<String, dynamic> data,
-    String? lojaId,
+    String• lojaId,
   }) {
     return collectionRef(flowType: flowType, lojaId: lojaId).add(data);
   }
@@ -44,7 +44,7 @@ class PedidoRepository {
     required PedidoFlowType flowType,
     required String pedidoId,
     required Map<String, dynamic> data,
-    String? lojaId,
+    String• lojaId,
   }) {
     return docRef(
       flowType: flowType,
@@ -56,7 +56,7 @@ class PedidoRepository {
   Future<void> deletePedido({
     required PedidoFlowType flowType,
     required String pedidoId,
-    String? lojaId,
+    String• lojaId,
   }) {
     return docRef(
       flowType: flowType,
@@ -68,7 +68,7 @@ class PedidoRepository {
   Future<Map<String, dynamic>?> getPedidoById({
     required PedidoFlowType flowType,
     required String pedidoId,
-    String? lojaId,
+    String• lojaId,
   }) async {
     final snap = await docRef(
       flowType: flowType,
@@ -84,10 +84,10 @@ class PedidoRepository {
 
   Future<List<Map<String, dynamic>>> getPedidos({
     required PedidoFlowType flowType,
-    String? lojaId,
+    String• lojaId,
     Query<Map<String, dynamic>> Function(
       Query<Map<String, dynamic>> query,
-    )? buildQuery,
+    )• buildQuery,
   }) async {
     Query<Map<String, dynamic>> query =
         collectionRef(flowType: flowType, lojaId: lojaId);
@@ -102,10 +102,10 @@ class PedidoRepository {
 
   Stream<List<Map<String, dynamic>>> streamPedidos({
     required PedidoFlowType flowType,
-    String? lojaId,
+    String• lojaId,
     Query<Map<String, dynamic>> Function(
       Query<Map<String, dynamic>> query,
-    )? buildQuery,
+    )• buildQuery,
   }) {
     Query<Map<String, dynamic>> query =
         collectionRef(flowType: flowType, lojaId: lojaId);
@@ -121,10 +121,10 @@ class PedidoRepository {
 
   Future<QuerySnapshot<Map<String, dynamic>>> querySnapshot({
     required PedidoFlowType flowType,
-    String? lojaId,
+    String• lojaId,
     Query<Map<String, dynamic>> Function(
       Query<Map<String, dynamic>> query,
-    )? buildQuery,
+    )• buildQuery,
   }) {
     Query<Map<String, dynamic>> query =
         collectionRef(flowType: flowType, lojaId: lojaId);
@@ -137,8 +137,8 @@ class PedidoRepository {
   Future<Map<String, dynamic>?> findFirstByField({
     required PedidoFlowType flowType,
     required String field,
-    required Object? value,
-    String? lojaId,
+    required Object• value,
+    String• lojaId,
   }) async {
     final snapshot = await querySnapshot(
       flowType: flowType,
@@ -156,20 +156,20 @@ class PedidoRepository {
   Future<DocumentReference<Map<String, dynamic>>?> findFirstRefByField({
     required PedidoFlowType flowType,
     required String field,
-    required Object? value,
-    String? lojaId,
+    required Object• value,
+    String• lojaId,
   }) async {
     final snapshot = await querySnapshot(
       flowType: flowType,
       lojaId: lojaId,
       buildQuery: (query) => query.where(field, isEqualTo: value).limit(1),
     );
-    return snapshot.docs.isNotEmpty ? snapshot.docs.first.reference : null;
+    return snapshot.docs.isNotEmpty • snapshot.docs.first.reference : null;
   }
 
   Future<Map<String, dynamic>?> getTempPedidoById({
     required String pedidoId,
-    String? lojaId,
+    String• lojaId,
     Iterable<String> fallbackLojaIds = const [],
   }) async {
     for (final ref in PedidoCollectionResolver.tempPedidoDocRefs(
@@ -191,10 +191,10 @@ class PedidoRepository {
   Future<void> updateFirstExistingTempPedido({
     required String pedidoId,
     required Map<String, dynamic> data,
-    String? lojaId,
+    String• lojaId,
     Iterable<String> fallbackLojaIds = const [],
   }) async {
-    FirebaseException? lastError;
+    FirebaseException• lastError;
     for (final ref in PedidoCollectionResolver.tempPedidoDocRefs(
       _db,
       pedidoId: pedidoId,
@@ -213,10 +213,10 @@ class PedidoRepository {
 
   Future<void> deleteTempPedidoEverywhere({
     required String pedidoId,
-    String? lojaId,
+    String• lojaId,
     Iterable<String> fallbackLojaIds = const [],
   }) async {
-    FirebaseException? lastError;
+    FirebaseException• lastError;
     var removed = false;
     for (final ref in PedidoCollectionResolver.tempPedidoDocRefs(
       _db,

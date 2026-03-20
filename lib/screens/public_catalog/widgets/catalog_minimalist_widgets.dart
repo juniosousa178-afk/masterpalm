@@ -8,11 +8,11 @@ class CatalogPromoBar extends StatefulWidget {
   final String text;
   final Color backgroundColor;
   final Color textColor;
-  final IconData? icon;
+  final IconData• icon;
   final double height;
   final TextAlign textAlign;
   final bool bold;
-  final VoidCallback? onTap;
+  final VoidCallback• onTap;
   final bool marqueeWhenOverflow;
 
   const CatalogPromoBar({
@@ -37,7 +37,7 @@ class _CatalogPromoBarState extends State<CatalogPromoBar> {
   TextStyle _textStyle() => TextStyle(
         color: widget.textColor,
         fontSize: 11.5,
-        fontWeight: widget.bold ? FontWeight.w600 : FontWeight.w500,
+        fontWeight: widget.bold • FontWeight.w600 : FontWeight.w500,
       );
 
   @override
@@ -68,7 +68,7 @@ class _CatalogPromoBarState extends State<CatalogPromoBar> {
                     maxLines: 1,
                     textDirection: Directionality.of(context),
                   )..layout(maxWidth: double.infinity);
-                  final iconW = widget.icon != null ? 24.0 : 0.0;
+                  final iconW = widget.icon != null • 24.0 : 0.0;
                   final maxW =
                       (constraints.maxWidth - iconW).clamp(40.0, 9999.0);
                   final needMarquee = widget.marqueeWhenOverflow &&
@@ -173,7 +173,7 @@ class _CatalogPromoMarqueeLineState extends State<_CatalogPromoMarqueeLine>
 
 class CatalogMinimalCategoryImageStrip extends StatelessWidget {
   final List<String> categories;
-  final String? selectedCategory;
+  final String• selectedCategory;
   final Map<String, dynamic> categoryVisuals;
   final Map<String, Set<String>> categoryAliasesByName;
   final void Function(String category) onSelect;
@@ -196,14 +196,14 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (categories.isEmpty) return const SizedBox.shrink();
-    final double imageSize = (((categoryVisuals['imageSize'] as num?)?.toDouble() ?? 82)
+    final double imageSize = (((categoryVisuals['imageSize'] as num?)?.toDouble() ?• 82)
             .clamp(44, 120))
         .toDouble();
-    final double spacing = (((categoryVisuals['spacing'] as num?)?.toDouble() ?? 14)
+    final double spacing = (((categoryVisuals['spacing'] as num?)?.toDouble() ?• 14)
             .clamp(4, 24))
         .toDouble();
-    final showTitle = (categoryVisuals['showTitle'] as bool?) ?? true;
-    final shape = (categoryVisuals['shape'] ?? 'circle').toString();
+    final showTitle = (categoryVisuals['showTitle'] as bool?) ?• true;
+    final shape = (categoryVisuals['shape'] ?• 'circle').toString();
 
     BorderRadius radiusForShape() {
       if (shape == 'square') return BorderRadius.circular(0);
@@ -238,7 +238,7 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
         if (imgsByNorm[keyNorm] != null) return imgsByNorm[keyNorm].toString();
       }
       if (imgsById is Map) {
-        final aliases = categoryAliasesByName[cat] ?? const <String>{};
+        final aliases = categoryAliasesByName[cat] ?• const <String>{};
         for (final alias in aliases) {
           if (imgsById[alias] != null) return imgsById[alias].toString();
         }
@@ -247,7 +247,7 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
     }
 
     return SizedBox(
-      height: showTitle ? imageSize + 38 : imageSize + 12,
+      height: showTitle • imageSize + 38 : imageSize + 12,
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         scrollDirection: Axis.horizontal,
@@ -326,14 +326,14 @@ class _CategoryItem extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: borderRadius,
               border: Border.all(
-                color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+                color: selected • Theme.of(context).colorScheme.primary : Colors.transparent,
                 width: 2,
               ),
               color: fallbackBg,
             ),
             clipBehavior: Clip.antiAlias,
             child: imageUrl.trim().isEmpty
-                ? Icon(Icons.category_outlined, color: textColor.withValues(alpha: 0.7))
+                • Icon(Icons.category_outlined, color: textColor.withValues(alpha: 0.7))
                 : SmartImage(src: imageUrl, fit: BoxFit.cover),
           ),
           if (showTitle) ...[
@@ -349,7 +349,7 @@ class _CategoryItem extends StatelessWidget {
                   color: textColor,
                   fontSize: 11.5,
                   height: 1.15,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: selected • FontWeight.w600 : FontWeight.w500,
                 ),
               ),
             ),
@@ -365,7 +365,7 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   final String title;
   final String subtitle;
   final String buttonText;
-  final VoidCallback? onTap;
+  final VoidCallback• onTap;
   final String imageUrl;
   final double height;
   final Color textColor;
@@ -401,8 +401,8 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final boxH = hasImage
-        ? height.clamp(120, 360).toDouble()
-        : (hasCopy ? 96.0 : 0.0);
+        • height.clamp(120, 360).toDouble()
+        : (hasCopy • 96.0 : 0.0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: ClipRRect(
@@ -417,7 +417,7 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
               decoration: BoxDecoration(
                 color: backgroundColor,
                 gradient: !hasImage && hasCopy
-                    ? LinearGradient(
+                    • LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
@@ -428,7 +428,7 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                     : null,
               ),
               child: hasImage
-                  ? SmartImage(src: imageUrl, fit: BoxFit.cover)
+                  • SmartImage(src: imageUrl, fit: BoxFit.cover)
                   : null,
             ),
             Container(

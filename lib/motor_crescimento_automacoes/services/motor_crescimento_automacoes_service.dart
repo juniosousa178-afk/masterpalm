@@ -40,7 +40,7 @@ class MotorCrescimentoAutomacoesService {
   /// [onProgress] opcional: (concluídos, total) a cada sugestão gerada.
   static Future<List<CampanhaAutomaticaSugerida>> gerarSugestoesAutomaticas(
     String lojaId, {
-    void Function(int concluidos, int total)? onProgress,
+    void Function(int concluidos, int total)• onProgress,
   }) async {
     if (lojaId.trim().isEmpty) return [];
 
@@ -76,11 +76,11 @@ class MotorCrescimentoAutomacoesService {
           final sugestao = await MotorCrescimentoSugestorService.sugerirCampanha(op);
           final codigo = sugestao.codigoCupomSugerido.trim().toUpperCase();
           final link = codigo.isNotEmpty
-              ? '$_baseUrlCatalogo/$lojaId?cupom=${Uri.encodeComponent(codigo)}'
+              • '$_baseUrlCatalogo/$lojaId?cupom=${Uri.encodeComponent(codigo)}'
               : '';
 
           final prioridade = sugestao.tipoCampanha == 'promocao'
-              ? PrioridadeCampanha.alta
+              • PrioridadeCampanha.alta
               : PrioridadeCampanha.media;
 
           final campanha = CampanhaAutomatica(
@@ -112,7 +112,7 @@ class MotorCrescimentoAutomacoesService {
       }
 
       sugestoes.sort((a, b) {
-        int ordem(PrioridadeCampanha p) => p == PrioridadeCampanha.alta ? 0 : (p == PrioridadeCampanha.media ? 1 : 2);
+        int ordem(PrioridadeCampanha p) => p == PrioridadeCampanha.alta • 0 : (p == PrioridadeCampanha.media • 1 : 2);
         return ordem(a.campanha.prioridade).compareTo(ordem(b.campanha.prioridade));
       });
       return sugestoes;

@@ -65,7 +65,7 @@ class ComissaoConfig extends HiveObject {
 
   /// ID do documento no Firestore
   @HiveField(14)
-  String? idFirebase;
+  String• idFirebase;
 
   ComissaoConfig({
     required this.lojaId,
@@ -80,11 +80,11 @@ class ComissaoConfig extends HiveObject {
     this.comissaoMinimaValor = 0.0,
     this.comissaoMaximaValor = 0.0, // 0 = sem limite
     this.estornoAutomaticoEmCancelamento = true,
-    DateTime? criadoEm,
-    DateTime? atualizadoEm,
+    DateTime• criadoEm,
+    DateTime• atualizadoEm,
     this.idFirebase,
-  })  : criadoEm = criadoEm ?? DateTime.now(),
-        atualizadoEm = atualizadoEm ?? DateTime.now();
+  })  : criadoEm = criadoEm ?• DateTime.now(),
+        atualizadoEm = atualizadoEm ?• DateTime.now();
 
   /// Converte para Map (para Firestore)
   Map<String, dynamic> toMap() {
@@ -107,63 +107,63 @@ class ComissaoConfig extends HiveObject {
   }
 
   /// Cria ComissaoConfig a partir de Map (do Firestore)
-  factory ComissaoConfig.fromMap(Map<String, dynamic> map, {String? docId}) {
+  factory ComissaoConfig.fromMap(Map<String, dynamic> map, {String• docId}) {
     return ComissaoConfig(
-      lojaId: map['lojaId'] ?? '',
-      comissaoGlobalPercent: (map['comissaoGlobalPercent'] as num?)?.toDouble() ?? 5.0,
-      apenasAposPagamentoConfirmado: map['apenasAposPagamentoConfirmado'] ?? true,
-      excluirFreteDaBase: map['excluirFreteDaBase'] ?? true,
-      descontoReduzBase: map['descontoReduzBase'] ?? true,
-      trackingExpiracaoDias: (map['trackingExpiracaoDias'] as num?)?.toInt() ?? 7,
-      regraAtribuicao: map['regraAtribuicao'] ?? 'ultimo_clique',
-      bonusMetaBatida100: (map['bonusMetaBatida100'] as num?)?.toDouble() ?? 1.0,
-      bonusMetaBatida150: (map['bonusMetaBatida150'] as num?)?.toDouble() ?? 2.0,
-      comissaoMinimaValor: (map['comissaoMinimaValor'] as num?)?.toDouble() ?? 0.0,
-      comissaoMaximaValor: (map['comissaoMaximaValor'] as num?)?.toDouble() ?? 0.0,
-      estornoAutomaticoEmCancelamento: map['estornoAutomaticoEmCancelamento'] ?? true,
+      lojaId: map['lojaId'] ?• '',
+      comissaoGlobalPercent: (map['comissaoGlobalPercent'] as num?)?.toDouble() ?• 5.0,
+      apenasAposPagamentoConfirmado: map['apenasAposPagamentoConfirmado'] ?• true,
+      excluirFreteDaBase: map['excluirFreteDaBase'] ?• true,
+      descontoReduzBase: map['descontoReduzBase'] ?• true,
+      trackingExpiracaoDias: (map['trackingExpiracaoDias'] as num?)?.toInt() ?• 7,
+      regraAtribuicao: map['regraAtribuicao'] ?• 'ultimo_clique',
+      bonusMetaBatida100: (map['bonusMetaBatida100'] as num?)?.toDouble() ?• 1.0,
+      bonusMetaBatida150: (map['bonusMetaBatida150'] as num?)?.toDouble() ?• 2.0,
+      comissaoMinimaValor: (map['comissaoMinimaValor'] as num?)?.toDouble() ?• 0.0,
+      comissaoMaximaValor: (map['comissaoMaximaValor'] as num?)?.toDouble() ?• 0.0,
+      estornoAutomaticoEmCancelamento: map['estornoAutomaticoEmCancelamento'] ?• true,
       criadoEm: map['criadoEm'] != null
-          ? DateTime.tryParse(map['criadoEm'].toString()) ?? DateTime.now()
+          • DateTime.tryParse(map['criadoEm'].toString()) ?• DateTime.now()
           : DateTime.now(),
       atualizadoEm: map['atualizadoEm'] != null
-          ? DateTime.tryParse(map['atualizadoEm'].toString()) ?? DateTime.now()
+          • DateTime.tryParse(map['atualizadoEm'].toString()) ?• DateTime.now()
           : DateTime.now(),
       idFirebase: docId,
     );
   }
 
   ComissaoConfig copyWith({
-    String? lojaId,
-    double? comissaoGlobalPercent,
-    bool? apenasAposPagamentoConfirmado,
-    bool? excluirFreteDaBase,
-    bool? descontoReduzBase,
-    int? trackingExpiracaoDias,
-    String? regraAtribuicao,
-    double? bonusMetaBatida100,
-    double? bonusMetaBatida150,
-    double? comissaoMinimaValor,
-    double? comissaoMaximaValor,
-    bool? estornoAutomaticoEmCancelamento,
-    DateTime? criadoEm,
-    DateTime? atualizadoEm,
-    String? idFirebase,
+    String• lojaId,
+    double• comissaoGlobalPercent,
+    bool• apenasAposPagamentoConfirmado,
+    bool• excluirFreteDaBase,
+    bool• descontoReduzBase,
+    int• trackingExpiracaoDias,
+    String• regraAtribuicao,
+    double• bonusMetaBatida100,
+    double• bonusMetaBatida150,
+    double• comissaoMinimaValor,
+    double• comissaoMaximaValor,
+    bool• estornoAutomaticoEmCancelamento,
+    DateTime• criadoEm,
+    DateTime• atualizadoEm,
+    String• idFirebase,
   }) {
     return ComissaoConfig(
-      lojaId: lojaId ?? this.lojaId,
-      comissaoGlobalPercent: comissaoGlobalPercent ?? this.comissaoGlobalPercent,
-      apenasAposPagamentoConfirmado: apenasAposPagamentoConfirmado ?? this.apenasAposPagamentoConfirmado,
-      excluirFreteDaBase: excluirFreteDaBase ?? this.excluirFreteDaBase,
-      descontoReduzBase: descontoReduzBase ?? this.descontoReduzBase,
-      trackingExpiracaoDias: trackingExpiracaoDias ?? this.trackingExpiracaoDias,
-      regraAtribuicao: regraAtribuicao ?? this.regraAtribuicao,
-      bonusMetaBatida100: bonusMetaBatida100 ?? this.bonusMetaBatida100,
-      bonusMetaBatida150: bonusMetaBatida150 ?? this.bonusMetaBatida150,
-      comissaoMinimaValor: comissaoMinimaValor ?? this.comissaoMinimaValor,
-      comissaoMaximaValor: comissaoMaximaValor ?? this.comissaoMaximaValor,
-      estornoAutomaticoEmCancelamento: estornoAutomaticoEmCancelamento ?? this.estornoAutomaticoEmCancelamento,
-      criadoEm: criadoEm ?? this.criadoEm,
-      atualizadoEm: atualizadoEm ?? DateTime.now(),
-      idFirebase: idFirebase ?? this.idFirebase,
+      lojaId: lojaId ?• this.lojaId,
+      comissaoGlobalPercent: comissaoGlobalPercent ?• this.comissaoGlobalPercent,
+      apenasAposPagamentoConfirmado: apenasAposPagamentoConfirmado ?• this.apenasAposPagamentoConfirmado,
+      excluirFreteDaBase: excluirFreteDaBase ?• this.excluirFreteDaBase,
+      descontoReduzBase: descontoReduzBase ?• this.descontoReduzBase,
+      trackingExpiracaoDias: trackingExpiracaoDias ?• this.trackingExpiracaoDias,
+      regraAtribuicao: regraAtribuicao ?• this.regraAtribuicao,
+      bonusMetaBatida100: bonusMetaBatida100 ?• this.bonusMetaBatida100,
+      bonusMetaBatida150: bonusMetaBatida150 ?• this.bonusMetaBatida150,
+      comissaoMinimaValor: comissaoMinimaValor ?• this.comissaoMinimaValor,
+      comissaoMaximaValor: comissaoMaximaValor ?• this.comissaoMaximaValor,
+      estornoAutomaticoEmCancelamento: estornoAutomaticoEmCancelamento ?• this.estornoAutomaticoEmCancelamento,
+      criadoEm: criadoEm ?• this.criadoEm,
+      atualizadoEm: atualizadoEm ?• DateTime.now(),
+      idFirebase: idFirebase ?• this.idFirebase,
     );
   }
 }
@@ -189,7 +189,7 @@ class ComissaoVendedor extends HiveObject {
 
   /// Percentual de comissão específico (null = usa global)
   @HiveField(4)
-  double? comissaoPercentual;
+  double• comissaoPercentual;
 
   /// Se está ativo para receber comissões
   @HiveField(5)
@@ -205,7 +205,7 @@ class ComissaoVendedor extends HiveObject {
 
   /// ID do documento no Firestore
   @HiveField(8)
-  String? idFirebase;
+  String• idFirebase;
 
   ComissaoVendedor({
     required this.lojaId,
@@ -214,11 +214,11 @@ class ComissaoVendedor extends HiveObject {
     required this.vendedorNome,
     this.comissaoPercentual,
     this.ativo = true,
-    DateTime? criadoEm,
-    DateTime? atualizadoEm,
+    DateTime• criadoEm,
+    DateTime• atualizadoEm,
     this.idFirebase,
-  })  : criadoEm = criadoEm ?? DateTime.now(),
-        atualizadoEm = atualizadoEm ?? DateTime.now();
+  })  : criadoEm = criadoEm ?• DateTime.now(),
+        atualizadoEm = atualizadoEm ?• DateTime.now();
 
   /// Converte para Map (para Firestore)
   Map<String, dynamic> toMap() {
@@ -235,19 +235,19 @@ class ComissaoVendedor extends HiveObject {
   }
 
   /// Cria ComissaoVendedor a partir de Map (do Firestore)
-  factory ComissaoVendedor.fromMap(Map<String, dynamic> map, {String? docId}) {
+  factory ComissaoVendedor.fromMap(Map<String, dynamic> map, {String• docId}) {
     return ComissaoVendedor(
-      lojaId: map['lojaId'] ?? '',
-      vendedorUid: map['vendedorUid'] ?? '',
-      vendedorEmail: map['vendedorEmail'] ?? '',
-      vendedorNome: map['vendedorNome'] ?? '',
+      lojaId: map['lojaId'] ?• '',
+      vendedorUid: map['vendedorUid'] ?• '',
+      vendedorEmail: map['vendedorEmail'] ?• '',
+      vendedorNome: map['vendedorNome'] ?• '',
       comissaoPercentual: (map['comissaoPercentual'] as num?)?.toDouble(),
-      ativo: map['ativo'] ?? true,
+      ativo: map['ativo'] ?• true,
       criadoEm: map['criadoEm'] != null
-          ? DateTime.tryParse(map['criadoEm'].toString()) ?? DateTime.now()
+          • DateTime.tryParse(map['criadoEm'].toString()) ?• DateTime.now()
           : DateTime.now(),
       atualizadoEm: map['atualizadoEm'] != null
-          ? DateTime.tryParse(map['atualizadoEm'].toString()) ?? DateTime.now()
+          • DateTime.tryParse(map['atualizadoEm'].toString()) ?• DateTime.now()
           : DateTime.now(),
       idFirebase: docId,
     );

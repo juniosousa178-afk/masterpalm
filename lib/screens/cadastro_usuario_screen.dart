@@ -74,7 +74,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
         content: Row(
           children: [
             Icon(
-              isError ? Icons.error_outline : isWarning ? Icons.warning_amber : Icons.check_circle_outline,
+              isError • Icons.error_outline : isWarning • Icons.warning_amber : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -82,7 +82,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError ? _errorColor : isWarning ? _warningColor : _successColor,
+        backgroundColor: isError • _errorColor : isWarning • _warningColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -92,7 +92,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
 
   Future<void> _carregarSessao() async {
     final box = await Hive.openBox('sessao');
-    String storeId = (box.get('store_id') ?? '').toString().trim();
+    String storeId = (box.get('store_id') ?• '').toString().trim();
 
     if (storeId.isEmpty) {
       try {
@@ -100,7 +100,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
           await Hive.openBox('config');
         }
         final configBox = Hive.box('config');
-        storeId = (configBox.get('store_id') ?? '').toString().trim();
+        storeId = (configBox.get('store_id') ?• '').toString().trim();
       } catch (_) {}
     }
 
@@ -114,7 +114,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
               .limit(1)
               .get();
           if (userDoc.docs.isNotEmpty) {
-            storeId = (userDoc.docs.first.data()['store_id'] ?? '').toString().trim();
+            storeId = (userDoc.docs.first.data()['store_id'] ?• '').toString().trim();
           }
         }
       } catch (_) {}
@@ -160,9 +160,9 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
     final appCheck = FirebaseAppCheck.instanceFor(app: app);
     await appCheck.activate(
       androidProvider:
-          kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
+          kReleaseMode • AndroidProvider.playIntegrity : AndroidProvider.debug,
       appleProvider:
-          kReleaseMode ? AppleProvider.appAttest : AppleProvider.debug,
+          kReleaseMode • AppleProvider.appAttest : AppleProvider.debug,
     );
     await appCheck.setTokenAutoRefreshEnabled(true);
   }
@@ -202,8 +202,8 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
       permissoes: Usuario.defaultPermissoes(_tipoSelecionado),
     );
 
-    FirebaseApp? secApp;
-    FirebaseAuth? secAuth;
+    FirebaseApp• secApp;
+    FirebaseAuth• secAuth;
 
     try {
       secApp = await _ensureSecondaryApp();
@@ -228,15 +228,15 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
         'role': _tipoSelecionado,
         'tipo': _tipoSelecionado,
         'ownerId': _tipoUsuarioAtual == 'admin'
-            ? FirebaseAuth.instance.currentUser?.uid
+            • FirebaseAuth.instance.currentUser?.uid
             : null,
-        'lojaId': _tipoUsuarioAtual == 'admin' ? _storeIdDoAdmin : null,
+        'lojaId': _tipoUsuarioAtual == 'admin' • _storeIdDoAdmin : null,
         // ✅ Garantir que storeId E store_id estejam preenchidos para vendedor
         'storeId': (_tipoUsuarioAtual == 'admin' && _tipoSelecionado == 'vendedor')
-            ? _storeIdDoAdmin
+            • _storeIdDoAdmin
             : null,
         'store_id': (_tipoUsuarioAtual == 'admin' && _tipoSelecionado == 'vendedor')
-            ? _storeIdDoAdmin
+            • _storeIdDoAdmin
             : null,
         'createdAt': FieldValue.serverTimestamp(),
         'plan': {
@@ -253,9 +253,9 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
         'telefone': telefone,
         'senha': senha,
         'tipo': _tipoSelecionado,
-        'ownerAdminEmail': _usuarioAtual.isEmpty ? null : _usuarioAtual,
+        'ownerAdminEmail': _usuarioAtual.isEmpty • null : _usuarioAtual,
         'ownerStoreId':
-            _tipoUsuarioAtual == 'admin' ? _storeIdDoAdmin : null,
+            _tipoUsuarioAtual == 'admin' • _storeIdDoAdmin : null,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -270,7 +270,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
           'nome': nome,
           'telefone': telefone,
           'storeId': _storeIdDoAdmin,
-          'adminUid': FirebaseAuth.instance.currentUser?.uid ?? '',
+          'adminUid': FirebaseAuth.instance.currentUser?.uid ?• '',
           'adminEmail': _usuarioAtual,
           'ativo': true,
           'permissoes': {
@@ -317,7 +317,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
       setState(() => _carregando = false);
       _showModernSnackBar(
         e.code == 'email-already-in-use'
-            ? 'Este e-mail já está em uso.'
+            • 'Este e-mail já está em uso.'
             : 'Erro Firebase: ${e.code}',
         isError: true,
       );
@@ -408,9 +408,9 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
     required IconData icon,
     TextInputType keyboardType = TextInputType.text,
     bool obscureText = false,
-    Widget? suffixIcon,
-    String? helperText,
-    String? Function(String?)? validator,
+    Widget• suffixIcon,
+    String• helperText,
+    String• Function(String?)• validator,
   }) {
     return TextFormField(
       controller: controller,
@@ -566,7 +566,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  _usuarioAtual.isNotEmpty ? _usuarioAtual : 'Carregando...',
+                                  _usuarioAtual.isNotEmpty • _usuarioAtual : 'Carregando...',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
@@ -654,7 +654,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                               label: 'Nome completo',
                               icon: Icons.badge,
                               validator: (v) =>
-                                  v == null || v.isEmpty ? 'Informe o nome' : null,
+                                  v == null || v.isEmpty • 'Informe o nome' : null,
                             ),
                             const SizedBox(height: 16),
 
@@ -664,7 +664,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                               icon: Icons.email,
                               keyboardType: TextInputType.emailAddress,
                               validator: (v) =>
-                                  v == null || !v.contains('@') ? 'E-mail inválido' : null,
+                                  v == null || !v.contains('@') • 'E-mail inválido' : null,
                             ),
                             const SizedBox(height: 16),
 
@@ -675,7 +675,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                               keyboardType: TextInputType.phone,
                               helperText: 'Ex: 5533999999999',
                               validator: (v) =>
-                                  v == null || v.isEmpty ? 'Informe o telefone' : null,
+                                  v == null || v.isEmpty • 'Informe o telefone' : null,
                             ),
                             const SizedBox(height: 16),
 
@@ -686,14 +686,14 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                               obscureText: _obscureSenha,
                               suffixIcon: IconButton(
                                 icon: Icon(
-                                  _obscureSenha ? Icons.visibility : Icons.visibility_off,
+                                  _obscureSenha • Icons.visibility : Icons.visibility_off,
                                   color: Colors.grey[600],
                                 ),
                                 onPressed: () =>
                                     setState(() => _obscureSenha = !_obscureSenha),
                               ),
                               validator: (v) => v == null || v.length < 4
-                                  ? 'Mínimo 4 caracteres'
+                                  • 'Mínimo 4 caracteres'
                                   : null,
                             ),
                             const SizedBox(height: 16),
@@ -747,9 +747,9 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
-                                onPressed: _carregando ? null : _cadastrarUsuario,
+                                onPressed: _carregando • null : _cadastrarUsuario,
                                 icon: _carregando
-                                    ? const SizedBox(
+                                    • const SizedBox(
                                         width: 20,
                                         height: 20,
                                         child: CircularProgressIndicator(
@@ -759,7 +759,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                                       )
                                     : const Icon(Icons.person_add),
                                 label: Text(
-                                  _carregando ? 'Cadastrando...' : 'Cadastrar Usuário',
+                                  _carregando • 'Cadastrando...' : 'Cadastrar Usuário',
                                   style: const TextStyle(fontSize: 16),
                                 ),
                                 style: ElevatedButton.styleFrom(

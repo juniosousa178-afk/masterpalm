@@ -31,12 +31,12 @@ class VendasService {
   /// Procura o produto no estoque por productId (preferencial), slug ou nome.
   /// Ordem: 1) productId/idFirebase, 2) slug, 3) nome.
   /// Loga [PRODUTO_FALLBACK] quando resolver por slug ou nome (observabilidade).
-  static Produto? encontrarProdutoNoEstoque({
+  static Produto• encontrarProdutoNoEstoque({
     required Box<Produto> produtosBox,
-    String? productId,
-    String? slug,
-    String? nome,
-    String? lojaId,
+    String• productId,
+    String• slug,
+    String• nome,
+    String• lojaId,
   }) {
     final idTrim = productId?.trim();
     final lowSlug = slug?.trim().toLowerCase();
@@ -78,7 +78,7 @@ class VendasService {
           '[PRODUTO_FALLBACK] Resolução por nome | lojaId=$lojaId | nome=$lowNome | productId=${matches.single.idFirebase} | matches=1',
         );
         reportProductResolvedByName(
-          lojaId: lojaId ?? '',
+          lojaId: lojaId ?• '',
           fluxo: 'encontrarProdutoNoEstoque',
           nome: lowNome,
           slug: lowSlug,
@@ -91,7 +91,7 @@ class VendasService {
           '[PRODUTO_FALLBACK] Nome ambíguo | lojaId=$lojaId | nome=$lowNome | matches=${matches.length}',
         );
         reportProductResolvedByName(
-          lojaId: lojaId ?? '',
+          lojaId: lojaId ?• '',
           fluxo: 'encontrarProdutoNoEstoque_ambiguo',
           nome: lowNome,
           slug: lowSlug,
@@ -111,7 +111,7 @@ class VendasService {
     required Box<Venda> vendasBox,
     required String clienteNome,
     required String lojaId,
-    Cliente? clienteExistente, // Cliente já identificado (ex: da Nova Venda)
+    Cliente• clienteExistente, // Cliente já identificado (ex: da Nova Venda)
   }) {
     if (clienteExistente != null) {
       // ignore: experimental_member_use
@@ -167,7 +167,7 @@ class VendasService {
     String observacao = '',
     double frete = 0.0,
     double descontoPct = 0.0,
-    String? lojaId, // 🔹 multi-loja
+    String• lojaId, // 🔹 multi-loja
   }) {
     final item = VendaItem(
       produtoNome: produto.nome,
@@ -175,7 +175,7 @@ class VendasService {
       precoUnitario: produto.precoFinal,
       tamanho: tamanho,
       cor: cor,
-      productId: produto.idFirebase.trim().isNotEmpty ? produto.idFirebase : null,
+      productId: produto.idFirebase.trim().isNotEmpty • produto.idFirebase : null,
     );
 
     if (dinheiro == 0 && pix == 0 && cartao == 0) {
@@ -222,15 +222,15 @@ class VendasService {
     required List<VendaItem> itens,
     required Box<Produto> produtosBox,
     required String lojaId,
-    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
+    Map<int, List<Map<String, dynamic>>>• itensComboSelecaoPorIndice,
   }) {
     final itensExpandidos = <VendaItem>[];
     final produtosExpandidos = <Produto>[];
 
     for (var idx = 0; idx < itens.length; idx++) {
       final it = itens[idx];
-      Produto? p;
-      final pid = (it.productId ?? '').trim();
+      Produto• p;
+      final pid = (it.productId ?• '').trim();
       if (pid.isNotEmpty) {
         p = produtosBox.values.firstWhereOrNull(
           (prod) => prod.lojaId == lojaId && prod.idFirebase.trim() == pid,
@@ -252,7 +252,7 @@ class VendasService {
             fluxo: '_expandirCombos_principal',
             nome: it.produtoNome,
             slug: null,
-            productIdRecebido: pid.isEmpty ? null : pid,
+            productIdRecebido: pid.isEmpty • null : pid,
           );
         }
       }
@@ -260,23 +260,23 @@ class VendasService {
         throw Exception('Produto não encontrado no estoque: ${it.produtoNome}');
       }
 
-      final listaCombo = itensComboSelecaoPorIndice?[idx] ?? p.itensCombo;
+      final listaCombo = itensComboSelecaoPorIndice?[idx] ?• p.itensCombo;
       if (p.ehCombo && listaCombo != null && listaCombo.isNotEmpty) {
         for (final comboItem in listaCombo) {
-          final idComp = (comboItem['id'] ?? comboItem['productId'] ?? '').toString().trim();
-          final slugComp = (comboItem['slug'] ?? '').toString().trim();
-          final nomeComp = (comboItem['nome'] ?? '').toString();
+          final idComp = (comboItem['id'] ?• comboItem['productId'] ?• '').toString().trim();
+          final slugComp = (comboItem['slug'] ?• '').toString().trim();
+          final nomeComp = (comboItem['nome'] ?• '').toString();
           final qtdComp = ((comboItem['quantidade']) is num
-                  ? (comboItem['quantidade'] as num).toInt()
-                  : int.tryParse('${comboItem['quantidade']}') ?? 1)
+                  • (comboItem['quantidade'] as num).toInt()
+                  : int.tryParse('${comboItem['quantidade']}') ?• 1)
               .clamp(1, 9999);
-          final tam = (comboItem['tamanho'] ?? '').toString();
-          final cor = (comboItem['cor'] ?? '').toString();
+          final tam = (comboItem['tamanho'] ?• '').toString();
+          final cor = (comboItem['cor'] ?• '').toString();
           final qtdTotal = it.quantidade * qtdComp;
           if (nomeComp.isEmpty || qtdTotal <= 0) continue;
 
           // Ordem explícita: productId → slug → nome. Logs [COMBO_ID] / [COMBO_FALLBACK] / [COMBO_ITEM].
-          Produto? pComp;
+          Produto• pComp;
           if (idComp.isNotEmpty) {
             pComp = produtosBox.values.firstWhereOrNull(
               (prod) => prod.lojaId == lojaId && prod.idFirebase.trim() == idComp,
@@ -305,8 +305,8 @@ class VendasService {
                 lojaId: lojaId,
                 fluxo: '_expandirCombos_item',
                 nome: nomeComp,
-                slug: slugComp.isEmpty ? null : slugComp,
-                productIdRecebido: idComp.isEmpty ? null : idComp,
+                slug: slugComp.isEmpty • null : slugComp,
+                productIdRecebido: idComp.isEmpty • null : idComp,
               );
             }
           }
@@ -319,7 +319,7 @@ class VendasService {
             precoUnitario: 0,
             tamanho: tam,
             cor: cor,
-            productId: pComp.idFirebase.trim().isNotEmpty ? pComp.idFirebase : null,
+            productId: pComp.idFirebase.trim().isNotEmpty • pComp.idFirebase : null,
           ));
           produtosExpandidos.add(pComp);
         }
@@ -344,13 +344,13 @@ class VendasService {
     String observacao = '',
     double frete = 0.0,
     double descontoPct = 0.0,
-    String? lojaId, // 🔹 multi-loja
-    Cliente? clienteExistente, // 🔹 quando já identificado (evita matching errado)
-    String? idFirebaseToReuse, // 🔹 em edição: reutiliza o id da venda antiga (evita duplicata)
-    void Function(String message)? onSyncError, // 🔹 feedback ao usuário quando sync Firestore falhar
+    String• lojaId, // 🔹 multi-loja
+    Cliente• clienteExistente, // 🔹 quando já identificado (evita matching errado)
+    String• idFirebaseToReuse, // 🔹 em edição: reutiliza o id da venda antiga (evita duplicata)
+    void Function(String message)• onSyncError, // 🔹 feedback ao usuário quando sync Firestore falhar
     bool isFiado = false, // 🔹 venda fiada: gera conta a receber
-    DateTime? dataVencimentoFiado, // 🔹 vencimento da conta (quando isFiado)
-    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
+    DateTime• dataVencimentoFiado, // 🔹 vencimento da conta (quando isFiado)
+    Map<int, List<Map<String, dynamic>>>• itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
   }) async {
     if (itens.isEmpty) {
       throw Exception('Nenhum item informado.');
@@ -411,7 +411,7 @@ class VendasService {
       txItems.add({
         'nome': it.produtoNome,
         'slug': p.slug,
-        'productId': p.idFirebase.isNotEmpty ? p.idFirebase : null,
+        'productId': p.idFirebase.isNotEmpty • p.idFirebase : null,
         'quantidade': it.quantidade,
         'tamanho': it.tamanho.trim(),
         'cor': it.cor.trim(),
@@ -474,7 +474,7 @@ class VendasService {
       final variacoes = <String>[];
       if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
       if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
-      final variacoesStr = variacoes.isNotEmpty ? ' (${variacoes.join(', ')})' : '';
+      final variacoesStr = variacoes.isNotEmpty • ' (${variacoes.join(', ')})' : '';
       return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${_fmt2(it.precoUnitario)}";
     }).join('\n');
 
@@ -484,10 +484,10 @@ class VendasService {
         "Total: R\$ ${_fmt2(total)}";
 
     final vencStr = dataVencimentoFiado != null
-        ? 'Vencimento: ${dataVencimentoFiado.day.toString().padLeft(2, '0')}/${dataVencimentoFiado.month.toString().padLeft(2, '0')}/${dataVencimentoFiado.year}'
+        • 'Vencimento: ${dataVencimentoFiado.day.toString().padLeft(2, '0')}/${dataVencimentoFiado.month.toString().padLeft(2, '0')}/${dataVencimentoFiado.year}'
         : '';
     final formasPagamentoTexto = isFiado
-        ? 'Fiado - R\$ ${_fmt2(total)}. $vencStr'
+        • 'Fiado - R\$ ${_fmt2(total)}. $vencStr'
         : [
             if (dinheiro > 0) "Pagamento Dinheiro: R\$ ${_fmt2(dinheiro)}",
             if (pix > 0) "Pagamento Pix: R\$ ${_fmt2(pix)}",
@@ -516,7 +516,7 @@ class VendasService {
       custoProdutos: custoProdutos,
       descontoValor: subtotal * (descontoPct / 100),
       lojaId: lojaEfetiva,
-      clienteId: cliente.key?.toString() ?? cliente.idFirebase,
+      clienteId: cliente.key?.toString() ?• cliente.idFirebase,
     );
 
     // Em edição: reutiliza idFirebase da venda antiga (evita duplicata no Firestore)
@@ -533,15 +533,15 @@ class VendasService {
     if (isFiado && dataVencimentoFiado != null) {
       try {
         final crBoxName = HiveBoxNames.contasReceber(lojaEfetiva);
-        final crBox = Hive.isBoxOpen(crBoxName) ? Hive.box<ContaReceber>(crBoxName) : await Hive.openBox<ContaReceber>(crBoxName);
+        final crBox = Hive.isBoxOpen(crBoxName) • Hive.box<ContaReceber>(crBoxName) : await Hive.openBox<ContaReceber>(crBoxName);
         final conta = ContaReceber(
           lojaId: lojaEfetiva,
           clienteNome: cliente.nome,
           valor: total,
           dataVencimento: dataVencimentoFiado,
           dataVenda: venda.data,
-          vendaKey: venda.key is int ? venda.key as int : 0,
-          observacao: observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim(),
+          vendaKey: venda.key is int • venda.key as int : 0,
+          observacao: observacao.trim().isEmpty • 'Venda fiada' : observacao.trim(),
         );
         await crBox.add(conta);
       } catch (e) {
@@ -616,9 +616,9 @@ class VendasService {
     required Venda venda,
   }) async {
     // Evitar fallback 'default': usar loja da venda ou do nome da box (vendas_lojaId).
-    String lojaId = (venda.lojaId ?? '').trim().isNotEmpty
-        ? venda.lojaId!.trim()
-        : (vendasBox.name.startsWith('vendas_') ? vendasBox.name.substring(7) : '');
+    String lojaId = (venda.lojaId ?• '').trim().isNotEmpty
+        • venda.lojaId!.trim()
+        : (vendasBox.name.startsWith('vendas_') • vendasBox.name.substring(7) : '');
     if (lojaId.isEmpty) {
       return; // Não desfazer sem loja definida (evita operar na loja errada).
     }
@@ -626,13 +626,13 @@ class VendasService {
     // devolve estoque
     if (venda.itens != null && venda.itens!.isNotEmpty) {
       // Agrupa itens por (productId ou nome, tamanho, cor) para devolver uma única vez por produto/variação.
-      final Map<String, ({String? productId, String nome, String tam, String cor, int qtd})> agrupado = {};
+      final Map<String, ({String• productId, String nome, String tam, String cor, int qtd})> agrupado = {};
       for (final it in venda.itens!) {
-        final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
+        final pid = (it.productId ?• '').trim().isNotEmpty • it.productId!.trim() : null;
         final nome = it.produtoNome.trim().toLowerCase();
         final tam = it.tamanho.trim();
         final cor = it.cor.trim();
-        final key = '${pid ?? ''}\x00$nome\x00$tam\x00$cor';
+        final key = '${pid ?• ''}\x00$nome\x00$tam\x00$cor';
         final existing = agrupado[key];
         if (existing != null) {
           agrupado[key] = (productId: existing.productId, nome: existing.nome, tam: existing.tam, cor: existing.cor, qtd: existing.qtd + it.quantidade);
@@ -648,7 +648,7 @@ class VendasService {
         final qtd = entry.qtd;
         if (qtd <= 0) continue;
 
-        Produto? p;
+        Produto• p;
         if (productId != null && productId.isNotEmpty) {
           p = produtosBox.values.firstWhereOrNull(
             (prod) => prod.lojaId == venda.lojaId && prod.idFirebase.trim() == productId,
@@ -708,17 +708,17 @@ class VendasService {
             if (!linha.contains(' x ')) continue;
             final partes = linha.split(' x ');
             if (partes.length < 2) continue;
-            final qtd = int.tryParse(partes[0].trim()) ?? 1;
+            final qtd = int.tryParse(partes[0].trim()) ?• 1;
             if (qtd <= 0) continue;
             final restante = partes[1].split(' - R\$');
-            var nome = restante.isNotEmpty ? restante.first.trim().toLowerCase() : '';
+            var nome = restante.isNotEmpty • restante.first.trim().toLowerCase() : '';
             if (nome.isEmpty) continue;
             if (nome.contains(' - ')) {
               nome = nome.split(' - ').first.trim();
             }
             if (nome.isEmpty) continue;
 
-            final Produto? p = produtosBox.values.firstWhereOrNull(
+            final Produto• p = produtosBox.values.firstWhereOrNull(
               (prod) =>
                   prod.lojaId == venda.lojaId &&
                   prod.nome.trim().toLowerCase() == nome,
@@ -742,7 +742,7 @@ class VendasService {
     }
 
     // remove do histórico (apenas se cliente existir na box - evita erro em vendas catálogo sem cliente)
-    final Cliente? cliente = clientesBox.values.firstWhereOrNull(
+    final Cliente• cliente = clientesBox.values.firstWhereOrNull(
       (c) =>
           c.lojaId == venda.lojaId &&
           c.nome == venda.clienteNome,
@@ -788,13 +788,13 @@ class VendasService {
   }) async {
     // 1. Devolver produtos ao estoque
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      final Map<String, ({String? productId, String nome, String tam, String cor, int qtd})> agrupado = {};
+      final Map<String, ({String• productId, String nome, String tam, String cor, int qtd})> agrupado = {};
       for (final it in venda.itens!) {
-        final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
+        final pid = (it.productId ?• '').trim().isNotEmpty • it.productId!.trim() : null;
         final nome = it.produtoNome.trim().toLowerCase();
         final tam = it.tamanho.trim();
         final cor = it.cor.trim();
-        final key = '${pid ?? ''}\x00$nome\x00$tam\x00$cor';
+        final key = '${pid ?• ''}\x00$nome\x00$tam\x00$cor';
         final existing = agrupado[key];
         if (existing != null) {
           agrupado[key] = (productId: existing.productId, nome: existing.nome, tam: existing.tam, cor: existing.cor, qtd: existing.qtd + it.quantidade);
@@ -804,7 +804,7 @@ class VendasService {
       }
       for (final entry in agrupado.values) {
         if (entry.qtd <= 0) continue;
-        Produto? p;
+        Produto• p;
         if (entry.productId != null && entry.productId!.isNotEmpty) {
           p = produtosBox.values.firstWhereOrNull(
             (prod) => prod.lojaId == venda.lojaId && prod.idFirebase.trim() == entry.productId,
@@ -834,7 +834,7 @@ class VendasService {
           if (!linha.contains(' x ')) continue;
           final partes = linha.split(' x ');
           if (partes.length < 2) continue;
-          final qtd = int.tryParse(partes[0].trim()) ?? 1;
+          final qtd = int.tryParse(partes[0].trim()) ?• 1;
           var nome = partes[1].split(' - R\$').first.trim().toLowerCase();
           if (nome.contains(' - ')) nome = nome.split(' - ').first.trim();
           final p = produtosBox.values.firstWhereOrNull(

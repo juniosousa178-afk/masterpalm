@@ -24,34 +24,34 @@ class CatalogProductCard extends StatefulWidget {
   final String descricao;
   final String slug;
   final double price;
-  final double? priceMin;
-  final double? priceMax;
-  final Map<String, double>? precoPorTamanho;
+  final double• priceMin;
+  final double• priceMax;
+  final Map<String, double>• precoPorTamanho;
   final double peso;
   final String tipoEmbalagem;
   final bool emPromocao;
-  final double? precoOriginal;
+  final double• precoOriginal;
   final double percentualPromo;
   final double valorPromo;
   final int quantidade;
-  final Map<String, int>? estoquePorTamanho;
-  final Map<String, int>? estoquePorCor;
-  final Map<String, dynamic>? variacoes;
+  final Map<String, int>• estoquePorTamanho;
+  final Map<String, int>• estoquePorCor;
+  final Map<String, dynamic>• variacoes;
   final void Function(Map<String, dynamic>) onAdd;
   final double borderRadius;
   final bool showShadow;
-  final String? catalogShareUrl;
+  final String• catalogShareUrl;
   final bool isNovo;
-  final void Function(String productId)? onProductViewed;
+  final void Function(String productId)• onProductViewed;
   final bool isFavorito;
-  final void Function()? onToggleFavorito;
-  final String? prazoEntrega;
+  final void Function()• onToggleFavorito;
+  final String• prazoEntrega;
   final bool divideSemJuros;
-  final double? jurosParcelamento;
+  final double• jurosParcelamento;
   final int maxParcelas;
   final double percentualDescontoPix;
   /// Callback para abrir o carrinho após adicionar (usado pelo botão "Comprar")
-  final void Function()? onAbrirCarrinho;
+  final void Function()• onAbrirCarrinho;
   /// Se true, exibe o selo "Últimas X" quando estoque <= 5
   final bool showStockBadge;
   /// Se true, exibe "X un." no modal de opções; se false, exibe "Disponível"
@@ -59,16 +59,16 @@ class CatalogProductCard extends StatefulWidget {
   /// Layout compacto (ex.: "Vistos recentemente" com 3 cards por linha)
   final bool compact;
   /// Tamanho da imagem para cache (grid: 360x480; destaque: 600x800)
-  final int? imageCacheWidth;
-  final int? imageCacheHeight;
+  final int• imageCacheWidth;
+  final int• imageCacheHeight;
   /// Se true, produto é combo/kit: botão Ver mostra itens do kit e Comprar abre seleção de variações.
   final bool ehCombo;
   /// Itens do combo para exibir em "Ver" (Produtos do kit) e para o sheet de variações.
-  final List<Map<String, dynamic>>? itensCombo;
+  final List<Map<String, dynamic>>• itensCombo;
   /// Mapa completo do produto combo (para passar ao sheet de variações). Obrigatório quando ehCombo.
-  final Map<String, dynamic>? comboProductMap;
+  final Map<String, dynamic>• comboProductMap;
   /// Lista de todos os produtos do catálogo (para resolver variações dos itens do combo). Obrigatório quando ehCombo.
-  final List<Map<String, dynamic>>? todosProdutosForCombo;
+  final List<Map<String, dynamic>>• todosProdutosForCombo;
   /// Loja do catálogo (obrigatório para IA no sheet de detalhes). Contexto do catálogo, nunca admin.
   final String lojaId;
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
@@ -92,7 +92,7 @@ class CatalogProductCard extends StatefulWidget {
     num peso = 0.0,
     this.tipoEmbalagem = 'padrao',
     this.emPromocao = false,
-    num? precoOriginal,
+    num• precoOriginal,
     num percentualPromo = 0.0,
     num valorPromo = 0.0,
     num quantidade = 0,
@@ -108,7 +108,7 @@ class CatalogProductCard extends StatefulWidget {
     this.onToggleFavorito,
     this.prazoEntrega,
     this.divideSemJuros = false,
-    num? jurosParcelamento,
+    num• jurosParcelamento,
     num maxParcelas = 12,
     num percentualDescontoPix = 0.0,
     this.onAbrirCarrinho,
@@ -162,12 +162,12 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
   }
 
   double get _precoParaParcelamento =>
-      _temFaixaPreco ? (widget.priceMin ?? widget.price) : widget.price;
+      _temFaixaPreco • (widget.priceMin ?• widget.price) : widget.price;
 
   String _buildParcelamentoTexto() {
     final p = _precoParaParcelamento;
     final n = widget.maxParcelas.clamp(1, 24);
-    final prefix = _temFaixaPreco ? 'A partir de ' : '';
+    final prefix = _temFaixaPreco • 'A partir de ' : '';
     if (widget.divideSemJuros) {
       return '$prefix${n}x R\$ ${_fmt2(p / n)} sem juros';
     }
@@ -205,17 +205,17 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
   }
 
   Future<void> _compartilharProduto() async {
-    final url = widget.catalogShareUrl ?? '';
+    final url = widget.catalogShareUrl ?• '';
     if (url.isEmpty) return;
     final precoTexto = (widget.priceMin != null &&
             widget.priceMax != null &&
             (widget.priceMin! - widget.priceMax!).abs() > 0.001)
-        ? 'R\$ ${_fmt2(widget.priceMin!)} a R\$ ${_fmt2(widget.priceMax!)}'
+        • 'R\$ ${_fmt2(widget.priceMin!)} a R\$ ${_fmt2(widget.priceMax!)}'
         : 'R\$ ${_fmt2(widget.price)}';
     final descricaoCurta = widget.descricao.trim().isEmpty
-        ? null
+        • null
         : (widget.descricao.length > 120
-            ? '${widget.descricao.substring(0, 117)}…'
+            • '${widget.descricao.substring(0, 117)}…'
             : widget.descricao);
     final msg = CatalogShareService.buildProductShareMessage(
       nome: widget.name,
@@ -264,7 +264,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             emPromocao: widget.emPromocao,
             percentualPromo: widget.percentualPromo,
             valorPromo: widget.valorPromo,
-            imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
+            imagens: widget.imagens.isNotEmpty • widget.imagens : [widget.imageUrl],
             quantidade: widget.quantidade,
             estoquePorTamanho: widget.estoquePorTamanho,
             estoquePorCor: widget.estoquePorCor,
@@ -299,7 +299,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             emPromocao: widget.emPromocao,
             percentualPromo: widget.percentualPromo,
             valorPromo: widget.valorPromo,
-            imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
+            imagens: widget.imagens.isNotEmpty • widget.imagens : [widget.imageUrl],
             quantidade: widget.quantidade,
             estoquePorTamanho: widget.estoquePorTamanho,
             estoquePorCor: widget.estoquePorCor,
@@ -322,7 +322,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
       comboProduct: widget.comboProductMap!,
       todosProdutos: widget.todosProdutosForCombo!,
       onAdd: widget.onAdd,
-      onAbrirCarrinho: abrirCarrinhoDepois ? widget.onAbrirCarrinho : null,
+      onAbrirCarrinho: abrirCarrinhoDepois • widget.onAbrirCarrinho : null,
     );
   }
 
@@ -338,15 +338,15 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
         precoPorTamanho: widget.precoPorTamanho,
         precoOriginal: widget.precoOriginal,
         emPromocao: widget.emPromocao,
-        imageUrl: widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl,
-        estoquePorTamanho: widget.estoquePorTamanho ?? {},
-        estoquePorCor: widget.estoquePorCor ?? {},
+        imageUrl: widget.imagens.isNotEmpty • widget.imagens.first : widget.imageUrl,
+        estoquePorTamanho: widget.estoquePorTamanho ?• {},
+        estoquePorCor: widget.estoquePorCor ?• {},
         variacoes: widget.variacoes,
         percentualDescontoPix: widget.percentualDescontoPix,
         mostrarQuantidadeNoCatalogo: widget.mostrarQuantidadeNoCatalogo,
         onAddToCart: (tamanho, cor, preco) {
           final img = widget.imagens.isNotEmpty
-              ? widget.imagens.first
+              • widget.imagens.first
               : widget.imageUrl;
 
           final itemParaCarrinho = {
@@ -363,8 +363,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             'slug': widget.slug,
             'peso': widget.peso,
             'tipoEmbalagem': widget.tipoEmbalagem,
-            'tamanho': tamanho ?? '',
-            'cor': cor ?? '',
+            'tamanho': tamanho ?• '',
+            'cor': cor ?• '',
           };
 
           widget.onAdd(itemParaCarrinho);
@@ -391,7 +391,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     if (hasTamanhos || hasCores || hasVariacoes) {
       _openSelectionModal(comprarDirecto: true);
     } else {
-      final img = widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl;
+      final img = widget.imagens.isNotEmpty • widget.imagens.first : widget.imageUrl;
       widget.onAdd({
         'produtosId': widget.id,
         'id': widget.id,
@@ -423,9 +423,9 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final borderColor = Colors.white.withValues(alpha:0.06);
     final catalogExt = theme.extension<CatalogThemeExtension>();
     final productNameColor =
-        catalogExt?.productNameColor ?? theme.textTheme.bodyMedium?.color ?? Colors.white;
+        catalogExt?.productNameColor ?• theme.textTheme.bodyMedium?.color ?• Colors.white;
     final productPriceColor =
-        catalogExt?.productPriceColor ?? theme.colorScheme.primary;
+        catalogExt?.productPriceColor ?• theme.colorScheme.primary;
 
     final normalizedCardSize =
         CatalogProductCardSize.normalize(widget.productCardSize);
@@ -463,33 +463,33 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
       }
     }
     final titleSizeBase = widget.minimalLayout
-        ? (isLargeCard ? 14.0 : (isSmallCard ? 12.0 : 13.0))
-        : (widget.compact ? (isLargeCard ? 13.0 : 12.0) : (isLargeCard ? 16.0 : 15.0));
+        • (isLargeCard • 14.0 : (isSmallCard • 12.0 : 13.0))
+        : (widget.compact • (isLargeCard • 13.0 : 12.0) : (isLargeCard • 16.0 : 15.0));
     final priceSizeBase = widget.minimalLayout
-        ? (isLargeCard ? 13.0 : 12.0)
-        : (widget.compact ? (isLargeCard ? 12.0 : 11.0) : (isLargeCard ? 15.0 : 14.0));
+        • (isLargeCard • 13.0 : 12.0)
+        : (widget.compact • (isLargeCard • 12.0 : 11.0) : (isLargeCard • 15.0 : 14.0));
     final actionHeightBase = widget.minimalLayout
-        ? (isLargeCard ? 38.0 : (isSmallCard ? 32.0 : 34.0))
-        : (widget.compact ? 32.0 : (isLargeCard ? 42.0 : 40.0));
+        • (isLargeCard • 38.0 : (isSmallCard • 32.0 : 34.0))
+        : (widget.compact • 32.0 : (isLargeCard • 42.0 : 40.0));
     final titleSize = is360
-        ? (titleSizeBase - 0.8)
+        • (titleSizeBase - 0.8)
         : is390
-            ? (titleSizeBase - 0.5)
+            • (titleSizeBase - 0.5)
             : is412
-                ? (titleSizeBase - 0.2)
+                • (titleSizeBase - 0.2)
                 : titleSizeBase;
     final priceSize = is360
-        ? (priceSizeBase - 0.5)
+        • (priceSizeBase - 0.5)
         : is390
-            ? (priceSizeBase - 0.3)
+            • (priceSizeBase - 0.3)
             : priceSizeBase;
     final actionHeight = is360
-        ? (actionHeightBase - 1.0)
+        • (actionHeightBase - 1.0)
         : actionHeightBase;
     final contentVPad = widget.compact
-        ? (is360 ? 5.0 : 6.0)
-        : (is360 ? 7.0 : 8.0);
-    final spacingAfterTitle = widget.compact ? (is360 ? 1.0 : 2.0) : 4.0;
+        • (is360 • 5.0 : 6.0)
+        : (is360 • 7.0 : 8.0);
+    final spacingAfterTitle = widget.compact • (is360 • 1.0 : 2.0) : 4.0;
 
     return MouseRegion(
       onEnter: (_) {
@@ -501,22 +501,23 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
         setState(() => _hovered = false);
       },
       child: AnimatedContainer(
+        clipBehavior: Clip.antiAlias,
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeOut,
         transform: (!kIsWeb && _hovered)
-            ? (Matrix4.identity()..scaleByVector3(Vector3(1.02, 1.02, 1.0)))
+            • (Matrix4.identity()..scaleByVector3(Vector3(1.02, 1.02, 1.0)))
             : Matrix4.identity(),
         decoration: BoxDecoration(
           color: cardColor,
           borderRadius: BorderRadius.circular(widget.borderRadius),
           border: Border.all(
             color: _hovered
-                ? theme.colorScheme.primary.withValues(alpha:0.35)
+                • theme.colorScheme.primary.withValues(alpha:0.35)
                 : borderColor,
           ),
           boxShadow: widget.showShadow
-              ? (_hovered
-                  ? [
+              • (_hovered
+                  • [
                       BoxShadow(
                         color: theme.colorScheme.primary.withValues(alpha:0.24),
                         blurRadius: 18,
@@ -547,21 +548,21 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                   children: [
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: widget.minimalLayout ? _openDetails : _openGallery,
+                      onTap: widget.minimalLayout • _openDetails : _openGallery,
                       child: Container(
                         color: cardColor,
                         width: double.infinity,
                         height: double.infinity,
                         child: CatalogImagePlaceholder(
                           url: hasImg
-                              ? (widget.imagens.isNotEmpty
-                                  ? widget.imagens.first
+                              • (widget.imagens.isNotEmpty
+                                  • widget.imagens.first
                                   : widget.imageUrl)
                               : '',
                           radius: BorderRadius.zero,
                           fit: BoxFit.cover,
-                          cacheWidth: widget.imageCacheWidth ?? (kIsWeb ? 600 : 500),
-                          cacheHeight: widget.imageCacheHeight ?? (kIsWeb ? 800 : 667),
+                          cacheWidth: widget.imageCacheWidth ?• (kIsWeb • 600 : 500),
+                          cacheHeight: widget.imageCacheHeight ?• (kIsWeb • 800 : 667),
                         ),
                       ),
                     ),
@@ -600,7 +601,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                             if (widget.emPromocao)
                               _buildBadge(
                                 widget.percentualPromo > 0
-                                    ? '-${widget.percentualPromo.toStringAsFixed(0)}%'
+                                    • '-${widget.percentualPromo.toStringAsFixed(0)}%'
                                     : '-R\$ ${widget.valorPromo.toStringAsFixed(2).replaceAll('.', ',')}',
                                 Colors.red[700]!,
                               ),
@@ -631,8 +632,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                             child: Padding(
                               padding: const EdgeInsets.all(6),
                               child: Icon(
-                                widget.isFavorito ? Icons.favorite : Icons.favorite_border,
-                                color: widget.isFavorito ? Colors.red : Colors.grey[700],
+                                widget.isFavorito • Icons.favorite : Icons.favorite_border,
+                                color: widget.isFavorito • Colors.red : Colors.grey[700],
                                 size: 20,
                               ),
                             ),
@@ -647,7 +648,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
               flex: contentFlex,
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                  horizontal: widget.compact ? 4 : 10,
+                  horizontal: widget.compact • 4 : 10,
                   vertical: contentVPad,
                 ),
                 child: Column(
@@ -656,8 +657,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
                   GestureDetector(
-                    onTap: widget.minimalLayout ? _openDetails : null,
-                    behavior: widget.minimalLayout ? HitTestBehavior.opaque : HitTestBehavior.deferToChild,
+                    onTap: widget.minimalLayout • _openDetails : null,
+                    behavior: widget.minimalLayout • HitTestBehavior.opaque : HitTestBehavior.deferToChild,
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
@@ -668,7 +669,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontWeight: widget.minimalLayout ? FontWeight.w500 : FontWeight.w600,
+                                fontWeight: widget.minimalLayout • FontWeight.w500 : FontWeight.w600,
                                 fontSize: titleSize,
                                 color: productNameColor,
                                 height: 1.2,
@@ -679,9 +680,9 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               Text(
                                 'R\$ ${_fmt2(widget.priceMin!)} a R\$ ${_fmt2(widget.priceMax!)}',
                                 style: TextStyle(
-                                  color: widget.emPromocao ? Colors.red[700] : productPriceColor,
+                                  color: widget.emPromocao • Colors.red[700] : productPriceColor,
                                   fontSize: priceSize,
-                                  fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
+                                  fontWeight: widget.minimalLayout • FontWeight.w600 : FontWeight.w700,
                                 ),
                               )
                             else if (widget.emPromocao && widget.precoOriginal != null)
@@ -691,17 +692,17 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                     'R\$ ${_fmt2(widget.precoOriginal!)}',
                                     style: TextStyle(
                                       color: Colors.grey[500],
-                                      fontSize: widget.minimalLayout ? 10 : (widget.compact ? 9 : 10),
+                                      fontSize: widget.minimalLayout • 10 : (widget.compact • 9 : 10),
                                       decoration: TextDecoration.lineThrough,
                                     ),
                                   ),
-                                  SizedBox(width: widget.compact ? 2 : 4),
+                                  SizedBox(width: widget.compact • 2 : 4),
                                   Text(
                                     'R\$ ${_fmt2(widget.price)}',
                                     style: TextStyle(
                                       color: Colors.red[700],
                                       fontSize: priceSize,
-                                      fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
+                                      fontWeight: widget.minimalLayout • FontWeight.w600 : FontWeight.w700,
                                     ),
                                   ),
                                 ],
@@ -712,24 +713,24 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 style: TextStyle(
                                   color: productPriceColor,
                                   fontSize: priceSize,
-                                  fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
+                                  fontWeight: widget.minimalLayout • FontWeight.w600 : FontWeight.w700,
                                 ),
                               ),
                             Text(
                               _buildParcelamentoTexto(),
                               style: TextStyle(
                                 color: Colors.grey[500],
-                                fontSize: widget.minimalLayout ? 10 : (widget.compact ? 7 : 8),
+                                fontSize: widget.minimalLayout • 10 : (widget.compact • 7 : 8),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             if (widget.percentualDescontoPix > 0)
                               Text(
-                                'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off',
+                                'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() • widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off',
                                 style: TextStyle(
                                   color: Colors.green[700],
-                                  fontSize: widget.minimalLayout ? 10 : (widget.compact ? 7 : 8),
+                                  fontSize: widget.minimalLayout • 10 : (widget.compact • 7 : 8),
                                   fontWeight: FontWeight.w600,
                                 ),
                                 maxLines: 1,
@@ -738,21 +739,21 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                         ],
                       ),
                     ),
-                    SizedBox(height: widget.compact ? 3 : 5),
+                    SizedBox(height: widget.compact • 3 : 5),
                     Row(
                       children: [
                         if (!widget.minimalLayout)
                           Expanded(
                             child: SizedBox(
-                              height: widget.compact ? 32 : 40,
+                              height: widget.compact • 32 : 40,
                               child: OutlinedButton(
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
-                                  side: BorderSide(color: (catalogExt?.buttonVerText ?? theme.colorScheme.primary).withValues(alpha:0.7)),
-                                  padding: EdgeInsets.symmetric(horizontal: widget.compact ? 4 : 8),
+                                  foregroundColor: catalogExt?.buttonVerText ?• theme.colorScheme.primary,
+                                  side: BorderSide(color: (catalogExt?.buttonVerText ?• theme.colorScheme.primary).withValues(alpha:0.7)),
+                                  padding: EdgeInsets.symmetric(horizontal: widget.compact • 4 : 8),
                                   minimumSize: Size.zero,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(widget.compact ? 6 : 8),
+                                    borderRadius: BorderRadius.circular(widget.compact • 6 : 8),
                                   ),
                                 ),
                                 onPressed: _openDetails,
@@ -764,14 +765,14 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                     children: [
                                       Icon(
                                         Icons.info_outline,
-                                        size: widget.compact ? 14 : 17,
-                                        color: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
+                                        size: widget.compact • 14 : 17,
+                                        color: catalogExt?.buttonVerText ?• theme.colorScheme.primary,
                                       ),
                                       if (!widget.compact) const SizedBox(width: 4),
                                       Text(
                                         'Ver',
                                         style: TextStyle(
-                                          fontSize: widget.compact ? 11 : 13,
+                                          fontSize: widget.compact • 11 : 13,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -781,18 +782,18 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               ),
                             ),
                           ),
-                        if (!widget.minimalLayout) SizedBox(width: widget.compact ? 4 : 8),
+                        if (!widget.minimalLayout) SizedBox(width: widget.compact • 4 : 8),
                         Expanded(
                           child: SizedBox(
                             height: actionHeight,
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: catalogExt?.buttonComprarBg ?? theme.colorScheme.primary,
-                                foregroundColor: catalogExt?.buttonComprarText ?? Colors.white,
-                                padding: EdgeInsets.symmetric(horizontal: widget.minimalLayout ? 6 : (widget.compact ? 4 : 8)),
+                                backgroundColor: catalogExt?.buttonComprarBg ?• theme.colorScheme.primary,
+                                foregroundColor: catalogExt?.buttonComprarText ?• Colors.white,
+                                padding: EdgeInsets.symmetric(horizontal: widget.minimalLayout • 6 : (widget.compact • 4 : 8)),
                                 minimumSize: Size.zero,
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(widget.minimalLayout ? 8 : (widget.compact ? 6 : 8)),
+                                  borderRadius: BorderRadius.circular(widget.minimalLayout • 8 : (widget.compact • 6 : 8)),
                                 ),
                                 elevation: 0,
                               ),
@@ -809,7 +810,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 if (hasTamanhos || hasCores || hasVariacoes) {
                                   _openSelectionModal();
                                 } else {
-                                  final img = widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl;
+                                  final img = widget.imagens.isNotEmpty • widget.imagens.first : widget.imageUrl;
                                   widget.onAdd({
                                     'produtosId': widget.id, 'id': widget.id, 'nome': widget.name, 'preco': widget.price,
                                     'percentualDescontoPix': widget.percentualDescontoPix, 'quantidade': 1,
@@ -820,8 +821,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               },
                               child: Icon(
                                 Icons.shopping_cart_outlined,
-                                size: widget.minimalLayout ? 18 : (widget.compact ? 18 : 22),
-                                color: catalogExt?.buttonComprarText ?? Colors.white,
+                                size: widget.minimalLayout • 18 : (widget.compact • 18 : 22),
+                                color: catalogExt?.buttonComprarText ?• Colors.white,
                               ),
                             ),
                           ),
@@ -829,16 +830,16 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                       ],
                     ),
                     if (widget.onAbrirCarrinho != null && !widget.minimalLayout) ...[
-                      SizedBox(height: widget.compact ? 3 : 4),
+                      SizedBox(height: widget.compact • 3 : 4),
                       SizedBox(
                         width: double.infinity,
-                        height: widget.compact ? 34 : 40,
+                        height: widget.compact • 34 : 40,
                         child: FilledButton(
                           style: FilledButton.styleFrom(
-                            backgroundColor: catalogExt?.buttonComprarBg ?? theme.colorScheme.primary,
-                            foregroundColor: catalogExt?.buttonComprarText ?? Colors.white,
+                            backgroundColor: catalogExt?.buttonComprarBg ?• theme.colorScheme.primary,
+                            foregroundColor: catalogExt?.buttonComprarText ?• Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(widget.compact ? 6 : 8),
+                              borderRadius: BorderRadius.circular(widget.compact • 6 : 8),
                             ),
                             elevation: 0,
                           ),
@@ -846,7 +847,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                           child: Text(
                             'Comprar',
                             style: TextStyle(
-                              fontSize: widget.compact ? 12 : 14,
+                              fontSize: widget.compact • 12 : 14,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -863,4 +864,5 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     );
   }
 }
+
 

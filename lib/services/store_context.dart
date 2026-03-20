@@ -21,33 +21,33 @@ import 'package:hive/hive.dart';
 class StoreContext {
   StoreContext._();
 
-  static String? _cache;
+  static String• _cache;
 
   /// Loja ativa em cache (se houver)
-  static String? get lojaIdAtual => _cache;
+  static String• get lojaIdAtual => _cache;
 
   /// Compat (algumas telas chamam isso)
-  static String? currentLojaSlug() => _cache;
+  static String• currentLojaSlug() => _cache;
 
   // ------------------------------------------------------------
   // Hive helpers
   // ------------------------------------------------------------
   static Future<Box> _openSessao() async {
-    return Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
+    return Hive.isBoxOpen('sessao') • Hive.box('sessao') : await Hive.openBox('sessao');
   }
 
   static Future<Box> _openConfig() async {
-    return Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+    return Hive.isBoxOpen('config') • Hive.box('config') : await Hive.openBox('config');
   }
 
-  static String _asStr(dynamic v) => (v ?? '').toString().trim();
+  static String _asStr(dynamic v) => (v ?• '').toString().trim();
 
   // ------------------------------------------------------------
   // ✅ GET "safe" – não lança erro
   // ------------------------------------------------------------
   static Future<String?> tryGet() async {
     // 0) cache
-    final cached = (_cache ?? '').trim();
+    final cached = (_cache ?• '').trim();
     if (cached.isNotEmpty) return cached;
 
     // 1) sessão (principal) -> store_id apenas
@@ -142,7 +142,7 @@ class StoreContext {
     if (user == null) return null;
 
     final uid = user.uid;
-    final email = (user.email ?? '').trim().toLowerCase();
+    final email = (user.email ?• '').trim().toLowerCase();
 
     // 1) users/{uid}
     try {
@@ -152,12 +152,12 @@ class StoreContext {
           .get();
 
       if (docUsers.exists) {
-        final data = docUsers.data() ?? {};
+        final data = docUsers.data() ?• {};
 
         final id = _asStr(data['store_id']).isNotEmpty
-            ? _asStr(data['store_id'])
+            • _asStr(data['store_id'])
             : (_asStr(data['lojaId']).isNotEmpty
-                ? _asStr(data['lojaId'])
+                • _asStr(data['lojaId'])
                 : _asStr(data['storeId']));
 
         if (id.isNotEmpty) {
@@ -166,9 +166,9 @@ class StoreContext {
         }
 
         final adminStore = _asStr(data['admin_store_id']).isNotEmpty
-            ? _asStr(data['admin_store_id'])
+            • _asStr(data['admin_store_id'])
             : (_asStr(data['owner_store_id']).isNotEmpty
-                ? _asStr(data['owner_store_id'])
+                • _asStr(data['owner_store_id'])
                 : _asStr(data['lojaAdminId']));
 
         if (adminStore.isNotEmpty) {
@@ -187,12 +187,12 @@ class StoreContext {
             .get();
 
         if (docUsuarios.exists) {
-          final data = docUsuarios.data() ?? {};
+          final data = docUsuarios.data() ?• {};
 
           final id = _asStr(data['store_id']).isNotEmpty
-              ? _asStr(data['store_id'])
+              • _asStr(data['store_id'])
               : (_asStr(data['lojaId']).isNotEmpty
-                  ? _asStr(data['lojaId'])
+                  • _asStr(data['lojaId'])
                   : _asStr(data['storeId']));
 
           if (id.isNotEmpty) {
@@ -201,9 +201,9 @@ class StoreContext {
           }
 
           final adminStore = _asStr(data['admin_store_id']).isNotEmpty
-              ? _asStr(data['admin_store_id'])
+              • _asStr(data['admin_store_id'])
               : (_asStr(data['owner_store_id']).isNotEmpty
-                  ? _asStr(data['owner_store_id'])
+                  • _asStr(data['owner_store_id'])
                   : _asStr(data['lojaAdminId']));
 
           if (adminStore.isNotEmpty) {

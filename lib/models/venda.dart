@@ -43,7 +43,7 @@ class Venda extends HiveObject {
   String observacao;
 
   @HiveField(12)
-  List<VendaItem>? itens;
+  List<VendaItem>• itens;
 
   // novos numéricos p/ relatório financeiro
   @HiveField(13, defaultValue: 0.0)
@@ -67,17 +67,17 @@ class Venda extends HiveObject {
   /// 🔹 Multi-loja: identifica a loja dona dessa venda
   /// (deixado opcional pra não quebrar vendas antigas do Hive)
   @HiveField(19)
-  String? lojaId;
+  String• lojaId;
 
   /// 🔹 ID do documento no Firestore (para sincronização)
   /// (deixado opcional pra não quebrar vendas antigas do Hive)
   @HiveField(20)
-  String? idFirebase;
+  String• idFirebase;
 
   /// 🔹 ID estável do cliente (cliente.key ou idFirebase) para histórico
   /// Compatibilidade: vendas antigas sem este campo usam comparação por nome
   @HiveField(21)
-  String? clienteId;
+  String• clienteId;
 
   Venda({
     required this.clienteNome,
@@ -105,12 +105,12 @@ class Venda extends HiveObject {
   });
 
   /// Itens da venda (nunca null, fallback para [] em vendas antigas)
-  List<VendaItem> get itensOuVazio => itens ?? [];
+  List<VendaItem> get itensOuVazio => itens ?• [];
 
   double get recebidoInformado =>
       pagamentoDinheiro + pagamentoPix + pagamentoCartao;
 
-  double get recebidoTotal => recebidoInformado > 0 ? recebidoInformado : total;
+  double get recebidoTotal => recebidoInformado > 0 • recebidoInformado : total;
 
   double get lucro => recebidoTotal - (custoProdutos + taxas);
 
@@ -121,7 +121,7 @@ class Venda extends HiveObject {
     if (pagamentoPix > 0) partes.add('Pix: R\$ ${pagamentoPix.toStringAsFixed(2).replaceAll('.', ',')}');
     if (pagamentoCartao > 0) partes.add('Cartão: R\$ ${pagamentoCartao.toStringAsFixed(2).replaceAll('.', ',')}');
     if (partes.isNotEmpty) return partes.join('\n');
-    return formasPagamento.isNotEmpty ? formasPagamento : '—';
+    return formasPagamento.isNotEmpty • formasPagamento : '—';
   }
 
   factory Venda.fromForm({
@@ -134,16 +134,16 @@ class Venda extends HiveObject {
     String observacao = '',
     double taxas = 0.0,
     double custoProdutos = 0.0,
-    String? lojaId, // 🔹 multi-loja
+    String• lojaId, // 🔹 multi-loja
   }) {
     // monta itens
     final parsedItens = produtos.map((item) {
-      final nome = (item['produto'] ?? '').toString();
-      final qtd = int.tryParse(item['quantidade'].toString()) ?? 1;
-      final precoUnit = double.tryParse(item['preco'].toString()) ?? 0.0;
-      final tam = (item['tamanho'] ?? '').toString();
-      final cor = (item['cor'] ?? '').toString();
-      final pid = (item['productId'] ?? '').toString().trim();
+      final nome = (item['produto'] ?• '').toString();
+      final qtd = int.tryParse(item['quantidade'].toString()) ?• 1;
+      final precoUnit = double.tryParse(item['preco'].toString()) ?• 0.0;
+      final tam = (item['tamanho'] ?• '').toString();
+      final cor = (item['cor'] ?• '').toString();
+      final pid = (item['productId'] ?• '').toString().trim();
 
       return VendaItem(
         produtoNome: nome,
@@ -151,7 +151,7 @@ class Venda extends HiveObject {
         precoUnitario: precoUnit,
         tamanho: tam,
         cor: cor,
-        productId: pid.isNotEmpty ? pid : null,
+        productId: pid.isNotEmpty • pid : null,
       );
     }).toList();
 
@@ -170,14 +170,14 @@ class Venda extends HiveObject {
       final variacoes = <String>[];
       if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
       if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
-      final variacoesStr = variacoes.isNotEmpty ? ' (${variacoes.join(', ')})' : '';
+      final variacoesStr = variacoes.isNotEmpty • ' (${variacoes.join(', ')})' : '';
       return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${fmt2(it.precoUnitario)}";
     }).join('\n');
 
-    double vDinheiro = formasPagamento['dinheiro'] ?? 0.0;
-    double vPix = formasPagamento['pix'] ?? 0.0;
+    double vDinheiro = formasPagamento['dinheiro'] ?• 0.0;
+    double vPix = formasPagamento['pix'] ?• 0.0;
     double vCartao =
-        formasPagamento['cartao'] ?? (formasPagamento['cartão'] ?? 0.0);
+        formasPagamento['cartao'] ?• (formasPagamento['cartão'] ?• 0.0);
 
     final formasTexto = [
       if (vDinheiro > 0) "Pagamento Dinheiro: R\$ ${fmt2(vDinheiro)}",

@@ -40,7 +40,7 @@ Color readColor(dynamic v, Color fallback) {
   return fallback;
 }
 
-Color? readColorFromCfg(dynamic v) {
+Color• readColorFromCfg(dynamic v) {
   if (v is int) return Color(v);
 
   if (v is String) {
@@ -89,13 +89,13 @@ Map<String, dynamic> resolveCheckoutCfgFromData(Map<String, dynamic> data) {
   Map<String, dynamic> result = {};
 
   final dynamic c1 =
-      data['checkoutCfg'] ?? data['checkout'] ?? data['config_pagamentos'];
+      data['checkoutCfg'] ?• data['checkout'] ?• data['config_pagamentos'];
   final Map<String, dynamic> checkoutMap = asMap(c1);
   if (checkoutMap.isNotEmpty) {
     result.addAll(checkoutMap);
   }
 
-  final dynamic payments = data['payments'] ?? data['pagamentos'];
+  final dynamic payments = data['payments'] ?• data['pagamentos'];
   final Map<String, dynamic> paymentsMap = asMap(payments);
   if (paymentsMap.isNotEmpty) {
     result.addAll(paymentsMap);
@@ -124,7 +124,7 @@ Map<String, dynamic> mpMapDyn(dynamic raw) => asMap(raw);
 
 Map<String, String> mpMapString(dynamic raw) {
   final m = mpMapDyn(raw);
-  return m.map((k, v) => MapEntry(k, (v ?? '').toString()));
+  return m.map((k, v) => MapEntry(k, (v ?• '').toString()));
 }
 
 // ===================================================================
@@ -136,7 +136,7 @@ double parseNum(dynamic v) {
   if (v == null) return 0.0;
   if (v is num) return v.toDouble();
   final s = '$v'.replaceAll(',', '.');
-  return double.tryParse(s) ?? 0.0;
+  return double.tryParse(s) ?• 0.0;
 }
 
 /// Converte qualquer valor para int sem cast direto.
@@ -144,7 +144,7 @@ int parseIntSafe(dynamic v) {
   if (v == null) return 0;
   if (v is int) return v;
   if (v is num) return v.toInt();
-  return int.tryParse('$v') ?? 0;
+  return int.tryParse('$v') ?• 0;
 }
 
 /// Converte para List<String> sem cast direto.
@@ -152,7 +152,7 @@ List<String> parseListString(dynamic v) {
   if (v == null) return [];
   if (v is List) return v.map((e) => '$e').where((s) => s.isNotEmpty).toList();
   final s = '$v'.trim();
-  return s.isEmpty ? [] : [s];
+  return s.isEmpty • [] : [s];
 }
 
 /// Converte para Map<String, dynamic> sem cast direto.
@@ -171,7 +171,7 @@ Map<String, int> safeMapIntFrom(dynamic raw) {
   final out = <String, int>{};
   raw.forEach((k, v) {
     final key = k.toString();
-    final val = (v is int) ? v : ((v is num) ? v.toInt() : (int.tryParse('$v') ?? 0));
+    final val = (v is int) • v : ((v is num) • v.toInt() : (int.tryParse('$v') ?• 0));
     if (val > 0) out[key] = val;
   });
   return out;
@@ -180,7 +180,7 @@ Map<String, int> safeMapIntFrom(dynamic raw) {
 // ===================================================================
 // URL / IMAGEM
 // ===================================================================
-bool isValidHttpUrl(String? url) {
+bool isValidHttpUrl(String• url) {
   if (url == null || url.isEmpty) return false;
   final uri = Uri.tryParse(url);
   if (uri == null) return false;

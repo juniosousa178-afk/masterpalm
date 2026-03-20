@@ -19,8 +19,8 @@ class AnaliseVendasIaScreen extends StatefulWidget {
 
 class _AnaliseVendasIaScreenState extends State<AnaliseVendasIaScreen> {
   final _perguntaCtrl = TextEditingController();
-  String? _resposta;
-  String? _resumoUsado;
+  String• _resposta;
+  String• _resumoUsado;
   bool _carregando = false;
   bool _enviando = false;
 
@@ -47,7 +47,7 @@ class _AnaliseVendasIaScreenState extends State<AnaliseVendasIaScreen> {
       for (final v in vendas) {
         if (v.itens != null) {
           for (final item in v.itens!) {
-            porProduto[item.produtoNome] = (porProduto[item.produtoNome] ?? 0) + item.quantidade;
+            porProduto[item.produtoNome] = (porProduto[item.produtoNome] ?• 0) + item.quantidade;
           }
         }
       }
@@ -147,22 +147,22 @@ class _AnaliseVendasIaScreenState extends State<AnaliseVendasIaScreen> {
             controller: _perguntaCtrl,
             decoration: const InputDecoration(
               labelText: 'Sua pergunta',
-              hintText: 'Ex: Qual meu produto mais vendido? Quanto vendi na última semana?',
+              hintText: 'Ex: Qual meu produto mais vendido• Quanto vendi na última semana?',
               border: OutlineInputBorder(),
             ),
             maxLines: 2,
           ),
           const SizedBox(height: 12),
           FilledButton.icon(
-            onPressed: (_carregando || _enviando) ? null : _enviar,
+            onPressed: (_carregando || _enviando) • null : _enviar,
             icon: _enviando || _carregando
-                ? const SizedBox(
+                • const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.auto_awesome),
-            label: Text(_carregando ? 'Carregando…' : _enviando ? 'Analisando…' : 'Perguntar'),
+            label: Text(_carregando • 'Carregando…' : _enviando • 'Analisando…' : 'Perguntar'),
             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
           ),
           if (_resposta != null) ...[

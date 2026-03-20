@@ -1,6 +1,6 @@
 // lib/widgets/selecionar_cupom_modal.dart
 // Modal para selecionar cupom de desconto (igual ao modelo da imagem)
-// Inclui cupons de indica��o (exclusivos do remetente/destinat�rio) quando o cliente est� logado.
+// Inclui cupons de indicação (exclusivos do remetente/destinatário) quando o cliente está logado.
 
 import 'package:flutter/material.dart';
 import '../models/cupom.dart';
@@ -12,7 +12,7 @@ class SelecionarCupomModal extends StatefulWidget {
   final String lojaId;
   final String clienteId;
   final double valorPedido;
-  final Cupom? cupomAtual;
+  final Cupom• cupomAtual;
 
   const SelecionarCupomModal({
     super.key,
@@ -28,9 +28,9 @@ class SelecionarCupomModal extends StatefulWidget {
 
 class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
   final _cupomService = CupomDescontoService();
-  /// Cupom da loja (Cupom) ou cupom de indica��o (Map com origem 'cupom_cliente')
+  /// Cupom da loja (Cupom) ou cupom de indicação (Map com origem 'cupom_cliente')
   dynamic _cupomSelecionado;
-  List<CupomCliente>? _cuponsIndicacao;
+  List<CupomCliente>• _cuponsIndicacao;
 
   @override
   void initState() {
@@ -115,7 +115,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Escolha um cupom dispon�vel',
+                'Escolha um cupom disponível',
                 style: TextStyle(
                   color: Colors.grey[600],
                   fontSize: 14,
@@ -153,8 +153,8 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                   );
                 }
 
-                final cupons = snapshot.data ?? [];
-                final indicacao = _cuponsIndicacao ?? [];
+                final cupons = snapshot.data ?• [];
+                final indicacao = _cuponsIndicacao ?• [];
                 final temIndicacao = indicacao.isNotEmpty;
 
                 if (cupons.isEmpty && !temIndicacao) {
@@ -171,7 +171,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Nenhum cupom dispon�vel',
+                            'Nenhum cupom disponível',
                             style: TextStyle(
                               color: Colors.grey[600],
                               fontSize: 16,
@@ -203,7 +203,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
-                          'Meus cupons (indica��o)',
+                          'Meus cupons (indicação)',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -226,7 +226,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
             ),
           ),
 
-          // Bot�o Salvar
+          // Botão Salvar
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -239,7 +239,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: _cupomSelecionado != null
-                    ? () => Navigator.pop(context, _cupomSelecionado)
+                    • () => Navigator.pop(context, _cupomSelecionado)
                     : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF00BCD4),
@@ -265,17 +265,17 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
     );
   }
 
-  /// Mapa no formato usado pelo carrinho para cupom de indica��o (origem cupom_cliente).
+  /// Mapa no formato usado pelo carrinho para cupom de indicação (origem cupom_cliente).
   Map<String, dynamic> _mapFromCupomCliente(CupomCliente c) {
     final tipo = c.tipo == TipoCupom.freteGratis
-        ? 'frete_gratis'
-        : (c.tipo == TipoCupom.descontoFixo ? 'valor' : 'percent');
+        • 'frete_gratis'
+        : (c.tipo == TipoCupom.descontoFixo • 'valor' : 'percent');
     return {
       'id': c.id,
       'codigo': c.codigo,
       'code': c.codigo,
       'tipo': tipo,
-      'valor': c.valorDesconto ?? 0.0,
+      'valor': c.valorDesconto ?• 0.0,
       'aplicarEm': 'total',
       'freteGratis': c.tipo == TipoCupom.freteGratis,
       'dataValidade': c.dataValidade,
@@ -286,11 +286,11 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
   Widget _buildCupomClienteCard(CupomCliente c, bool isSelecionado) {
     final podeUsar = c.isValido;
     final desconto = c.tipo == TipoCupom.descontoFixo
-        ? 'R\$ ${(c.valorDesconto ?? 0).toStringAsFixed(2)}'
-        : '${(c.valorDesconto ?? 0).toStringAsFixed(0)}%';
+        • 'R\$ ${(c.valorDesconto ?• 0).toStringAsFixed(2)}'
+        : '${(c.valorDesconto ?• 0).toStringAsFixed(0)}%';
     return InkWell(
       onTap: podeUsar
-          ? () {
+          • () {
               setState(() {
                 if (isSelecionado) {
                   _cupomSelecionado = null;
@@ -304,15 +304,15 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: podeUsar ? Colors.white : Colors.grey[100],
+          color: podeUsar • Colors.white : Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelecionado
-                ? const Color(0xFF00BCD4)
+                • const Color(0xFF00BCD4)
                 : podeUsar
-                    ? Colors.grey[300]!
+                    • Colors.grey[300]!
                     : Colors.grey[200]!,
-            width: isSelecionado ? 2 : 1,
+            width: isSelecionado • 2 : 1,
           ),
         ),
         child: Row(
@@ -322,18 +322,18 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
               height: 24,
               decoration: BoxDecoration(
                 color: isSelecionado
-                    ? const Color(0xFF00BCD4)
+                    • const Color(0xFF00BCD4)
                     : Colors.transparent,
                 border: Border.all(
                   color: isSelecionado
-                      ? const Color(0xFF00BCD4)
+                      • const Color(0xFF00BCD4)
                       : Colors.grey[400]!,
                   width: 2,
                 ),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: isSelecionado
-                  ? const Icon(Icons.check, size: 16, color: Colors.white)
+                  • const Icon(Icons.check, size: 16, color: Colors.white)
                   : null,
             ),
             const SizedBox(width: 12),
@@ -349,7 +349,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: podeUsar ? Colors.black : Colors.grey,
+                            color: podeUsar • Colors.black : Colors.grey,
                           ),
                         ),
                       ),
@@ -361,7 +361,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
-                          'INDICA��O',
+                          'INDICAÇÃO',
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.bold,
@@ -376,7 +376,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                     c.titulo,
                     style: TextStyle(
                       fontSize: 14,
-                      color: podeUsar ? Colors.grey[700] : Colors.grey,
+                      color: podeUsar • Colors.grey[700] : Colors.grey,
                     ),
                   ),
                   if (!podeUsar) ...[
@@ -398,10 +398,10 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                           Expanded(
                             child: Text(
                               c.usado
-                                  ? 'J� utilizado'
+                                  • 'Já utilizado'
                                   : c.isExpirado
-                                      ? 'Expirado'
-                                      : 'Aguardando confirma��o',
+                                      • 'Expirado'
+                                      : 'Aguardando confirmação',
                               style: TextStyle(
                                   fontSize: 12, color: Colors.orange[700]),
                             ),
@@ -418,7 +418,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: podeUsar
-                    ? const Color(0xFF00BCD4).withValues(alpha:0.1)
+                    • const Color(0xFF00BCD4).withValues(alpha:0.1)
                     : Colors.grey[200],
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -427,7 +427,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: podeUsar ? const Color(0xFF00BCD4) : Colors.grey,
+                  color: podeUsar • const Color(0xFF00BCD4) : Colors.grey,
                 ),
               ),
             ),
@@ -440,17 +440,17 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
   Widget _buildCupomCard(Cupom cupom, bool isSelecionado, bool podeUsar) {
     // Calcular desconto
     final desconto = cupom.tipo == 'percentual'
-        ? '${cupom.valor.toStringAsFixed(0)}%'
+        • '${cupom.valor.toStringAsFixed(0)}%'
         : 'R\$ ${cupom.valor.toStringAsFixed(2)}';
 
     // Tag do cupom
-    String? tag;
-    Color? tagColor;
+    String• tag;
+    Color• tagColor;
     if (cupom.clienteId != null) {
       tag = 'VALE-COMPRA';
       tagColor = const Color(0xFF9C27B0); // Purple
     } else if (cupom.freteGratis) {
-      tag = 'FRETE GR�TIS';
+      tag = 'FRETE GRÁTIS';
       tagColor = const Color(0xFF4CAF50); // Green
     } else if (cupom.usoUnicoGlobal) {
       tag = 'EXCLUSIVO';
@@ -459,7 +459,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
 
     return InkWell(
       onTap: podeUsar
-          ? () {
+          • () {
               setState(() {
                 if (isSelecionado) {
                   _cupomSelecionado = null;
@@ -473,15 +473,15 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: podeUsar ? Colors.white : Colors.grey[100],
+          color: podeUsar • Colors.white : Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelecionado
-                ? const Color(0xFF00BCD4)
+                • const Color(0xFF00BCD4)
                 : podeUsar
-                    ? Colors.grey[300]!
+                    • Colors.grey[300]!
                     : Colors.grey[200]!,
-            width: isSelecionado ? 2 : 1,
+            width: isSelecionado • 2 : 1,
           ),
         ),
         child: Row(
@@ -492,18 +492,18 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
               height: 24,
               decoration: BoxDecoration(
                 color: isSelecionado
-                    ? const Color(0xFF00BCD4)
+                    • const Color(0xFF00BCD4)
                     : Colors.transparent,
                 border: Border.all(
                   color: isSelecionado
-                      ? const Color(0xFF00BCD4)
+                      • const Color(0xFF00BCD4)
                       : Colors.grey[400]!,
                   width: 2,
                 ),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: isSelecionado
-                  ? const Icon(
+                  • const Icon(
                       Icons.check,
                       size: 16,
                       color: Colors.white,
@@ -518,7 +518,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // C�digo + Tag
+                  // Código + Tag
                   Row(
                     children: [
                       Expanded(
@@ -527,7 +527,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: podeUsar ? Colors.black : Colors.grey,
+                            color: podeUsar • Colors.black : Colors.grey,
                           ),
                         ),
                       ),
@@ -557,16 +557,16 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
 
                   const SizedBox(height: 4),
 
-                  // Nome/descri��o
+                  // Nome/descrição
                   Text(
                     cupom.nome,
                     style: TextStyle(
                       fontSize: 14,
-                      color: podeUsar ? Colors.grey[700] : Colors.grey,
+                      color: podeUsar • Colors.grey[700] : Colors.grey,
                     ),
                   ),
 
-                  // Restri��es
+                  // Restrições
                   if (!podeUsar) ...[
                     const SizedBox(height: 8),
                     Container(
@@ -612,7 +612,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: podeUsar
-                    ? const Color(0xFF00BCD4).withValues(alpha:0.1)
+                    • const Color(0xFF00BCD4).withValues(alpha:0.1)
                     : Colors.grey[200],
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -621,7 +621,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: podeUsar ? const Color(0xFF00BCD4) : Colors.grey,
+                  color: podeUsar • const Color(0xFF00BCD4) : Colors.grey,
                 ),
               ),
             ),
@@ -633,26 +633,26 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
 
   String _getMensagemRestricao(Cupom cupom) {
     if (cupom.valorMinimo != null && widget.valorPedido < cupom.valorMinimo!) {
-      return 'M�nimo: R\$ ${cupom.valorMinimo!.toStringAsFixed(2)}';
+      return 'Mínimo: R\$ ${cupom.valorMinimo!.toStringAsFixed(2)}';
     }
     if (cupom.usoUnico && cupom.usadosPor.contains(widget.clienteId)) {
-      return 'Voc� j� usou este cupom';
+      return 'Você já usou este cupom';
     }
     if (cupom.usoUnicoGlobal && cupom.qtdUsosAtuais > 0) {
-      return 'Cupom j� foi utilizado';
+      return 'Cupom já foi utilizado';
     }
-    return 'N�o dispon�vel';
+    return 'Não disponível';
   }
 }
 
-/// Fun��o helper para exibir o modal.
-/// Retorna [Cupom] (cupom da loja) ou [Map] (cupom de indica��o, origem 'cupom_cliente').
+/// Função helper para exibir o modal.
+/// Retorna [Cupom] (cupom da loja) ou [Map] (cupom de indicação, origem 'cupom_cliente').
 Future<dynamic> mostrarModalSelecionarCupom({
   required BuildContext context,
   required String lojaId,
   required String clienteId,
   required double valorPedido,
-  Cupom? cupomAtual,
+  Cupom• cupomAtual,
 }) async {
   return await showModalBottomSheet<dynamic>(
     context: context,

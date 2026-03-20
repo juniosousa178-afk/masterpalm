@@ -14,7 +14,7 @@ class CatalogoApp extends StatelessWidget {
     // ✅ NUNCA usar 'masterpalm' como fallback: passaria loja errada.
     // Se URL não tiver /loja/slug, usar placeholder; o catálogo mostrará "Loja não encontrada".
     final slug = segments.length >= 2 && segments[0] == 'loja'
-        ? segments[1]
+        • segments[1]
         : 'minha-loja';
 
     return MaterialApp(

@@ -79,7 +79,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   late Box<Produto> _box;
 
   bool _ready = false;
-  String? _lojaId;
+  String• _lojaId;
   bool _erroResolucaoLoja = false;
   bool _syncEmBackground = false;
   bool _temPermissao = true;
@@ -94,8 +94,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   bool _sincronizandoEstoque = false;
   bool _exportandoEstoque = false;
   bool _sincronizandoMarketplace = false;
-  String? _marketplaceEmSync;
-  bool? _temDadosParaImportar;
+  String• _marketplaceEmSync;
+  bool• _temDadosParaImportar;
   bool _modoSelecao = false;
   bool _sugerindoPromocaoIa = false;
   bool _catalogoPrecisaAtualizar = false;
@@ -104,9 +104,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   String _ordenacao = 'nome_asc';
 
   /// Filtros: categoria, subcategoria, publicado (null = todos), sem fotos, recentemente alterados
-  String? _filtroCategoria;
-  String? _filtroSubcategoria;
-  bool? _filtroPublicado; // null = todos, true = só publicados, false = só não publicados
+  String• _filtroCategoria;
+  String• _filtroSubcategoria;
+  bool• _filtroPublicado; // null = todos, true = só publicados, false = só não publicados
   bool _filtroSemFotos = false; // true = só produtos sem imagens
   bool _filtroRecentementeAlterados = false; // true = só produtos alterados nos últimos 30 dias
 
@@ -128,12 +128,12 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     try {
       if (kIsWeb) {
         logD(
-          '[WEB_NAV] Estoque._setup inicio (referência) uri=${Uri.base} route=${ModalRoute.of(context)?.settings.name ?? "null"}',
+          '[WEB_NAV] Estoque._setup inicio (referência) uri=${Uri.base} route=${ModalRoute.of(context)?.settings.name ?• "null"}',
         );
       }
       // Usa getWithTimeout para fallback Hive offline (igual Vendas/Clientes/Fornecedores)
-      String? lojaId = await LojaIdService.getWithTimeout(
-          timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
+      String• lojaId = await LojaIdService.getWithTimeout(
+          timeout: kIsWeb • const Duration(seconds: 25) : const Duration(seconds: 10));
       if (lojaId == null || lojaId.trim().isEmpty) {
         if (kIsWeb && FirebaseAuth.instance.currentUser == null) {
           try {
@@ -197,7 +197,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       );
       if (!mounted) return;
       _showSnackBar(removidos > 0
-          ? 'Envio concluído. $removidos produto(s) excedente(s) removido(s) do Firestore.'
+          • 'Envio concluído. $removidos produto(s) excedente(s) removido(s) do Firestore.'
           : 'Envio concluído com sucesso');
       setState(() {});
     } catch (e) {
@@ -241,7 +241,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       await _verificarSeTemDadosParaImportar(lojaId);
       if (!mounted) return;
       _showSnackBar(n > 0
-          ? 'Baixados $n produto(s) da nuvem'
+          • 'Baixados $n produto(s) da nuvem'
           : 'Nenhum produto novo encontrado');
       setState(() {});
     } catch (e) {
@@ -266,7 +266,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     for (final p in produtos) {
       for (final url in p.imagens) {
         final u = url.trim();
-        if (u.isNotEmpty) contagemUrl[u] = (contagemUrl[u] ?? 0) + 1;
+        if (u.isNotEmpty) contagemUrl[u] = (contagemUrl[u] ?• 0) + 1;
       }
     }
     final threshold = (produtos.length * 0.3).floor();
@@ -292,7 +292,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           final filename = _extrairFilename(u);
           if (filename.isNotEmpty && !seen.contains(filename)) {
             seen.add(filename);
-            contagemFilename[filename] = (contagemFilename[filename] ?? 0) + 1;
+            contagemFilename[filename] = (contagemFilename[filename] ?• 0) + 1;
           }
         }
       }
@@ -364,7 +364,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         title: const Text('Remover fotos repetidas?'),
         content: Text(
           urlsParaRemover.length <= 5
-              ? 'Encontrada(s) ${urlsParaRemover.length} foto(s) que aparecem em vários produtos '
+              • 'Encontrada(s) ${urlsParaRemover.length} foto(s) que aparecem em vários produtos '
                   '(provável logo da loja). Remover de todos os produtos?'
               : 'Encontrada foto repetida (mesmo arquivo) em $qtdProdutosAfetados produtos '
                   '(provável logo da loja). Remover de todos?',
@@ -434,7 +434,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     setState(() => _temPermissao = permitido);
   }
 
-  String _norm(String? s) => (s ?? '').toLowerCase().trim();
+  String _norm(String• s) => (s ?• '').toLowerCase().trim();
 
   /// Extrai o nome do arquivo de uma URL ou caminho local.
   String _extrairFilename(String url) {
@@ -758,7 +758,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    final maxParcelas = (int.tryParse(maxParcelasCtrl.text.trim()) ?? 12).clamp(1, 24);
+    final maxParcelas = (int.tryParse(maxParcelasCtrl.text.trim()) ?• 12).clamp(1, 24);
     setState(() => _publicando = true);
     try {
       int n = 0;
@@ -824,7 +824,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    final percentual = (double.tryParse(percentualCtrl.text.trim()) ?? 0.0).clamp(0.0, 100.0);
+    final percentual = (double.tryParse(percentualCtrl.text.trim()) ?• 0.0).clamp(0.0, 100.0);
     setState(() => _publicando = true);
     try {
       int n = 0;
@@ -909,8 +909,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           _modoSelecao = false;
         });
         _showSnackBarWithUndo(
-          '$sucesso produto(s) excluído(s)${erro > 0 ? ' ($erro erro(s))' : ''}. Desfazer?',
-          onUndo: undoIds.isNotEmpty ? () => _undoProdutosBatch(undoIds) : null,
+          '$sucesso produto(s) excluído(s)${erro > 0 • ' ($erro erro(s))' : ''}. Desfazer?',
+          onUndo: undoIds.isNotEmpty • () => _undoProdutosBatch(undoIds) : null,
         );
       }
     } catch (e) {
@@ -989,7 +989,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           _produtosSelecionados.clear();
           _modoSelecao = false;
         });
-        final msg = '$sucesso produto(s) adicionado(s) ao catálogo${erro > 0 ? ' ($erro erro(s))' : ''}';
+        final msg = '$sucesso produto(s) adicionado(s) ao catálogo${erro > 0 • ' ($erro erro(s))' : ''}';
         logD('📦 [LOTE] Resultado: $msg');
         _showSnackBar(msg);
       }
@@ -1045,7 +1045,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           logD('✅ [LOTE] Produto "${produto.nome}" marcado como não publicado');
 
           final slug = produto.slug.isNotEmpty
-              ? produto.slug
+              • produto.slug
               : CatalogoSyncService.slugify(produto.nome);
 
           // ✅ Remover do catálogo LIVE com lojaId explícito
@@ -1068,7 +1068,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           _produtosSelecionados.clear();
           _modoSelecao = false;
         });
-        final msg = '$sucesso produto(s) removido(s) do catálogo${erro > 0 ? ' ($erro erro(s))' : ''}';
+        final msg = '$sucesso produto(s) removido(s) do catálogo${erro > 0 • ' ($erro erro(s))' : ''}';
         logD('🗑️ [LOTE] Resultado: $msg');
         _showSnackBar(msg);
       }
@@ -1132,19 +1132,19 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
     final success = resultado['success'] == true;
     if (success) {
-      final sincr = (resultado['sincronizados'] is int) ? resultado['sincronizados'] as int : 0;
-      final erros = (resultado['erros'] is int) ? resultado['erros'] as int : 0;
-      final total = (resultado['total'] is int) ? resultado['total'] as int : 0;
+      final sincr = (resultado['sincronizados'] is int) • resultado['sincronizados'] as int : 0;
+      final erros = (resultado['erros'] is int) • resultado['erros'] as int : 0;
+      final total = (resultado['total'] is int) • resultado['total'] as int : 0;
       if (total == 0) {
         _showSnackBar(
           'Nenhum produto na nuvem. Publique os produtos no catálogo antes de sincronizar.',
           isError: true,
         );
       } else {
-        _showSnackBar('$marketplace: $sincr de $total produto(s) sincronizados${erros > 0 ? ' ($erros erros)' : ''}');
+        _showSnackBar('$marketplace: $sincr de $total produto(s) sincronizados${erros > 0 • ' ($erros erros)' : ''}');
       }
     } else {
-      _showSnackBar(resultado['error']?.toString() ?? 'Erro ao sincronizar', isError: true);
+      _showSnackBar(resultado['error']?.toString() ?• 'Erro ao sincronizar', isError: true);
     }
   }
 
@@ -1160,8 +1160,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final prefs = await SharedPreferences.getInstance();
     final keyEstoque = '${_keyMostrarEstoqueCatalogo}_$lojaId';
     final keyQuantidade = '${_keyMostrarQuantidadeCatalogo}_$lojaId';
-    bool mostrarEstoque = prefs.getBool(keyEstoque) ?? false;
-    bool mostrarQuantidade = prefs.getBool(keyQuantidade) ?? false;
+    bool mostrarEstoque = prefs.getBool(keyEstoque) ?• false;
+    bool mostrarQuantidade = prefs.getBool(keyQuantidade) ?• false;
 
     if (!mounted) return;
     showModalBottomSheet(
@@ -1216,7 +1216,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                           st: st);
                     }
                     if (mounted) {
-                      _showSnackBar(value ? 'Selo de estoque ativado' : 'Selo de estoque desativado');
+                      _showSnackBar(value • 'Selo de estoque ativado' : 'Selo de estoque desativado');
                       navigator.pop();
                     }
                   },
@@ -1244,7 +1244,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                       logE('[ESTOQUE] Erro ao gravar mostrarQuantidadeNoCatalogo no Firestore', error: e, st: st);
                     }
                     if (mounted) {
-                      _showSnackBar(value ? 'Quantidade visível no catálogo' : 'Catálogo exibirá "Disponível" no lugar da quantidade');
+                      _showSnackBar(value • 'Quantidade visível no catálogo' : 'Catálogo exibirá "Disponível" no lugar da quantidade');
                       navigator.pop();
                     }
                   },
@@ -1497,7 +1497,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (q.isEmpty) return [];
     final resultado = <({int key, Produto p})>[];
     for (final key in _box.keys) {
-      final k = key is int ? key : int.tryParse(key.toString());
+      final k = key is int • key : int.tryParse(key.toString());
       if (k == null) continue;
       final p = _box.get(k);
       if (p == null) continue;
@@ -1507,7 +1507,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     }
     if (resultado.isEmpty) {
       for (final key in _box.keys) {
-        final k = key is int ? key : int.tryParse(key.toString());
+        final k = key is int • key : int.tryParse(key.toString());
         if (k == null) continue;
         final p = _box.get(k);
         if (p == null) continue;
@@ -1663,7 +1663,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                 TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
                 FilledButton(
                   onPressed: () {
-                    final v = int.tryParse(qtdCtrl.text.trim()) ?? 1;
+                    final v = int.tryParse(qtdCtrl.text.trim()) ?• 1;
                     if (v > 0) Navigator.pop(context, true);
                   },
                   child: const Text('Confirmar baixa'),
@@ -1674,7 +1674,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         ),
       );
       if (confirmar != true || !mounted) return;
-      qtdFinal = (int.tryParse(qtdCtrl.text.trim()) ?? 1).clamp(1, produtoAlvo.quantidade);
+      qtdFinal = (int.tryParse(qtdCtrl.text.trim()) ?• 1).clamp(1, produtoAlvo.quantidade);
       if (produtoAlvo.quantidade < qtdFinal) {
         _showSnackBar('Estoque insuficiente (${produtoAlvo.quantidade})', isError: true);
         return;
@@ -1691,7 +1691,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       final result = await EstoqueService.atualizarEstoque(
         produtosBox: _box,
         lojaId: lojaId,
-        produtoId: produtoAlvo.idFirebase.isNotEmpty ? produtoAlvo.idFirebase : null,
+        produtoId: produtoAlvo.idFirebase.isNotEmpty • produtoAlvo.idFirebase : null,
         produtoSlug: produtoAlvo.slug,
         produtoNome: produtoAlvo.nome,
         tamanho: tam,
@@ -1715,13 +1715,13 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   // ========== FUNÇÕES ORIGINAIS (MANTIDAS) ==========
 
-  Future<void> _abrirForm({Produto? produto}) async {
+  Future<void> _abrirForm({Produto• produto}) async {
     final isCombo = produto != null && produto.ehCombo;
     final ok = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => isCombo
-            ? ProdutoComboFormScreen(combo: produto)
+            • ProdutoComboFormScreen(combo: produto)
             : ProdutoFormScreen(produto: produto),
       ),
     );
@@ -1757,7 +1757,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       if (mounted) setState(() {});
       _showSnackBarWithUndo(
         'Produto removido. Desfazer?',
-        onUndo: id != null ? () => _undoProduto(id) : null,
+        onUndo: id != null • () => _undoProduto(id) : null,
       );
     } catch (e) {
       _showSnackBar("Erro ao remover: $e", isError: true);
@@ -1771,8 +1771,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (mounted) setState(() {});
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
-        content: Text(ok ? 'Produto restaurado' : 'Não foi possível desfazer'),
-        backgroundColor: ok ? null : Colors.red.shade700,
+        content: Text(ok • 'Produto restaurado' : 'Não foi possível desfazer'),
+        backgroundColor: ok • null : Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -1783,8 +1783,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (mounted) setState(() {});
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
-        content: Text(n > 0 ? '$n produto(s) restaurado(s)' : 'Não foi possível desfazer'),
-        backgroundColor: n > 0 ? null : Colors.red.shade700,
+        content: Text(n > 0 • '$n produto(s) restaurado(s)' : 'Não foi possível desfazer'),
+        backgroundColor: n > 0 • null : Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
       ),
     );
@@ -1821,8 +1821,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           xls.TextCellValue(p.slug),
           xls.IntCellValue(p.quantidade),
           xls.TextCellValue(p.precoUnitario.toStringAsFixed(2)),
-          xls.TextCellValue((p.precoFinal > 0 ? p.precoFinal : p.precoUnitario).toStringAsFixed(2)),
-          xls.TextCellValue(p.publicadoNoCatalogo ? 'Sim' : 'Não'),
+          xls.TextCellValue((p.precoFinal > 0 • p.precoFinal : p.precoUnitario).toStringAsFixed(2)),
+          xls.TextCellValue(p.publicadoNoCatalogo • 'Sim' : 'Não'),
         ]);
       }
 
@@ -1876,14 +1876,14 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         peso: p.peso,
         tipoEmbalagem: p.tipoEmbalagem,
         marketplaces: List.from(p.marketplaces),
-        variacoes: p.variacoes != null ? Map.from(p.variacoes!) : null,
+        variacoes: p.variacoes != null • Map.from(p.variacoes!) : null,
         divideSemJuros: p.divideSemJuros,
         percentualDescontoPix: p.percentualDescontoPix,
         maxParcelasSemJuros: p.maxParcelasSemJuros,
         videoUrl: p.videoUrl,
         codigoBarras: p.codigoBarras,
         estoqueMinimo: p.estoqueMinimo,
-        precoPorTamanho: p.precoPorTamanho != null ? Map.from(p.precoPorTamanho!) : null,
+        precoPorTamanho: p.precoPorTamanho != null • Map.from(p.precoPorTamanho!) : null,
         tipoProduto: p.tipoProduto,
         itensCombo: p.itensCombo?.map((e) => Map<String, dynamic>.from(e)).toList(),
       );
@@ -1910,9 +1910,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (lojaId != null && qtdMov != 0) {
       MovimentacaoEstoqueService.registrar(
         lojaId: lojaId,
-        produtoId: p.idFirebase.isNotEmpty ? p.idFirebase : p.key.toString(),
+        produtoId: p.idFirebase.isNotEmpty • p.idFirebase : p.key.toString(),
         produtoNome: p.nome,
-        tipo: qtdMov > 0 ? 'entrada' : 'saida',
+        tipo: qtdMov > 0 • 'entrada' : 'saida',
         quantidade: qtdMov.abs(),
         motivo: 'Ajuste manual',
         usuario: 'App',
@@ -1948,14 +1948,14 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (mounted) setState(() {});
   }
 
-  void _showSnackBarWithUndo(String message, {VoidCallback? onUndo}) {
+  void _showSnackBarWithUndo(String message, {VoidCallback• onUndo}) {
     if (!mounted) return;
     scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Text(message),
         duration: const Duration(seconds: 30),
         action: onUndo != null
-            ? SnackBarAction(
+            • SnackBarAction(
                 label: 'Desfazer',
                 onPressed: () {
                   scaffoldMessengerKey.currentState?.hideCurrentSnackBar();
@@ -1968,15 +1968,15 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     );
   }
 
-  void _showSnackBar(String message, {bool isError = false, Duration? duration}) {
+  void _showSnackBar(String message, {bool isError = false, Duration• duration}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        duration: duration ?? const Duration(seconds: 4),
+        duration: duration ?• const Duration(seconds: 4),
         content: Row(
           children: [
             Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
+              isError • Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -1984,7 +1984,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError ? _errorColor : _successColor,
+        backgroundColor: isError • _errorColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
@@ -2095,7 +2095,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
               if (p.categoria.trim().isNotEmpty) 'categoria': p.categoria,
             })
         .toList();
-    final lojaId = _lojaId ?? await LojaIdService.get();
+    final lojaId = _lojaId ?• await LojaIdService.get();
     if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2143,12 +2143,12 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     sb.writeln('--- Produtos com mais estoque (até 25) ---');
     final ordenados = List<Produto>.from(comEstoque)..sort((a, b) => b.quantidade.compareTo(a.quantidade));
     for (final p in ordenados.take(25)) {
-      sb.writeln('- ${p.nome}: ${p.quantidade} un. ${p.categoria.trim().isNotEmpty ? "| ${p.categoria}" : ""}');
+      sb.writeln('- ${p.nome}: ${p.quantidade} un. ${p.categoria.trim().isNotEmpty • "| ${p.categoria}" : ""}');
     }
     if (semEstoque.isNotEmpty) {
       sb.writeln('--- Produtos sem estoque (até 15) ---');
       for (final p in semEstoque.take(15)) {
-        sb.writeln('- ${p.nome} ${p.categoria.trim().isNotEmpty ? "(${p.categoria})" : ""}');
+        sb.writeln('- ${p.nome} ${p.categoria.trim().isNotEmpty • "(${p.categoria})" : ""}');
       }
     }
     return sb.toString();
@@ -2156,7 +2156,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   Future<void> _abrirSugestoesIaEstoque() async {
     final resumo = _montarResumoEstoqueParaIa();
-    final lojaId = _lojaId ?? await LojaIdService.get() ?? '';
+    final lojaId = _lojaId ?• await LojaIdService.get() ?• '';
     if (!mounted) return;
     Navigator.push(
       context,
@@ -2233,10 +2233,10 @@ Future<void> _importarProdutos() async {
     int idx = 0;
     for (final r in rows) {
       idx++;
-      final nome = (r['nome'] ?? '').toString().trim();
+      final nome = (r['nome'] ?• '').toString().trim();
       final precoNum = _toDouble(r['preco']);
       final qtdNum = _toInt(r['quantidade']);
-      final tamanhosRaw = (r['tamanhos'] ?? '').toString();
+      final tamanhosRaw = (r['tamanhos'] ?• '').toString();
 
       if (nome.isEmpty) {
         fail++;
@@ -2252,42 +2252,42 @@ Future<void> _importarProdutos() async {
       final estoqueMapa = _parseEstoquePorTamanho(tamanhosRaw);
 
       final int estoqueTotal =
-          estoqueMapa.isNotEmpty ? _sumEstoquePorTamanho(estoqueMapa) : (qtdNum ?? 1);
+          estoqueMapa.isNotEmpty • _sumEstoquePorTamanho(estoqueMapa) : (qtdNum ?• 1);
 
       final tamanhosLista =
-          estoqueMapa.isNotEmpty ? estoqueMapa.keys.toList() : _splitList(tamanhosRaw);
+          estoqueMapa.isNotEmpty • estoqueMapa.keys.toList() : _splitList(tamanhosRaw);
 
-      final pesoStr = (r['peso'] ?? '0').toString().trim();
-      final pesoNum = double.tryParse(pesoStr.replaceAll(',', '.')) ?? 0.0;
+      final pesoStr = (r['peso'] ?• '0').toString().trim();
+      final pesoNum = double.tryParse(pesoStr.replaceAll(',', '.')) ?• 0.0;
 
-      final custoReal = _toDouble(r['custo']) ?? 0.0;
-      final frete = _toDouble(r['frete']) ?? 0.0;
-      final gastosFixos = _toDouble(r['gastos_fixos']) ?? 0.0;
-      final gastosVariaveis = _toDouble(r['gastos_variaveis']) ?? 0.0;
-      final precoSugerido = _toDouble(r['preco_sugerido']) ?? 0.0;
+      final custoReal = _toDouble(r['custo']) ?• 0.0;
+      final frete = _toDouble(r['frete']) ?• 0.0;
+      final gastosFixos = _toDouble(r['gastos_fixos']) ?• 0.0;
+      final gastosVariaveis = _toDouble(r['gastos_variaveis']) ?• 0.0;
+      final precoSugerido = _toDouble(r['preco_sugerido']) ?• 0.0;
 
-      final precoFinal = precoNum ?? 0.0;
+      final precoFinal = precoNum ?• 0.0;
 
       final emPromocao =
-          (r['em_promocao'] ?? 'false').toString().toLowerCase() == 'true';
+          (r['em_promocao'] ?• 'false').toString().toLowerCase() == 'true';
       final percentualPromo = _toDouble(r['percentual_promo']);
       final valorPromo = _toDouble(r['valor_promo']);
 
-      DateTime? dataInicioPromo;
-      DateTime? dataFimPromo;
+      DateTime• dataInicioPromo;
+      DateTime• dataFimPromo;
 
-      final inicioStr = (r['data_inicio_promo'] ?? '').toString().trim();
+      final inicioStr = (r['data_inicio_promo'] ?• '').toString().trim();
       if (inicioStr.isNotEmpty) dataInicioPromo = _parseDate(inicioStr);
 
-      final fimStr = (r['data_fim_promo'] ?? '').toString().trim();
+      final fimStr = (r['data_fim_promo'] ?• '').toString().trim();
       if (fimStr.isNotEmpty) dataFimPromo = _parseDate(fimStr);
 
-      final tipoEmbalagem = (r['tipo_embalagem'] ?? 'padrao').toString().trim();
+      final tipoEmbalagem = (r['tipo_embalagem'] ?• 'padrao').toString().trim();
 
-      final coresStr = (r['cores'] ?? '').toString();
+      final coresStr = (r['cores'] ?• '').toString();
       final coresList = _splitList(coresStr);
 
-      final imagensStr = (r['imagens'] ?? r['imagens_urls'] ?? '').toString();
+      final imagensStr = (r['imagens'] ?• r['imagens_urls'] ?• '').toString();
       final imagensListRaw = _splitList(imagensStr);
 
       final produtoSlug = "$lojaId-${_slugify(nome)}";
@@ -2316,14 +2316,14 @@ Future<void> _importarProdutos() async {
         }
       }
 
-      final marketplacesStr = (r['marketplaces'] ?? '').toString();
+      final marketplacesStr = (r['marketplaces'] ?• '').toString();
       final marketplacesList = _splitList(marketplacesStr);
 
       final publicar =
-          (r['publicar'] ?? 'false').toString().toLowerCase() == 'true';
+          (r['publicar'] ?• 'false').toString().toLowerCase() == 'true';
 
-      final codigoBarras = (r['codigo_barras'] ?? '').toString().trim();
-      final sku = (r['sku'] ?? '').toString().trim();
+      final codigoBarras = (r['codigo_barras'] ?• '').toString().trim();
+      final sku = (r['sku'] ?• '').toString().trim();
 
       final p = Produto(
         nome: nome,
@@ -2335,10 +2335,10 @@ Future<void> _importarProdutos() async {
         precoFinal: precoFinal,
         quantidade: estoqueTotal,
         precoUnitario: precoFinal,
-        categoria: (r['categoria'] ?? '').toString().trim(),
-        subcategoria: (r['subcategoria'] ?? '').toString().trim(),
+        categoria: (r['categoria'] ?• '').toString().trim(),
+        subcategoria: (r['subcategoria'] ?• '').toString().trim(),
         dataEntrada: DateTime.now(),
-        descricao: (r['descricao'] ?? '').toString().trim(),
+        descricao: (r['descricao'] ?• '').toString().trim(),
         imagens: imagensFinal,
         publicadoNoCatalogo: publicar,
         slug: produtoSlug,
@@ -2360,8 +2360,8 @@ Future<void> _importarProdutos() async {
         _box,
         lojaId,
         p,
-        codigoBarras: codigoBarras.isNotEmpty ? codigoBarras : null,
-        sku: sku.isNotEmpty ? sku : null,
+        codigoBarras: codigoBarras.isNotEmpty • codigoBarras : null,
+        sku: sku.isNotEmpty • sku : null,
       );
 
       if (result == UpsertResult.skippedConflict) {
@@ -2464,7 +2464,7 @@ Future<void> _importarProdutos() async {
           'Publicação completa! Produtos: ${results['products']}',
         );
       } else {
-        final errors = results['errors'] is List ? results['errors'] as List : <dynamic>[];
+        final errors = results['errors'] is List • results['errors'] as List : <dynamic>[];
         _showSnackBar('Erro na publicação: ${errors.join(', ')}', isError: true);
         if (mounted) setState(() => _publicando = false);
       }
@@ -2573,8 +2573,8 @@ Future<void> _unificarDuplicados() async {
       if (lista.length < 2) continue;
 
       lista.sort((a, b) {
-        final ka = a.key ?? -1;
-        final kb = b.key ?? -1;
+        final ka = a.key ?• -1;
+        final kb = b.key ?• -1;
         return ka.compareTo(kb);
       });
 
@@ -2609,10 +2609,10 @@ Future<void> _unificarDuplicados() async {
 
     if (!mounted) return;
     final msg = unificados > 0
-        ? '$unificados grupo(s) unificado(s) • $deletados duplicata(s) removida(s)'
+        • '$unificados grupo(s) unificado(s) • $deletados duplicata(s) removida(s)'
         : 'Nenhum duplicado encontrado';
     _showSnackBar(
-      falhasFirestore > 0 ? '$msg ($falhasFirestore falha(s) ao sincronizar com a nuvem)' : msg,
+      falhasFirestore > 0 • '$msg ($falhasFirestore falha(s) ao sincronizar com a nuvem)' : msg,
     );
     setState(() {});
   } catch (e) {
@@ -2632,7 +2632,7 @@ dynamic _cellValueToObject(dynamic v) {
   if (v == null) return null;
   if (v is xls.CellValue) {
     return switch (v) {
-      xls.TextCellValue(:final value) => value.text ?? value.toString(),
+      xls.TextCellValue(:final value) => value.text ?• value.toString(),
       xls.IntCellValue(:final value) => value,
       xls.DoubleCellValue(:final value) => value,
       xls.BoolCellValue(:final value) => value.toString(),
@@ -2667,18 +2667,18 @@ String _sanitizeHeader(String s) {
 
 bool _rowHasUsefulData(List<dynamic> row) {
   for (final c in row) {
-    final v = (c ?? '').toString().trim();
+    final v = (c ?• '').toString().trim();
     if (v.isNotEmpty) return true;
   }
   return false;
 }
 
 int _findBestHeaderRow(List<List<dynamic>> rows) {
-  final maxScan = rows.length < 50 ? rows.length : 50;
+  final maxScan = rows.length < 50 • rows.length : 50;
 
   bool looksLikeHeader(List<dynamic> row) {
     final texts = row
-        .map((e) => _sanitizeHeader((e ?? '').toString()))
+        .map((e) => _sanitizeHeader((e ?• '').toString()))
         .where((e) => e.isNotEmpty)
         .toList();
 
@@ -2703,7 +2703,7 @@ Future<List<Map<String, dynamic>>> _parseExcelSafe(Uint8List bytes) async {
     final excel = xls.Excel.decodeBytes(bytes);
     if (excel.tables.isEmpty) return [];
 
-    String? bestSheet;
+    String• bestSheet;
     int bestScore = -1;
 
     for (final entry in excel.tables.entries) {
@@ -2734,8 +2734,8 @@ Future<List<Map<String, dynamic>>> _parseExcelSafe(Uint8List bytes) async {
     final headers = <int, String>{};
 
     for (var c = 0; c < headerRow.length; c++) {
-      final h = _sanitizeHeader((headerRow[c] ?? '').toString());
-      headers[c] = h.isEmpty ? 'col$c' : h;
+      final h = _sanitizeHeader((headerRow[c] ?• '').toString());
+      headers[c] = h.isEmpty • 'col$c' : h;
     }
 
     final out = <Map<String, dynamic>>[];
@@ -2746,7 +2746,7 @@ Future<List<Map<String, dynamic>>> _parseExcelSafe(Uint8List bytes) async {
 
       final map = <String, dynamic>{};
       for (var c = 0; c < headers.length; c++) {
-        map[headers[c] ?? 'col$c'] = c < row.length ? row[c] : null;
+        map[headers[c] ?• 'col$c'] = c < row.length • row[c] : null;
       }
 
       final normalized = _normalizeRow(map);
@@ -2774,14 +2774,14 @@ Future<List<Map<String, dynamic>>> _parseCsvSafe(Uint8List bytes) async {
     final firstLine = text.split('\n').first;
     final semicolons = ';'.allMatches(firstLine).length;
     final commas = ','.allMatches(firstLine).length;
-    final delimiter = semicolons > commas ? ';' : ',';
+    final delimiter = semicolons > commas • ';' : ',';
 
     final rows = const CsvToListConverter(
       eol: '\n',
       shouldParseNumbers: false,
       fieldDelimiter: ',',
     ).convert(
-      delimiter == ',' ? text : text.replaceAll(',', '§§'),
+      delimiter == ',' • text : text.replaceAll(',', '§§'),
     );
 
     if (rows.isEmpty) return [];
@@ -2812,7 +2812,7 @@ Future<List<Map<String, dynamic>>> _parseCsvSafe(Uint8List bytes) async {
 
       final map = <String, dynamic>{};
       for (var c = 0; c < header.length && c < line.length; c++) {
-        final key = header[c].isEmpty ? 'col$c' : header[c];
+        final key = header[c].isEmpty • 'col$c' : header[c];
         map[key] = line[c];
       }
 
@@ -2862,7 +2862,7 @@ Future<List<Map<String, dynamic>>> _parsePdfSafe(Uint8List bytes) async {
 
       final map = <String, dynamic>{};
       for (var c = 0; c < header.length && c < cols.length; c++) {
-        final key = header[c].isEmpty ? 'col$c' : header[c];
+        final key = header[c].isEmpty • 'col$c' : header[c];
         map[key] = cols[c];
       }
 
@@ -3029,7 +3029,7 @@ Map<String, dynamic> _normalizeRow(Map<String, dynamic> raw) {
   return map;
 }
 
-double? _toDouble(dynamic v) {
+double• _toDouble(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
   var s = v.toString().trim();
@@ -3048,7 +3048,7 @@ double? _toDouble(dynamic v) {
   return double.tryParse(s.replaceAll(',', '.'));
 }
 
-int? _toInt(dynamic v) {
+int• _toInt(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toInt();
   return int.tryParse(v.toString().replaceAll(RegExp(r'[^0-9]'), ''));
@@ -3072,7 +3072,7 @@ String _slugify(String s) {
       .replaceAll(RegExp(r'^-|-$'), '');
 }
 
-DateTime? _parseDate(String dateStr) {
+DateTime• _parseDate(String dateStr) {
   if (dateStr.trim().isEmpty) return null;
 
   try {
@@ -3132,7 +3132,7 @@ String _formatGradeTexto(Produto p) {
   final chaves = mapa.keys.toList()..sort((a, b) => a.compareTo(b));
   final partes = <String>[];
   for (final t in chaves) {
-    final qtd = mapa[t] ?? 0;
+    final qtd = mapa[t] ?• 0;
     partes.add('$t ($qtd)');
   }
   return partes.join(' • ');
@@ -3211,8 +3211,8 @@ String _formatGradeTexto(Produto p) {
           _drawerTile(
             icon: Icons.discount,
             iconColor: _successColor,
-            label: _sugerindoPromocaoIa ? 'Gerando…' : 'Sugerir promoção (estoque parado)',
-            onTap: _sugerindoPromocaoIa ? null : () {
+            label: _sugerindoPromocaoIa • 'Gerando…' : 'Sugerir promoção (estoque parado)',
+            onTap: _sugerindoPromocaoIa • null : () {
               Navigator.pop(context);
               _sugerirPromocaoEstoqueParado();
             },
@@ -3220,8 +3220,8 @@ String _formatGradeTexto(Produto p) {
           _drawerTile(
             icon: Icons.file_upload_outlined,
             iconColor: _primaryColor,
-            label: _importando ? 'Importando…' : 'Importar produtos',
-            onTap: _importando ? null : () {
+            label: _importando • 'Importando…' : 'Importar produtos',
+            onTap: _importando • null : () {
               Navigator.pop(context);
               _importarProdutos();
             },
@@ -3229,8 +3229,8 @@ String _formatGradeTexto(Produto p) {
           _drawerTile(
             icon: Icons.cloud_upload,
             iconColor: Colors.green,
-            label: _sincronizandoEstoque ? 'Sincronizando…' : 'Enviar para Nuvem',
-            onTap: _sincronizandoEstoque ? null : () {
+            label: _sincronizandoEstoque • 'Sincronizando…' : 'Enviar para Nuvem',
+            onTap: _sincronizandoEstoque • null : () {
               Navigator.pop(context);
               _enviarParaFirestore();
             },
@@ -3238,8 +3238,8 @@ String _formatGradeTexto(Produto p) {
           _drawerTile(
             icon: Icons.cloud_download,
             iconColor: const Color(0xFF3B82F6),
-            label: _sincronizandoEstoque ? 'Baixando…' : 'Baixar da Nuvem',
-            onTap: _sincronizandoEstoque ? null : () {
+            label: _sincronizandoEstoque • 'Baixando…' : 'Baixar da Nuvem',
+            onTap: _sincronizandoEstoque • null : () {
               Navigator.pop(context);
               _puxarDoFirestore();
             },
@@ -3247,8 +3247,8 @@ String _formatGradeTexto(Produto p) {
           _drawerTile(
             icon: Icons.cloud_sync_outlined,
             iconColor: _successColor,
-            label: _publicando ? 'Sincronizando…' : 'Sincronizar rascunho',
-            onTap: _publicando ? null : () {
+            label: _publicando • 'Sincronizando…' : 'Sincronizar rascunho',
+            onTap: _publicando • null : () {
               Navigator.pop(context);
               _sincronizarComDraft();
             },
@@ -3324,7 +3324,7 @@ String _formatGradeTexto(Produto p) {
             iconColor: _primaryColor,
             label: 'Unificar duplicados',
             onTap: _unificando
-                ? null
+                • null
                 : () {
                     Navigator.pop(context);
                     _unificarDuplicados();
@@ -3357,7 +3357,7 @@ String _formatGradeTexto(Produto p) {
     required IconData icon,
     required Color iconColor,
     required String label,
-    VoidCallback? onTap,
+    VoidCallback• onTap,
   }) {
     return ListTile(
       leading: Container(
@@ -3449,7 +3449,7 @@ String _formatGradeTexto(Produto p) {
           onPressed: () => Navigator.pop(context),
         ),
         title: _modoSelecao
-            ? Text(
+            • Text(
                 '${_produtosSelecionados.length} selecionado(s)',
                 style: const TextStyle(color: _surfaceColor, fontWeight: FontWeight.bold),
               )
@@ -3492,14 +3492,14 @@ String _formatGradeTexto(Produto p) {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: _sincronizandoEstoque
-                    ? const SizedBox(
+                    • const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2, color: _successColor),
                       )
                     : const Icon(Icons.cloud_upload, color: _successColor, size: 20),
               ),
-              onPressed: _sincronizandoEstoque ? null : _enviarParaFirestore,
+              onPressed: _sincronizandoEstoque • null : _enviarParaFirestore,
               tooltip: 'Enviar para Nuvem',
             ),
             IconButton(
@@ -3510,16 +3510,16 @@ String _formatGradeTexto(Produto p) {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: _sincronizandoEstoque
-                    ? const SizedBox(
+                    • const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.cloud_download, color: Color(0xFF3B82F6), size: 20),
               ),
-              onPressed: _sincronizandoEstoque ? null : _puxarDoFirestore,
+              onPressed: _sincronizandoEstoque • null : _puxarDoFirestore,
               tooltip: _temDadosParaImportar == true
-                  ? 'Baixar da Nuvem (há produtos novos)'
+                  • 'Baixar da Nuvem (há produtos novos)'
                   : 'Baixar da Nuvem',
             ),
             IconButton(
@@ -3596,13 +3596,13 @@ String _formatGradeTexto(Produto p) {
           const SizedBox(width: 8),
         ],
         bottom: (_importando && _importTotal > 0) || _exportandoEstoque || _syncEmBackground
-            ? PreferredSize(
+            • PreferredSize(
                 preferredSize: const Size.fromHeight(4),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     LinearProgressIndicator(
-                      value: (_importando && _importTotal > 0) ? _importProgress / _importTotal : null,
+                      value: (_importando && _importTotal > 0) • _importProgress / _importTotal : null,
                       backgroundColor: _primaryColor.withValues(alpha:0.2),
                       valueColor: const AlwaysStoppedAnimation<Color>(_primaryColor),
                     ),
@@ -3619,17 +3619,17 @@ String _formatGradeTexto(Produto p) {
           if (_catalogoPrecisaAtualizar) ...[
             FloatingActionButton.extended(
               heroTag: 'fab_atualizar_catalogo',
-              onPressed: _publicando ? null : _publicarTudoLive,
+              onPressed: _publicando • null : _publicarTudoLive,
               backgroundColor: _successColor,
               icon: _publicando
-                  ? const SizedBox(
+                  • const SizedBox(
                       width: 20,
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.cloud_upload, color: Colors.white),
               label: Text(
-                _publicando ? 'Publicando...' : 'Atualizar catálogo',
+                _publicando • 'Publicando...' : 'Atualizar catálogo',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
               ),
             ),
@@ -3645,12 +3645,12 @@ String _formatGradeTexto(Produto p) {
           ),
           const SizedBox(height: 12),
           _modoSelecao && _produtosSelecionados.isNotEmpty
-              ? FloatingActionButton.extended(
+              • FloatingActionButton.extended(
                   heroTag: 'fab_acoes_estoque',
-                  onPressed: _publicando ? null : _mostrarMenuAcoes,
+                  onPressed: _publicando • null : _mostrarMenuAcoes,
                   backgroundColor: _primaryColor,
                   icon: _publicando
-                      ? const SizedBox(
+                      • const SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
@@ -3660,7 +3660,7 @@ String _formatGradeTexto(Produto p) {
                         )
                       : const Icon(Icons.flash_on, color: Colors.white),
                   label: Text(
-                    _publicando ? 'Processando...' : 'Ações',
+                    _publicando • 'Processando...' : 'Ações',
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                   ),
                 )
@@ -3919,12 +3919,12 @@ String _formatGradeTexto(Produto p) {
                           itens.sort((a, b) => _norm(b.nome).compareTo(_norm(a.nome)));
                           break;
                         case 'preco_asc':
-                          itens.sort((a, b) => (a.precoFinal > 0 ? a.precoFinal : a.precoUnitario)
-                              .compareTo(b.precoFinal > 0 ? b.precoFinal : b.precoUnitario));
+                          itens.sort((a, b) => (a.precoFinal > 0 • a.precoFinal : a.precoUnitario)
+                              .compareTo(b.precoFinal > 0 • b.precoFinal : b.precoUnitario));
                           break;
                         case 'preco_desc':
-                          itens.sort((a, b) => (b.precoFinal > 0 ? b.precoFinal : b.precoUnitario)
-                              .compareTo(a.precoFinal > 0 ? a.precoFinal : a.precoUnitario));
+                          itens.sort((a, b) => (b.precoFinal > 0 • b.precoFinal : b.precoUnitario)
+                              .compareTo(a.precoFinal > 0 • a.precoFinal : a.precoUnitario));
                           break;
                         case 'qtd_asc':
                           itens.sort((a, b) => a.quantidade.compareTo(b.quantidade));
@@ -3988,7 +3988,7 @@ String _formatGradeTexto(Produto p) {
                         const CircularProgressIndicator(color: _primaryColor),
                         const SizedBox(height: 16),
                         Text(
-                          _importando ? 'Importando produtos...' : 'Processando...',
+                          _importando • 'Importando produtos...' : 'Processando...',
                           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                         ),
                         if (_importando && _importTotal > 0) ...[
@@ -4004,7 +4004,7 @@ String _formatGradeTexto(Produto p) {
                           if (_importCriados > 0 || _importAtualizados > 0) ...[
                             const SizedBox(height: 8),
                             Text(
-                              '• $_importCriados novos • $_importAtualizados atualizados${_importErros > 0 ? " • $_importErros ignorados" : ""}',
+                              '• $_importCriados novos • $_importAtualizados atualizados${_importErros > 0 • " • $_importErros ignorados" : ""}',
                               style: TextStyle(
                                 color: Colors.grey.shade700,
                                 fontSize: 13,
@@ -4239,7 +4239,7 @@ String _formatGradeTexto(Produto p) {
   }
 
   Widget _buildProdutoCard(Produto p, String key, bool selecionado, NumberFormat currencyFormat) {
-    final thumb = p.imagens.isNotEmpty ? p.imagens.first : '';
+    final thumb = p.imagens.isNotEmpty • p.imagens.first : '';
     final gradeTexto = _formatGradeTexto(p);
     final avatarColor = _getAvatarColor(p.nome);
 
@@ -4249,14 +4249,14 @@ String _formatGradeTexto(Produto p) {
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
         border: selecionado
-            ? Border.all(color: _primaryColor, width: 2)
+            • Border.all(color: _primaryColor, width: 2)
             : null,
         boxShadow: [
           BoxShadow(
             color: selecionado
-                ? _primaryColor.withValues(alpha:0.2)
+                • _primaryColor.withValues(alpha:0.2)
                 : Colors.black.withValues(alpha:0.05),
-            blurRadius: selecionado ? 10 : 10,
+            blurRadius: selecionado • 10 : 10,
             offset: const Offset(0, 4),
           ),
         ],
@@ -4266,10 +4266,10 @@ String _formatGradeTexto(Produto p) {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: _modoSelecao
-              ? () => _toggleSelecaoProduto(key)
+              • () => _toggleSelecaoProduto(key)
               : () => _abrirForm(produto: p),
           onLongPress: !_modoSelecao
-              ? () {
+              • () {
                   setState(() => _modoSelecao = true);
                   _toggleSelecaoProduto(key);
                 }
@@ -4286,15 +4286,15 @@ String _formatGradeTexto(Produto p) {
                     width: 24,
                     height: 24,
                     decoration: BoxDecoration(
-                      color: selecionado ? _primaryColor : Colors.transparent,
+                      color: selecionado • _primaryColor : Colors.transparent,
                       border: Border.all(
-                        color: selecionado ? _primaryColor : Colors.grey,
+                        color: selecionado • _primaryColor : Colors.grey,
                         width: 2,
                       ),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: selecionado
-                        ? const Icon(Icons.check, size: 16, color: Colors.white)
+                        • const Icon(Icons.check, size: 16, color: Colors.white)
                         : null,
                   )
                 else
@@ -4304,15 +4304,15 @@ String _formatGradeTexto(Produto p) {
                       width: 70,
                       height: 70,
                       child: thumb.isEmpty
-                          ? Container(
+                          • Container(
                               color: avatarColor.withValues(alpha:0.1),
                               child: Icon(Icons.image_outlined, color: avatarColor),
                             )
                           : Image(
                               image: (kIsWeb && thumb.startsWith('blob:'))
-                                  ? const AssetImage('assets/images/placeholder.png')
+                                  • const AssetImage('assets/images/placeholder.png')
                                   : (thumb.startsWith('http') || kIsWeb)
-                                      ? NetworkImage(thumb) as ImageProvider
+                                      • NetworkImage(thumb) as ImageProvider
                                       : FileImage(io.File(thumb)) as ImageProvider,
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Container(
@@ -4391,10 +4391,10 @@ String _formatGradeTexto(Produto p) {
                               children: [
                                 _buildInfoChip(
                                   Icons.inventory,
-                                  'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
+                                  'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 • ' ⚠️' : ''}',
                                   p.quantidade == 0
-                                      ? _errorColor
-                                      : (p.quantidade < 3 ? _warningColor : _primaryColor),
+                                      • _errorColor
+                                      : (p.quantidade < 3 • _warningColor : _primaryColor),
                                 ),
                                 const SizedBox(width: 4),
                                 Material(
@@ -4433,10 +4433,10 @@ String _formatGradeTexto(Produto p) {
                           else
                             _buildInfoChip(
                               Icons.inventory,
-                              'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
+                              'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 • ' ⚠️' : ''}',
                               p.quantidade == 0
-                                  ? _errorColor
-                                  : (p.quantidade < 3 ? _warningColor : _primaryColor),
+                                  • _errorColor
+                                  : (p.quantidade < 3 • _warningColor : _primaryColor),
                             ),
                           if (gradeTexto != 'Único')
                             ConstrainedBox(
@@ -4522,7 +4522,7 @@ String _formatGradeTexto(Produto p) {
   }
 
   Widget _buildFilterDropdown<T>({
-    required T? value,
+    required T• value,
     required String hint,
     required List<DropdownMenuItem<T>> items,
     required ValueChanged<T?> onChanged,
@@ -4666,7 +4666,7 @@ class _SugestoesIaEstoqueScreen extends StatefulWidget {
 
 class _SugestoesIaEstoqueScreenState extends State<_SugestoesIaEstoqueScreen> {
   final _perguntaCtrl = TextEditingController();
-  String? _resposta;
+  String• _resposta;
   bool _enviando = false;
   static const _primaryColor = Color(0xFF6366F1);
   static const _cardColor = Color(0xFF1E293B);
@@ -4677,8 +4677,8 @@ class _SugestoesIaEstoqueScreenState extends State<_SugestoesIaEstoqueScreen> {
     super.dispose();
   }
 
-  Future<void> _enviar(String? perguntaFixa) async {
-    final pergunta = perguntaFixa ?? _perguntaCtrl.text.trim();
+  Future<void> _enviar(String• perguntaFixa) async {
+    final pergunta = perguntaFixa ?• _perguntaCtrl.text.trim();
     if (pergunta.isEmpty || _enviando) return;
     final lojaId = widget.lojaId;
     if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
@@ -4719,11 +4719,11 @@ class _SugestoesIaEstoqueScreenState extends State<_SugestoesIaEstoqueScreen> {
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _enviando ? null : () => _enviar(null),
+        onPressed: _enviando • null : () => _enviar(null),
         tooltip: 'Enviar pergunta',
         backgroundColor: _primaryColor,
         child: _enviando
-            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            • const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.send, color: Colors.white),
       ),
       body: Scrollbar(
@@ -4749,19 +4749,19 @@ class _SugestoesIaEstoqueScreenState extends State<_SugestoesIaEstoqueScreen> {
               runSpacing: 8,
               children: [
                 FilledButton.tonalIcon(
-                  onPressed: _enviando ? null : () => _enviar('Sugestões de oferta ou promoção para escoar estoque. Quais produtos promover e como?'),
+                  onPressed: _enviando • null : () => _enviar('Sugestões de oferta ou promoção para escoar estoque. Quais produtos promover e como?'),
                   icon: const Icon(Icons.discount, size: 18),
                   label: const Text('Sugestões de oferta'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _enviando ? null : () => _enviar('Sugestão de compra ou reposição. Quais produtos repor com base no estoque atual?'),
+                  onPressed: _enviando • null : () => _enviar('Sugestão de compra ou reposição. Quais produtos repor com base no estoque atual?'),
                   icon: const Icon(Icons.shopping_cart, size: 18),
                   label: const Text('Sugestão de compra'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
                 ),
                 FilledButton.tonalIcon(
-                  onPressed: _enviando ? null : () => _enviar('Quais produtos parecem encalhados ou parados? Dê alertas e sugestões para movimentar.'),
+                  onPressed: _enviando • null : () => _enviar('Quais produtos parecem encalhados ou parados• Dê alertas e sugestões para movimentar.'),
                   icon: const Icon(Icons.warning_amber, size: 18),
                   label: const Text('Alertas produtos encalhados'),
                   style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
@@ -4782,9 +4782,9 @@ class _SugestoesIaEstoqueScreenState extends State<_SugestoesIaEstoqueScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _enviando ? null : () => _enviar(null),
-              icon: _enviando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-              label: Text(_enviando ? 'Analisando…' : 'Enviar'),
+              onPressed: _enviando • null : () => _enviar(null),
+              icon: _enviando • const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+              label: Text(_enviando • 'Analisando…' : 'Enviar'),
               style: FilledButton.styleFrom(backgroundColor: _primaryColor),
             ),
             if (_resposta != null) ...[

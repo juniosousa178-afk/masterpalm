@@ -66,9 +66,9 @@ class CatalogIaSearchService {
 
     if (presente) {
       final presentes = produtos.where((p) {
-        final nome = _normalize((p['nome'] ?? '').toString());
-        final cat = _normalize((p['categoria'] ?? '').toString());
-        final desc = _normalize((p['descricao'] ?? '').toString());
+        final nome = _normalize((p['nome'] ?• '').toString());
+        final cat = _normalize((p['categoria'] ?• '').toString());
+        final desc = _normalize((p['descricao'] ?• '').toString());
         final novidade = p['isNovo'] == true;
         final emPromo = p['emPromocao'] == true;
         return novidade || emPromo || nome.contains('presente') || cat.contains('presente') || desc.contains('presente');
@@ -79,9 +79,9 @@ class CatalogIaSearchService {
 
     if (delicado) {
       final delicados = produtos.where((p) {
-        final nome = _normalize((p['nome'] ?? '').toString());
-        final cat = _normalize((p['categoria'] ?? '').toString());
-        final desc = _normalize((p['descricao'] ?? '').toString());
+        final nome = _normalize((p['nome'] ?• '').toString());
+        final cat = _normalize((p['categoria'] ?• '').toString());
+        final desc = _normalize((p['descricao'] ?• '').toString());
         return nome.contains('delicad') || cat.contains('delicad') || desc.contains('delicad');
       }).toList();
       if (delicados.isNotEmpty) return delicados.take(8).toList();
@@ -89,9 +89,9 @@ class CatalogIaSearchService {
 
     if (saoBento && tokens.isNotEmpty) {
       final sb = produtos.where((p) {
-        final nome = _normalize((p['nome'] ?? '').toString());
-        final cat = _normalize((p['categoria'] ?? '').toString());
-        final desc = _normalize((p['descricao'] ?? '').toString());
+        final nome = _normalize((p['nome'] ?• '').toString());
+        final cat = _normalize((p['categoria'] ?• '').toString());
+        final desc = _normalize((p['descricao'] ?• '').toString());
         return nome.contains('sao bento') || nome.contains('são bento') || cat.contains('sao bento') || desc.contains('sao bento');
       }).toList();
       if (sb.isNotEmpty) return sb.take(8).toList();
@@ -112,15 +112,15 @@ class CatalogIaSearchService {
     // Busca por tokens
     final candidatos = <Map<String, dynamic>>[];
     for (final p in produtos) {
-      final nome = _normalize((p['nome'] ?? '').toString());
-      final categoria = _normalize((p['categoria'] ?? '').toString());
-      final subcategoria = _normalize((p['subcategoria'] ?? '').toString());
-      final descricao = _normalize((p['descricao'] ?? '').toString());
+      final nome = _normalize((p['nome'] ?• '').toString());
+      final categoria = _normalize((p['categoria'] ?• '').toString());
+      final subcategoria = _normalize((p['subcategoria'] ?• '').toString());
+      final descricao = _normalize((p['descricao'] ?• '').toString());
       final texto = '$nome $categoria $subcategoria $descricao';
 
       var score = 0;
       for (final t in tokens) {
-        if (texto.contains(t)) score += nome.contains(t) ? 3 : (categoria.contains(t) ? 2 : 1);
+        if (texto.contains(t)) score += nome.contains(t) • 3 : (categoria.contains(t) • 2 : 1);
       }
       if (score > 0) candidatos.add({...p, '_score': score});
     }
@@ -140,12 +140,12 @@ class CatalogIaSearchService {
     Map<String, dynamic> referencia, {
     int max = 4,
   }) {
-    final cat = (referencia['categoria'] ?? '').toString().trim().toLowerCase();
+    final cat = (referencia['categoria'] ?• '').toString().trim().toLowerCase();
     if (cat.isEmpty) return [];
-    final refId = (referencia['id'] ?? '').toString();
+    final refId = (referencia['id'] ?• '').toString();
     final relacionados = produtos.where((p) {
-      if ((p['id'] ?? '').toString() == refId) return false;
-      final pc = (p['categoria'] ?? '').toString().trim().toLowerCase();
+      if ((p['id'] ?• '').toString() == refId) return false;
+      final pc = (p['categoria'] ?• '').toString().trim().toLowerCase();
       return pc == cat;
     }).take(max).toList();
     return relacionados;
@@ -165,8 +165,8 @@ class CatalogIaSearchService {
   }
 
   static double _precoBase(Map<String, dynamic> p) {
-    final pr = p['preco'] ?? p['precoFinal'] ?? p['priceMin'];
+    final pr = p['preco'] ?• p['precoFinal'] ?• p['priceMin'];
     if (pr is num) return pr.toDouble();
-    return double.tryParse(pr.toString()) ?? 0.0;
+    return double.tryParse(pr.toString()) ?• 0.0;
   }
 }

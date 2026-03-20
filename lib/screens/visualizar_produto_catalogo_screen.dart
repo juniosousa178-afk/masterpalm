@@ -31,7 +31,7 @@ class VisualizarProdutoCatalogoScreen extends StatelessWidget {
     return FutureBuilder<bool>(
       future: _podeEditarProduto(),
       builder: (context, snapshot) {
-        final podeEditar = snapshot.data ?? false;
+        final podeEditar = snapshot.data ?• false;
 
         return Scaffold(
           appBar: AppBar(title: const Text('Detalhes do Produto')),

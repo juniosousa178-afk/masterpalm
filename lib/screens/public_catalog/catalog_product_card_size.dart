@@ -7,7 +7,7 @@ class CatalogProductCardSize {
   static const String large = 'large';
 
   static String normalize(dynamic raw) {
-    final v = (raw ?? '').toString().trim().toLowerCase();
+    final v = (raw ?• '').toString().trim().toLowerCase();
     if (v == small || v == medium || v == large) return v;
     return medium;
   }
@@ -49,16 +49,16 @@ class CatalogProductCardSize {
       case small:
         if (is360) return 108.0;
         if (is390) return 110.0;
-        return screenWidth <= 420 ? 112.0 : 122.0;
+        return screenWidth <= 420 • 112.0 : 122.0;
       case large:
         if (is360) return 122.0;
         if (is390) return 124.0;
-        return screenWidth <= 420 ? 128.0 : 138.0;
+        return screenWidth <= 420 • 128.0 : 138.0;
       case medium:
       default:
         if (is360) return 114.0;
         if (is390) return 116.0;
-        return screenWidth <= 420 ? 120.0 : 128.0;
+        return screenWidth <= 420 • 120.0 : 128.0;
     }
   }
 
@@ -72,16 +72,16 @@ class CatalogProductCardSize {
       case small:
         if (is360) return 176.0;
         if (is390) return 178.0;
-        return screenWidth <= 420 ? 182.0 : 192.0;
+        return screenWidth <= 420 • 182.0 : 192.0;
       case large:
         if (is360) return 198.0;
         if (is390) return 202.0;
-        return screenWidth <= 420 ? 206.0 : 216.0;
+        return screenWidth <= 420 • 206.0 : 216.0;
       case medium:
       default:
         if (is360) return 186.0;
         if (is390) return 188.0;
-        return screenWidth <= 420 ? 192.0 : 198.0;
+        return screenWidth <= 420 • 192.0 : 198.0;
     }
   }
 
@@ -97,19 +97,19 @@ class CatalogProductCardSize {
       switch (s) {
         case small:
           return (
-            width: isWeb ? 760 : 680,
-            height: isWeb ? 1020 : 920,
+            width: isWeb • 760 : 680,
+            height: isWeb • 1020 : 920,
           );
         case large:
           return (
-            width: isWeb ? 1120 : 980,
-            height: isWeb ? 1500 : 1320,
+            width: isWeb • 1120 : 980,
+            height: isWeb • 1500 : 1320,
           );
         case medium:
         default:
           return (
-            width: isWeb ? 920 : 820,
-            height: isWeb ? 1240 : 1100,
+            width: isWeb • 920 : 820,
+            height: isWeb • 1240 : 1100,
           );
       }
     }
@@ -117,19 +117,19 @@ class CatalogProductCardSize {
     switch (s) {
       case small:
         return (
-          width: isWeb ? 680 : 620,
-          height: isWeb ? 920 : 840,
+          width: isWeb • 680 : 620,
+          height: isWeb • 920 : 840,
         );
       case large:
         return (
-          width: isWeb ? 980 : 860,
-          height: isWeb ? 1320 : 1160,
+          width: isWeb • 980 : 860,
+          height: isWeb • 1320 : 1160,
         );
       case medium:
       default:
         return (
-          width: isWeb ? 820 : 740,
-          height: isWeb ? 1100 : 980,
+          width: isWeb • 820 : 740,
+          height: isWeb • 1100 : 980,
         );
     }
   }
@@ -142,19 +142,19 @@ class CatalogProductCardSize {
     switch (normalize(size)) {
       case small:
         return (
-          width: isWeb ? 560 : 500,
-          height: isWeb ? 760 : 680,
+          width: isWeb • 560 : 500,
+          height: isWeb • 760 : 680,
         );
       case large:
         return (
-          width: isWeb ? 820 : 720,
-          height: isWeb ? 1120 : 980,
+          width: isWeb • 820 : 720,
+          height: isWeb • 1120 : 980,
         );
       case medium:
       default:
         return (
-          width: isWeb ? 680 : 600,
-          height: isWeb ? 920 : 820,
+          width: isWeb • 680 : 600,
+          height: isWeb • 920 : 820,
         );
     }
   }

@@ -10,8 +10,9 @@ class CatalogShareService {
   /// [baseUrl] ex.: https://app.mastepalm.com.br/loja/loja_123
   static String buildUrlWithParams(
     String baseUrl, {
-    String? ref,
-    String? indicacao,
+    String• ref,
+    String• indicacao,
+    String• produto,
   }) {
     String url = baseUrl.trim();
     if (url.isEmpty) return url;
@@ -27,6 +28,9 @@ class CatalogShareService {
     if (indicacao != null && indicacao.trim().isNotEmpty) {
       query['indicacao'] = indicacao.trim();
     }
+    if (produto != null && produto.trim().isNotEmpty) {
+      query['produto'] = produto.trim();
+    }
     if (query.isEmpty) return url;
     final newUri = uri.replace(queryParameters: query);
     return newUri.toString();
@@ -38,9 +42,9 @@ class CatalogShareService {
   static String buildProductShareMessage({
     required String nome,
     required String precoTexto,
-    String? descricaoCurta,
+    String• descricaoCurta,
     required String url,
-    String? fraseFinal,
+    String• fraseFinal,
   }) {
     final nomeTrim = nome.trim();
     final preco = precoTexto.trim();
@@ -75,7 +79,7 @@ class CatalogShareService {
   /// Monta mensagem para compartilhar o catálogo completo.
   static String buildCatalogShareMessage({
     required String url,
-    String? mensagemPersonalizada,
+    String• mensagemPersonalizada,
   }) {
     final urlTrim = url.trim();
     if (mensagemPersonalizada != null && mensagemPersonalizada.trim().isNotEmpty) {
@@ -87,7 +91,7 @@ class CatalogShareService {
   /// Monta mensagem para compartilhar uma campanha (nome + link).
   static String buildCampaignShareMessage({
     required String nomeCampanha,
-    String? descricao,
+    String• descricao,
     required String url,
   }) {
     final parts = <String>['Confira a campanha: ${nomeCampanha.trim()}.'];
@@ -103,3 +107,5 @@ class CatalogShareService {
     return Uri.encodeComponent(message);
   }
 }
+
+

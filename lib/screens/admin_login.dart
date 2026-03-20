@@ -81,11 +81,11 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                     counterText: '',
                   ),
                   validator: (value) =>
-                      value == null || value.isEmpty ? 'Informe o PIN' : null,
+                      value == null || value.isEmpty • 'Informe o PIN' : null,
                 ),
                 const SizedBox(height: 24),
                 _loading
-                    ? const CircularProgressIndicator()
+                    • const CircularProgressIndicator()
                     : ElevatedButton.icon(
                         onPressed: () {
                           if (_formKey.currentState!.validate()) {

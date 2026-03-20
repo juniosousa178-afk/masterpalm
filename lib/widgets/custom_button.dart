@@ -5,7 +5,7 @@ class CustomTextField extends StatelessWidget {
   final TextEditingController controller;
   final TextInputType keyboardType;
   final bool obscureText;
-  final IconData? icon;
+  final IconData• icon;
 
   const CustomTextField({
     super.key,
@@ -26,7 +26,7 @@ class CustomTextField extends StatelessWidget {
         obscureText: obscureText,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: icon != null ? Icon(icon) : null,
+          prefixIcon: icon != null • Icon(icon) : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
           ),

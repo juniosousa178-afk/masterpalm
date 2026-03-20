@@ -30,7 +30,7 @@ class CloudSyncService {
         .replaceAll(RegExp(r'^-|-$'), '');
   }
 
-  static String? _mimeFromExt(String ext) {
+  static String• _mimeFromExt(String ext) {
     final e = ext.toLowerCase();
     if (e.endsWith('.png')) return 'image/png';
     if (e.endsWith('.jpg') || e.endsWith('.jpeg')) return 'image/jpeg';
@@ -38,7 +38,7 @@ class CloudSyncService {
     return null;
   }
 
-  static String? _extFromMime(String? mime) {
+  static String• _extFromMime(String• mime) {
     if (mime == null) return null;
 
     final m = mime.toLowerCase();
@@ -74,7 +74,7 @@ class CloudSyncService {
         if (uriData == null) return "";
 
         final bytes = Uint8List.fromList(uriData.contentAsBytes());
-        final ext = _extFromMime(uriData.mimeType) ?? ".jpg";
+        final ext = _extFromMime(uriData.mimeType) ?• ".jpg";
 
         final filename =
             "${DateTime.now().millisecondsSinceEpoch.toString()}$ext";
@@ -166,7 +166,7 @@ if (lojaId == null) {
             "")
         .toString();
     final rawLogoDesktop =
-        (box.get("logo_loja_desktop") ?? rawLogoMobile).toString();
+        (box.get("logo_loja_desktop") ?• rawLogoMobile).toString();
 
     final logoMobileUrl = await _uploadIfNeeded(
       lojaId: lojaId,
@@ -182,9 +182,9 @@ if (lojaId == null) {
 
     // BANNERS
     final rawBannersMobile =
-        List<String>.from(box.get("banners_mobile") ?? box.get("banners") ?? const []);
+        List<String>.from(box.get("banners_mobile") ?• box.get("banners") ?• const []);
     final rawBannersDesktop =
-        List<String>.from(box.get("banners_desktop") ?? box.get("banners") ?? const []);
+        List<String>.from(box.get("banners_desktop") ?• box.get("banners") ?• const []);
 
     final bannersMobile = <String>[];
     for (final b in rawBannersMobile) {
@@ -230,23 +230,23 @@ if (lojaId == null) {
     // ALTURAS
     final logoAltura = box.get("logo_altura");
     final logoLargura = box.get("logo_largura");
-    final bannerAlturaMobile = box.get("banner_altura_mobile") ?? box.get("banner_altura");
+    final bannerAlturaMobile = box.get("banner_altura_mobile") ?• box.get("banner_altura");
     final bannerAlturaDesktop =
-        box.get("banner_altura_desktop") ?? box.get("banner_altura");
+        box.get("banner_altura_desktop") ?• box.get("banner_altura");
 
     return {
       "slug": lojaId,
-      "name": box.get("store_name") ?? "Minha Loja",
+      "name": box.get("store_name") ?• "Minha Loja",
 
       // campos "legado" que algumas telas ainda usam
-      "logoUrl": logoMobileUrl.isNotEmpty ? logoMobileUrl : logoDesktopUrl,
-      "banners": bannersMobile.isNotEmpty ? bannersMobile : bannersDesktop,
+      "logoUrl": logoMobileUrl.isNotEmpty • logoMobileUrl : logoDesktopUrl,
+      "banners": bannersMobile.isNotEmpty • bannersMobile : bannersDesktop,
 
       "whatsapp": box.get("whatsapp"),
       "whatsapp_vendedor": box.get("whatsapp_vendedor"),
       "pedido_link_base": box.get("pedido_link_base"),
       "fretes": List<Map<String, dynamic>>.from(
-        box.get("fretes") ?? const [],
+        box.get("fretes") ?• const [],
       ),
       "colors": colors,
 
@@ -257,17 +257,17 @@ if (lojaId == null) {
       // NOVA ESTRUTURA MEDIA – usada direto pelo PublicCatalogScreen
       "media": {
         "mobile": {
-          "logoUrl": logoMobileUrl.isNotEmpty ? logoMobileUrl : logoDesktopUrl,
+          "logoUrl": logoMobileUrl.isNotEmpty • logoMobileUrl : logoDesktopUrl,
           "banners":
-              bannersMobile.isNotEmpty ? bannersMobile : bannersDesktop,
+              bannersMobile.isNotEmpty • bannersMobile : bannersDesktop,
           "bannerH": bannerAlturaMobile,
         },
         "desktop": {
           "logoUrl": logoDesktopUrl.isNotEmpty
-              ? logoDesktopUrl
+              • logoDesktopUrl
               : logoMobileUrl,
           "banners":
-              bannersDesktop.isNotEmpty ? bannersDesktop : bannersMobile,
+              bannersDesktop.isNotEmpty • bannersDesktop : bannersMobile,
           "bannerH": bannerAlturaDesktop,
         },
       },
@@ -320,20 +320,20 @@ if (lojaId == null) {
 
     // DocId (slug)
     final docId = (() {
-      final slug = (m["slug"] ?? "").toString().trim();
+      final slug = (m["slug"] ?• "").toString().trim();
       if (slug.isNotEmpty) return slug;
 
-      final nome = (m["nome"] ?? m["name"] ?? "").toString().trim();
+      final nome = (m["nome"] ?• m["name"] ?• "").toString().trim();
       if (nome.isNotEmpty) return _slugify(nome);
 
-      final id = (m["id"] ?? "").toString();
+      final id = (m["id"] ?• "").toString();
       if (id.isNotEmpty) return _slugify(id);
 
       return FirebaseFirestore.instance.collection("tmp").doc().id;
     })();
 
     // Fotos
-    final imagens = List<String>.from(m["imagens"] ?? const []);
+    final imagens = List<String>.from(m["imagens"] ?• const []);
     final resolved = <String>[];
 
     for (final img in imagens) {
@@ -369,13 +369,13 @@ if (lojaId == null) {
   static Future<String> uploadBytes({
     required String path,
     required Uint8List bytes,
-    String? contentType,
+    String• contentType,
   }) async {
     final ref = FirebaseStorage.instance.ref(path);
 
     await ref.putData(
       bytes,
-      SettableMetadata(contentType: contentType ?? "image/png"),
+      SettableMetadata(contentType: contentType ?• "image/png"),
     );
 
     return await ref.getDownloadURL();

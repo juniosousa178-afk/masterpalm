@@ -26,7 +26,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
   String _ordenacao = 'email';
 
   String get _currentUserEmail =>
-      FirebaseAuth.instance.currentUser?.email ?? 'masterpalm26@gmail.com';
+      FirebaseAuth.instance.currentUser?.email ?• 'masterpalm26@gmail.com';
 
   bool get _isRoot {
     try {
@@ -90,13 +90,13 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       lista = lista.where((d) {
-        final email = d.data()['email']?.toString().toLowerCase() ?? d.id.toLowerCase();
+        final email = d.data()['email']?.toString().toLowerCase() ?• d.id.toLowerCase();
         return email.contains(q);
       }).toList();
     }
     if (_filterTipo != 'todos') {
       lista = lista.where((d) {
-        final tipo = d.data()['tipo']?.toString() ?? 'vendedor';
+        final tipo = d.data()['tipo']?.toString() ?• 'vendedor';
         return tipo == _filterTipo;
       }).toList();
     }
@@ -104,19 +104,19 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
     lista.sort((a, b) {
       final da = a.data();
       final db = b.data();
-      final emailA = da['email']?.toString() ?? a.id;
-      final emailB = db['email']?.toString() ?? b.id;
-      final tipoA = da['tipo']?.toString() ?? '';
-      final tipoB = db['tipo']?.toString() ?? '';
-      final planoA = da['planoId']?.toString() ?? '';
-      final planoB = db['planoId']?.toString() ?? '';
+      final emailA = da['email']?.toString() ?• a.id;
+      final emailB = db['email']?.toString() ?• b.id;
+      final tipoA = da['tipo']?.toString() ?• '';
+      final tipoB = db['tipo']?.toString() ?• '';
+      final planoA = da['planoId']?.toString() ?• '';
+      final planoB = db['planoId']?.toString() ?• '';
       switch (_ordenacao) {
         case 'tipo':
           final c = tipoA.compareTo(tipoB);
-          return c != 0 ? c : emailA.compareTo(emailB);
+          return c != 0 • c : emailA.compareTo(emailB);
         case 'plano':
           final c = planoA.compareTo(planoB);
-          return c != 0 ? c : emailA.compareTo(emailB);
+          return c != 0 • c : emailA.compareTo(emailB);
         default:
           return emailA.compareTo(emailB);
       }
@@ -142,7 +142,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? null
+            • null
             : AppColors.background,
         appBar: AppBar(
         title: const Text('Admin - Gerenciar Usuários'),
@@ -150,7 +150,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
           IconButton(
             icon: const Icon(Icons.person_add),
             tooltip: 'Adicionar novo usuário',
-            onPressed: _loading ? null : () => _mostrarDialogNovoUsuario(context),
+            onPressed: _loading • null : () => _mostrarDialogNovoUsuario(context),
           ),
         ],
       ),
@@ -201,7 +201,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                   );
                 }
 
-                final todosUsuarios = snapshot.data?.docs ?? [];
+                final todosUsuarios = snapshot.data?.docs ?• [];
                 final usuarios = _filtrarEOrdenar(todosUsuarios);
 
                 return CustomScrollView(
@@ -220,7 +220,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                 prefixIcon: const Icon(Icons.search, size: 20),
                                 filled: true,
                                 fillColor: Theme.of(context).brightness == Brightness.dark
-                                    ? null
+                                    • null
                                     : Colors.grey.withValues(alpha:0.08),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -239,7 +239,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                     decoration: InputDecoration(
                                       filled: true,
                                       fillColor: Theme.of(context).brightness == Brightness.dark
-                                          ? null
+                                          • null
                                           : Colors.grey.withValues(alpha:0.08),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
@@ -256,7 +256,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                       DropdownMenuItem(value: 'admin', child: Text('Admin')),
                                       DropdownMenuItem(value: 'vendedor', child: Text('Vendedor')),
                                     ],
-                                    onChanged: (v) => setState(() => _filterTipo = v ?? 'todos'),
+                                    onChanged: (v) => setState(() => _filterTipo = v ?• 'todos'),
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -266,7 +266,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                     decoration: InputDecoration(
                                       filled: true,
                                       fillColor: Theme.of(context).brightness == Brightness.dark
-                                          ? null
+                                          • null
                                           : Colors.grey.withValues(alpha:0.08),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
@@ -282,7 +282,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                       DropdownMenuItem(value: 'tipo', child: Text('Ordenar: Tipo')),
                                       DropdownMenuItem(value: 'plano', child: Text('Ordenar: Plano')),
                                     ],
-                                    onChanged: (v) => setState(() => _ordenacao = v ?? 'email'),
+                                    onChanged: (v) => setState(() => _ordenacao = v ?• 'email'),
                                   ),
                                 ),
                               ],
@@ -308,7 +308,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                               const SizedBox(height: 16),
                               Text(
                                 todosUsuarios.isEmpty
-                                    ? 'Nenhum usuário cadastrado'
+                                    • 'Nenhum usuário cadastrado'
                                     : 'Nenhum resultado para a busca',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(fontSize: 16, color: Colors.grey[600]),
@@ -332,14 +332,14 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                             (context, index) {
                               final doc = usuarios[index];
                               final data = doc.data();
-                              final email = data['email']?.toString() ?? doc.id;
-                              final tipo = data['tipo']?.toString() ?? 'vendedor';
-                              final planoAtivo = data['planoAtivo'] ?? false;
-                              final planoId = data['planoId']?.toString() ?? 'free';
-                              final manualOverride = data['manualOverride'] ?? false;
-                              final isLifetime = data['isLifetime'] ?? false;
+                              final email = data['email']?.toString() ?• doc.id;
+                              final tipo = data['tipo']?.toString() ?• 'vendedor';
+                              final planoAtivo = data['planoAtivo'] ?• false;
+                              final planoId = data['planoId']?.toString() ?• 'free';
+                              final manualOverride = data['manualOverride'] ?• false;
+                              final isLifetime = data['isLifetime'] ?• false;
 
-                              DateTime? currentPeriodEnd;
+                              DateTime• currentPeriodEnd;
                               if (data['currentPeriodEnd'] != null) {
                                 final timestamp = data['currentPeriodEnd'];
                                 if (timestamp is Timestamp) {
@@ -357,10 +357,10 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                 child: ExpansionTile(
                                   leading: CircleAvatar(
                                     backgroundColor: planoAtivo
-                                        ? const Color(0xFF22C55E)
+                                        • const Color(0xFF22C55E)
                                         : Colors.grey,
                                     child: Icon(
-                                      planoAtivo ? Icons.check : Icons.person_outline,
+                                      planoAtivo • Icons.check : Icons.person_outline,
                                       color: Colors.white,
                                     ),
                                   ),
@@ -400,7 +400,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                             runSpacing: 8,
                                             children: [
                                               ElevatedButton.icon(
-                                                onPressed: _loading ? null : () => _liberarPlanoVitalicio(email),
+                                                onPressed: _loading • null : () => _liberarPlanoVitalicio(email),
                                                 icon: const Icon(Icons.verified_user, size: 18),
                                                 label: const Text('Liberar vitalício'),
                                                 style: ElevatedButton.styleFrom(
@@ -409,7 +409,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                                 ),
                                               ),
                                               ElevatedButton.icon(
-                                                onPressed: _loading ? null : () => _liberarPlano90Dias(email),
+                                                onPressed: _loading • null : () => _liberarPlano90Dias(email),
                                                 icon: const Icon(Icons.calendar_today, size: 18),
                                                 label: const Text('Liberar 90 dias'),
                                                 style: ElevatedButton.styleFrom(
@@ -417,7 +417,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                                 ),
                                               ),
                                               ElevatedButton.icon(
-                                                onPressed: _loading ? null : () => _liberarPlano1Ano(email),
+                                                onPressed: _loading • null : () => _liberarPlano1Ano(email),
                                                 icon: const Icon(Icons.calendar_month, size: 18),
                                                 label: const Text('Liberar 1 ano'),
                                                 style: ElevatedButton.styleFrom(
@@ -425,7 +425,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                                 ),
                                               ),
                                               OutlinedButton.icon(
-                                                onPressed: _loading ? null : () => _revogarPlano(email),
+                                                onPressed: _loading • null : () => _revogarPlano(email),
                                                 icon: const Icon(Icons.block, size: 18),
                                                 label: const Text('Revogar acesso'),
                                                 style: OutlinedButton.styleFrom(
@@ -434,7 +434,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                               ),
                                               OutlinedButton.icon(
                                                 onPressed: _loading || _isRootOrCurrent(email)
-                                                    ? null
+                                                    • null
                                                     : () => _confirmarExclusaoUsuario(
                                                           email: email,
                                                           authUid: data['authUid']?.toString(),
@@ -471,7 +471,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                                     ),
                                                   ],
                                                   onChanged: _loading
-                                                      ? null
+                                                      • null
                                                       : (newTipo) {
                                                           if (newTipo != null) {
                                                             _alterarTipoUsuario(email, newTipo);
@@ -552,7 +552,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
 
     setState(() => _loading = true);
     try {
-      final grantedBy = FirebaseAuth.instance.currentUser?.email ?? 'masterpalm26@gmail.com';
+      final grantedBy = FirebaseAuth.instance.currentUser?.email ?• 'masterpalm26@gmail.com';
 
       // ✅ Salvar na collection 'usuarios/{email}'
       await _db.collection('usuarios').doc(email).set({
@@ -615,7 +615,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
     setState(() => _loading = true);
     try {
       final endDate = DateTime.now().add(Duration(days: dias));
-      final grantedBy = FirebaseAuth.instance.currentUser?.email ?? 'masterpalm26@gmail.com';
+      final grantedBy = FirebaseAuth.instance.currentUser?.email ?• 'masterpalm26@gmail.com';
 
       await _db.collection('usuarios').doc(email).set({
         'email': email,
@@ -688,7 +688,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
 
     setState(() => _loading = true);
     try {
-      final revokedBy = FirebaseAuth.instance.currentUser?.email ?? 'masterpalm26@gmail.com';
+      final revokedBy = FirebaseAuth.instance.currentUser?.email ?• 'masterpalm26@gmail.com';
 
       await _db.collection('usuarios').doc(email).set({
         'planoAtivo': false,
@@ -733,7 +733,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
 
   Future<void> _confirmarExclusaoUsuario({
     required String email,
-    String? authUid,
+    String• authUid,
   }) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -838,7 +838,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                     DropdownMenuItem(value: 'admin', child: Text('Admin')),
                     DropdownMenuItem(value: 'vendedor', child: Text('Vendedor')),
                   ],
-                  onChanged: (v) => tipoSelecionado.value = v ?? 'vendedor',
+                  onChanged: (v) => tipoSelecionado.value = v ?• 'vendedor',
                 );
               },
             ),

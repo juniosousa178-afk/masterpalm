@@ -65,13 +65,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   final UploadManager _uploader = UploadManager(maxConcurrent: 3);
 
   // ✅ Timer para debounce do salvamento automático
-  Timer? _autoSaveTimer;
+  Timer• _autoSaveTimer;
 
   String _extFromName(String name) {
     final i = name.lastIndexOf('.');
     if (i == -1) return 'jpg';
     final ext = name.substring(i + 1).toLowerCase();
-    return ext.isEmpty ? 'jpg' : ext;
+    return ext.isEmpty • 'jpg' : ext;
   }
 
   String _activeStoreId() {
@@ -92,13 +92,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   bool _offline = false;
 
   late Box _configBox;
-  String? _slug;
-  String? _lojaId;
-  String? _resolvedLojaId;
+  String• _slug;
+  String• _lojaId;
+  String• _resolvedLojaId;
 
   _Pane _pane = _Pane.identidade;
   _MediaTab _mediaTab = _MediaTab.desktop;
-  _LayoutPreset? _layoutPreset;
+  _LayoutPreset• _layoutPreset;
 
   // Tutorial flutuante (somente na primeira configuração)
   bool _mostrarTutorial = false;
@@ -121,8 +121,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   // ---------------------------------
   // MÍDIAS (logo / banners)
   // ---------------------------------
-  String? _logoUrlDesktop;
-  String? _logoUrlMobile;
+  String• _logoUrlDesktop;
+  String• _logoUrlMobile;
   List<String> _bannersDesktop = [];
   List<String> _bannersMobile = [];
   bool _logoDesktopAlterado = false;
@@ -237,7 +237,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   final TextEditingController _catImgCategoriaCtrl = TextEditingController();
   final TextEditingController _catImgCategoriaIdCtrl = TextEditingController();
   final TextEditingController _catImgUrlCtrl = TextEditingController();
-  String? _catSelectedFromStore;
+  String• _catSelectedFromStore;
   Map<String, String> _categoryImagesByName = {};
   Map<String, String> _categoryImagesById = {};
   List<String> _knownCategoryNames = [];
@@ -316,8 +316,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   // ---------------------------------
   bool _campanhaAtiva = false;
   bool _roletaAtiva = false;
-  String? _campanhaAtivaId;
-  String? _campanhaAtivaNome;
+  String• _campanhaAtivaId;
+  String• _campanhaAtivaNome;
 
   // ---------------------------------
   // INIT / LOAD
@@ -424,8 +424,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       logD('🏪 [LOJA CONFIG] StoreResolverFacade.resolveForAdminApp() = $id');
 
       // Mostra todas as fontes de loja
-      final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : null;
-      final config = Hive.isBoxOpen('config') ? Hive.box('config') : null;
+      final sessao = Hive.isBoxOpen('sessao') • Hive.box('sessao') : null;
+      final config = Hive.isBoxOpen('config') • Hive.box('config') : null;
       logD('   sessao.store_id = ${sessao?.get('store_id')}');
       logD('   config.store_id = ${config?.get('store_id')}');
       logD('   FirebaseAuth.uid = ${FirebaseAuth.instance.currentUser?.uid}');
@@ -475,16 +475,16 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final local = _configBox.get('draft_config');
       if (local is Map) {
         final lm = Map<String, dynamic>.from(local);
-        final ld = (lm['media']?['desktop'] ?? lm) as Map?;
-        final lmobile = (lm['media']?['mobile'] ?? lm) as Map?;
-        final localLogoD = (ld?['logoUrl'] ?? lm['logoDesktopUrl'])?.toString().trim();
-        final localLogoM = (lmobile?['logoUrl'] ?? lm['logoMobileUrl'])?.toString().trim();
-        final bdRaw = ld?['banners'] ?? lm['bannersDesktop'];
-        final bmRaw = lmobile?['banners'] ?? lm['bannersMobile'];
-        final localBannersD = (bdRaw is List) ? bdRaw.map((e) => e.toString()).toList() : <String>[];
-        final localBannersM = (bmRaw is List) ? bmRaw.map((e) => e.toString()).toList() : <String>[];
-        final precisaLogoD = (_logoUrlDesktop ?? '').trim().isEmpty && (localLogoD ?? '').isNotEmpty;
-        final precisaLogoM = (_logoUrlMobile ?? '').trim().isEmpty && (localLogoM ?? '').isNotEmpty;
+        final ld = (lm['media']?['desktop'] ?• lm) as Map?;
+        final lmobile = (lm['media']?['mobile'] ?• lm) as Map?;
+        final localLogoD = (ld?['logoUrl'] ?• lm['logoDesktopUrl'])?.toString().trim();
+        final localLogoM = (lmobile?['logoUrl'] ?• lm['logoMobileUrl'])?.toString().trim();
+        final bdRaw = ld?['banners'] ?• lm['bannersDesktop'];
+        final bmRaw = lmobile?['banners'] ?• lm['bannersMobile'];
+        final localBannersD = (bdRaw is List) • bdRaw.map((e) => e.toString()).toList() : <String>[];
+        final localBannersM = (bmRaw is List) • bmRaw.map((e) => e.toString()).toList() : <String>[];
+        final precisaLogoD = (_logoUrlDesktop ?• '').trim().isEmpty && (localLogoD ?• '').isNotEmpty;
+        final precisaLogoM = (_logoUrlMobile ?• '').trim().isEmpty && (localLogoM ?• '').isNotEmpty;
         final precisaBd = _bannersDesktop.isEmpty && localBannersD.isNotEmpty;
         final precisaBm = _bannersMobile.isEmpty && localBannersM.isNotEmpty;
         if (precisaLogoD || precisaLogoM || precisaBd || precisaBm) {
@@ -532,7 +532,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   Future<void> _verificarTutorialPrimeiraVez() async {
     if (_carregando || !mounted) return;
     try {
-      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+      final cfg = Hive.isBoxOpen('config') • Hive.box('config') : await Hive.openBox('config');
       final visto = cfg.get('tutorial_loja_config_visto') == true;
       if (!visto && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -548,7 +548,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _tutorialPasso = 0;
     });
     try {
-      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+      final cfg = Hive.isBoxOpen('config') • Hive.box('config') : await Hive.openBox('config');
       await cfg.put('tutorial_loja_config_visto', true);
     } catch (_) {}
   }
@@ -590,7 +590,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           .get();
 
       final now = DateTime.now();
-      Map<String, dynamic>? campanhaAtiva;
+      Map<String, dynamic>• campanhaAtiva;
 
       for (final doc in campanhasSnap.docs) {
         final data = doc.data();
@@ -628,7 +628,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         setState(() {
           _campanhaAtiva = campanhaAtiva != null;
           _campanhaAtivaId = campanhaAtiva?['id'];
-          _campanhaAtivaNome = campanhaAtiva?['nome'] ?? campanhaAtiva?['titulo'];
+          _campanhaAtivaNome = campanhaAtiva?['nome'] ?• campanhaAtiva?['titulo'];
           _roletaAtiva = roletaAtiva;
         });
 
@@ -659,7 +659,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           .doc(_campanhaAtivaId)
           .update({
         'ativa': novoValor,
-        'status': novoValor ? 'aberta' : 'pausada',
+        'status': novoValor • 'aberta' : 'pausada',
       });
 
       setState(() {
@@ -667,7 +667,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       });
 
       _snack(novoValor
-          ? '✅ Campanha ativada! O banner aparecerá no catálogo.'
+          • '✅ Campanha ativada! O banner aparecerá no catálogo.'
           : '⏸️ Campanha desativada.');
     } catch (e) {
       _snack('Erro ao atualizar campanha: $e', isError: true);
@@ -696,7 +696,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       });
 
       _snack(novoValor
-          ? '✅ Roleta ativada! Clientes poderão girar após compras.'
+          • '✅ Roleta ativada! Clientes poderão girar após compras.'
           : '⏸️ Roleta desativada.');
     } catch (e) {
       _snack('Erro ao atualizar roleta: $e', isError: true);
@@ -707,15 +707,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   int _parseIntCtrl(TextEditingController c, int fallback) {
     final v = int.tryParse(c.text.trim());
-    return v ?? fallback;
+    return v ?• fallback;
   }
 
   double _parseDoubleCtrl(TextEditingController c, double fallback) {
     final v = double.tryParse(c.text.trim().replaceAll(',', '.'));
-    return v ?? fallback;
+    return v ?• fallback;
   }
 
-  int? _intFrom(dynamic v) {
+  int• _intFrom(dynamic v) {
     if (v == null) return null;
     if (v is int) return v;
     if (v is num) return v.toInt();
@@ -750,8 +750,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       if (lojaDoc.exists && lojaDoc.data() != null) {
         final d = lojaDoc.data()!;
         // Pré-preenche nome e WhatsApp quando vazios (ex.: primeiro acesso após onboarding)
-        final nomeLoja = (d['name'] ?? d['nome'] ?? d['nomeLoja'] ?? '').toString().trim();
-        final whatsE164 = (d['whatsappE164'] ?? d['whatsapp'] ?? '').toString().trim();
+        final nomeLoja = (d['name'] ?• d['nome'] ?• d['nomeLoja'] ?• '').toString().trim();
+        final whatsE164 = (d['whatsappE164'] ?• d['whatsapp'] ?• '').toString().trim();
         if (nomeLoja.isNotEmpty && _nomeCtrl.text.trim().isEmpty) {
           setState(() => _nomeCtrl.text = nomeLoja);
           logD('📝 [LOJA CONFIG] Nome da loja pré-preenchido com: $nomeLoja');
@@ -769,10 +769,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           final media = d['media'] as Map<String, dynamic>?;
           final desktop = media?['desktop'] as Map?;
           final mobile = media?['mobile'] as Map?;
-          final logoD = (desktop?['logoUrl'] ?? d['logoDesktopUrl'])?.toString();
-          final logoM = (mobile?['logoUrl'] ?? d['logoMobileUrl'])?.toString();
-          final bd = (desktop?['banners'] ?? d['bannersDesktop']) as List?;
-          final bm = (mobile?['banners'] ?? d['bannersMobile']) as List?;
+          final logoD = (desktop?['logoUrl'] ?• d['logoDesktopUrl'])?.toString();
+          final logoM = (mobile?['logoUrl'] ?• d['logoMobileUrl'])?.toString();
+          final bd = (desktop?['banners'] ?• d['bannersDesktop']) as List?;
+          final bm = (mobile?['banners'] ?• d['bannersMobile']) as List?;
           if ((logoD != null && logoD.isNotEmpty) || (logoM != null && logoM.isNotEmpty) ||
               (bd != null && bd.isNotEmpty) || (bm != null && bm.isNotEmpty)) {
             setState(() {
@@ -796,13 +796,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   bool _isMidiaVazia() {
-    final logoD = (_logoUrlDesktop ?? '').trim().isEmpty;
-    final logoM = (_logoUrlMobile ?? '').trim().isEmpty;
+    final logoD = (_logoUrlDesktop ?• '').trim().isEmpty;
+    final logoM = (_logoUrlMobile ?• '').trim().isEmpty;
     return logoD && logoM && _bannersDesktop.isEmpty && _bannersMobile.isEmpty;
   }
 
   /// Converte valor do Firestore para String (aceita String ou num, evita campo WhatsApp vazio quando salvo como número).
-  static String? _stringFromDynamic(dynamic v) {
+  static String• _stringFromDynamic(dynamic v) {
     if (v == null) return null;
     if (v is String) return v;
     if (v is num) return v.toString();
@@ -811,28 +811,28 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   void _applyConfigMap(Map<String, dynamic> data) {
     setState(() {
-      _nomeCtrl.text = (data['nome'] as String?) ?? _nomeCtrl.text;
-      _slugCtrl.text = (data['slug'] as String?) ?? _slugCtrl.text; // ✅ CARREGAR SLUG
-    _linkCurtoCtrl.text = (data['linkCurto'] as String?) ?? _linkCurtoCtrl.text; // ✅ CARREGAR LINK CURTO
-      _subdominioMascaraCtrl.text = (data['subdominioMascara'] ?? data['subdominio_mascara'] ?? '').toString().trim();
-      _subdominioDominioBaseCtrl.text = (data['subdominioDominioBase'] ?? data['subdominio_dominio_base'] ?? 'mastepalm.com.br').toString().trim();
+      _nomeCtrl.text = (data['nome'] as String?) ?• _nomeCtrl.text;
+      _slugCtrl.text = (data['slug'] as String?) ?• _slugCtrl.text; // ✅ CARREGAR SLUG
+    _linkCurtoCtrl.text = (data['linkCurto'] as String?) ?• _linkCurtoCtrl.text; // ✅ CARREGAR LINK CURTO
+      _subdominioMascaraCtrl.text = (data['subdominioMascara'] ?• data['subdominio_mascara'] ?• '').toString().trim();
+      _subdominioDominioBaseCtrl.text = (data['subdominioDominioBase'] ?• data['subdominio_dominio_base'] ?• 'mastepalm.com.br').toString().trim();
       final waRaw = _stringFromDynamic(data['whatsapp']);
-      _waCtrl.text = waRaw == null ? _waCtrl.text : (waRaw.trim().isEmpty ? '' : _extrairApenasDigitos(waRaw));
+      _waCtrl.text = waRaw == null • _waCtrl.text : (waRaw.trim().isEmpty • '' : _extrairApenasDigitos(waRaw));
       _pedidoBaseCtrl.text =
-          (data['pedidoBaseUrl'] as String?) ?? _pedidoBaseCtrl.text;
+          (data['pedidoBaseUrl'] as String?) ?• _pedidoBaseCtrl.text;
 
       // mídia - prioriza nova estrutura media.desktop/mobile, senão usa legado
       final mediaRaw = data['media'];
       final Map<String, dynamic> mediaData = mediaRaw is Map
-          ? Map<String, dynamic>.from(mediaRaw)
+          • Map<String, dynamic>.from(mediaRaw)
           : {};
       final desktopMediaRaw = mediaData['desktop'];
       final Map<String, dynamic> desktopMedia = desktopMediaRaw is Map
-          ? Map<String, dynamic>.from(desktopMediaRaw)
+          • Map<String, dynamic>.from(desktopMediaRaw)
           : {};
       final mobileMediaRaw = mediaData['mobile'];
       final Map<String, dynamic> mobileMedia = mobileMediaRaw is Map
-          ? Map<String, dynamic>.from(mobileMediaRaw)
+          • Map<String, dynamic>.from(mobileMediaRaw)
           : {};
 
       _logoUrlDesktop = (desktopMedia['logoUrl'] as String?) ??
@@ -850,38 +850,38 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // dimensões logo/banners - prioriza nova estrutura
       _dLogoH.text = (_intFrom(desktopMedia['logoH']) ??
                       _intFrom(data['dLogoH']) ??
-                      int.tryParse(_dLogoH.text) ?? 105).toString();
+                      int.tryParse(_dLogoH.text) ?• 105).toString();
       _dLogoW.text = (_intFrom(desktopMedia['logoW']) ??
                       _intFrom(data['dLogoW']) ??
-                      int.tryParse(_dLogoW.text) ?? 327).toString();
+                      int.tryParse(_dLogoW.text) ?• 327).toString();
       _mLogoH.text = (_intFrom(mobileMedia['logoH']) ??
                       _intFrom(data['mLogoH']) ??
-                      int.tryParse(_mLogoH.text) ?? 105).toString();
+                      int.tryParse(_mLogoH.text) ?• 105).toString();
       _mLogoW.text = (_intFrom(mobileMedia['logoW']) ??
                       _intFrom(data['mLogoW']) ??
-                      int.tryParse(_mLogoW.text) ?? 327).toString();
+                      int.tryParse(_mLogoW.text) ?• 327).toString();
 
       _dBanH.text = (_intFrom(desktopMedia['bannerH']) ??
                      _intFrom(data['dBanH']) ??
-                     int.tryParse(_dBanH.text) ?? 256).toString();
+                     int.tryParse(_dBanH.text) ?• 256).toString();
       _dBanW.text = (_intFrom(desktopMedia['bannerW']) ??
                      _intFrom(data['dBanW']) ??
-                     int.tryParse(_dBanW.text) ?? 1280).toString();
+                     int.tryParse(_dBanW.text) ?• 1280).toString();
       _mBanH.text = (_intFrom(mobileMedia['bannerH']) ??
                      _intFrom(data['mBanH']) ??
-                     int.tryParse(_mBanH.text) ?? 300).toString();
+                     int.tryParse(_mBanH.text) ?• 300).toString();
       _mBanW.text = (_intFrom(mobileMedia['bannerW']) ??
                      _intFrom(data['mBanW']) ??
-                     int.tryParse(_mBanW.text) ?? 562).toString();
+                     int.tryParse(_mBanW.text) ?• 562).toString();
 
       // ✅ CORRIGIDO: Lê de 'theme' (mesma estrutura do public_catalog)
       final themeRaw = data['theme'];
       final Map<String, dynamic> theme = themeRaw is Map
-          ? Map<String, dynamic>.from(themeRaw)
+          • Map<String, dynamic>.from(themeRaw)
           : {};
 
       // Função helper para converter cor (aceita int ou String hexadecimal)
-      int? colorToInt(dynamic v) {
+      int• colorToInt(dynamic v) {
         if (v == null) return null;
         if (v is int) return v;
         if (v is String) {
@@ -909,7 +909,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // ✅ CORRIGIDO: Lê de 'checkoutTheme' (mesma estrutura do public_catalog)
       final checkoutThemeRaw = data['checkoutTheme'];
       final Map<String, dynamic> checkoutTheme = checkoutThemeRaw is Map
-          ? Map<String, dynamic>.from(checkoutThemeRaw)
+          • Map<String, dynamic>.from(checkoutThemeRaw)
           : {};
 
       final cCard = colorToInt(checkoutTheme['card']);
@@ -927,7 +927,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // ✅ NOVO: Carrega uiColors (cores unificadas expandidas)
       final uiColorsRaw = data['uiColors'];
       final Map<String, dynamic> uiColors = uiColorsRaw is Map
-          ? Map<String, dynamic>.from(uiColorsRaw)
+          • Map<String, dynamic>.from(uiColorsRaw)
           : {};
 
       if (uiColors.isNotEmpty) {
@@ -967,7 +967,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // ✅ NOVO: Carrega catalogHeaderColors (cores do cabeçalho)
       final headerColorsRaw = data['catalogHeaderColors'];
       final Map<String, dynamic> headerColors = headerColorsRaw is Map
-          ? Map<String, dynamic>.from(headerColorsRaw)
+          • Map<String, dynamic>.from(headerColorsRaw)
           : {};
 
       if (headerColors.isNotEmpty) {
@@ -987,7 +987,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // ✅ NOVO: Carrega catalogFooterColors (cores do rodapé)
       final footerColorsRaw = data['catalogFooterColors'];
       final Map<String, dynamic> footerColors = footerColorsRaw is Map
-          ? Map<String, dynamic>.from(footerColorsRaw)
+          • Map<String, dynamic>.from(footerColorsRaw)
           : {};
 
       if (footerColors.isNotEmpty) {
@@ -1009,7 +1009,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // ✅ NOVO: Carrega catalogDicasColors (cores da tela Dicas)
       final dicasColorsRaw = data['catalogDicasColors'];
       final Map<String, dynamic> dicasColors = dicasColorsRaw is Map
-          ? Map<String, dynamic>.from(dicasColorsRaw)
+          • Map<String, dynamic>.from(dicasColorsRaw)
           : {};
 
       if (dicasColors.isNotEmpty) {
@@ -1029,17 +1029,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       }
 
       // === LAYOUT ================================================
-      _gridDesktopCols = (data['gridDesktopCols'] as int?) ?? _gridDesktopCols;
-      _gridMobileCols = (data['gridMobileCols'] as int?) ?? _gridMobileCols;
-      _cardShowShadow = (data['cardShowShadow'] as bool?) ?? _cardShowShadow;
+      _gridDesktopCols = (data['gridDesktopCols'] as int?) ?• _gridDesktopCols;
+      _gridMobileCols = (data['gridMobileCols'] as int?) ?• _gridMobileCols;
+      _cardShowShadow = (data['cardShowShadow'] as bool?) ?• _cardShowShadow;
       _cardBorderRadius =
-          (data['cardBorderRadius'] as num?)?.toDouble() ?? _cardBorderRadius;
-      _layoutCatalogo = (data['layoutCatalogo'] ?? data['layout_catalogo'] ?? 'padrao')
+          (data['cardBorderRadius'] as num?)?.toDouble() ?• _cardBorderRadius;
+      _layoutCatalogo = (data['layoutCatalogo'] ?• data['layout_catalogo'] ?• 'padrao')
           .toString()
           .trim()
           .toLowerCase();
       _productCardSize = (() {
-        final v = (data['productCardSize'] ?? 'medium')
+        final v = (data['productCardSize'] ?• 'medium')
             .toString()
             .trim()
             .toLowerCase();
@@ -1049,72 +1049,72 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
       final promoBarRaw = data['promoBar'];
       final promoBar = promoBarRaw is Map
-          ? Map<String, dynamic>.from(promoBarRaw)
+          • Map<String, dynamic>.from(promoBarRaw)
           : <String, dynamic>{};
-      _promoBarEnabled = (promoBar['enabled'] as bool?) ?? _promoBarEnabled;
+      _promoBarEnabled = (promoBar['enabled'] as bool?) ?• _promoBarEnabled;
       _promoBarTextCtrl.text =
-          (promoBar['text'] ?? _promoBarTextCtrl.text).toString();
+          (promoBar['text'] ?• _promoBarTextCtrl.text).toString();
       _promoBarLinkCtrl.text =
-          (promoBar['link'] ?? _promoBarLinkCtrl.text).toString();
+          (promoBar['link'] ?• _promoBarLinkCtrl.text).toString();
       final promoBg = colorToInt(promoBar['backgroundColor']);
       final promoText = colorToInt(promoBar['textColor']);
       if (promoBg != null) _promoBarBg = Color(promoBg);
       if (promoText != null) _promoBarText = Color(promoText);
-      _promoBarMarquee = (promoBar['marquee'] as bool?) ?? _promoBarMarquee;
+      _promoBarMarquee = (promoBar['marquee'] as bool?) ?• _promoBarMarquee;
 
       final minimalSearchRaw = data['minimalSearch'];
       final minimalSearch = minimalSearchRaw is Map
-          ? Map<String, dynamic>.from(minimalSearchRaw)
+          • Map<String, dynamic>.from(minimalSearchRaw)
           : <String, dynamic>{};
       _minimalSearchPlaceholderCtrl.text =
-          (minimalSearch['placeholder'] ?? _minimalSearchPlaceholderCtrl.text)
+          (minimalSearch['placeholder'] ?• _minimalSearchPlaceholderCtrl.text)
               .toString();
 
       final heroBannerRaw = data['heroBanner'];
       final heroBanner = heroBannerRaw is Map
-          ? Map<String, dynamic>.from(heroBannerRaw)
+          • Map<String, dynamic>.from(heroBannerRaw)
           : <String, dynamic>{};
-      _heroBannerEnabled = (heroBanner['enabled'] as bool?) ?? _heroBannerEnabled;
+      _heroBannerEnabled = (heroBanner['enabled'] as bool?) ?• _heroBannerEnabled;
       _heroBannerTitleCtrl.text =
-          (heroBanner['title'] ?? _heroBannerTitleCtrl.text).toString();
+          (heroBanner['title'] ?• _heroBannerTitleCtrl.text).toString();
       _heroBannerSubtitleCtrl.text =
-          (heroBanner['subtitle'] ?? _heroBannerSubtitleCtrl.text).toString();
+          (heroBanner['subtitle'] ?• _heroBannerSubtitleCtrl.text).toString();
       _heroBannerButtonTextCtrl.text =
-          (heroBanner['buttonText'] ?? _heroBannerButtonTextCtrl.text).toString();
+          (heroBanner['buttonText'] ?• _heroBannerButtonTextCtrl.text).toString();
       _heroBannerButtonLinkCtrl.text =
-          (heroBanner['buttonLink'] ?? _heroBannerButtonLinkCtrl.text).toString();
+          (heroBanner['buttonLink'] ?• _heroBannerButtonLinkCtrl.text).toString();
       _heroBannerImageCtrl.text =
-          (heroBanner['image'] ?? _heroBannerImageCtrl.text).toString();
+          (heroBanner['image'] ?• _heroBannerImageCtrl.text).toString();
       _heroBannerMobileImageCtrl.text =
-          (heroBanner['mobileImage'] ?? _heroBannerMobileImageCtrl.text).toString();
+          (heroBanner['mobileImage'] ?• _heroBannerMobileImageCtrl.text).toString();
 
       final catVisualRaw = data['categoryVisuals'];
       final catVisual = catVisualRaw is Map
-          ? Map<String, dynamic>.from(catVisualRaw)
+          • Map<String, dynamic>.from(catVisualRaw)
           : <String, dynamic>{};
       final catImgsRaw = catVisual['images'];
       final catImgs = catImgsRaw is Map
-          ? Map<String, dynamic>.from(catImgsRaw)
+          • Map<String, dynamic>.from(catImgsRaw)
           : <String, dynamic>{};
       final catImgsByIdRaw = catVisual['imagesById'];
       final catImgsById = catImgsByIdRaw is Map
-          ? Map<String, dynamic>.from(catImgsByIdRaw)
+          • Map<String, dynamic>.from(catImgsByIdRaw)
           : <String, dynamic>{};
       final catImgsByNormRaw = catVisual['imagesByNameNorm'];
       final catImgsByNorm = catImgsByNormRaw is Map
-          ? Map<String, dynamic>.from(catImgsByNormRaw)
+          • Map<String, dynamic>.from(catImgsByNormRaw)
           : <String, dynamic>{};
       final mergedByName = <String, String>{};
       for (final e in catImgs.entries) {
         final k = e.key.toString().trim();
-        final v = e.value?.toString().trim() ?? '';
+        final v = e.value?.toString().trim() ?• '';
         if (k.isNotEmpty && v.isNotEmpty) {
           mergedByName[k] = v;
         }
       }
       for (final e in catImgsByNorm.entries) {
         final k = e.key.toString().trim();
-        final v = e.value?.toString().trim() ?? '';
+        final v = e.value?.toString().trim() ?• '';
         if (k.isNotEmpty && v.isNotEmpty) {
           mergedByName[k] = v;
           mergedByName['name:$k'] = v;
@@ -1123,7 +1123,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final mergedById = <String, String>{};
       for (final e in catImgsById.entries) {
         final k = e.key.toString().trim();
-        final v = e.value?.toString().trim() ?? '';
+        final v = e.value?.toString().trim() ?• '';
         if (k.isNotEmpty && v.isNotEmpty) mergedById[k] = v;
       }
       _categoryImagesByName = mergedByName;
@@ -1135,20 +1135,20 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         known.add(k);
       }
       _knownCategoryNames = known.toList()..sort();
-      _catImgModaCtrl.text = (catImgs['Moda'] ?? '').toString();
-      _catImgCalcadosCtrl.text = (catImgs['Calcados'] ?? '').toString();
-      _catImgBolsasCtrl.text = (catImgs['Bolsas'] ?? '').toString();
+      _catImgModaCtrl.text = (catImgs['Moda'] ?• '').toString();
+      _catImgCalcadosCtrl.text = (catImgs['Calcados'] ?• '').toString();
+      _catImgBolsasCtrl.text = (catImgs['Bolsas'] ?• '').toString();
 
       final mbsRaw = data['minimalBestSellers'];
       final mbs = mbsRaw is Map
-          ? Map<String, dynamic>.from(mbsRaw)
+          • Map<String, dynamic>.from(mbsRaw)
           : <String, dynamic>{};
       _minimalBestSellersEnabled =
-          (mbs['enabled'] as bool?) ?? _minimalBestSellersEnabled;
+          (mbs['enabled'] as bool?) ?• _minimalBestSellersEnabled;
       _minimalBestSellersTitleCtrl.text =
-          (mbs['title'] ?? _minimalBestSellersTitleCtrl.text).toString();
+          (mbs['title'] ?• _minimalBestSellersTitleCtrl.text).toString();
       _minimalBestSellersCountCtrl.text =
-          '${mbs['count'] ?? _minimalBestSellersCountCtrl.text}';
+          '${mbs['count'] ?• _minimalBestSellersCountCtrl.text}';
 
       final presetStr = data['layoutPreset'] as String?;
       if (presetStr != null) {
@@ -1156,48 +1156,48 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       }
 
       // === FRETES ================================================
-      _freteProvider = (data['freteProvider'] as String?) ?? _freteProvider;
+      _freteProvider = (data['freteProvider'] as String?) ?• _freteProvider;
 
       _melhorEnvioTokenCtrl.text =
-          (data['melhorEnvioToken'] as String?) ?? _melhorEnvioTokenCtrl.text;
+          (data['melhorEnvioToken'] as String?) ?• _melhorEnvioTokenCtrl.text;
 
       _correiosUserCtrl.text =
-          (data['correiosUser'] as String?) ?? _correiosUserCtrl.text;
+          (data['correiosUser'] as String?) ?• _correiosUserCtrl.text;
 
       _correiosSenhaCtrl.text =
-          (data['correiosSenha'] as String?) ?? _correiosSenhaCtrl.text;
+          (data['correiosSenha'] as String?) ?• _correiosSenhaCtrl.text;
 
       _frenetTokenCtrl.text =
-          (data['frenetToken'] as String?) ?? _frenetTokenCtrl.text;
+          (data['frenetToken'] as String?) ?• _frenetTokenCtrl.text;
 
       _fretes
         ..clear()
-        ..addAll(((data['fretes'] as List?) ?? [])
+        ..addAll(((data['fretes'] as List?) ?• [])
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e)));
 
       // cupons
       _cupons
         ..clear()
-        ..addAll(((data['cupons'] as List?) ?? [])
+        ..addAll(((data['cupons'] as List?) ?• [])
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e)));
 
       // menu
       final menuRaw = data['menu'];
       final Map<String, dynamic> menu = menuRaw is Map
-          ? Map<String, dynamic>.from(menuRaw)
+          • Map<String, dynamic>.from(menuRaw)
           : {};
       _menuShowCategorias =
-          (menu['categorias'] as bool?) ?? _menuShowCategorias;
-      _menuShowEntrar = (menu['entrar'] as bool?) ?? _menuShowEntrar;
-      _menuShowContato = (menu['contato'] as bool?) ?? _menuShowContato;
-      _menuShowSac = (menu['sac'] as bool?) ?? _menuShowSac;
+          (menu['categorias'] as bool?) ?• _menuShowCategorias;
+      _menuShowEntrar = (menu['entrar'] as bool?) ?• _menuShowEntrar;
+      _menuShowContato = (menu['contato'] as bool?) ?• _menuShowContato;
+      _menuShowSac = (menu['sac'] as bool?) ?• _menuShowSac;
       _menuShowQuemSomos =
-          (menu['quemSomos'] as bool?) ?? _menuShowQuemSomos;
-      _menuShowDicas = (menu['dicas'] as bool?) ?? _menuShowDicas;
+          (menu['quemSomos'] as bool?) ?• _menuShowQuemSomos;
+      _menuShowDicas = (menu['dicas'] as bool?) ?• _menuShowDicas;
       _showMobileMenuGrid =
-          (menu['mobileMenuGrid'] as bool?) ?? _showMobileMenuGrid;
+          (menu['mobileMenuGrid'] as bool?) ?• _showMobileMenuGrid;
 
       // dicas (lista de cuidados, garantias, qualidade etc.)
       final dicasRaw = data['dicas'];
@@ -1213,71 +1213,71 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // quem somos
       final quemRaw = data['quemSomos'];
       final Map<String, dynamic> quem = quemRaw is Map
-          ? Map<String, dynamic>.from(quemRaw)
+          • Map<String, dynamic>.from(quemRaw)
           : {};
       _quemSomosTituloCtrl.text =
-          (quem['titulo'] as String?) ?? _quemSomosTituloCtrl.text;
+          (quem['titulo'] as String?) ?• _quemSomosTituloCtrl.text;
       _quemSomosTextoCtrl.text =
-          (quem['texto'] as String?) ?? _quemSomosTextoCtrl.text;
+          (quem['texto'] as String?) ?• _quemSomosTextoCtrl.text;
 
       // SAC
       final sacRaw = data['sac'];
       final Map<String, dynamic> sac = sacRaw is Map
-          ? Map<String, dynamic>.from(sacRaw)
+          • Map<String, dynamic>.from(sacRaw)
           : {};
       final sacWa = _stringFromDynamic(sac['whatsapp']);
-      _sacWhatsappCtrl.text = sacWa == null ? _sacWhatsappCtrl.text : (sacWa.trim().isEmpty ? '' : _extrairApenasDigitos(sacWa));
-      _sacEmailCtrl.text = (sac['email'] as String?) ?? _sacEmailCtrl.text;
+      _sacWhatsappCtrl.text = sacWa == null • _sacWhatsappCtrl.text : (sacWa.trim().isEmpty • '' : _extrairApenasDigitos(sacWa));
+      _sacEmailCtrl.text = (sac['email'] as String?) ?• _sacEmailCtrl.text;
 
       // ✅ CORRIGIDO: Lê de 'rodape' (fonte principal) com fallback em 'links' (retrocompatibilidade)
       final rodapeRaw = data['rodape'];
       final Map<String, dynamic> rodape = rodapeRaw is Map
-          ? Map<String, dynamic>.from(rodapeRaw)
+          • Map<String, dynamic>.from(rodapeRaw)
           : {};
       final linksRaw = data['links'];
       final Map<String, dynamic> links = linksRaw is Map
-          ? Map<String, dynamic>.from(linksRaw)
+          • Map<String, dynamic>.from(linksRaw)
           : {};
       _instagramCtrl.text =
-          (rodape['instagram'] as String?) ?? (links['instagram'] as String?) ?? _instagramCtrl.text;
+          (rodape['instagram'] as String?) ?• (links['instagram'] as String?) ?• _instagramCtrl.text;
       _facebookCtrl.text =
-          (rodape['facebook'] as String?) ?? (links['facebook'] as String?) ?? _facebookCtrl.text;
+          (rodape['facebook'] as String?) ?• (links['facebook'] as String?) ?• _facebookCtrl.text;
       _tiktokCtrl.text =
-          (rodape['tiktok'] as String?) ?? _tiktokCtrl.text;
+          (rodape['tiktok'] as String?) ?• _tiktokCtrl.text;
       _telegramCtrl.text =
-          (rodape['telegram'] as String?) ?? _telegramCtrl.text;
+          (rodape['telegram'] as String?) ?• _telegramCtrl.text;
       _kwaiCtrl.text =
-          (rodape['kwai'] as String?) ?? _kwaiCtrl.text;
+          (rodape['kwai'] as String?) ?• _kwaiCtrl.text;
       _linkedinCtrl.text =
-          (rodape['linkedin'] as String?) ?? _linkedinCtrl.text;
+          (rodape['linkedin'] as String?) ?• _linkedinCtrl.text;
       _emailRodapeCtrl.text =
-          (rodape['email'] as String?) ?? _emailRodapeCtrl.text;
+          (rodape['email'] as String?) ?• _emailRodapeCtrl.text;
       final rodapeWa = _stringFromDynamic(rodape['whatsapp']);
-      _whatsappRodapeCtrl.text = rodapeWa == null ? _whatsappRodapeCtrl.text : (rodapeWa.trim().isEmpty ? '' : _extrairApenasDigitos(rodapeWa));
-      _sobreCtrl.text = (rodape['sobre'] as String?) ?? (links['sobre'] as String?) ?? _sobreCtrl.text;
-      _trocasCtrl.text = (rodape['trocas'] as String?) ?? (links['trocas'] as String?) ?? _trocasCtrl.text;
-      _loginCtrl.text = (rodape['login'] as String?) ?? (links['login'] as String?) ?? _loginCtrl.text;
-      _razaoCtrl.text = (rodape['razao'] as String?) ?? _razaoCtrl.text;
-      _cnpjCtrl.text = (rodape['cnpj'] as String?) ?? _cnpjCtrl.text;
+      _whatsappRodapeCtrl.text = rodapeWa == null • _whatsappRodapeCtrl.text : (rodapeWa.trim().isEmpty • '' : _extrairApenasDigitos(rodapeWa));
+      _sobreCtrl.text = (rodape['sobre'] as String?) ?• (links['sobre'] as String?) ?• _sobreCtrl.text;
+      _trocasCtrl.text = (rodape['trocas'] as String?) ?• (links['trocas'] as String?) ?• _trocasCtrl.text;
+      _loginCtrl.text = (rodape['login'] as String?) ?• (links['login'] as String?) ?• _loginCtrl.text;
+      _razaoCtrl.text = (rodape['razao'] as String?) ?• _razaoCtrl.text;
+      _cnpjCtrl.text = (rodape['cnpj'] as String?) ?• _cnpjCtrl.text;
 
       _payments
         ..clear()
         ..addAll(
-            ((rodape['payments'] as List?) ?? []).map((e) => e.toString()));
+            ((rodape['payments'] as List?) ?• []).map((e) => e.toString()));
 
       // Taxas financeiras (Relatórios Financeiros e Financeiro & Metas)
       final taxasRaw = data['taxas'];
       if (taxasRaw is Map) {
         final taxas = Map<String, dynamic>.from(taxasRaw);
-        _taxaCartaoCtrl.text = (_doubleFrom(taxas['cartao']) ?? 5.0).toString();
-        _taxaMEICtrl.text = (_doubleFrom(taxas['mei']) ?? 3.5).toString();
-        _custosFixosCtrl.text = (_doubleFrom(taxas['custosFixos']) ?? 10.0).toString();
-        _custoEmbalagemCtrl.text = (_doubleFrom(taxas['embalagem']) ?? 3.0).toString();
+        _taxaCartaoCtrl.text = (_doubleFrom(taxas['cartao']) ?• 5.0).toString();
+        _taxaMEICtrl.text = (_doubleFrom(taxas['mei']) ?• 3.5).toString();
+        _custosFixosCtrl.text = (_doubleFrom(taxas['custosFixos']) ?• 10.0).toString();
+        _custoEmbalagemCtrl.text = (_doubleFrom(taxas['embalagem']) ?• 3.0).toString();
       }
     });
   }
 
-  double? _doubleFrom(dynamic v) {
+  double• _doubleFrom(dynamic v) {
     if (v == null) return null;
     if (v is num) return v.toDouble();
     if (v is String) return double.tryParse(v.replaceAll(',', '.'));
@@ -1313,7 +1313,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final names = <String>{};
       for (final d in snap.docs) {
         final m = d.data();
-        final c = (m['categoria'] ?? m['categoria_nome'] ?? '').toString().trim();
+        final c = (m['categoria'] ?• m['categoria_nome'] ?• '').toString().trim();
         if (c.isNotEmpty) names.add(c);
       }
       if (!mounted) return;
@@ -1326,9 +1326,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   void _upsertCategoryImageConfig() {
-    final selected = _catSelectedFromStore?.trim() ?? '';
+    final selected = _catSelectedFromStore?.trim() ?• '';
     final categoryName =
-        selected.isNotEmpty ? selected : _catImgCategoriaCtrl.text.trim();
+        selected.isNotEmpty • selected : _catImgCategoriaCtrl.text.trim();
     final categoryId = _catImgCategoriaIdCtrl.text.trim();
     final imageUrl = _catImgUrlCtrl.text.trim();
     if (categoryName.isEmpty || imageUrl.isEmpty) return;
@@ -1360,8 +1360,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     final pedidoBaseRaw = _pedidoBaseCtrl.text.trim();
     final pedidoBaseUrl = pedidoBaseRaw.isEmpty
-        ? ''
-        : (pedidoBaseRaw.contains('://') ? pedidoBaseRaw : 'https://$pedidoBaseRaw');
+        • ''
+        : (pedidoBaseRaw.contains('://') • pedidoBaseRaw : 'https://$pedidoBaseRaw');
 
     final linkCurto = _linkCurtoCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
     final subMascara = _subdominioMascaraCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '');
@@ -1370,17 +1370,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       'slug': slugFinal, // ✅ SLUG AMIGÁVEL para URL pública
       if (linkCurto.isNotEmpty) 'linkCurto': linkCurto, // ✅ Link curto: app.mastepalm.com.br/c/{linkCurto}
       if (subMascara.isNotEmpty) 'subdominioMascara': subMascara,
-      if (subMascara.isNotEmpty) 'subdominioDominioBase': subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br',
+      if (subMascara.isNotEmpty) 'subdominioDominioBase': subDominio.isNotEmpty • subDominio : 'mastepalm.com.br',
       'lojaId': storeId,
       'nome': _nomeCtrl.text.trim(),
       'whatsapp': () {
         final t = _waCtrl.text.trim();
         final digits = _extrairApenasDigitos(t);
-        return digits.isNotEmpty ? digits : t;
+        return digits.isNotEmpty • digits : t;
       }(),
       'pedidoBaseUrl': pedidoBaseUrl,
       'layoutPreset':
-          _layoutPreset != null ? _presetToString(_layoutPreset!) : null,
+          _layoutPreset != null • _presetToString(_layoutPreset!) : null,
       
       // ✅ CORRIGIDO: Salva em 'theme' (igual ao que o public_catalog lê)
       // Salva como int (mais compatível e eficiente)
@@ -1478,7 +1478,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       },
       'minimalSearch': {
         'placeholder': _minimalSearchPlaceholderCtrl.text.trim().isEmpty
-            ? 'O que você está procurando?'
+            • 'O que você está procurando?'
             : _minimalSearchPlaceholderCtrl.text.trim(),
         'height': 44,
         'radius': 10,
@@ -1535,9 +1535,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       'minimalBestSellers': {
         'enabled': _minimalBestSellersEnabled,
         'title': _minimalBestSellersTitleCtrl.text.trim().isEmpty
-            ? 'Mais vendidos'
+            • 'Mais vendidos'
             : _minimalBestSellersTitleCtrl.text.trim(),
-        'count': int.tryParse(_minimalBestSellersCountCtrl.text.trim()) ?? 10,
+        'count': int.tryParse(_minimalBestSellersCountCtrl.text.trim()) ?• 10,
       },
 
       // ✅ CORRIGIDO: Estrutura media.desktop / media.mobile (igual ao que o public_catalog lê)
@@ -1641,7 +1641,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   /// Extrai apenas dígitos (0-9) do valor. Usado para normalizar WhatsApp.
-  static String _extrairApenasDigitos(String? v) {
+  static String _extrairApenasDigitos(String• v) {
     if (v == null || v.isEmpty) return '';
     // Remove tudo que não seja dígito ASCII (evita unicode, espaços especiais, etc)
     return v.replaceAll(RegExp(r'[^0-9]'), '');
@@ -1649,17 +1649,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   /// Valida WhatsApp E.164: aceita 10 a 15 dígitos (Brasil: 55+DDD+número).
   /// Aceita formatação: 5511999999999, 55 11 99999-9999, +55 33 99994-5282, etc.
-  bool _validarWhatsApp(String? v) {
+  bool _validarWhatsApp(String• v) {
     if (v == null || v.trim().isEmpty) return true;
     final nums = _extrairApenasDigitos(v.trim());
     return nums.length >= 10 && nums.length <= 15;
   }
 
   /// Valida URL (opcional - vazio é ok). Aceita URL sem esquema (ex: app.mastepalm.com.br/pedido).
-  bool _validarUrl(String? v) {
+  bool _validarUrl(String• v) {
     if (v == null || v.trim().isEmpty) return true;
     final s = v.trim();
-    final toParse = s.contains('://') ? s : 'https://$s';
+    final toParse = s.contains('://') • s : 'https://$s';
     final uri = Uri.tryParse(toParse);
     return uri != null && (uri.hasScheme && (uri.host.isNotEmpty || uri.hasAbsolutePath));
   }
@@ -1703,7 +1703,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   /// Validação extra antes de publicar (requisitos mínimos)
-  List<String>? _validarAntesDePublicar() {
+  List<String>• _validarAntesDePublicar() {
     final r = _validarAntesDeSalvar();
     if (r.erros.isNotEmpty) return r.erros;
     final avisos = <String>[];
@@ -1713,7 +1713,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (_logoUrlDesktop == null && _logoUrlMobile == null) {
       avisos.add('Adicione pelo menos uma logo (desktop ou mobile).');
     }
-    return avisos.isEmpty ? null : avisos;
+    return avisos.isEmpty • null : avisos;
   }
 
   Future<bool> _syncAndValidateLojaAtiva() async {
@@ -1803,8 +1803,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         logD('💾💾💾 [CONFIG] SALVANDO RASCUNHO 💾💾💾');
         logD('=' * 80);
         logD('Loja: $loja');
-        logD('Logo Desktop: ${_logoUrlDesktop ?? "VAZIO"}');
-        logD('Logo Mobile: ${_logoUrlMobile ?? "VAZIO"}');
+        logD('Logo Desktop: ${_logoUrlDesktop ?• "VAZIO"}');
+        logD('Logo Mobile: ${_logoUrlMobile ?• "VAZIO"}');
         logD('Banners Desktop (${_bannersDesktop.length}): $_bannersDesktop');
         logD('Banners Mobile (${_bannersMobile.length}): $_bannersMobile');
         logD('-' * 80);
@@ -1853,15 +1853,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final results = await SyncFirestoreScript.syncTudo();
       if (!mounted) return;
       if (results['success'] == true) {
-        final p = results['produtos'] as Map<String, int>? ?? {};
-        final c = results['clientes'] as Map<String, int>? ?? {};
+        final p = results['produtos'] as Map<String, int>• ?• {};
+        final c = results['clientes'] as Map<String, int>• ?• {};
         _snack(
-          'Sincronizado: ${p['synced'] ?? 0} produtos, ${c['synced'] ?? 0} clientes',
+          'Sincronizado: ${p['synced'] ?• 0} produtos, ${c['synced'] ?• 0} clientes',
           isError: false,
         );
       } else {
         final err = results['errors'] as List<dynamic>?;
-        _snack(err != null && err.isNotEmpty ? err.first.toString() : 'Erro na sincronização', isError: true);
+        _snack(err != null && err.isNotEmpty • err.first.toString() : 'Erro na sincronização', isError: true);
       }
     } catch (e) {
       if (mounted) _snack('Erro ao sincronizar: $e', isError: true);
@@ -1953,7 +1953,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final avisos = <String>[];
     if (_nomeCtrl.text.trim().isEmpty) avisos.add('Informe o nome da loja.');
     // ✅ Logo: exige só se nunca publicou (se já tem publicado, será preservado)
-    final temLogoForm = (_logoUrlDesktop ?? '').trim().isNotEmpty || (_logoUrlMobile ?? '').trim().isNotEmpty;
+    final temLogoForm = (_logoUrlDesktop ?• '').trim().isNotEmpty || (_logoUrlMobile ?• '').trim().isNotEmpty;
     if (!temLogoForm) {
       bool temLogoTemPublicada = false;
       try {
@@ -1962,8 +1962,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             .collection('lojas').doc(loja).collection('config').doc('config').get();
         if (liveSnap.exists && liveSnap.data() != null) {
           final live = liveSnap.data()!;
-          final ld = (live['logoDesktopUrl'] ?? live['media']?['desktop']?['logoUrl'])?.toString().trim();
-          final lm = (live['logoMobileUrl'] ?? live['media']?['mobile']?['logoUrl'])?.toString().trim();
+          final ld = (live['logoDesktopUrl'] ?• live['media']?['desktop']?['logoUrl'])?.toString().trim();
+          final lm = (live['logoMobileUrl'] ?• live['media']?['mobile']?['logoUrl'])?.toString().trim();
           temLogoTemPublicada = (ld != null && ld.isNotEmpty) || (lm != null && lm.isNotEmpty);
         }
       } catch (_) {}
@@ -1992,13 +1992,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           final live = liveSnap.data()!;
           data = Map<String, dynamic>.from(data);
 
-          final logoD = (_logoUrlDesktop ?? '').trim();
-          final logoM = (_logoUrlMobile ?? '').trim();
+          final logoD = (_logoUrlDesktop ?• '').trim();
+          final logoM = (_logoUrlMobile ?• '').trim();
           final banD = _bannersDesktop;
           final banM = _bannersMobile;
 
           if (logoD.isEmpty && !_logoDesktopAlterado) {
-            final prev = (live['logoDesktopUrl'] ?? live['media']?['desktop']?['logoUrl'])?.toString().trim();
+            final prev = (live['logoDesktopUrl'] ?• live['media']?['desktop']?['logoUrl'])?.toString().trim();
             if (prev != null && prev.isNotEmpty) {
               data['logoDesktopUrl'] = prev;
               data['media'] ??= {};
@@ -2007,7 +2007,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             }
           }
           if (logoM.isEmpty && !_logoMobileAlterado) {
-            final prev = (live['logoMobileUrl'] ?? live['media']?['mobile']?['logoUrl'])?.toString().trim();
+            final prev = (live['logoMobileUrl'] ?• live['media']?['mobile']?['logoUrl'])?.toString().trim();
             if (prev != null && prev.isNotEmpty) {
               data['logoMobileUrl'] = prev;
               data['media'] ??= {};
@@ -2016,7 +2016,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             }
           }
           if (banD.isEmpty && !_bannersDesktopAlterados) {
-            final prev = (live['bannersDesktop'] ?? live['media']?['desktop']?['banners']);
+            final prev = (live['bannersDesktop'] ?• live['media']?['desktop']?['banners']);
             if (prev is List && prev.isNotEmpty) {
               final list = prev.map((e) => e.toString()).toList();
               data['bannersDesktop'] = list;
@@ -2026,7 +2026,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             }
           }
           if (banM.isEmpty && !_bannersMobileAlterados) {
-            final prev = (live['bannersMobile'] ?? live['media']?['mobile']?['banners']);
+            final prev = (live['bannersMobile'] ?• live['media']?['mobile']?['banners']);
             if (prev is List && prev.isNotEmpty) {
               final list = prev.map((e) => e.toString()).toList();
               data['bannersMobile'] = list;
@@ -2096,23 +2096,23 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final fc = data['frete_config'] as Map<String, dynamic>?;
       if (fc != null) {
         try {
-          final cepO = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString().trim();
-          final pesoEmb = double.tryParse((fc['peso_embalagem'] ?? '50').toString()) ?? 50.0;
+          final cepO = (fc['cep_origem'] ?• fc['cepOrigem'] ?• '').toString().trim();
+          final pesoEmb = double.tryParse((fc['peso_embalagem'] ?• '50').toString()) ?• 50.0;
           final fretesDoc = <String, dynamic>{
-            'provider': (fc['provider'] ?? 'manual').toString(),
+            'provider': (fc['provider'] ?• 'manual').toString(),
             'cepOrigem': cepO,
             'pesoEmbalagem': pesoEmb,
-            'melhorEnvio': {'token': (fc['melhor_envio_token'] ?? '').toString().trim()},
+            'melhorEnvio': {'token': (fc['melhor_envio_token'] ?• '').toString().trim()},
             'superfrete': {
-              'token': (fc['superfrete_token'] ?? '').toString().trim(),
+              'token': (fc['superfrete_token'] ?• '').toString().trim(),
               'sandbox': fc['superfrete_sandbox'] == true,
             },
             'correios': {
-              'usuario': (fc['correios_user'] ?? '').toString().trim(),
-              'senha': (fc['correios_senha'] ?? '').toString().trim(),
+              'usuario': (fc['correios_user'] ?• '').toString().trim(),
+              'senha': (fc['correios_senha'] ?• '').toString().trim(),
             },
-            'frenet': {'token': (fc['frenet_token'] ?? '').toString().trim()},
-            'manualFretes': (data['fretes'] is List) ? data['fretes'] as List : [],
+            'frenet': {'token': (fc['frenet_token'] ?• '').toString().trim()},
+            'manualFretes': (data['fretes'] is List) • data['fretes'] as List : [],
             'updatedAt': FieldValue.serverTimestamp(),
           };
           await lojaDoc.collection('config').doc('fretes').set(fretesDoc, SetOptions(merge: true));
@@ -2123,10 +2123,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       }
 
       // 3) Espelha no doc raiz (com slug amigável, link curto e máscara de subdomínio)
-      final slugFinal = data['slug'] ?? loja;
-      final linkCurto = (data['linkCurto'] ?? '').toString().trim().toLowerCase();
-      final subMascara = (data['subdominioMascara'] ?? '').toString().trim().toLowerCase();
-      final subDominio = (data['subdominioDominioBase'] ?? 'mastepalm.com.br').toString().trim().toLowerCase();
+      final slugFinal = data['slug'] ?• loja;
+      final linkCurto = (data['linkCurto'] ?• '').toString().trim().toLowerCase();
+      final subMascara = (data['subdominioMascara'] ?• '').toString().trim().toLowerCase();
+      final subDominio = (data['subdominioDominioBase'] ?• 'mastepalm.com.br').toString().trim().toLowerCase();
       final updateData = <String, dynamic>{
         'slug': slugFinal,
         'lojaId': loja,
@@ -2137,7 +2137,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       if (linkCurto.isNotEmpty) updateData['linkCurto'] = linkCurto;
       if (subMascara.isNotEmpty) {
         updateData['subdominioMascara'] = subMascara;
-        updateData['subdominioDominioBase'] = subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br';
+        updateData['subdominioDominioBase'] = subDominio.isNotEmpty • subDominio : 'mastepalm.com.br';
       }
       await lojaDoc.set(updateData, SetOptions(merge: true));
 
@@ -2185,7 +2185,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   // ================= PRESETS DE TEMA =================
 
-  _LayoutPreset? _presetFromString(String s) {
+  _LayoutPreset• _presetFromString(String s) {
     switch (s) {
       case 'masterPadrao':
         return _LayoutPreset.masterPadrao;
@@ -2373,7 +2373,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         content: Row(
           children: [
             Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
+              isError • Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
             ),
@@ -2381,7 +2381,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             Expanded(child: Text(message)),
           ],
         ),
-        backgroundColor: isError ? _errorColor : _successColor,
+        backgroundColor: isError • _errorColor : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
@@ -2437,7 +2437,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  _mensagemErro.isNotEmpty ? _mensagemErro : 'Verifique sua conexão e tente novamente.',
+                  _mensagemErro.isNotEmpty • _mensagemErro : 'Verifique sua conexão e tente novamente.',
                   style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   textAlign: TextAlign.center,
                 ),
@@ -2465,7 +2465,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     }
 
     final publicBase =
-        (_configBox.get('public_base_url') ?? 'https://app.mastepalm.com.br')
+        (_configBox.get('public_base_url') ?• 'https://app.mastepalm.com.br')
             .toString();
 
     final lojaAtiva = _activeStoreId();
@@ -2485,7 +2485,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     final linkCurto = _linkCurtoCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
     final urlPublica = linkCurto.isNotEmpty
-        ? '$publicBase/c/$linkCurto'
+        • '$publicBase/c/$linkCurto'
         : '$publicBase/loja/$slugParaUrl';
 
     final isWide = MediaQuery.of(context).size.width >= 980;
@@ -2531,9 +2531,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     ),
                   ),
                 IconButton(
-                  icon: Icon(Icons.save_outlined, color: isDark ? cs.primary : Colors.white),
+                  icon: Icon(Icons.save_outlined, color: isDark • cs.primary : Colors.white),
                   tooltip: 'Salvar',
-                  onPressed: _salvando ? null : _salvarRascunho,
+                  onPressed: _salvando • null : _salvarRascunho,
                 ),
                 if (_sincronizando)
                   const Padding(
@@ -2549,19 +2549,19 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   )
                 else
                   IconButton(
-                    icon: Icon(Icons.cloud_sync_outlined, color: isDark ? cs.primary : Colors.white),
+                    icon: Icon(Icons.cloud_sync_outlined, color: isDark • cs.primary : Colors.white),
                     tooltip: 'Sincronizar dados',
                     onPressed: _sincronizarTudo,
                   ),
                 IconButton(
-                  icon: Icon(Icons.cloud_upload_outlined, color: isDark ? cs.primary : Colors.white),
+                  icon: Icon(Icons.cloud_upload_outlined, color: isDark • cs.primary : Colors.white),
                   tooltip: 'Publicar (salva e publica)',
-                  onPressed: _salvando ? null : _publicarTudo,
+                  onPressed: _salvando • null : _publicarTudo,
                 ),
                 IconButton(
-                  icon: Icon(Icons.visibility_outlined, color: isDark ? cs.primary : Colors.white),
+                  icon: Icon(Icons.visibility_outlined, color: isDark • cs.primary : Colors.white),
                   tooltip: 'Pré-visualizar',
-                  onPressed: _salvando ? null : _abrirPreviewCatalogo,
+                  onPressed: _salvando • null : _abrirPreviewCatalogo,
                 ),
                 const SizedBox(width: 8),
               ],
@@ -2784,8 +2784,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
   }
 
-  Widget _buildUrlCard(String urlPublica, {String? label, String? subtitle}) {
-    final displayLabel = label ?? 'URL pública da sua loja';
+  Widget _buildUrlCard(String urlPublica, {String• label, String• subtitle}) {
+    final displayLabel = label ?• 'URL pública da sua loja';
     final displaySubtitle = subtitle;
     return Container(
       decoration: BoxDecoration(
@@ -2810,7 +2810,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                displaySubtitle != null ? Icons.lightbulb_outline : Icons.link,
+                displaySubtitle != null • Icons.lightbulb_outline : Icons.link,
                 color: _primaryColor,
               ),
             ),
@@ -3020,15 +3020,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
-                elevation: isExpanded ? 2 : 0,
+                elevation: isExpanded • 2 : 0,
                 color: cs.surfaceContainerHighest,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(
                     color: isExpanded
-                        ? _primaryColor
+                        • _primaryColor
                         : cs.outlineVariant,
-                    width: isExpanded ? 2 : 1,
+                    width: isExpanded • 2 : 1,
                   ),
                 ),
                 child: ExpansionTile(
@@ -3047,19 +3047,19 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                       color: isExpanded
-                          ? _primaryColor
+                          • _primaryColor
                           : cs.surfaceContainerHigh,
                     ),
                     child: Icon(
                       item['icon'] as IconData,
-                      color: isExpanded ? Colors.white : cs.onSurfaceVariant,
+                      color: isExpanded • Colors.white : cs.onSurfaceVariant,
                     ),
                   ),
                   title: Text(
                     item['label'] as String,
                     style: TextStyle(
-                      fontWeight: isExpanded ? FontWeight.w700 : FontWeight.w600,
-                      color: isExpanded ? _primaryColor : cs.onSurface,
+                      fontWeight: isExpanded • FontWeight.w700 : FontWeight.w600,
+                      color: isExpanded • _primaryColor : cs.onSurface,
                     ),
                   ),
                   subtitle: Text(
@@ -3134,11 +3134,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   InputDecoration _inputDecoration(
     BuildContext context, {
     required String labelText,
-    String? helperText,
-    int? helperMaxLines,
-    String? errorText,
-    Widget? prefixIcon,
-    InputBorder? errorBorder,
+    String• helperText,
+    int• helperMaxLines,
+    String• errorText,
+    Widget• prefixIcon,
+    InputBorder• errorBorder,
   }) {
     final cs = Theme.of(context).colorScheme;
     return InputDecoration(
@@ -3189,23 +3189,23 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               Container(
                 decoration: BoxDecoration(
                   color: _campanhaAtiva
-                      ? Colors.purple.shade50
+                      • Colors.purple.shade50
                       : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: _campanhaAtiva
-                        ? Colors.purple.shade300
+                        • Colors.purple.shade300
                         : Colors.grey.shade300,
                   ),
                 ),
                 child: SwitchListTile(
                   value: _campanhaAtiva,
-                  onChanged: _salvando ? null : _toggleCampanhaAtiva,
+                  onChanged: _salvando • null : _toggleCampanhaAtiva,
                   title: Row(
                     children: [
                       Icon(
                         Icons.campaign,
-                        color: _campanhaAtiva ? Colors.purple : Colors.grey,
+                        color: _campanhaAtiva • Colors.purple : Colors.grey,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -3218,12 +3218,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                             ),
                             Text(
                               _campanhaAtiva
-                                  ? 'Ativa: ${_campanhaAtivaNome ?? "Campanha"}'
+                                  • 'Ativa: ${_campanhaAtivaNome ?• "Campanha"}'
                                   : 'Nenhuma campanha ativa',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: _campanhaAtiva
-                                    ? Colors.purple.shade700
+                                    • Colors.purple.shade700
                                     : Colors.grey,
                               ),
                             ),
@@ -3240,23 +3240,23 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               Container(
                 decoration: BoxDecoration(
                   color: _roletaAtiva
-                      ? Colors.amber.shade50
+                      • Colors.amber.shade50
                       : Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: _roletaAtiva
-                        ? Colors.amber.shade300
+                        • Colors.amber.shade300
                         : Colors.grey.shade300,
                   ),
                 ),
                 child: SwitchListTile(
                   value: _roletaAtiva,
-                  onChanged: _salvando ? null : _toggleRoletaAtiva,
+                  onChanged: _salvando • null : _toggleRoletaAtiva,
                   title: Row(
                     children: [
                       Icon(
                         Icons.casino,
-                        color: _roletaAtiva ? Colors.amber.shade700 : Colors.grey,
+                        color: _roletaAtiva • Colors.amber.shade700 : Colors.grey,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -3269,12 +3269,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                             ),
                             Text(
                               _roletaAtiva
-                                  ? 'Ativa - clientes giram após compra'
+                                  • 'Ativa - clientes giram após compra'
                                   : 'Desativada',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: _roletaAtiva
-                                    ? Colors.amber.shade700
+                                    • Colors.amber.shade700
                                     : Colors.grey,
                               ),
                             ),
@@ -3325,7 +3325,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   backgroundColor: Colors.deepPurple,
                   minimumSize: const Size(double.infinity, 56),
                 ),
-                onPressed: _salvando ? null : _publicarTudo,
+                onPressed: _salvando • null : _publicarTudo,
                 icon: const Icon(Icons.publish, size: 28),
                 label: const Text(
                   'PUBLICAR CATÁLOGO (TORNAR VISÍVEL)',
@@ -3429,7 +3429,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             decoration: _inputDecoration(
               context,
               labelText: 'Slug (URL amigável)',
-              helperText: 'Ex.: nathy_pratas_e_folheados\nURL: ${_configBox.get('public_base_url') ?? 'https://app.mastepalm.com.br'}/loja/${_slugCtrl.text.isNotEmpty ? _slugCtrl.text : 'seu-slug'}',
+              helperText: 'Ex.: nathy_pratas_e_folheados\nURL: ${_configBox.get('public_base_url') ?• 'https://app.mastepalm.com.br'}/loja/${_slugCtrl.text.isNotEmpty • _slugCtrl.text : 'seu-slug'}',
               helperMaxLines: 2,
               prefixIcon: const Icon(Icons.link),
             ),
@@ -3529,7 +3529,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               builder: (context) {
                 final m = _subdominioMascaraCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '');
                 final d = _subdominioDominioBaseCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9.-]'), '');
-                final dominio = d.isNotEmpty ? d : 'mastepalm.com.br';
+                final dominio = d.isNotEmpty • d : 'mastepalm.com.br';
                 return Text(
                   'URL com máscara: https://$m.$dominio',
                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
@@ -3560,7 +3560,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     labelText: 'WhatsApp do vendedor (E.164)',
                     helperText: 'Ex.: 5533999998888 (10 a 15 dígitos)',
                     errorText: _camposComErro.contains('whatsapp')
-                        ? 'Use 10 a 15 dígitos'
+                        • 'Use 10 a 15 dígitos'
                         : null,
                     prefixIcon: const Icon(Icons.phone_iphone),
                   ),
@@ -3580,7 +3580,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     labelText: 'Link base do pedido',
                     helperText: 'Ex.: https://app.mastepalm.com.br/pedido',
                     errorText: _camposComErro.contains('pedido_base')
-                        ? 'URL inválida'
+                        • 'URL inválida'
                         : null,
                     prefixIcon: const Icon(Icons.shopping_cart_checkout_outlined),
                   ),
@@ -3658,8 +3658,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     final isDesktop = _mediaTab == _MediaTab.desktop;
 
-    final logoUrl = isDesktop ? _logoUrlDesktop : _logoUrlMobile;
-    final banners = isDesktop ? _bannersDesktop : _bannersMobile;
+    final logoUrl = isDesktop • _logoUrlDesktop : _logoUrlMobile;
+    final banners = isDesktop • _bannersDesktop : _bannersMobile;
 
     return Column(
       children: [
@@ -3685,7 +3685,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               const SizedBox(width: 8),
               Text(
                 isDesktop
-                    ? 'Banner recomendado: 1280×256  |  Logo: 105×327 (A×L)'
+                    • 'Banner recomendado: 1280×256  |  Logo: 105×327 (A×L)'
                     : 'Banner recomendado: 562×300  |  Logo: 105×327 (A×L)',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
@@ -3702,14 +3702,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             children: [
               ElevatedButton.icon(
                 onPressed:
-                    _salvando ? null : () => _trocarLogo(desktop: isDesktop),
+                    _salvando • null : () => _trocarLogo(desktop: isDesktop),
                 icon: const Icon(Icons.photo),
                 label: const Text('Enviar logo'),
               ),
               OutlinedButton.icon(
                 onPressed: _salvando ||
                         (logoUrl == null || logoUrl.isEmpty)
-                    ? null
+                    • null
                     : () => _removerLogo(desktop: isDesktop),
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('Remover'),
@@ -3722,7 +3722,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               height: 64,
               alignment: Alignment.centerLeft,
               child: (logoUrl == null || logoUrl.isEmpty)
-                  ? const Text('Nenhuma logo enviada ainda')
+                  • const Text('Nenhuma logo enviada ainda')
                   : Image(
                       image: mpImageProvider(logoUrl),
                       height: 64,
@@ -3737,8 +3737,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   preview,
                   const SizedBox(height: 12),
                   dimRow(
-                    h: isDesktop ? _dLogoH : _mLogoH,
-                    w: isDesktop ? _dLogoW : _mLogoW,
+                    h: isDesktop • _dLogoH : _mLogoH,
+                    w: isDesktop • _dLogoW : _mLogoW,
                   ),
                 ],
               );
@@ -3751,8 +3751,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 SizedBox(
                   width: 360,
                   child: dimRow(
-                    h: isDesktop ? _dLogoH : _mLogoH,
-                    w: isDesktop ? _dLogoW : _mLogoW,
+                    h: isDesktop • _dLogoH : _mLogoH,
+                    w: isDesktop • _dLogoW : _mLogoW,
                   ),
                 ),
               ],
@@ -3771,13 +3771,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               SizedBox(
                 width: 260,
                 child: dimRow(
-                  h: isDesktop ? _dBanH : _mBanH,
-                  w: isDesktop ? _dBanW : _mBanW,
+                  h: isDesktop • _dBanH : _mBanH,
+                  w: isDesktop • _dBanW : _mBanW,
                 ),
               ),
               ElevatedButton.icon(
                 onPressed: _salvando
-                    ? null
+                    • null
                     : () => _adicionarBanners(desktop: isDesktop),
                 icon: const Icon(Icons.add_photo_alternate),
                 label: const Text('Adicionar'),
@@ -3785,7 +3785,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
           child: banners.isEmpty
-              ? const Text(
+              • const Text(
                   'Nenhum banner adicionado ainda. Envie pelo menos 1 para deixar seu catálogo mais profissional.',
                   style: TextStyle(color: Colors.black54),
                 )
@@ -3814,7 +3814,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                               top: 4,
                               child: InkWell(
                                 onTap: _salvando
-                                    ? null
+                                    • null
                                     : () => _removerBanner(
                                           desktop: isDesktop,
                                           url: url,
@@ -4954,7 +4954,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               DropdownButtonFormField<String>(
                 initialValue: (_catSelectedFromStore != null &&
                         _knownCategoryNames.contains(_catSelectedFromStore))
-                    ? _catSelectedFromStore
+                    • _catSelectedFromStore
                     : null,
                 items: _knownCategoryNames
                     .map((c) => DropdownMenuItem<String>(
@@ -5031,7 +5031,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
                             leading: e.value.trim().isEmpty
-                                ? const Icon(Icons.image_not_supported_outlined)
+                                • const Icon(Icons.image_not_supported_outlined)
                                 : ClipRRect(
                                     borderRadius: BorderRadius.circular(6),
                                     child: Image(
@@ -5326,13 +5326,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       children: List.generate(cols, (i) {
         return Expanded(
           child: Container(
-            margin: EdgeInsets.only(right: i == cols - 1 ? 0 : 8),
+            margin: EdgeInsets.only(right: i == cols - 1 • 0 : 8),
             height: 64,
             decoration: BoxDecoration(
               color: _cCard,
               borderRadius: BorderRadius.circular(borderRadius),
               boxShadow: showShadow
-                  ? [
+                  • [
                       BoxShadow(
                         color: Colors.black.withValues(alpha:0.25),
                         blurRadius: 10,
@@ -5539,7 +5539,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                       helperText:
                           'Ex: 5533999999999 - Se vazio, será usado o mesmo WhatsApp do vendedor.',
                       errorText: _camposComErro.contains('sac_whatsapp')
-                          ? 'Use 10 a 15 dígitos'
+                          • 'Use 10 a 15 dígitos'
                           : null,
                       border: const OutlineInputBorder(),
                       errorBorder: OutlineInputBorder(
@@ -5604,10 +5604,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final d = _dicas[index];
-              final titulo = (d['titulo'] ?? '').toString().trim();
-              final tipo = (d['tipo'] ?? 'informacoes').toString();
-              final tipoLabel = _dicaTipos.where((e) => e.key == tipo).map((e) => e.value).firstOrNull ?? tipo;
-              final bannerUrl = (d['bannerUrl'] ?? d['banner_url'] ?? '').toString().trim();
+              final titulo = (d['titulo'] ?• '').toString().trim();
+              final tipo = (d['tipo'] ?• 'informacoes').toString();
+              final tipoLabel = _dicaTipos.where((e) => e.key == tipo).map((e) => e.value).firstOrNull ?• tipo;
+              final bannerUrl = (d['bannerUrl'] ?• d['banner_url'] ?• '').toString().trim();
               return Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -5617,7 +5617,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   leading: bannerUrl.isNotEmpty
-                      ? ClipRRect(
+                      • ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: SizedBox(
                             width: 56,
@@ -5639,7 +5639,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           child: const Icon(Icons.lightbulb_outline, color: _primaryColor),
                         ),
                   title: Text(
-                    titulo.isEmpty ? '(Sem título)' : titulo,
+                    titulo.isEmpty • '(Sem título)' : titulo,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w600),
@@ -5694,16 +5694,16 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     await _showDicaDialog(context, _dicas[index], index: index);
   }
 
-  Future<void> _showDicaDialog(BuildContext context, Map<String, dynamic>? initial, {int? index}) async {
-    final tituloCtrl = TextEditingController(text: initial?['titulo']?.toString() ?? '');
-    final conteudoCtrl = TextEditingController(text: initial?['conteudo']?.toString() ?? '');
-    final bannerUrlCtrl = TextEditingController(text: initial?['bannerUrl'] ?? initial?['banner_url'] ?? '');
+  Future<void> _showDicaDialog(BuildContext context, Map<String, dynamic>• initial, {int• index}) async {
+    final tituloCtrl = TextEditingController(text: initial?['titulo']?.toString() ?• '');
+    final conteudoCtrl = TextEditingController(text: initial?['conteudo']?.toString() ?• '');
+    final bannerUrlCtrl = TextEditingController(text: initial?['bannerUrl'] ?• initial?['banner_url'] ?• '');
     final ordemCtrl = TextEditingController(
-      text: '${(initial?['ordem'] is int) ? (initial!['ordem'] as int) : (int.tryParse('${initial?['ordem']}') ?? 0)}',
+      text: '${(initial?['ordem'] is int) • (initial!['ordem'] as int) : (int.tryParse('${initial?['ordem']}') ?• 0)}',
     );
-    var tipo = (initial?['tipo'] ?? 'informacoes').toString().trim();
+    var tipo = (initial?['tipo'] ?• 'informacoes').toString().trim();
     if (tipo.isEmpty) tipo = 'informacoes';
-    var ativo = (initial?['ativo'] as bool?) ?? true;
+    var ativo = (initial?['ativo'] as bool?) ?• true;
 
     final updated = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -5711,7 +5711,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         return StatefulBuilder(
           builder: (ctx, setDialogState) {
             return AlertDialog(
-              title: Text(index != null ? 'Editar dica' : 'Adicionar dica'),
+              title: Text(index != null • 'Editar dica' : 'Adicionar dica'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -5735,7 +5735,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                       items: _dicaTipos
                           .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
                           .toList(),
-                      onChanged: (v) => setDialogState(() => tipo = v ?? 'informacoes'),
+                      onChanged: (v) => setDialogState(() => tipo = v ?• 'informacoes'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -5817,16 +5817,16 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 ),
                 FilledButton(
                   onPressed: () {
-                    final id = index != null && initial != null && (initial['id'] ?? '').toString().isNotEmpty
-                        ? (initial['id']!).toString()
+                    final id = index != null && initial != null && (initial['id'] ?• '').toString().isNotEmpty
+                        • (initial['id']!).toString()
                         : DateTime.now().millisecondsSinceEpoch.toString();
                     Navigator.pop(ctx, {
                       'id': id,
                       'titulo': tituloCtrl.text.trim(),
                       'tipo': tipo,
                       'conteudo': conteudoCtrl.text.trim(),
-                      'bannerUrl': bannerUrlCtrl.text.trim().isEmpty ? null : bannerUrlCtrl.text.trim(),
-                      'ordem': int.tryParse(ordemCtrl.text.trim()) ?? 0,
+                      'bannerUrl': bannerUrlCtrl.text.trim().isEmpty • null : bannerUrlCtrl.text.trim(),
+                      'ordem': int.tryParse(ordemCtrl.text.trim()) ?• 0,
                       'ativo': ativo,
                     });
                   },
@@ -5987,7 +5987,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           child: LayoutBuilder(builder: (context, c) {
             final narrow = c.maxWidth < 700;
             final firstRow = narrow
-                ? Column(
+                • Column(
                     children: [
                       TextField(
                         controller: _instagramCtrl,
@@ -6036,7 +6036,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
             // New social media row
             final newSocialRow = narrow
-                ? Column(
+                • Column(
                     children: [
                       TextField(
                         controller: _tiktokCtrl,
@@ -6084,7 +6084,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   );
 
             final thirdSocialRow = narrow
-                ? Column(
+                • Column(
                     children: [
                       TextField(
                         controller: _kwaiCtrl,
@@ -6132,7 +6132,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   );
 
             final secondRow = narrow
-                ? Column(
+                • Column(
                     children: [
                       TextField(
                         controller: _sobreCtrl,
@@ -6206,7 +6206,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 helperText: 'Ex: 5533999999999',
                 helperStyle: const TextStyle(fontSize: 11),
                 errorText: _camposComErro.contains('whatsapp_rodape')
-                    ? 'Use 10 a 15 dígitos'
+                    • 'Use 10 a 15 dígitos'
                     : null,
                 errorBorder: OutlineInputBorder(
                   borderSide: const BorderSide(color: _errorColor, width: 2),
@@ -6349,11 +6349,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (result == null || result.files.isEmpty) return;
 
     final f = result.files.single;
-    final fileName = f.name.isNotEmpty ? f.name : 'logo.png';
+    final fileName = f.name.isNotEmpty • f.name : 'logo.png';
     final ext = _extFromName(fileName);
 
     final storagePath =
-        'lojas/$loja/midias/${desktop ? 'logo_desktop' : 'logo_mobile'}.$ext';
+        'lojas/$loja/midias/${desktop • 'logo_desktop' : 'logo_mobile'}.$ext';
 
     setState(() => _salvando = true);
 
@@ -6406,7 +6406,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   Future<void> _removerLogo({required bool desktop}) async {
     await _syncAndValidateLojaAtiva();
 
-    final urlAtual = desktop ? _logoUrlDesktop : _logoUrlMobile;
+    final urlAtual = desktop • _logoUrlDesktop : _logoUrlMobile;
 
     setState(() {
       if (desktop) {
@@ -6457,8 +6457,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final maxBanners = await guard.maxBanners(null);
     final slotsLeft = maxBanners - currentTotal;
     final filesToUpload = slotsLeft <= 0
-        ? <dynamic>[]
-        : (result.files.length <= slotsLeft ? result.files : result.files.take(slotsLeft).toList());
+        • <dynamic>[]
+        : (result.files.length <= slotsLeft • result.files : result.files.take(slotsLeft).toList());
     if (filesToUpload.isEmpty) {
       _snack('Limite de $maxBanners banners atingido.', isError: true);
       return;
@@ -6473,14 +6473,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final uploadedUrls = <String>[];
 
       for (final f in filesToUpload) {
-        final fileName = f.name.isNotEmpty ? f.name : 'banner.png';
+        final fileName = f.name.isNotEmpty • f.name : 'banner.png';
         final ext = _extFromName(fileName);
 
         final ts = DateTime.now().millisecondsSinceEpoch;
         final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
 
         final storagePath =
-            'lojas/$loja/midias/banners/${desktop ? 'desktop' : 'mobile'}/$ts-$safeName';
+            'lojas/$loja/midias/banners/${desktop • 'desktop' : 'mobile'}/$ts-$safeName';
 
         UploadResult up;
 
@@ -6544,7 +6544,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (result == null || result.files.isEmpty) return null;
     final f = result.files.first;
     try {
-      final fileName = f.name.isNotEmpty ? f.name : 'image.png';
+      final fileName = f.name.isNotEmpty • f.name : 'image.png';
       final ext = _extFromName(fileName);
       final ts = DateTime.now().millisecondsSinceEpoch;
       final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
@@ -6594,7 +6594,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (result == null || result.files.isEmpty) return null;
     final f = result.files.first;
     try {
-      final fileName = f.name.isNotEmpty ? f.name : 'banner.png';
+      final fileName = f.name.isNotEmpty • f.name : 'banner.png';
       final ext = _extFromName(fileName);
       final ts = DateTime.now().millisecondsSinceEpoch;
       final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
@@ -6839,9 +6839,9 @@ class _ImageFieldWithGalleryState extends State<_ImageFieldWithGallery> {
 
 class _Section extends StatelessWidget {
   final String title;
-  final String? subtitle;
+  final String• subtitle;
   final Widget child;
-  final Widget? action;
+  final Widget• action;
 
   const _Section({
     required this.title,
@@ -6929,11 +6929,11 @@ class _PresetChip extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           border: Border.all(
-            color: selected ? Colors.blue.shade700 : Colors.grey.shade300,
-            width: selected ? 2 : 1,
+            color: selected • Colors.blue.shade700 : Colors.grey.shade300,
+            width: selected • 2 : 1,
           ),
           borderRadius: BorderRadius.circular(12),
-          color: selected ? Colors.blue.shade50 : Colors.white,
+          color: selected • Colors.blue.shade50 : Colors.white,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -6942,8 +6942,8 @@ class _PresetChip extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  selected ? Icons.check_circle : Icons.circle_outlined,
-                  color: selected ? Colors.blue.shade700 : Colors.grey.shade400,
+                  selected • Icons.check_circle : Icons.circle_outlined,
+                  color: selected • Colors.blue.shade700 : Colors.grey.shade400,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -6953,7 +6953,7 @@ class _PresetChip extends StatelessWidget {
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      color: selected ? Colors.blue.shade700 : Colors.black87,
+                      color: selected • Colors.blue.shade700 : Colors.black87,
                     ),
                   ),
                 ),

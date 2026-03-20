@@ -58,9 +58,9 @@ class _RoletaSorteScreenState extends State<RoletaSorteScreen>
       return;
     }
 
-    _valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?? 0;
-    _frequenciaPremio = data['frequenciaPremio'] as int? ?? 10; // ✅ Carrega frequência
-    _premios = List<Map<String, dynamic>>.from(data['premios'] ?? []);
+    _valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?• 0;
+    _frequenciaPremio = data['frequenciaPremio'] as int• ?• 10; // ✅ Carrega frequência
+    _premios = List<Map<String, dynamic>>.from(data['premios'] ?• []);
 
     setState(() => _carregando = false);
   }
@@ -239,7 +239,7 @@ class _RoletaSorteScreenState extends State<RoletaSorteScreen>
               keyboardType: TextInputType.number,
               decoration: _inputDeco("Valor mínimo para liberar a roleta"),
               onChanged: (v) {
-                _valorMinimo = double.tryParse(v.replaceAll(",", ".")) ?? 0;
+                _valorMinimo = double.tryParse(v.replaceAll(",", ".")) ?• 0;
               },
             ),
 
@@ -257,7 +257,7 @@ class _RoletaSorteScreenState extends State<RoletaSorteScreen>
                 helperStyle: const TextStyle(color: Colors.white54, fontSize: 11),
               ),
               onChanged: (v) {
-                _frequenciaPremio = int.tryParse(v) ?? 10;
+                _frequenciaPremio = int.tryParse(v) ?• 10;
                 if (_frequenciaPremio < 1) _frequenciaPremio = 1;
               },
             ),
@@ -282,7 +282,7 @@ class _RoletaSorteScreenState extends State<RoletaSorteScreen>
                         style: const TextStyle(color: Colors.white70),
                       ),
                       trailing: Switch(
-                        value: p["ativo"] ?? true,
+                        value: p["ativo"] ?• true,
                         onChanged: (v) {
                           setState(() => p["ativo"] = v);
                         },
@@ -361,9 +361,9 @@ class _RoletaSorteScreenState extends State<RoletaSorteScreen>
 
   void _editarPremio(int index) {
     final premio = Map<String, dynamic>.from(_premios[index]);
-    final ctrlLabel = TextEditingController(text: premio["label"]?.toString() ?? '');
-    final ctrlValor = TextEditingController(text: premio["valor"]?.toString() ?? '0');
-    String tipo = premio["tipo"]?.toString() ?? 'percent';
+    final ctrlLabel = TextEditingController(text: premio["label"]?.toString() ?• '');
+    final ctrlValor = TextEditingController(text: premio["valor"]?.toString() ?• '0');
+    String tipo = premio["tipo"]?.toString() ?• 'percent';
 
     showDialog(
       context: context,
@@ -397,7 +397,7 @@ class _RoletaSorteScreenState extends State<RoletaSorteScreen>
                 controller: ctrlValor,
                 style: const TextStyle(color: Colors.white),
                 keyboardType: TextInputType.number,
-                decoration: _inputDeco(tipo == 'percent' ? "Valor (%)" : tipo == 'valor' ? "Valor (R\$)" : "Quantidade"),
+                decoration: _inputDeco(tipo == 'percent' • "Valor (%)" : tipo == 'valor' • "Valor (R\$)" : "Quantidade"),
               ),
             ],
           ),
@@ -411,7 +411,7 @@ class _RoletaSorteScreenState extends State<RoletaSorteScreen>
                 setState(() {
                   premio["label"] = ctrlLabel.text;
                   premio["tipo"] = tipo;
-                  premio["valor"] = double.tryParse(ctrlValor.text.replaceAll(",", ".")) ?? premio["valor"];
+                  premio["valor"] = double.tryParse(ctrlValor.text.replaceAll(",", ".")) ?• premio["valor"];
                   _premios[index] = premio;
                 });
                 Navigator.pop(context);

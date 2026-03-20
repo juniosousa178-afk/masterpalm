@@ -17,11 +17,11 @@ class FirestoreCriticalListenerService {
   FirestoreCriticalListenerService._();
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
-  static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _produtosSub;
-  static StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _permissoesSub;
-  static String? _produtosLojaId;
-  static Box<Produto>? _produtosBox;
-  static Timer? _syncDebounce;
+  static StreamSubscription<QuerySnapshot<Map<String, dynamic>>>• _produtosSub;
+  static StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>• _permissoesSub;
+  static String• _produtosLojaId;
+  static Box<Produto>• _produtosBox;
+  static Timer• _syncDebounce;
   static const Duration _syncDebounceDelay = Duration(milliseconds: 500);
 
   /// Inicia listener de estoque_produtos para sincronizar Hive quando mudar.
@@ -99,8 +99,8 @@ class FirestoreCriticalListenerService {
   static void startPermissoesListener({
     required String userEmail,
     required String tipoUsuario,
-    String? storeId,
-    String? userUid,
+    String• storeId,
+    String• userUid,
   }) {
     final email = userEmail.trim().toLowerCase();
     if (email.isEmpty) return;

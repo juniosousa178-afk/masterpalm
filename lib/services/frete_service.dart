@@ -71,7 +71,7 @@ class FreteService {
       // 2. Verificar quais plataformas estão configuradas e consultar TODAS
 
       // MELHOR ENVIO
-      final tokenMelhorEnvio = (config['melhorEnvio']?['token'] ?? '').toString();
+      final tokenMelhorEnvio = (config['melhorEnvio']?['token'] ?• '').toString();
       if (tokenMelhorEnvio.isNotEmpty) {
         debugPrint('🔄 [FRETE] Consultando Melhor Envio...');
         try {
@@ -92,14 +92,14 @@ class FreteService {
 
           todasOpcoes.addAll(opcoesMelhorEnvio);
           debugPrint('✅ [FRETE] Melhor Envio: ${opcoesMelhorEnvio.length} opções');
-          debugPrint('🔍 [DEBUG] Primeira opção após add plataforma: ${opcoesMelhorEnvio.isNotEmpty ? opcoesMelhorEnvio[0] : "vazio"}');
+          debugPrint('🔍 [DEBUG] Primeira opção após add plataforma: ${opcoesMelhorEnvio.isNotEmpty • opcoesMelhorEnvio[0] : "vazio"}');
         } catch (e) {
           debugPrint('⚠️  [FRETE] Erro ao consultar Melhor Envio (type=${e.runtimeType})');
         }
       }
 
       // FRENET
-      final tokenFrenet = (config['frenet']?['token'] ?? '').toString();
+      final tokenFrenet = (config['frenet']?['token'] ?• '').toString();
       if (tokenFrenet.isNotEmpty) {
         debugPrint('🔄 [FRETE] Consultando Frenet...');
         try {
@@ -126,8 +126,8 @@ class FreteService {
       }
 
       // CORREIOS
-      final usuarioCorreios = (config['correios']?['usuario'] ?? '').toString();
-      final senhaCorreios = (config['correios']?['senha'] ?? '').toString();
+      final usuarioCorreios = (config['correios']?['usuario'] ?• '').toString();
+      final senhaCorreios = (config['correios']?['senha'] ?• '').toString();
       if (usuarioCorreios.isNotEmpty && senhaCorreios.isNotEmpty) {
         debugPrint('🔄 [FRETE] Consultando Correios...');
         try {
@@ -154,15 +154,15 @@ class FreteService {
       }
 
       // SUPERFRETE
-      final tokenSuperFrete = (config['superfrete']?['token'] ?? '').toString();
+      final tokenSuperFrete = (config['superfrete']?['token'] ?• '').toString();
       final superFreteSandbox = config['superfrete']?['sandbox'] == true;
       if (tokenSuperFrete.isNotEmpty) {
         debugPrint('🔄 [FRETE] SuperFrete: sandbox=$superFreteSandbox (config["superfrete"]=${config['superfrete']})');
         try {
           Map<String, dynamic> resultado;
-          final cepOrigem = (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
+          final cepOrigem = (config['cepOrigem'] ?• '01310100').toString().replaceAll(RegExp(r'\D'), '');
           final cepDestino = cep.replaceAll(RegExp(r'\D'), '');
-          final pesoFinal = peso < 300 ? 300.0 : peso;
+          final pesoFinal = peso < 300 • 300.0 : peso;
 
           if (kIsWeb) {
             final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
@@ -172,15 +172,15 @@ class FreteService {
               'cepOrigem': cepOrigem,
               'cepDestino': cepDestino,
               'peso': pesoFinal,
-              'altura': altura < 1 ? 2 : altura,
-              'largura': largura < 1 ? 11 : largura,
-              'comprimento': comprimento < 1 ? 16 : comprimento,
-              'valorDeclarado': valorDeclarado > 0 ? valorDeclarado : 10.0,
+              'altura': altura < 1 • 2 : altura,
+              'largura': largura < 1 • 11 : largura,
+              'comprimento': comprimento < 1 • 16 : comprimento,
+              'valorDeclarado': valorDeclarado > 0 • valorDeclarado : 10.0,
             });
             final data = res.data as Map?;
             resultado = {
               'sucesso': data?['sucesso'] == true,
-              'opcoes': data?['opcoes'] ?? [],
+              'opcoes': data?['opcoes'] ?• [],
               if (data?['erro'] != null) 'erro': data!['erro'],
             };
           } else {
@@ -189,22 +189,22 @@ class FreteService {
               cepOrigem: cepOrigem,
               cepDestino: cepDestino,
               peso: pesoFinal,
-              valorDeclarado: valorDeclarado > 0 ? valorDeclarado : 10.0,
-              altura: altura < 1 ? 2 : altura,
-              largura: largura < 1 ? 11 : largura,
-              comprimento: comprimento < 1 ? 16 : comprimento,
+              valorDeclarado: valorDeclarado > 0 • valorDeclarado : 10.0,
+              altura: altura < 1 • 2 : altura,
+              largura: largura < 1 • 11 : largura,
+              comprimento: comprimento < 1 • 16 : comprimento,
               useSandbox: superFreteSandbox,
             );
           }
 
           if (resultado['sucesso'] == true) {
-            final opcoesRaw = resultado['opcoes'] as List? ?? [];
+            final opcoesRaw = resultado['opcoes'] as List• ?• [];
             final opcoesSuperFrete = opcoesRaw.map<Map<String, dynamic>>((o) {
               return {
-                'nome': (o['nome'] ?? 'SuperFrete').toString(),
-                'valor': (o['preco'] as num?)?.toDouble() ?? 0.0,
-                'prazo': (o['prazo'] as num?)?.toInt() ?? 0,
-                'empresa': (o['empresa'] ?? 'SuperFrete').toString(),
+                'nome': (o['nome'] ?• 'SuperFrete').toString(),
+                'valor': (o['preco'] as num?)?.toDouble() ?• 0.0,
+                'prazo': (o['prazo'] as num?)?.toInt() ?• 0,
+                'empresa': (o['empresa'] ?• 'SuperFrete').toString(),
                 'plataforma': 'superfrete',
                 'servico_id': o['servico_id'],
               };
@@ -221,7 +221,7 @@ class FreteService {
       }
 
       // FRETES MANUAIS (sempre incluir se existirem)
-      final manualFretes = config['manualFretes'] as List? ?? [];
+      final manualFretes = config['manualFretes'] as List• ?• [];
       if (manualFretes.isNotEmpty) {
         debugPrint('🔄 [FRETE] Adicionando fretes manuais...');
         final opcoesManual = _calcularManual(config);
@@ -247,14 +247,14 @@ class FreteService {
 
       // 4. Debug antes de ordenar
       debugPrint('🔍 [DEBUG] Antes de ordenar - ${todasOpcoes.length} opções:');
-      for (int i = 0; i < (todasOpcoes.length > 5 ? 5 : todasOpcoes.length); i++) {
+      for (int i = 0; i < (todasOpcoes.length > 5 • 5 : todasOpcoes.length); i++) {
         debugPrint('   [$i] ${todasOpcoes[i]['nome']} - valor: ${todasOpcoes[i]['valor']} (${todasOpcoes[i]['valor'].runtimeType})');
       }
 
       // Ordenar por valor (mais barato primeiro)
       todasOpcoes.sort((a, b) {
-        final valorA = (a['valor'] as num?)?.toDouble() ?? 999999;
-        final valorB = (b['valor'] as num?)?.toDouble() ?? 999999;
+        final valorA = (a['valor'] as num?)?.toDouble() ?• 999999;
+        final valorB = (b['valor'] as num?)?.toDouble() ?• 999999;
         return valorA.compareTo(valorB);
       });
 
@@ -296,66 +296,66 @@ class FreteService {
 
       final base = FirebaseFirestore.instance.collection('lojas').doc(docId).collection('config');
       final docFretes = await base.doc('fretes').get();
-      Map<String, dynamic> config = docFretes.exists ? (docFretes.data() ?? {}) : {};
-      debugPrint('📄 [FRETE] config/fretes existe=${docFretes.exists}, melhorEnvio.token=${(config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty}, superfrete.token=${(config['superfrete']?['token'] ?? '').toString().isNotEmpty}');
+      Map<String, dynamic> config = docFretes.exists • (docFretes.data() ?• {}) : {};
+      debugPrint('📄 [FRETE] config/fretes existe=${docFretes.exists}, melhorEnvio.token=${(config['melhorEnvio']?['token'] ?• '').toString().isNotEmpty}, superfrete.token=${(config['superfrete']?['token'] ?• '').toString().isNotEmpty}');
 
       // Helper para aplicar tokens de um Map (config ou draft)
       void applyTokensFrom(Map<String, dynamic> data) {
         final fc = data['frete_config'] as Map<String, dynamic>?;
-        final rootME = (data['melhorEnvioToken'] ?? data['melhor_envio_token'] ?? '').toString().trim();
-        final rootSF = (data['superfreteToken'] ?? data['superfrete_token'] ?? '').toString().trim();
-        final tokenME = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        final tokenSF = (config['superfrete']?['token'] ?? '').toString().trim();
+        final rootME = (data['melhorEnvioToken'] ?• data['melhor_envio_token'] ?• '').toString().trim();
+        final rootSF = (data['superfreteToken'] ?• data['superfrete_token'] ?• '').toString().trim();
+        final tokenME = (config['melhorEnvio']?['token'] ?• '').toString().trim();
+        final tokenSF = (config['superfrete']?['token'] ?• '').toString().trim();
         if (tokenME.isEmpty && rootME.isNotEmpty) {
           config = Map<String, dynamic>.from(config);
           config['melhorEnvio'] = {'token': rootME};
         }
         if (tokenSF.isEmpty && rootSF.isNotEmpty) {
           config = Map<String, dynamic>.from(config);
-          final sf = config['superfrete'] as Map<String, dynamic>? ?? {};
+          final sf = config['superfrete'] as Map<String, dynamic>• ?• {};
           config['superfrete'] = Map<String, dynamic>.from(sf)..['token'] = rootSF;
         }
         if (fc != null) {
           if (tokenME.isEmpty) {
-            final t = (fc['melhor_envio_token'] ?? '').toString().trim();
+            final t = (fc['melhor_envio_token'] ?• '').toString().trim();
             if (t.isNotEmpty) {
               config = Map<String, dynamic>.from(config);
               config['melhorEnvio'] = {'token': t};
             }
           }
           if (tokenSF.isEmpty) {
-            final t = (fc['superfrete_token'] ?? '').toString().trim();
+            final t = (fc['superfrete_token'] ?• '').toString().trim();
             if (t.isNotEmpty) {
               config = Map<String, dynamic>.from(config);
-              final sf = (config['superfrete'] as Map<String, dynamic>?) ?? {};
+              final sf = (config['superfrete'] as Map<String, dynamic>?) ?• {};
               config['superfrete'] = Map<String, dynamic>.from(sf)
                 ..['token'] = t
                 ..['sandbox'] = fc['superfrete_sandbox'] == true;
             }
           } else if (fc['superfrete_sandbox'] != null) {
             config = Map<String, dynamic>.from(config);
-            final sf = Map<String, dynamic>.from(config['superfrete'] as Map? ?? {});
+            final sf = Map<String, dynamic>.from(config['superfrete'] as Map• ?• {});
             sf['sandbox'] = fc['superfrete_sandbox'] == true;
             config['superfrete'] = sf;
           }
-          final cepO = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString().trim();
-          if (cepO.isNotEmpty && (config['cepOrigem'] ?? '').toString().trim().isEmpty) {
+          final cepO = (fc['cep_origem'] ?• fc['cepOrigem'] ?• '').toString().trim();
+          if (cepO.isNotEmpty && (config['cepOrigem'] ?• '').toString().trim().isEmpty) {
             config = Map<String, dynamic>.from(config);
             config['cepOrigem'] = cepO;
           }
-          final frenetT = (fc['frenet_token'] ?? '').toString().trim();
-          if (frenetT.isNotEmpty && (config['frenet']?['token'] ?? '').toString().trim().isEmpty) {
+          final frenetT = (fc['frenet_token'] ?• '').toString().trim();
+          if (frenetT.isNotEmpty && (config['frenet']?['token'] ?• '').toString().trim().isEmpty) {
             config = Map<String, dynamic>.from(config);
             config['frenet'] = {'token': frenetT};
           }
-          final corUser = (fc['correios_user'] ?? '').toString().trim();
-          final corSenha = (fc['correios_senha'] ?? '').toString().trim();
-          if (corUser.isNotEmpty && (config['correios']?['usuario'] ?? '').toString().trim().isEmpty) {
+          final corUser = (fc['correios_user'] ?• '').toString().trim();
+          final corSenha = (fc['correios_senha'] ?• '').toString().trim();
+          if (corUser.isNotEmpty && (config['correios']?['usuario'] ?• '').toString().trim().isEmpty) {
             config = Map<String, dynamic>.from(config);
             config['correios'] = {'usuario': corUser, 'senha': corSenha};
           }
         }
-        final manualList = config['manualFretes'] as List? ?? [];
+        final manualList = config['manualFretes'] as List• ?• [];
         if (manualList.isEmpty && data['fretes'] is List && (data['fretes'] as List).isNotEmpty) {
           config = Map<String, dynamic>.from(config);
           config['manualFretes'] = data['fretes'];
@@ -363,20 +363,20 @@ class FreteService {
       }
 
       // Fallback 1: config/config
-      final tokenME = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-      final tokenSF = (config['superfrete']?['token'] ?? '').toString().trim();
+      final tokenME = (config['melhorEnvio']?['token'] ?• '').toString().trim();
+      final tokenSF = (config['superfrete']?['token'] ?• '').toString().trim();
       if (tokenME.isEmpty || tokenSF.isEmpty) {
         final docConfig = await base.doc('config').get();
         if (docConfig.exists && docConfig.data() != null) {
           applyTokensFrom(docConfig.data()!);
-          if (((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) ||
-              ((config['superfrete']?['token'] ?? '').toString().isNotEmpty)) {
+          if (((config['melhorEnvio']?['token'] ?• '').toString().isNotEmpty) ||
+              ((config['superfrete']?['token'] ?• '').toString().isNotEmpty)) {
             debugPrint('✅ [FRETE] Tokens obtidos de config/config');
           }
         }
         // Fallback 2: draft_config/config (quando admin salvou em Fretes mas não publicou)
-        final tokenME2 = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        final tokenSF2 = (config['superfrete']?['token'] ?? '').toString().trim();
+        final tokenME2 = (config['melhorEnvio']?['token'] ?• '').toString().trim();
+        final tokenSF2 = (config['superfrete']?['token'] ?• '').toString().trim();
         if (tokenME2.isEmpty || tokenSF2.isEmpty) {
           final draftRef = FirebaseFirestore.instance
               .collection('lojas')
@@ -386,21 +386,21 @@ class FreteService {
           final docDraft = await draftRef.get();
           if (docDraft.exists && docDraft.data() != null) {
             applyTokensFrom(docDraft.data()!);
-            if (((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) ||
-                ((config['superfrete']?['token'] ?? '').toString().isNotEmpty)) {
+            if (((config['melhorEnvio']?['token'] ?• '').toString().isNotEmpty) ||
+                ((config['superfrete']?['token'] ?• '').toString().isNotEmpty)) {
               debugPrint('✅ [FRETE] Tokens obtidos de draft_config/config');
             }
           }
         }
         // Fallback 3: doc raiz da loja (config/config às vezes espelhado aqui)
-        final tokenME3 = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        final tokenSF3 = (config['superfrete']?['token'] ?? '').toString().trim();
+        final tokenME3 = (config['melhorEnvio']?['token'] ?• '').toString().trim();
+        final tokenSF3 = (config['superfrete']?['token'] ?• '').toString().trim();
         if (tokenME3.isEmpty || tokenSF3.isEmpty) {
           final lojaDocRef = await FirebaseFirestore.instance.collection('lojas').doc(docId).get();
           if (lojaDocRef.exists && lojaDocRef.data() != null) {
             applyTokensFrom(lojaDocRef.data()!);
-            if (((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) ||
-                ((config['superfrete']?['token'] ?? '').toString().isNotEmpty)) {
+            if (((config['melhorEnvio']?['token'] ?• '').toString().isNotEmpty) ||
+                ((config['superfrete']?['token'] ?• '').toString().isNotEmpty)) {
               debugPrint('✅ [FRETE] Tokens obtidos do doc raiz da loja');
             }
           }
@@ -412,9 +412,9 @@ class FreteService {
         return {'provider': 'manual', 'manualFretes': []};
       }
 
-      final hasME = (config['melhorEnvio']?['token'] ?? '').toString().trim().isNotEmpty;
-      final hasSF = (config['superfrete']?['token'] ?? '').toString().trim().isNotEmpty;
-      debugPrint('📤 [FRETE] Retornando config: MelhorEnvio=$hasME, SuperFrete=$hasSF, cepOrigem=${(config['cepOrigem'] ?? '').toString().isNotEmpty}');
+      final hasME = (config['melhorEnvio']?['token'] ?• '').toString().trim().isNotEmpty;
+      final hasSF = (config['superfrete']?['token'] ?• '').toString().trim().isNotEmpty;
+      debugPrint('📤 [FRETE] Retornando config: MelhorEnvio=$hasME, SuperFrete=$hasSF, cepOrigem=${(config['cepOrigem'] ?• '').toString().isNotEmpty}');
       return config;
     } catch (e, st) {
       debugPrint('❌ [FRETE] Erro ao buscar config (type=${e.runtimeType})');
@@ -425,7 +425,7 @@ class FreteService {
 
   /// Fretes manuais/fixos
   static List<Map<String, dynamic>> _calcularManual(Map<String, dynamic> config) {
-    final manualFretes = config['manualFretes'] as List? ?? [];
+    final manualFretes = config['manualFretes'] as List• ?• [];
 
     if (manualFretes.isEmpty) {
       debugPrint('⚠️  [FRETE] Nenhum frete manual configurado, usando padrão');
@@ -433,17 +433,17 @@ class FreteService {
     }
 
     return manualFretes.map<Map<String, dynamic>>((f) {
-      final nome = (f['nome'] ?? 'Frete').toString();
+      final nome = (f['nome'] ?• 'Frete').toString();
       final valor = (f['valor'] is num)
-          ? (f['valor'] as num).toDouble()
-          : double.tryParse('${f['valor']}') ?? 0.0;
+          • (f['valor'] as num).toDouble()
+          : double.tryParse('${f['valor']}') ?• 0.0;
 
       return {
         'nome': nome,
         'valor': valor,
         'prazo': 0,
         'empresa': 'Loja',
-        'tipo': f['tipo'] ?? 'manual', // ✅ ADICIONA O TIPO
+        'tipo': f['tipo'] ?• 'manual', // ✅ ADICIONA O TIPO
       };
     }).toList();
   }
@@ -466,25 +466,25 @@ class FreteService {
     Map<String, dynamic> config,
   ) {
     final opcoes = data.map<Map<String, dynamic>>((item) {
-      final nome = item['name'] ?? 'Melhor Envio';
+      final nome = item['name'] ?• 'Melhor Envio';
       final priceRaw = item['price'];
       final deliveryTime = item['delivery_time'];
-      final companyName = item['company']?['name'] ?? 'Melhor Envio';
+      final companyName = item['company']?['name'] ?• 'Melhor Envio';
 
       double valor = 0.0;
       if (priceRaw is num) {
         valor = priceRaw.toDouble();
       } else if (priceRaw is String) {
-        valor = double.tryParse(priceRaw) ?? 0.0;
+        valor = double.tryParse(priceRaw) ?• 0.0;
       }
 
       final rawId = item['id'];
-      final serviceId = rawId is num ? rawId.toInt() : (rawId != null ? int.tryParse(rawId.toString()) : null);
+      final serviceId = rawId is num • rawId.toInt() : (rawId != null • int.tryParse(rawId.toString()) : null);
 
       return {
         'nome': nome,
         'valor': valor,
-        'prazo': (deliveryTime is num) ? deliveryTime.toInt() : 0,
+        'prazo': (deliveryTime is num) • deliveryTime.toInt() : 0,
         'empresa': companyName,
         'tipo': nome.toString().toLowerCase().replaceAll(' ', '_'),
         if (serviceId != null) 'service_id': serviceId,
@@ -507,19 +507,19 @@ class FreteService {
     required double comprimento,
   }) async {
     try {
-      final token = (config['melhorEnvio']?['token'] ?? '').toString();
+      final token = (config['melhorEnvio']?['token'] ?• '').toString();
       if (token.isEmpty) {
         debugPrint('⚠️  [FRETE] Token Melhor Envio não configurado');
         return _calcularManual(config);
       }
 
-      final cepOrigem = (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
+      final cepOrigem = (config['cepOrigem'] ?• '01310100').toString().replaceAll(RegExp(r'\D'), '');
       final cepDestino = cep.replaceAll(RegExp(r'\D'), '');
 
-      final alturaFinal = altura < 1 ? 2 : altura;
-      final larguraFinal = largura < 1 ? 11 : largura;
-      final comprimentoFinal = comprimento < 1 ? 16 : comprimento;
-      final pesoFinal = peso < 300 ? 300 : peso;
+      final alturaFinal = altura < 1 • 2 : altura;
+      final larguraFinal = largura < 1 • 11 : largura;
+      final comprimentoFinal = comprimento < 1 • 16 : comprimento;
+      final pesoFinal = peso < 300 • 300 : peso;
       final pesoKg = pesoFinal / 1000;
 
       debugPrint('📏 [MELHOR_ENVIO] Dimensões: ${alturaFinal}x${larguraFinal}x${comprimentoFinal}cm, Peso: ${pesoFinal}g');
@@ -537,12 +537,12 @@ class FreteService {
             'altura': alturaFinal.toInt(),
             'largura': larguraFinal.toInt(),
             'comprimento': comprimentoFinal.toInt(),
-            'valorProdutos': valorDeclarado > 0 ? valorDeclarado : 10.0,
+            'valorProdutos': valorDeclarado > 0 • valorDeclarado : 10.0,
             'servico': '1,2,3,4,17', // PAC, SEDEX, Jadlog .Package, .Com, Mini Envios (17)
           });
           final data = result.data as Map?;
           final servicos = data?['servicos'];
-          final list = servicos is List ? servicos : <dynamic>[];
+          final list = servicos is List • servicos : <dynamic>[];
           return _parsearOpcoesMelhorEnvio(list, config);
         } catch (e) {
           debugPrint('⚠️ [MELHOR_ENVIO] Cloud Function erro (web) (type=${e.runtimeType})');
@@ -569,7 +569,7 @@ class FreteService {
           },
           'services': '1,2,3,4,17', // PAC, SEDEX, Jadlog .Package, .Com, Mini Envios (17)
           'options': {
-            'insurance_value': valorDeclarado > 0 ? valorDeclarado : 10.0,
+            'insurance_value': valorDeclarado > 0 • valorDeclarado : 10.0,
             'receipt': false,
             'own_hand': false,
           },
@@ -584,7 +584,7 @@ class FreteService {
 
       if (response.statusCode == 200) {
         final rawData = jsonDecode(response.body);
-        final data = rawData is List ? rawData : <dynamic>[];
+        final data = rawData is List • rawData : <dynamic>[];
         if (data.isEmpty && rawData is Map) {
           debugPrint('❌ [MELHOR_ENVIO] API retornou objeto de erro: $rawData');
           return _calcularManual(config);
@@ -611,16 +611,16 @@ class FreteService {
     return shipping
         .map<Map<String, dynamic>?>((item) {
           if (item['Error'] == true) return null;
-          final nome = item['ServiceDescription'] ?? 'Frenet';
+          final nome = item['ServiceDescription'] ?• 'Frenet';
           final valorRaw = item['ShippingPrice'];
           final valor = valorRaw is num
-              ? valorRaw.toDouble()
-              : double.tryParse(valorRaw?.toString() ?? '0') ?? 0.0;
+              • valorRaw.toDouble()
+              : double.tryParse(valorRaw?.toString() ?• '0') ?• 0.0;
           final prazoRaw = item['DeliveryTime'];
           final prazo = prazoRaw is num
-              ? prazoRaw.toInt()
-              : int.tryParse(prazoRaw?.toString() ?? '0') ?? 0;
-          final empresa = item['Carrier'] ?? 'Frenet';
+              • prazoRaw.toInt()
+              : int.tryParse(prazoRaw?.toString() ?• '0') ?• 0;
+          final empresa = item['Carrier'] ?• 'Frenet';
           return {
             'nome': nome,
             'valor': valor,
@@ -644,13 +644,13 @@ class FreteService {
     required double comprimento,
   }) async {
     try {
-      final token = (config['frenet']?['token'] ?? '').toString();
+      final token = (config['frenet']?['token'] ?• '').toString();
       if (token.isEmpty) {
         debugPrint('⚠️  [FRETE] Token Frenet não configurado');
         return _calcularManual(config);
       }
 
-      final cepOrigem = (config['cepOrigem'] ?? '01310100').toString();
+      final cepOrigem = (config['cepOrigem'] ?• '01310100').toString();
 
       debugPrint('📡 [FRENET] Iniciando chamada API');
       debugPrint('   CEP Origem: $cepOrigem');
@@ -676,7 +676,7 @@ class FreteService {
             'valorProdutos': valorDeclarado,
           });
           final data = result.data as Map?;
-          final shipping = data?['ShippingSevicesArray'] as List? ?? [];
+          final shipping = data?['ShippingSevicesArray'] as List• ?• [];
           return _parsearOpcoesFrenet(shipping, config);
         } catch (e) {
           debugPrint('⚠️ [FRENET] Cloud Function erro (web) (type=${e.runtimeType})');
@@ -715,7 +715,7 @@ class FreteService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final shipping = data['ShippingSevicesArray'] as List? ?? [];
+        final shipping = data['ShippingSevicesArray'] as List• ?• [];
         debugPrint('✅ [FRENET] ${shipping.length} opções retornadas');
         return _parsearOpcoesFrenet(shipping, config);
       } else {
@@ -740,8 +740,8 @@ class FreteService {
     required double comprimento,
   }) async {
     try {
-      final usuario = (config['correios']?['usuario'] ?? '').toString();
-      final senha = (config['correios']?['senha'] ?? '').toString();
+      final usuario = (config['correios']?['usuario'] ?• '').toString();
+      final senha = (config['correios']?['senha'] ?• '').toString();
 
       if (usuario.isEmpty || senha.isEmpty) {
         debugPrint('⚠️  [FRETE] Credenciais Correios não configuradas');
@@ -810,7 +810,7 @@ class FreteService {
       final config = await _buscarConfigFrete(lojaId);
 
       // Identificar a plataforma através do campo 'plataforma' do frete selecionado
-      final plataforma = freteSelecionado['plataforma'] as String? ?? 'manual';
+      final plataforma = freteSelecionado['plataforma'] as String• ?• 'manual';
 
       debugPrint('📦 [FRETE] Criando pré-pedido na plataforma: $plataforma');
       debugPrint('   Frete selecionado: ${freteSelecionado['nome']} - ${freteSelecionado['empresa']}');
@@ -874,25 +874,25 @@ class FreteService {
     required Map<String, dynamic> freteSelecionado,
   }) async {
     try {
-      final token = (config['melhorEnvio']?['token'] ?? '').toString();
+      final token = (config['melhorEnvio']?['token'] ?• '').toString();
       if (token.isEmpty) {
         debugPrint('⚠️  [FRETE] Token Melhor Envio não configurado');
         return null;
       }
 
       // Extrair dados do cliente
-      final endereco = cliente['endereco'] as Map<String, dynamic>? ?? {};
-      final cepDestino = (endereco['cep'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-      final nomeCliente = (cliente['nome'] ?? 'Cliente').toString();
-      final telefoneCliente = (cliente['telefone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-      final emailCliente = (cliente['email'] ?? '').toString();
+      final endereco = cliente['endereco'] as Map<String, dynamic>• ?• {};
+      final cepDestino = (endereco['cep'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      final nomeCliente = (cliente['nome'] ?• 'Cliente').toString();
+      final telefoneCliente = (cliente['telefone'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      final emailCliente = (cliente['email'] ?• '').toString();
 
       // Endereço destino: API exige ao menos 2 caracteres em address
-      String ruaDestino = (endereco['rua'] ?? '').toString().trim();
+      String ruaDestino = (endereco['rua'] ?• '').toString().trim();
       if (ruaDestino.length < 2) ruaDestino = 'S/N';
 
       // CEP de origem e dados do remetente (API Melhor Envio exige from.name, from.address, from.city)
-      final cepOrigem = (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      final cepOrigem = (config['cepOrigem'] ?• '01310100').toString().replaceAll(RegExp(r'[^0-9]'), '');
       // Dados do remetente (loja) - API exige from.name, from.address, from.city
       // CNPJ em from identifica loja como PJ e evita erro "CPF remetente e destinatário iguais"
       String fromName = 'Loja';
@@ -914,16 +914,16 @@ class FreteService {
         final lojaDoc = await FirebaseFirestore.instance.collection('lojas').doc(lojaId).get();
         if (lojaDoc.exists && lojaDoc.data() != null) {
           final data = lojaDoc.data()!;
-          final nomeLoja = (data['name'] ?? data['nome'] ?? '').toString().trim();
-          final slug = (data['slug'] ?? lojaId).toString().trim();
+          final nomeLoja = (data['name'] ?• data['nome'] ?• '').toString().trim();
+          final slug = (data['slug'] ?• lojaId).toString().trim();
           if (nomeLoja.isNotEmpty && nomeLoja.toLowerCase() != 'minha loja' && nomeLoja.toLowerCase() != 'loja') {
             fromName = nomeLoja;
           } else {
-            fromName = formatarNomeLoja(slug.isNotEmpty ? slug : lojaId);
+            fromName = formatarNomeLoja(slug.isNotEmpty • slug : lojaId);
           }
           final rodape = data['rodape'] as Map<String, dynamic>?;
           if (rodape != null) {
-            final cnpj = (rodape['cnpj'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+            final cnpj = (rodape['cnpj'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), '');
             if (cnpj.length == 14) fromCnpj = cnpj;
           }
           if (fromCnpj.isEmpty) {
@@ -934,7 +934,7 @@ class FreteService {
                 final d = cfg.data()!;
                 final rodapeD = d['rodape'] as Map<String, dynamic>?;
                 final fc = d['frete_config'] as Map<String, dynamic>?;
-                final cnpj = (rodapeD?['cnpj'] ?? fc?['cnpj'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+                final cnpj = (rodapeD?['cnpj'] ?• fc?['cnpj'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), '');
                 if (cnpj.length == 14) { fromCnpj = cnpj; break; }
               }
             }
@@ -944,31 +944,31 @@ class FreteService {
         }
         final viaCep = await ViaCepService.buscar(cepOrigem);
         if (viaCep != null) {
-          fromAddress = viaCep.logradouro.isNotEmpty ? viaCep.logradouro : 'Centro';
-          fromCity = viaCep.localidade.isNotEmpty ? viaCep.localidade : 'São Paulo';
-          fromDistrict = viaCep.bairro.isNotEmpty ? viaCep.bairro : 'Centro';
-          fromState = viaCep.uf.isNotEmpty ? viaCep.uf : 'SP';
+          fromAddress = viaCep.logradouro.isNotEmpty • viaCep.logradouro : 'Centro';
+          fromCity = viaCep.localidade.isNotEmpty • viaCep.localidade : 'São Paulo';
+          fromDistrict = viaCep.bairro.isNotEmpty • viaCep.bairro : 'Centro';
+          fromState = viaCep.uf.isNotEmpty • viaCep.uf : 'SP';
         }
       } catch (e) {
         debugPrint('⚠️  [MELHOR ENVIO] Fallback dados origem (type=${e.runtimeType})');
       }
 
       // Calcular dimensões e peso do pedido
-      final itens = pedido['itens'] as List? ?? [];
+      final itens = pedido['itens'] as List• ?• [];
       double pesoTotal = 0;
       double valorTotal = 0;
 
       for (final item in itens) {
-        final qty = (item['quantidade'] as int?) ?? 1;
-        final peso = ((item['peso'] as num?)?.toDouble() ?? 200.0); // peso padrão 200g por item
+        final qty = (item['quantidade'] as int?) ?• 1;
+        final peso = ((item['peso'] as num?)?.toDouble() ?• 200.0); // peso padrão 200g por item
         pesoTotal += peso * qty;
-        valorTotal += ((item['total'] as num?)?.toDouble() ?? 0);
+        valorTotal += ((item['total'] as num?)?.toDouble() ?• 0);
       }
 
       // Dimensões padrão se não especificadas
-      final altura = (pedido['altura'] as num?)?.toDouble() ?? 10.0;
-      final largura = (pedido['largura'] as num?)?.toDouble() ?? 20.0;
-      final comprimento = (pedido['comprimento'] as num?)?.toDouble() ?? 30.0;
+      final altura = (pedido['altura'] as num?)?.toDouble() ?• 10.0;
+      final largura = (pedido['largura'] as num?)?.toDouble() ?• 20.0;
+      final comprimento = (pedido['comprimento'] as num?)?.toDouble() ?• 30.0;
 
       // Montar payload para Melhor Envio API
       // from: PJ com CNPJ evita erro "CPF remetente e destinatário iguais" quando lojista testa com próprio CPF
@@ -980,7 +980,7 @@ class FreteService {
         'city': fromCity,
         'postal_code': cepOrigem,
         'state_abbr': fromState,
-        'state_register': fromCnpj.isNotEmpty ? '' : '',
+        'state_register': fromCnpj.isNotEmpty • '' : '',
         'country_id': 'BR',
       };
       if (fromCnpj.isNotEmpty) {
@@ -991,27 +991,27 @@ class FreteService {
         fromObj['document'] = '';
       }
       final requestBody = {
-        'service': freteSelecionado['service_id'] ?? 1,
+        'service': freteSelecionado['service_id'] ?• 1,
         'from': fromObj,
         'to': {
           'name': nomeCliente,
           'phone': telefoneCliente,
           'email': emailCliente,
-          'document': (cliente['cpf'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), ''),
+          'document': (cliente['cpf'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), ''),
           'company_document': '',
           'state_register': 'ISENTO',
           'postal_code': cepDestino,
           'address': ruaDestino,
-          'number': endereco['numero'] ?? 'S/N',
-          'complement': endereco['complemento'] ?? '',
-          'district': endereco['bairro'] ?? '',
-          'city': endereco['cidade'] ?? '',
-          'state_abbr': endereco['estado'] ?? 'SP',
+          'number': endereco['numero'] ?• 'S/N',
+          'complement': endereco['complemento'] ?• '',
+          'district': endereco['bairro'] ?• '',
+          'city': endereco['cidade'] ?• '',
+          'state_abbr': endereco['estado'] ?• 'SP',
           'country_id': 'BR',
         },
         'products': [
           {
-            'name': 'Pedido ${pedido['id'] ?? 'N/A'}',
+            'name': 'Pedido ${pedido['id'] ?• 'N/A'}',
             'quantity': 1,
             'unitary_value': valorTotal,
           }
@@ -1069,12 +1069,12 @@ class FreteService {
       } else {
         debugPrint('❌ [MELHOR ENVIO] Erro ${response.statusCode}: ${response.body}');
         String errorMsg = 'Erro ao adicionar ao carrinho: ${response.statusCode}';
-        String? instrucoes;
+        String• instrucoes;
         try {
           final errBody = jsonDecode(response.body);
-          final err = errBody['error'] ?? errBody['message'];
+          final err = errBody['error'] ?• errBody['message'];
           if (err != null) {
-            final str = err is String ? err : (err is Map ? (err['message'] ?? err.values.join(', ')) : err.toString());
+            final str = err is String • err : (err is Map • (err['message'] ?• err.values.join(', ')) : err.toString());
             errorMsg = str.toString();
             if (str.toString().toLowerCase().contains('cpf') && str.toString().toLowerCase().contains('iguais')) {
               instrucoes = 'O CPF do cliente é igual ao da conta Melhor Envio. '
@@ -1109,7 +1109,7 @@ class FreteService {
     required Map<String, dynamic> freteSelecionado,
   }) async {
     try {
-      final token = (config['superfrete']?['token'] ?? '').toString();
+      final token = (config['superfrete']?['token'] ?• '').toString();
       if (token.isEmpty) {
         debugPrint('⚠️  [FRETE] Token SuperFrete não configurado');
         return null;
@@ -1125,15 +1125,15 @@ class FreteService {
         };
       }
 
-      final endereco = cliente['endereco'] as Map<String, dynamic>? ?? {};
-      final cepDestino = (endereco['cep'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-      final nomeCliente = (cliente['nome'] ?? 'Cliente').toString();
-      final telefoneCliente = (cliente['telefone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-      final emailCliente = (cliente['email'] ?? '').toString();
-      String ruaDestino = (endereco['rua'] ?? '').toString().trim();
+      final endereco = cliente['endereco'] as Map<String, dynamic>• ?• {};
+      final cepDestino = (endereco['cep'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      final nomeCliente = (cliente['nome'] ?• 'Cliente').toString();
+      final telefoneCliente = (cliente['telefone'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      final emailCliente = (cliente['email'] ?• '').toString();
+      String ruaDestino = (endereco['rua'] ?• '').toString().trim();
       if (ruaDestino.length < 2) ruaDestino = 'S/N';
 
-      final cepOrigem = (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'[^0-9]'), '');
+      final cepOrigem = (config['cepOrigem'] ?• '01310100').toString().replaceAll(RegExp(r'[^0-9]'), '');
       String fromAddress = 'Centro';
       String fromCity = 'São Paulo';
       String fromState = 'SP';
@@ -1141,25 +1141,25 @@ class FreteService {
       try {
         final viaCep = await ViaCepService.buscar(cepOrigem);
         if (viaCep != null) {
-          fromAddress = viaCep.logradouro.isNotEmpty ? viaCep.logradouro : 'Centro';
-          fromCity = viaCep.localidade.isNotEmpty ? viaCep.localidade : 'São Paulo';
-          fromDistrict = viaCep.bairro.isNotEmpty ? viaCep.bairro : 'Centro';
-          fromState = viaCep.uf.isNotEmpty ? viaCep.uf : 'SP';
+          fromAddress = viaCep.logradouro.isNotEmpty • viaCep.logradouro : 'Centro';
+          fromCity = viaCep.localidade.isNotEmpty • viaCep.localidade : 'São Paulo';
+          fromDistrict = viaCep.bairro.isNotEmpty • viaCep.bairro : 'Centro';
+          fromState = viaCep.uf.isNotEmpty • viaCep.uf : 'SP';
         }
       } catch (_) {}
 
-      final itens = pedido['itens'] as List? ?? [];
+      final itens = pedido['itens'] as List• ?• [];
       double pesoTotal = 0;
       double valorTotal = 0;
       for (final item in itens) {
-        final qty = (item['quantidade'] as int?) ?? 1;
-        final peso = ((item['peso'] as num?)?.toDouble() ?? 200.0);
+        final qty = (item['quantidade'] as int?) ?• 1;
+        final peso = ((item['peso'] as num?)?.toDouble() ?• 200.0);
         pesoTotal += peso * qty;
-        valorTotal += ((item['total'] as num?)?.toDouble() ?? 0);
+        valorTotal += ((item['total'] as num?)?.toDouble() ?• 0);
       }
-      final altura = (pedido['altura'] as num?)?.toDouble() ?? 10.0;
-      final largura = (pedido['largura'] as num?)?.toDouble() ?? 20.0;
-      final comprimento = (pedido['comprimento'] as num?)?.toDouble() ?? 30.0;
+      final altura = (pedido['altura'] as num?)?.toDouble() ?• 10.0;
+      final largura = (pedido['largura'] as num?)?.toDouble() ?• 20.0;
+      final comprimento = (pedido['comprimento'] as num?)?.toDouble() ?• 30.0;
 
       final from = <String, dynamic>{
         'postal_code': cepOrigem,
@@ -1173,14 +1173,14 @@ class FreteService {
         'name': nomeCliente,
         'phone': telefoneCliente,
         'email': emailCliente,
-        'document': (cliente['cpf'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), ''),
+        'document': (cliente['cpf'] ?• '').toString().replaceAll(RegExp(r'[^0-9]'), ''),
         'postal_code': cepDestino,
         'address': ruaDestino,
-        'number': (endereco['numero'] ?? 'S/N').toString(),
-        'complement': (endereco['complemento'] ?? '').toString(),
-        'district': (endereco['bairro'] ?? '').toString(),
-        'city': (endereco['cidade'] ?? '').toString(),
-        'state': (endereco['estado'] ?? 'SP').toString(),
+        'number': (endereco['numero'] ?• 'S/N').toString(),
+        'complement': (endereco['complemento'] ?• '').toString(),
+        'district': (endereco['bairro'] ?• '').toString(),
+        'city': (endereco['cidade'] ?• '').toString(),
+        'state': (endereco['estado'] ?• 'SP').toString(),
       };
       final package = <String, dynamic>{
         'height': altura.toInt().clamp(1, 999),
@@ -1195,8 +1195,8 @@ class FreteService {
         from: from,
         to: to,
         package: package,
-        valorDeclarado: valorTotal > 0 ? valorTotal : 10.0,
-        pedidoRef: (pedido['id'] ?? '').toString(),
+        valorDeclarado: valorTotal > 0 • valorTotal : 10.0,
+        pedidoRef: (pedido['id'] ?• '').toString(),
       );
 
       if (resultado['sucesso'] == true) {
@@ -1206,7 +1206,7 @@ class FreteService {
           'plataforma': 'superfrete',
           'cart_id': resultado['id'],
           'protocol': resultado['protocol'],
-          'message': resultado['message'] ?? 'Pedido adicionado ao carrinho da SuperFrete',
+          'message': resultado['message'] ?• 'Pedido adicionado ao carrinho da SuperFrete',
           'instrucoes': 'Acesse https://web.superfrete.com para finalizar e gerar a etiqueta',
         };
       }
@@ -1214,7 +1214,7 @@ class FreteService {
       return {
         'success': false,
         'plataforma': 'superfrete',
-        'error': (resultado['erro'] ?? 'Erro ao adicionar ao carrinho').toString(),
+        'error': (resultado['erro'] ?• 'Erro ao adicionar ao carrinho').toString(),
         'instrucoes': 'Confira os dados do pedido e do CEP. Se persistir, crie o envio manualmente em web.superfrete.com',
       };
     } catch (e) {
@@ -1233,7 +1233,7 @@ class FreteService {
   }) async {
     try {
       final config = await _buscarConfigFrete(lojaId);
-      final token = (config['melhorEnvio']?['token'] ?? '').toString();
+      final token = (config['melhorEnvio']?['token'] ?• '').toString();
 
       if (token.isEmpty) {
         debugPrint('⚠️  [FRETE] Token Melhor Envio não configurado');

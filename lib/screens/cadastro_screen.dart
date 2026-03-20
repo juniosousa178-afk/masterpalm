@@ -86,8 +86,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
     // Referências do app principal (mantém o root logado)
     final FirebaseFirestore primaryDb = FirebaseFirestore.instance;
 
-    FirebaseApp? secApp;
-    FirebaseAuth? secAuth;
+    FirebaseApp• secApp;
+    FirebaseAuth• secAuth;
 
     // Controle explícito do loader para evitar pop duplo / contexto inválido
     bool loaderAberto = false;
@@ -123,9 +123,9 @@ class _CadastroScreenState extends State<CadastroScreen> {
       final secAppCheck = FirebaseAppCheck.instanceFor(app: secApp);
       await secAppCheck.activate(
         androidProvider:
-            kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
+            kReleaseMode • AndroidProvider.playIntegrity : AndroidProvider.debug,
         appleProvider:
-            kReleaseMode ? AppleProvider.appAttest : AppleProvider.debug,
+            kReleaseMode • AppleProvider.appAttest : AppleProvider.debug,
       );
       await secAppCheck.setTokenAutoRefreshEnabled(true);
 
@@ -166,7 +166,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
         'store_id': lojaIdDoAdmin, // ✅ CRÍTICO: Garante resolução correta da loja
         'lojaId': lojaIdDoAdmin,
         'createdAt': FieldValue.serverTimestamp(),
-        'createdBy': FirebaseAuth.instance.currentUser?.uid ?? 'admin',
+        'createdBy': FirebaseAuth.instance.currentUser?.uid ?• 'admin',
       }, SetOptions(merge: true));
 
       debugPrint('✅ [CADASTRO] Documento salvo em users/$authUid');
@@ -184,7 +184,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
         'tipo': usuario.tipo,
         'permissoes': usuario.permissoes,
         'addedAt': FieldValue.serverTimestamp(),
-        'addedBy': FirebaseAuth.instance.currentUser?.uid ?? 'admin',
+        'addedBy': FirebaseAuth.instance.currentUser?.uid ?• 'admin',
         'ativo': true,
       }, SetOptions(merge: true));
 
@@ -207,8 +207,8 @@ class _CadastroScreenState extends State<CadastroScreen> {
     } on FirebaseAuthException catch (e) {
       await fecharLoaderSeAberto();
       final msg = e.code == 'email-already-in-use'
-          ? 'Este e-mail já está em uso em outra conta.'
-          : 'Erro de autenticação (${e.code}): ${e.message ?? e.toString()}';
+          • 'Este e-mail já está em uso em outra conta.'
+          : 'Erro de autenticação (${e.code}): ${e.message ?• e.toString()}';
       debugPrint('❌ [CADASTRO] FirebaseAuthException: $msg');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -262,7 +262,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
               TextFormField(
                 controller: nomeController,
                 decoration: _input('Nome'),
-                validator: (v) => v == null || v.isEmpty ? 'Informe o nome' : null,
+                validator: (v) => v == null || v.isEmpty • 'Informe o nome' : null,
               ),
               const SizedBox(height: 10),
               TextFormField(
@@ -271,7 +271,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                 keyboardType: TextInputType.emailAddress,
                 validator: (v) =>
                     v == null || v.isEmpty || !v.contains('@')
-                        ? 'Informe um e-mail válido'
+                        • 'Informe um e-mail válido'
                         : null,
               ),
               const SizedBox(height: 10),
@@ -285,7 +285,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                 controller: senhaController,
                 decoration: _input('Senha'),
                 obscureText: true,
-                validator: (v) => v == null || v.isEmpty ? 'Informe a senha' : null,
+                validator: (v) => v == null || v.isEmpty • 'Informe a senha' : null,
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
@@ -297,7 +297,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
                   DropdownMenuItem(value: 'programador', child: Text('Programador')),
                 ],
                 onChanged: (value) => setState(() {
-                  tipoUsuario = value ?? 'admin';
+                  tipoUsuario = value ?• 'admin';
                 }),
               ),
               const SizedBox(height: 20),

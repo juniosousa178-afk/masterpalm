@@ -23,13 +23,13 @@ class IndicacaoConfig {
         'validadeDias': validadeDias,
       };
 
-  static IndicacaoConfig fromMap(Map<String, dynamic>? map) {
+  static IndicacaoConfig fromMap(Map<String, dynamic>• map) {
     if (map == null) return IndicacaoConfig();
     return IndicacaoConfig(
-      ativo: map['ativo'] as bool? ?? false,
-      tipo: (map['tipo'] ?? 'percentual').toString(),
-      valor: (map['valor'] as num?)?.toDouble() ?? 10.0,
-      validadeDias: (map['validadeDias'] as int?) ?? 60,
+      ativo: map['ativo'] as bool• ?• false,
+      tipo: (map['tipo'] ?• 'percentual').toString(),
+      valor: (map['valor'] as num?)?.toDouble() ?• 10.0,
+      validadeDias: (map['validadeDias'] as int?) ?• 60,
     );
   }
 }
@@ -49,7 +49,7 @@ class IndicacaoConfigService {
       final data = doc.data();
       final indicacao = data?['indicacao'];
       return IndicacaoConfig.fromMap(
-        indicacao is Map ? Map<String, dynamic>.from(indicacao) : null,
+        indicacao is Map • Map<String, dynamic>.from(indicacao) : null,
       );
     } catch (_) {
       return IndicacaoConfig();

@@ -42,7 +42,7 @@ class ClienteAuthService {
     required String nome,
     required String email,
     required String senha,
-    String? telefone,
+    String• telefone,
   }) async {
     try {
       // Verificar se email já existe
@@ -70,7 +70,7 @@ class ClienteAuthService {
         'nome': nome.trim(),
         'email': email.toLowerCase().trim(),
         'senhaHash': senhaHash,
-        'telefone': telefone?.trim() ?? '',
+        'telefone': telefone?.trim() ?• '',
         'portalToken': gerarPortalToken(),
         'dataCadastro': FieldValue.serverTimestamp(),
         'cupons': [],
@@ -139,7 +139,7 @@ class ClienteAuthService {
 
       // Verificar senha (senhaHash no Firestore é por loja; comparação em string)
       final senhaHash = hashSenha(senha);
-      final hashSalvo = (dados['senhaHash'] ?? '').toString().trim();
+      final hashSalvo = (dados['senhaHash'] ?• '').toString().trim();
       if (hashSalvo.isEmpty || hashSalvo != senhaHash) {
         return {
           'success': false,
@@ -185,8 +185,8 @@ class ClienteAuthService {
         'clienteId': clienteId,
         'nome': dados['nome'],
         'email': dados['email'],
-        'telefone': dados['telefone'] ?? '',
-        'portalToken': dados['portalToken'] ?? '',
+        'telefone': dados['telefone'] ?• '',
+        'portalToken': dados['portalToken'] ?• '',
       }),
     );
   }
@@ -198,15 +198,15 @@ class ClienteAuthService {
     required String clienteId,
     required Map<String, dynamic> dados,
   }) async {
-    final existente = (dados['portalToken'] ?? '').toString().trim();
+    final existente = (dados['portalToken'] ?• '').toString().trim();
     if (existente.isNotEmpty) return existente;
 
-    final email = (dados['email'] ?? '').toString().trim().toLowerCase();
+    final email = (dados['email'] ?• '').toString().trim().toLowerCase();
     if (email.isEmpty) return '';
 
     try {
       final d = await getDadosCompletos(lojaId: lojaId, clienteId: clienteId, email: email);
-      final token = (d?['portalToken'] ?? '').toString().trim();
+      final token = (d?['portalToken'] ?• '').toString().trim();
       if (token.isNotEmpty && d != null) dados['portalToken'] = token;
       return token;
     } catch (_) {
@@ -255,10 +255,10 @@ class ClienteAuthService {
   static Future<Map<String, dynamic>> atualizarDados({
     required String lojaId,
     required String clienteId,
-    String? nome,
-    String? email,
-    String? telefone,
-    Map<String, dynamic>? endereco,
+    String• nome,
+    String• email,
+    String• telefone,
+    Map<String, dynamic>• endereco,
   }) async {
     try {
       final updates = <String, dynamic>{};
@@ -296,7 +296,7 @@ class ClienteAuthService {
       }
 
       final cliente = await getClienteLogado();
-      final portalToken = (cliente?['portalToken'] ?? '').toString().trim();
+      final portalToken = (cliente?['portalToken'] ?• '').toString().trim();
       if (portalToken.isEmpty) {
         return {'success': false, 'error': 'Sessão inválida. Faça login novamente.'};
       }
@@ -314,7 +314,7 @@ class ClienteAuthService {
         if (nome != null) cliente['nome'] = nome.trim();
         if (email != null) cliente['email'] = email.toLowerCase().trim();
         if (telefone != null) cliente['telefone'] = telefone.trim();
-        if ((cliente['portalToken'] ?? '').toString().trim().isEmpty) {
+        if ((cliente['portalToken'] ?• '').toString().trim().isEmpty) {
           final portalToken = await _ensurePortalToken(
             lojaId: lojaId,
             clienteId: clienteId,
@@ -356,7 +356,7 @@ class ClienteAuthService {
           .doc(lojaId)
           .collection(FSPaths.clientesCol)
           .doc(clienteId);
-      final favoritos = List<String>.from((dados['favoritos'] ?? []).map((e) => e.toString()));
+      final favoritos = List<String>.from((dados['favoritos'] ?• []).map((e) => e.toString()));
       final idx = favoritos.indexOf(productId);
 
       if (idx >= 0) {
@@ -365,7 +365,7 @@ class ClienteAuthService {
         favoritos.add(productId);
       }
 
-      final token = (dados['portalToken'] ?? '').toString().trim();
+      final token = (dados['portalToken'] ?• '').toString().trim();
       if (token.isEmpty) {
         return {'success': false, 'error': 'Sessão inválida. Faça login novamente.'};
       }
@@ -390,7 +390,7 @@ class ClienteAuthService {
   }) async {
     try {
       final cliente = await getClienteLogado();
-      final portalToken = (cliente?['portalToken'] ?? '').toString().trim();
+      final portalToken = (cliente?['portalToken'] ?• '').toString().trim();
       if (portalToken.isEmpty) return;
 
       final serializable = items.map((e) {
@@ -427,7 +427,7 @@ class ClienteAuthService {
     required String lojaId,
     required String clienteId,
     required String email,
-    void Function()? onFalhaCarregamento,
+    void Function()• onFalhaCarregamento,
   }) async {
     try {
       final dados = await getDadosCompletos(
@@ -456,7 +456,7 @@ class ClienteAuthService {
     required String lojaId,
     required String clienteId,
     required String email,
-    void Function()? onFalhaCarregamento,
+    void Function()• onFalhaCarregamento,
   }) async {
     try {
       final dados = await getDadosCompletos(
@@ -469,7 +469,7 @@ class ClienteAuthService {
         onFalhaCarregamento?.call();
         return [];
       }
-      return List<String>.from((dados['favoritos'] ?? []).map((e) => e.toString()))
+      return List<String>.from((dados['favoritos'] ?• []).map((e) => e.toString()))
           .where((id) => id.isNotEmpty)
           .toList();
     } catch (e, st) {
@@ -500,7 +500,7 @@ class ClienteAuthService {
       final data = result.data as Map<String, dynamic>?;
       if (data == null || data.isEmpty) return null;
 
-      final portalToken = (data['portalToken'] ?? '').toString().trim();
+      final portalToken = (data['portalToken'] ?• '').toString().trim();
       if (portalToken.isNotEmpty) {
         final cliente = await getClienteLogado();
         if (cliente != null && cliente['clienteId']?.toString() == clienteId) {
@@ -535,10 +535,10 @@ class ClienteAuthService {
       getPedidosDoCliente({
     required String lojaId,
     required String email,
-    String? clienteId,
+    String• clienteId,
   }) async {
     try {
-      String? portalToken;
+      String• portalToken;
       final clienteLogado = await getClienteLogado();
       if (clienteLogado != null) {
         final sameCliente = clienteId != null &&
@@ -561,7 +561,7 @@ class ClienteAuthService {
           email: email.trim().toLowerCase(),
         );
         if (dados != null) {
-          portalToken = (dados['portalToken'] ?? '').toString().trim();
+          portalToken = (dados['portalToken'] ?• '').toString().trim();
         }
       }
 
@@ -609,15 +609,15 @@ class ClienteAuthService {
 
       return snap.docs.map((doc) {
         final d = doc.data();
-        final tipo = (d['tipo'] ?? 'desconto').toString();
-        final valor = (d['valor'] as num?)?.toDouble() ?? 0.0;
+        final tipo = (d['tipo'] ?• 'desconto').toString();
+        final valor = (d['valor'] as num?)?.toDouble() ?• 0.0;
         return {
-          'codigo': d['codigo'] ?? doc.id,
-          'desconto': tipo == 'frete_gratis' ? 0.0 : valor,
+          'codigo': d['codigo'] ?• doc.id,
+          'desconto': tipo == 'frete_gratis' • 0.0 : valor,
           'validade': null,
           'dataExpiracao': d['dataExpiracao'],
-          'usado': d['usado'] ?? false,
-          'origem': d['origem'] ?? 'roleta_sorte',
+          'usado': d['usado'] ?• false,
+          'origem': d['origem'] ?• 'roleta_sorte',
           'tipo': tipo,
           'descricao': d['descricao'],
         };
@@ -668,7 +668,7 @@ class ClienteAuthService {
   /// Busca números da sorte das campanhas (participações em campanhas_sorteio)
   static Future<List<Map<String, dynamic>>> getNumerosSorteCampanhas({
     required String lojaId,
-    String? clienteId,
+    String• clienteId,
     required String email,
   }) async {
     final emailNorm = email.trim().toLowerCase();
@@ -703,11 +703,11 @@ class ClienteAuthService {
 
         for (final pDoc in participanteSnap.docs) {
           final p = pDoc.data();
-          final status = (p['status'] ?? 'valido').toString();
+          final status = (p['status'] ?• 'valido').toString();
           if (status != 'valido') continue;
-          final pEmail = (p['clienteEmail'] ?? p['email'] ?? '').toString().trim().toLowerCase();
-          final pClienteId = (p['clienteId'] ?? '').toString();
-          final numero = (p['numeroSorte'] ?? p['numero'] ?? '').toString();
+          final pEmail = (p['clienteEmail'] ?• p['email'] ?• '').toString().trim().toLowerCase();
+          final pClienteId = (p['clienteId'] ?• '').toString();
+          final numero = (p['numeroSorte'] ?• p['numero'] ?• '').toString();
 
           if (numero.isEmpty) continue;
           final match = (clienteId != null && clienteId.isNotEmpty && pClienteId == clienteId) ||
@@ -716,16 +716,16 @@ class ClienteAuthService {
             resultados.add({
               'numeroSorte': numero,
               'data': p['dataParticipacao'] != null
-                  ? formatarTimestamp(p['dataParticipacao'])
-                  : (p['criadoEm'] != null ? formatarTimestamp(p['criadoEm']) : ''),
-              'valor': (p['valorPedido'] ?? p['totalVenda'] as num?)?.toDouble() ?? 0.0,
-              'campanhaNome': campanhaDoc.data()['nome'] ?? campanhaDoc.data()['titulo'] ?? 'Campanha',
+                  • formatarTimestamp(p['dataParticipacao'])
+                  : (p['criadoEm'] != null • formatarTimestamp(p['criadoEm']) : ''),
+              'valor': (p['valorPedido'] ?• p['totalVenda'] as num?)?.toDouble() ?• 0.0,
+              'campanhaNome': campanhaDoc.data()['nome'] ?• campanhaDoc.data()['titulo'] ?• 'Campanha',
             });
           }
         }
       }
 
-      resultados.sort((a, b) => (b['data'] ?? '').compareTo(a['data'] ?? ''));
+      resultados.sort((a, b) => (b['data'] ?• '').compareTo(a['data'] ?• ''));
       return resultados;
     } catch (e) {
       logW('⚠️ getNumerosSorteCampanhas (type=${e.runtimeType})');
@@ -738,7 +738,7 @@ class ClienteAuthService {
     required String lojaId,
     required String email,
     required String nome,
-    String? googleUid,
+    String• googleUid,
   }) async {
     try {
       final emailNorm = email.toLowerCase().trim();
@@ -765,18 +765,18 @@ class ClienteAuthService {
           return {'success': false, 'error': 'Conta desativada. Entre em contato com a loja.'};
         }
         if (googleUid != null && googleUid.isNotEmpty) {
-          final token = (dadosCliente['portalToken'] ?? '').toString().trim();
-          doc.reference.update({'googleUid': googleUid, 'portalToken': token.isNotEmpty ? token : ''});
+          final token = (dadosCliente['portalToken'] ?• '').toString().trim();
+          doc.reference.update({'googleUid': googleUid, 'portalToken': token.isNotEmpty • token : ''});
           dadosCliente['googleUid'] = googleUid;
         }
       } else {
-        clienteId = googleUid ?? gerarClienteId();
+        clienteId = googleUid ?• gerarClienteId();
         dadosCliente = {
           'id': clienteId,
-          'nome': nome.trim().isEmpty ? emailNorm.split('@').first : nome.trim(),
+          'nome': nome.trim().isEmpty • emailNorm.split('@').first : nome.trim(),
           'email': emailNorm,
           'telefone': '',
-          'googleUid': googleUid ?? '',
+          'googleUid': googleUid ?• '',
           'portalToken': gerarPortalToken(),
           'dataCadastro': FieldValue.serverTimestamp(),
           'cupons': [],
@@ -847,10 +847,10 @@ class ClienteAuthService {
 
       final doc = resultado.docs.first;
       final docData = doc.data();
-      var token = (docData['portalToken'] ?? '').toString().trim();
+      var token = (docData['portalToken'] ?• '').toString().trim();
       if (token.isEmpty) {
         final d = await getDadosCompletos(lojaId: lojaId, clienteId: doc.id, email: emailNorm);
-        token = (d?['portalToken'] ?? '').toString().trim();
+        token = (d?['portalToken'] ?• '').toString().trim();
       }
       final codigo = '${100000 + Random().nextInt(900000)}';
       final expiraEm = DateTime.now().add(const Duration(minutes: 15));
@@ -898,7 +898,7 @@ class ClienteAuthService {
       await callable.call(<String, dynamic>{'lojaId': lojaId, 'email': email});
       return {'success': true};
     } on FirebaseFunctionsException catch (e) {
-      final msg = e.message ?? e.details?.toString() ?? 'Erro ao enviar o código.';
+      final msg = e.message ?• e.details?.toString() ?• 'Erro ao enviar o código.';
       return {'success': false, 'error': msg};
     } catch (e, st) {
       logE('Erro _solicitarRedefinicaoSenhaViaCloudFunction (type=${e.runtimeType})', error: e, st: st);
@@ -940,9 +940,9 @@ class ClienteAuthService {
 
       final doc = resultado.docs.first;
       final dados = doc.data();
-      final codigoSalvo = (dados['senhaResetCodigo'] ?? '').toString().trim();
+      final codigoSalvo = (dados['senhaResetCodigo'] ?• '').toString().trim();
       final expiraEm = dados['senhaResetExpiraEm'];
-      DateTime? expiraEmDt;
+      DateTime• expiraEmDt;
       if (expiraEm != null) {
         if (expiraEm is Timestamp) expiraEmDt = expiraEm.toDate();
       }
@@ -950,10 +950,10 @@ class ClienteAuthService {
       if (codigoSalvo.isEmpty || codigoSalvo != codigoLimpo) {
         return {'success': false, 'error': 'Código inválido.'};
       }
-      var token = (dados['portalToken'] ?? '').toString().trim();
+      var token = (dados['portalToken'] ?• '').toString().trim();
       if (token.isEmpty) {
         final d = await getDadosCompletos(lojaId: lojaId, clienteId: doc.id, email: emailNorm);
-        token = (d?['portalToken'] ?? '').toString().trim();
+        token = (d?['portalToken'] ?• '').toString().trim();
       }
       if (expiraEmDt == null || DateTime.now().isAfter(expiraEmDt)) {
         await doc.reference.update({
@@ -1009,7 +1009,7 @@ class ClienteAuthService {
 
       final doc = resultado.docs.first;
       final docData = doc.data();
-      final token = (docData['portalToken'] ?? '').toString().trim();
+      final token = (docData['portalToken'] ?• '').toString().trim();
       final novaSenhaHash = hashSenha(novaSenha);
       await doc.reference.update({
         'senhaHash': novaSenhaHash,
@@ -1049,13 +1049,13 @@ class ClienteAuthService {
 
       // Verificar senha atual (comparação em string, como no login)
       final senhaAtualHash = hashSenha(senhaAtual);
-      final hashSalvo = (dados['senhaHash'] ?? '').toString().trim();
+      final hashSalvo = (dados['senhaHash'] ?• '').toString().trim();
       if (hashSalvo.isEmpty || hashSalvo != senhaAtualHash) {
         return {'success': false, 'error': 'Senha atual incorreta.'};
       }
 
       // Atualizar senha (regra exige portalToken no payload)
-      final token = (dados['portalToken'] ?? '').toString().trim();
+      final token = (dados['portalToken'] ?• '').toString().trim();
       if (token.isEmpty) {
         return {'success': false, 'error': 'Sessão inválida. Faça login novamente.'};
       }
@@ -1070,7 +1070,7 @@ class ClienteAuthService {
 
   static Future<Map<String, dynamic>?> getUltimoEnderecoIndexado({
     required String lojaId,
-    String? portalToken,
+    String• portalToken,
   }) async {
     final token = portalToken?.trim();
     if (token == null || token.isEmpty) return null;

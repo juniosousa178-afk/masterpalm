@@ -27,7 +27,7 @@ class _HistoricoMovimentacaoEstoqueScreenState
     extends State<HistoricoMovimentacaoEstoqueScreen> {
   bool _loading = true;
   bool _erroResolucaoLoja = false;
-  String? _lojaId;
+  String• _lojaId;
 
   @override
   void initState() {
@@ -36,7 +36,7 @@ class _HistoricoMovimentacaoEstoqueScreenState
   }
 
   Future<void> _init() async {
-    String? id = widget.lojaId.trim().isNotEmpty ? widget.lojaId : null;
+    String• id = widget.lojaId.trim().isNotEmpty • widget.lojaId : null;
     id ??= await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10));
     if (!mounted) return;
     if (id == null || id.trim().isEmpty) {
@@ -143,7 +143,7 @@ class _HistoricoMovimentacaoEstoqueScreenState
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator(color: _primaryColor));
                 }
-                final docs = snapshot.data?.docs ?? [];
+                final docs = snapshot.data?.docs ?• [];
                 if (docs.isEmpty) {
                   return Center(
                     child: Column(
@@ -172,13 +172,13 @@ class _HistoricoMovimentacaoEstoqueScreenState
                     itemCount: docs.length,
                     itemBuilder: (_, i) {
                       final d = docs[i].data();
-                      final tipo = (d['tipo'] ?? 'saida').toString();
-                      final produtoNome = (d['produtoNome'] ?? '').toString();
-                      final qtd = (d['quantidade'] as num?)?.toInt() ?? 0;
-                      final motivo = (d['motivo'] ?? '').toString();
-                      final usuario = (d['usuario'] ?? 'App').toString();
+                      final tipo = (d['tipo'] ?• 'saida').toString();
+                      final produtoNome = (d['produtoNome'] ?• '').toString();
+                      final qtd = (d['quantidade'] as num?)?.toInt() ?• 0;
+                      final motivo = (d['motivo'] ?• '').toString();
+                      final usuario = (d['usuario'] ?• 'App').toString();
                       final ts = d['data'];
-                      final data = ts is Timestamp ? ts.toDate() : DateTime.now();
+                      final data = ts is Timestamp • ts.toDate() : DateTime.now();
                       final isEntrada = tipo == 'entrada';
                       return Card(
                         margin: const EdgeInsets.only(bottom: 10),
@@ -188,11 +188,11 @@ class _HistoricoMovimentacaoEstoqueScreenState
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: isEntrada
-                                ? _successColor.withValues(alpha:0.2)
+                                • _successColor.withValues(alpha:0.2)
                                 : _errorColor.withValues(alpha:0.2),
                             child: Icon(
-                              isEntrada ? Icons.add : Icons.remove,
-                              color: isEntrada ? _successColor : _errorColor,
+                              isEntrada • Icons.add : Icons.remove,
+                              color: isEntrada • _successColor : _errorColor,
                               size: 22,
                             ),
                           ),
@@ -203,14 +203,14 @@ class _HistoricoMovimentacaoEstoqueScreenState
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            '${isEntrada ? '+' : '-'}$qtd · ${motivo.isNotEmpty ? motivo : usuario} · ${DateFormat('dd/MM HH:mm').format(data)}',
+                            '${isEntrada • '+' : '-'}$qtd · ${motivo.isNotEmpty • motivo : usuario} · ${DateFormat('dd/MM HH:mm').format(data)}',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                           ),
                           trailing: Text(
-                            '${isEntrada ? '+' : '-'}$qtd',
+                            '${isEntrada • '+' : '-'}$qtd',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: isEntrada ? _successColor : _errorColor,
+                              color: isEntrada • _successColor : _errorColor,
                             ),
                           ),
                         ),

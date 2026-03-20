@@ -1,5 +1,5 @@
 // lib/screens/precificacao_universal_screen.dart
-// Tela de Precifica��o Universal - Layout moderno alinhado ao sistema
+// Tela de Precificação Universal - Layout moderno alinhado ao sistema
 
 import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
@@ -25,7 +25,7 @@ class PrecificacaoUniversalScreen extends StatefulWidget {
 
 class _PrecificacaoUniversalScreenState
     extends State<PrecificacaoUniversalScreen> with TickerProviderStateMixin {
-  // Cores do tema (padr�o das demais telas)
+  // Cores do tema (padrão das demais telas)
   static const Color _primaryColor = Color(0xFF6366F1);
   static const Color _successColor = Color(0xFF22C55E);
   static const Color _warningColor = Color(0xFFF59E0B);
@@ -36,14 +36,14 @@ class _PrecificacaoUniversalScreenState
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
-  Box<Produto>? estoqueBox;
-  String? _lojaId;
+  Box<Produto>• estoqueBox;
+  String• _lojaId;
   final List<Map<String, dynamic>> produtos = [];
   bool _carregando = true;
   bool _importando = false;
   String _filtroBusca = '';
 
-  /// Controllers por item para Pre�o Pretendido (evita perda ao rolar)
+  /// Controllers por item para Preço Pretendido (evita perda ao rolar)
   final Map<String, TextEditingController> _pretendidoControllers = {};
 
   final freteController = TextEditingController(text: '0');
@@ -116,9 +116,9 @@ class _PrecificacaoUniversalScreenState
           children: [
             Icon(
               isError
-                  ? Icons.error_outline
+                  • Icons.error_outline
                   : isWarning
-                      ? Icons.warning_amber
+                      • Icons.warning_amber
                       : Icons.check_circle_outline,
               color: Colors.white,
               size: 20,
@@ -128,9 +128,9 @@ class _PrecificacaoUniversalScreenState
           ],
         ),
         backgroundColor: isError
-            ? _errorColor
+            • _errorColor
             : isWarning
-                ? _warningColor
+                • _warningColor
                 : _successColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -146,17 +146,17 @@ class _PrecificacaoUniversalScreenState
     if (input.length == 2) return double.parse('0.$input');
     final valor =
         "${input.substring(0, input.length - 2)}.${input.substring(input.length - 2)}";
-    return double.tryParse(valor) ?? 0.0;
+    return double.tryParse(valor) ?• 0.0;
   }
 
   String _chaveItem(Map<String, dynamic> item) =>
-      '${item['_uid'] ?? identityHashCode(item)}_${item['nome']}_${item['custo']}_${item['quantidade']}';
+      '${item['_uid'] ?• identityHashCode(item)}_${item['nome']}_${item['custo']}_${item['quantidade']}';
 
   TextEditingController _controllerPretendido(Map<String, dynamic> item) {
     final key = _chaveItem(item);
     _pretendidoControllers[key] ??= TextEditingController(
-      text: (item['precoPretendido'] as num? ?? 0) > 0
-          ? MoedaInputFormatter.format((item['precoPretendido'] as num).toDouble())
+      text: (item['precoPretendido'] as num• ?• 0) > 0
+          • MoedaInputFormatter.format((item['precoPretendido'] as num).toDouble())
           : '',
     );
     return _pretendidoControllers[key]!;
@@ -177,7 +177,7 @@ class _PrecificacaoUniversalScreenState
 
     final file = result.files.first;
     if (file.bytes == null) {
-      if (mounted) _showSnackBar('Arquivo vazio ou inacess�vel', isError: true);
+      if (mounted) _showSnackBar('Arquivo vazio ou inacessóvel', isError: true);
       return;
     }
 
@@ -188,16 +188,16 @@ class _PrecificacaoUniversalScreenState
       final excel = Excel.decodeBytes(bytes);
       final sheet = excel.tables[excel.tables.keys.first];
       if (sheet == null) {
-        if (mounted) _showSnackBar('Planilha inv�lida', isError: true);
+        if (mounted) _showSnackBar('Planilha inválida', isError: true);
         return;
       }
 
       final novos = <Map<String, dynamic>>[];
       for (var row in sheet.rows.skip(1)) {
-        final nome = row[0]?.value.toString().trim() ?? '';
-        final custo = (double.tryParse(row[1]?.value.toString() ?? '0') ?? 0)
+        final nome = row[0]?.value.toString().trim() ?• '';
+        final custo = (double.tryParse(row[1]?.value.toString() ?• '0') ?• 0)
             .clamp(0.0, double.infinity);
-        final quantidade = (int.tryParse(row[2]?.value.toString() ?? '0') ?? 1)
+        final quantidade = (int.tryParse(row[2]?.value.toString() ?• '0') ?• 1)
             .clamp(1, 999999);
 
         if (nome.isNotEmpty && custo > 0) {
@@ -220,7 +220,7 @@ class _PrecificacaoUniversalScreenState
         _showSnackBar('${novos.length} produto(s) importado(s) com sucesso!');
       } else {
         _showSnackBar(
-            'Nenhum produto v�lido encontrado. Verifique: Nome (col A), Custo (col B), Quantidade (col C)',
+            'Nenhum produto válido encontrado. Verifique: Nome (col A), Custo (col B), Quantidade (col C)',
             isWarning: true);
       }
     } catch (e) {
@@ -233,20 +233,20 @@ class _PrecificacaoUniversalScreenState
   }
 
   double calcularPrecoVenda(double custo) {
-    final frete = (double.tryParse(freteController.text) ?? 0)
+    final frete = (double.tryParse(freteController.text) ?• 0)
         .clamp(0.0, double.infinity);
     final markup =
-        (double.tryParse(markupController.text) ?? 150).clamp(1.0, 9999.0);
+        (double.tryParse(markupController.text) ?• 150).clamp(1.0, 9999.0);
     final gastosFixos =
-        (double.tryParse(gastosFixosController.text) ?? 10).clamp(0.0, 100.0);
-    final mei = (double.tryParse(meiController.text) ?? 3.5).clamp(0.0, 100.0);
-    final embalagem = (double.tryParse(embalagemController.text) ?? 3.0)
+        (double.tryParse(gastosFixosController.text) ?• 10).clamp(0.0, 100.0);
+    final mei = (double.tryParse(meiController.text) ?• 3.5).clamp(0.0, 100.0);
+    final embalagem = (double.tryParse(embalagemController.text) ?• 3.0)
         .clamp(0.0, double.infinity);
     final taxaCartao =
-        (double.tryParse(taxaCartaoController.text) ?? 5).clamp(0.0, 100.0);
+        (double.tryParse(taxaCartaoController.text) ?• 5).clamp(0.0, 100.0);
 
     final custoPorItemFrete =
-        frete / (produtos.isNotEmpty ? produtos.length : 1);
+        frete / (produtos.isNotEmpty • produtos.length : 1);
     final totalCustos = custo +
         (custo * (gastosFixos / 100)) +
         (custo * (mei / 100)) +
@@ -258,7 +258,7 @@ class _PrecificacaoUniversalScreenState
 
   void confirmarPrecificacao() {
     if (estoqueBox == null || _lojaId == null) {
-      _showSnackBar('Erro: Box de produtos n�o inicializado', isError: true);
+      _showSnackBar('Erro: Box de produtos não inicializado', isError: true);
       return;
     }
 
@@ -299,12 +299,12 @@ class _PrecificacaoUniversalScreenState
             ),
             const SizedBox(height: 16),
             const Text(
-              'Confirmar Precifica��o',
+              'Confirmar Precificação',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             Text(
-              'Deseja atualizar o pre�o de ${produtos.length} produto(s)?',
+              'Deseja atualizar o preço de ${produtos.length} produto(s)?',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[600]),
             ),
@@ -358,9 +358,9 @@ class _PrecificacaoUniversalScreenState
       final nome = item['nome'] as String;
       final custo = item['custo'] as double;
       final precoPretendido =
-          (item['precoPretendido'] as num?)?.toDouble() ?? 0.0;
+          (item['precoPretendido'] as num?)?.toDouble() ?• 0.0;
       final precoSugerido = calcularPrecoVenda(custo);
-      final precoFinal = precoPretendido > 0 ? precoPretendido : precoSugerido;
+      final precoFinal = precoPretendido > 0 • precoPretendido : precoSugerido;
 
       final produtoExistente = estoqueBox!.values.firstWhereOrNull(
         (p) => p.nome.toLowerCase() == nome.toLowerCase(),
@@ -402,7 +402,7 @@ class _PrecificacaoUniversalScreenState
     if (mounted) {
       setState(() => produtos.clear());
       _showSnackBar(
-          'Precifica��o conclu�da! $atualizados atualizado(s), $criados criado(s).');
+          'Precificação concluída! $atualizados atualizado(s), $criados criado(s).');
     }
   }
 
@@ -417,7 +417,7 @@ class _PrecificacaoUniversalScreenState
       pdf.addPage(
         pw.MultiPage(
           build: (ctx) => [
-            pw.Text('Relat�rio de Precifica��o',
+            pw.Text('Relatório de Precificação',
                 style:
                     pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
@@ -425,12 +425,12 @@ class _PrecificacaoUniversalScreenState
               headers: ['Produto', 'Custo', 'Sugerido', 'Pretendido'],
               data: produtos.map((item) {
                 final sugerido = calcularPrecoVenda(item['custo'] as double);
-                final pretendido = item['precoPretendido'] as num? ?? 0;
+                final pretendido = item['precoPretendido'] as num• ?• 0;
                 return [
                   item['nome'],
                   'R\$ ${(item['custo'] as num).toStringAsFixed(2)}',
                   'R\$ ${sugerido.toStringAsFixed(2)}',
-                  pretendido > 0 ? 'R\$ ${pretendido.toStringAsFixed(2)}' : '-',
+                  pretendido > 0 • 'R\$ ${pretendido.toStringAsFixed(2)}' : '-',
                 ];
               }).toList(),
             ),
@@ -456,7 +456,7 @@ class _PrecificacaoUniversalScreenState
             return;
           }
           if (custo <= 0) {
-            _showSnackBar('Informe um custo v�lido (ex: 10,90)',
+            _showSnackBar('Informe um custo válido (ex: 10,90)',
                 isWarning: true);
             return;
           }
@@ -479,7 +479,7 @@ class _PrecificacaoUniversalScreenState
 
   void limparTudo() {
     if (produtos.isEmpty) {
-      _showSnackBar('N�o h� produtos para limpar', isWarning: true);
+      _showSnackBar('Não há produtos para limpar', isWarning: true);
       return;
     }
 
@@ -576,7 +576,7 @@ class _PrecificacaoUniversalScreenState
     embalagemController.text = '3.0';
     taxaCartaoController.text = '5';
     setState(() {});
-    _showSnackBar('Valores restaurados para o padr�o');
+    _showSnackBar('Valores restaurados para o padrão');
   }
 
   List<Map<String, dynamic>> get _produtosFiltrados {
@@ -593,12 +593,12 @@ class _PrecificacaoUniversalScreenState
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (_carregando) {
       return Scaffold(
-        backgroundColor: isDark ? cs.surface : _backgroundColor,
+        backgroundColor: isDark • cs.surface : _backgroundColor,
         appBar: AppBar(
-          backgroundColor: isDark ? cs.primary : _primaryColor,
+          backgroundColor: isDark • cs.primary : _primaryColor,
           foregroundColor: Colors.white,
           elevation: 0,
-          title: const Text('Precifica��o Universal'),
+          title: const Text('Precificação Universal'),
         ),
         body: Center(
           child: Column(
@@ -622,17 +622,17 @@ class _PrecificacaoUniversalScreenState
     }
 
     return Scaffold(
-      backgroundColor: isDark ? cs.surface : _backgroundColor,
+      backgroundColor: isDark • cs.surface : _backgroundColor,
       appBar: AppBar(
-        backgroundColor: isDark ? cs.primary : _primaryColor,
+        backgroundColor: isDark • cs.primary : _primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text('Precifica��o Universal'),
+        title: const Text('Precificação Universal'),
         actions: [
           IconButton(
             icon: Icon(Icons.refresh, color: Colors.white.withValues(alpha:0.9)),
             onPressed: _restaurarPadrao,
-            tooltip: 'Restaurar padr�o',
+            tooltip: 'Restaurar padrão',
           ),
           IconButton(
             icon: Icon(Icons.picture_as_pdf, color: Colors.white.withValues(alpha:0.9)),
@@ -644,7 +644,7 @@ class _PrecificacaoUniversalScreenState
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: _importando
-            ? Center(
+            • Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -664,7 +664,7 @@ class _PrecificacaoUniversalScreenState
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Aguarde enquanto os produtos s�o processados',
+                      'Aguarde enquanto os produtos são processados',
                       style: TextStyle(
                         fontSize: 13,
                         color: cs.onSurfaceVariant.withValues(alpha:0.8),
@@ -695,13 +695,13 @@ class _PrecificacaoUniversalScreenState
               ),
       ),
       bottomNavigationBar: produtos.isNotEmpty
-          ? SafeArea(
+          • SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: SizedBox(
                   width: double.infinity,
                   child: Semantics(
-                    label: 'Confirmar precifica��o de ${produtos.length} produtos',
+                    label: 'Confirmar precificação de ${produtos.length} produtos',
                     button: true,
                     child: ElevatedButton.icon(
                       onPressed: confirmarPrecificacao,
@@ -710,7 +710,7 @@ class _PrecificacaoUniversalScreenState
                       fit: BoxFit.scaleDown,
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        'Confirmar Precifica��o (${produtos.length} produtos)',
+                        'Confirmar Precificação (${produtos.length} produtos)',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -733,10 +733,10 @@ class _PrecificacaoUniversalScreenState
   Widget _buildConfigCard(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? cs.primary : _primaryColor;
+    final primaryColor = isDark • cs.primary : _primaryColor;
     return Card(
       elevation: 0,
-      color: isDark ? cs.surfaceContainerHighest : _cardColor,
+      color: isDark • cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: primaryColor.withValues(alpha:0.3)),
@@ -765,7 +765,7 @@ class _PrecificacaoUniversalScreenState
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Configura��es de C�lculo',
+                      'Configurações de Cálculo',
                       style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -775,7 +775,7 @@ class _PrecificacaoUniversalScreenState
                   ),
                   Tooltip(
                     message: 'Markup: multiplicador do custo (150 = 1,5x). '
-                        'Taxa cart�o: percentual adicional (ex: 5%).',
+                        'Taxa cartão: percentual adicional (ex: 5%).',
                     child: Icon(Icons.help_outline,
                         size: 20, color: primaryColor.withValues(alpha:0.8)),
                   ),
@@ -798,7 +798,7 @@ class _PrecificacaoUniversalScreenState
                     context, 'MEI (%)', meiController, Icons.receipt),
                 _buildConfigField(context, 'Embalagem (R\$)',
                     embalagemController, Icons.inventory),
-                _buildConfigField(context, 'Taxa cart�o (%)',
+                _buildConfigField(context, 'Taxa cartão (%)',
                     taxaCartaoController, Icons.credit_card),
               ],
             ),
@@ -814,18 +814,18 @@ class _PrecificacaoUniversalScreenState
       {double minValue = 0, double maxValue = 999999}) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? cs.primary : _primaryColor;
+    final primaryColor = isDark • cs.primary : _primaryColor;
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 150, minWidth: 100),
       child: Semantics(
         label: label,
-        hint: 'Campo num�rico',
+        hint: 'Campo numérico',
         child: TextField(
           controller: controller,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
           onChanged: (_) {
-            final v = double.tryParse(controller.text) ?? 0;
+            final v = double.tryParse(controller.text) ?• 0;
             if (v < minValue || v > maxValue) {
               controller.text = v.clamp(minValue, maxValue).toString();
             }
@@ -858,7 +858,7 @@ class _PrecificacaoUniversalScreenState
   Widget _buildProdutosHeader(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? cs.primary : _primaryColor;
+    final primaryColor = isDark • cs.primary : _primaryColor;
     return Row(
       children: [
         Icon(Icons.shopping_bag, color: primaryColor, size: 20),
@@ -884,7 +884,7 @@ class _PrecificacaoUniversalScreenState
                 ),
                 child: Icon(Icons.file_upload, color: primaryColor, size: 20),
               ),
-              onPressed: _importando ? null : importarExcel,
+              onPressed: _importando • null : importarExcel,
               tooltip: 'Importar Excel',
             ),
             IconButton(
@@ -920,7 +920,7 @@ class _PrecificacaoUniversalScreenState
   Widget _buildBusca(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? cs.primary : _primaryColor;
+    final primaryColor = isDark • cs.primary : _primaryColor;
     return TextField(
       controller: buscaController,
       onChanged: (v) => setState(() => _filtroBusca = v),
@@ -939,7 +939,7 @@ class _PrecificacaoUniversalScreenState
           borderSide: BorderSide(color: primaryColor, width: 2),
         ),
         filled: true,
-        fillColor: isDark ? cs.surfaceContainerHighest : _cardColor,
+        fillColor: isDark • cs.surfaceContainerHighest : _cardColor,
       ),
     );
   }
@@ -947,10 +947,10 @@ class _PrecificacaoUniversalScreenState
   Widget _buildEmptyState(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? cs.primary : _primaryColor;
+    final primaryColor = isDark • cs.primary : _primaryColor;
     return Card(
       elevation: 0,
-      color: isDark ? cs.surfaceContainerHighest : _cardColor,
+      color: isDark • cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: primaryColor.withValues(alpha:0.3)),
@@ -1051,7 +1051,7 @@ class _PrecificacaoUniversalScreenState
   Widget _buildItemProduto(BuildContext context, Map<String, dynamic> item) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryColor = isDark ? cs.primary : _primaryColor;
+    final primaryColor = isDark • cs.primary : _primaryColor;
     final precoSugerido = calcularPrecoVenda(item['custo'] as double);
     final controller = _controllerPretendido(item);
 
@@ -1059,7 +1059,7 @@ class _PrecificacaoUniversalScreenState
       key: ObjectKey(item),
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
-      color: isDark ? cs.surfaceContainerHighest : _cardColor,
+      color: isDark • cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: primaryColor.withValues(alpha:0.25)),
@@ -1127,7 +1127,7 @@ class _PrecificacaoUniversalScreenState
               inputFormatters: [MoedaInputFormatter()],
               style: TextStyle(color: cs.onSurface),
               decoration: InputDecoration(
-                labelText: 'Pre�o Pretendido (ex: 50,00)',
+                labelText: 'Preço Pretendido (ex: 50,00)',
                 labelStyle: TextStyle(color: cs.onSurfaceVariant),
                 hintText: 'Opcional',
                 hintStyle: TextStyle(color: cs.onSurfaceVariant),
@@ -1152,7 +1152,7 @@ class _PrecificacaoUniversalScreenState
                 setState(() {});
               },
             ),
-            if ((item['precoPretendido'] as num? ?? 0) > 0) ...[
+            if ((item['precoPretendido'] as num• ?• 0) > 0) ...[
               const SizedBox(height: 8),
               Container(
                 padding:
@@ -1169,7 +1169,7 @@ class _PrecificacaoUniversalScreenState
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        'Pre�o final: R\$ ${(item['precoPretendido'] as num).toStringAsFixed(2)}',
+                        'Preço final: R\$ ${(item['precoPretendido'] as num).toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: _successColor,
                           fontWeight: FontWeight.bold,
@@ -1205,7 +1205,7 @@ class _PrecificacaoUniversalScreenState
   }
 }
 
-/// Bottom sheet para adicionar produto - controllers pr�prios, dispostos em dispose
+/// Bottom sheet para adicionar produto - controllers próprios, dispostos em dispose
 class _AddProdutoSheet extends StatefulWidget {
   final void Function(String nome, double custo, int quantidade) onAdd;
 
@@ -1334,7 +1334,7 @@ class _AddProdutoSheetState extends State<_AddProdutoSheet> {
                 final nome = nomeController.text.trim();
                 final custo = MoedaInputFormatter.parse(custoController.text);
                 final quantidade =
-                    (int.tryParse(quantidadeController.text) ?? 1).clamp(1, 999999);
+                    (int.tryParse(quantidadeController.text) ?• 1).clamp(1, 999999);
                 widget.onAdd(nome, custo, quantidade);
               },
               style: ElevatedButton.styleFrom(

@@ -119,7 +119,7 @@ class NotificacaoService {
       final dataSorteio = campanha['dataSorteio'];
       if (dataSorteio != null) {
         final data = dataSorteio is DateTime
-          ? dataSorteio
+          • dataSorteio
           : (dataSorteio as dynamic).toDate();
         buffer.writeln('Data do sorteio: ${_formatarData(data)}');
       }
@@ -192,7 +192,7 @@ class NotificacaoService {
       final dataSorteio = campanha['dataSorteio'];
       if (dataSorteio != null) {
         final data = dataSorteio is DateTime
-          ? dataSorteio
+          • dataSorteio
           : (dataSorteio as dynamic).toDate();
         buffer.writeln('Data do sorteio: ${_formatarData(data)}');
       }
@@ -233,8 +233,8 @@ class NotificacaoService {
   /// Retorna mapa com status de cada envio
   static Future<Map<String, bool>> enviarNotificacoes({
     required String clienteNome,
-    required String? telefone,
-    required String? email,
+    required String• telefone,
+    required String• email,
     required List<String> numeros,
     required List<Map<String, dynamic>> campanhas,
     String lojaNome = 'MasterPalm',

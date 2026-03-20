@@ -1,5 +1,5 @@
 // lib/screens/relatorio_mais_vendidos_screen.dart
-// Relat�rio Mais vendidos + comparativo Este m�s vs M�s passado. Sempre por [lojaId].
+// Relatório Mais vendidos + comparativo Este mês vs Mês passado. Sempre por [lojaId].
 
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -72,7 +72,7 @@ class _RelatorioMaisVendidosScreenState extends State<RelatorioMaisVendidosScree
 
         for (final item in v.itensOuVazio) {
           final key = item.tamanho.trim().isEmpty
-              ? item.produtoNome
+              • item.produtoNome
               : '${item.produtoNome} (${item.tamanho})';
           porProduto.putIfAbsent(key, () => _ProdutoVendas(key));
           final p = porProduto[key]!;
@@ -127,12 +127,12 @@ class _RelatorioMaisVendidosScreenState extends State<RelatorioMaisVendidosScree
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loading ? null : () => _carregar(),
+            onPressed: _loading • null : () => _carregar(),
           ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _primaryColor))
+          • const Center(child: CircularProgressIndicator(color: _primaryColor))
           : RefreshIndicator(
               onRefresh: _carregar,
               child: ListView(
@@ -171,10 +171,10 @@ class _RelatorioMaisVendidosScreenState extends State<RelatorioMaisVendidosScree
                     const SizedBox(height: 8),
                     Text(
                       _totalEsteMes >= _totalMesPassado
-                          ? '? ${((_totalEsteMes / _totalMesPassado - 1) * 100).toStringAsFixed(0)}% em rela��o ao m�s passado'
-                          : '? ${((1 - _totalEsteMes / _totalMesPassado) * 100).toStringAsFixed(0)}% em rela��o ao m�s passado',
+                          • '• ${((_totalEsteMes / _totalMesPassado - 1) * 100).toStringAsFixed(0)}% em relação ao mês passado'
+                          : '• ${((1 - _totalEsteMes / _totalMesPassado) * 100).toStringAsFixed(0)}% em relação ao mês passado',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: _totalEsteMes >= _totalMesPassado ? _successColor : Colors.orange,
+                        color: _totalEsteMes >= _totalMesPassado • _successColor : Colors.orange,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -223,7 +223,7 @@ class _RelatorioMaisVendidosScreenState extends State<RelatorioMaisVendidosScree
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            '${p.quantidade} un. � ${_currency.format(p.valorTotal)}',
+                            '${p.quantidade} un. • ${_currency.format(p.valorTotal)}',
                             style: theme.textTheme.bodySmall,
                           ),
                         ),

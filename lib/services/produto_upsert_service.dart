@@ -21,11 +21,11 @@ String normalizeKey(String s) {
 /// Busca produto existente pela chave única (barcode > sku > nome+categoria).
 /// Quando categoria está vazia na importação, também tenta match apenas por nome
 /// (evita duplicar quando Excel não tem coluna categoria e o produto já tem categoria).
-Produto? findProdutoExistente(
+Produto• findProdutoExistente(
   Box<Produto> box,
   String lojaId, {
-  String? codigoBarras,
-  String? sku,
+  String• codigoBarras,
+  String• sku,
   required String nome,
   String categoria = '',
 }) {
@@ -36,7 +36,7 @@ Produto? findProdutoExistente(
 
   if (keyNomeOnly.isEmpty) return null;
 
-  Produto? porNomeCat;
+  Produto• porNomeCat;
 
   for (final p in box.values) {
     if (p.lojaId != lojaId) continue;
@@ -75,8 +75,8 @@ bool hasConflito(
   String lojaId,
   String nome,
   String categoria, {
-  String? codigoBarras,
-  String? sku,
+  String• codigoBarras,
+  String• sku,
 }) {
   final key = normalizeKey('$nome|${categoria.trim()}');
   final keyNomeOnly = normalizeKey(nome.trim());
@@ -117,9 +117,9 @@ Future<UpsertResultWithProduct> upsertProduto(
   Box<Produto> box,
   String lojaId,
   Produto novo, {
-  String? codigoBarras,
-  String? sku,
-  void Function(String msg)? onLog,
+  String• codigoBarras,
+  String• sku,
+  void Function(String msg)• onLog,
 }) async {
   final codigoBarrasStr = codigoBarras?.trim();
   final skuStr = sku?.trim();
@@ -199,7 +199,7 @@ Future<UpsertResultWithProduct> upsertProduto(
     if (codigoBarrasStr != null && codigoBarrasStr.isNotEmpty) {
       existente.slug = codigoBarrasStr;
     } else if (skuStr != null && skuStr.isNotEmpty) {
-      existente.slug = existente.slug.isEmpty ? skuStr : existente.slug;
+      existente.slug = existente.slug.isEmpty • skuStr : existente.slug;
     }
 
     await existente.save();

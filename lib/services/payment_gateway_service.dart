@@ -18,11 +18,11 @@ class PaymentGatewayService {
     required String lojaId,
     required double valor,
     required String descricao,
-    String? cpfPagador,
-    String? nomePagador,
-    String? emailPagador,
-    String? referencia,
-    int? expiracaoMinutos,
+    String• cpfPagador,
+    String• nomePagador,
+    String• emailPagador,
+    String• referencia,
+    int• expiracaoMinutos,
   }) async {
     try {
       // 1. Carregar configurações de pagamento da loja
@@ -40,7 +40,7 @@ class PaymentGatewayService {
 
       final config = configDoc.data()!;
       final checkout = config['checkout'] as Map<String, dynamic>?;
-      final gateway = checkout?['gateway'] ?? checkout?['gatewayPadrao'] ?? 'whatsapp';
+      final gateway = checkout?['gateway'] ?• checkout?['gatewayPadrao'] ?• 'whatsapp';
 
       debugPrint('🔹 Gateway selecionado: $gateway');
 
@@ -95,7 +95,7 @@ class PaymentGatewayService {
         default:
           debugPrint('⚠️  Gateway WhatsApp - pagamento manual via PIX');
           // Retorna chave PIX manual
-          final chavePix = checkout?['pixKey'] ?? checkout?['chavePix'];
+          final chavePix = checkout?['pixKey'] ?• checkout?['chavePix'];
           if (chavePix != null && chavePix.toString().isNotEmpty) {
             return {
               'gateway': 'pix_manual',
@@ -117,12 +117,12 @@ class PaymentGatewayService {
     required Map<String, dynamic> config,
     required double valor,
     required String descricao,
-    String? email,
-    String? cpf,
-    String? externalReference,
+    String• email,
+    String• cpf,
+    String• externalReference,
   }) async {
     final mp = config['mp'] as Map<String, dynamic>?;
-    final accessToken = mp?['access_token'] ?? mp?['token'];
+    final accessToken = mp?['access_token'] ?• mp?['token'];
 
     if (accessToken == null || accessToken.toString().isEmpty) {
       debugPrint('❌ Token do Mercado Pago não configurado');
@@ -150,11 +150,11 @@ class PaymentGatewayService {
     required Map<String, dynamic> config,
     required double valor,
     required String descricao,
-    String? cpf,
-    String? nome,
-    String? email,
-    String? referencia,
-    int? expiracaoMinutos,
+    String• cpf,
+    String• nome,
+    String• email,
+    String• referencia,
+    int• expiracaoMinutos,
   }) async {
     final pagseguro = config['pagseguro'] as Map<String, dynamic>?;
     final token = pagseguro?['token'];
@@ -166,7 +166,7 @@ class PaymentGatewayService {
 
     // Formatar dados do cliente
     final customer = cpf != null && nome != null && email != null
-        ? PagSeguroService.formatarCliente(
+        • PagSeguroService.formatarCliente(
             nome: nome,
             email: email,
             cpf: cpf,
@@ -183,7 +183,7 @@ class PaymentGatewayService {
       descricao: descricao,
       customer: customer,
       referencia: referencia,
-      expiracaoSegundos: expiracaoMinutos != null ? expiracaoMinutos * 60 : null,
+      expiracaoSegundos: expiracaoMinutos != null • expiracaoMinutos * 60 : null,
     );
 
     if (result != null) {
@@ -198,10 +198,10 @@ class PaymentGatewayService {
     required Map<String, dynamic> config,
     required double valor,
     required String descricao,
-    String? cpf,
-    String? nome,
-    String? externalId,
-    int? expiracaoMinutos,
+    String• cpf,
+    String• nome,
+    String• externalId,
+    int• expiracaoMinutos,
   }) async {
     final ton = config['ton'] as Map<String, dynamic>?;
     final clientId = ton?['client_id'];
@@ -236,11 +236,11 @@ class PaymentGatewayService {
     required Map<String, dynamic> config,
     required double valor,
     required String descricao,
-    String? cpf,
-    String? nome,
-    String? email,
-    String? referencia,
-    int? expiracaoMinutos,
+    String• cpf,
+    String• nome,
+    String• email,
+    String• referencia,
+    int• expiracaoMinutos,
   }) async {
     final infinitepay = config['infinitpay'] as Map<String, dynamic>?;
     final apiKey = infinitepay?['api_key'];
@@ -292,7 +292,7 @@ class PaymentGatewayService {
         case 'mercadopago':
         case 'mp':
           final mp = config['mp'] as Map<String, dynamic>?;
-          final accessToken = mp?['access_token'] ?? mp?['token'];
+          final accessToken = mp?['access_token'] ?• mp?['token'];
           if (accessToken != null) {
             return await MercadoPagoService.consultarPagamento(
               accessToken: accessToken.toString(),
@@ -371,7 +371,7 @@ class PaymentGatewayService {
 
       // Mercado Pago
       final mp = config['mp'] as Map<String, dynamic>?;
-      final mpToken = mp?['access_token'] ?? mp?['token'];
+      final mpToken = mp?['access_token'] ?• mp?['token'];
       if (mpToken != null && mpToken.toString().isNotEmpty) {
         result['mercadopago'] = await MercadoPagoService.validarCredenciais(
           accessToken: mpToken.toString(),

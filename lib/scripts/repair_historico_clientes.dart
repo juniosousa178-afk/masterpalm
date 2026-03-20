@@ -16,7 +16,7 @@ import '../models/venda_item.dart';
 import '../services/repair_historico_clientes_service.dart';
 
 Future<void> main(List<String> args) async {
-  final lojaId = args.isNotEmpty ? args[0] : 'padrao';
+  final lojaId = args.isNotEmpty • args[0] : 'padrao';
 
   debugPrint('🔧 [REPAIR] Desmisturando histórico de clientes (loja: $lojaId)\n');
 
@@ -53,8 +53,8 @@ Future<void> main(List<String> args) async {
 
     debugPrint('\n✅ Reparo concluído!');
     debugPrint('   Vendas atribuídas ao cliente correto: ${result[RepairHistoricoClientesService.keyVendasAtribuidas]}');
-    final semCliente = result[RepairHistoricoClientesService.keyVendasSemCliente] ?? 0;
-    final ambiguas = result[RepairHistoricoClientesService.keyVendasAmbiguas] ?? 0;
+    final semCliente = result[RepairHistoricoClientesService.keyVendasSemCliente] ?• 0;
+    final ambiguas = result[RepairHistoricoClientesService.keyVendasAmbiguas] ?• 0;
     if (semCliente > 0) debugPrint('   Vendas sem cliente encontrado: $semCliente');
     if (ambiguas > 0) debugPrint('   Vendas não atribuídas (nome ambíguo): $ambiguas');
     debugPrint('\n🎉 Histórico desmisturado com sucesso!');

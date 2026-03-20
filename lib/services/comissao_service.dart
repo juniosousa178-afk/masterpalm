@@ -35,7 +35,7 @@ class ComissaoService {
     required double subtotalProdutos,
     required double frete,
     required double desconto,
-    double? percentualMetaAtingida,
+    double• percentualMetaAtingida,
   }) async {
     try {
       // Buscar configuração
@@ -49,11 +49,11 @@ class ComissaoService {
 
       // Excluir frete da base (padrão: sim)
       // Frete não entra na base por padrão
-      final excluirFrete = config?.excluirFreteDaBase ?? true;
+      final excluirFrete = config?.excluirFreteDaBase ?• true;
       // Não somamos frete na base
 
       // Desconto reduz a base (padrão: sim)
-      final descontoReduzBase = config?.descontoReduzBase ?? true;
+      final descontoReduzBase = config?.descontoReduzBase ?• true;
       if (descontoReduzBase) {
         baseComissao -= desconto;
       }
@@ -72,8 +72,8 @@ class ComissaoService {
       double comissaoValor = baseComissao * (percentual / 100);
 
       // Aplicar limites mínimo e máximo
-      final minimo = config?.comissaoMinimaValor ?? 0.0;
-      final maximo = config?.comissaoMaximaValor ?? 0.0;
+      final minimo = config?.comissaoMinimaValor ?• 0.0;
+      final maximo = config?.comissaoMaximaValor ?• 0.0;
 
       if (minimo > 0 && comissaoValor < minimo) {
         comissaoValor = minimo;
@@ -124,14 +124,14 @@ class ComissaoService {
     required String vendedorUid,
     required String vendedorEmail,
     required String vendedorNome,
-    String? trackingId,
+    String• trackingId,
     required double subtotalProdutos,
     required double frete,
     required double desconto,
     required double totalVenda,
     required String origem,
     String statusPagamentoVenda = 'pago',
-    double? percentualMetaAtingida,
+    double• percentualMetaAtingida,
   }) async {
     try {
       // Calcular comissão
@@ -146,12 +146,12 @@ class ComissaoService {
 
       // Verificar configuração
       final config = await ComissaoConfigService.getConfig(lojaId);
-      final apenasAposPagamento = config?.apenasAposPagamentoConfirmado ?? true;
+      final apenasAposPagamento = config?.apenasAposPagamentoConfirmado ?• true;
 
       // Determinar status inicial
       String status;
       if (apenasAposPagamento) {
-        status = statusPagamentoVenda == 'pago' ? 'confirmado' : 'pendente';
+        status = statusPagamentoVenda == 'pago' • 'confirmado' : 'pendente';
       } else {
         status = 'confirmado';
       }
@@ -177,7 +177,7 @@ class ComissaoService {
         origem: origem,
         statusPagamentoVenda: statusPagamentoVenda,
         dataVenda: DateTime.now(),
-        dataConfirmacao: status == 'confirmado' ? DateTime.now() : null,
+        dataConfirmacao: status == 'confirmado' • DateTime.now() : null,
       );
 
       // Salvar no Firestore
@@ -216,9 +216,9 @@ class ComissaoService {
     required String vendedorUid,
     required String vendedorEmail,
     required String vendedorNome,
-    String? trackingId,
+    String• trackingId,
     String origem = 'catalogo',
-    double? percentualMetaAtingida,
+    double• percentualMetaAtingida,
   }) async {
     // Calcular subtotal (preco já é o subtotal sem frete)
     final subtotal = venda.preco;
@@ -369,9 +369,9 @@ class ComissaoService {
   static Future<List<ComissaoVenda>> listarComissoesVendedor({
     required String lojaId,
     required String vendedorUid,
-    DateTime? inicio,
-    DateTime? fim,
-    String? status,
+    DateTime• inicio,
+    DateTime• fim,
+    String• status,
     int limite = 100,
   }) async {
     try {
@@ -412,9 +412,9 @@ class ComissaoService {
   /// Lista todas as comissões da loja (admin)
   static Future<List<ComissaoVenda>> listarTodasComissoes({
     required String lojaId,
-    DateTime? inicio,
-    DateTime? fim,
-    String? status,
+    DateTime• inicio,
+    DateTime• fim,
+    String• status,
     int limite = 200,
   }) async {
     try {
@@ -591,9 +591,9 @@ class ComissaoCalculo {
 /// Resumo de comissões de um vendedor
 class ResumoComissaoVendedor {
   final String vendedorUid;
-  final String? vendedorNome;
-  final String? vendedorEmail;
-  final double? percentualComissao;
+  final String• vendedorNome;
+  final String• vendedorEmail;
+  final double• percentualComissao;
   final String periodo;
   final double totalVendas;
   final double totalComissoesConfirmadas;

@@ -12,7 +12,7 @@ import '../services/globo_sorteio_params_resolver.dart';
 import '../services/numero_sorte_service.dart';
 
 /// Wrapper que resolve lojaId/campanhaId antes de abrir a tela (ETAPA 18).
-/// Em release, se resolver retornar null mostra erro amig�vel; em debug usa fallback com logW.
+/// Em release, se resolver retornar null mostra erro amigável; em debug usa fallback com logW.
 class GloboSorteioScreenWrapper extends StatefulWidget {
   const GloboSorteioScreenWrapper({super.key});
 
@@ -22,7 +22,7 @@ class GloboSorteioScreenWrapper extends StatefulWidget {
 
 class _GloboSorteioScreenWrapperState extends State<GloboSorteioScreenWrapper> {
   bool _resolving = true;
-  GloboSorteioParams? _params;
+  GloboSorteioParams• _params;
 
   @override
   void initState() {
@@ -66,7 +66,7 @@ class _GloboSorteioScreenWrapperState extends State<GloboSorteioScreenWrapper> {
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Text(
-              'Sorteio indispon�vel. Contate o suporte.',
+              'Sorteio indisponível. Contate o suporte.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16),
             ),
@@ -98,27 +98,27 @@ class GloboSorteioScreen extends StatefulWidget {
 class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
   final Random _rand = Random();
 
-  // N�meros existentes na campanha (todos os clientes)
+  // Números existentes na campanha (todos os clientes)
   final List<String> _todosNumeros = [];
   Set<String> _numerosSet = {};
 
   bool _carregandoNumeros = true;
-  String? _erroCarregar;
+  String• _erroCarregar;
 
   // Estado do sorteio
-  int _rodada = 1; // 1, 2, 3 => sem n�mero existente | 4 => n�mero existente
+  int _rodada = 1; // 1, 2, 3 => sem número existente | 4 => número existente
   bool _sorteioFinalizado = false;
 
-  // N�mero alvo da rodada (5 d�gitos)
-  String? _numeroAlvo;
+  // Número alvo da rodada (5 dígitos)
+  String• _numeroAlvo;
   int _digitoIndex = 0; // 0..4
   final List<int?> _digitosVisiveis = List<int?>.filled(5, null);
 
-  // Roleta / anima��o
+  // Roleta / animação
   double _roletaAngle = 0.0;
   int _digitoAtualNaRoleta = 0;
   bool _girando = false;
-  Timer? _timerDigit;
+  Timer• _timerDigit;
 
   @override
   void initState() {
@@ -133,7 +133,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
   }
 
   // ============================================================
-  // CARREGAR N�MEROS EXISTENTES DA CAMPANHA
+  // CARREGAR NÚMEROS EXISTENTES DA CAMPANHA
   // ============================================================
 
   Future<void> _carregarNumerosDaCampanha() async {
@@ -143,7 +143,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     });
 
     try {
-      // Mesmo crit�rio do Hist�rico (orderBy dataParticipacao) para contagem e sorteio baterem
+      // Mesmo critério do Histórico (orderBy dataParticipacao) para contagem e sorteio baterem
       final participantes = await NumeroSorteService.getParticipantesParaSorteio(
         widget.lojaId,
         widget.campanhaId,
@@ -166,13 +166,13 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     } catch (e) {
       setState(() {
         _carregandoNumeros = false;
-        _erroCarregar = 'Erro ao carregar n�meros da campanha: $e';
+        _erroCarregar = 'Erro ao carregar números da campanha: $e';
       });
     }
   }
 
   // ============================================================
-  // GERADORES DE N�MEROS
+  // GERADORES DE NÚMEROS
   // ============================================================
 
   String _gerarNumeroAleatorio5Digitos() {
@@ -180,10 +180,10 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     return n.toString();
   }
 
-  /// Para rodadas 1,2,3 ? garante n�mero que N�O existe
+  /// Para rodadas 1,2,3 • garante número que NÃO existe
   String _gerarNumeroQueNaoExiste() {
     if (_numerosSet.length >= 90000) {
-      // caso te�rico: todos ocupados
+      // caso teórico: todos ocupados
       return _gerarNumeroAleatorio5Digitos();
     }
 
@@ -193,21 +193,21 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     }
   }
 
-  /// Para rodada 4 ? seleciona um n�mero EXISTENTE de forma aleat�ria
+  /// Para rodada 4 • seleciona um número EXISTENTE de forma aleatória
   String _escolherNumeroExistente() {
     if (_todosNumeros.isEmpty) {
       throw Exception(
-        'Nenhum n�mero foi gerado ainda para esta campanha.\n'
-        'Gere vendas com n�meros antes de sortear.',
+        'Nenhum número foi gerado ainda para esta campanha.\n'
+        'Gere vendas com números antes de sortear.',
       );
     }
-    // Embaralhar para garantir escolha aleat�ria (n�o o primeiro da lista)
+    // Embaralhar para garantir escolha aleatória (não o primeiro da lista)
     final copia = List<String>.from(_todosNumeros)..shuffle(_rand);
     return copia.first;
   }
 
   // ============================================================
-  // L�GICA DE SORTEIO DE D�GITO
+  // LÓGICA DE SORTEIO DE DÍGITO
   // ============================================================
 
   Future<void> _onPressSortearDigito() async {
@@ -216,20 +216,20 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     if (_rodada > 4) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Sorteio j� finalizado.'),
+          content: Text('Sorteio já finalizado.'),
         ),
       );
       return;
     }
 
-    // Se estamos come�ando um novo n�mero (primeiro d�gito)
+    // Se estamos começando um novo número (primeiro dígito)
     if (_digitoIndex == 0 && _numeroAlvo == null) {
       try {
         if (_rodada <= 3) {
-          // 1�, 2�, 3� resultados ? n�mero que N�O existe
+          // 1º, 2º, 3º resultados • número que NÃO existe
           _numeroAlvo = _gerarNumeroQueNaoExiste();
         } else {
-          // 4� resultado ? n�mero que EXISTE
+          // 4º resultado • número que EXISTE
           _numeroAlvo = _escolherNumeroExistente();
         }
       } catch (e) {
@@ -245,18 +245,18 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     if (_numeroAlvo == null) return;
 
     final targetDigit =
-        int.parse(_numeroAlvo![_digitoIndex]); // d�gito que deve cair
+        int.parse(_numeroAlvo![_digitoIndex]); // dígito que deve cair
 
     _iniciarAnimacaoDigit(targetDigit);
   }
 
-  // Converte o �ngulo da roleta para o d�gito que est� "no cursor" (topo)
+  // Converte o ângulo da roleta para o dígito que está "no cursor" (topo)
   int _digitFromAngle(double angle) {
     const twoPi = 2 * pi;
     double normalize(double a) => (a % twoPi + twoPi) % twoPi;
 
     const sweep = twoPi / 10; // 10 segmentos
-    final diff = normalize(-angle); // dist�ncia a partir de 0
+    final diff = normalize(-angle); // distância a partir de 0
 
     int i = (diff / sweep).floor() % 10;
     return i;
@@ -330,26 +330,26 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     final rodadaAtual = _rodada;
 
     if (rodadaAtual <= 3) {
-      // Garantimos que ele N�O existe, ent�o � s� mostrar "quase l�"
+      // Garantimos que ele NÃO existe, então • só mostrar "quase lá"
       await _mostrarDialogResultado(
         titulo: 'Tentativa $rodadaAtual',
-        mensagem: '?? Quase l�!\n\n'
-            'N�mero $numero n�o foi premiado.\n\n'
+        mensagem: '?• Quase lá!\n\n'
+            'Número $numero não foi premiado.\n\n'
             'Continue girando!',
         vencedor: null,
         isVencedorFinal: false,
       );
     } else {
-      // Rodada 4 ? n�mero existente ? busca vencedor REAL (mesma lista do Hist�rico)
+      // Rodada 4 • número existente • busca vencedor REAL (mesma lista do Histórico)
       final participantes = await NumeroSorteService.getParticipantesParaSorteio(
         widget.lojaId,
         widget.campanhaId,
       );
 
-      // Buscar o(s) participante(s) com esse n�mero (aleat�rio entre m�ltiplos, se houver)
+      // Buscar o(s) participante(s) com esse número (aleatório entre múltiplos, se houver)
       final candidatos = participantes.where((p) => p['numeroSorte'] == numero).toList();
       candidatos.shuffle(_rand);
-      final vencedorEncontrado = candidatos.isNotEmpty ? candidatos.first : null;
+      final vencedorEncontrado = candidatos.isNotEmpty • candidatos.first : null;
 
       if (vencedorEncontrado != null) {
         // Marcar como sorteado
@@ -359,24 +359,24 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
           participanteId: vencedorEncontrado['id'] as String,
         );
 
-        // Salvar no hist�rico de sorteios
+        // Salvar no histórico de sorteios
         await _salvarHistoricoSorteio(vencedorEncontrado);
 
         await _mostrarDialogResultado(
           titulo: 'TEMOS UM VENCEDOR!',
-          mensagem: '?? N�mero: $numero\n\n'
-              '?? Cliente: ${vencedorEncontrado['clienteNome'] ?? 'Desconhecido'}\n'
-              '?? Email: ${vencedorEncontrado['clienteEmail'] ?? '-'}\n'
-              '?? Telefone: ${vencedorEncontrado['clienteTelefone'] ?? '-'}\n'
-              '?? Valor da Compra: R\$ ${(vencedorEncontrado['valorPedido'] as num?)?.toStringAsFixed(2) ?? '-'}',
+          mensagem: '?• Número: $numero\n\n'
+              '?• Cliente: ${vencedorEncontrado['clienteNome'] ?• 'Desconhecido'}\n'
+              '?• Email: ${vencedorEncontrado['clienteEmail'] ?• '-'}\n'
+              '?• Telefone: ${vencedorEncontrado['clienteTelefone'] ?• '-'}\n'
+              '?• Valor da Compra: R\$ ${(vencedorEncontrado['valorPedido'] as num?)?.toStringAsFixed(2) ?• '-'}',
           vencedor: vencedorEncontrado,
           isVencedorFinal: true,
         );
       } else {
         await _mostrarDialogResultado(
           titulo: 'Resultado Final',
-          mensagem: 'N�mero $numero n�o foi encontrado.\n'
-              'Verifique se os n�meros da campanha foram gerados corretamente.',
+          mensagem: 'Número $numero não foi encontrado.\n'
+              'Verifique se os números da campanha foram gerados corretamente.',
           vencedor: null,
           isVencedorFinal: false,
         );
@@ -387,7 +387,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
       });
     }
 
-    // Prepara para pr�xima rodada ou finaliza
+    // Prepara para próxima rodada ou finaliza
     setState(() {
       _rodada++;
       _numeroAlvo = null;
@@ -401,7 +401,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
   Future<void> _mostrarDialogResultado({
     required String titulo,
     required String mensagem,
-    Map<String, dynamic>? vencedor,
+    Map<String, dynamic>• vencedor,
     bool isVencedorFinal = false,
   }) async {
     if (!mounted) return;
@@ -417,7 +417,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
         title: Row(
           children: [
             if (isVencedorFinal)
-              const Text('?? ', style: TextStyle(fontSize: 24)),
+              const Text('?• ', style: TextStyle(fontSize: 24)),
             Expanded(
               child: Text(
                 titulo,
@@ -436,7 +436,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
             ),
             if (isVencedorFinal && vencedor != null) ...[
               const SizedBox(height: 20),
-              // Bot�o WhatsApp
+              // Botão WhatsApp
               if (vencedor['clienteTelefone'] != null &&
                   vencedor['clienteTelefone'].toString().isNotEmpty)
                 SizedBox(
@@ -464,7 +464,7 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              isVencedorFinal ? 'Fechar' : 'Continuar',
+              isVencedorFinal • 'Fechar' : 'Continuar',
               style: const TextStyle(color: Colors.greenAccent),
             ),
           ),
@@ -473,30 +473,30 @@ class _GloboSorteioScreenState extends State<GloboSorteioScreen> {
     );
   }
 
-  /// Abre WhatsApp com mensagem de parab�ns para o vencedor
+  /// Abre WhatsApp com mensagem de parabéns para o vencedor
   Future<void> _abrirWhatsAppVencedor(Map<String, dynamic> vencedor) async {
-    final telefone = vencedor['clienteTelefone']?.toString() ?? '';
-    final nome = vencedor['clienteNome']?.toString() ?? 'Cliente';
-    final numero = vencedor['numeroSorte']?.toString() ?? '';
+    final telefone = vencedor['clienteTelefone']?.toString() ?• '';
+    final nome = vencedor['clienteNome']?.toString() ?• 'Cliente';
+    final numero = vencedor['numeroSorte']?.toString() ?• '';
 
-    // Limpar telefone - manter apenas n�meros
+    // Limpar telefone - manter apenas números
     String telefoneLimpo = telefone.replaceAll(RegExp(r'[^\d]'), '');
 
-    // Adicionar c�digo do pa�s se n�o tiver
+    // Adicionar código do país se não tiver
     if (!telefoneLimpo.startsWith('55') && telefoneLimpo.length <= 11) {
       telefoneLimpo = '55$telefoneLimpo';
     }
 
     final mensagem = '''
-?? *PARAB�NS, ${nome.split(' ').first}!* ??
+?• *PARABÉNS, ${nome.split(' ').first}!* ??
 
-Voc� foi o GRANDE VENCEDOR do nosso sorteio!
+Você foi o GRANDE VENCEDOR do nosso sorteio!
 
-?? *N�mero premiado:* $numero
+?• *Número premiado:* $numero
 
-Entre em contato conosco para retirar seu pr�mio!
+Entre em contato conosco para retirar seu prêmio!
 
-?? Obrigado por participar!
+?• Obrigado por participar!
 ''';
 
     final url = 'https://wa.me/$telefoneLimpo?text=${Uri.encodeComponent(mensagem)}';
@@ -509,7 +509,7 @@ Entre em contato conosco para retirar seu pr�mio!
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('N�o foi poss�vel abrir o WhatsApp'),
+              content: Text('Não foi possível abrir o WhatsApp'),
               backgroundColor: Colors.red,
             ),
           );
@@ -520,7 +520,7 @@ Entre em contato conosco para retirar seu pr�mio!
     }
   }
 
-  /// Salva o resultado do sorteio no hist�rico
+  /// Salva o resultado do sorteio no histórico
   Future<void> _salvarHistoricoSorteio(Map<String, dynamic> vencedor) async {
     try {
       await FirebaseFirestore.instance
@@ -539,9 +539,9 @@ Entre em contato conosco para retirar seu pr�mio!
         'participanteId': vencedor['id'],
         'data': FieldValue.serverTimestamp(),
       });
-      logD('? Hist�rico de sorteio salvo');
+      logD('• Histórico de sorteio salvo');
     } catch (e, st) {
-      logE('? Erro ao salvar hist�rico (type=${e.runtimeType})', error: e, st: st);
+      logE('• Erro ao salvar histórico (type=${e.runtimeType})', error: e, st: st);
     }
   }
 
@@ -560,11 +560,11 @@ Entre em contato conosco para retirar seu pr�mio!
         title: const Text('Roleta do Sorteio'),
       ),
       body: _carregandoNumeros
-          ? const Center(
+          • const Center(
               child: CircularProgressIndicator(color: Colors.greenAccent),
             )
           : _erroCarregar != null
-              ? Center(
+              • Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
@@ -621,15 +621,15 @@ Entre em contato conosco para retirar seu pr�mio!
 
                         const SizedBox(height: 16),
 
-                        // Texto de status � igual em todas as 4 rodadas (evita parecer combinado)
+                        // Texto de status • igual em todas as 4 rodadas (evita parecer combinado)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
                             _sorteioFinalizado
-                                ? 'Sorteio finalizado!\nO vencedor foi revelado.'
+                                • 'Sorteio finalizado!\nO vencedor foi revelado.'
                                 : _todosNumeros.isEmpty
-                                    ? 'Nenhum participante cadastrado ainda.\nAguarde vendas com n�meros da sorte.'
-                                    : 'Gire a roleta para revelar o n�mero!',
+                                    • 'Nenhum participante cadastrado ainda.\nAguarde vendas com números da sorte.'
+                                    : 'Gire a roleta para revelar o número!',
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                               color: Colors.white70,
@@ -646,19 +646,19 @@ Entre em contato conosco para retirar seu pr�mio!
 
                         const SizedBox(height: 32),
 
-                        // N�mero parcial / completo
+                        // Número parcial / completo
                         _buildNumeroParcial(),
 
                         const SizedBox(height: 32),
 
-                        // Bot�o de sortear d�gito � mesmo texto e cor em todas as 4 rodadas
+                        // Botão de sortear dígito • mesmo texto e cor em todas as 4 rodadas
                         ElevatedButton(
                           onPressed: (_sorteioFinalizado || _girando || _todosNumeros.isEmpty)
-                              ? null
+                              • null
                               : _onPressSortearDigito,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _sorteioFinalizado || _todosNumeros.isEmpty
-                                ? Colors.grey
+                                • Colors.grey
                                 : Colors.greenAccent,
                             foregroundColor: Colors.black,
                             padding: const EdgeInsets.symmetric(
@@ -673,14 +673,14 @@ Entre em contato conosco para retirar seu pr�mio!
                           ),
                           child: Text(
                             _todosNumeros.isEmpty
-                                ? 'Sem participantes'
+                                • 'Sem participantes'
                                 : _sorteioFinalizado
-                                    ? 'Sorteio encerrado'
+                                    • 'Sorteio encerrado'
                                     : _girando
-                                        ? 'Girando...'
+                                        • 'Girando...'
                                         : _digitoIndex == 0
-                                            ? 'Girar Roleta'
-                                            : 'Pr�ximo d�gito',
+                                            • 'Girar Roleta'
+                                            : 'Próximo dígito',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -734,7 +734,7 @@ Entre em contato conosco para retirar seu pr�mio!
               ),
             ),
 
-            // "Cursor" fixo � c�rculo central com n�mero atual
+            // "Cursor" fixo • círculo central com número atual
             Container(
               width: 100,
               height: 100,
@@ -768,7 +768,7 @@ Entre em contato conosco para retirar seu pr�mio!
               ),
             ),
 
-            // Pequeno indicador discreto no topo (n�o � seta, � s� um marcador)
+            // Pequeno indicador discreto no topo (não • seta, • só um marcador)
             Positioned(
               top: 12,
               child: Container(
@@ -809,11 +809,11 @@ Entre em contato conosco para retirar seu pr�mio!
             color: const Color(0xFF10121A),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: ativo ? Colors.greenAccent : Colors.white24,
+              color: ativo • Colors.greenAccent : Colors.white24,
               width: 2,
             ),
             boxShadow: ativo
-                ? [
+                • [
                     BoxShadow(
                       color: Colors.greenAccent.withValues(alpha:0.6),
                       blurRadius: 12,
@@ -824,11 +824,11 @@ Entre em contato conosco para retirar seu pr�mio!
           ),
           alignment: Alignment.center,
           child: Text(
-            d?.toString() ?? '-',
+            d?.toString() ?• '-',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.bold,
-              color: d == null ? Colors.white30 : Colors.white,
+              color: d == null • Colors.white30 : Colors.white,
             ),
           ),
         );
@@ -838,7 +838,7 @@ Entre em contato conosco para retirar seu pr�mio!
 }
 
 // ============================================================
-// PAINTER DA ROLETA � ESTILO CASSINO
+// PAINTER DA ROLETA • ESTILO CASSINO
 // ============================================================
 
 class _RoletaCassinoPainter extends CustomPainter {
@@ -864,7 +864,7 @@ class _RoletaCassinoPainter extends CustomPainter {
       } else {
         final isEven = i % 2 == 0;
         baseColor = isEven
-            ? Colors.red.shade600
+            • Colors.red.shade600
             : const Color(0xFF1A1C24); // "preto" da roleta
       }
 
@@ -876,7 +876,7 @@ class _RoletaCassinoPainter extends CustomPainter {
       final startAngle = -pi / 2 + i * sweep;
       canvas.drawArc(outerRect, startAngle, sweep, true, paintBase);
 
-      // Highlight interno para dar sensa��o 3D
+      // Highlight interno para dar sensação 3D
       final innerRect = Rect.fromCircle(
         center: center,
         radius: radius * 0.82,
@@ -886,14 +886,14 @@ class _RoletaCassinoPainter extends CustomPainter {
         ..color = Colors.white.withValues(alpha:0.04);
       canvas.drawArc(innerRect, startAngle, sweep, true, paintHighlight);
 
-      // Linha divis�ria
+      // Linha divisória
       final borderPaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2
         ..color = Colors.black.withValues(alpha:0.6);
       canvas.drawArc(outerRect, startAngle, sweep, true, borderPaint);
 
-      // Desenha o n�mero no segmento
+      // Desenha o número no segmento
       final angleForText = startAngle + sweep / 2;
       final textOffset = Offset(
         center.dx + (radius * 0.68) * cos(angleForText),
@@ -903,7 +903,7 @@ class _RoletaCassinoPainter extends CustomPainter {
       textPainter.text = TextSpan(
         text: i.toString(),
         style: TextStyle(
-          color: i == 0 ? Colors.black : Colors.white,
+          color: i == 0 • Colors.black : Colors.white,
           fontWeight: FontWeight.bold,
           fontSize: 18,
         ),

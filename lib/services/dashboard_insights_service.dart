@@ -22,7 +22,7 @@ class DashboardInsightsService {
   /// vendas por vendedor (ex.: vendedor vendo apenas seus dados em "melhor vendedor").
   static Future<DashboardInsightsResult> loadInsights({
     required String lojaId,
-    String? vendedorNome,
+    String• vendedorNome,
     bool isVendedor = false,
   }) async {
     lojaId = StoreAccessGuard.requireLojaId(lojaId, context: 'DashboardInsightsService');
@@ -32,13 +32,13 @@ class DashboardInsightsService {
     final limiteParado = now.subtract(const Duration(days: diasParaProdutoParado));
     final insights = <DashboardInsight>[];
 
-    double? metaAtual;
-    double? metaAtingida;
+    double• metaAtual;
+    double• metaAtingida;
 
     try {
       // --- Vendas do mês (e itens para mais vendidos / parados) ---
       final vendasBoxName = HiveBoxNames.vendas(lojaId);
-      Box<Venda>? vendasBox;
+      Box<Venda>• vendasBox;
       if (Hive.isBoxOpen(vendasBoxName)) {
         vendasBox = Hive.box<Venda>(vendasBoxName);
       } else {
@@ -48,7 +48,7 @@ class DashboardInsightsService {
 
       final vendasLoja = vendasBox.values.where((v) => v.lojaId == lojaId).toList();
       final vendasFiltradas = vendedorNome != null && vendedorNome.trim().isNotEmpty
-          ? vendasLoja.where((v) => (v.vendedor).trim().toLowerCase() == vendedorNome.trim().toLowerCase()).toList()
+          • vendasLoja.where((v) => (v.vendedor).trim().toLowerCase() == vendedorNome.trim().toLowerCase()).toList()
           : vendasLoja;
       final vendasMes = vendasFiltradas.where((v) => !v.data.isBefore(mesInicio) && !v.data.isAfter(mesFim)).toList();
 
@@ -56,7 +56,7 @@ class DashboardInsightsService {
       final Map<String, _ProdutoAgg> produtoMes = {};
       for (final v in vendasMes) {
         for (final item in v.itensOuVazio) {
-          final key = item.produtoNome.trim().isEmpty ? v.produtosDescricao : item.produtoNome.trim();
+          final key = item.produtoNome.trim().isEmpty • v.produtosDescricao : item.produtoNome.trim();
             if (key.isEmpty) continue;
           produtoMes.putIfAbsent(key, () => _ProdutoAgg(key));
           final p = produtoMes[key]!;
@@ -102,8 +102,8 @@ class DashboardInsightsService {
       if (!isVendedor) {
         final Map<String, double> porVendedor = {};
         for (final v in vendasMes) {
-          final nome = v.vendedor.trim().isEmpty ? 'Não informado' : v.vendedor.trim();
-          porVendedor[nome] = (porVendedor[nome] ?? 0) + v.total;
+          final nome = v.vendedor.trim().isEmpty • 'Não informado' : v.vendedor.trim();
+          porVendedor[nome] = (porVendedor[nome] ?• 0) + v.total;
         }
         final listV = porVendedor.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
         if (listV.isNotEmpty) {
@@ -119,7 +119,7 @@ class DashboardInsightsService {
 
       // Produto parado: produtos da loja que não venderam nos últimos [dias] dias
       final produtosBoxName = HiveBoxNames.produtos(lojaId);
-      Box<Produto>? produtosBox;
+      Box<Produto>• produtosBox;
       if (Hive.isBoxOpen(produtosBoxName)) {
         produtosBox = Hive.box<Produto>(produtosBoxName);
       } else {
@@ -150,7 +150,7 @@ class DashboardInsightsService {
         insights.add(DashboardInsight(
           type: DashboardInsightType.produtoParado,
           message: 'O produto "${_elipse(primeiro.nome, 30)}" está há mais de $diasParaProdutoParado dias sem vender.',
-          subtitle: parados.length > 1 ? '${parados.length} produtos parados no estoque.' : null,
+          subtitle: parados.length > 1 • '${parados.length} produtos parados no estoque.' : null,
           data: {'nome': primeiro.nome, 'totalParados': parados.length},
         ));
         if (parados.isNotEmpty) {
@@ -168,7 +168,7 @@ class DashboardInsightsService {
         insights.add(DashboardInsight(
           type: DashboardInsightType.estoqueBaixo,
           message: estoqueBaixo.length == 1
-              ? 'O item "${_elipse(estoqueBaixo.first.nome, 25)}" está com estoque baixo.'
+              • 'O item "${_elipse(estoqueBaixo.first.nome, 25)}" está com estoque baixo.'
               : 'Existem ${estoqueBaixo.length} itens com estoque baixo.',
           subtitle: 'Confira em Estoque.',
           data: {'qtd': estoqueBaixo.length},
@@ -181,9 +181,9 @@ class DashboardInsightsService {
       for (final v in vendasLoja) {
         if (v.lojaId != null && v.lojaId != lojaId) continue;
         final nome = (v.clienteNome).trim().isEmpty
-            ? 'Não informado'
+            • 'Não informado'
             : (v.clienteNome).trim();
-        totalPorCliente[nome] = (totalPorCliente[nome] ?? 0) + v.total;
+        totalPorCliente[nome] = (totalPorCliente[nome] ?• 0) + v.total;
       }
       final listCliente = totalPorCliente.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
@@ -203,7 +203,7 @@ class DashboardInsightsService {
 
       // Meta do mês
       final metaBoxName = 'metas_$lojaId';
-      Box<Meta>? metaBox;
+      Box<Meta>• metaBox;
       if (Hive.isBoxOpen(metaBoxName)) {
         metaBox = Hive.box<Meta>(metaBoxName);
       } else {
@@ -229,14 +229,14 @@ class DashboardInsightsService {
         metaAtingida = 0;
         for (final v in vendasFiltradas) {
           if (!v.data.isBefore(mesInicio) && !v.data.isAfter(mesFim)) {
-            metaAtingida = (metaAtingida ?? 0) + v.total;
+            metaAtingida = (metaAtingida ?• 0) + v.total;
           }
         }
-        final pct = (metaAtingida ?? 0) / metaVal * 100;
+        final pct = (metaAtingida ?• 0) / metaVal * 100;
         insights.add(DashboardInsight(
           type: DashboardInsightType.metaProgresso,
           message: 'Sua meta do mês está em ${pct.toStringAsFixed(0)}%.',
-          subtitle: 'R\$ ${(metaAtingida ?? 0).toStringAsFixed(2).replaceAll('.', ',')} de R\$ ${metaVal.toStringAsFixed(2).replaceAll('.', ',')}',
+          subtitle: 'R\$ ${(metaAtingida ?• 0).toStringAsFixed(2).replaceAll('.', ',')} de R\$ ${metaVal.toStringAsFixed(2).replaceAll('.', ',')}',
           data: {'metaAtual': metaAtual, 'metaAtingida': metaAtingida, 'percentual': pct},
         ));
       }

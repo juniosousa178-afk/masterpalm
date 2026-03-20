@@ -36,13 +36,13 @@ class Fornecedor extends HiveObject {
     required this.nome,
     required this.telefone,
     required this.email,
-    DateTime? dataCadastro,
+    DateTime• dataCadastro,
     this.instagram = '',
     this.whatsapp = '',
     this.linkInstagram = '',
     this.linkWhatsapp = '',
     this.lojaId = 'padrao',
-  }) : dataCadastro = dataCadastro ?? DateTime.now();
+  }) : dataCadastro = dataCadastro ?• DateTime.now();
 
   String get descricaoFornecedor =>
       'Nome: $nome, Telefone: $telefone, E-mail: $email';

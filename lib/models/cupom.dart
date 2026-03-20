@@ -13,16 +13,16 @@ class Cupom {
   final bool freteGratis;
   final bool usoUnico; // Uso único por cliente
   final bool usoUnicoGlobal; // Uso único global (somente uma pessoa pode usar)
-  final String? clienteId; // Se preenchido, somente este cliente pode usar (vale-compra)
+  final String• clienteId; // Se preenchido, somente este cliente pode usar (vale-compra)
   final bool ativo;
   final List<String> usadosPor; // IDs dos clientes que já usaram
-  final DateTime? dataInicio;
-  final DateTime? dataFim;
-  final double? valorMinimo; // Valor mínimo do pedido para usar o cupom
-  final int? qtdMaximaUsos; // Quantidade máxima de usos (null = ilimitado)
+  final DateTime• dataInicio;
+  final DateTime• dataFim;
+  final double• valorMinimo; // Valor mínimo do pedido para usar o cupom
+  final int• qtdMaximaUsos; // Quantidade máxima de usos (null = ilimitado)
   final int qtdUsosAtuais; // Quantidade de vezes que foi usado
   final DateTime criadoEm;
-  final DateTime? atualizadoEm;
+  final DateTime• atualizadoEm;
 
   Cupom({
     required this.id,
@@ -88,29 +88,29 @@ class Cupom {
     final data = doc.data() as Map<String, dynamic>;
     return Cupom(
       id: doc.id,
-      codigo: data['codigo'] ?? '',
-      nome: data['nome'] ?? '',
-      valor: (data['valor'] ?? 0).toDouble(),
-      tipo: data['tipo'] ?? 'fixo',
-      aplicarEm: data['aplicarEm'] ?? 'total',
-      freteGratis: data['freteGratis'] ?? false,
-      usoUnico: data['usoUnico'] ?? false,
-      usoUnicoGlobal: data['usoUnicoGlobal'] ?? false,
+      codigo: data['codigo'] ?• '',
+      nome: data['nome'] ?• '',
+      valor: (data['valor'] ?• 0).toDouble(),
+      tipo: data['tipo'] ?• 'fixo',
+      aplicarEm: data['aplicarEm'] ?• 'total',
+      freteGratis: data['freteGratis'] ?• false,
+      usoUnico: data['usoUnico'] ?• false,
+      usoUnicoGlobal: data['usoUnicoGlobal'] ?• false,
       clienteId: data['clienteId'],
-      ativo: data['ativo'] ?? true,
-      usadosPor: List<String>.from(data['usadosPor'] ?? []),
+      ativo: data['ativo'] ?• true,
+      usadosPor: List<String>.from(data['usadosPor'] ?• []),
       dataInicio: data['dataInicio'] != null
-          ? (data['dataInicio'] as Timestamp).toDate()
+          • (data['dataInicio'] as Timestamp).toDate()
           : null,
       dataFim: data['dataFim'] != null
-          ? (data['dataFim'] as Timestamp).toDate()
+          • (data['dataFim'] as Timestamp).toDate()
           : null,
       valorMinimo: data['valorMinimo']?.toDouble(),
       qtdMaximaUsos: data['qtdMaximaUsos'],
-      qtdUsosAtuais: data['qtdUsosAtuais'] ?? 0,
+      qtdUsosAtuais: data['qtdUsosAtuais'] ?• 0,
       criadoEm: (data['criadoEm'] as Timestamp).toDate(),
       atualizadoEm: data['atualizadoEm'] != null
-          ? (data['atualizadoEm'] as Timestamp).toDate()
+          • (data['atualizadoEm'] as Timestamp).toDate()
           : null,
     );
   }
@@ -135,52 +135,52 @@ class Cupom {
       'qtdMaximaUsos': qtdMaximaUsos,
       'qtdUsosAtuais': qtdUsosAtuais,
       'criadoEm': Timestamp.fromDate(criadoEm),
-      'atualizadoEm': Timestamp.fromDate(atualizadoEm ?? DateTime.now()),
+      'atualizadoEm': Timestamp.fromDate(atualizadoEm ?• DateTime.now()),
     };
   }
 
   // Copy with
   Cupom copyWith({
-    String? id,
-    String? codigo,
-    String? nome,
-    double? valor,
-    String? tipo,
-    String? aplicarEm,
-    bool? freteGratis,
-    bool? usoUnico,
-    bool? usoUnicoGlobal,
-    String? clienteId,
-    bool? ativo,
-    List<String>? usadosPor,
-    DateTime? dataInicio,
-    DateTime? dataFim,
-    double? valorMinimo,
-    int? qtdMaximaUsos,
-    int? qtdUsosAtuais,
-    DateTime? criadoEm,
-    DateTime? atualizadoEm,
+    String• id,
+    String• codigo,
+    String• nome,
+    double• valor,
+    String• tipo,
+    String• aplicarEm,
+    bool• freteGratis,
+    bool• usoUnico,
+    bool• usoUnicoGlobal,
+    String• clienteId,
+    bool• ativo,
+    List<String>• usadosPor,
+    DateTime• dataInicio,
+    DateTime• dataFim,
+    double• valorMinimo,
+    int• qtdMaximaUsos,
+    int• qtdUsosAtuais,
+    DateTime• criadoEm,
+    DateTime• atualizadoEm,
   }) {
     return Cupom(
-      id: id ?? this.id,
-      codigo: codigo ?? this.codigo,
-      nome: nome ?? this.nome,
-      valor: valor ?? this.valor,
-      tipo: tipo ?? this.tipo,
-      aplicarEm: aplicarEm ?? this.aplicarEm,
-      freteGratis: freteGratis ?? this.freteGratis,
-      usoUnico: usoUnico ?? this.usoUnico,
-      usoUnicoGlobal: usoUnicoGlobal ?? this.usoUnicoGlobal,
-      clienteId: clienteId ?? this.clienteId,
-      ativo: ativo ?? this.ativo,
-      usadosPor: usadosPor ?? this.usadosPor,
-      dataInicio: dataInicio ?? this.dataInicio,
-      dataFim: dataFim ?? this.dataFim,
-      valorMinimo: valorMinimo ?? this.valorMinimo,
-      qtdMaximaUsos: qtdMaximaUsos ?? this.qtdMaximaUsos,
-      qtdUsosAtuais: qtdUsosAtuais ?? this.qtdUsosAtuais,
-      criadoEm: criadoEm ?? this.criadoEm,
-      atualizadoEm: atualizadoEm ?? this.atualizadoEm,
+      id: id ?• this.id,
+      codigo: codigo ?• this.codigo,
+      nome: nome ?• this.nome,
+      valor: valor ?• this.valor,
+      tipo: tipo ?• this.tipo,
+      aplicarEm: aplicarEm ?• this.aplicarEm,
+      freteGratis: freteGratis ?• this.freteGratis,
+      usoUnico: usoUnico ?• this.usoUnico,
+      usoUnicoGlobal: usoUnicoGlobal ?• this.usoUnicoGlobal,
+      clienteId: clienteId ?• this.clienteId,
+      ativo: ativo ?• this.ativo,
+      usadosPor: usadosPor ?• this.usadosPor,
+      dataInicio: dataInicio ?• this.dataInicio,
+      dataFim: dataFim ?• this.dataFim,
+      valorMinimo: valorMinimo ?• this.valorMinimo,
+      qtdMaximaUsos: qtdMaximaUsos ?• this.qtdMaximaUsos,
+      qtdUsosAtuais: qtdUsosAtuais ?• this.qtdUsosAtuais,
+      criadoEm: criadoEm ?• this.criadoEm,
+      atualizadoEm: atualizadoEm ?• this.atualizadoEm,
     );
   }
 }

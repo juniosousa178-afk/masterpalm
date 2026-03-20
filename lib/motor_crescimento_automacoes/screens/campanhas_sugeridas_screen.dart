@@ -25,10 +25,10 @@ class CampanhasSugeridasScreen extends StatefulWidget {
 }
 
 class _CampanhasSugeridasScreenState extends State<CampanhasSugeridasScreen> {
-  Future<List<CampanhaAutomaticaSugerida>>? _future;
+  Future<List<CampanhaAutomaticaSugerida>>• _future;
   final Set<String> _ativando = {};
   /// Progresso durante o carregamento: (concluídos, total).
-  (int, int)? _loadingProgress;
+  (int, int)• _loadingProgress;
 
   void _carregarSugestoes() {
     setState(() {
@@ -132,8 +132,8 @@ class _CampanhasSugeridasScreenState extends State<CampanhasSugeridasScreen> {
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             final p = _loadingProgress;
-            final total = p != null ? p.$2 : 0;
-            final concluidos = p != null ? p.$1 : 0;
+            final total = p != null • p.$2 : 0;
+            final concluidos = p != null • p.$1 : 0;
             final temProgresso = total > 0;
             return Center(
               child: Padding(
@@ -143,12 +143,12 @@ class _CampanhasSugeridasScreenState extends State<CampanhasSugeridasScreen> {
                   children: [
                     LinearProgressIndicator(
                       color: _primaryColor,
-                      value: temProgresso ? (concluidos / total) : null,
+                      value: temProgresso • (concluidos / total) : null,
                     ),
                     const SizedBox(height: 20),
                     Text(
                       temProgresso
-                          ? 'Analisando… $concluidos/$total sugestões (${(100 * concluidos / total).round()}%)'
+                          • 'Analisando… $concluidos/$total sugestões (${(100 * concluidos / total).round()}%)'
                           : 'Buscando oportunidades…',
                       style: const TextStyle(color: Colors.white70, fontSize: 14),
                       textAlign: TextAlign.center,
@@ -174,7 +174,7 @@ class _CampanhasSugeridasScreenState extends State<CampanhasSugeridasScreen> {
                     Icon(Icons.error_outline, size: 48, color: Colors.red.shade300),
                     const SizedBox(height: 16),
                     Text(
-                      snap.error?.toString() ?? 'Erro ao carregar.',
+                      snap.error?.toString() ?• 'Erro ao carregar.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: Colors.white70),
                     ),
@@ -189,7 +189,7 @@ class _CampanhasSugeridasScreenState extends State<CampanhasSugeridasScreen> {
               ),
             );
           }
-          final lista = snap.data ?? [];
+          final lista = snap.data ?• [];
           if (lista.isEmpty) {
             return Center(
               child: Padding(
@@ -261,7 +261,7 @@ class _CampanhaSugeridaCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = item.campanha;
     final isPromocao = c.tipoCampanha == 'promocao';
-    final color = isPromocao ? _warningColor : _errorColor;
+    final color = isPromocao • _warningColor : _errorColor;
     final isAltaPrioridade = c.prioridade == PrioridadeCampanha.alta;
 
     return Container(
@@ -271,8 +271,8 @@ class _CampanhaSugeridaCard extends StatelessWidget {
         color: _cardDark,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isAltaPrioridade ? color.withValues(alpha:0.6) : color.withValues(alpha:0.3),
-          width: isAltaPrioridade ? 1.5 : 1,
+          color: isAltaPrioridade • color.withValues(alpha:0.6) : color.withValues(alpha:0.3),
+          width: isAltaPrioridade • 1.5 : 1,
         ),
       ),
       child: Column(
@@ -288,7 +288,7 @@ class _CampanhaSugeridaCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  isPromocao ? Icons.local_offer_outlined : Icons.warning_amber_outlined,
+                  isPromocao • Icons.local_offer_outlined : Icons.warning_amber_outlined,
                   color: color,
                   size: 24,
                 ),
@@ -378,15 +378,15 @@ class _CampanhaSugeridaCard extends StatelessWidget {
             width: double.infinity,
             height: 44,
             child: ElevatedButton.icon(
-              onPressed: ativando ? null : onAtivar,
+              onPressed: ativando • null : onAtivar,
               icon: ativando
-                  ? const SizedBox(
+                  • const SizedBox(
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.rocket_launch_outlined, size: 18),
-              label: Text(ativando ? 'Criando…' : 'Ativar campanha'),
+              label: Text(ativando • 'Criando…' : 'Ativar campanha'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _primaryColor,
                 foregroundColor: Colors.white,

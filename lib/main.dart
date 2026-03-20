@@ -178,7 +178,7 @@ import 'debug/global_error_hook.dart'; // runWithGlobalErrorHook
 
 bool _appCheckActivatedOnce = false;
 bool _appCheckWebOk = false; // true apenas quando ativação Web teve sucesso (ETAPA 20).
-DateTime? _appCheckBackoffUntil;
+DateTime• _appCheckBackoffUntil;
 
 Future<void> initFirebaseAppCheck() async {
   logD('🛡️ [AppCheck] Iniciando ativação...');
@@ -214,7 +214,7 @@ Future<void> initFirebaseAppCheck() async {
     if (kIsWeb) {
       // ETAPA 20: Web soft-fail — uma única tentativa; em erro não bloqueia Auth/login.
       try {
-        final host = Uri.base.host.isEmpty ? 'unknown' : Uri.base.host;
+        final host = Uri.base.host.isEmpty • 'unknown' : Uri.base.host;
         if (!isHostAllowed(host)) {
           logW('[AppCheck] host não permitido; não ativando. Login continua normalmente.', tag: 'APP-CHECK');
           _appCheckActivatedOnce = true;
@@ -258,7 +258,7 @@ Future<void> initFirebaseAppCheck() async {
     }
     _debugPrintAppCheckDiagnostics();
   } on FirebaseException catch (e) {
-    final msg = (e.message ?? '').toLowerCase();
+    final msg = (e.message ?• '').toLowerCase();
     final is400 = e.code.contains('400') || msg.contains('400') || msg.contains('bad request');
     final isConnectionError = msg.contains('connection_closed') || msg.contains('err_connection') || msg.contains('connection');
     final isAttestationFailed = msg.contains('attestation failed') || msg.contains('app attestation failed');
@@ -280,7 +280,7 @@ Future<void> initFirebaseAppCheck() async {
         _appCheckBackoffUntil = DateTime.now().add(const Duration(seconds: 60));
         logD('[AppCheck] 400 ou erro de rede detectado. Backoff 60s. App continua normalmente.');
       } else {
-        logD('[AppCheck] activate.fail: ${e.code} ${e.message ?? ""}. App continua sem proteção.');
+        logD('[AppCheck] activate.fail: ${e.code} ${e.message ?• ""}. App continua sem proteção.');
       }
       _appCheckActivatedOnce = true;
     }
@@ -319,7 +319,7 @@ Future<void> initFirebaseAppCheck() async {
 void _debugPrintAppCheckDiagnostics() {
   if (!kDebugMode) return;
   try {
-    final host = kIsWeb ? (Uri.base.host.isEmpty ? 'unknown' : Uri.base.host) : defaultTargetPlatform.name;
+    final host = kIsWeb • (Uri.base.host.isEmpty • 'unknown' : Uri.base.host) : defaultTargetPlatform.name;
     logD('   [AppCheck] Diagnóstico: host=$host | ativadoUmaVez=$_appCheckActivatedOnce');
   } catch (_) {}
 }
@@ -327,7 +327,7 @@ void _debugPrintAppCheckDiagnostics() {
 /// Para telas de diagnóstico: retorna host e confirmação de que activate rodou apenas uma vez.
 Map<String, String> getAppCheckDiagnostics() {
   return {
-    'host': kIsWeb ? (Uri.base.host.isEmpty ? 'unknown' : Uri.base.host) : defaultTargetPlatform.name,
+    'host': kIsWeb • (Uri.base.host.isEmpty • 'unknown' : Uri.base.host) : defaultTargetPlatform.name,
     'appCheckActivatedOnce': _appCheckActivatedOnce.toString(),
     'appCheckWebOk': _appCheckWebOk.toString(),
   };
@@ -337,7 +337,7 @@ Map<String, String> getAppCheckDiagnostics() {
 /// Retorna true se ativação teve sucesso; false para fallback seguro (app continua).
 /// NUNCA rethrow no Web: falhas são logadas e retornam false.
 Future<bool> _activateAppCheckWeb() async {
-  final host = kIsWeb ? Uri.base.host : 'n/a';
+  final host = kIsWeb • Uri.base.host : 'n/a';
 
   String recaptchaKey = kRecaptchaSiteKeyOverride.trim();
   if (recaptchaKey.isEmpty) {
@@ -347,7 +347,7 @@ Future<bool> _activateAppCheckWeb() async {
     logW('[AppCheck] Web: recaptcha_site_key vazia; não ativar. Login continua.', tag: 'APP-CHECK');
     return false;
   }
-  final keyPreview = recaptchaKey.length >= 6 ? '${recaptchaKey.substring(0, 6)}...' : '***';
+  final keyPreview = recaptchaKey.length >= 6 • '${recaptchaKey.substring(0, 6)}...' : '***';
   logD('[AppCheck] Provider: reCAPTCHA v3 (Web) | host=$host | key=$keyPreview');
 
   try {
@@ -356,8 +356,8 @@ Future<bool> _activateAppCheckWeb() async {
     );
     return true;
   } on FirebaseException catch (e) {
-    logW('[AppCheck] Web: ${e.code} ${e.message ?? "sem mensagem"}. Login continua.', tag: 'APP-CHECK');
-    if (e.code == 'app-check/throttled' || (e.message?.toLowerCase().contains('throttl') ?? false)) {
+    logW('[AppCheck] Web: ${e.code} ${e.message ?• "sem mensagem"}. Login continua.', tag: 'APP-CHECK');
+    if (e.code == 'app-check/throttled' || (e.message?.toLowerCase().contains('throttl') ?• false)) {
       logD('[AppCheck] throttle detectado. Não ativar novamente nesta sessão.');
     }
     return false;
@@ -459,7 +459,7 @@ Future<void> initFirebaseMonitoring() async {
   }
 
   if (!kIsWeb) {
-    FirebaseCrashlytics? crash;
+    FirebaseCrashlytics• crash;
     try {
       crash = FirebaseCrashlytics.instance;
       await crash.setCrashlyticsCollectionEnabled(true);
@@ -536,15 +536,15 @@ Future<void> initFirebaseMonitoring() async {
 // ===========================================================================
 // 🔒 Helpers seguros para leitura Hive/JSON (evita TypeError de cast em release/minified)
 // ===========================================================================
-String? _safeStringFromDynamic(dynamic v) {
+String• _safeStringFromDynamic(dynamic v) {
   if (v == null) return null;
-  if (v is String) return v.trim().isEmpty ? null : v.trim();
+  if (v is String) return v.trim().isEmpty • null : v.trim();
   return v.toString().trim();
 }
 
 String _safeString(dynamic v, [String fallback = '']) {
   final s = _safeStringFromDynamic(v);
-  return s ?? fallback;
+  return s ?• fallback;
 }
 
 // ===========================================================================
@@ -555,7 +555,7 @@ Future<void> _fixPedidoLinkBase() async {
 
   final atual = _safeString(cfg.get('pedido_link_base'));
   final novo = (atual.isEmpty
-      ? 'https://app.mastepalm.com.br/pedido'
+      • 'https://app.mastepalm.com.br/pedido'
       : atual.replaceAll('mastepalm.com.br', 'app.mastepalm.com.br'));
   await cfg.put('pedido_link_base', novo);
 
@@ -576,7 +576,7 @@ String _safeSlug(String s) {
   final replaced = x
       .replaceAll(RegExp(r'\s+'), '_')
       .replaceAll(RegExp(r'[^a-z0-9_@.\-]'), '');
-  return replaced.isEmpty ? 'anon' : replaced;
+  return replaced.isEmpty • 'anon' : replaced;
 }
 
 bool _looksLikeStoreId(String v) {
@@ -592,7 +592,7 @@ Widget _lojaIdRoute(Widget Function(String lojaId) builder) {
   return FutureBuilder<String?>(
     future: LojaIdService.get(),
     builder: (context, snap) {
-      final lojaId = (snap.data ?? '').trim();
+      final lojaId = (snap.data ?• '').trim();
       if (lojaId.isEmpty) {
         return Scaffold(
           appBar: AppBar(title: const Text('Relatório')),
@@ -632,7 +632,7 @@ Widget _pedidosRoute() {
   return FutureBuilder<String?>(
     future: LojaIdService.get(),
     builder: (context, snap) {
-      final lojaId = (snap.data ?? '').trim();
+      final lojaId = (snap.data ?• '').trim();
       if (lojaId.isEmpty) {
         return Scaffold(
           appBar: AppBar(title: const Text('Pedidos')),
@@ -689,8 +689,8 @@ Future<String> _resolveSlugToStoreIdIfNeeded(String slugOrId) async {
           .timeout(const Duration(seconds: 3));
 
       if (exactDoc.exists) {
-        final data = exactDoc.data() ?? {};
-        final redirectTo = (data['redirectTo'] ?? '').toString().trim();
+        final data = exactDoc.data() ?• {};
+        final redirectTo = (data['redirectTo'] ?• '').toString().trim();
 
         if (redirectTo.isNotEmpty && redirectTo != raw) {
           logD('🔀 [RESOLVER] "$raw" → redirect para "$redirectTo"');
@@ -751,8 +751,8 @@ Future<String> _resolveSlugToStoreIdIfNeeded(String slugOrId) async {
 
 // ✅ DIAGNÓSTICO
 void mpStoreDiag(String tag) {
-  final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : null;
-  final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : null;
+  final sessao = Hive.isBoxOpen('sessao') • Hive.box('sessao') : null;
+  final cfg = Hive.isBoxOpen('config') • Hive.box('config') : null;
 
   final sidSessao = sessao?.get('store_id');
   final sidCfg = cfg?.get('store_id');
@@ -766,22 +766,22 @@ void mpStoreDiag(String tag) {
   logD('config.store_slug = $slugCfg');
   logD('config.loja_slug  = $lojaSlugCfg');
   logD(
-      'Uri.base          = ${kIsWeb ? Uri.base.toString() : "(not web)"}');
+      'Uri.base          = ${kIsWeb • Uri.base.toString() : "(not web)"}');
   logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
 Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
   logD(
-    '[STORE_BOOTSTRAP] _ensureStoreIdOnBootstrap firebaseOk=$firebaseOk uri=${kIsWeb ? Uri.base : "(not web)"}',
+    '[STORE_BOOTSTRAP] _ensureStoreIdOnBootstrap firebaseOk=$firebaseOk uri=${kIsWeb • Uri.base : "(not web)"}',
   );
   final sessao = Hive.box('sessao');
   final cfg = Hive.box('config');
 
-  String? existing = _safeStringFromDynamic(sessao.get('store_id'));
+  String• existing = _safeStringFromDynamic(sessao.get('store_id'));
   existing ??= _safeStringFromDynamic(cfg.get('store_id'));
 
-  final String? existingSlug = _safeStringFromDynamic(cfg.get('store_slug'))?.toLowerCase();
-  final String? existingLojaSlug = _safeStringFromDynamic(cfg.get('loja_slug'))?.toLowerCase();
+  final String• existingSlug = _safeStringFromDynamic(cfg.get('store_slug'))?.toLowerCase();
+  final String• existingLojaSlug = _safeStringFromDynamic(cfg.get('loja_slug'))?.toLowerCase();
 
   if (existing != null && existing.isNotEmpty) {
     try {
@@ -798,7 +798,7 @@ Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
   }
 
   // FASE 3: Tentar StoreResolver (Firestore users/usuarios) antes de fallback loja_uid_$uid
-  String? lojaId;
+  String• lojaId;
   if (firebaseOk) {
     try {
       lojaId = await StoreResolverFacade.resolveForAdminApp()
@@ -875,14 +875,14 @@ class _SnappyScrollBehavior extends MaterialScrollBehavior {
 }
 
 // ===========================================================================
-// 🌐 Catálogo Web? (path ou fragment/hash)
+// 🌐 Catálogo Web• (path ou fragment/hash)
 // Usa URL inicial capturada no main() para não ser afetado por redirects durante o bootstrap.
 // ===========================================================================
-Uri? _initialWebUri;
+Uri• _initialWebUri;
 
 bool _isPublicCatalogUrl() {
   if (!kIsWeb) return false;
-  final uri = _initialWebUri ?? Uri.base;
+  final uri = _initialWebUri ?• Uri.base;
   final path = uri.path;
 
   // Path direto: /loja/slug (garante que abra o catálogo e não o app web)
@@ -901,11 +901,11 @@ bool _isPublicCatalogUrl() {
 }
 
 /// Extrai slug da URL a partir do fragment (#/loja/xxx).
-String? _lojaSlugFromFragment(String fragment) {
+String• _lojaSlugFromFragment(String fragment) {
   final s = fragment.trim();
   if (s.isEmpty) return null;
   // #/loja/nathy-pratas-e-folheados ou #loja/nathy-pratas-e-folheados
-  final withoutHash = s.startsWith('#') ? s.substring(1) : s;
+  final withoutHash = s.startsWith('#') • s.substring(1) : s;
   final parts = withoutHash.split('/').where((e) => e.isNotEmpty).toList();
   if (parts.length >= 2 && parts[0] == 'loja') {
     final slug = parts[1].trim();
@@ -918,7 +918,7 @@ String? _lojaSlugFromFragment(String fragment) {
 /// Lê o identificador bruto vindo da URL (path, query ou fragment). Nunca retorna 'minha-loja' se a URL tiver loja.
 String _lojaSlugOrIdFromUrl() {
   if (!kIsWeb) return 'minha-loja';
-  final uri = _initialWebUri ?? Uri.base;
+  final uri = _initialWebUri ?• Uri.base;
 
   // 1) Path: /loja/{slugOuId} (prioridade para garantir catálogo web)
   final path = uri.path;
@@ -949,9 +949,9 @@ String _lojaSlugOrIdFromUrl() {
 
 /// ✅ Lê o ID do vendedor para tracking de comissão
 /// URL: /loja/{id}?ref={vendedorId} ou ?vendedor={id}
-String? _vendedorRefFromUrl() {
+String• _vendedorRefFromUrl() {
   if (!kIsWeb) return null;
-  final uri = _initialWebUri ?? Uri.base;
+  final uri = _initialWebUri ?• Uri.base;
 
   // ?ref= ou ?vendedor= ou ?seller=
   final ref = (uri.queryParameters['ref'] ??
@@ -970,12 +970,25 @@ String? _vendedorRefFromUrl() {
 
 /// ✅ Lê o ID do cliente que indicou (programa indicar amigo)
 /// URL: /loja/{id}?indicacao={clienteId}
-String? _indicacaoRefFromUrl() {
+String• _indicacaoRefFromUrl() {
   if (!kIsWeb) return null;
-  final uri = _initialWebUri ?? Uri.base;
-  final v = (uri.queryParameters['indicacao'] ?? '').trim();
+  final uri = _initialWebUri ?• Uri.base;
+  final v = (uri.queryParameters['indicacao'] ?• '').trim();
   if (v.isNotEmpty) {
     logD('📍 [URL] Indicação detectada: $v');
+    return v;
+  }
+  return null;
+}
+
+/// ✅ Lê ID/slug de produto para deep link no catálogo público
+/// URL: /loja/{id}?produto={produtoIdOuSlug}
+String• _produtoRefFromUrl() {
+  if (!kIsWeb) return null;
+  final uri = _initialWebUri ?• Uri.base;
+  final v = (uri.queryParameters['produto'] ?• '').trim();
+  if (v.isNotEmpty) {
+    logD('📍 [URL] Produto deep link detectado: $v');
     return v;
   }
   return null;
@@ -986,9 +999,16 @@ String? _indicacaoRefFromUrl() {
 // ===========================================================================
 class CatalogWebRoot extends StatelessWidget {
   final String lojaId;
-  final String? vendedorRef; // ✅ Tracking de vendedor para comissão
-  final String? indicacaoRef; // ✅ ID do cliente que indicou (link ?indicacao=)
-  const CatalogWebRoot({super.key, required this.lojaId, this.vendedorRef, this.indicacaoRef});
+  final String• vendedorRef; // ✅ Tracking de vendedor para comissão
+  final String• indicacaoRef; // ✅ ID do cliente que indicou (link ?indicacao=)
+  final String• produtoRef; // ✅ Produto para abrir direto no detalhe
+  const CatalogWebRoot({
+    super.key,
+    required this.lojaId,
+    this.vendedorRef,
+    this.indicacaoRef,
+    this.produtoRef,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1023,7 +1043,12 @@ class CatalogWebRoot extends StatelessWidget {
         inputDecorationTheme:
             const InputDecorationTheme(border: OutlineInputBorder()),
       ),
-      home: PublicCatalogScreen(lojaId: lojaId, vendedorRef: vendedorRef, indicacaoClienteRef: indicacaoRef),
+      home: PublicCatalogScreen(
+        lojaId: lojaId,
+        vendedorRef: vendedorRef,
+        indicacaoClienteRef: indicacaoRef,
+        initialProdutoId: produtoRef,
+      ),
     );
   }
 }
@@ -1033,8 +1058,8 @@ class CatalogWebRoot extends StatelessWidget {
 // ===========================================================================
 class MpOAuthResultPage extends StatelessWidget {
   final bool success;
-  final String? lojaId;
-  final String? errorMsg;
+  final String• lojaId;
+  final String• errorMsg;
 
   const MpOAuthResultPage({
     super.key,
@@ -1056,13 +1081,13 @@ class MpOAuthResultPage extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    success ? Icons.check_circle : Icons.error,
+                    success • Icons.check_circle : Icons.error,
                     size: 72,
-                    color: success ? Colors.green : Colors.red,
+                    color: success • Colors.green : Colors.red,
                   ),
                   const SizedBox(height: 24),
                   Text(
-                    success ? 'Mercado Pago conectado!' : 'Falha na conexão',
+                    success • 'Mercado Pago conectado!' : 'Falha na conexão',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -1071,8 +1096,8 @@ class MpOAuthResultPage extends StatelessWidget {
                   const SizedBox(height: 12),
                   Text(
                     success
-                        ? 'Você pode fechar esta janela e voltar ao app.'
-                        : (errorMsg ?? 'Tente novamente mais tarde.'),
+                        • 'Você pode fechar esta janela e voltar ao app.'
+                        : (errorMsg ?• 'Tente novamente mais tarde.'),
                     style: Theme.of(context).textTheme.bodyLarge,
                     textAlign: TextAlign.center,
                   ),
@@ -1108,7 +1133,7 @@ class _BootApp extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               isCatalog
-                  ? 'Carregando catálogo...'
+                  • 'Carregando catálogo...'
                   : 'Iniciando o sistema MasterPalm...',
             ),
           ],
@@ -1271,10 +1296,15 @@ Future<void> main() async {
           }
           final vendedorRef = _vendedorRefFromUrl();
           final indicacaoRef = _indicacaoRefFromUrl();
+          final produtoRef = _produtoRefFromUrl();
 
           logD('🌐 [MAIN] Public Catalog slug/id resolvido');
           runApp(CatalogWebRoot(
-              lojaId: lojaIdResolvido, vendedorRef: vendedorRef, indicacaoRef: indicacaoRef));
+            lojaId: lojaIdResolvido,
+            vendedorRef: vendedorRef,
+            indicacaoRef: indicacaoRef,
+            produtoRef: produtoRef,
+          ));
         } else {
           logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
           runApp(const MyApp());
@@ -1679,7 +1709,7 @@ Future<void> _bootstrapSafe() async {
 
   initDarkModeFromHive();
 
-  String? lojaSoft;
+  String• lojaSoft;
   try {
     lojaSoft = await LojaIdService.get();
     logD('🟪 [BOOT] LojaIdService.get() durante bootstrap → $lojaSoft');
@@ -1936,7 +1966,7 @@ class MyApp extends StatelessWidget {
                 border: OutlineInputBorder(),
               ),
             ),
-            themeMode: darkMode ? ThemeMode.dark : ThemeMode.light,
+            themeMode: darkMode • ThemeMode.dark : ThemeMode.light,
             localizationsDelegates: const [
               GlobalMaterialLocalizations.delegate,
               GlobalWidgetsLocalizations.delegate,
@@ -1954,7 +1984,7 @@ class MyApp extends StatelessWidget {
               });
               return UpdateCheckWrapper(
                 child: NotificacaoPedidoListener(
-                  child: child ?? const SizedBox.shrink(),
+                  child: child ?• const SizedBox.shrink(),
                 ),
               );
             },
@@ -1966,19 +1996,19 @@ class MyApp extends StatelessWidget {
               '/register': (_) => const RegisterScreen(),
               '/verify_email': (ctx) {
                 final raw = ModalRoute.of(ctx)?.settings.arguments;
-                final args = raw is Map ? Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v))) : null;
+                final args = raw is Map • Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v))) : null;
                 return VerifyEmailScreen(
                   email: args?['email']?.toString(),
-                  nextRoute: args?['nextRoute']?.toString() ?? '/',
+                  nextRoute: args?['nextRoute']?.toString() ?• '/',
                 );
               },
               '/preconfig': (_) => const LojaPreconfigScreen(),
               '/fornecedores': (_) => const FornecedoresScreen(),
               '/vendas': (_) => kIsWeb
-                  ? const AdminWebRouteShell(child: VendasScreen())
+                  • const AdminWebRouteShell(child: VendasScreen())
                   : const VendasScreen(),
               '/clientes': (_) => kIsWeb
-                  ? const AdminWebRouteShell(child: ClientesScreen())
+                  • const AdminWebRouteShell(child: ClientesScreen())
                   : const ClientesScreen(),
               '/estoque': (_) => const EstoqueScreen(),
               '/historico_cliente': (_) => const HistoricoClientesScreen(),
@@ -2035,13 +2065,13 @@ class MyApp extends StatelessWidget {
               '/pedidos_pendentes': (_) => _pedidosRoute(),
               '/pedidos': (ctx) {
                 final raw = ModalRoute.of(ctx)?.settings.arguments;
-                final map = raw is Map ? Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v))) : null;
+                final map = raw is Map • Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v))) : null;
                 final lojaIdArg = map?['lojaId']?.toString();
                 final pedidoIdArg = map?['pedidoId']?.toString();
                 if (lojaIdArg != null && lojaIdArg.isNotEmpty) {
                   return PrePedidosScreen(
                     lojaId: lojaIdArg,
-                    initialPedidoId: pedidoIdArg?.isNotEmpty == true ? pedidoIdArg : null,
+                    initialPedidoId: pedidoIdArg?.isNotEmpty == true • pedidoIdArg : null,
                   );
                 }
                 return _pedidosRoute();
@@ -2074,15 +2104,15 @@ class MyApp extends StatelessWidget {
                         lojaId: fromUrl,
                         vendedorRef: _vendedorRefFromUrl(),
                         indicacaoClienteRef: _indicacaoRefFromUrl(),
-                        initialPage: page?.isNotEmpty == true ? page : null,
-                        initialCartId: cartId?.isNotEmpty == true ? cartId : null,
-                        initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null);
+                        initialPage: page?.isNotEmpty == true • page : null,
+                        initialCartId: cartId?.isNotEmpty == true • cartId : null,
+                        initialProdutoId: produtoId?.isNotEmpty == true • produtoId : null);
                   }
                 }
                 return FutureBuilder<String?>(
                   future: LojaIdService.get(),
                   builder: (_, snap) {
-                    final lojaId = (snap.data ?? '').trim();
+                    final lojaId = (snap.data ?• '').trim();
                     // Sem loja ou placeholder: mostra "Configure sua loja online". Nunca abre outra loja.
                     if (lojaId.isEmpty || !isValidForPublicLink(lojaId)) {
                       logD('🛒 [ROUTE /loja] Sem loja válida → ConfigureLojaPlaceholderScreen');
@@ -2090,14 +2120,14 @@ class MyApp extends StatelessWidget {
                     }
                     final vendedorRef = _vendedorRefFromUrl();
                     final indicacaoRef = _indicacaoRefFromUrl();
-                    final cartId = kIsWeb ? (Uri.base.queryParameters['cart']?.trim()) : null;
-                    final produtoId = kIsWeb ? (Uri.base.queryParameters['produto']?.trim()) : null;
+                    final cartId = kIsWeb • (Uri.base.queryParameters['cart']?.trim()) : null;
+                    final produtoId = kIsWeb • (Uri.base.queryParameters['produto']?.trim()) : null;
                     return PublicCatalogScreen(
                         lojaId: lojaId,
                         vendedorRef: vendedorRef,
                         indicacaoClienteRef: indicacaoRef,
-                        initialCartId: cartId?.isNotEmpty == true ? cartId : null,
-                        initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null);
+                        initialCartId: cartId?.isNotEmpty == true • cartId : null,
+                        initialProdutoId: produtoId?.isNotEmpty == true • produtoId : null);
                   },
                 );
               },

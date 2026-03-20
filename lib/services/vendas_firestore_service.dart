@@ -24,13 +24,13 @@ class VendasFirestoreService {
   ///
   /// [enqueueOnFailure] Se true, enfileira para retry quando falhar após 3 tentativas.
   /// Use false quando chamado pela SyncQueueService para evitar duplicação de itens na fila.
-  static Future<bool> syncVenda(Venda venda, {String? lojaId, bool enqueueOnFailure = true}) async {
+  static Future<bool> syncVenda(Venda venda, {String• lojaId, bool enqueueOnFailure = true}) async {
     const maxAttempts = 3;
     const baseDelay = Duration(milliseconds: 500);
 
     for (int attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+        final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
         if (storeId == null || storeId.isEmpty) {
           logE('❌ [VENDAS-SYNC] LojaId vazio, não pode sincronizar venda (vendaKey=${venda.key})');
           // Falha real: não há como enfileirar de forma segura sem lojaId.
@@ -42,10 +42,10 @@ class VendasFirestoreService {
 
         // ID único: idFirebase se for UUID válido; senão UUID (evita colisão entre dispositivos)
         // NUNCA usar Hive key ("0","1","2"...) como doc.id — colide entre dispositivos!
-        final existing = venda.idFirebase?.trim() ?? '';
+        final existing = venda.idFirebase?.trim() ?• '';
         final isUuid = existing.contains('-') && existing.length >= 36;
-        final oldIdIfNumeric = isUuid ? null : (existing.isNotEmpty ? existing : null);
-        final vendaId = isUuid ? existing : const Uuid().v4();
+        final oldIdIfNumeric = isUuid • null : (existing.isNotEmpty • existing : null);
+        final vendaId = isUuid • existing : const Uuid().v4();
 
         // ✅ Salvar o idFirebase na venda para futuras operações (migra de IDs numéricos para UUID)
         if (venda.idFirebase != vendaId) {
@@ -125,7 +125,7 @@ class VendasFirestoreService {
           logE('❌ [VENDAS-SYNC] Erro final ao sincronizar venda (vendaKey=${venda.key}, type=${e.runtimeType})', error: e, st: st);
           // Enfileirar para retry só quando NÃO vem da própria fila (evita duplicação)
           if (enqueueOnFailure) {
-            final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+            final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
             final key = venda.key;
             if (storeId != null && key != null) {
               logD('📋 [VENDAS-SYNC] Falhou; reenfileirado para retry (lojaId=$storeId, key=$key)');
@@ -202,7 +202,7 @@ class VendasFirestoreService {
       const batchSize = 200;
       int totalEncontradas = 0;
       int sincronizadas = 0;
-      DocumentSnapshot? lastDoc;
+      DocumentSnapshot• lastDoc;
       final firestoreVendaIds = <String>{};
 
       // ✅ Paginação: busca TODAS as vendas (não apenas 100)
@@ -240,9 +240,9 @@ class VendasFirestoreService {
             }
           }
           // Fallback para legacy: cliente + data (até segundo) + total
-          final dataFirestore = (data['data'] as Timestamp?)?.toDate() ?? DateTime.now();
-          final totalFirestore = (data['total'] as num?)?.toDouble() ?? 0.0;
-          final clienteNome = (data['clienteNome'] ?? '').toString().trim();
+          final dataFirestore = (data['data'] as Timestamp?)?.toDate() ?• DateTime.now();
+          final totalFirestore = (data['total'] as num?)?.toDouble() ?• 0.0;
+          final clienteNome = (data['clienteNome'] ?• '').toString().trim();
           final existePorDados = vendasBox.values.any((v) {
             if (v.clienteNome.trim() != clienteNome) return false;
             if ((v.total - totalFirestore).abs() > 0.01) return false;
@@ -257,41 +257,41 @@ class VendasFirestoreService {
           }
 
           // Converter itens do Firestore (array de maps)
-          final itensRaw = data['itens'] as List? ?? [];
+          final itensRaw = data['itens'] as List• ?• [];
           final itens = itensRaw.map((e) {
             final m = Map<String, dynamic>.from(e as Map);
             final pid = m['productId'] as String?;
             return VendaItem(
-              produtoNome: m['produtoNome'] as String? ?? '',
-              quantidade: (m['quantidade'] as num?)?.toInt() ?? 0,
-              precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ?? 0.0,
-              tamanho: m['tamanho'] as String? ?? '',
-              cor: m['cor'] as String? ?? '',
-              productId: pid != null && pid.trim().isNotEmpty ? pid : null,
+              produtoNome: m['produtoNome'] as String• ?• '',
+              quantidade: (m['quantidade'] as num?)?.toInt() ?• 0,
+              precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ?• 0.0,
+              tamanho: m['tamanho'] as String• ?• '',
+              cor: m['cor'] as String• ?• '',
+              productId: pid != null && pid.trim().isNotEmpty • pid : null,
             );
           }).toList();
 
           // Converter Firestore → Venda (Hive model)
           final venda = Venda(
-            clienteNome: data['clienteNome'] ?? '',
-            produtosDescricao: data['produtosDescricao'] ?? '',
-            quantidade: (data['quantidade'] as num?)?.toInt() ?? itens.length,
-            preco: (data['preco'] as num?)?.toDouble() ?? 0.0,
-            total: (data['total'] as num?)?.toDouble() ?? 0.0,
-            formasPagamento: data['formasPagamento'] ?? '',
-            data: (data['data'] as Timestamp?)?.toDate() ?? DateTime.now(),
-            tamanho: data['tamanho'] ?? '',
-            vendedor: data['vendedor'] ?? '',
-            frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
-            desconto: (data['desconto'] as num?)?.toDouble() ?? 0.0,
-            observacao: data['observacao'] ?? '',
-            itens: itens.isNotEmpty ? itens : null,
-            pagamentoDinheiro: (data['pagamentoDinheiro'] as num?)?.toDouble() ?? 0.0,
-            pagamentoPix: (data['pagamentoPix'] as num?)?.toDouble() ?? 0.0,
-            pagamentoCartao: (data['pagamentoCartao'] as num?)?.toDouble() ?? 0.0,
-            taxas: (data['taxas'] as num?)?.toDouble() ?? 0.0,
-            custoProdutos: (data['custoProdutos'] as num?)?.toDouble() ?? 0.0,
-            descontoValor: (data['descontoValor'] as num?)?.toDouble() ?? 0.0,
+            clienteNome: data['clienteNome'] ?• '',
+            produtosDescricao: data['produtosDescricao'] ?• '',
+            quantidade: (data['quantidade'] as num?)?.toInt() ?• itens.length,
+            preco: (data['preco'] as num?)?.toDouble() ?• 0.0,
+            total: (data['total'] as num?)?.toDouble() ?• 0.0,
+            formasPagamento: data['formasPagamento'] ?• '',
+            data: (data['data'] as Timestamp?)?.toDate() ?• DateTime.now(),
+            tamanho: data['tamanho'] ?• '',
+            vendedor: data['vendedor'] ?• '',
+            frete: (data['frete'] as num?)?.toDouble() ?• 0.0,
+            desconto: (data['desconto'] as num?)?.toDouble() ?• 0.0,
+            observacao: data['observacao'] ?• '',
+            itens: itens.isNotEmpty • itens : null,
+            pagamentoDinheiro: (data['pagamentoDinheiro'] as num?)?.toDouble() ?• 0.0,
+            pagamentoPix: (data['pagamentoPix'] as num?)?.toDouble() ?• 0.0,
+            pagamentoCartao: (data['pagamentoCartao'] as num?)?.toDouble() ?• 0.0,
+            taxas: (data['taxas'] as num?)?.toDouble() ?• 0.0,
+            custoProdutos: (data['custoProdutos'] as num?)?.toDouble() ?• 0.0,
+            descontoValor: (data['descontoValor'] as num?)?.toDouble() ?• 0.0,
             lojaId: lojaId,
             idFirebase: vendaId,
             clienteId: data['clienteId'] as String?,
@@ -316,7 +316,7 @@ class VendasFirestoreService {
       final vendasToRemove = <Venda>[];
       for (final k in vendasBox.keys) {
         final v = vendasBox.get(k);
-        if (v != null && v.lojaId == lojaId && (v.idFirebase ?? '').isNotEmpty && !firestoreVendaIds.contains(v.idFirebase)) {
+        if (v != null && v.lojaId == lojaId && (v.idFirebase ?• '').isNotEmpty && !firestoreVendaIds.contains(v.idFirebase)) {
           toRemove.add(k as int);
           vendasToRemove.add(v);
         }
@@ -325,7 +325,7 @@ class VendasFirestoreService {
       try {
         final clientesBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
         for (final v in vendasToRemove) {
-          Cliente? c;
+          Cliente• c;
           for (final x in clientesBox.values) {
             if (x.lojaId == lojaId && x.nome == v.clienteNome) {
               c = x;
@@ -353,8 +353,8 @@ class VendasFirestoreService {
   }
 
   /// Busca vendas do Firestore (útil para multi-dispositivo)
-  static Stream<List<Map<String, dynamic>>> streamVendas({String? lojaId}) async* {
-    final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+  static Stream<List<Map<String, dynamic>>> streamVendas({String• lojaId}) async* {
+    final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
     if (storeId == null || storeId.isEmpty) {
       yield [];
       return;
@@ -383,7 +383,7 @@ class VendasFirestoreService {
           .collection(FSPaths.estoqueVendasCol)
           .count();
       final snapshot = await aggregate.get();
-      final remoteCount = snapshot.count ?? 0;
+      final remoteCount = snapshot.count ?• 0;
       final tem = remoteCount > localCount;
       logD('🔍 [SYNC-DEBUG] hasDataToImport → lojaId=$lojaId | local=$localCount | Firestore=$remoteCount | temParaImportar=$tem');
       return tem;
@@ -394,9 +394,9 @@ class VendasFirestoreService {
   }
 
   /// Deleta uma venda do Firestore
-  static Future<void> deleteVenda(String vendaId, {String? lojaId}) async {
+  static Future<void> deleteVenda(String vendaId, {String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return;
 
       await _db
@@ -413,9 +413,9 @@ class VendasFirestoreService {
   }
 
   /// Estatísticas de vendas do Firestore
-  static Future<Map<String, dynamic>> getEstatisticas({String? lojaId}) async {
+  static Future<Map<String, dynamic>> getEstatisticas({String• lojaId}) async {
     try {
-      final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final storeId = lojaId ?• await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return {};
 
       final vendasSnap = await _db
@@ -430,7 +430,7 @@ class VendasFirestoreService {
 
       for (final doc in vendasSnap.docs) {
         final data = doc.data();
-        final total = (data['total'] as num?)?.toDouble() ?? 0;
+        final total = (data['total'] as num?)?.toDouble() ?• 0;
         totalVendas += total;
 
         // Agrupar por mês
@@ -438,14 +438,14 @@ class VendasFirestoreService {
         if (timestamp != null) {
           final date = timestamp.toDate();
           final mesAno = '${date.year}-${date.month.toString().padLeft(2, '0')}';
-          vendasPorMes[mesAno] = (vendasPorMes[mesAno] ?? 0) + total;
+          vendasPorMes[mesAno] = (vendasPorMes[mesAno] ?• 0) + total;
         }
       }
 
       return {
         'totalVendas': totalVendas,
         'quantidadeVendas': quantidadeVendas,
-        'ticketMedio': quantidadeVendas > 0 ? totalVendas / quantidadeVendas : 0,
+        'ticketMedio': quantidadeVendas > 0 • totalVendas / quantidadeVendas : 0,
         'vendasPorMes': vendasPorMes,
       };
     } catch (e, st) {

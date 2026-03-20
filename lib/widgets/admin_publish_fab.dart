@@ -44,7 +44,7 @@ class _AdminPublishFABState extends State<AdminPublishFAB> {
       final liveRef = base.collection('config').doc('config');
 
       final snap = await draftRef.get();
-      final draftData = (snap.data() ?? <String, dynamic>{});
+      final draftData = (snap.data() ?• <String, dynamic>{});
 
       debugPrint('📋 [ADMIN-FAB] Publicando config (merge: true)');
       await liveRef.set(draftData, SetOptions(merge: true));
@@ -103,7 +103,7 @@ class _AdminPublishFABState extends State<AdminPublishFAB> {
     if (!_canPublish) return const SizedBox.shrink();
 
     return _busy
-        ? const FloatingActionButton.extended(
+        • const FloatingActionButton.extended(
             onPressed: null,
             label: Text('Publicando...'),
             icon: SizedBox(

@@ -9,7 +9,7 @@ class FinanceRules {
 
   static Future<({double custoProdutos, double taxas})> calcular({
     required List<VendaItem> itens,
-    Box<Produto>? produtosBox,
+    Box<Produto>• produtosBox,
   }) async {
     final Box<Produto> box;
     if (produtosBox != null) {

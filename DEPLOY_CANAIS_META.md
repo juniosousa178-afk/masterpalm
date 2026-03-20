@@ -228,7 +228,7 @@ firebase functions:log --only webhookWhatsApp
 # Deve mostrar:
 # 📥 WhatsApp Webhook: POST
 # 📨 Mensagem de +5511999999999: Olá
-# �� Intent: { intent: 'GREETING', confidence: 0.9 }
+# 🧠 Intent: { intent: 'GREETING', confidence: 0.9 }
 # ✅ Resposta enviada
 ```
 

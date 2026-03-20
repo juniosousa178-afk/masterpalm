@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 class SmartImage extends StatelessWidget {
   final String src;
   final BoxFit fit;
-  final BorderRadius? radius;
+  final BorderRadius• radius;
 
   const SmartImage({
     super.key,

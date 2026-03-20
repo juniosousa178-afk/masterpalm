@@ -41,7 +41,7 @@ class RepairHistoricoClientesService {
         if (cliente.historico != null && cliente.historico!.isNotEmpty) {
           cliente.historico!.clear();
           await cliente.save();
-          result[keyClientesLimpados] = (result[keyClientesLimpados] ?? 0) + 1;
+          result[keyClientesLimpados] = (result[keyClientesLimpados] ?• 0) + 1;
         }
       }
 
@@ -61,11 +61,11 @@ class RepairHistoricoClientesService {
           continue;
         }
         if (venda.clienteNome.trim().isEmpty) {
-          result[keyVendasSemCliente] = (result[keyVendasSemCliente] ?? 0) + 1;
+          result[keyVendasSemCliente] = (result[keyVendasSemCliente] ?• 0) + 1;
           continue;
         }
 
-        Cliente? cliente;
+        Cliente• cliente;
         // (E) Preferir match por clienteId
         if (venda.clienteId != null && venda.clienteId!.trim().isNotEmpty) {
           final list = clientesBox.values
@@ -79,17 +79,17 @@ class RepairHistoricoClientesService {
         // Senão: match por nome normalizado
         if (cliente == null) {
           final nomeNorm = normalizeText(venda.clienteNome);
-          final candidatos = nomeToClientes[nomeNorm] ?? [];
+          final candidatos = nomeToClientes[nomeNorm] ?• [];
           if (candidatos.length == 1) {
             cliente = candidatos.first;
           } else if (candidatos.length > 1) {
-            result[keyVendasAmbiguas] = (result[keyVendasAmbiguas] ?? 0) + 1;
+            result[keyVendasAmbiguas] = (result[keyVendasAmbiguas] ?• 0) + 1;
             continue;
           }
         }
 
         if (cliente == null) {
-          result[keyVendasSemCliente] = (result[keyVendasSemCliente] ?? 0) + 1;
+          result[keyVendasSemCliente] = (result[keyVendasSemCliente] ?• 0) + 1;
           continue;
         }
 
@@ -98,11 +98,11 @@ class RepairHistoricoClientesService {
         if (!cliente.historico!.any((v) => v.key == venda.key)) {
           cliente.historico!.add(venda);
           await cliente.save();
-          result[keyVendasAtribuidas] = (result[keyVendasAtribuidas] ?? 0) + 1;
+          result[keyVendasAtribuidas] = (result[keyVendasAtribuidas] ?• 0) + 1;
         }
 
         if (venda.clienteId == null || venda.clienteId!.isEmpty) {
-          venda.clienteId = cliente.key?.toString() ?? cliente.idFirebase;
+          venda.clienteId = cliente.key?.toString() ?• cliente.idFirebase;
           await venda.save();
         }
       }
@@ -126,7 +126,7 @@ class RepairHistoricoClientesService {
   }
 
   /// Legado: cliente sem lojaId (cLoja vazio) é tratado como pertencente ao contexto atual (box já é por loja).
-  static bool _lojaMatch(String? cLoja, String lojaId) {
+  static bool _lojaMatch(String• cLoja, String lojaId) {
     if (cLoja == null || cLoja.isEmpty) return true;
     return cLoja == lojaId;
   }

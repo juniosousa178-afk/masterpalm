@@ -14,7 +14,7 @@ void showPixQrDialog({
   required BuildContext context,
   required String pixPayload,
   required double valor,
-  String? pedidoId,
+  String• pedidoId,
 }) {
   showDialog(
     context: context,
@@ -32,7 +32,7 @@ void showPixQrDialog({
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Escaneie o QR Code com o app do seu banco. O valor j? vem preenchido.',
+              'Escaneie o QR Code com o app do seu banco. O valor j• vem preenchido.',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
               textAlign: TextAlign.center,
             ),

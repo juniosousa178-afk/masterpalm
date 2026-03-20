@@ -47,8 +47,8 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       try {
-        final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
-        final tipo = (sessao.get('tipo_usuario') as String?) ?? '';
+        final sessao = Hive.isBoxOpen('sessao') • Hive.box('sessao') : await Hive.openBox('sessao');
+        final tipo = (sessao.get('tipo_usuario') as String?) ?• '';
         if (tipo != 'programador' && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Acesso restrito ao programador')),
@@ -64,8 +64,8 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
 
     // 1. Verificação de acesso (programador)
     try {
-      final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
-      final tipo = (sessao.get('tipo_usuario') as String?) ?? '';
+      final sessao = Hive.isBoxOpen('sessao') • Hive.box('sessao') : await Hive.openBox('sessao');
+      final tipo = (sessao.get('tipo_usuario') as String?) ?• '';
       if (tipo != 'programador') {
         r.addProblema('Acesso', 'Tela restrita a programador. Tipo atual: $tipo');
       } else {
@@ -87,7 +87,7 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        r.addOk('Auth', user.email ?? user.uid);
+        r.addOk('Auth', user.email ?• user.uid);
       } else {
         r.addProblema('Auth', 'Nenhum usuário logado');
       }
@@ -141,16 +141,16 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
       }
       r.addOk('Hive (básico)', 'Boxes abertas: ${boxes.join(", ")}');
 
-      final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
-      final storeId = sessao.get('store_id')?.toString() ?? '';
-      final usuario = sessao.get('usuario_logado')?.toString() ?? '';
-      r.detalhes['sessao_store_id'] = storeId.isEmpty ? '(vazio)' : storeId;
-      r.detalhes['sessao_usuario'] = usuario.isEmpty ? '(vazio)' : usuario;
+      final sessao = Hive.isBoxOpen('sessao') • Hive.box('sessao') : await Hive.openBox('sessao');
+      final storeId = sessao.get('store_id')?.toString() ?• '';
+      final usuario = sessao.get('usuario_logado')?.toString() ?• '';
+      r.detalhes['sessao_store_id'] = storeId.isEmpty • '(vazio)' : storeId;
+      r.detalhes['sessao_usuario'] = usuario.isEmpty • '(vazio)' : usuario;
 
       if (storeId.isNotEmpty) {
-        final countProd = Hive.isBoxOpen(HiveBoxNames.produtos(storeId)) ? Hive.box<Produto>(HiveBoxNames.produtos(storeId)).length : 0;
-        final countCli = Hive.isBoxOpen(HiveBoxNames.clientes(storeId)) ? Hive.box<Cliente>(HiveBoxNames.clientes(storeId)).length : 0;
-        final countVen = Hive.isBoxOpen(HiveBoxNames.vendas(storeId)) ? Hive.box<Venda>(HiveBoxNames.vendas(storeId)).length : 0;
+        final countProd = Hive.isBoxOpen(HiveBoxNames.produtos(storeId)) • Hive.box<Produto>(HiveBoxNames.produtos(storeId)).length : 0;
+        final countCli = Hive.isBoxOpen(HiveBoxNames.clientes(storeId)) • Hive.box<Cliente>(HiveBoxNames.clientes(storeId)).length : 0;
+        final countVen = Hive.isBoxOpen(HiveBoxNames.vendas(storeId)) • Hive.box<Venda>(HiveBoxNames.vendas(storeId)).length : 0;
         r.detalhes[HiveBoxNames.produtos(storeId)] = countProd.toString();
         r.detalhes[HiveBoxNames.clientes(storeId)] = countCli.toString();
         r.detalhes[HiveBoxNames.vendas(storeId)] = countVen.toString();
@@ -181,7 +181,7 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
       } else {
         r.addProblema('LojaId', 'Não definido (store_id vazio)');
       }
-      r.detalhes['store_resolver'] = storeResolved ?? '(null)';
+      r.detalhes['store_resolver'] = storeResolved ?• '(null)';
     } catch (e, st) {
       r.addErro('LojaId', e, st);
     }
@@ -189,8 +189,8 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
     // 10. Remote Config
     try {
       r.addOk('Remote Config', 'recaptcha_site_key, globo_sorte_api_key, plano_precos');
-      r.detalhes['recaptcha_ok'] = RemoteConfigService.recaptchaSiteKey.isNotEmpty ? 'sim' : 'não';
-      r.detalhes['globo_sorte_api'] = RemoteConfigService.globoSorteApiKey.isNotEmpty ? 'configurado' : 'vazio';
+      r.detalhes['recaptcha_ok'] = RemoteConfigService.recaptchaSiteKey.isNotEmpty • 'sim' : 'não';
+      r.detalhes['globo_sorte_api'] = RemoteConfigService.globoSorteApiKey.isNotEmpty • 'configurado' : 'vazio';
     } catch (e, st) {
       r.addErro('Remote Config', e, st);
     }
@@ -206,9 +206,9 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
           r.addProblema('Licença', 'Sem acesso válido – verifique plano');
         }
         try {
-          final plan = await PlanosService().fetchCurrentPlan(uid: user.uid, email: user.email ?? '');
-          r.detalhes['plano'] = plan?.planId ?? 'n/a';
-          r.detalhes['plano_status'] = plan?.status ?? 'n/a';
+          final plan = await PlanosService().fetchCurrentPlan(uid: user.uid, email: user.email ?• '');
+          r.detalhes['plano'] = plan?.planId ?• 'n/a';
+          r.detalhes['plano_status'] = plan?.status ?• 'n/a';
         } catch (_) {
           r.detalhes['plano'] = 'erro ao buscar';
         }
@@ -257,7 +257,7 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
     buf.writeln('═══ DIAGNÓSTICO MasterPalm ${DateTime.now()} ═══');
     buf.writeln();
     for (final item in r.itens) {
-      buf.writeln('${item.ok ? "✅" : "❌"} ${item.area}: ${item.mensagem}');
+      buf.writeln('${item.ok • "✅" : "❌"} ${item.area}: ${item.mensagem}');
     }
     buf.writeln();
     buf.writeln('--- Detalhes ---');
@@ -305,7 +305,7 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
           final r = snap.data!;
           final okCount = r.itens.where((x) => x.ok).length;
           final total = r.itens.length;
-          final score = total > 0 ? (okCount / total * 100).round() : 0;
+          final score = total > 0 • (okCount / total * 100).round() : 0;
 
           return RefreshIndicator(
             onRefresh: () async => setState(() => _future = _executarDiagnostico()),
@@ -313,7 +313,7 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 Card(
-                  color: score == 100 ? Colors.green.shade50 : (score >= 80 ? Colors.amber.shade50 : Colors.red.shade50),
+                  color: score == 100 • Colors.green.shade50 : (score >= 80 • Colors.amber.shade50 : Colors.red.shade50),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -327,7 +327,7 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
                           '$okCount de $total checks OK ($score%)',
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: score == 100 ? Colors.green.shade800 : (score >= 80 ? Colors.amber.shade900 : Colors.red.shade900),
+                            color: score == 100 • Colors.green.shade800 : (score >= 80 • Colors.amber.shade900 : Colors.red.shade900),
                           ),
                         ),
                       ],
@@ -349,7 +349,7 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
                     ],
                   ),
                 )),
-                if (r.detalhes.containsKey('boot_trace') && (r.detalhes['boot_trace'] ?? '').toString().isNotEmpty) ...[
+                if (r.detalhes.containsKey('boot_trace') && (r.detalhes['boot_trace'] ?• '').toString().isNotEmpty) ...[
                   const SizedBox(height: 16),
                   ExpansionTile(
                     title: const Text('Boot trace'),
@@ -457,8 +457,8 @@ class _ItemTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: Icon(
-          item.ok ? Icons.check_circle : Icons.error,
-          color: item.ok ? Colors.green : Colors.red,
+          item.ok • Icons.check_circle : Icons.error,
+          color: item.ok • Colors.green : Colors.red,
           size: 28,
         ),
         title: Text(item.area),
@@ -483,8 +483,8 @@ class DiagnosticoReport {
 
   void addOk(String area, String msg) => itens.add(DiagnosticoItemResult(area, true, msg));
   void addProblema(String area, String msg) => itens.add(DiagnosticoItemResult(area, false, msg));
-  void addErro(String area, Object e, StackTrace? st) {
+  void addErro(String area, Object e, StackTrace• st) {
     itens.add(DiagnosticoItemResult(area, false, e.toString()));
-    erros.add('[$area] $e\n${st ?? ''}');
+    erros.add('[$area] $e\n${st ?• ''}');
   }
 }

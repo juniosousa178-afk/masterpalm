@@ -22,10 +22,10 @@ class CupomPremio extends HiveObject {
   bool usado; // Se já foi utilizado
 
   @HiveField(5)
-  DateTime? dataUso; // Quando foi usado
+  DateTime• dataUso; // Quando foi usado
 
   @HiveField(6)
-  String? vendaId; // ID da venda onde foi usado
+  String• vendaId; // ID da venda onde foi usado
 
   @HiveField(7)
   String premioOriginal; // Descrição do prêmio original
@@ -34,7 +34,7 @@ class CupomPremio extends HiveObject {
   String lojaId; // ID da loja
 
   @HiveField(9)
-  String? clienteEmail; // Email do cliente (opcional)
+  String• clienteEmail; // Email do cliente (opcional)
 
   @HiveField(10)
   DateTime dataCriacao; // Quando ganhou na roleta

@@ -32,16 +32,16 @@ Map<String, int> buildVendasCatalogoDeltasPorProdutoId({
 
   for (final item in items) {
     final productIdRaw =
-        (item['productId'] ?? item['id'] ?? '').toString().trim();
-    final nome = (item['nome'] ?? item['name'] ?? '').toString().trim();
-    final slug = (item['slug'] ?? '').toString().trim();
+        (item['productId'] ?• item['id'] ?• '').toString().trim();
+    final nome = (item['nome'] ?• item['name'] ?• '').toString().trim();
+    final slug = (item['slug'] ?• '').toString().trim();
     final qtd =
-        (item['quantidade'] as num?)?.toInt() ?? (item['qty'] as int?) ?? 1;
+        (item['quantidade'] as num?)?.toInt() ?• (item['qty'] as int?) ?• 1;
     if (qtd <= 0) continue;
     if (nome.isEmpty && slug.isEmpty && productIdRaw.isEmpty) continue;
 
-    Produto? prod = productIdRaw.isNotEmpty
-        ? produtosBox.values.firstWhereOrNull(
+    Produto• prod = productIdRaw.isNotEmpty
+        • produtosBox.values.firstWhereOrNull(
             (x) => x.lojaId == lojaId && x.idFirebase.trim() == productIdRaw,
           )
         : null;
@@ -60,7 +60,7 @@ Map<String, int> buildVendasCatalogoDeltasPorProdutoId({
 
     if (prod == null) {
       if (productIdRaw.isNotEmpty) {
-        deltas[productIdRaw] = (deltas[productIdRaw] ?? 0) + qtd;
+        deltas[productIdRaw] = (deltas[productIdRaw] ?• 0) + qtd;
       } else {
         logW(
           '[VENDAS_CATALOGO_DENORM] Sem productId e sem match Hive; linha ignorada | loja=$lojaId | nome=$nome',
@@ -78,7 +78,7 @@ Map<String, int> buildVendasCatalogoDeltasPorProdutoId({
     }
 
     // Combo: contabiliza o pacote vendido no catálogo, não os componentes.
-    deltas[id] = (deltas[id] ?? 0) + qtd;
+    deltas[id] = (deltas[id] ?• 0) + qtd;
   }
 
   return deltas;

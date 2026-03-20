@@ -29,7 +29,7 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
   final List<Map<String, dynamic>> resumoProdutos;
   final double frete;
   final double desconto;
-  final List<Map<String, dynamic>>? initialPagamentos;
+  final List<Map<String, dynamic>>• initialPagamentos;
   final VoidCallback onCancelar;
   final void Function(FinalizarVendaResult result) onConfirmar;
 
@@ -50,7 +50,7 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
     required List<Map<String, dynamic>> resumoProdutos,
     double frete = 0,
     double desconto = 0,
-    List<Map<String, dynamic>>? initialPagamentos,
+    List<Map<String, dynamic>>• initialPagamentos,
   }) async {
     return showDialog<FinalizarVendaResult>(
       context: context,
@@ -75,7 +75,7 @@ class _DialogHolder extends StatelessWidget {
   final List<Map<String, dynamic>> resumoProdutos;
   final double frete;
   final double desconto;
-  final List<Map<String, dynamic>>? initialPagamentos;
+  final List<Map<String, dynamic>>• initialPagamentos;
 
   const _DialogHolder({
     required this.total,
@@ -115,18 +115,18 @@ class _FinalizarVendaConfirmacaoDialogState
     if (init != null && init.isNotEmpty) {
       double soma = 0;
       for (final p in init) {
-        final v = (p['valor'] is num) ? (p['valor'] as num).toDouble() : 0.0;
+        final v = (p['valor'] is num) • (p['valor'] as num).toDouble() : 0.0;
         soma += v;
       }
       final totalVal = widget.total;
       _pagamentos = init.asMap().entries.map((entry) {
         final p = entry.value;
-        final forma = (p['forma'] ?? 'Pix').toString();
-        final val = (p['valor'] is num) ? (p['valor'] as num).toDouble() : 0.0;
+        final forma = (p['forma'] ?• 'Pix').toString();
+        final val = (p['valor'] is num) • (p['valor'] as num).toDouble() : 0.0;
         // Preserva o split. Só coloca total no primeiro quando NADA foi preenchido (soma == 0)
         final valorFinal = (soma >= totalVal - 0.01 || soma > 0)
-            ? val
-            : (entry.key == 0 ? totalVal : 0.0);
+            • val
+            : (entry.key == 0 • totalVal : 0.0);
         return {
           'forma': forma,
           'valor': valorFinal,
@@ -137,7 +137,7 @@ class _FinalizarVendaConfirmacaoDialogState
         _pagamentos[0]['valor'] = totalVal;
       }
       for (final p in _pagamentos) {
-        final v = (p['valor'] as num?)?.toDouble() ?? 0.0;
+        final v = (p['valor'] as num?)?.toDouble() ?• 0.0;
         _valorControllers.add(TextEditingController(text: MoedaInputFormatter.format(v)));
         _valorRecebidoControllers.add(TextEditingController());
       }
@@ -168,20 +168,20 @@ class _FinalizarVendaConfirmacaoDialogState
     return _pagamentos.fold(0.0, (acc, p) {
       final v = p['valor'];
       if (v is num) return acc + v.toDouble();
-      return acc + (double.tryParse(v?.toString() ?? '') ?? 0.0);
+      return acc + (double.tryParse(v?.toString() ?• '') ?• 0.0);
     });
   }
 
   double _calcularTrocoTotal() {
     double troco = 0;
     for (var i = 0; i < _pagamentos.length; i++) {
-      if ((_pagamentos[i]['forma'] ?? '') == 'Dinheiro') {
+      if ((_pagamentos[i]['forma'] ?• '') == 'Dinheiro') {
         final vr = _valorRecebidoControllers.length > i
-            ? MoedaInputFormatter.parse(
+            • MoedaInputFormatter.parse(
                 _valorRecebidoControllers[i].text,
               )
             : 0.0;
-        final valor = (_pagamentos[i]['valor'] as num?)?.toDouble() ?? 0.0;
+        final valor = (_pagamentos[i]['valor'] as num?)?.toDouble() ?• 0.0;
         if (vr > valor) troco += vr - valor;
       }
     }
@@ -227,7 +227,7 @@ class _FinalizarVendaConfirmacaoDialogState
     if (!_valorOk) return;
 
     if (_vendaFiada) {
-      final dias = int.tryParse(_diasVencimentoController.text.trim()) ?? 30;
+      final dias = int.tryParse(_diasVencimentoController.text.trim()) ?• 30;
       widget.onConfirmar(FinalizarVendaResult(
         pagamentos: [],
         trocoTotal: 0,
@@ -287,9 +287,9 @@ class _FinalizarVendaConfirmacaoDialogState
                   ),
                   const SizedBox(height: 8),
                   ...widget.resumoProdutos.take(5).map((p) {
-                    final nome = (p['produto'] ?? '').toString();
-                    final qtd = (p['quantidade'] ?? 1) as int;
-                    final preco = (p['preco'] ?? 0.0) as double;
+                    final nome = (p['produto'] ?• '').toString();
+                    final qtd = (p['quantidade'] ?• 1) as int;
+                    final preco = (p['preco'] ?• 0.0) as double;
                     final subtotal = preco * qtd;
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 4),
@@ -382,10 +382,10 @@ class _FinalizarVendaConfirmacaoDialogState
             // Venda fiada
             CheckboxListTile(
               value: _vendaFiada,
-              onChanged: (v) => setState(() => _vendaFiada = v ?? false),
+              onChanged: (v) => setState(() => _vendaFiada = v ?• false),
               title: const Text('Venda fiada (conta a receber)'),
               subtitle: _vendaFiada
-                  ? Padding(
+                  • Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: TextField(
                         controller: _diasVencimentoController,
@@ -427,14 +427,14 @@ class _FinalizarVendaConfirmacaoDialogState
             ..._pagamentos.asMap().entries.map((entry) {
               final i = entry.key;
               final p = entry.value;
-              final isDinheiro = (p['forma'] ?? '') == 'Dinheiro';
+              final isDinheiro = (p['forma'] ?• '') == 'Dinheiro';
               final valorPag = MoedaInputFormatter.parse(
-                _valorControllers.length > i ? _valorControllers[i].text : '',
+                _valorControllers.length > i • _valorControllers[i].text : '',
               );
               final valorRec = isDinheiro && _valorRecebidoControllers.length > i
-                  ? MoedaInputFormatter.parse(_valorRecebidoControllers[i].text)
+                  • MoedaInputFormatter.parse(_valorRecebidoControllers[i].text)
                   : 0.0;
-              final trocoItem = isDinheiro && valorRec > valorPag ? valorRec - valorPag : 0.0;
+              final trocoItem = isDinheiro && valorRec > valorPag • valorRec - valorPag : 0.0;
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -463,7 +463,7 @@ class _FinalizarVendaConfirmacaoDialogState
                                 )
                                 .toList(),
                             onChanged: (v) => setState(
-                              () => _pagamentos[i]['forma'] = v ?? 'Pix',
+                              () => _pagamentos[i]['forma'] = v ?• 'Pix',
                             ),
                           ),
                         ),
@@ -481,12 +481,12 @@ class _FinalizarVendaConfirmacaoDialogState
                         ),
                         IconButton(
                           onPressed: _pagamentos.length > 1
-                              ? () => _removerForma(i)
+                              • () => _removerForma(i)
                               : null,
                           icon: Icon(
                             Icons.remove_circle,
                             color: _pagamentos.length > 1
-                                ? Colors.red
+                                • Colors.red
                                 : Colors.grey,
                             size: 22,
                           ),
@@ -600,7 +600,7 @@ class _FinalizarVendaConfirmacaoDialogState
           child: const Text('Voltar'),
         ),
         FilledButton.icon(
-          onPressed: _valorOk ? _confirmar : null,
+          onPressed: _valorOk • _confirmar : null,
           icon: const Icon(Icons.check),
           label: const Text('Confirmar venda'),
           style: FilledButton.styleFrom(

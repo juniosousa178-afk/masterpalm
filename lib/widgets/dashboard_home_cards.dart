@@ -57,7 +57,7 @@ class DashboardHomeCards extends StatelessWidget {
                   icon: Icons.inventory_2_outlined,
                   label: 'Estoque baixo',
                   value: '$qtdEstoqueBaixo',
-                  color: qtdEstoqueBaixo > 0 ? _warningColor : _primaryColor,
+                  color: qtdEstoqueBaixo > 0 • _warningColor : _primaryColor,
                 ),
               ),
               const SizedBox(width: 8),
@@ -66,7 +66,7 @@ class DashboardHomeCards extends StatelessWidget {
                   icon: Icons.flag_outlined,
                   label: 'Meta do mês',
                   value: metaAtual <= 0
-                      ? '—'
+                      • '—'
                       : '${(metaAtingida / metaAtual * 100).toStringAsFixed(0)}%',
                   color: _primaryColor,
                 ),
@@ -91,7 +91,7 @@ class DashboardHomeCards extends StatelessWidget {
 
     try {
       final vendasBoxName = HiveBoxNames.vendas(lojaId);
-      Box<Venda>? vendasBox;
+      Box<Venda>• vendasBox;
       if (Hive.isBoxOpen(vendasBoxName)) {
         vendasBox = Hive.box<Venda>(vendasBoxName);
       } else {
@@ -109,7 +109,7 @@ class DashboardHomeCards extends StatelessWidget {
 
     try {
       final produtosBoxName = HiveBoxNames.produtos(lojaId);
-      Box<Produto>? produtosBox;
+      Box<Produto>• produtosBox;
       if (Hive.isBoxOpen(produtosBoxName)) {
         produtosBox = Hive.box<Produto>(produtosBoxName);
       } else {
@@ -124,7 +124,7 @@ class DashboardHomeCards extends StatelessWidget {
 
     try {
       final metaBoxName = 'metas_$lojaId';
-      Box<Meta>? metaBox;
+      Box<Meta>• metaBox;
       if (Hive.isBoxOpen(metaBoxName)) {
         metaBox = Hive.box<Meta>(metaBoxName);
       } else {

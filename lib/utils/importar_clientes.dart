@@ -15,7 +15,7 @@ Future<void> importarClientesExcel() async {
     return;
   }
 
-  FilePickerResult? result = await FilePicker.platform.pickFiles(
+  FilePickerResult• result = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: ['xlsx', 'xls'],
   );
@@ -33,11 +33,11 @@ Future<void> importarClientesExcel() async {
   for (int i = 1; i < sheet.maxRows; i++) {
     final row = sheet.rows[i];
 
-    final nome = row[0]?.value.toString() ?? '';
-    final instagram = row[0]?.value.toString() ?? '';
-    final telefone = row[2]?.value.toString() ?? '';
-    final cep = row[4]?.value.toString() ?? '';
-    final cidade = row[5]?.value.toString() ?? '';
+    final nome = row[0]?.value.toString() ?• '';
+    final instagram = row[0]?.value.toString() ?• '';
+    final telefone = row[2]?.value.toString() ?• '';
+    final cep = row[4]?.value.toString() ?• '';
+    final cidade = row[5]?.value.toString() ?• '';
 
     if (nome.isNotEmpty) {
       final cliente = Cliente(
