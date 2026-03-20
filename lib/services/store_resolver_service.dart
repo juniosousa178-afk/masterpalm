@@ -45,7 +45,16 @@ class StoreResolverService {
   ///    5) Hive sessao/config (offline, mesmo usuário)
   ///    6) Slug baseado no email
   static Future<String?> resolve() async {
-    logD('[STORE_RESOLVE] Iniciando resolução de loja');
+    logD('[STORE_RESOLVE] origem=StoreResolverService.resolve inicio');
+    final user0 = FirebaseAuth.instance.currentUser;
+    logD('[STORE_RESOLVE] auth uid=${user0?.uid ?? "null"} email=${user0?.email ?? "null"}');
+    try {
+      final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
+      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+      logD('[STORE_RESOLVE] sessao.store_id=${sessao.get("store_id")} config.store_id=${cfg.get("store_id")} usuario_logado_email=${sessao.get("usuario_logado_email")} usuario_logado=${sessao.get("usuario_logado")}');
+    } catch (e) {
+      logW('[STORE_RESOLVE] leitura inicial de sessao/config falhou (type=${e.runtimeType})');
+    }
 
     _ensureAuthListener();
 
@@ -60,7 +69,9 @@ class StoreResolverService {
             .first
             .timeout(const Duration(seconds: authWaitSeconds), onTimeout: () => null);
         currentUid = FirebaseAuth.instance.currentUser?.uid;
-      } catch (_) {}
+      } catch (e) {
+        logW('[STORE_RESOLVE] espera authStateChanges falhou (type=${e.runtimeType})');
+      }
       if (currentUid == null) {
         // WEB: Auth pode atrasar na restauração. Como fallback seguro, usar store_id do Hive
         // somente quando houver principal de sessão e candidate válido (sem placeholders).

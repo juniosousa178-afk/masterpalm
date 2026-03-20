@@ -16,9 +16,9 @@ class StoreResolverFacade {
   /// Resolve a loja do usuário para o app admin/dashboard.
   /// Delega a [StoreResolverService.resolve()] (Auth → users/{uid} → usuarios/{email} → Hive → slug).
   static Future<String?> resolveForAdminApp() async {
-    logD('[STORE_RESOLVE] resolveForAdminApp chamado');
+    logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp antes StoreResolverService.resolve');
     final id = await StoreResolverService.resolve();
-    logD('[STORE_RESOLVE] resolveForAdminApp resultado lojaId=${id ?? "null"}');
+    logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp depois StoreResolverService.resolve valor=${id ?? "null"}');
     return id;
   }
 

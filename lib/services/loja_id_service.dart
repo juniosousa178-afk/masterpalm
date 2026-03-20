@@ -66,12 +66,15 @@ class LojaIdService extends ChangeNotifier {
   // ============================================================
   static Future<String?> get() async {
     try {
+      logD('[LOJAID] origem=LojaIdService.get antes StoreResolverFacade.resolveForAdminApp');
       final id = await StoreResolverFacade.resolveForAdminApp();
+      logD('[LOJAID] origem=LojaIdService.get depois StoreResolverFacade.resolveForAdminApp valor=${id ?? "null"}');
       final trimmed = id?.trim() ?? '';
       if (trimmed.isNotEmpty) return trimmed;
+      logW('[LOJAID] origem=LojaIdService.get retorno null motivo=StoreResolver retornou vazio');
     } catch (e) {
       debugPrint(
-        '[LOJA_ID] Erro ao resolver loja via StoreResolverFacade.resolveForAdminApp (get) (type=${e.runtimeType})',
+        '[LOJAID] origem=LojaIdService.get erro StoreResolverFacade.resolveForAdminApp type=${e.runtimeType}',
       );
     }
 
@@ -83,6 +86,7 @@ class LojaIdService extends ChangeNotifier {
           final webFallback = await _resolveSafeWebHiveFallback(authEmail: '');
           if (webFallback != null && webFallback.isNotEmpty) return webFallback;
         }
+        logW('[LOJAID] origem=LojaIdService.get retorno null motivo=auth currentUser null e fallback nao resolveu');
         return null;
       }
 
@@ -95,7 +99,10 @@ class LojaIdService extends ChangeNotifier {
           (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
       final cachedUser = cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
       final currentEmail = (current.email ?? '').trim().toLowerCase();
-      if (cachedUser.isEmpty || currentEmail != cachedUser) return null;
+      if (cachedUser.isEmpty || currentEmail != cachedUser) {
+        logW('[LOJAID] origem=LojaIdService.get fallback sessao rejeitado motivo=principal mismatch currentEmail=$currentEmail cachedUser=$cachedUser');
+        return null;
+      }
 
       final rawId = normalizeFromBox(sessao);
       if (rawId != null && rawId.isNotEmpty) return rawId;
@@ -119,7 +126,10 @@ class LojaIdService extends ChangeNotifier {
           (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
       final cachedUser = cachedUserEmail.isNotEmpty ? cachedUserEmail : cachedUserLegacy;
       final currentEmail = (current.email ?? '').trim().toLowerCase();
-      if (cachedUser.isEmpty || currentEmail != cachedUser) return null;
+      if (cachedUser.isEmpty || currentEmail != cachedUser) {
+        logW('[LOJAID] origem=LojaIdService.get fallback config rejeitado motivo=principal mismatch currentEmail=$currentEmail cachedUser=$cachedUser');
+        return null;
+      }
 
       final Box cfg = Hive.isBoxOpen('config')
           ? Hive.box('config')
@@ -132,6 +142,7 @@ class LojaIdService extends ChangeNotifier {
       );
     }
 
+    logW('[LOJAID] origem=LojaIdService.get retorno null motivo=nenhuma fonte valida');
     return null;
   }
 
@@ -146,35 +157,41 @@ class LojaIdService extends ChangeNotifier {
         ? (kIsWeb && timeout.inSeconds < 30 ? const Duration(seconds: 30) : timeout)
         : (kIsWeb ? const Duration(seconds: 30) : const Duration(seconds: 10));
     const retryTimeout = kIsWeb ? Duration(seconds: 20) : Duration(seconds: 5);
-    logD('[BOOT-STORE] getWithTimeout iniciando (timeout=${effectiveTimeout.inSeconds}s, web=$kIsWeb)');
+    logD('[LOJAID] origem=LojaIdService.getWithTimeout inicio timeout=${effectiveTimeout.inSeconds}s web=$kIsWeb');
 
     // ⚠️ NÃO usar Hive como fast path: no Web, IndexedDB é compartilhado e pode ter
     // store_id de outro usuário (contaminação entre juniosousa178 e trindadejunio70).
 
     try {
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=1');
       final id = await StoreResolverFacade.resolveForAdminApp()
           .timeout(effectiveTimeout, onTimeout: () => null);
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=1 valor=${id ?? "null"}');
       final trimmed = id?.trim() ?? '';
       if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
-        logD('[STORE-RESOLVE] lojaId resolvido = $trimmed');
+        logD('[LOJAID] origem=LojaIdService.getWithTimeout retorno=$trimmed motivo=StoreResolver tentativa1');
         return trimmed;
       }
       // Retry quando retorna null/vazio (ex: Auth ainda não pronto no Web ao voltar)
       logD('[STORE-RESOLVE] Primeira tentativa retornou vazio, aguardando 2s para retry...');
       await Future<void>.delayed(const Duration(seconds: 2));
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=2');
       final idRetry = await StoreResolverFacade.resolveForAdminApp()
           .timeout(effectiveTimeout, onTimeout: () => null);
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=2 valor=${idRetry ?? "null"}');
       final trimmedRetry = idRetry?.trim() ?? '';
       if (trimmedRetry.isNotEmpty && isValidForPublicLink(trimmedRetry)) {
-        logD('[STORE-RESOLVE] lojaId resolvido no retry = $trimmedRetry');
+        logD('[LOJAID] origem=LojaIdService.getWithTimeout retorno=$trimmedRetry motivo=StoreResolver tentativa2');
         return trimmedRetry;
       }
     } on TimeoutException {
       logW('[STORE_SCREEN] Timeout ao resolver loja; tentando retry e depois Hive');
       // Retry: no Web o Auth pode ter ficado pronto após o timeout
       try {
+        logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=timeout-retry');
         final id = await StoreResolverFacade.resolveForAdminApp()
             .timeout(retryTimeout, onTimeout: () => null);
+        logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=timeout-retry valor=${id ?? "null"}');
         final trimmed = id?.trim() ?? '';
         if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
           logD('[STORE_SCREEN] lojaId resolvido no retry = $trimmed');
@@ -233,7 +250,7 @@ class LojaIdService extends ChangeNotifier {
       }
     }
 
-    logW('[STORE_SCREEN] lojaId não resolvido (null)');
+    logW('[LOJAID] origem=LojaIdService.getWithTimeout retorno null motivo=tentativas esgotadas');
     return null;
   }
 

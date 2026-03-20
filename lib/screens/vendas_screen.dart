@@ -31,6 +31,7 @@ import '../services/firestore_critical_listener_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/clientes_firestore_service.dart';
 import '../services/sync_queue_service.dart';
+import '../services/store_resolver_facade.dart';
 import '../utils/responsive.dart';
 import '../widgets/empty_state_cta.dart';
 import 'nova_venda_modal.dart';
@@ -131,7 +132,19 @@ class _VendasScreenState extends State<VendasScreen>
   }
 
   Future<void> _init() async {
-    if (kDebugMode) logD('[STORE-RESOLVE] Vendas: _init iniciando');
+    if (kDebugMode) {
+      final user = FirebaseAuth.instance.currentUser;
+      logD('[VENDAS_INIT] inicio _init');
+      logD('[VENDAS_INIT] auth uid=${user?.uid ?? "null"} email=${user?.email ?? "null"}');
+      logD('[VENDAS_INIT] rota=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${kIsWeb ? Uri.base.toString() : "n/a"}');
+      try {
+        final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
+        final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+        logD('[VENDAS_INIT] sessao.store_id=${sessao.get("store_id")} config.store_id=${cfg.get("store_id")} usuario_logado_email=${sessao.get("usuario_logado_email")} usuario_logado=${sessao.get("usuario_logado")}');
+      } catch (e) {
+        logW('[VENDAS_INIT] leitura sessao/config falhou (type=${e.runtimeType})');
+      }
+    }
     bool permissaoOk = false;
     try {
       permissaoOk = await _verificarPermissao()
@@ -152,15 +165,28 @@ class _VendasScreenState extends State<VendasScreen>
     }
     if (!mounted) return;
 
+    logD('[LOJAID] origem=Vendas._init antes LojaIdService.getWithTimeout');
     lojaId = await LojaIdService.getWithTimeout(
         timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
+    logD('[LOJAID] origem=Vendas._init depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
       if (kDebugMode) logD('[STORE-RESOLVE] Vendas: lojaId null, tentando retry em 2s');
       await Future<void>.delayed(const Duration(seconds: 2));
       if (!mounted) return;
+      logD('[LOJAID] origem=Vendas._init retry antes LojaIdService.getWithTimeout');
       lojaId = await LojaIdService.getWithTimeout(
           timeout: kIsWeb ? const Duration(seconds: 15) : const Duration(seconds: 8));
+      logD('[LOJAID] origem=Vendas._init retry depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
+    }
+    if (!mounted) return;
+    if (lojaId == null || lojaId!.trim().isEmpty) {
+      logD('[STORE_RESOLVE] origem=Vendas._init fallback final antes StoreResolverFacade.resolveForAdminApp');
+      final facadeId = (await StoreResolverFacade.resolveForAdminApp())?.trim();
+      logD('[STORE_RESOLVE] origem=Vendas._init fallback final depois StoreResolverFacade.resolveForAdminApp valor=${facadeId ?? "null"}');
+      if (facadeId != null && facadeId.isNotEmpty) {
+        lojaId = facadeId;
+      }
     }
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
@@ -173,13 +199,17 @@ class _VendasScreenState extends State<VendasScreen>
               .first
               .timeout(const Duration(seconds: 3), onTimeout: () => null);
           if (!mounted) return;
+          logD('[LOJAID] origem=Vendas._init authWait antes LojaIdService.getWithTimeout');
           lojaId = await LojaIdService.getWithTimeout(
               timeout: const Duration(seconds: 12));
-        } catch (_) {}
+          logD('[LOJAID] origem=Vendas._init authWait depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
+        } catch (e) {
+          logW('[VENDAS_INIT] auth wait/retry falhou (type=${e.runtimeType})');
+        }
       }
       if (!mounted) return;
       if (lojaId == null || lojaId!.trim().isEmpty) {
-        logW('[STORE-SCREEN-VENDAS] lojaId não resolvido - exibindo erro');
+        logW('[ERRO_LOJA] origem=Vendas._init motivo=lojaId null/vazio apos retries authUid=${FirebaseAuth.instance.currentUser?.uid ?? "null"} authEmail=${FirebaseAuth.instance.currentUser?.email ?? "null"}');
         if (mounted) {
           setState(() {
             _carregando = false;
@@ -215,8 +245,8 @@ class _VendasScreenState extends State<VendasScreen>
       // Sincronização em background (não bloqueia a abertura da tela)
       _syncEmBackground();
       _verificarSeTemVendasParaImportar();
-    } catch (e) {
-      logE('❌ [VendasScreen] Erro em _init (type=${e.runtimeType})', error: e);
+    } catch (e, st) {
+      logE('[ERRO_LOJA] origem=Vendas._init catch ao abrir Hive/estado (type=${e.runtimeType})', error: e, st: st);
       if (mounted) {
         setState(() {
           _carregando = false;

@@ -205,7 +205,9 @@ class StoreResolverUnified {
   /// REGRA: SEMPRE usa loja do usuário logado
   static Future<StoreResolveResult> _resolveAdminDashboard() async {
     try {
+      logD('[STORE_RESOLVE] origem=StoreResolverUnified._resolveAdminDashboard antes StoreResolverService.resolve');
       final storeId = await StoreResolverService.resolve();
+      logD('[STORE_RESOLVE] origem=StoreResolverUnified._resolveAdminDashboard depois StoreResolverService.resolve valor=${storeId ?? "null"}');
 
       if (storeId == null || storeId.trim().isEmpty) {
         logD('❌ [STORE-RESOLVER] Usuário sem loja configurada');
