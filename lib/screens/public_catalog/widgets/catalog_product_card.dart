@@ -164,21 +164,6 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
   double get _precoParaParcelamento =>
       _temFaixaPreco ? (widget.priceMin ?? widget.price) : widget.price;
 
-  String _buildParcelamentoTexto() {
-    final p = _precoParaParcelamento;
-    final n = widget.maxParcelas.clamp(1, 24);
-    final prefix = _temFaixaPreco ? 'A partir de ' : '';
-    if (widget.divideSemJuros) {
-      return '$prefix${n}x R\$ ${_fmt2(p / n)} sem juros';
-    }
-    final juros = widget.jurosParcelamento;
-    if (juros != null && juros > 0) {
-      final parcela = _parcelaComJuros(p, juros, n);
-      return '$prefix${n}x R\$ ${_fmt2(parcela)}';
-    }
-    return '${prefix}ou em até ${n}x de R\$ ${_fmt2(p / n)}';
-  }
-
   String _buildParcelamentoTextoCompacto() {
     final p = _precoParaParcelamento;
     final n = widget.maxParcelas.clamp(1, 24);
@@ -191,6 +176,29 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
       return '${n}x R\$ ${_fmt2(parcela)}';
     }
     return '${n}x R\$ ${_fmt2(p / n)}';
+  }
+
+  /// Exibição do catálogo minimalista (mesmo preço base de [_precoParaParcelamento], texto alinhado à referência).
+  String _buildPixTextoMinimalDisplay() {
+    if (widget.percentualDescontoPix <= 0) return '';
+    final v = _precoParaParcelamento * (1 - widget.percentualDescontoPix / 100);
+    return 'R\$ ${_fmt2(v)} com Pix';
+  }
+
+  /// Parcelamento no minimalista: uma linha, formato próximo à referência ("N x de R$ … sem juros").
+  String _buildParcelamentoTextoMinimalDisplay() {
+    final p = _precoParaParcelamento;
+    final n = widget.maxParcelas.clamp(1, 24);
+    final prefix = _temFaixaPreco ? 'A partir de ' : '';
+    if (widget.divideSemJuros) {
+      return '$prefix$n x de R\$ ${_fmt2(p / n)} sem juros';
+    }
+    final juros = widget.jurosParcelamento;
+    if (juros != null && juros > 0) {
+      final parcela = _parcelaComJuros(p, juros, n);
+      return '$prefix$n x de R\$ ${_fmt2(parcela)}';
+    }
+    return '${prefix}ou em até ${n}x de R\$ ${_fmt2(p / n)}';
   }
 
   Widget _buildBadge(String text, Color color) {
@@ -482,21 +490,21 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     // precisamos garantir espaço vertical real no conteúdo, senão o rodapé fica
     // espremido/cortado em cards menores (360/390) e pode aparentar sobreposição.
     if (showComprarDiretoFooter) {
-      // Shift maior para garantir espaço fixo para os 2 CTAs (ícone + "Comprar")
-      // em cards mais curtos (ex.: 360px).
+      // Catálogo padrão: shift maior = área da imagem mais enxuta, foto mais próxima do nome.
       const int flexShift = 4;
       imageFlex = (imageFlex - flexShift).clamp(1, 999);
       contentFlex = contentFlex + flexShift;
     }
+    // Minimalista: nome mais discreto; preço principal maior e em negrito (hierarquia da referência).
     final titleSizeBase = widget.minimalLayout
-        ? (isLargeCard ? 14.0 : (isSmallCard ? 12.0 : 13.0))
+        ? (isLargeCard ? 13.5 : (isSmallCard ? 11.5 : 12.5))
         : (widget.compact ? (isLargeCard ? 13.0 : 12.0) : (isLargeCard ? 16.0 : 15.0));
     final priceSizeBase = widget.minimalLayout
-        ? (isLargeCard ? 13.0 : 12.0)
+        ? (isLargeCard ? 16.5 : (isSmallCard ? 14.0 : 15.0))
         : (widget.compact ? (isLargeCard ? 12.0 : 11.0) : (isLargeCard ? 15.0 : 14.0));
     final actionHeightBase = widget.minimalLayout
-        ? (isLargeCard ? 38.0 : (isSmallCard ? 32.0 : 34.0))
-        : (widget.compact ? 32.0 : (isLargeCard ? 42.0 : 40.0));
+        ? (isLargeCard ? 34.0 : (isSmallCard ? 28.0 : 30.0))
+        : (widget.compact ? 32.0 : (isLargeCard ? 42.0 : 36.0));
     final titleSize = is360
         ? (titleSizeBase - 0.8)
         : is390
@@ -512,36 +520,66 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final actionHeight = is360
         ? (actionHeightBase - 1.0)
         : actionHeightBase;
+    /// Linha Comprar + carrinho (só minimalista com callback): alturas distintas — Comprar maior, carrinho menor.
+    final double minimalComprarBtnHeight = is360
+        ? 34.0
+        : is390
+            ? 35.0
+            : is412
+                ? 36.0
+                : 36.0;
+    final double minimalCartBtnHeight = is360
+        ? 30.0
+        : is390
+            ? 30.0
+            : 31.0;
+    final double minimalCartBtnWidth = is360 ? 40.0 : 42.0;
     double contentVPad = widget.compact
         ? (is360 ? 5.0 : 6.0)
         : (is360 ? 7.0 : 8.0);
     if (showComprarDiretoFooter) {
       contentVPad = (contentVPad - 1.0).clamp(0.0, 999.0);
     }
-    final spacingAfterTitle = widget.compact ? (is360 ? 1.0 : 2.0) : 4.0;
+    // Catálogo padrão (grid): padding e gaps menores = card mais compacto.
+    if (!widget.minimalLayout && !widget.compact) {
+      contentVPad = (contentVPad - 2.5).clamp(2.5, 999.0);
+    }
+    if (widget.minimalLayout && !widget.compact) {
+      contentVPad = (contentVPad - 2.0).clamp(2.0, 999.0);
+    }
+    final bool minimalComprarCarrinhoRow =
+        widget.minimalLayout && widget.onAbrirCarrinho != null;
+    final double contentPadBottom = minimalComprarCarrinhoRow
+        ? contentVPad + 10.0
+        : contentVPad;
+    final spacingAfterTitle = widget.compact
+        ? (is360 ? 1.0 : 2.0)
+        : (widget.minimalLayout ? 2.5 : 1.0);
     final parcelFontSize = widget.minimalLayout
-        ? 10.5
+        ? 10.8
         : (widget.compact ? 8.0 : 9.0);
     final pixFontSize = widget.minimalLayout
-        ? 10.5
+        ? 10.8
         : (widget.compact ? 8.0 : 9.0);
     final afterPriceGap = widget.minimalLayout
-        ? (widget.compact ? 1.0 : 2.0)
+        ? (widget.compact ? 1.0 : 1.5)
         : 1.0;
-    final titleLineHeight = 1.2;
+    const titleLineHeight = 1.2;
+    const titleBlockExtra = 1.0;
     final titleBlockHeight =
-        (titleSize * titleLineHeight * 2) + (widget.compact ? 1.0 : 2.0);
+        (titleSize * titleLineHeight * 2) + titleBlockExtra;
     final parcelamentoTexto = (widget.minimalLayout
-            ? _buildParcelamentoTexto()
+            ? _buildParcelamentoTextoMinimalDisplay()
             : _buildParcelamentoTextoCompacto())
         .trim();
     final hasParcelamento = parcelamentoTexto.isNotEmpty;
     final hasPix = widget.percentualDescontoPix > 0;
     final pixTexto = hasPix
-        ? 'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off'
+        ? (widget.minimalLayout
+            ? _buildPixTextoMinimalDisplay()
+            : 'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off')
         : '';
     final hasLinhaSecundaria = hasPix || hasParcelamento;
-    final secondaryRowHeight = widget.compact ? 16.0 : 18.0;
 
     return MouseRegion(
       onEnter: (_) {
@@ -612,7 +650,15 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                   : widget.imageUrl)
                               : '',
                           radius: BorderRadius.zero,
-                          fit: BoxFit.cover,
+                          // Padrão: contain + topCenter = foto inteira, cola no topo do card,
+                          // letterbox só embaixo (sem crop, sem zoom exagerado).
+                          // Minimalista: cover para preencher o slot como antes.
+                          fit: widget.minimalLayout
+                              ? BoxFit.cover
+                              : BoxFit.contain,
+                          alignment: widget.minimalLayout
+                              ? Alignment.center
+                              : Alignment.topCenter,
                           cacheWidth: widget.imageCacheWidth ?? (kIsWeb ? 600 : 500),
                           cacheHeight: widget.imageCacheHeight ?? (kIsWeb ? 800 : 667),
                         ),
@@ -699,15 +745,20 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             Expanded(
               flex: contentFlex,
               child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: widget.compact ? 4 : 10,
-                  vertical: contentVPad,
+                padding: EdgeInsets.only(
+                  left: widget.compact ? 4 : 10,
+                  right: widget.compact ? 4 : 10,
+                  top: contentVPad,
+                  bottom: contentPadBottom,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
-                  Expanded(
+                  // flex: 0: no minimalista, flex 1 criava faixa vazia enorme entre o bloco de texto e os botões.
+                  Flexible(
+                    flex: 0,
+                    fit: FlexFit.loose,
                     child: GestureDetector(
                       onTap: widget.minimalLayout ? _openDetails : null,
                       behavior: widget.minimalLayout
@@ -741,7 +792,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 style: TextStyle(
                                   color: widget.emPromocao ? Colors.red[700] : productPriceColor,
                                   fontSize: priceSize,
-                                  fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
+                                  fontWeight: widget.minimalLayout ? FontWeight.w800 : FontWeight.w700,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -763,7 +814,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                     style: TextStyle(
                                       color: Colors.red[700],
                                       fontSize: priceSize,
-                                      fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
+                                      fontWeight: widget.minimalLayout ? FontWeight.w800 : FontWeight.w700,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -776,7 +827,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 style: TextStyle(
                                   color: productPriceColor,
                                   fontSize: priceSize,
-                                  fontWeight: widget.minimalLayout ? FontWeight.w600 : FontWeight.w700,
+                                  fontWeight: widget.minimalLayout ? FontWeight.w800 : FontWeight.w700,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -784,48 +835,37 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                             SizedBox(height: afterPriceGap),
                             if (hasLinhaSecundaria)
                               (widget.minimalLayout
-                                  ? SizedBox(
-                                      height: secondaryRowHeight,
-                                      child: Row(
-                                        children: [
-                                          if (hasPix) ...[
-                                            Expanded(
-                                              flex: hasParcelamento ? 11 : 20,
-                                              child: Text(
-                                                pixTexto,
-                                                style: TextStyle(
-                                                  color: Colors.green[700],
-                                                  fontSize: pixFontSize,
-                                                  fontWeight: FontWeight.w700,
-                                                  height: 1.1,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
+                                  ? Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (hasPix) ...[
+                                          Text(
+                                            pixTexto,
+                                            style: TextStyle(
+                                              color: Colors.green[800],
+                                              fontSize: pixFontSize,
+                                              fontWeight: FontWeight.w500,
+                                              height: 1.15,
                                             ),
-                                            if (hasParcelamento)
-                                              SizedBox(width: widget.compact ? 4 : 6),
-                                          ],
-                                          if (hasParcelamento)
-                                            Expanded(
-                                              flex: hasPix ? 9 : 20,
-                                              child: Text(
-                                                parcelamentoTexto,
-                                                textAlign: hasPix
-                                                    ? TextAlign.right
-                                                    : TextAlign.left,
-                                                style: TextStyle(
-                                                  color: Colors.grey[600],
-                                                  fontSize: parcelFontSize,
-                                                  fontWeight: FontWeight.w500,
-                                                  height: 1.1,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          if (hasParcelamento) const SizedBox(height: 1),
                                         ],
-                                      ),
+                                        if (hasParcelamento)
+                                          Text(
+                                            parcelamentoTexto,
+                                            style: TextStyle(
+                                              color: theme.colorScheme.onSurface.withValues(alpha: 0.82),
+                                              fontSize: parcelFontSize,
+                                              fontWeight: FontWeight.w400,
+                                              height: 1.15,
+                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                      ],
                                     )
                                   : Row(
                                       children: [
@@ -835,7 +875,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                             child: Text(
                                               pixTexto,
                                               style: TextStyle(
-                                                color: Colors.green[700],
+                                                color: Colors.green[800],
                                                 fontSize: pixFontSize,
                                                 fontWeight: FontWeight.w700,
                                                 height: 1.1,
@@ -856,7 +896,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                                   ? TextAlign.right
                                                   : TextAlign.left,
                                               style: TextStyle(
-                                                color: Colors.grey[600],
+                                                color: Colors.grey[700],
                                                 fontSize: parcelFontSize,
                                                 fontWeight: FontWeight.w500,
                                                 height: 1.1,
@@ -872,104 +912,201 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                     ),
                   ),
                     SizedBox(
-                      height: widget.compact ? 3 : (showComprarDiretoFooter ? 4 : 5),
+                      height: widget.compact
+                          ? 3
+                          : (showComprarDiretoFooter
+                              ? (widget.minimalLayout ? 4 : 1)
+                              : (minimalComprarCarrinhoRow
+                                  ? 9.0
+                                  : (widget.minimalLayout ? 3 : 1))),
                     ),
-                    Row(
-                      children: [
-                        if (!widget.minimalLayout)
+                    if (widget.minimalLayout && widget.onAbrirCarrinho != null)
+                      Builder(
+                        builder: (_) {
+                          final comprarBg =
+                              catalogExt?.buttonComprarBg ?? theme.colorScheme.primary;
+                          final cartBgMinimal =
+                              Color.lerp(comprarBg, Colors.black, 0.22) ?? comprarBg;
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
                           Expanded(
                             child: SizedBox(
-                              height: widget.compact ? 32 : 40,
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
-                                  side: BorderSide(color: (catalogExt?.buttonVerText ?? theme.colorScheme.primary).withValues(alpha:0.7)),
-                                  padding: EdgeInsets.symmetric(horizontal: widget.compact ? 4 : 8),
+                              height: minimalComprarBtnHeight,
+                              child: FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: comprarBg,
+                                  foregroundColor:
+                                      catalogExt?.buttonComprarText ?? Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                onPressed: _comprarDirecto,
+                                child: Text(
+                                  'Comprar',
+                                  style: TextStyle(
+                                    fontSize: titleSize.clamp(11.0, 13.5),
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.15,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: minimalCartBtnWidth,
+                            height: minimalCartBtnHeight,
+                            child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: cartBgMinimal,
+                                  foregroundColor:
+                                      catalogExt?.buttonComprarText ?? Colors.white,
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                onPressed: () {
+                                  if (widget.ehCombo) {
+                                    _openComboVariationSheet(abrirCarrinhoDepois: false);
+                                    return;
+                                  }
+                                  final hasTamanhos = (widget.estoquePorTamanho != null && widget.estoquePorTamanho!.isNotEmpty) ||
+                                      (widget.variacoes != null && widget.variacoes!.isNotEmpty);
+                                  final hasCores = (widget.estoquePorCor != null && widget.estoquePorCor!.isNotEmpty) ||
+                                      (widget.variacoes != null && widget.variacoes!.isNotEmpty);
+                                  final hasVariacoes = widget.variacoes != null && widget.variacoes!.isNotEmpty;
+                                  if (hasTamanhos || hasCores || hasVariacoes) {
+                                    _openSelectionModal();
+                                  } else {
+                                    final img = widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl;
+                                    widget.onAdd({
+                                      'produtosId': widget.id, 'id': widget.id, 'nome': widget.name, 'preco': widget.price,
+                                      'percentualDescontoPix': widget.percentualDescontoPix, 'quantidade': 1,
+                                      'imageUrl': img, 'url_foto': img, 'slug': widget.slug, 'peso': widget.peso,
+                                      'tipoEmbalagem': widget.tipoEmbalagem, 'tamanho': '', 'cor': '',
+                                    });
+                                  }
+                                },
+                                child: Icon(
+                                  Icons.shopping_cart_outlined,
+                                  size: is360 ? 19 : 20,
+                                  color: catalogExt?.buttonComprarText ?? Colors.white,
+                                ),
+                              ),
+                          ),
+                        ],
+                      );
+                        },
+                      )
+                    else
+                      Row(
+                        children: [
+                          if (!widget.minimalLayout)
+                            Expanded(
+                              child: SizedBox(
+                                height: widget.compact ? 32 : (showComprarDiretoFooter ? 36 : 40),
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
+                                    side: BorderSide(color: (catalogExt?.buttonVerText ?? theme.colorScheme.primary).withValues(alpha:0.7)),
+                                    padding: EdgeInsets.symmetric(horizontal: widget.compact ? 4 : 8),
+                                    minimumSize: Size.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(widget.compact ? 6 : 8),
+                                    ),
+                                  ),
+                                  onPressed: _openDetails,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          size: widget.compact ? 14 : 17,
+                                          color: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
+                                        ),
+                                        if (!widget.compact) const SizedBox(width: 4),
+                                        Text(
+                                          'Ver',
+                                          style: TextStyle(
+                                            fontSize: widget.compact ? 11 : 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (!widget.minimalLayout) SizedBox(width: widget.compact ? 4 : 8),
+                          Expanded(
+                            child: SizedBox(
+                              height: actionHeight,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: catalogExt?.buttonComprarBg ?? theme.colorScheme.primary,
+                                  foregroundColor: catalogExt?.buttonComprarText ?? Colors.white,
+                                  padding: EdgeInsets.symmetric(horizontal: widget.minimalLayout ? 6 : (widget.compact ? 4 : 8)),
                                   minimumSize: Size.zero,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(widget.compact ? 6 : 8),
+                                    borderRadius: BorderRadius.circular(widget.minimalLayout ? 8 : (widget.compact ? 6 : 8)),
                                   ),
+                                  elevation: 0,
                                 ),
-                                onPressed: _openDetails,
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.info_outline,
-                                        size: widget.compact ? 14 : 17,
-                                        color: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
-                                      ),
-                                      if (!widget.compact) const SizedBox(width: 4),
-                                      Text(
-                                        'Ver',
-                                        style: TextStyle(
-                                          fontSize: widget.compact ? 11 : 13,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                onPressed: () {
+                                  if (widget.ehCombo) {
+                                    _openComboVariationSheet(abrirCarrinhoDepois: false);
+                                    return;
+                                  }
+                                  final hasTamanhos = (widget.estoquePorTamanho != null && widget.estoquePorTamanho!.isNotEmpty) ||
+                                      (widget.variacoes != null && widget.variacoes!.isNotEmpty);
+                                  final hasCores = (widget.estoquePorCor != null && widget.estoquePorCor!.isNotEmpty) ||
+                                      (widget.variacoes != null && widget.variacoes!.isNotEmpty);
+                                  final hasVariacoes = widget.variacoes != null && widget.variacoes!.isNotEmpty;
+                                  if (hasTamanhos || hasCores || hasVariacoes) {
+                                    _openSelectionModal();
+                                  } else {
+                                    final img = widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl;
+                                    widget.onAdd({
+                                      'produtosId': widget.id, 'id': widget.id, 'nome': widget.name, 'preco': widget.price,
+                                      'percentualDescontoPix': widget.percentualDescontoPix, 'quantidade': 1,
+                                      'imageUrl': img, 'url_foto': img, 'slug': widget.slug, 'peso': widget.peso,
+                                      'tipoEmbalagem': widget.tipoEmbalagem, 'tamanho': '', 'cor': '',
+                                    });
+                                  }
+                                },
+                                child: Icon(
+                                  Icons.shopping_cart_outlined,
+                                  size: widget.minimalLayout ? 18 : (widget.compact ? 18 : 22),
+                                  color: catalogExt?.buttonComprarText ?? Colors.white,
                                 ),
                               ),
                             ),
                           ),
-                        if (!widget.minimalLayout) SizedBox(width: widget.compact ? 4 : 8),
-                        Expanded(
-                          child: SizedBox(
-                            height: actionHeight,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: catalogExt?.buttonComprarBg ?? theme.colorScheme.primary,
-                                foregroundColor: catalogExt?.buttonComprarText ?? Colors.white,
-                                padding: EdgeInsets.symmetric(horizontal: widget.minimalLayout ? 6 : (widget.compact ? 4 : 8)),
-                                minimumSize: Size.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(widget.minimalLayout ? 8 : (widget.compact ? 6 : 8)),
-                                ),
-                                elevation: 0,
-                              ),
-                              onPressed: () {
-                                if (widget.ehCombo) {
-                                  _openComboVariationSheet(abrirCarrinhoDepois: false);
-                                  return;
-                                }
-                                final hasTamanhos = (widget.estoquePorTamanho != null && widget.estoquePorTamanho!.isNotEmpty) ||
-                                    (widget.variacoes != null && widget.variacoes!.isNotEmpty);
-                                final hasCores = (widget.estoquePorCor != null && widget.estoquePorCor!.isNotEmpty) ||
-                                    (widget.variacoes != null && widget.variacoes!.isNotEmpty);
-                                final hasVariacoes = widget.variacoes != null && widget.variacoes!.isNotEmpty;
-                                if (hasTamanhos || hasCores || hasVariacoes) {
-                                  _openSelectionModal();
-                                } else {
-                                  final img = widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl;
-                                  widget.onAdd({
-                                    'produtosId': widget.id, 'id': widget.id, 'nome': widget.name, 'preco': widget.price,
-                                    'percentualDescontoPix': widget.percentualDescontoPix, 'quantidade': 1,
-                                    'imageUrl': img, 'url_foto': img, 'slug': widget.slug, 'peso': widget.peso,
-                                    'tipoEmbalagem': widget.tipoEmbalagem, 'tamanho': '', 'cor': '',
-                                  });
-                                }
-                              },
-                              child: Icon(
-                                Icons.shopping_cart_outlined,
-                                size: widget.minimalLayout ? 18 : (widget.compact ? 18 : 22),
-                                color: catalogExt?.buttonComprarText ?? Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
                     if (widget.onAbrirCarrinho != null && !widget.minimalLayout) ...[
                       SizedBox(
-                        height: widget.compact ? 3 : 3,
+                        height: widget.compact ? 3 : 2,
                       ),
                       SizedBox(
                         width: double.infinity,
-                        height: widget.compact ? 34 : 40,
+                        height: widget.compact ? 34 : 36,
                         child: FilledButton(
                           style: FilledButton.styleFrom(
                             backgroundColor: catalogExt?.buttonComprarBg ?? theme.colorScheme.primary,

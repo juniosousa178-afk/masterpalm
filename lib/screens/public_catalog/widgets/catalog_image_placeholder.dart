@@ -14,6 +14,8 @@ class CatalogImagePlaceholder extends StatelessWidget {
   final double? width;
   final BorderRadius? radius;
   final BoxFit fit;
+  /// Alinhamento da imagem quando não preenche o espaço (contain/fitWidth/fitHeight).
+  final AlignmentGeometry alignment;
   /// Tamanho em pixels para cache. Web: 900 para qualidade; mobile: 600.
   final int? cacheWidth;
   final int? cacheHeight;
@@ -25,6 +27,7 @@ class CatalogImagePlaceholder extends StatelessWidget {
     this.width,
     this.radius,
     this.fit = BoxFit.cover,
+    this.alignment = Alignment.center,
     this.cacheWidth,
     this.cacheHeight,
   });
@@ -52,7 +55,7 @@ class CatalogImagePlaceholder extends StatelessWidget {
               policy: ResizeImagePolicy.fit,
             ),
             fit: fit,
-            alignment: Alignment.center,
+            alignment: alignment,
             filterQuality: FilterQuality.high,
             errorBuilder: (_, __, ___) => Container(
               color: Colors.black26,

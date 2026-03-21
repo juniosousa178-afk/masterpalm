@@ -2,12 +2,10 @@
 // Sliver da seção "Vistos recentemente" (extraído de public_catalog_screen.dart). UI only.
 // A lista de produtos recentes deve ser calculada pelo chamador (algoritmo de recentes não alterado).
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
-import '../../../utils/safe_parse.dart';
 import '../catalog_product_card_size.dart';
-import 'product_card.dart';
+import 'catalog_minimal_best_sellers.dart';
 
 /// Retorna o Sliver da seção "Vistos recentemente" (SliverToBoxAdapter + Column + ListView horizontal).
 /// [recentProducts] deve ser a lista já filtrada/ordenada pelo chamador (ex.: _recentIds + prodMap).
@@ -45,86 +43,23 @@ Widget buildCatalogRecentSectionSliver({
   }
 
   return SliverToBoxAdapter(
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        const paddingHorizontal = 12.0;
-        const gapBetweenCards = 8.0;
-        final screenWidth = constraints.maxWidth;
-        final cardWidth =
-            (screenWidth - paddingHorizontal * 2 - gapBetweenCards * 2) / 3;
-        final size = CatalogProductCardSize.normalize(productCardSize);
-        final is360 = screenWidth <= 360;
-        final is390 = screenWidth > 360 && screenWidth <= 390;
-        final recentHeight = size == CatalogProductCardSize.large
-            ? (is360 ? 366.0 : (is390 ? 372.0 : 380.0))
-            : size == CatalogProductCardSize.small
-                ? (is360 ? 334.0 : (is390 ? 340.0 : 344.0))
-                : (is360 ? 352.0 : (is390 ? 356.0 : 360.0));
-        final cache = CatalogProductCardSize.horizontalCardImageCache(
-          size: productCardSize,
-          isWeb: kIsWeb,
-        );
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
-              child: Text(
-                'Vistos recentemente',
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            SizedBox(
-              height: recentHeight,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: paddingHorizontal),
-                itemCount: recentProducts.length,
-                itemBuilder: (context, index) {
-                  final p = recentProducts[index];
-                  return SizedBox(
-                    width: cardWidth,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: gapBetweenCards),
-                      child: PublicCatalogProductCard(
-                        produto: p,
-                        lojaId: lojaId,
-                        onAdd: onAdd,
-                        onProductViewed: onProductViewed,
-                        onToggleFavorito: clienteId != null
-                            ? () => onToggleFavorito?.call(safeStr(p['id']))
-                            : onAbrirLoginParaFavorito,
-                        onAbrirCarrinho: onAbrirCarrinho,
-                        clienteId: clienteId,
-                        favoritosIds: favoritosIds,
-                        todosProdutos: todosProdutos ?? recentProducts,
-                        mostrarEstoqueNoCatalogo: mostrarEstoqueNoCatalogo,
-                        mostrarQuantidadeNoCatalogo: mostrarQuantidadeNoCatalogo,
-                        cardBorderRadius: cardBorderRadius,
-                        cardShowShadow: cardShowShadow,
-                        prazoEntregaTexto: prazoEntregaTexto,
-                        jurosParcelamento: jurosParcelamento,
-                        maxParcelas: maxParcelas,
-                        compact: true,
-                        minimalLayout: useMinimalLayout,
-                        productCardSize: productCardSize,
-                        imageCacheWidth: cache.width,
-                        imageCacheHeight: cache.height,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        );
-      },
+    child: CatalogMinimalBestSellersSection(
+      title: 'Vistos recentemente',
+      productCardSize: productCardSize,
+      products: recentProducts,
+      lojaId: lojaId,
+      todosProdutos: todosProdutos ?? recentProducts,
+      onAdd: onAdd,
+      onAbrirCarrinho: onAbrirCarrinho,
+      catalogShareUrl: catalogShareUrl,
+      textColor: textColor,
+      cardColor: cardColor ?? ThemeData.fallback().cardColor,
+      priceColor: priceColor ?? textColor,
+      prazoEntregaTexto: prazoEntregaTexto,
+      nomeLoja: nomeLoja,
+      contatoWhatsapp: contatoWhatsapp,
+      politicaFrete: politicaFrete,
+      onProductViewed: onProductViewed,
     ),
   );
 }

@@ -17,25 +17,26 @@ class CatalogProductCardSize {
   static double standardAspectRatio(String size) {
     switch (normalize(size)) {
       case small:
-        return 0.46;
+        return 0.52;
       case large:
-        return 0.31;
+        return 0.36;
       case medium:
       default:
-        return 0.38;
+        return 0.44;
     }
   }
 
-  /// childAspectRatio para grid minimalista (width/height).
+  /// childAspectRatio para grid minimalista (crossAxis/mainAxis = width/height).
+  /// Valores um pouco menores = células mais altas, evitando cortar a linha de botões.
   static double minimalAspectRatio(String size) {
     switch (normalize(size)) {
       case small:
-        return 0.60;
+        return 0.55;
       case large:
-        return 0.44;
+        return 0.40;
       case medium:
       default:
-        return 0.51;
+        return 0.46;
     }
   }
 

@@ -4849,7 +4849,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           productCardSize),
                                               mainAxisSpacing: useMinimalLayout
                                                   ? safeDouble(minimalGridCfg[
-                                                      'mainAxisSpacing'], 14)
+                                                      'mainAxisSpacing'], 18)
                                                   : 16,
                                               crossAxisSpacing: useMinimalLayout
                                                   ? safeDouble(minimalGridCfg[
