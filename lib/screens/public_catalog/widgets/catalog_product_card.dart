@@ -495,6 +495,14 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
       imageFlex = (imageFlex - flexShift).clamp(1, 999);
       contentFlex = contentFlex + flexShift;
     }
+    // Minimalista com Comprar + carrinho: mais pixels no rodapé (evita overflow/clipping no Column).
+    if (widget.minimalLayout &&
+        widget.onAbrirCarrinho != null &&
+        !widget.compact) {
+      const int minimalFooterShift = 3;
+      imageFlex = (imageFlex - minimalFooterShift).clamp(1, 999);
+      contentFlex = contentFlex + minimalFooterShift;
+    }
     // Minimalista: nome mais discreto; preço principal maior e em negrito (hierarquia da referência).
     final titleSizeBase = widget.minimalLayout
         ? (isLargeCard ? 13.5 : (isSmallCard ? 11.5 : 12.5))
@@ -520,20 +528,12 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final actionHeight = is360
         ? (actionHeightBase - 1.0)
         : actionHeightBase;
-    /// Linha Comprar + carrinho (só minimalista com callback): alturas distintas — Comprar maior, carrinho menor.
-    final double minimalComprarBtnHeight = is360
-        ? 34.0
+    /// Linha Comprar + carrinho (minimalista): mesma altura para alinhar; não esmagar o carrinho.
+    final double minimalBtnRowHeight = is360
+        ? 33.0
         : is390
-            ? 35.0
-            : is412
-                ? 36.0
-                : 36.0;
-    final double minimalCartBtnHeight = is360
-        ? 30.0
-        : is390
-            ? 30.0
-            : 31.0;
-    final double minimalCartBtnWidth = is360 ? 40.0 : 42.0;
+            ? 34.0
+            : 35.0;
     double contentVPad = widget.compact
         ? (is360 ? 5.0 : 6.0)
         : (is360 ? 7.0 : 8.0);
@@ -550,7 +550,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     final bool minimalComprarCarrinhoRow =
         widget.minimalLayout && widget.onAbrirCarrinho != null;
     final double contentPadBottom = minimalComprarCarrinhoRow
-        ? contentVPad + 10.0
+        ? contentVPad + 16.0
         : contentVPad;
     final spacingAfterTitle = widget.compact
         ? (is360 ? 1.0 : 2.0)
@@ -917,7 +917,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                           : (showComprarDiretoFooter
                               ? (widget.minimalLayout ? 4 : 1)
                               : (minimalComprarCarrinhoRow
-                                  ? 9.0
+                                  ? 11.0
                                   : (widget.minimalLayout ? 3 : 1))),
                     ),
                     if (widget.minimalLayout && widget.onAbrirCarrinho != null)
@@ -929,16 +929,17 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                               Color.lerp(comprarBg, Colors.black, 0.22) ?? comprarBg;
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: SizedBox(
-                              height: minimalComprarBtnHeight,
+                            children: [
+                            Expanded(
+                              flex: 10,
+                              child: SizedBox(
+                              height: minimalBtnRowHeight,
                               child: FilledButton(
                                 style: FilledButton.styleFrom(
                                   backgroundColor: comprarBg,
                                   foregroundColor:
                                       catalogExt?.buttonComprarText ?? Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
                                   minimumSize: Size.zero,
                                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   visualDensity: VisualDensity.compact,
@@ -948,27 +949,33 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                   elevation: 0,
                                 ),
                                 onPressed: _comprarDirecto,
-                                child: Text(
-                                  'Comprar',
-                                  style: TextStyle(
-                                    fontSize: titleSize.clamp(11.0, 13.5),
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.15,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    'Comprar',
+                                    maxLines: 1,
+                                    style: TextStyle(
+                                      fontSize: titleSize.clamp(10.5, 12.8),
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.1,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            width: minimalCartBtnWidth,
-                            height: minimalCartBtnHeight,
-                            child: ElevatedButton(
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 13,
+                            child: SizedBox(
+                              height: minimalBtnRowHeight,
+                              child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: cartBgMinimal,
                                   foregroundColor:
                                       catalogExt?.buttonComprarText ?? Colors.white,
-                                  padding: EdgeInsets.zero,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
                                   minimumSize: Size.zero,
                                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   visualDensity: VisualDensity.compact,
@@ -1001,10 +1008,11 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                 },
                                 child: Icon(
                                   Icons.shopping_cart_outlined,
-                                  size: is360 ? 19 : 20,
+                                  size: is360 ? 19 : 21,
                                   color: catalogExt?.buttonComprarText ?? Colors.white,
                                 ),
                               ),
+                            ),
                           ),
                         ],
                       );

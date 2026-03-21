@@ -27,16 +27,16 @@ class CatalogProductCardSize {
   }
 
   /// childAspectRatio para grid minimalista (crossAxis/mainAxis = width/height).
-  /// Valores um pouco menores = células mais altas, evitando cortar a linha de botões.
+  /// Valores menores = células mais altas (mais espaço para texto + linha de botões).
   static double minimalAspectRatio(String size) {
     switch (normalize(size)) {
       case small:
-        return 0.55;
+        return 0.50;
       case large:
-        return 0.40;
+        return 0.36;
       case medium:
       default:
-        return 0.46;
+        return 0.40;
     }
   }
 

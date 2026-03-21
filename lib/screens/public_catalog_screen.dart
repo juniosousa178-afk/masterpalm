@@ -3947,9 +3947,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               ),
                             ),
 
-                            // ✅ Fallback para link direto: se não há histórico confiável,
-                            // permite voltar explicitamente para Home.
-                            if (kIsWeb && !Navigator.of(context).canPop())
+                            // ✅ Só no preview interno (admin): fallback Web quando não há
+                            // histórico para voltar. Catálogo público online (preview: false)
+                            // NUNCA mostra isto — evita levar o cliente para /home do app interno.
+                            if (kIsWeb &&
+                                widget.preview &&
+                                !Navigator.of(context).canPop())
                               Padding(
                                 padding: const EdgeInsets.only(right: 4),
                                 child: IconButton(
