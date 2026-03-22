@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../utils/platform_adaptive.dart';
 import '../../../widgets/smart_image.dart';
 
 class CatalogGalleryView extends StatefulWidget {
@@ -59,6 +60,7 @@ class _CatalogGalleryViewState extends State<CatalogGalleryView> {
   @override
   Widget build(BuildContext context) {
     final imgs = widget.imagens;
+    final showArrows = showGalleryArrowNavigation(context) && imgs.length > 1;
     if (imgs.isEmpty) {
       return const Center(
         child: Text(
@@ -96,7 +98,7 @@ class _CatalogGalleryViewState extends State<CatalogGalleryView> {
             onPressed: () => Navigator.pop(context),
           ),
         ),
-        if (imgs.length > 1) ...[
+        if (showArrows) ...[
           Positioned(
             left: 8,
             top: 0,

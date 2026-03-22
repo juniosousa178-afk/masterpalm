@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+/// Breakpoints para layout responsivo.
+///
+/// Para decisões de **interação** (toque vs ponteiro, setas em galeria, etc.), prefira
+/// `lib/utils/platform_adaptive.dart`, que reutiliza estes breakpoints.
+
 /// Breakpoints para layout responsivo
 const double kMobileBreakpoint = 600;
 const double kTabletBreakpoint = 900;

@@ -606,7 +606,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
             ),
             const SizedBox(height: 4),
             const Text(
-              'Durante 90 dias você tem: 80 produtos, 150 clientes, 50 vendas por mês, 3 fotos por produto e até 6 banners. '
+              'Durante 90 dias você tem: 80 produtos, 150 clientes, 50 vendas por mês, 10 fotos por produto e até 10 banners. '
               'É suficiente para testar o app com sua loja.',
               style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
             ),
@@ -629,7 +629,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
             ),
             const SizedBox(height: 4),
             const Text(
-              'Produtos, clientes e vendas ilimitados. 6 fotos por produto e até 6 banners. Catálogo completo, relatórios, backup e suporte.',
+              'Produtos, clientes e vendas ilimitados. 10 fotos por produto e até 10 banners. Catálogo completo, relatórios, backup e suporte.',
               style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
             ),
           ],
@@ -771,7 +771,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
           price: '${_fmtBRL(0)} / 90 dias',
           bullets: const [
             'Durante o trial: 80 produtos, 150 clientes, 50 vendas/mês',
-            '3 fotos por produto e até 6 banners (desktop + mobile)',
+            '10 fotos por produto e até 10 banners (desktop + mobile)',
             'Após 90 dias: Free limitado (10 produtos, 1 foto/produto, 10 vendas/mês, 20 clientes)',
             'Faça upgrade para liberar mais',
           ],
@@ -787,7 +787,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         price: '${_fmtBRL(_priceMensal)} / mês',
         bullets: const [
           'Produtos, clientes e vendas ilimitados',
-          '6 fotos por produto e até 6 banners',
+          '10 fotos por produto e até 10 banners',
           'Catálogo completo, relatórios e backup',
           'Suporte',
         ],

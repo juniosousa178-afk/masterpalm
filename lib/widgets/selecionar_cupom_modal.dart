@@ -2,11 +2,14 @@
 // Modal para selecionar cupom de desconto (igual ao modelo da imagem)
 // Inclui cupons de indicação (exclusivos do remetente/destinatário) quando o cliente está logado.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../models/cupom.dart';
 import '../models/cupom_cliente.dart';
 import '../services/cupom_desconto_service.dart';
 import '../services/cupons_service.dart';
+import '../utils/platform_adaptive.dart';
 
 class SelecionarCupomModal extends StatefulWidget {
   final String lojaId;
@@ -654,19 +657,54 @@ Future<dynamic> mostrarModalSelecionarCupom({
   required double valorPedido,
   Cupom? cupomAtual,
 }) async {
-  return await showModalBottomSheet<dynamic>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (context) => SizedBox(
-      height: MediaQuery.of(context).size.height * 0.75,
+  if (!context.mounted) return null;
+  final wideChrome = usePointerFirstChrome(context);
+
+  Widget cupomSheetBody(BuildContext modalContext) {
+    return SizedBox(
+      height: MediaQuery.of(modalContext).size.height * 0.75,
       child: SelecionarCupomModal(
         lojaId: lojaId,
         clienteId: clienteId,
         valorPedido: valorPedido,
         cupomAtual: cupomAtual,
       ),
-    ),
+    );
+  }
+
+  if (wideChrome) {
+    return showDialog<dynamic>(
+      context: context,
+      barrierDismissible: true,
+      builder: (modalContext) {
+        final mq = MediaQuery.of(modalContext);
+        final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
+        return Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: maxW,
+              maxHeight: mq.size.height * 0.85,
+            ),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              clipBehavior: Clip.antiAlias,
+              child: cupomSheetBody(modalContext),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  return showModalBottomSheet<dynamic>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (modalContext) => cupomSheetBody(modalContext),
   );
 }
 

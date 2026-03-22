@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/venda_metrics_filter.dart';
 import '../models/venda.dart';
 
 const Color _primaryColor = Color(0xFF6366F1);
@@ -62,6 +63,7 @@ class _RelatorioMaisVendidosScreenState extends State<RelatorioMaisVendidosScree
 
       for (final v in box.values) {
         if (v.lojaId != null && v.lojaId != lojaId) continue;
+        if (!incluirVendaEmMetricas(v)) continue;
         final dt = v.data;
 
         if (!dt.isBefore(inicioEsteMes) && !dt.isAfter(fimEsteMes)) {

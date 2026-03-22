@@ -3,6 +3,7 @@
 // checkout com cadastro obrigatório e botão WhatsApp / Mercado Pago.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -37,6 +38,7 @@ import 'public_catalog/catalog_best_sellers_helper.dart';
 import 'public_catalog/catalog_product_card_size.dart';
 import 'public_catalog/catalog_estoque_helper.dart';
 import 'public_catalog/catalog_config_service.dart';
+import '../utils/platform_adaptive.dart';
 import '../utils/safe_parse.dart';
 import 'public_catalog/catalog_theme_extension.dart';
 import 'public_catalog/widgets/catalog_banner_carousel.dart';
@@ -109,9 +111,7 @@ List<Map<String, dynamic>> _processDocsToProducts(
     try {
       final m = asMapDeep(d.data());
       if (m.isEmpty) continue;
-      final publicarNoCatalogo =
-          m['publicadoNoCatalogo'] ?? m['publicarNoCatalogo'] ?? true;
-      if (publicarNoCatalogo == false) continue;
+      if (!CatalogEstoqueHelper.catalogoWebDocPublicado(m)) continue;
 
       final bool exibirCatalogo = !(m['exibir_no_catalogo'] == false ||
           m['ocultar_catalogo'] == true ||
@@ -462,6 +462,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   /// Último pré-pedido criado nesta sessão do carrinho (evita vários pedidos ao trocar forma de pagamento)
   String? _ultimoPrePedidoId;
   Map<String, dynamic>? _ultimoPrePedidoData;
+
+  /// Evita reutilizar documento após mudança material (cupom, frete, total, canal, dados do cliente).
+  String? _prePedidoReuseFingerprint;
+  /// `whatsapp` | `mercadopago` — alinhado a [origemCheckout] do pré-pedido.
+  String? _prePedidoReuseCanal;
 
   /// Estado da roleta (persiste ao fechar/reabrir o carrinho; reseta em nova compra)
   bool _roletaJaGirada = false;
@@ -900,8 +905,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (mounted) {
       _cart.clear();
       _cart.addAll(items);
-      _ultimoPrePedidoId = null;
-      _ultimoPrePedidoData = null;
+      _clearPrePedidoReuseSession();
       setState(() {});
     }
   }
@@ -947,12 +951,35 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           for (final e in decoded) {
             if (e is Map) _cart.add(Map<String, dynamic>.from(e));
           }
-          _ultimoPrePedidoId = null;
-          _ultimoPrePedidoData = null;
+          _clearPrePedidoReuseSession();
           setState(() {});
         }
       }
     } catch (_) {}
+  }
+
+  /// Remove do carrinho itens cujo produto não existe mais na lista atual do catálogo.
+  void _limparCartDeProdutosRemovidos(List<Map<String, dynamic>> produtos) {
+    if (_cart.isEmpty || produtos.isEmpty) return;
+    final validIds = produtos
+        .map((p) => (p['id'] ?? '').toString().trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+    final validSlugs = produtos
+        .map((p) => (p['slug'] ?? '').toString().trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+    final before = _cart.length;
+    _cart.removeWhere((item) {
+      final id = (item['id'] ?? item['produtosId'] ?? '').toString().trim();
+      final slug = (item['slug'] ?? '').toString().trim();
+      return !validIds.contains(id) && !validSlugs.contains(slug);
+    });
+    if (_cart.length < before && mounted) {
+      _clearPrePedidoReuseSession();
+      _saveCarrinho();
+      setState(() {});
+    }
   }
 
   /// Reseta o estado da roleta (chamado quando inicia nova compra, ex: após checkout)
@@ -962,6 +989,68 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _cupomRoletaDesconto = null;
     _premioRoletaDescricao = null;
     _freteGratisRoleta = false;
+  }
+
+  void _clearPrePedidoReuseSession() {
+    _ultimoPrePedidoId = null;
+    _ultimoPrePedidoData = null;
+    _prePedidoReuseFingerprint = null;
+    _prePedidoReuseCanal = null;
+  }
+
+  static String _normFingerprintText(String? s) =>
+      (s ?? '').toString().trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  /// Endereço para fingerprint (sem complemento: evita novo pré-pedido só por complemento).
+  static String _enderecoFingerprintKey(Map<String, dynamic> end) {
+    if (end.isEmpty) return '';
+    final cepDigits = (end['cep'] ?? '').toString().replaceAll(RegExp(r'\D'), '');
+    return [
+      cepDigits,
+      _normFingerprintText(end['rua']?.toString()),
+      _normFingerprintText(end['numero']?.toString()),
+      _normFingerprintText(end['bairro']?.toString()),
+      _normFingerprintText(end['cidade']?.toString()),
+      _normFingerprintText(end['estado']?.toString()),
+    ].join('|');
+  }
+
+  /// Chave estável do checkout atual; se diferir do último reuso, cria novo pré-pedido.
+  String _prePedidoReuseFingerprintFromCheckout({
+    required Map<String, dynamic> customer,
+    required Map<String, dynamic> entrega,
+    required String pagamento,
+    required String observacao,
+    required String? cupomCodigo,
+    required double descontoCupom,
+    required double valorTotalCheckout,
+    required String canal,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
+    String? premioRoletaDescricao,
+  }) {
+    final end = asMap(customer['endereco']);
+    final nomeCliente = _normFingerprintText(customer['nome']?.toString());
+    final addrKey = _enderecoFingerprintKey(end);
+    final em = (customer['email'] ?? '').toString().trim().toLowerCase();
+    final tel = (customer['telefone'] ?? '').toString().trim();
+    final cartPart = _cart.map((e) {
+      final id = '${e['id'] ?? e['produtosId'] ?? ''}';
+      final q = CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
+      final tam = (e['tamanho'] ?? '').toString();
+      final cor = (e['cor'] ?? '').toString();
+      return '$id|$q|$tam|$cor';
+    }).join(';');
+    final fv = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
+    final fg = entrega['freteGratis'] == true;
+    final tipo = (entrega['tipo'] ?? '').toString();
+    final nom = (entrega['nome'] ?? '').toString();
+    final cc = cupomCodigo ?? '';
+    final obs = observacao.trim();
+    final cr = cupomRoletaCodigo ?? '';
+    final crd = cupomRoletaDesconto ?? 0.0;
+    final pr = premioRoletaDescricao ?? '';
+    return '${valorTotalCheckout.toStringAsFixed(2)}|${descontoCupom.toStringAsFixed(4)}|$cc|$pagamento|$fv|$fg|$tipo|$nom|$obs|$canal|$cartPart|$em|$tel|$nomeCliente|$addrKey|$cr|$crd|$pr';
   }
 
   Future<void> _loadFavoritos() async {
@@ -1305,8 +1394,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (index < 0 || index >= _cart.length) return;
     setState(() {
       _cart.removeAt(index);
-      _ultimoPrePedidoId = null;
-      _ultimoPrePedidoData = null;
+      _clearPrePedidoReuseSession();
     });
     _saveCarrinho();
   }
@@ -1361,10 +1449,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       } else {
         final copy = Map<String, dynamic>.from(item);
         copy['quantidade'] = addQty;
-        _cart.add(copy);
+            _cart.add(copy);
       }
-      _ultimoPrePedidoId = null;
-      _ultimoPrePedidoData = null;
+      _clearPrePedidoReuseSession();
     });
     _saveCarrinho();
   }
@@ -1546,63 +1633,70 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         TextEditingController(text: _precoMax?.toStringAsFixed(2) ?? '');
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Faixa de preço'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: minCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Preço mínimo (R\$)',
-                border: OutlineInputBorder(),
+      builder: (context) {
+        final maxW = math.min(
+          kMaxContentWidth,
+          MediaQuery.sizeOf(context).width - 40,
+        );
+        return AlertDialog(
+          constraints: BoxConstraints(maxWidth: maxW),
+          title: const Text('Faixa de preço'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: minCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Preço mínimo (R\$)',
+                  border: OutlineInputBorder(),
+                ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: maxCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Preço máximo (R\$)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                minCtrl.clear();
+                maxCtrl.clear();
+                Navigator.pop(context);
+                setState(() {
+                  _precoMin = null;
+                  _precoMax = null;
+                  _currentPageNotifier.value = 0;
+                });
+              },
+              child: const Text('Limpar'),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: maxCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                labelText: 'Preço máximo (R\$)',
-                border: OutlineInputBorder(),
-              ),
+            ElevatedButton(
+              onPressed: () {
+                final min =
+                    double.tryParse(minCtrl.text.replaceAll(',', '.').trim());
+                final max =
+                    double.tryParse(maxCtrl.text.replaceAll(',', '.').trim());
+                Navigator.pop(context);
+                setState(() {
+                  _precoMin = min;
+                  _precoMax = max;
+                  _currentPageNotifier.value = 0;
+                });
+              },
+              child: const Text('Aplicar'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              minCtrl.clear();
-              maxCtrl.clear();
-              Navigator.pop(context);
-              setState(() {
-                _precoMin = null;
-                _precoMax = null;
-                _currentPageNotifier.value = 0;
-              });
-            },
-            child: const Text('Limpar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final min =
-                  double.tryParse(minCtrl.text.replaceAll(',', '.').trim());
-              final max =
-                  double.tryParse(maxCtrl.text.replaceAll(',', '.').trim());
-              Navigator.pop(context);
-              setState(() {
-                _precoMin = min;
-                _precoMax = max;
-                _currentPageNotifier.value = 0;
-              });
-            },
-            child: const Text('Aplicar'),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1731,18 +1825,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       initialFormData = null;
     }
 
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          margin: const EdgeInsets.only(top: 24),
-          decoration: BoxDecoration(
-            color: cardColor, // ✅ Usa cor do card configurada
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: CarrinhoSheetWeb(
+    if (!mounted) return;
+    final wideChrome = usePointerFirstChrome(context);
+
+    Widget carrinhoContent(BuildContext sheetContext) {
+      return CarrinhoSheetWeb(
             lojaId: lojaId,
             items: _cart,
             fretes: fretes,
@@ -1812,7 +1899,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           if (showErrorInCart != null) {
                             showErrorInCart(msg);
                           } else {
-                            ScaffoldMessenger.of(Navigator.of(ctx).context)
+                            ScaffoldMessenger.of(Navigator.of(sheetContext).context)
                                 .showSnackBar(SnackBar(content: Text(msg)));
                           }
                         }
@@ -1836,7 +1923,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         } catch (e) {
                           logD(
                               '❌ Erro ao registrar venda PIX (type=${e.runtimeType})');
-                          if (!ctx.mounted) return;
+                          if (!sheetContext.mounted) return;
                           showErr('Erro ao criar pedido. Tente novamente.');
                           return;
                         }
@@ -1853,23 +1940,23 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           cidadeRecebedor: 'BRASIL',
                           txid: vendaId ?? '***',
                         );
-                        if (ctx.mounted) {
+                        if (sheetContext.mounted) {
                           setState(() {
                             _cart.clear();
                             _resetRoletaState();
                           });
                           _saveCarrinho();
                           showPixQrDialog(
-                            context: ctx,
+                            context: sheetContext,
                             pixPayload: payload,
                             valor: valorTotal,
                             pedidoId: vendaId,
                           );
                           if (showErrorInCart == null) {
-                            if (!ctx.mounted) return;
+                            if (!sheetContext.mounted) return;
                             // ignore: use_build_context_synchronously
                             final messenger =
-                                ScaffoldMessenger.of(Navigator.of(ctx).context);
+                                ScaffoldMessenger.of(Navigator.of(sheetContext).context);
                             messenger.showSnackBar(
                               const SnackBar(
                                   content: Text(
@@ -1887,6 +1974,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               String? cupomRoletaCodigo,
               double? cupomRoletaDesconto,
               String? premioRoletaDescricao,
+              String? cupomCodigo,
+              required double descontoCupom,
+              required double valorTotalCheckout,
               Future<void> Function(String? pedidoId)? onSuccess,
               void Function(String message)? showErrorInCart,
             }) async {
@@ -1899,15 +1989,34 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               }
 
               try {
+                final fpWhatsapp = _prePedidoReuseFingerprintFromCheckout(
+                  customer: customer,
+                  entrega: entrega,
+                  pagamento: pagamento,
+                  observacao: observacao,
+                  cupomCodigo: cupomCodigo,
+                  descontoCupom: descontoCupom,
+                  valorTotalCheckout: valorTotalCheckout,
+                  canal: 'whatsapp',
+                  cupomRoletaCodigo: cupomRoletaCodigo,
+                  cupomRoletaDesconto: cupomRoletaDesconto,
+                  premioRoletaDescricao: premioRoletaDescricao,
+                );
                 // ✨ Reutilizar pré-pedido se já foi criado (ex.: após erro em outra forma de pagamento)
                 Map<String, dynamic>? prePedido;
                 if (_ultimoPrePedidoId != null &&
-                    _ultimoPrePedidoData != null) {
+                    _ultimoPrePedidoData != null &&
+                    _prePedidoReuseFingerprint == fpWhatsapp &&
+                    _prePedidoReuseCanal == 'whatsapp') {
                   prePedido = _ultimoPrePedidoData;
                   logD(
                       '📦 [PRE-PEDIDO] Reutilizando pedido existente: $_ultimoPrePedidoId');
                 } else {
                   try {
+                    if (_ultimoPrePedidoId != null) {
+                      logD(
+                          '📋 [PRE-PEDIDO] Novo documento WhatsApp (substitui sessão anterior: $_ultimoPrePedidoId)');
+                    }
                     logD('📦 [PRE-PEDIDO] Criando para loja: $lojaId');
                     final clienteLogado =
                         await ClienteAuthService.getClienteLogado();
@@ -1919,8 +2028,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       entrega: entrega,
                       pagamento: pagamento,
                       observacao: observacao,
-                      cupomCodigo: null,
-                      desconto: 0.0,
+                      cupomCodigo: cupomCodigo,
+                      desconto: descontoCupom,
                       cupomRoletaCodigo: cupomRoletaCodigo,
                       cupomRoletaDesconto: cupomRoletaDesconto,
                       premioRoletaDescricao: premioRoletaDescricao,
@@ -1929,7 +2038,17 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       clienteId: clienteLogado?['clienteId']?.toString(),
                       origemCheckout: 'whatsapp',
                       portalTokenFromSession: clienteLogado?['portalToken']?.toString(),
+                      substituiPrePedidoId: _ultimoPrePedidoId,
+                      checkoutFingerprint: fpWhatsapp,
                     );
+                    if (prePedido != null) {
+                      final t = (prePedido['total'] as num?)?.toDouble();
+                      if (t != null &&
+                          (t - valorTotalCheckout).abs() > 0.02) {
+                        logD(
+                            '⚠️ [CHECKOUT] total pré-pedido vs carrinho: $t vs $valorTotalCheckout');
+                      }
+                    }
 
                     if (prePedido == null) {
                       showErr('Erro ao criar pedido. Tente novamente.');
@@ -1939,6 +2058,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       setState(() {
                         _ultimoPrePedidoId = prePedido!['id']?.toString();
                         _ultimoPrePedidoData = prePedido;
+                        _prePedidoReuseFingerprint = fpWhatsapp;
+                        _prePedidoReuseCanal = 'whatsapp';
                       });
                     }
                     logD('✅ [PRE-PEDIDO] Criado com ID: ${prePedido['id']}');
@@ -2050,8 +2171,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           setState(() {
                             _cart.clear();
                             _resetRoletaState();
-                            _ultimoPrePedidoId = null;
-                            _ultimoPrePedidoData = null;
+                            _clearPrePedidoReuseSession();
                           });
                         }
                         _saveCarrinho();
@@ -2081,8 +2201,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   setState(() {
                     _cart.clear();
                     _resetRoletaState();
-                    _ultimoPrePedidoId = null;
-                    _ultimoPrePedidoData = null;
+                    _clearPrePedidoReuseSession();
                   });
                 }
                 _saveCarrinho();
@@ -2101,6 +2220,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               String? cupomRoletaCodigo,
               double? cupomRoletaDesconto,
               String? premioRoletaDescricao,
+              String? cupomCodigo,
+              required double descontoCupom,
+              required double valorTotalCheckout,
               void Function(String message)? showErrorInCart,
             }) async {
               // Erros devem aparecer na tela do carrinho (não no catálogo)
@@ -2113,10 +2235,30 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 }
               }
 
+              final fpMp = _prePedidoReuseFingerprintFromCheckout(
+                customer: customer,
+                entrega: entrega,
+                pagamento: pagamento,
+                observacao: observacao,
+                cupomCodigo: cupomCodigo,
+                descontoCupom: descontoCupom,
+                valorTotalCheckout: valorTotalCheckout,
+                canal: 'mercadopago',
+                cupomRoletaCodigo: cupomRoletaCodigo,
+                cupomRoletaDesconto: cupomRoletaDesconto,
+                premioRoletaDescricao: premioRoletaDescricao,
+              );
+              final bool reuseMpOk = _ultimoPrePedidoId != null &&
+                  _prePedidoReuseFingerprint == fpMp &&
+                  _prePedidoReuseCanal == 'mercadopago';
               // ✨ Reutilizar pré-pedido se já foi criado (evita vários pedidos ao trocar forma de pagamento)
-              String? pedidoId = _ultimoPrePedidoId;
+              String? pedidoId = reuseMpOk ? _ultimoPrePedidoId : null;
               if (pedidoId == null) {
                 try {
+                  if (_ultimoPrePedidoId != null) {
+                    logD(
+                        '📋 [PRE-PEDIDO] Novo documento MP (substitui sessão anterior: $_ultimoPrePedidoId)');
+                  }
                   logD(
                       '💳 [MERCADO-PAGO] Criando pré-pedido para loja: $lojaId');
                   final cliente = await ClienteAuthService.getClienteLogado();
@@ -2126,22 +2268,35 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     items: _cart,
                     clienteId: cliente?['clienteId']?.toString(),
                     entrega: entrega,
-                    pagamento: 'Mercado Pago',
+                    pagamento: pagamento,
                     observacao: observacao,
-                    cupomCodigo: null,
-                    desconto: 0.0,
+                    cupomCodigo: cupomCodigo,
+                    desconto: descontoCupom,
                     cupomRoletaCodigo: cupomRoletaCodigo,
                     cupomRoletaDesconto: cupomRoletaDesconto,
                     premioRoletaDescricao: premioRoletaDescricao,
                     vendedorRef: widget.vendedorRef,
                     indicacaoClienteId: widget.indicacaoClienteRef,
                     portalTokenFromSession: cliente?['portalToken']?.toString(),
+                    origemCheckout: 'mercadopago',
+                    substituiPrePedidoId: _ultimoPrePedidoId,
+                    checkoutFingerprint: fpMp,
                   );
+                  if (prePedido != null) {
+                    final t = (prePedido['total'] as num?)?.toDouble();
+                    if (t != null &&
+                        (t - valorTotalCheckout).abs() > 0.02) {
+                      logD(
+                          '⚠️ [CHECKOUT] total pré-pedido MP vs carrinho: $t vs $valorTotalCheckout');
+                    }
+                  }
                   pedidoId = prePedido?['id']?.toString();
                   if (pedidoId != null && mounted) {
                     setState(() {
                       _ultimoPrePedidoId = pedidoId;
                       _ultimoPrePedidoData = prePedido;
+                      _prePedidoReuseFingerprint = fpMp;
+                      _prePedidoReuseCanal = 'mercadopago';
                     });
                     logD(
                         '✅ Pré-pedido criado (aguardando pagamento): $pedidoId');
@@ -2160,18 +2315,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               }
 
               try {
-                // Calcular valor total
-                final subtotal = _cart.fold<double>(
-                  0.0,
-                  (s, e) {
-                    final price = safeDouble(e['preco']);
-                    final qty = safeInt(e['quantidade'], 1);
-                    return s + price * qty;
-                  },
-                );
-
-                final valorFrete = safeDouble(entrega['valor']);
-                final valorTotal = subtotal + valorFrete;
+                final valorTotal = valorTotalCheckout;
+                if (valorTotal < 0.01) {
+                  showErr('Valor do pedido inválido. Tente novamente.');
+                  return;
+                }
                 final isPix = pagamento.toUpperCase() == 'PIX';
                 int? maxInstallmentsSemJuros;
                 if (!isPix) {
@@ -2389,13 +2537,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                 logD('✅ Pagamento criado: $paymentData');
 
-                // Cupom/número da sorte em background (não bloqueia abertura do checkout)
-                unawaited(_gerarCupomNumeroSorteBackground(
-                  lojaId: lojaId,
-                  pedidoId: pedidoId,
-                  valorTotal: valorTotal,
-                  customer: customer,
-                ));
+                // FASE 3: Não chamar gerarCupomNumeroSorte ao criar pagamento MP — evitava escrita
+                // promocional antes da confirmação e duplicava com o webhook (mpWebhookPromo).
+                // Fonte oficial pós-MP: functions/src/mpWebhookHandler.js → registrarPromocaoPosPagamentoMp.
 
                 // Obter QR Code ou URL de pagamento primeiro (para abrir o quanto antes)
                 final qrCode = paymentData['qr_code']?.toString();
@@ -2410,8 +2554,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       setState(() {
                         _cart.clear();
                         _resetRoletaState();
-                        _ultimoPrePedidoId = null;
-                        _ultimoPrePedidoData = null;
+                        _clearPrePedidoReuseSession();
                       });
                     }
                     _saveCarrinho();
@@ -2439,8 +2582,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       setState(() {
                         _cart.clear();
                         _resetRoletaState();
-                        _ultimoPrePedidoId = null;
-                        _ultimoPrePedidoData = null;
+                        _clearPrePedidoReuseSession();
                       });
                     }
                     _saveCarrinho();
@@ -2466,8 +2608,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     setState(() {
                       _cart.clear();
                       _resetRoletaState();
-                      _ultimoPrePedidoId = null;
-                      _ultimoPrePedidoData = null;
+                      _clearPrePedidoReuseSession();
                     });
                   }
                   _saveCarrinho();
@@ -2482,8 +2623,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   }
 
                   // 🔔 O webhook processará a confirmação: pagamento concluído e novo pedido recebido
-                  if (!ctx.mounted) return;
-                  final scaffoldContext = Navigator.of(ctx).context;
+                  if (!sheetContext.mounted) return;
+                  final scaffoldContext = Navigator.of(sheetContext).context;
                   if (scaffoldContext.mounted) {
                     showPixQrDialog(
                       context: scaffoldContext,
@@ -2501,10 +2642,53 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 showErr('Erro ao processar pagamento: $e');
               }
             },
-          ),
-        );
-      },
-    );
+      );
+    }
+
+    if (!mounted) return;
+    if (wideChrome) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (sheetContext) {
+          final mq = MediaQuery.of(sheetContext);
+          final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: maxW,
+                maxHeight: mq.size.height * 0.92,
+              ),
+              child: Material(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(20),
+                clipBehavior: Clip.antiAlias,
+                child: carrinhoContent(sheetContext),
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          return Container(
+            margin: const EdgeInsets.only(top: 24),
+            decoration: BoxDecoration(
+              color: cardColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: carrinhoContent(sheetContext),
+          );
+        },
+      );
+    }
   }
 
   /// Abre URL de pagamento (checkout MP, PIX etc.). Na web (ex.: Safari iPhone)
@@ -2578,38 +2762,21 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     return reserved.contains(path.toLowerCase());
   }
 
-  /// Gera cupom e número da sorte em background (não bloqueia o checkout)
+  /// Legado: chamava `gerarCupomNumeroSorte` ao **criar** pagamento MP (antes da aprovação).
+  /// Mantido vazio de propósito: a participação em campanha / número da sorte para pedidos MP
+  /// é registrada no servidor em `processMpWebhook` → `registrarPromocaoPosPagamentoMp`
+  /// após pagamento aprovado (idempotente). Não remover o método para evitar churn de merge.
+  // ignore: unused_element
   Future<void> _gerarCupomNumeroSorteBackground({
     required String lojaId,
     required String pedidoId,
     required double valorTotal,
     required Map<String, dynamic> customer,
   }) async {
-    try {
-      final clienteLogado = await ClienteAuthService.getClienteLogado();
-      if (clienteLogado == null) return;
-      final response = await HttpClientHelper.post(
-        Uri.parse(
-            'https://southamerica-east1-masterpalm-58c46.cloudfunctions.net/gerarCupomNumeroSorte'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'lojaId': lojaId,
-          'clienteId': clienteLogado['clienteId'],
-          'pedidoId': pedidoId,
-          'valorPedido': valorTotal,
-          'clienteEmail': clienteLogado['email'] ?? customer['email'] ?? '',
-          'clienteNome': clienteLogado['nome'] ?? customer['nome'] ?? '',
-          'clienteTelefone': customer['telefone'] ?? '',
-        }),
-        timeout: HttpTimeouts.cloudFunction,
-      );
-      if (response.statusCode == 200) {
-        logD('✅ Cupom e número da sorte gerados em background');
-      }
-    } catch (e) {
-      logD(
-          '❌ Erro ao gerar cupom/número em background (type=${e.runtimeType})');
-    }
+    logD(
+      '[PROMO-SKIP] MP create-payment: promoção definitiva via webhook (mpWebhookPromo); '
+      'pedidoId=$pedidoId',
+    );
   }
 
   Future<void> _openWhatsappSimple(String telefone, String msg) async {
@@ -3194,6 +3361,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final produtos = docs.isEmpty
                     ? <Map<String, dynamic>>[]
                     : _processDocsToProducts(docs);
+
+                if (produtos.isNotEmpty && _cart.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _limparCartDeProdutosRemovidos(produtos);
+                  });
+                }
 
                 const badgeSSL = 'assets/badges/ssl.png';
                 const badgeGoogle = 'assets/badges/google-safe-browsing.png';

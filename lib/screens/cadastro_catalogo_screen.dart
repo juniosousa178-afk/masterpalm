@@ -215,7 +215,9 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
         ..tamanhos = tamanhosList
         ..slug = slug
         ..lojaId = lojaId
-        ..publicadoNoCatalogo = true;
+        ..publicadoNoCatalogo = true
+        ..custoEditadoNoCadastro = true
+        ..updatedAt = DateTime.now();
       await existente.save();
       produtoParaSync = existente;
     } else {
@@ -238,6 +240,8 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
         tamanhos: tamanhosList,
         subcategoria: subcategoria,
         lojaId: lojaId,
+        custoEditadoNoCadastro: true,
+        updatedAt: DateTime.now(),
       );
       await estoqueBox.add(novoProduto);
       produtoParaSync = novoProduto;

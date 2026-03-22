@@ -78,6 +78,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   late Box<Produto> _box;
 
+  final ValueNotifier<String> _searchTextNotifier = ValueNotifier('');
+  String _debouncedSearchQuery = '';
+  Timer? _searchDebounce;
+
   bool _ready = false;
   String? _lojaId;
   bool _erroResolucaoLoja = false;
@@ -91,6 +95,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   int _importErros = 0;
   bool _publicando = false;
   bool _unificando = false;
+  bool _excluindoOrfaos = false;
   bool _sincronizandoEstoque = false;
   bool _exportandoEstoque = false;
   bool _sincronizandoMarketplace = false;
@@ -108,20 +113,35 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   String? _filtroSubcategoria;
   bool? _filtroPublicado; // null = todos, true = só publicados, false = só não publicados
   bool _filtroSemFotos = false; // true = só produtos sem imagens
-  bool _filtroRecentementeAlterados = false; // true = só produtos alterados nos últimos 30 dias
+  bool _filtroRecentementeAlterados = false; // true = só produtos alterados nas últimas 24 horas
 
   final Set<String> _produtosSelecionados = {};
 
   @override
   void initState() {
     super.initState();
+    _pesquisaController.addListener(_onSearchChanged);
     _setup();
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _pesquisaController.removeListener(_onSearchChanged);
     _pesquisaController.dispose();
+    _searchTextNotifier.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    _searchTextNotifier.value = _pesquisaController.text;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      setState(() {
+        _debouncedSearchQuery = _norm(_pesquisaController.text);
+      });
+    });
   }
 
   Future<void> _setup() async {
@@ -401,6 +421,11 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     } catch (_) {}
 
     try {
+      // Envia alterações locais (custo/preço) antes de puxar — evita sobrescrever Hive com snapshot velho.
+      await ProdutosFirestoreService.syncTodosProdutos(
+        boxName: _box.name,
+        lojaId: lojaId,
+      );
       await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,
         produtosBox: _box,
@@ -434,7 +459,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     setState(() => _temPermissao = permitido);
   }
 
-  String _norm(String? s) => (s ?? '').toLowerCase().trim();
+  String _norm(String? s) => normalizeText(s ?? '');
 
   /// Extrai o nome do arquivo de uma URL ou caminho local.
   String _extrairFilename(String url) {
@@ -481,7 +506,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   void _selecionarTodos() {
     setState(() {
-      final q = _norm(_pesquisaController.text);
+      _searchDebounce?.cancel();
+      _debouncedSearchQuery = _norm(_pesquisaController.text);
+      final q = _debouncedSearchQuery;
       final produtos = _box.values.where((p) {
         if (q.isNotEmpty && !(_norm(p.nome).contains(q) ||
             _norm(p.descricao).contains(q) ||
@@ -505,7 +532,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         }
         if (_filtroRecentementeAlterados) {
           if (p.updatedAt == null) return false;
-          final limite = DateTime.now().subtract(const Duration(days: 30));
+          final limite = DateTime.now().subtract(const Duration(hours: 24));
           if (p.updatedAt!.isBefore(limite)) return false;
         }
         return true;
@@ -536,7 +563,15 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       _showSnackBar('Nenhum produto selecionado', isError: true);
       return;
     }
-    final categorias = _box.values.map((p) => p.categoria.trim()).where((s) => s.isNotEmpty).toSet().toList()..sort();
+    final catNormToCanon = <String, String>{};
+    for (final p in _box.values) {
+      final c = p.categoria.trim();
+      if (c.isEmpty) continue;
+      final n = _norm(c);
+      catNormToCanon[n] = canonicalizeCategoria(c);
+    }
+    final categorias = catNormToCanon.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final controller = TextEditingController();
     final result = await showDialog<String>(
       context: context,
@@ -583,7 +618,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
               FilledButton(
                 onPressed: () {
-                  final v = capitalizeWords(controller.text.trim());
+                  final v = canonicalizeCategoria(controller.text.trim());
                   if (v.isNotEmpty) Navigator.pop(ctx, v);
                 },
                 child: const Text('Aplicar'),
@@ -632,7 +667,15 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       _showSnackBar('Nenhum produto selecionado', isError: true);
       return;
     }
-    final subcategorias = _box.values.map((p) => p.subcategoria.trim()).where((s) => s.isNotEmpty).toSet().toList()..sort();
+    final subNormToCanon = <String, String>{};
+    for (final p in _box.values) {
+      final s = p.subcategoria.trim();
+      if (s.isEmpty) continue;
+      final n = _norm(s);
+      subNormToCanon[n] = canonicalizeCategoria(s);
+    }
+    final subcategorias = subNormToCanon.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final controller = TextEditingController();
     final result = await showDialog<String>(
       context: context,
@@ -679,7 +722,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
               TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
               FilledButton(
                 onPressed: () {
-                  final v = capitalizeWords(controller.text.trim());
+                  final v = canonicalizeCategoria(controller.text.trim());
                   if (v.isNotEmpty) Navigator.pop(ctx, v);
                 },
                 child: const Text('Aplicar'),
@@ -1886,6 +1929,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         precoPorTamanho: p.precoPorTamanho != null ? Map.from(p.precoPorTamanho!) : null,
         tipoProduto: p.tipoProduto,
         itensCombo: p.itensCombo?.map((e) => Map<String, dynamic>.from(e)).toList(),
+        custoEditadoNoCadastro: true,
+        updatedAt: DateTime.now(),
       );
       _box.add(copia);
       if (mounted) setState(() {});
@@ -2623,6 +2668,97 @@ Future<void> _unificarDuplicados() async {
   }
 }
 
+  /// Identifica produtos no Firestore (catálogo web) que não existem mais no
+  /// cadastro de estoque, exibe a lista e só exclui após confirmação.
+  Future<void> _identificarEExcluirOrfaos() async {
+    setState(() => _excluindoOrfaos = true);
+    try {
+      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      if (lojaId == null) {
+        _showSnackBar('Nenhuma loja ativa', isError: true);
+        return;
+      }
+
+      final orfaos = await CatalogoSyncService.identificarProdutosOrfaos(
+        lojaId: lojaId,
+        produtosBox: _box,
+      );
+
+      if (!mounted) return;
+      setState(() => _excluindoOrfaos = false);
+
+      if (orfaos.isEmpty) {
+        _showSnackBar('Nenhum produto órfão encontrado. O catálogo está sincronizado.');
+        return;
+      }
+
+      final confirmar = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Produtos órfãos no catálogo web'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${orfaos.length} produto(s) estão no catálogo mas não existem mais no estoque. Deseja excluí-los do catálogo web?',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                ...orfaos.map((o) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(Icons.inventory_2_outlined, size: 18, color: Colors.grey[600]),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          (o['nome'] ?? o['id'] ?? '').toString(),
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                )),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+              child: const Text('Excluir do catálogo'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmar != true || !mounted) return;
+
+      setState(() => _excluindoOrfaos = true);
+      final ids = orfaos.map((o) => o['id'] ?? '').where((s) => s.isNotEmpty).toList();
+      await CatalogoSyncService.excluirProdutosOrfaosPorIds(
+        lojaId: lojaId,
+        docIds: ids,
+      );
+
+      if (!mounted) return;
+      _showSnackBar('${orfaos.length} produto(s) removido(s) do catálogo web');
+      setState(() {});
+    } catch (e, st) {
+      logE('[ESTOQUE] Erro ao excluir produtos órfãos', error: e, st: st);
+      if (mounted) _showSnackBar('Erro: $e', isError: true);
+    } finally {
+      if (mounted) setState(() => _excluindoOrfaos = false);
+    }
+  }
+
 // ---------------------------------------------------------------------------
 // PARSERS (MANTIDOS COMPLETOS)
 // ---------------------------------------------------------------------------
@@ -3340,6 +3476,19 @@ String _formatGradeTexto(Produto p) {
             },
           ),
           _drawerTile(
+            icon: Icons.cleaning_services,
+            iconColor: Colors.orange,
+            label: _excluindoOrfaos
+                ? 'Excluindo órfãos…'
+                : 'Identificar e excluir produtos órfãos',
+            onTap: _excluindoOrfaos
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    _identificarEExcluirOrfaos();
+                  },
+          ),
+          _drawerTile(
             icon: Icons.storefront,
             iconColor: Colors.blue,
             label: 'Configurar catálogo',
@@ -3724,132 +3873,81 @@ String _formatGradeTexto(Produto p) {
               // Search
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha:0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _pesquisaController,
-                    decoration: InputDecoration(
-                      hintText: 'Pesquisar produtos...',
-                      hintStyle: TextStyle(color: Colors.grey[400]),
-                      prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
-                      suffixIcon: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'Ler código de barras',
-                            icon: Icon(Icons.qr_code_scanner, color: Colors.grey[400]),
-                            onPressed: () async {
-                              final code = await BarcodeScannerScreen.scan(context);
-                              if (code != null && code.isNotEmpty && mounted) {
-                                _pesquisaController.text = code;
-                                setState(() {});
-                              }
-                            },
+                child: ValueListenableBuilder<String>(
+                  valueListenable: _searchTextNotifier,
+                  builder: (_, searchText, __) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: _cardColor,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha:0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
                           ),
-                          if (_pesquisaController.text.isNotEmpty)
-                            IconButton(
-                              icon: Icon(Icons.clear, color: Colors.grey[400]),
-                              onPressed: () {
-                                _pesquisaController.clear();
-                                setState(() {});
-                              },
-                            ),
                         ],
                       ),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  ),
+                      child: TextField(
+                        controller: _pesquisaController,
+                        decoration: InputDecoration(
+                          hintText: 'Pesquisar produtos...',
+                          hintStyle: TextStyle(color: Colors.grey[400]),
+                          prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Ler código de barras',
+                                icon: Icon(Icons.qr_code_scanner, color: Colors.grey[400]),
+                                onPressed: () async {
+                                  final code = await BarcodeScannerScreen.scan(context);
+                                  if (code != null && code.isNotEmpty && mounted) {
+                                    _pesquisaController.text = code;
+                                  }
+                                },
+                              ),
+                              if (searchText.isNotEmpty)
+                                IconButton(
+                                  icon: Icon(Icons.clear, color: Colors.grey[400]),
+                                  onPressed: () => _pesquisaController.clear(),
+                                ),
+                            ],
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
 
-              // Filtros
+              // Filtros (painel único — ver _abrirPainelFiltros)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: ValueListenableBuilder(
-                  valueListenable: _box.listenable(),
-                  builder: (_, Box<Produto> box, __) {
-                    final categorias = box.values.map((p) => p.categoria.trim()).where((s) => s.isNotEmpty).toSet().toList()..sort();
-                    var subcategorias = box.values
-                        .where((p) => _filtroCategoria == null || _norm(p.categoria) == _norm(_filtroCategoria!))
-                        .map((p) => p.subcategoria.trim())
-                        .where((s) => s.isNotEmpty)
-                        .toSet()
-                        .toList();
-                    subcategorias.sort();
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: _buildFilterDropdown<String?>(
-                            value: _filtroCategoria,
-                            hint: 'Categoria',
-                            items: [
-                              const DropdownMenuItem(value: null, child: Text('Todas categorias')),
-                              ...categorias.map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis))),
-                            ],
-                            onChanged: (v) => setState(() {
-                              _filtroCategoria = v;
-                              if (_filtroSubcategoria != null && (v == null || !subcategorias.contains(_filtroSubcategoria))) {
-                                _filtroSubcategoria = null;
-                              }
-                            }),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildFilterDropdown<String?>(
-                            value: _filtroSubcategoria,
-                            hint: 'Subcategoria',
-                            items: [
-                              const DropdownMenuItem(value: null, child: Text('Todas')),
-                              ...subcategorias.map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis))),
-                            ],
-                            onChanged: (v) => setState(() => _filtroSubcategoria = v),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildFilterDropdown<bool?>(
-                            value: _filtroPublicado,
-                            hint: 'Publicado',
-                            items: const [
-                              DropdownMenuItem(value: null, child: Text('Todos')),
-                              DropdownMenuItem(value: true, child: Text('Sim')),
-                              DropdownMenuItem(value: false, child: Text('Não')),
-                            ],
-                            onChanged: (v) => setState(() => _filtroPublicado = v),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        FilterChip(
-                          label: const Text('Sem fotos'),
-                          selected: _filtroSemFotos,
-                          onSelected: (v) => setState(() => _filtroSemFotos = v),
-                          selectedColor: _warningColor.withValues(alpha:0.2),
-                          checkmarkColor: _warningColor,
-                        ),
-                        const SizedBox(width: 8),
-                        FilterChip(
-                          label: const Text('Recentemente alterados'),
-                          selected: _filtroRecentementeAlterados,
-                          onSelected: (v) => setState(() => _filtroRecentementeAlterados = v),
-                          selectedColor: _primaryColor.withValues(alpha:0.2),
-                          checkmarkColor: _primaryColor,
-                        ),
-                      ],
-                    );
-                  },
+                child: SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _abrirPainelFiltros,
+                    icon: Badge(
+                      isLabelVisible: _contagemFiltrosAtivos() > 0,
+                      label: Text('${_contagemFiltrosAtivos()}'),
+                      child: const Icon(Icons.tune),
+                    ),
+                    label: Text(
+                      _contagemFiltrosAtivos() > 0
+                          ? 'Filtros (${_contagemFiltrosAtivos()} ativos)'
+                          : 'Filtros',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _surfaceColor,
+                      side: BorderSide(color: _primaryColor.withValues(alpha: 0.45)),
+                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                      alignment: Alignment.centerLeft,
+                    ),
+                  ),
                 ),
               ),
 
@@ -3897,31 +3995,34 @@ String _formatGradeTexto(Produto p) {
                   child: ValueListenableBuilder(
                     valueListenable: _box.listenable(),
                     builder: (_, Box<Produto> box, __) {
-                      final q = _norm(_pesquisaController.text);
+                      final q = _debouncedSearchQuery;
+                      final limite24h = DateTime.now().subtract(const Duration(hours: 24));
 
                       var itens = box.values.where((p) {
-                        if (q.isEmpty) return true;
-                        return _norm(p.nome).contains(q) ||
-                            _norm(p.descricao).contains(q) ||
-                            _norm(p.categoria).contains(q) ||
-                            _norm(p.subcategoria).contains(q) ||
-                            _norm(p.slug).contains(q) ||
-                            _norm(p.codigoBarras).contains(q);
-                      }).where((p) {
-                        if (_filtroCategoria != null && _filtroCategoria!.isNotEmpty) {
-                          if (_norm(p.categoria) != _norm(_filtroCategoria!)) return false;
+                        if (q.isNotEmpty &&
+                            !(_norm(p.nome).contains(q) ||
+                                _norm(p.descricao).contains(q) ||
+                                _norm(p.categoria).contains(q) ||
+                                _norm(p.subcategoria).contains(q) ||
+                                _norm(p.slug).contains(q) ||
+                                _norm(p.codigoBarras).contains(q))) {
+                          return false;
                         }
-                        if (_filtroSubcategoria != null && _filtroSubcategoria!.isNotEmpty) {
-                          if (_norm(p.subcategoria) != _norm(_filtroSubcategoria!)) return false;
+                        if (_filtroCategoria != null && _filtroCategoria!.isNotEmpty &&
+                            _norm(p.categoria) != _norm(_filtroCategoria!)) {
+                          return false;
                         }
-                        if (_filtroPublicado != null) {
-                          if (p.publicadoNoCatalogo != _filtroPublicado) return false;
+                        if (_filtroSubcategoria != null && _filtroSubcategoria!.isNotEmpty &&
+                            _norm(p.subcategoria) != _norm(_filtroSubcategoria!)) {
+                          return false;
+                        }
+                        if (_filtroPublicado != null && p.publicadoNoCatalogo != _filtroPublicado) {
+                          return false;
                         }
                         if (_filtroSemFotos && p.imagens.isNotEmpty) return false;
                         if (_filtroRecentementeAlterados) {
                           if (p.updatedAt == null) return false;
-                          final limite = DateTime.now().subtract(const Duration(days: 30));
-                          if (p.updatedAt!.isBefore(limite)) return false;
+                          if (p.updatedAt!.isBefore(limite24h)) return false;
                         }
                         return true;
                       }).toList();
@@ -4174,7 +4275,7 @@ String _formatGradeTexto(Produto p) {
   }
 
   Widget _buildEmptyState() {
-    final isSearch = _pesquisaController.text.isNotEmpty;
+    final isSearch = _debouncedSearchQuery.isNotEmpty;
     if (isSearch) {
       return Center(
         child: Column(
@@ -4528,6 +4629,234 @@ String _formatGradeTexto(Produto p) {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  int _contagemFiltrosAtivos() {
+    var n = 0;
+    if (_filtroCategoria != null && _filtroCategoria!.trim().isNotEmpty) n++;
+    if (_filtroSubcategoria != null && _filtroSubcategoria!.trim().isNotEmpty) {
+      n++;
+    }
+    if (_filtroPublicado != null) n++;
+    if (_filtroSemFotos) n++;
+    if (_filtroRecentementeAlterados) n++;
+    return n;
+  }
+
+  void _abrirPainelFiltros() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.72,
+          minChildSize: 0.45,
+          maxChildSize: 0.92,
+          expand: false,
+          builder: (_, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: _cardColor,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x1A000000),
+                    blurRadius: 12,
+                    offset: Offset(0, -2),
+                  ),
+                ],
+              ),
+              child: ValueListenableBuilder<Box<Produto>>(
+                valueListenable: _box.listenable(),
+                builder: (_, Box<Produto> box, __) {
+                  // Unifica por forma canônica: "Anel"/"anel" → uma entrada "Anel".
+                  final catNormToCanon = <String, String>{};
+                  for (final p in box.values) {
+                    final c = p.categoria.trim();
+                    if (c.isEmpty) continue;
+                    final n = _norm(c);
+                    catNormToCanon[n] = canonicalizeCategoria(c);
+                  }
+                  final categorias = catNormToCanon.values.toList()
+                    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+                  final subNormToCanon = <String, String>{};
+                  for (final p in box.values) {
+                    if (_filtroCategoria != null &&
+                        _norm(p.categoria) != _norm(_filtroCategoria!)) {
+                      continue;
+                    }
+                    final s = p.subcategoria.trim();
+                    if (s.isEmpty) continue;
+                    final n = _norm(s);
+                    subNormToCanon[n] = canonicalizeCategoria(s);
+                  }
+                  final subcategorias = subNormToCanon.values.toList()
+                    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+                  return ListView(
+                    controller: scrollController,
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      12,
+                      16,
+                      16 + MediaQuery.paddingOf(sheetContext).bottom,
+                    ),
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.filter_list, color: _primaryColor),
+                          const SizedBox(width: 8),
+                          const Expanded(
+                            child: Text(
+                              'Filtros',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(sheetContext),
+                            tooltip: 'Fechar',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      _buildFiltroFieldLabel('Categoria do produto'),
+                      const SizedBox(height: 6),
+                      _buildFilterDropdown<String?>(
+                        value: _filtroCategoria,
+                        hint: 'Categoria',
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('Todas as categorias'),
+                          ),
+                          ...categorias.map(
+                            (c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c, overflow: TextOverflow.ellipsis),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() {
+                          _filtroCategoria = v;
+                          if (_filtroSubcategoria != null &&
+                              (v == null ||
+                                  !subcategorias.contains(_filtroSubcategoria))) {
+                            _filtroSubcategoria = null;
+                          }
+                        }),
+                      ),
+                      const SizedBox(height: 14),
+                      _buildFiltroFieldLabel('Subcategoria'),
+                      const SizedBox(height: 6),
+                      _buildFilterDropdown<String?>(
+                        value: _filtroSubcategoria,
+                        hint: 'Subcategoria',
+                        items: [
+                          const DropdownMenuItem(
+                            value: null,
+                            child: Text('Todas as subcategorias'),
+                          ),
+                          ...subcategorias.map(
+                            (s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(s, overflow: TextOverflow.ellipsis),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => _filtroSubcategoria = v),
+                      ),
+                      const SizedBox(height: 14),
+                      _buildFiltroFieldLabel('Visível no catálogo online'),
+                      const SizedBox(height: 6),
+                      _buildFilterDropdown<bool?>(
+                        value: _filtroPublicado,
+                        hint: 'Publicação',
+                        items: const [
+                          DropdownMenuItem(
+                            value: null,
+                            child: Text('Qualquer (publicado ou não)'),
+                          ),
+                          DropdownMenuItem(
+                            value: true,
+                            child: Text('Só publicados'),
+                          ),
+                          DropdownMenuItem(
+                            value: false,
+                            child: Text('Só não publicados'),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() => _filtroPublicado = v),
+                      ),
+                      const SizedBox(height: 4),
+                      SwitchListTile(
+                        title: const Text('Só produtos sem fotos'),
+                        value: _filtroSemFotos,
+                        onChanged: (v) => setState(() => _filtroSemFotos = v),
+                        activeThumbColor: _warningColor,
+                      ),
+                      SwitchListTile(
+                        title: const Text('Alterados nas últimas 24 horas'),
+                        subtitle: Text(
+                          'Com base em data de atualização do produto',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                        value: _filtroRecentementeAlterados,
+                        onChanged: (v) => setState(
+                          () => _filtroRecentementeAlterados = v,
+                        ),
+                        activeThumbColor: _primaryColor,
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _filtroCategoria = null;
+                                _filtroSubcategoria = null;
+                                _filtroPublicado = null;
+                                _filtroSemFotos = false;
+                                _filtroRecentementeAlterados = false;
+                              });
+                            },
+                            child: const Text('Limpar tudo'),
+                          ),
+                          const Spacer(),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            child: const Text('Concluir'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFiltroFieldLabel(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey[800],
         ),
       ),
     );

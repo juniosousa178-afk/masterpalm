@@ -202,6 +202,8 @@ Future<UpsertResultWithProduct> upsertProduto(
       existente.slug = existente.slug.isEmpty ? skuStr : existente.slug;
     }
 
+    existente.custoEditadoNoCadastro = true;
+    existente.updatedAt = DateTime.now();
     await existente.save();
     onLog?.call('Atualizado: ${existente.nome}');
     return (UpsertResult.updated, existente);
@@ -216,6 +218,8 @@ Future<UpsertResultWithProduct> upsertProduto(
     novo.slug = '$lojaId-${_slugify(novo.nome)}';
   }
 
+  novo.custoEditadoNoCadastro = true;
+  novo.updatedAt = DateTime.now();
   await box.add(novo);
   await novo.save();
   onLog?.call('Inserido: ${novo.nome}');

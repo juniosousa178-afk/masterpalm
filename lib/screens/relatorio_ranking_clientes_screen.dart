@@ -9,6 +9,7 @@ import '../core/hive_box_names.dart';
 import '../core/loja_id_adapter.dart';
 import '../services/loja_id_service.dart';
 import '../models/venda.dart';
+import '../core/venda_metrics_filter.dart';
 
 const Color _primaryColor = Color(0xFF6366F1);
 const Color _successColor = Color(0xFF22C55E);
@@ -90,6 +91,7 @@ class _RelatorioRankingClientesScreenState
 
       for (final v in box.values) {
         if (v.lojaId != null && v.lojaId != lojaId) continue;
+        if (!incluirVendaEmMetricas(v)) continue;
         if (v.data.isBefore(inicio) || v.data.isAfter(fim)) continue;
 
         final key = v.clienteId?.trim().isNotEmpty == true

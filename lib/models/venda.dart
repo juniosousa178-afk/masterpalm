@@ -79,6 +79,36 @@ class Venda extends HiveObject {
   @HiveField(21)
   String? clienteId;
 
+  /// Status legível para relatórios (opcional; legado sem campo = válido).
+  @HiveField(22)
+  String? statusVenda;
+
+  @HiveField(23, defaultValue: false)
+  bool cancelada;
+
+  @HiveField(24, defaultValue: false)
+  bool estornada;
+
+  /// Ex.: catalogo_web, balcao, mp_webhook
+  @HiveField(25)
+  String? origemVenda;
+
+  /// ID do pagamento Mercado Pago (reconciliação com estoque_vendas mp_*)
+  @HiveField(26)
+  String? paymentId;
+
+  /// external_reference / mesmo id usado no checkout
+  @HiveField(27)
+  String? orderId;
+
+  /// Documento em pre_pedidos ou pedidos_pendentes
+  @HiveField(28)
+  String? prePedidoId;
+
+  /// Documento em `pedidos` finalizado (se houver)
+  @HiveField(29)
+  String? pedidoId;
+
   Venda({
     required this.clienteNome,
     required this.produtosDescricao,
@@ -102,6 +132,14 @@ class Venda extends HiveObject {
     this.lojaId, // <- multi-loja
     this.idFirebase, // <- ID do Firestore
     this.clienteId, // <- ID estável do cliente
+    this.statusVenda,
+    this.cancelada = false,
+    this.estornada = false,
+    this.origemVenda,
+    this.paymentId,
+    this.orderId,
+    this.prePedidoId,
+    this.pedidoId,
   });
 
   /// Itens da venda (nunca null, fallback para [] em vendas antigas)

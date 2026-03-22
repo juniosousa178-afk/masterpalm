@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/cliente_auth_service.dart';
+import '../../utils/platform_adaptive.dart';
 
 /// Tela de Perfil do Cliente (catálogo público).
 ///
@@ -418,20 +421,28 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                   onPressed: () async {
                     final confirma = await showDialog<bool>(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Sair'),
-                        content: const Text('Deseja realmente sair da sua conta?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancelar'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('Sair'),
-                          ),
-                        ],
-                      ),
+                      builder: (context) {
+                        final maxW = math.min(
+                          kMaxContentWidth,
+                          MediaQuery.sizeOf(context).width - 40,
+                        );
+                        return AlertDialog(
+                          constraints: BoxConstraints(maxWidth: maxW),
+                          title: const Text('Sair'),
+                          content: const Text(
+                              'Deseja realmente sair da sua conta?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancelar'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Sair'),
+                            ),
+                          ],
+                        );
+                      },
                     );
 
                     if (confirma == true) {
@@ -809,109 +820,116 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Editar Dados Pessoais'),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nomeController,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome Completo',
-                    prefixIcon: Icon(Icons.person),
-                    border: OutlineInputBorder(),
+      builder: (context) {
+        final maxW = math.min(
+          kMaxContentWidth,
+          MediaQuery.sizeOf(context).width - 40,
+        );
+        return AlertDialog(
+          constraints: BoxConstraints(maxWidth: maxW),
+          title: const Text('Editar Dados Pessoais'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nomeController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome Completo',
+                      prefixIcon: Icon(Icons.person),
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Digite seu nome';
+                      }
+                      if (value.length < 3) {
+                        return 'Nome muito curto';
+                      }
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Digite seu nome';
-                    }
-                    if (value.length < 3) {
-                      return 'Nome muito curto';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email),
-                    border: OutlineInputBorder(),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email),
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Digite seu email';
+                      }
+                      if (!value.contains('@')) {
+                        return 'Email inválido';
+                      }
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Digite seu email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Email inválido';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: telefoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Telefone',
-                    prefixIcon: Icon(Icons.phone),
-                    border: OutlineInputBorder(),
-                    hintText: '(00) 00000-0000',
-                    helperText: 'Ex: 5533999999999',
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: telefoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: 'Telefone',
+                      prefixIcon: Icon(Icons.phone),
+                      border: OutlineInputBorder(),
+                      hintText: '(00) 00000-0000',
+                      helperText: 'Ex: 5533999999999',
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
 
-              // Salvar alterações
-              final resultado = await ClienteAuthService.atualizarDados(
-                lojaId: widget.lojaId,
-                clienteId: widget.clienteId,
-                nome: nomeController.text.trim(),
-                email: emailController.text.trim(),
-                telefone: telefoneController.text.trim(),
-              );
-
-              if (!context.mounted) return;
-
-              Navigator.pop(context);
-
-              if (resultado['success'] == true) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Dados atualizados com sucesso!'),
-                    backgroundColor: Colors.green,
-                  ),
+                // Salvar alterações
+                final resultado = await ClienteAuthService.atualizarDados(
+                  lojaId: widget.lojaId,
+                  clienteId: widget.clienteId,
+                  nome: nomeController.text.trim(),
+                  email: emailController.text.trim(),
+                  telefone: telefoneController.text.trim(),
                 );
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(resultado['error'] ?? 'Erro ao atualizar dados'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
-      ),
+
+                if (!context.mounted) return;
+
+                Navigator.pop(context);
+
+                if (resultado['success'] == true) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Dados atualizados com sucesso!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(resultado['error'] ?? 'Erro ao atualizar dados'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -928,136 +946,143 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Alterar Senha'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: senhaAtualController,
-                    obscureText: !mostrarSenhaAtual,
-                    decoration: InputDecoration(
-                      labelText: 'Senha Atual',
-                      prefixIcon: const Icon(Icons.lock),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          mostrarSenhaAtual ? Icons.visibility : Icons.visibility_off,
+        builder: (context, setState) {
+          final maxW = math.min(
+            kMaxContentWidth,
+            MediaQuery.sizeOf(context).width - 40,
+          );
+          return AlertDialog(
+            constraints: BoxConstraints(maxWidth: maxW),
+            title: const Text('Alterar Senha'),
+            content: SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: senhaAtualController,
+                      obscureText: !mostrarSenhaAtual,
+                      decoration: InputDecoration(
+                        labelText: 'Senha Atual',
+                        prefixIcon: const Icon(Icons.lock),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            mostrarSenhaAtual ? Icons.visibility : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() => mostrarSenhaAtual = !mostrarSenhaAtual);
+                          },
                         ),
-                        onPressed: () {
-                          setState(() => mostrarSenhaAtual = !mostrarSenhaAtual);
-                        },
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Digite sua senha atual';
+                        }
+                        return null;
+                      },
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Digite sua senha atual';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: novaSenhaController,
-                    obscureText: !mostrarNovaSenha,
-                    decoration: InputDecoration(
-                      labelText: 'Nova Senha',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          mostrarNovaSenha ? Icons.visibility : Icons.visibility_off,
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: novaSenhaController,
+                      obscureText: !mostrarNovaSenha,
+                      decoration: InputDecoration(
+                        labelText: 'Nova Senha',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            mostrarNovaSenha ? Icons.visibility : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() => mostrarNovaSenha = !mostrarNovaSenha);
+                          },
                         ),
-                        onPressed: () {
-                          setState(() => mostrarNovaSenha = !mostrarNovaSenha);
-                        },
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Digite a nova senha';
+                        }
+                        if (value.length < 6) {
+                          return 'Senha deve ter pelo menos 6 caracteres';
+                        }
+                        return null;
+                      },
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Digite a nova senha';
-                      }
-                      if (value.length < 6) {
-                        return 'Senha deve ter pelo menos 6 caracteres';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: confirmarSenhaController,
-                    obscureText: !mostrarConfirmarSenha,
-                    decoration: InputDecoration(
-                      labelText: 'Confirmar Nova Senha',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          mostrarConfirmarSenha ? Icons.visibility : Icons.visibility_off,
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: confirmarSenhaController,
+                      obscureText: !mostrarConfirmarSenha,
+                      decoration: InputDecoration(
+                        labelText: 'Confirmar Nova Senha',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            mostrarConfirmarSenha ? Icons.visibility : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() => mostrarConfirmarSenha = !mostrarConfirmarSenha);
+                          },
                         ),
-                        onPressed: () {
-                          setState(() => mostrarConfirmarSenha = !mostrarConfirmarSenha);
-                        },
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Confirme a nova senha';
+                        }
+                        if (value != novaSenhaController.text) {
+                          return 'As senhas não conferem';
+                        }
+                        return null;
+                      },
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Confirme a nova senha';
-                      }
-                      if (value != novaSenhaController.text) {
-                        return 'As senhas não conferem';
-                      }
-                      return null;
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  if (!formKey.currentState!.validate()) return;
 
-                // Alterar senha
-                final resultado = await ClienteAuthService.alterarSenha(
-                  lojaId: widget.lojaId,
-                  clienteId: widget.clienteId,
-                  senhaAtual: senhaAtualController.text,
-                  novaSenha: novaSenhaController.text,
-                );
-
-                if (!context.mounted) return;
-
-                Navigator.pop(context);
-
-                if (resultado['success'] == true) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Senha alterada com sucesso!'),
-                      backgroundColor: Colors.green,
-                    ),
+                  // Alterar senha
+                  final resultado = await ClienteAuthService.alterarSenha(
+                    lojaId: widget.lojaId,
+                    clienteId: widget.clienteId,
+                    senhaAtual: senhaAtualController.text,
+                    novaSenha: novaSenhaController.text,
                   );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(resultado['error'] ?? 'Erro ao alterar senha'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Alterar'),
-            ),
-          ],
-        ),
+
+                  if (!context.mounted) return;
+
+                  Navigator.pop(context);
+
+                  if (resultado['success'] == true) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Senha alterada com sucesso!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(resultado['error'] ?? 'Erro ao alterar senha'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Alterar'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

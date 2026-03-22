@@ -3,6 +3,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/catalog_color_from_name.dart';
 import '../../../core/safe_cast.dart';
 import '../../../widgets/smart_image.dart';
 
@@ -117,38 +118,6 @@ class _CatalogProductSelectionSheetState
       return 'Selecione a cor';
     }
     return 'Adicionar ao carrinho';
-  }
-
-  Color _getColorFromName(String nome) {
-    const coresMap = {
-      'preto': Colors.black,
-      'branco': Colors.white,
-      'vermelho': Colors.red,
-      'azul': Colors.blue,
-      'verde': Colors.green,
-      'amarelo': Colors.yellow,
-      'rosa': Colors.pink,
-      'roxo': Colors.purple,
-      'laranja': Colors.orange,
-      'cinza': Colors.grey,
-      'marrom': Colors.brown,
-      'bege': Color(0xFFF5F5DC),
-      'dourado': Color(0xFFFFD700),
-      'prata': Color(0xFFC0C0C0),
-      'navy': Color(0xFF000080),
-      'vinho': Color(0xFF722F37),
-      'coral': Color(0xFFFF7F50),
-      'turquesa': Color(0xFF40E0D0),
-      'lilas': Color(0xFFC8A2C8),
-      'nude': Color(0xFFE3BC9A),
-      'off white': Color(0xFFFAF9F6),
-      'creme': Color(0xFFFFFDD0),
-      'caramelo': Color(0xFFFFD59A),
-      'mostarda': Color(0xFFFFDB58),
-      'terracota': Color(0xFFE2725B),
-      'ferrugem': Color(0xFFB7410E),
-    };
-    return coresMap[nome.toLowerCase()] ?? Colors.grey;
   }
 
   @override
@@ -494,7 +463,7 @@ class _CatalogProductSelectionSheetState
                                   height: 12,
                                   decoration: BoxDecoration(
                                     color:
-                                        _getColorFromName(_corSelecionada!),
+                                        catalogColorFromName(_corSelecionada!),
                                     shape: BoxShape.circle,
                                     border: Border.all(
                                       color: Colors.white
@@ -559,7 +528,7 @@ class _CatalogProductSelectionSheetState
                           final qtd = entry.value;
                           final isSelected = _corSelecionada == cor;
                           final hasStock = qtd > 0;
-                          final corVisual = _getColorFromName(cor);
+                          final corVisual = catalogColorFromName(cor);
                           final isLight = corVisual.computeLuminance() > 0.5;
 
                           return InkWell(

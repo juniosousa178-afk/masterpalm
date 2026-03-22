@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 import '../../core/hive_box_names.dart';
 import '../../models/meta.dart';
 import '../../models/venda.dart';
+import '../../core/venda_metrics_filter.dart';
 import '../../services/carrinho_abandonado_service.dart';
 import '../../utils/store_access_guard.dart';
 import '../models/crescimento_resumo.dart';
@@ -47,7 +48,9 @@ class MotorCrescimentoResumoService {
           StoreAccessGuard.auditBoxAccess(vendasBoxName, lojaId, op: 'open');
           vendasBox = await Hive.openBox<Venda>(vendasBoxName);
         }
-        final vendasLoja = vendasBox.values.where((v) => v.lojaId == lojaId).toList();
+        final vendasLoja = vendasBox.values
+            .where((v) => v.lojaId == lojaId && incluirVendaEmMetricas(v))
+            .toList();
         final now = DateTime.now();
         final mesInicio = DateTime(now.year, now.month, 1);
         final mesFim = DateTime(now.year, now.month + 1, 0, 23, 59, 59);

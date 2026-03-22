@@ -609,7 +609,29 @@ class EstoqueService {
         updateData['estoquePorTamanho'] = produto.estoquePorTamanho;
       }
 
-      // Atualizar em estoque_produtos (ou criar doc completo se idFirebase vazio)
+      /// Garante persistência na nuvem: update parcial ou documento completo ([syncProduto]).
+      var persistiuRemoto = false;
+
+      Future<void> atualizarCatalogoParalelo() async {
+        if (!produto.publicadoNoCatalogo) return;
+        try {
+          await _db
+              .collection('lojas')
+              .doc(lojaId)
+              .collection('produtos')
+              .doc(produto.idFirebase)
+              .update(updateData);
+          debugPrint(
+            '$tag [ESTOQUE_WRITE] Atualizado produtos (catálogo): ${produto.idFirebase}',
+          );
+        } catch (e) {
+          debugPrint(
+            '$tag Erro ao atualizar catálogo (normal se não publicado) (type=${e.runtimeType})',
+          );
+        }
+      }
+
+      // Atualizar em estoque_produtos (ou criar doc completo se idFirebase vazio / update falhar)
       if (produto.idFirebase.isNotEmpty) {
         try {
           await _db
@@ -619,34 +641,37 @@ class EstoqueService {
               .doc(produto.idFirebase)
               .update(updateData);
           debugPrint('$tag Atualizado estoque_produtos: ${produto.idFirebase}');
+          persistiuRemoto = true;
+          await atualizarCatalogoParalelo();
         } catch (e) {
-          debugPrint('$tag Erro ao atualizar estoque_produtos (type=${e.runtimeType})');
-        }
-
-        // Atualizar em produtos (catálogo) se publicado
-        if (produto.publicadoNoCatalogo) {
+          debugPrint(
+            '$tag Erro ao atualizar estoque_produtos (type=${e.runtimeType}) — tentando syncProduto completo',
+          );
+          // Doc ausente, regra de segurança ou ID órfão: recria / alinha com Hive.
           try {
-            await _db
-                .collection('lojas')
-                .doc(lojaId)
-                .collection('produtos')
-                .doc(produto.idFirebase)
-                .update(updateData);
-            debugPrint('$tag [ESTOQUE_WRITE] Atualizado produtos (catálogo): ${produto.idFirebase}');
-          } catch (e) {
-            debugPrint('$tag Erro ao atualizar catálogo (normal se não publicado) (type=${e.runtimeType})');
+            await ProdutosFirestoreService.syncProduto(produto, lojaId: lojaId);
+            persistiuRemoto = true;
+            debugPrint('$tag syncProduto OK após falha no update parcial');
+          } catch (e2) {
+            debugPrint(
+              '$tag Erro também em syncProduto (type=${e2.runtimeType})',
+            );
           }
         }
       } else {
-        // Produto sem idFirebase: usar syncProduto para criar doc e obter id
+        // Sem idFirebase: único caminho confiável é documento completo na nuvem.
         try {
           await ProdutosFirestoreService.syncProduto(produto, lojaId: lojaId);
-          debugPrint('$tag Produto criado no Firestore (idFirebase atribuído)');
+          persistiuRemoto = true;
+          debugPrint('$tag Produto enviado ao Firestore (idFirebase atribuído)');
         } catch (e) {
-          debugPrint('$tag Erro ao sincronizar produto novo (type=${e.runtimeType})');
+          debugPrint('$tag Erro ao sincronizar produto sem idFirebase (type=${e.runtimeType})');
         }
       }
 
+      if (!persistiuRemoto) {
+        return ResultadoAjusteEstoque.erro;
+      }
       return divergenciaRelevante
           ? ResultadoAjusteEstoque.divergenciaDetectada
           : ResultadoAjusteEstoque.sucesso;

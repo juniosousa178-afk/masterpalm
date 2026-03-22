@@ -24,6 +24,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/venda_metrics_filter.dart';
 import '../core/logger.dart';
 import '../widgets/empty_state_cta.dart';
 import '../models/cliente.dart';
@@ -628,7 +629,7 @@ class _ClientesScreenState extends State<ClientesScreen>
     final clientes = clientesBox.values.where((c) => c.lojaId == lojaId).toList();
     final vendasDaLoja = vendasBox.values.where((v) {
       if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != lojaId) return false;
-      return true;
+      return incluirVendaEmMetricas(v);
     }).toList();
 
     return {
@@ -935,7 +936,10 @@ class _ClientesScreenState extends State<ClientesScreen>
   // -------------------------------
   void visualizarHistorico(Cliente cliente) {
     final vendasDoCliente = _vendasDoCliente(cliente);
-    final totalGasto = vendasDoCliente.fold<double>(0, (sum, v) => sum + v.total);
+    // Faturamento válido (alinhado ao painel); a lista abaixo inclui todas as linhas para conferência.
+    final totalGasto = vendasDoCliente
+        .where(incluirVendaEmMetricas)
+        .fold<double>(0, (sum, v) => sum + v.total);
 
     showModalBottomSheet(
       context: context,
@@ -2688,6 +2692,7 @@ class _ClientesScreenState extends State<ClientesScreen>
 
   Widget _buildHistoricoTab() {
     final vendas = _vendasFiltradas();
+    // Soma coerente com as linhas exibidas (incl. canceladas/estornadas se aparecerem) — auditoria.
     final totalVendas = vendas.fold<double>(0, (sum, v) => sum + v.total);
 
     return Column(
@@ -3042,7 +3047,11 @@ class _ClientesScreenState extends State<ClientesScreen>
 
   String _montarResumoClientesParaIa() {
     final clientes = clientesBox.values.where((c) => c.lojaId == lojaId).toList();
-    final vendasDaLoja = vendasBox.values.where((v) => v.lojaId == null || v.lojaId!.isEmpty || v.lojaId == lojaId).toList();
+    final vendasDaLoja = vendasBox.values
+        .where((v) =>
+            (v.lojaId == null || v.lojaId!.isEmpty || v.lojaId == lojaId) &&
+            incluirVendaEmMetricas(v))
+        .toList();
     final porCliente = <String, double>{};
     for (final v in vendasDaLoja) {
       final nome = v.clienteNome.trim().isEmpty ? 'Sem nome' : v.clienteNome;

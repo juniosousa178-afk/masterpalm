@@ -39,13 +39,21 @@ class VendaAdapter extends TypeAdapter<Venda> {
       lojaId: fields[19] as String?,
       idFirebase: fields[20] as String?,
       clienteId: fields[21] as String?,
+      statusVenda: fields[22] as String?,
+      cancelada: fields[23] == null ? false : fields[23] as bool,
+      estornada: fields[24] == null ? false : fields[24] as bool,
+      origemVenda: fields[25] as String?,
+      paymentId: fields[26] as String?,
+      orderId: fields[27] as String?,
+      prePedidoId: fields[28] as String?,
+      pedidoId: fields[29] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Venda obj) {
     writer
-      ..writeByte(22)
+      ..writeByte(30)
       ..writeByte(0)
       ..write(obj.preco)
       ..writeByte(1)
@@ -89,7 +97,23 @@ class VendaAdapter extends TypeAdapter<Venda> {
       ..writeByte(20)
       ..write(obj.idFirebase)
       ..writeByte(21)
-      ..write(obj.clienteId);
+      ..write(obj.clienteId)
+      ..writeByte(22)
+      ..write(obj.statusVenda)
+      ..writeByte(23)
+      ..write(obj.cancelada)
+      ..writeByte(24)
+      ..write(obj.estornada)
+      ..writeByte(25)
+      ..write(obj.origemVenda)
+      ..writeByte(26)
+      ..write(obj.paymentId)
+      ..writeByte(27)
+      ..write(obj.orderId)
+      ..writeByte(28)
+      ..write(obj.prePedidoId)
+      ..writeByte(29)
+      ..write(obj.pedidoId);
   }
 
   @override

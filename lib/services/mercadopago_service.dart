@@ -44,6 +44,7 @@ class MercadoPagoService {
           if (externalReference != null) 'external_reference': externalReference,
           if (lojaId != null && lojaId.isNotEmpty) 'metadata': {'lojaId': lojaId},
           if (payer != null) 'payer': payer,
+          // Defaults genéricos; o catálogo público sempre envia [backUrls] com ?loja= e a CF mpCatalogPayment define notification_url.
           'back_urls': backUrls ?? {
             'success': 'https://app.mastepalm.com.br/pagamento/sucesso',
             'failure': 'https://app.mastepalm.com.br/pagamento/falha',
@@ -51,7 +52,7 @@ class MercadoPagoService {
           },
           'auto_return': 'approved',
           'statement_descriptor': 'MASTERPALM',
-          'notification_url': 'https://app.mastepalm.com.br/webhooks/mercadopago', // Configurar webhook
+          'notification_url': 'https://app.mastepalm.com.br/webhooks/mercadopago',
           if (maxInstallments != null)
             'payment_methods': {
               'installments': maxInstallments.clamp(1, 24),

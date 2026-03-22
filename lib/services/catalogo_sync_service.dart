@@ -11,6 +11,7 @@ import 'package:file_picker/file_picker.dart' show PlatformFile;
 import '../core/hive_box_names.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 import '../models/produto.dart';
+import 'catalog_cache_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/upload_manager.dart';
 
@@ -502,6 +503,69 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       debugPrint('❌ [PRODUTO SYNC] Erro ao remover produto (type=${e.runtimeType})');
       rethrow;
     }
+  }
+
+  /// Identifica no Firestore (produtos + draft_produtos) os docs que não existem
+  /// mais no cadastro de estoque (Hive). Retorna lista de {id, nome} para exibição.
+  static Future<List<Map<String, String>>> identificarProdutosOrfaos({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+  }) async {
+    final validDocIds = <String>{};
+    for (final p in produtosBox.values) {
+      final docId =
+          (p.slug.trim().isNotEmpty ? p.slug.trim() : slugify(p.nome)).trim();
+      if (docId.isNotEmpty) validDocIds.add(docId);
+    }
+
+    final base = _db.collection('lojas').doc(lojaId);
+    final orfaos = <Map<String, String>>[];
+    final seenIds = <String>{};
+
+    for (final colName in ['produtos', 'draft_produtos']) {
+      final snap = await base.collection(colName).get();
+      for (final doc in snap.docs) {
+        if (!validDocIds.contains(doc.id) && !seenIds.contains(doc.id)) {
+          seenIds.add(doc.id);
+          final data = doc.data();
+          final nome = (data['nome'] ?? data['name'] ?? doc.id).toString().trim();
+          orfaos.add({'id': doc.id, 'nome': nome.isEmpty ? doc.id : nome});
+        }
+      }
+    }
+
+    return orfaos;
+  }
+
+  /// Exclui do Firestore os docs órfãos pelos ids retornados em [identificarProdutosOrfaos].
+  static Future<int> excluirProdutosOrfaosPorIds({
+    required String lojaId,
+    required List<String> docIds,
+  }) async {
+    if (docIds.isEmpty) return 0;
+
+    final base = _db.collection('lojas').doc(lojaId);
+    var removidos = 0;
+
+    for (final colName in ['produtos', 'draft_produtos']) {
+      final col = base.collection(colName);
+      for (final id in docIds) {
+        try {
+          await col.doc(id).delete();
+          removidos++;
+          if (kDebugMode) {
+            debugPrint('🗑️ [ÓRFÃOS] Removido: $colName/$id');
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (removidos > 0) {
+      CatalogCacheService.invalidate(lojaId, preview: false);
+      CatalogCacheService.invalidate(lojaId, preview: true);
+    }
+
+    return removidos;
   }
 
   /// Remove produto por key (quando não temos mais o objeto Produto)

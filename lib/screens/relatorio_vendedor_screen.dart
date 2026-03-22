@@ -5,6 +5,7 @@ import '../core/hive_box_names.dart';
 import '../models/venda.dart';
 import '../services/loja_id_service.dart';
 import '../services/permissao_service.dart';
+import '../core/venda_metrics_filter.dart';
 
 class RelatorioVendedorScreen extends StatefulWidget {
   const RelatorioVendedorScreen({super.key});
@@ -90,13 +91,26 @@ class _RelatorioVendedorScreenState extends State<RelatorioVendedorScreen> {
       );
     }
 
-    final todosVendedores =
-        vendasBox.values.map((v) => v.vendedor).toSet().toList();
+    final todosVendedores = vendasBox.values
+        .where((v) =>
+            (v.lojaId == null || v.lojaId == lojaId) &&
+            incluirVendaEmMetricas(v))
+        .map((v) => v.vendedor)
+        .toSet()
+        .toList()
+      ..sort();
 
     final vendasFiltradas = vendedorSelecionado == null
-        ? vendasBox.values.toList()
+        ? vendasBox.values
+            .where((v) =>
+                (v.lojaId == null || v.lojaId == lojaId) &&
+                incluirVendaEmMetricas(v))
+            .toList()
         : vendasBox.values
-            .where((v) => v.vendedor == vendedorSelecionado)
+            .where((v) =>
+                (v.lojaId == null || v.lojaId == lojaId) &&
+                incluirVendaEmMetricas(v) &&
+                v.vendedor == vendedorSelecionado)
             .toList();
 
     final total = vendasFiltradas.fold<double>(

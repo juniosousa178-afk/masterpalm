@@ -73,6 +73,10 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
       } catch (_) {}
 
       try {
+        await ProdutosFirestoreService.syncTodosProdutos(
+          boxName: _box.name,
+          lojaId: lojaId,
+        );
         await ProdutosFirestoreService.syncFirestoreToHive(
           lojaId: lojaId,
           produtosBox: _box,

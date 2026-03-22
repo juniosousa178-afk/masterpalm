@@ -241,6 +241,18 @@ class EstoqueTransactionService {
         // estoque_produtos pode não existir para todos os produtos
       }
 
+      // Propagar para produtos (catálogo web)
+      final produtosRef = _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('produtos')
+          .doc(docId);
+      try {
+        transaction.update(produtosRef, updateData);
+      } catch (_) {
+        // Doc pode não existir (produto não publicado no catálogo)
+      }
+
       debugPrint('[ESTOQUE-TX] ✅ Baixa atômica: $produtoNome -$quantidade');
 
       final slugVal = (data['slug'] ?? '').toString().trim();
@@ -610,6 +622,17 @@ class EstoqueTransactionService {
             debugPrint('[ESTOQUE-TX] ⚠️ Update estoqueRef falhou (doc pode não existir): ${e.runtimeType}');
           }
         }
+        // Propagar para produtos (catálogo web) — doc pode não existir se não publicado
+        final produtosRef = _db
+            .collection('lojas')
+            .doc(lojaId)
+            .collection('produtos')
+            .doc(u.result.produtoId);
+        try {
+          transaction.update(produtosRef, u.updateData);
+        } catch (e) {
+          debugPrint('[ESTOQUE-TX] produtos doc não existe ou erro (normal se não publicado): ${e.runtimeType}');
+        }
       }
 
       final results = updates.map((u) => u.result).toList();
@@ -619,6 +642,184 @@ class EstoqueTransactionService {
       onTimeout: () => throw TimeoutException(
         'Transação de estoque demorou muito. Tente novamente.',
       ),
+    );
+  }
+
+  /// Devolve estoque de múltiplos itens (cancelamento/desfazer venda).
+  /// Atualiza estoque_produtos e produtos. Idempotente quando [vendaIdParaIdempotencia] informado.
+  static Future<List<EstoqueTransactionResult>> devolverEstoqueTransactionBatch({
+    required String lojaId,
+    required List<Map<String, dynamic>> itens,
+    String? vendaIdParaIdempotencia,
+  }) async {
+    if (itens.isEmpty) return [];
+
+    if (vendaIdParaIdempotencia != null && vendaIdParaIdempotencia.trim().isNotEmpty) {
+      final devolucaoRef = _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('estoque_devolucao')
+          .doc(vendaIdParaIdempotencia.trim());
+      final snap = await devolucaoRef.get();
+      if (snap.exists && (snap.data()?['devolvido'] == true)) {
+        debugPrint('[ESTOQUE-TX] Devolução já aplicada (idempotente): vendaId=$vendaIdParaIdempotencia');
+        return [];
+      }
+    }
+
+    if (itens.length > _maxItensPorTransacao) {
+      throw Exception(
+        'Devolução com muitos itens (${itens.length}). '
+        'Máx. $_maxItensPorTransacao itens por operação.',
+      );
+    }
+
+    final resolvedItems = <({DocumentReference<Map<String, dynamic>> ref, int quantidade, String tamanho, String cor})>[];
+
+    for (final item in itens) {
+      final quantidade = (item['quantidade'] as num?)?.toInt() ??
+          (item['qty'] as num?)?.toInt() ??
+          1;
+      final produtoId = item['productId']?.toString() ??
+          item['produtosId']?.toString() ??
+          item['id']?.toString();
+      final slug = item['slug']?.toString();
+      final nome = (item['nome'] ?? item['name'] ?? '').toString();
+      final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
+      final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+
+      if (quantidade <= 0) continue;
+
+      final ref = await _resolverProdutoRef(
+        lojaId: lojaId,
+        produtoId: produtoId,
+        slug: slug,
+        nome: nome,
+      );
+      if (ref == null) {
+        debugPrint('[ESTOQUE-TX] Produto não encontrado para devolução: ${produtoId ?? slug ?? nome}');
+        continue;
+      }
+      resolvedItems.add((ref: ref, quantidade: quantidade, tamanho: tamanho, cor: cor));
+    }
+
+    if (resolvedItems.isEmpty) return [];
+
+    return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
+      if (vendaIdParaIdempotencia != null && vendaIdParaIdempotencia.trim().isNotEmpty) {
+        final devolucaoRef = _db
+            .collection('lojas')
+            .doc(lojaId)
+            .collection('estoque_devolucao')
+            .doc(vendaIdParaIdempotencia.trim());
+        final snap = await transaction.get(devolucaoRef);
+        if (snap.exists && (snap.data()?['devolvido'] == true)) {
+          return [];
+        }
+        transaction.set(devolucaoRef, {
+          'devolvido': true,
+          'lojaId': lojaId,
+          'vendaId': vendaIdParaIdempotencia,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      final updates = <({DocumentReference<Map<String, dynamic>> ref, DocumentReference<Map<String, dynamic>>? estoqueRef, Map<String, dynamic> updateData, EstoqueTransactionResult result})>[];
+
+      for (final resolved in resolvedItems) {
+        final produtoSnap = await transaction.get(resolved.ref);
+        if (!produtoSnap.exists) continue;
+
+        final data = produtoSnap.data()!;
+        final docId = produtoSnap.reference.id;
+        final produtoNome = (data['nome'] ?? '').toString();
+        final quantidade = resolved.quantidade;
+        final tamanho = resolved.tamanho;
+        final cor = resolved.cor;
+
+        final variacoesRaw = data['variacoes'] as Map<String, dynamic>?;
+        final estoquePorTamanhoRaw = data['estoquePorTamanho'];
+        final variacoes = variacoesRaw != null ? Map<String, dynamic>.from(variacoesRaw) : <String, dynamic>{};
+        final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
+
+        final usaVariacoes = variacoes.isNotEmpty;
+        final temEstoquePorTamanho = estoquePorTamanho.isNotEmpty;
+        final temVariacaoSoloCor = usaVariacoes && variacoes.containsKey('sem-tamanho') && variacoes['sem-tamanho'] is Map;
+
+        Map<String, dynamic>? novasVariacoes;
+        Map<String, int>? novoEstoquePorTamanho;
+        int novaQuantidadeTotal;
+
+        if (temVariacaoSoloCor && cor.isNotEmpty) {
+          final mapaCor = variacoes['sem-tamanho'];
+          final mapa = mapaCor != null && mapaCor is Map
+              ? Map<String, dynamic>.from(mapaCor)
+              : <String, dynamic>{};
+          mapa[cor] = ((mapa[cor] as num?)?.toInt() ?? 0) + quantidade;
+          novasVariacoes = Map<String, dynamic>.from(variacoes);
+          novasVariacoes['sem-tamanho'] = mapa;
+          novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+        } else if (usaVariacoes && tamanho.isNotEmpty) {
+          final chaveCor = cor.isEmpty ? 'sem-cor' : cor;
+          final mapaTamanho = variacoes[tamanho];
+          final mapaCor = mapaTamanho != null && mapaTamanho is Map
+              ? Map<String, dynamic>.from(mapaTamanho)
+              : <String, dynamic>{};
+          mapaCor[chaveCor] = ((mapaCor[chaveCor] as num?)?.toInt() ?? 0) + quantidade;
+          novasVariacoes = Map<String, dynamic>.from(variacoes);
+          novasVariacoes[tamanho] = mapaCor;
+          novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+        } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
+          novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
+          novoEstoquePorTamanho[tamanho] = (novoEstoquePorTamanho[tamanho] ?? 0) + quantidade;
+          novaQuantidadeTotal = novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+        } else {
+          final qtdAtual = (data['quantidade'] as num?)?.toInt() ?? 0;
+          novaQuantidadeTotal = qtdAtual + quantidade;
+        }
+
+        final updateData = <String, dynamic>{
+          'quantidade': novaQuantidadeTotal,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        if (novasVariacoes != null) updateData['variacoes'] = novasVariacoes;
+        if (novoEstoquePorTamanho != null) updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
+
+        final estoqueRef = _db.collection('lojas').doc(lojaId).collection(FSPaths.estoqueProdutosCol).doc(docId);
+        final slugVal = (data['slug'] ?? '').toString().trim();
+        updates.add((
+          ref: resolved.ref,
+          estoqueRef: estoqueRef,
+          updateData: updateData,
+          result: EstoqueTransactionResult(
+            produtoId: docId,
+            produtoNome: produtoNome,
+            produtoSlug: slugVal.isNotEmpty ? slugVal : null,
+            quantidadeDebitada: -quantidade,
+            variacoesAtualizadas: novasVariacoes,
+            estoquePorTamanhoAtualizado: novoEstoquePorTamanho,
+            quantidadeTotalAtualizada: novaQuantidadeTotal,
+          ),
+        ));
+      }
+
+      for (final u in updates) {
+        transaction.update(u.ref, u.updateData);
+        if (u.estoqueRef != null) {
+          try {
+            transaction.update(u.estoqueRef!, u.updateData);
+          } catch (_) {}
+        }
+        final produtosRef = _db.collection('lojas').doc(lojaId).collection('produtos').doc(u.result.produtoId);
+        try {
+          transaction.update(produtosRef, u.updateData);
+        } catch (_) {}
+      }
+
+      return updates.map((u) => u.result).toList();
+    }).timeout(
+      const Duration(seconds: 25),
+      onTimeout: () => throw TimeoutException('Transação de devolução demorou muito. Tente novamente.'),
     );
   }
 

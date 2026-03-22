@@ -1,0 +1,37 @@
+---
+description: Modais centrados catálogo/cliente (web/desktop) — largura máxima em AlertDialog
+globs: lib/screens/public_catalog/**/*.dart,lib/screens/public_catalog_screen.dart,lib/screens/auth/*cliente*.dart,lib/widgets/compartilhar_catalogo_widget.dart
+alwaysApply: false
+---
+
+# Catálogo / cliente — modais centrados em layout largo
+
+Em **web/desktop** (modais centrados no fluxo de catálogo ou cliente), **evitar `AlertDialog` sem `constraints`** de largura: o conteúdo não deve esticar até à largura total da janela.
+
+## Padrão preferido
+
+No `builder` do `showDialog` (ou no `build` do widget do diálogo), calcular largura máxima e aplicar no `AlertDialog`:
+
+```dart
+final maxW = math.min(
+  kMaxContentWidth,
+  MediaQuery.sizeOf(context).width - 40,
+);
+return AlertDialog(
+  constraints: BoxConstraints(maxWidth: maxW),
+  // title, content, actions…
+);
+```
+
+- `kMaxContentWidth`: `lib/utils/responsive.dart`, reexportado por `lib/utils/platform_adaptive.dart`.
+- `dart:math` como `math` para `math.min`.
+
+## Quando não aplicar este critério
+
+- **`Dialog` + `ConstrainedBox`** já usado com o mesmo teto de largura (ex.: sheet wide do carrinho/cupões).
+- **`showModalBottomSheet`** (layout compacto / folha inferior).
+- Modais **intencionalmente** fullscreen ou margem zero (ex.: galeria escura).
+
+## Na dúvida
+
+Preferir o padrão acima em **novos** `AlertDialog` nesses fluxos; não misturar refactor de lógica com ajuste visual no mesmo PR.

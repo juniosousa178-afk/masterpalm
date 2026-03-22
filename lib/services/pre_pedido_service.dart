@@ -37,6 +37,33 @@ class PrePedidoService {
     );
   }
 
+  /// Marca pré-pedido anterior como substituído na mesma intenção de compra (best-effort).
+  /// Não altera `status` legado (pendente/confirmado) para compatibilidade; use `governancaStatus` no painel.
+  static Future<void> _marcarPrePedidoComoSubstituido({
+    required String lojaId,
+    required String prePedidoAntigoId,
+    required String novoPrePedidoId,
+  }) async {
+    try {
+      await _pedidoRepository.updatePedido(
+        flowType: PedidoFlowType.prePedidos,
+        lojaId: lojaId,
+        pedidoId: prePedidoAntigoId,
+        data: {
+          'governancaStatus': 'substituido',
+          'substituidoPor': novoPrePedidoId,
+          'substituidoEm': FieldValue.serverTimestamp(),
+          'dataAtualizacao': FieldValue.serverTimestamp(),
+        },
+      );
+      logD(
+          '✅ [GOVERNANÇA] Pré-pedido $prePedidoAntigoId marcado como substituido por $novoPrePedidoId');
+    } catch (e, st) {
+      logW(
+          '⚠️ [GOVERNANÇA] Não foi possível marcar pré-pedido $prePedidoAntigoId como substituido (type=${e.runtimeType}): $e\n$st');
+    }
+  }
+
   static String _gerarPortalToken() {
     final random = Random.secure();
     final bytes = List<int>.generate(24, (_) => random.nextInt(256));
@@ -297,6 +324,10 @@ class PrePedidoService {
     String?
         origemCheckout, // 'whatsapp' quando finalizado por WhatsApp (para notificação específica)
     String? portalTokenFromSession, // ✅ portalToken da sessão (evita falha em Meus Pedidos)
+    /// ID de outro pré-pedido da mesma sessão que este documento substitui (governança; não afeta totais).
+    String? substituiPrePedidoId,
+    /// Fingerprint do checkout (catálogo público) para auditoria / painel.
+    String? checkoutFingerprint,
   }) async {
     try {
       // Calcular totais (aplica desconto PIX quando pagamento é PIX)
@@ -414,6 +445,12 @@ class PrePedidoService {
         'vendaId': null, // Será preenchido quando confirmar
         if (origemCheckout != null && origemCheckout.isNotEmpty)
           'origemCheckout': origemCheckout,
+        // Governança operacional (catálogo): legado sem campo = tratado como ativo no painel
+        'governancaStatus': 'ativo',
+        if (substituiPrePedidoId != null && substituiPrePedidoId.trim().isNotEmpty)
+          'substituiPrePedidoId': substituiPrePedidoId.trim(),
+        if (checkoutFingerprint != null && checkoutFingerprint.trim().isNotEmpty)
+          'checkoutFingerprint': checkoutFingerprint.trim(),
       };
 
       // ✅ SALVAR/ATUALIZAR CLIENTE AUTOMATICAMENTE
@@ -454,6 +491,17 @@ class PrePedidoService {
       );
 
       logD('✅ Pré-pedido criado: ${docRef.id}');
+
+      final antigo = substituiPrePedidoId?.trim();
+      if (antigo != null &&
+          antigo.isNotEmpty &&
+          antigo != docRef.id) {
+        unawaited(_marcarPrePedidoComoSubstituido(
+          lojaId: lojaId,
+          prePedidoAntigoId: antigo,
+          novoPrePedidoId: docRef.id,
+        ));
+      }
 
       // Notificação admin é criada pela Cloud Function onPrePedidoCreated (funciona na web e no APK)
 

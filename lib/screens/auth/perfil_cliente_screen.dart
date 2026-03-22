@@ -1,6 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../../utils/platform_adaptive.dart';
 
 /// Tela de Perfil do Cliente
 class PerfilClienteScreen extends StatelessWidget {
@@ -185,20 +189,28 @@ class PerfilClienteScreen extends StatelessWidget {
                   onPressed: () async {
                     final confirma = await showDialog<bool>(
                       context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Sair'),
-                        content: const Text('Deseja realmente sair da sua conta?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancelar'),
-                          ),
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('Sair'),
-                          ),
-                        ],
-                      ),
+                      builder: (context) {
+                        final maxW = math.min(
+                          kMaxContentWidth,
+                          MediaQuery.sizeOf(context).width - 40,
+                        );
+                        return AlertDialog(
+                          constraints: BoxConstraints(maxWidth: maxW),
+                          title: const Text('Sair'),
+                          content: const Text(
+                              'Deseja realmente sair da sua conta?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancelar'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Sair'),
+                            ),
+                          ],
+                        );
+                      },
                     );
 
                     if (confirma == true) {

@@ -10,6 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/mp_venda_identity.dart';
 import '../core/strict_product_resolution.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
@@ -413,6 +414,9 @@ class CatalogoVendaService {
     /// ✅ Total e subtotal já calculados (ex: do pre_pedido) — usa em vez de recalcular
     double? totalOverride,
     double? subtotalOverride,
+    /// Quando false, NÃO baixa estoque (baixa ficará a cargo do PosPagamentoService).
+    /// Usar ao confirmar pre_pedido manualmente para evitar dupla baixa.
+    bool baixarEstoque = true,
   }) async {
     try {
       // 1. Calcular totais (aplica desconto PIX quando pagamento é PIX)
@@ -477,33 +481,36 @@ class CatalogoVendaService {
       }
 
       // 3. Baixar estoque via transação Firestore (atômico) + criar vendaItens
+      // Quando baixarEstoque=false (ex.: confirmação manual pre_pedido), a baixa é feita pelo PosPagamentoService.
       final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
       final vendaItens = <VendaItem>[];
 
-      final itemsParaEstoque = _expandirItemsParaEstoque(
-        items: items,
-        produtosBox: produtosBox,
-        lojaId: lojaId,
-      );
-      if (itemsParaEstoque.isEmpty) {
-        throw Exception('Nenhum item válido para baixa de estoque');
-      }
-
-      final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
-        lojaId: lojaId,
-        itens: itemsParaEstoque,
-      );
-
-      await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaId, txResults);
-
-      for (final result in txResults) {
-        await EstoqueTransactionService.atualizarHiveAposTransacao(
+      if (baixarEstoque) {
+        final itemsParaEstoque = _expandirItemsParaEstoque(
+          items: items,
           produtosBox: produtosBox,
           lojaId: lojaId,
-          result: result,
-          tamanho: '',
-          cor: '',
         );
+        if (itemsParaEstoque.isEmpty) {
+          throw Exception('Nenhum item válido para baixa de estoque');
+        }
+
+        final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+          lojaId: lojaId,
+          itens: itemsParaEstoque,
+        );
+
+        await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaId, txResults);
+
+        for (final result in txResults) {
+          await EstoqueTransactionService.atualizarHiveAposTransacao(
+            produtosBox: produtosBox,
+            lojaId: lojaId,
+            result: result,
+            tamanho: '',
+            cor: '',
+          );
+        }
       }
 
       for (final item in items) {
@@ -869,9 +876,12 @@ class CatalogoVendaService {
     }
   }
 
-  /// ✅ NOVO: Finaliza um pedido pendente após confirmação do pagamento
-  /// Este método é chamado quando o gateway confirma o pagamento
-  /// Agora SIM: baixa estoque, registra venda, adiciona ao histórico
+  /// ✅ Finaliza um pedido pendente após confirmação do pagamento (gateway).
+  ///
+  /// **Legado / uso atual:** não há chamadas a este método nos fluxos Dart do
+  /// catálogo público (checkout MP usa `processMpWebhook` + Hive sync interno).
+  /// Mantido para consolidação manual, testes ou evolução futura sem perder a lógica
+  /// de campanha (`CampaignEngineService`) já embutida abaixo.
   ///
   /// [lojaId] - ID da loja
   /// [pedidoId] - ID do pedido pendente no Firestore
@@ -900,6 +910,118 @@ class CatalogoVendaService {
       if (pedido['vendaRegistrada'] == true) {
         logW('⚠️ Pedido já foi finalizado anteriormente: $pedidoId');
         return pedido['vendaId']?.toString();
+      }
+
+      final paymentIdStr = (pedido['paymentId'] ?? '').toString().trim();
+      final paidAtRaw = pedido['paidAt'];
+
+      // Webhook MP já criou estoque_vendas/mp_* — não baixar estoque de novo nem UUID paralelo
+      if (paidAtRaw != null && paymentIdStr.isNotEmpty) {
+        final canonicalId = mpVendaFirestoreDocumentId(
+          orderId: pedidoId,
+          paymentId: paymentIdStr,
+        );
+        final snap = await FirebaseFirestore.instance
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(FSPaths.estoqueVendasCol)
+            .doc(canonicalId)
+            .get();
+        if (snap.exists && snap.data() != null) {
+          logD(
+            '[MP-WEBHOOK] consolidando Hive a partir de $canonicalId (sem segunda baixa de estoque)',
+          );
+          final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
+          Venda? ja;
+          for (final v in vendasBox.values) {
+            if (v.lojaId != lojaId) continue;
+            if (v.idFirebase == canonicalId) {
+              ja = v;
+              break;
+            }
+            if (v.paymentId == paymentIdStr &&
+                (v.prePedidoId == pedidoId || v.orderId == pedidoId)) {
+              ja = v;
+              break;
+            }
+          }
+          if (ja != null) {
+            await pedidoDoc.reference.update({
+              'vendaRegistrada': true,
+              'vendaId': ja.key.toString(),
+              'vendaFirestoreId': canonicalId,
+              'dataFinalizacao': FieldValue.serverTimestamp(),
+            });
+            return ja.key.toString();
+          }
+          final nova = VendasFirestoreService.vendaFromFirestoreMap(
+            Map<String, dynamic>.from(snap.data()!),
+            canonicalId,
+            lojaId,
+          );
+          await vendasBox.add(nova);
+          final customer = pedido['cliente'] as Map<String, dynamic>;
+          final itens = (pedido['itens'] as List).cast<Map<String, dynamic>>();
+          final clienteBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
+          Cliente? cliente;
+          final telefone = (customer['telefone'] ?? '').toString().trim();
+          final email = (customer['email'] ?? '').toString().trim();
+          for (final c in clienteBox.values) {
+            if (c.lojaId == lojaId) {
+              if ((email.isNotEmpty && c.email == email) ||
+                  (telefone.isNotEmpty && c.telefone == telefone)) {
+                cliente = c;
+                break;
+              }
+            }
+          }
+          if (cliente != null) {
+            cliente.historico ??= HiveList(vendasBox); // ignore: experimental_member_use
+            cliente.historico!.add(nova);
+            await cliente.save();
+          }
+          final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
+          try {
+            await ProdutoVendasCatalogoDenormService.incrementarAposVendaCatalogo(
+              lojaId: lojaId,
+              items: itens,
+              produtosBox: produtosBox,
+            );
+          } catch (_) {}
+          try {
+            await _pedidoRepository.createPedido(
+              flowType: PedidoFlowType.pedidos,
+              lojaId: lojaId,
+              data: {
+                'tipo': 'catalogo_web',
+                'lojaId': lojaId,
+                'vendaId': nova.key.toString(),
+                'cliente': customer,
+                'itens': itens,
+                'subtotal': pedido['subtotal'],
+                'frete': pedido['frete'],
+                'total': pedido['total'],
+                'pagamento': pedido['pagamento'],
+                'observacao': pedido['observacao'] ?? '',
+                'dataHora': FieldValue.serverTimestamp(),
+                'status': 'pago',
+                'pedidoPendenteId': pedidoId,
+              },
+            );
+          } catch (e, st) {
+            logE('⚠️ Erro ao salvar pedido finalizado (webhook path) (type=${e.runtimeType})',
+                error: e, st: st);
+          }
+          await pedidoDoc.reference.update({
+            'status': 'pago',
+            'vendaRegistrada': true,
+            'estoqueBaixado': true,
+            'vendaId': nova.key.toString(),
+            'vendaFirestoreId': canonicalId,
+            'dataFinalizacao': FieldValue.serverTimestamp(),
+          });
+          return nova.key.toString();
+        }
       }
 
       // 2. Extrair dados do pedido
@@ -1043,6 +1165,11 @@ class CatalogoVendaService {
 
       venda.custoProdutos = subtotal * 0.5;
       venda.taxas = (venda.quantidade * 3.5) + (venda.custoProdutos * 0.15);
+      venda.paymentId = paymentIdStr.isNotEmpty ? paymentIdStr : null;
+      venda.prePedidoId = pedidoId;
+      venda.orderId = pedidoId;
+      venda.origemVenda = 'catalogo_web';
+      venda.statusVenda = 'concluida';
 
       // 7. Salvar venda no Hive
       final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));

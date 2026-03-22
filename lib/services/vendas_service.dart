@@ -17,7 +17,6 @@ import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
 import '../services/clientes_firestore_service.dart'; // 🔹 sincronização de clientes
 import '../services/vendas_firestore_service.dart'; // 🔹 sincronização com Firestore
-import '../services/produtos_firestore_service.dart'; // 🔹 sincronização de produtos
 import 'estoque_transaction_service.dart';
 import 'movimentacao_estoque_service.dart';
 
@@ -625,121 +624,98 @@ class VendasService {
       return; // Não desfazer sem loja definida (evita operar na loja errada).
     }
 
-    // devolve estoque
+    // devolve estoque (transacional, idempotente)
+    final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
+        ? venda.idFirebase!.trim()
+        : 'hive_${venda.key}';
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      // Agrupa itens por (productId ou nome, tamanho, cor) para devolver uma única vez por produto/variação.
-      final Map<String, ({String? productId, String nome, String tam, String cor, int qtd})> agrupado = {};
+      final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, int qtd})> agrupado = {};
       for (final it in venda.itens!) {
         final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
-        final nome = it.produtoNome.trim().toLowerCase();
+        final nomeLower = it.produtoNome.trim().toLowerCase();
+        final nomeOriginal = it.produtoNome.trim();
         final tam = it.tamanho.trim();
         final cor = it.cor.trim();
-        final key = '${pid ?? ''}\x00$nome\x00$tam\x00$cor';
+        final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor';
         final existing = agrupado[key];
         if (existing != null) {
-          agrupado[key] = (productId: existing.productId, nome: existing.nome, tam: existing.tam, cor: existing.cor, qtd: existing.qtd + it.quantidade);
+          agrupado[key] = (productId: existing.productId, nomeOriginal: existing.nomeOriginal, tam: existing.tam, cor: existing.cor, qtd: existing.qtd + it.quantidade);
         } else {
-          agrupado[key] = (productId: pid, nome: nome, tam: tam, cor: cor, qtd: it.quantidade);
+          agrupado[key] = (productId: pid, nomeOriginal: nomeOriginal, tam: tam, cor: cor, qtd: it.quantidade);
         }
       }
-      for (final entry in agrupado.values) {
-        final productId = entry.productId;
-        final nome = entry.nome;
-        final tam = entry.tam;
-        final cor = entry.cor;
-        final qtd = entry.qtd;
-        if (qtd <= 0) continue;
-
-        Produto? p;
-        if (productId != null && productId.isNotEmpty) {
-          p = produtosBox.values.firstWhereOrNull(
-            (prod) => prod.lojaId == venda.lojaId && prod.idFirebase.trim() == productId,
+      final itens = agrupado.entries
+          .where((e) => e.value.qtd > 0)
+          .map((e) => {
+                'productId': e.value.productId,
+                'nome': e.value.nomeOriginal,
+                'quantidade': e.value.qtd,
+                'tamanho': e.value.tam,
+                'cor': e.value.cor,
+              })
+          .toList();
+      if (itens.isNotEmpty) {
+        try {
+          final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+            lojaId: lojaId,
+            itens: itens,
+            vendaIdParaIdempotencia: vendaId,
           );
-          if (p != null) {
-            debugPrint('[VENDA_ITEM_ID] [DEVOLUCAO_ITEM] Devolução por productId | lojaId=$lojaId | productId=$productId | nome=${p.nome}');
-          }
-        }
-        if (p == null) {
-          p = produtosBox.values.firstWhereOrNull(
-            (prod) =>
-                prod.lojaId == venda.lojaId &&
-                prod.nome.trim().toLowerCase() == nome,
-          );
-          if (p != null) {
-            debugPrint(
-              '[VENDA_ITEM_FALLBACK] [DEVOLUCAO_ITEM] Devolução por nome | lojaId=$lojaId | nome=$nome | productId=${p.idFirebase}',
-            );
-            reportProductResolvedByName(
+          for (final r in results) {
+            await EstoqueTransactionService.atualizarHiveAposTransacao(
+              produtosBox: produtosBox,
               lojaId: lojaId,
-              fluxo: 'desfazerVenda_devolucao',
-              nome: nome,
-              slug: null,
-              productIdRecebido: productId,
+              result: r,
             );
           }
-        }
-        if (p != null) {
-          // Se usa variações (tamanho + cor)
-          if (p.usaVariacoes && tam.isNotEmpty && cor.isNotEmpty) {
-            p.devolverEstoqueVariacao(tam, cor, qtd);
-          }
-          // Senão, se tem estoque por tamanho apenas
-          else if (p.estoquePorTamanho.isNotEmpty && tam.isNotEmpty) {
-            p.devolverEstoquePorTamanho(tam, qtd);
-          }
-          // Caso contrário, devolve para quantidade total
-          else {
-            p.quantidade += qtd;
-          }
-          await p.save();
-
-          try {
-            await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId);
-            debugPrint('✅ Estoque devolvido no Firestore: ${p.nome} (+$qtd)');
-          } catch (e) {
-            debugPrint('⚠️ Erro ao atualizar estoque no Firestore (type=${e.runtimeType})');
-          }
+          if (results.isNotEmpty) debugPrint('✅ Estoque devolvido (transacional): ${results.length} itens');
+        } catch (e, st) {
+          debugPrint(
+            '[DESFAZER-VENDA] Falha na devolução de estoque — venda NÃO removida (Firestore/Hive intactos). Erro: $e',
+          );
+          Error.throwWithStackTrace(e, st);
         }
       }
     } else {
-      // 🔹 fallback para vendas antigas sem lista de itens (mantém lógica antiga)
-      try {
-        final linhas = venda.produtosDescricao.split('\n');
-        for (var linha in linhas) {
-          try {
-            if (!linha.contains(' x ')) continue;
-            final partes = linha.split(' x ');
-            if (partes.length < 2) continue;
-            final qtd = int.tryParse(partes[0].trim()) ?? 1;
-            if (qtd <= 0) continue;
-            final restante = partes[1].split(' - R\$');
-            var nome = restante.isNotEmpty ? restante.first.trim().toLowerCase() : '';
-            if (nome.isEmpty) continue;
-            if (nome.contains(' - ')) {
-              nome = nome.split(' - ').first.trim();
-            }
-            if (nome.isEmpty) continue;
-
-            final Produto? p = produtosBox.values.firstWhereOrNull(
-              (prod) =>
-                  prod.lojaId == venda.lojaId &&
-                  prod.nome.trim().toLowerCase() == nome,
+      // 🔹 fallback para vendas antigas sem lista de itens
+      final itensFallback = <Map<String, dynamic>>[];
+      final linhas = venda.produtosDescricao.split('\n');
+      for (var linha in linhas) {
+        try {
+          if (!linha.contains(' x ')) continue;
+          final partes = linha.split(' x ');
+          if (partes.length < 2) continue;
+          final qtd = int.tryParse(partes[0].trim()) ?? 1;
+          if (qtd <= 0) continue;
+          final restante = partes[1].split(' - R\$');
+          var nome = restante.isNotEmpty ? restante.first.trim() : '';
+          if (nome.isEmpty) continue;
+          if (nome.contains(' - ')) nome = nome.split(' - ').first.trim();
+          if (nome.isEmpty) continue;
+          itensFallback.add({'nome': nome, 'quantidade': qtd});
+        } catch (_) {}
+      }
+      if (itensFallback.isNotEmpty) {
+        try {
+          final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+            lojaId: lojaId,
+            itens: itensFallback,
+            vendaIdParaIdempotencia: vendaId,
+          );
+          for (final r in results) {
+            await EstoqueTransactionService.atualizarHiveAposTransacao(
+              produtosBox: produtosBox,
+              lojaId: lojaId,
+              result: r,
             );
-            if (p != null) {
-              p.quantidade += qtd;
-              await p.save();
-              try {
-                await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId);
-              } catch (e) {
-                debugPrint('⚠️ Estoque devolvido (Firestore): ${e.runtimeType}');
-              }
-            }
-          } catch (_) {
-            // ignora linha malformada e segue
           }
+          if (results.isNotEmpty) debugPrint('✅ Estoque devolvido (fallback): ${results.length} itens');
+        } catch (e, st) {
+          debugPrint(
+            '[DESFAZER-VENDA] Falha na devolução (fallback vendas antigas) — venda NÃO removida. Erro: $e',
+          );
+          Error.throwWithStackTrace(e, st);
         }
-      } catch (e) {
-        debugPrint('⚠️ [DESFAZER] Fallback vendas antigas: ${e.runtimeType}');
       }
     }
 
@@ -788,67 +764,81 @@ class VendasService {
     required Box<Produto> produtosBox,
     required String lojaId,
   }) async {
-    // 1. Devolver produtos ao estoque
+    // 1. Devolver produtos ao estoque (transacional, idempotente)
+    final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
+        ? venda.idFirebase!.trim()
+        : 'hive_${venda.key}';
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      final Map<String, ({String? productId, String nome, String tam, String cor, int qtd})> agrupado = {};
+      final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, int qtd})> agrupado = {};
       for (final it in venda.itens!) {
         final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
-        final nome = it.produtoNome.trim().toLowerCase();
+        final nomeLower = it.produtoNome.trim().toLowerCase();
+        final nomeOriginal = it.produtoNome.trim();
         final tam = it.tamanho.trim();
         final cor = it.cor.trim();
-        final key = '${pid ?? ''}\x00$nome\x00$tam\x00$cor';
+        final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor';
         final existing = agrupado[key];
         if (existing != null) {
-          agrupado[key] = (productId: existing.productId, nome: existing.nome, tam: existing.tam, cor: existing.cor, qtd: existing.qtd + it.quantidade);
+          agrupado[key] = (productId: existing.productId, nomeOriginal: existing.nomeOriginal, tam: existing.tam, cor: existing.cor, qtd: existing.qtd + it.quantidade);
         } else {
-          agrupado[key] = (productId: pid, nome: nome, tam: tam, cor: cor, qtd: it.quantidade);
+          agrupado[key] = (productId: pid, nomeOriginal: nomeOriginal, tam: tam, cor: cor, qtd: it.quantidade);
         }
       }
-      for (final entry in agrupado.values) {
-        if (entry.qtd <= 0) continue;
-        Produto? p;
-        if (entry.productId != null && entry.productId!.isNotEmpty) {
-          p = produtosBox.values.firstWhereOrNull(
-            (prod) => prod.lojaId == venda.lojaId && prod.idFirebase.trim() == entry.productId,
+      final itens = agrupado.entries
+          .where((e) => e.value.qtd > 0)
+          .map((e) => {
+                'productId': e.value.productId,
+                'nome': e.value.nomeOriginal,
+                'quantidade': e.value.qtd,
+                'tamanho': e.value.tam,
+                'cor': e.value.cor,
+              })
+          .toList();
+      if (itens.isNotEmpty) {
+        try {
+          final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+            lojaId: lojaId,
+            itens: itens,
+            vendaIdParaIdempotencia: vendaId,
           );
-        }
-        p ??= produtosBox.values.firstWhereOrNull(
-            (prod) => prod.lojaId == venda.lojaId && prod.nome.trim().toLowerCase() == entry.nome,
-          );
-        if (p != null) {
-          if (p.usaVariacoes && entry.tam.isNotEmpty && entry.cor.isNotEmpty) {
-            p.devolverEstoqueVariacao(entry.tam, entry.cor, entry.qtd);
-          } else if (p.estoquePorTamanho.isNotEmpty && entry.tam.isNotEmpty) {
-            p.devolverEstoquePorTamanho(entry.tam, entry.qtd);
-          } else {
-            p.quantidade += entry.qtd;
+          for (final r in results) {
+            await EstoqueTransactionService.atualizarHiveAposTransacao(
+              produtosBox: produtosBox,
+              lojaId: lojaId,
+              result: r,
+            );
           }
-          await p.save();
-          try {
-            await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId);
-          } catch (_) {}
-        }
+        } catch (_) {}
       }
     } else {
       try {
+        final itensFallback = <Map<String, dynamic>>[];
         final linhas = venda.produtosDescricao.split('\n');
         for (var linha in linhas) {
           if (!linha.contains(' x ')) continue;
           final partes = linha.split(' x ');
           if (partes.length < 2) continue;
           final qtd = int.tryParse(partes[0].trim()) ?? 1;
-          var nome = partes[1].split(' - R\$').first.trim().toLowerCase();
+          var nome = partes[1].split(' - R\$').first.trim();
           if (nome.contains(' - ')) nome = nome.split(' - ').first.trim();
-          final p = produtosBox.values.firstWhereOrNull(
-            (prod) => prod.lojaId == venda.lojaId && prod.nome.trim().toLowerCase() == nome,
-          );
-          if (p != null) {
-            p.quantidade += qtd;
-            await p.save();
-            try {
-              await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId);
-            } catch (_) {}
-          }
+          if (nome.isEmpty) continue;
+          itensFallback.add({'nome': nome, 'quantidade': qtd});
+        }
+        if (itensFallback.isNotEmpty) {
+          try {
+            final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+              lojaId: lojaId,
+              itens: itensFallback,
+              vendaIdParaIdempotencia: vendaId,
+            );
+            for (final r in results) {
+              await EstoqueTransactionService.atualizarHiveAposTransacao(
+                produtosBox: produtosBox,
+                lojaId: lojaId,
+                result: r,
+              );
+            }
+          } catch (_) {}
         }
       } catch (_) {}
     }

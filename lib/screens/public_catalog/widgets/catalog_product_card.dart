@@ -1,12 +1,15 @@
 // lib/screens/public_catalog/widgets/catalog_product_card.dart
 // Card de produto – extraído do public_catalog_screen.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../../../services/catalog_share_service.dart';
+import '../../../utils/platform_adaptive.dart';
 import '../catalog_product_card_size.dart';
 import '../catalog_theme_extension.dart';
 import 'catalog_gallery_view.dart';
@@ -307,32 +310,68 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
         ),
       );
     } else {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (context) => CatalogProductDetailsSheet(
-            name: widget.name,
-            descricao: widget.descricao,
-            price: widget.price,
-            priceMin: widget.priceMin,
-            priceMax: widget.priceMax,
-            precoOriginal: widget.precoOriginal,
-            emPromocao: widget.emPromocao,
-            percentualPromo: widget.percentualPromo,
-            valorPromo: widget.valorPromo,
-            imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
-            quantidade: widget.quantidade,
-            estoquePorTamanho: widget.estoquePorTamanho,
-            estoquePorCor: widget.estoquePorCor,
-            variacoes: widget.variacoes,
-            catalogShareUrl: widget.catalogShareUrl,
-            prazoEntrega: widget.prazoEntrega,
-            percentualDescontoPix: widget.percentualDescontoPix,
-            itensCombo: widget.itensCombo,
-            lojaId: widget.lojaId,
-          ),
-      );
+      final wideChrome = usePointerFirstChrome(context);
+
+      Widget detailsContent() {
+        return CatalogProductDetailsSheet(
+          name: widget.name,
+          descricao: widget.descricao,
+          price: widget.price,
+          priceMin: widget.priceMin,
+          priceMax: widget.priceMax,
+          precoOriginal: widget.precoOriginal,
+          emPromocao: widget.emPromocao,
+          percentualPromo: widget.percentualPromo,
+          valorPromo: widget.valorPromo,
+          imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
+          quantidade: widget.quantidade,
+          estoquePorTamanho: widget.estoquePorTamanho,
+          estoquePorCor: widget.estoquePorCor,
+          variacoes: widget.variacoes,
+          catalogShareUrl: widget.catalogShareUrl,
+          prazoEntrega: widget.prazoEntrega,
+          percentualDescontoPix: widget.percentualDescontoPix,
+          itensCombo: widget.itensCombo,
+          lojaId: widget.lojaId,
+        );
+      }
+
+      if (wideChrome) {
+        showDialog<void>(
+          context: context,
+          barrierDismissible: true,
+          builder: (sheetContext) {
+            final mq = MediaQuery.of(sheetContext);
+            final theme = Theme.of(sheetContext);
+            final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
+            return Dialog(
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: maxW,
+                  maxHeight: mq.size.height * 0.92,
+                ),
+                child: Material(
+                  color: theme.cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  clipBehavior: Clip.antiAlias,
+                  child: detailsContent(),
+                ),
+              ),
+            );
+          },
+        );
+      } else {
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => detailsContent(),
+        );
+      }
     }
   }
 
@@ -350,11 +389,10 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
 
   void _openSelectionModal({bool comprarDirecto = false}) {
     widget.onProductViewed?.call(widget.id);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => CatalogProductSelectionSheet(
+    final wideChrome = usePointerFirstChrome(context);
+
+    Widget selectionContent() {
+      return CatalogProductSelectionSheet(
         name: widget.name,
         price: widget.price,
         precoPorTamanho: widget.precoPorTamanho,
@@ -395,8 +433,45 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             widget.onAbrirCarrinho!();
           }
         },
-      ),
-    );
+      );
+    }
+
+    if (wideChrome) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (sheetContext) {
+          final mq = MediaQuery.of(sheetContext);
+          final theme = Theme.of(sheetContext);
+          final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
+          return Dialog(
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: maxW,
+                maxHeight: mq.size.height * 0.92,
+              ),
+              child: Material(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(20),
+                clipBehavior: Clip.antiAlias,
+                child: selectionContent(),
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => selectionContent(),
+      );
+    }
   }
 
   void _comprarDirecto() {

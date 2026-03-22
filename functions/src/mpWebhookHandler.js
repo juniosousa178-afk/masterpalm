@@ -11,9 +11,14 @@
  * 2. Resolve lojaId e token (global ou por loja)
  * 3. Busca payment na API MP
  * 4. Transação: marca processado + atualiza pedido + baixa estoque
+ * 5. Pós-pagamento promocional (campanha / número da sorte): mpWebhookPromo.js
  */
 
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import {
+  registrarPromocaoPosPagamentoMp,
+  registrarPromocaoPosPagamentoMpRecovery,
+} from "./mpWebhookPromo.js";
 
 /** Lazy: evita getFirestore() antes de initializeApp() no deploy/analyze */
 function getDb() {
@@ -158,6 +163,11 @@ export async function processMpWebhook(paymentId, globalToken) {
     .doc(resolvedLojaId)
     .collection("pre_pedidos")
     .doc(orderId);
+  const pedidoPendenteRef = db
+    .collection(COLLECTION_LOJAS)
+    .doc(resolvedLojaId)
+    .collection("pedidos_pendentes")
+    .doc(orderId);
 
   const webhookProcessedRef = db.collection(WEBHOOK_PROCESSED_COL).doc(String(paymentId));
 
@@ -165,6 +175,23 @@ export async function processMpWebhook(paymentId, globalToken) {
   const existingProcessed = await webhookProcessedRef.get();
   if (existingProcessed.exists) {
     console.log("[mpWebhook] Idempotente: paymentId já processado:", paymentId);
+    // Recuperação: estoque já foi processado numa entrega anterior; campanha pode ter falhado depois.
+    if (status === "approved") {
+      const pdata = existingProcessed.data() || {};
+      if (pdata.orderId && pdata.lojaId) {
+        try {
+          await registrarPromocaoPosPagamentoMpRecovery(getDb(), {
+            lojaId: pdata.lojaId,
+            orderId: pdata.orderId,
+            paymentId,
+          });
+        } catch (re) {
+          console.error("[PROMO-ERROR] recovery após processed", re && re.message);
+        }
+      } else {
+        console.log("[PROMO-SKIP] recovery: _mp_webhook_processed sem orderId/lojaId");
+      }
+    }
     return true;
   }
 
@@ -192,12 +219,20 @@ export async function processMpWebhook(paymentId, globalToken) {
 
   let orderSnap = await orderRef.get();
   let isPrePedido = false;
+  let isPedidoPendente = false;
   if (!orderSnap.exists) {
     orderSnap = await prePedidoRef.get();
     isPrePedido = orderSnap.exists;
   }
   if (!orderSnap.exists) {
-    console.warn("[mpWebhook] Pedido não encontrado (nem pedidos nem pre_pedidos):", orderId);
+    orderSnap = await pedidoPendenteRef.get();
+    isPedidoPendente = orderSnap.exists;
+  }
+  if (!orderSnap.exists) {
+    console.warn(
+      "[MP-WEBHOOK] Pedido não encontrado (pedidos / pre_pedidos / pedidos_pendentes):",
+      orderId,
+    );
     return false;
   }
 
@@ -210,6 +245,17 @@ export async function processMpWebhook(paymentId, globalToken) {
       { processedAt: nowTs, orderId, lojaId: resolvedLojaId, status: "already_paid" },
       { merge: true }
     );
+    if (status === "approved") {
+      try {
+        await registrarPromocaoPosPagamentoMpRecovery(getDb(), {
+          lojaId: resolvedLojaId,
+          orderId,
+          paymentId,
+        });
+      } catch (e) {
+        console.error("[PROMO-ERROR] already_paid recovery", e && e.message);
+      }
+    }
     return true;
   }
 
@@ -244,7 +290,7 @@ export async function processMpWebhook(paymentId, globalToken) {
       paymentId: String(paymentId),
       paymentMethod: payment.payment_method_id,
     };
-    if (isPrePedido) {
+    if (isPrePedido || isPedidoPendente) {
       updatePayload.statusPagamento = "aprovado";
     }
     tx.set(orderRefToUse, updatePayload, { merge: true });
@@ -273,9 +319,16 @@ export async function processMpWebhook(paymentId, globalToken) {
       let updateProdutos = {};
       let updateEstoque = {};
 
+      // Priorizar estoque_produtos como fonte (alinhado com app/admin). Fallback para produtos.
+      const estoqueSnap = await tx.get(estoqueRef);
+      const prodSnap = await tx.get(produtosRef);
+      const data = (estoqueSnap.exists && estoqueSnap.data())
+        ? estoqueSnap.data()
+        : (prodSnap.exists && prodSnap.data())
+          ? prodSnap.data()
+          : {};
+
       if (temVariacao) {
-        const prodSnap = await tx.get(produtosRef);
-        const data = prodSnap.exists ? prodSnap.data() : {};
         const variacoesRaw = data.variacoes;
         const estoquePorTamanhoRaw = data.estoquePorTamanho;
 
@@ -321,8 +374,6 @@ export async function processMpWebhook(paymentId, globalToken) {
       }
 
       if (Object.keys(updateProdutos).length === 0) {
-        const prodSnap = await tx.get(produtosRef);
-        const data = prodSnap.exists ? prodSnap.data() : {};
         const currentQty = (data.quantidade ?? data.estoque ?? 0) | 0;
         const novoEstoque = Math.max(0, currentQty - qty);
         updateProdutos = { estoque: novoEstoque, quantidade: novoEstoque, estoque_atual: novoEstoque, updatedAt: nowTs };
@@ -335,8 +386,22 @@ export async function processMpWebhook(paymentId, globalToken) {
     }
   });
 
-  // Para pre_pedidos: criar venda em estoque_vendas (APK sync) e notificar admin
-  if (isPrePedido) {
+  // Campanha + número da sorte (fonte oficial MP catálogo). Idempotente por paymentId (_mp_webhook_promo_processed).
+  try {
+    await registrarPromocaoPosPagamentoMp(getDb(), {
+      lojaId: resolvedLojaId,
+      orderId,
+      paymentId,
+      orderData: order,
+      orderRef: orderRefToUse,
+    });
+  } catch (promoErr) {
+    console.error("[PROMO-ERROR] pós-transação principal", promoErr && promoErr.message);
+  }
+
+  // Catálogo: pre_pedidos + pedidos_pendentes → mesma venda idempotente em estoque_vendas
+  const mirrorEstoqueVendas = isPrePedido || isPedidoPendente;
+  if (mirrorEstoqueVendas) {
     const cliente = order.cliente || {};
     const clienteNome = cliente.nome || "Cliente";
     const total = Number(order.total || 0);
@@ -349,6 +414,12 @@ export async function processMpWebhook(paymentId, globalToken) {
       precoTotal: Number((it.precoUnitario || 0) * (it.quantidade || 0)),
     }));
     const vendaId = `mp_${orderId}_${paymentId}`;
+    console.log(
+      "[MP-IDEMPOTENCIA] estoque_vendas doc",
+      vendaId,
+      "origem:",
+      isPrePedido ? "pre_pedidos" : "pedidos_pendentes",
+    );
     const estoqueVendasRef = db
       .collection(COLLECTION_LOJAS)
       .doc(resolvedLojaId)
@@ -381,7 +452,12 @@ export async function processMpWebhook(paymentId, globalToken) {
         createdAt: nowTs,
         updatedAt: nowTs,
         status: "concluida",
+        statusVenda: "concluida",
+        paymentId: String(paymentId),
+        orderId: String(orderId),
+        prePedidoId: String(orderId),
         origemPrePedido: orderId,
+        origemVenda: "mp_webhook",
       },
       { merge: true }
     );

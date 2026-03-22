@@ -1,6 +1,8 @@
 // lib/screens/public_catalog/widgets/catalog_product_detail_screen.dart
 // Tela de detalhes do produto para layout minimalista – full screen, visual clean.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -8,6 +10,7 @@ import '../../../services/catalog_share_service.dart';
 import '../../../services/ai_loja_service.dart';
 import '../../../services/ia_uso_limite_service.dart';
 import '../../../utils/image_provider.dart';
+import '../../../utils/platform_adaptive.dart';
 import '../../../utils/safe_parse.dart';
 import 'catalog_product_selection_sheet.dart';
 import 'catalog_combo_variation_sheet.dart';
@@ -292,8 +295,6 @@ class CatalogProductDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
-    final imgList = imagens.isNotEmpty ? imagens : [''];
-    final hasManyImages = imgList.where((e) => e.trim().isNotEmpty).length > 1;
     final galleryHeight = MediaQuery.of(context).size.width < 420 ? 300.0 : 340.0;
 
     return Scaffold(
@@ -337,55 +338,12 @@ class CatalogProductDetailScreen extends StatelessWidget {
             // Galeria
             SizedBox(
               height: galleryHeight,
-              child: imgList.first.isEmpty
-                  ? Container(
-                      color: theme.cardColor,
-                      child: Icon(
-                        Icons.image_not_supported_outlined,
-                        size: 64,
-                        color: Colors.grey[400],
-                      ),
-                    )
-                  : Stack(
-                      children: [
-                        PageView.builder(
-                          itemCount: imgList.length,
-                          itemBuilder: (_, i) => GestureDetector(
-                            onTap: () => _openFullscreenGallery(context, i),
-                            child: Hero(
-                              tag: 'catalog_detail_img_${id}_$i',
-                              child: Image(
-                                image: mpImageProvider(imgList[i]),
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (hasManyImages)
-                          Positioned(
-                            right: 12,
-                            bottom: 10,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.38),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                'Deslize para ver mais',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+              child: _CatalogInlineGallery(
+                productId: id,
+                imagens: imagens,
+                cardColor: theme.cardColor,
+                onOpenFullscreen: _openFullscreenGallery,
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
@@ -578,6 +536,152 @@ class CatalogProductDetailScreen extends StatelessWidget {
   }
 }
 
+/// Galeria inline: em telas estreitas (mobile/APK, web mobile) o foco é deslizar;
+/// em telas largas (desktop web, tablet) mostra setas para o mesmo fluxo com mouse.
+class _CatalogInlineGallery extends StatefulWidget {
+  final String productId;
+  final List<String> imagens;
+  final Color cardColor;
+  final void Function(BuildContext context, int initialIndex) onOpenFullscreen;
+
+  const _CatalogInlineGallery({
+    required this.productId,
+    required this.imagens,
+    required this.cardColor,
+    required this.onOpenFullscreen,
+  });
+
+  @override
+  State<_CatalogInlineGallery> createState() => _CatalogInlineGalleryState();
+}
+
+class _CatalogInlineGalleryState extends State<_CatalogInlineGallery> {
+  late final PageController _pageController;
+  late final List<String> _imgs;
+  int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _imgs = widget.imagens.where((e) => e.trim().isNotEmpty).toList();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _go(int delta) {
+    if (_imgs.length <= 1) return;
+    final next = (_index + delta).clamp(0, _imgs.length - 1);
+    if (next == _index) return;
+    _pageController.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_imgs.isEmpty) {
+      return Container(
+        color: widget.cardColor,
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          size: 64,
+          color: Colors.grey[400],
+        ),
+      );
+    }
+
+    final showArrows =
+        showGalleryArrowNavigation(context) && _imgs.length > 1;
+    final hint = showArrows
+        ? 'Toque para ampliar'
+        : 'Deslize para ver mais · toque para ampliar';
+
+    return Stack(
+      children: [
+        PageView.builder(
+          controller: _pageController,
+          itemCount: _imgs.length,
+          onPageChanged: (i) => setState(() => _index = i),
+          itemBuilder: (_, i) => GestureDetector(
+            onTap: () => widget.onOpenFullscreen(context, i),
+            child: Hero(
+              tag: 'catalog_detail_img_${widget.productId}_$i',
+              child: Image(
+                image: mpImageProvider(_imgs[i]),
+                fit: BoxFit.contain,
+              ),
+            ),
+          ),
+        ),
+        if (showArrows) ...[
+          Positioned(
+            left: 4,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Material(
+                color: Colors.black26,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(Icons.chevron_left),
+                  color: Colors.white,
+                  onPressed: _index > 0 ? () => _go(-1) : null,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 4,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Material(
+                color: Colors.black26,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  icon: const Icon(Icons.chevron_right),
+                  color: Colors.white,
+                  onPressed: _index < _imgs.length - 1 ? () => _go(1) : null,
+                ),
+              ),
+            ),
+          ),
+        ],
+        if (_imgs.length > 1)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 10,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.38),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  hint,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _CatalogFullscreenGallery extends StatefulWidget {
   final List<String> images;
   final int initialIndex;
@@ -611,8 +715,22 @@ class _CatalogFullscreenGalleryState extends State<_CatalogFullscreenGallery> {
     super.dispose();
   }
 
+  void _go(int delta) {
+    if (widget.images.length <= 1) return;
+    final next = (_index + delta).clamp(0, widget.images.length - 1);
+    if (next == _index) return;
+    _pageController.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final showArrows =
+        showGalleryArrowNavigation(context) && widget.images.length > 1;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -621,25 +739,58 @@ class _CatalogFullscreenGalleryState extends State<_CatalogFullscreenGallery> {
         elevation: 0,
         title: Text('${_index + 1}/${widget.images.length}'),
       ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: widget.images.length,
-        onPageChanged: (i) => setState(() => _index = i),
-        itemBuilder: (_, i) {
-          return InteractiveViewer(
-            minScale: 1,
-            maxScale: 4,
-            child: Center(
-              child: Hero(
-                tag: 'catalog_detail_img_${widget.heroPrefix}_$i',
-                child: Image(
-                  image: mpImageProvider(widget.images[i]),
-                  fit: BoxFit.contain,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: widget.images.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (_, i) {
+              return InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: Center(
+                  child: Hero(
+                    tag: 'catalog_detail_img_${widget.heroPrefix}_$i',
+                    child: Image(
+                      image: mpImageProvider(widget.images[i]),
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          if (showArrows) ...[
+            Positioned(
+              left: 4,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  iconSize: 40,
+                  color: Colors.white70,
+                  onPressed: _index > 0 ? () => _go(-1) : null,
+                  icon: const Icon(Icons.chevron_left),
                 ),
               ),
             ),
-          );
-        },
+            Positioned(
+              right: 4,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  iconSize: 40,
+                  color: Colors.white70,
+                  onPressed:
+                      _index < widget.images.length - 1 ? () => _go(1) : null,
+                  icon: const Icon(Icons.chevron_right),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -733,7 +884,12 @@ class _DuvidasPergunteDialogDetailState
 
   @override
   Widget build(BuildContext context) {
+    final maxW = math.min(
+      kMaxContentWidth,
+      MediaQuery.sizeOf(context).width - 40,
+    );
     return AlertDialog(
+      constraints: BoxConstraints(maxWidth: maxW),
       title: const Text('Dúvidas? Pergunte'),
       content: SingleChildScrollView(
         physics:

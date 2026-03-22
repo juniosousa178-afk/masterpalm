@@ -14,6 +14,7 @@ import '../models/fechamento_mensal.dart';
 import '../services/fechamento_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/vendas_firestore_service.dart';
+import '../core/venda_metrics_filter.dart';
 
 class RelatorioFinanceiroScreen extends StatefulWidget {
   const RelatorioFinanceiroScreen({super.key});
@@ -226,7 +227,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
   double _taxas(Venda v) => v.taxas;
 
   Iterable<Venda> _vendasFiltradasPor(bool Function(Venda v) filtro) {
-    return vendasBox.values.where((v) => v.lojaId == lojaId && filtro(v)).toList();
+    return vendasBox.values
+        .where((v) =>
+            v.lojaId == lojaId && incluirVendaEmMetricas(v) && filtro(v))
+        .toList();
   }
 
   ({double venda, double custo, double taxas, double lucro}) _agregarPeriodo(

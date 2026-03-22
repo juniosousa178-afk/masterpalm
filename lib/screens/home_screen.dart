@@ -691,6 +691,10 @@ class _HomeScreenState extends State<HomeScreen>
         logD('[IMPORT] Importando produtos...');
         final produtosBox =
             await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
+        await ProdutosFirestoreService.syncTodosProdutos(
+          boxName: produtosBox.name,
+          lojaId: lojaId,
+        );
         produtosImportados =
             await ProdutosFirestoreService.syncFirestoreToHive(
           lojaId: lojaId,
@@ -1056,7 +1060,7 @@ class _HomeScreenState extends State<HomeScreen>
                     bullets: const [
                       'Até 80 produtos e 150 clientes',
                       '50 vendas por mês',
-                      '3 fotos por produto e até 6 banners',
+                      '10 fotos por produto e até 10 banners',
                       'Catálogo online, pedidos e relatórios',
                       'Após 90 dias, vira plano Free limitado (você continua acessando; limites menores para adicionar itens novos)',
                     ],
@@ -1088,7 +1092,7 @@ class _HomeScreenState extends State<HomeScreen>
                         'Tudo liberado para sua loja crescer sem limites. Pague mês a mês e cancele quando quiser.',
                     bullets: const [
                       'Produtos, clientes e vendas ilimitados',
-                      '6 fotos por produto e até 6 banners',
+                      '10 fotos por produto e até 10 banners',
                       'Catálogo completo, relatórios e backup',
                       'Suporte por e-mail e WhatsApp',
                     ],

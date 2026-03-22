@@ -18,8 +18,8 @@ void main() {
       expect(SubscriptionService.trialLimits['maxProducts'], 80);
       expect(SubscriptionService.trialLimits['maxClients'], 150);
       expect(SubscriptionService.trialLimits['vendasMes'], 50);
-      expect(SubscriptionService.trialLimits['maxImagesPerProduct'], 3);
-      expect(SubscriptionService.trialLimits['maxBanners'], 6);
+      expect(SubscriptionService.trialLimits['maxImagesPerProduct'], 10);
+      expect(SubscriptionService.trialLimits['maxBanners'], 10);
     });
   });
 
@@ -48,12 +48,12 @@ void main() {
       expect(SubscriptionService.paidLimits.containsKey('maxImagesPerProduct'), true);
       expect(SubscriptionService.paidLimits.containsKey('maxBanners'), true);
     });
-    test('valores do plano pago (ilimitado + 6 fotos/banners)', () {
+    test('valores do plano pago (ilimitado + 10 fotos/banners)', () {
       expect(SubscriptionService.paidLimits['maxProducts'], 999999);
       expect(SubscriptionService.paidLimits['maxClients'], 999999);
       expect(SubscriptionService.paidLimits['vendasMes'], 999999);
-      expect(SubscriptionService.paidLimits['maxImagesPerProduct'], 6);
-      expect(SubscriptionService.paidLimits['maxBanners'], 6);
+      expect(SubscriptionService.paidLimits['maxImagesPerProduct'], 10);
+      expect(SubscriptionService.paidLimits['maxBanners'], 10);
     });
   });
 }

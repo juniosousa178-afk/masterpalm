@@ -51,6 +51,10 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
         orderId: uri.queryParameters['id'],
         lojaId: loja.isNotEmpty ? loja : null,
         planoId: plano.isNotEmpty ? plano : null,
+        collectionStatus: uri.queryParameters['collection_status'],
+        paymentStatusQuery: uri.queryParameters['status'],
+        externalReference: uri.queryParameters['external_reference'] ??
+            uri.queryParameters['preference_id'],
       ),
     );
   }
@@ -65,6 +69,10 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
         orderId: uri.queryParameters['id'],
         lojaId: loja.isNotEmpty ? loja : null,
         planoId: uri.queryParameters['plano'],
+        collectionStatus: uri.queryParameters['collection_status'],
+        paymentStatusQuery: uri.queryParameters['status'],
+        externalReference: uri.queryParameters['external_reference'] ??
+            uri.queryParameters['preference_id'],
       ),
     );
   }
@@ -78,6 +86,10 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
         orderId: uri.queryParameters['id'],
         lojaId: loja.isNotEmpty ? loja : null,
         planoId: uri.queryParameters['plano'],
+        collectionStatus: uri.queryParameters['collection_status'],
+        paymentStatusQuery: uri.queryParameters['status'],
+        externalReference: uri.queryParameters['external_reference'] ??
+            uri.queryParameters['preference_id'],
       ),
     );
   }

@@ -5,19 +5,18 @@
 import 'package:hive/hive.dart';
 
 import '../../core/hive_box_names.dart';
+import '../../core/metricas_constants.dart';
+import '../../core/venda_metrics_filter.dart';
 import '../../models/produto.dart';
 import '../../models/venda.dart';
 import '../models/oportunidade_crescimento.dart';
-
-/// Número de dias sem venda para considerar produto "parado".
-const int diasProdutoParado = 30;
 
 /// Serviço de detecção de oportunidades para o Motor de Crescimento IA.
 /// Leitura exclusiva de Hive; não altera dados nem acessa Firestore.
 class MotorCrescimentoDetectorService {
   MotorCrescimentoDetectorService._();
 
-  /// Detecta produtos parados (sem venda nos últimos [diasProdutoParado] dias).
+  /// Detecta produtos parados (sem venda nos últimos [kDiasProdutoParadoMetricas] dias).
   /// [limit] opcional: para ao atingir esse número (abre a tela mais rápido).
   /// [deadline] opcional: interrompe e retorna o que já tiver após esse momento.
   static Future<List<OportunidadeCrescimento>> detectarProdutosParados(
@@ -27,7 +26,8 @@ class MotorCrescimentoDetectorService {
   }) async {
     if (lojaId.trim().isEmpty) return [];
     try {
-      final limite = DateTime.now().subtract(const Duration(days: diasProdutoParado));
+      final limite = DateTime.now()
+          .subtract(const Duration(days: kDiasProdutoParadoMetricas));
 
       final vendasBoxName = HiveBoxNames.vendas(lojaId);
       final vendasBox = Hive.isBoxOpen(vendasBoxName)
@@ -37,7 +37,11 @@ class MotorCrescimentoDetectorService {
       final nomesVendidos = <String>{};
       for (final v in vendasBox.values) {
         if (deadline != null && DateTime.now().isAfter(deadline)) break;
-        if (v.lojaId != lojaId || v.data.isBefore(limite)) continue;
+        if (v.lojaId != lojaId ||
+            !incluirVendaEmMetricas(v) ||
+            v.data.isBefore(limite)) {
+          continue;
+        }
         for (final item in v.itensOuVazio) {
           final n = item.produtoNome.trim();
           if (n.isNotEmpty) nomesVendidos.add(n);
@@ -65,12 +69,13 @@ class MotorCrescimentoDetectorService {
         oportunidades.add(OportunidadeCrescimento(
           id: id,
           tipo: TipoOportunidade.produtoParado,
-          titulo: '${p.nome} parado há $diasProdutoParado dias',
-          descricao: 'Produto sem venda nos últimos $diasProdutoParado dias.',
+          titulo: '${p.nome} parado há $kDiasProdutoParadoMetricas dias',
+          descricao:
+              'Produto sem venda nos últimos $kDiasProdutoParadoMetricas dias.',
           prioridade: 4,
           entidadeId: p.idFirebase.isNotEmpty ? p.idFirebase : (p.slug.isNotEmpty ? p.slug : p.key?.toString() ?? ''),
           entidadeNome: p.nome,
-          metricaPrincipal: '$diasProdutoParado dias sem venda',
+          metricaPrincipal: '$kDiasProdutoParadoMetricas dias sem venda',
           detalhes: {'quantidade': p.quantidade, 'precoUnitario': p.precoUnitario},
           criadoEm: DateTime.now(),
         ));
@@ -126,11 +131,12 @@ class MotorCrescimentoDetectorService {
     }
   }
 
-  /// Calcula o ticket médio das vendas dos últimos [diasProdutoParado] dias.
+  /// Calcula o ticket médio das vendas dos últimos [kDiasProdutoParadoMetricas] dias.
   static Future<double> calcularTicketMedio(String lojaId) async {
     if (lojaId.trim().isEmpty) return 0.0;
     try {
-      final limite = DateTime.now().subtract(const Duration(days: diasProdutoParado));
+      final limite = DateTime.now()
+          .subtract(const Duration(days: kDiasProdutoParadoMetricas));
 
       final vendasBoxName = HiveBoxNames.vendas(lojaId);
       final vendasBox = Hive.isBoxOpen(vendasBoxName)
@@ -138,7 +144,10 @@ class MotorCrescimentoDetectorService {
           : await Hive.openBox<Venda>(vendasBoxName);
 
       final vendasLoja = vendasBox.values
-          .where((v) => v.lojaId == lojaId && !v.data.isBefore(limite))
+          .where((v) =>
+              v.lojaId == lojaId &&
+              incluirVendaEmMetricas(v) &&
+              !v.data.isBefore(limite))
           .toList();
 
       if (vendasLoja.isEmpty) return 0.0;

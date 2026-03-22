@@ -10,12 +10,116 @@ import 'package:hive/hive.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
+import '../core/mp_venda_identity.dart';
+import '../core/venda_metrics_filter.dart';
 import 'store_resolver_facade.dart';
 import 'sync_queue_service.dart';
 
 /// Serviço para sincronizar vendas com Firestore
 class VendasFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  /// Monta [Venda] a partir de um mapa Firestore (retrocompatível com campos ausentes).
+  static Venda vendaFromFirestoreMap(
+    Map<String, dynamic> data,
+    String docId,
+    String lojaId,
+  ) {
+    final itensRaw = data['itens'] as List? ?? [];
+    final itens = itensRaw.map((e) {
+      final m = Map<String, dynamic>.from(e as Map);
+      final pid = m['productId'] as String?;
+      return VendaItem(
+        produtoNome: m['produtoNome'] as String? ?? '',
+        quantidade: (m['quantidade'] as num?)?.toInt() ?? 0,
+        precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ?? 0.0,
+        tamanho: m['tamanho'] as String? ?? '',
+        cor: m['cor'] as String? ?? '',
+        productId: pid != null && pid.trim().isNotEmpty ? pid : null,
+      );
+    }).toList();
+
+    return Venda(
+      clienteNome: data['clienteNome'] ?? '',
+      produtosDescricao: data['produtosDescricao'] ?? '',
+      quantidade: (data['quantidade'] as num?)?.toInt() ?? itens.length,
+      preco: (data['preco'] as num?)?.toDouble() ?? 0.0,
+      total: (data['total'] as num?)?.toDouble() ?? 0.0,
+      formasPagamento: data['formasPagamento'] ?? '',
+      data: (data['data'] as Timestamp?)?.toDate() ??
+          (data['createdAt'] as Timestamp?)?.toDate() ??
+          DateTime.now(),
+      tamanho: data['tamanho'] ?? '',
+      vendedor: data['vendedor'] ?? '',
+      frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
+      desconto: (data['desconto'] as num?)?.toDouble() ?? 0.0,
+      observacao: data['observacao'] ?? '',
+      itens: itens.isNotEmpty ? itens : null,
+      pagamentoDinheiro: (data['pagamentoDinheiro'] as num?)?.toDouble() ?? 0.0,
+      pagamentoPix: (data['pagamentoPix'] as num?)?.toDouble() ?? 0.0,
+      pagamentoCartao: (data['pagamentoCartao'] as num?)?.toDouble() ?? 0.0,
+      taxas: (data['taxas'] as num?)?.toDouble() ?? 0.0,
+      custoProdutos: (data['custoProdutos'] as num?)?.toDouble() ?? 0.0,
+      descontoValor: (data['descontoValor'] as num?)?.toDouble() ?? 0.0,
+      lojaId: lojaId,
+      idFirebase: docId,
+      clienteId: data['clienteId'] as String?,
+      statusVenda: data['statusVenda'] as String?,
+      cancelada: data['cancelada'] == true,
+      estornada: data['estornada'] == true,
+      origemVenda: data['origemVenda'] as String?,
+      paymentId: data['paymentId'] as String?,
+      orderId: data['orderId'] as String?,
+      prePedidoId: (data['prePedidoId'] ?? data['origemPrePedido']) as String?,
+      pedidoId: data['pedidoId'] as String?,
+    );
+  }
+
+  /// Evita duplicar no Hive a mesma venda MP (paymentId + pedido).
+  static bool localVendaJaExisteParaDocFirestore(
+    Box<Venda> vendasBox,
+    Map<String, dynamic> data,
+  ) {
+    final pay = (data['paymentId'] ?? '').toString().trim();
+    final orig = (data['origemPrePedido'] ?? data['prePedidoId'] ?? data['orderId'] ?? '')
+        .toString()
+        .trim();
+    if (pay.isEmpty || orig.isEmpty) return false;
+    return vendasBox.values.any((v) {
+      final vp = (v.paymentId ?? '').trim();
+      final vo = (v.prePedidoId ?? v.orderId ?? '').trim();
+      return vp == pay && vo == orig;
+    });
+  }
+
+  static bool _isUuidVendaId(String s) =>
+      s.contains('-') && s.length >= 36;
+
+  /// Resolve docId em estoque_vendas sem sobrescrever UUID ou id MP canônico.
+  static String resolveFirestoreVendaDocId(Venda v) {
+    final existing = v.idFirebase?.trim() ?? '';
+    if (existing.isNotEmpty) {
+      if (_isUuidVendaId(existing)) return existing;
+      if (isMpCanonicalVendaDocId(existing)) return existing;
+      final asNum = int.tryParse(existing);
+      if (asNum != null && existing.length < 12) {
+        // legado: key Hive — não usar como docId estável
+      } else {
+        return existing;
+      }
+    }
+    final orderKey = (v.prePedidoId ?? v.orderId ?? '').trim();
+    final pay = (v.paymentId ?? '').trim();
+    if (orderKey.isNotEmpty && pay.isNotEmpty) {
+      final canonical =
+          mpVendaFirestoreDocumentId(orderId: orderKey, paymentId: pay);
+      logD(
+        '[MP-IDEMPOTENCIA] docId canônico MP → $canonical (orderId=$orderKey)',
+      );
+      return canonical;
+    }
+    return const Uuid().v4();
+  }
 
   /// Sincroniza uma venda para o Firestore (com retry para conexões instáveis)
   /// Retorna:
@@ -38,17 +142,19 @@ class VendasFirestoreService {
         }
 
         // [SYNC-DEBUG] Diagnóstico: envio de venda para Firestore
-        logD('📤 [SYNC-DEBUG] syncVenda ENVIANDO → lojaId=$storeId | cliente=${venda.clienteNome} | total=R\$${venda.total.toStringAsFixed(2)} | data=${venda.data}');
+        logD('[SYNC-VENDAS] 📤 syncVenda ENVIANDO → lojaId=$storeId | cliente=${venda.clienteNome} | total=R\$${venda.total.toStringAsFixed(2)} | data=${venda.data}');
 
-        // ID único: idFirebase se for UUID válido; senão UUID (evita colisão entre dispositivos)
-        // NUNCA usar Hive key ("0","1","2"...) como doc.id — colide entre dispositivos!
-        final existing = venda.idFirebase?.trim() ?? '';
-        final isUuid = existing.contains('-') && existing.length >= 36;
-        final oldIdIfNumeric = isUuid ? null : (existing.isNotEmpty ? existing : null);
-        final vendaId = isUuid ? existing : const Uuid().v4();
+        final existingRaw = venda.idFirebase?.trim() ?? '';
+        final wasUuid = _isUuidVendaId(existingRaw);
+        final wasMp = isMpCanonicalVendaDocId(existingRaw);
+        final oldIdIfNumeric = (existingRaw.isNotEmpty && !wasUuid && !wasMp)
+            ? existingRaw
+            : null;
 
-        // ✅ Salvar o idFirebase na venda para futuras operações (migra de IDs numéricos para UUID)
+        final vendaId = resolveFirestoreVendaDocId(venda);
+
         if (venda.idFirebase != vendaId) {
+          logD('[MP-IDEMPOTENCIA] venda.key=${venda.key} idFirebase ${venda.idFirebase} → $vendaId');
           venda.idFirebase = vendaId;
           await venda.save();
         }
@@ -58,11 +164,18 @@ class VendasFirestoreService {
             .doc(storeId)
             .collection(FSPaths.estoqueVendasCol);
 
+        final remoteSnap = await colRef.doc(vendaId).get();
+        if (remoteSnap.exists && isMpCanonicalVendaDocId(vendaId)) {
+          logD(
+            '[MP-IDEMPOTENCIA] doc já existe no Firestore ($vendaId); merge sem segundo UUID',
+          );
+        }
+
         // Remover doc antigo se migramos de ID numérico (evita duplicata no Firestore)
-        if (oldIdIfNumeric != null) {
+        if (oldIdIfNumeric != null && oldIdIfNumeric != vendaId) {
           try {
             await colRef.doc(oldIdIfNumeric).delete();
-            logD('🗑️ [VENDAS-SYNC] Doc antigo $oldIdIfNumeric removido (migrado para UUID)');
+            logD('[SYNC-VENDAS] 🗑️ Doc antigo $oldIdIfNumeric removido (migrado para $vendaId)');
           } catch (_) {}
         }
 
@@ -106,6 +219,21 @@ class VendasFirestoreService {
         // Cliente estável (para consultas)
         'clienteId': venda.clienteId,
 
+        if (venda.paymentId != null && venda.paymentId!.trim().isNotEmpty)
+          'paymentId': venda.paymentId!.trim(),
+        if (venda.orderId != null && venda.orderId!.trim().isNotEmpty)
+          'orderId': venda.orderId!.trim(),
+        if (venda.prePedidoId != null && venda.prePedidoId!.trim().isNotEmpty)
+          'prePedidoId': venda.prePedidoId!.trim(),
+        if (venda.pedidoId != null && venda.pedidoId!.trim().isNotEmpty)
+          'pedidoId': venda.pedidoId!.trim(),
+        if (venda.origemVenda != null && venda.origemVenda!.trim().isNotEmpty)
+          'origemVenda': venda.origemVenda!.trim(),
+        if (venda.statusVenda != null && venda.statusVenda!.trim().isNotEmpty)
+          'statusVenda': venda.statusVenda!.trim(),
+        'cancelada': venda.cancelada,
+        'estornada': venda.estornada,
+
         // Metadata
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -114,8 +242,8 @@ class VendasFirestoreService {
 
         await colRef.doc(vendaId).set(vendaData, SetOptions(merge: true));
 
-        logD('✅ [VENDAS-SYNC] Venda $vendaId sincronizada (lojaId=$storeId)');
-        logD('📤 [SYNC-DEBUG] syncVenda OK → lojaId=$storeId | vendaId=$vendaId | cliente=${venda.clienteNome}');
+        logD('✅ [SYNC-VENDAS] Venda $vendaId sincronizada (lojaId=$storeId)');
+        logD('[SYNC-VENDAS] 📤 OK → lojaId=$storeId | vendaId=$vendaId | cliente=${venda.clienteNome}');
         return true;
       } catch (e, st) {
         logE('❌ [VENDAS-SYNC] Tentativa $attempt/$maxAttempts falhou (vendaKey=${venda.key}, type=${e.runtimeType})', error: e, st: st);
@@ -230,16 +358,22 @@ class VendasFirestoreService {
           final vendaId = doc.id;
           firestoreVendaIds.add(vendaId);
 
-          // Só confiar em idFirebase para IDs UUID; para legacy (Hive key) pode haver colisão
           final isUuid = vendaId.contains('-') && vendaId.length >= 36;
-          if (isUuid) {
+          final isMpDoc = isMpCanonicalVendaDocId(vendaId);
+          if (isUuid || isMpDoc) {
             final existe = vendasBox.values.any((v) => v.idFirebase == vendaId);
             if (existe) {
-              logD('⏭️  Venda $vendaId já existe no Hive, pulando...');
+              logD('[SYNC-VENDAS] ⏭️ venda $vendaId já no Hive (idFirebase), pulando');
               continue;
             }
           }
-          // Fallback para legacy: cliente + data (até segundo) + total
+          if (localVendaJaExisteParaDocFirestore(vendasBox, data)) {
+            logD(
+              '[SYNC-VENDAS] ⏭️ duplicata MP (paymentId+pedido) remota=$vendaId — já existe local',
+            );
+            continue;
+          }
+          // Fallback legado: cliente + data (até segundo) + total
           final dataFirestore = (data['data'] as Timestamp?)?.toDate() ?? DateTime.now();
           final totalFirestore = (data['total'] as num?)?.toDouble() ?? 0.0;
           final clienteNome = (data['clienteNome'] ?? '').toString().trim();
@@ -252,50 +386,11 @@ class VendasFirestoreService {
                 d.minute == dataFirestore.minute && d.second == dataFirestore.second;
           });
           if (existePorDados) {
-            logD('⏭️  Venda $vendaId já existe no Hive (cliente+data+total), pulando...');
+            logD('[SYNC-VENDAS] ⏭️ venda $vendaId já no Hive (cliente+data+total legado)');
             continue;
           }
 
-          // Converter itens do Firestore (array de maps)
-          final itensRaw = data['itens'] as List? ?? [];
-          final itens = itensRaw.map((e) {
-            final m = Map<String, dynamic>.from(e as Map);
-            final pid = m['productId'] as String?;
-            return VendaItem(
-              produtoNome: m['produtoNome'] as String? ?? '',
-              quantidade: (m['quantidade'] as num?)?.toInt() ?? 0,
-              precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ?? 0.0,
-              tamanho: m['tamanho'] as String? ?? '',
-              cor: m['cor'] as String? ?? '',
-              productId: pid != null && pid.trim().isNotEmpty ? pid : null,
-            );
-          }).toList();
-
-          // Converter Firestore → Venda (Hive model)
-          final venda = Venda(
-            clienteNome: data['clienteNome'] ?? '',
-            produtosDescricao: data['produtosDescricao'] ?? '',
-            quantidade: (data['quantidade'] as num?)?.toInt() ?? itens.length,
-            preco: (data['preco'] as num?)?.toDouble() ?? 0.0,
-            total: (data['total'] as num?)?.toDouble() ?? 0.0,
-            formasPagamento: data['formasPagamento'] ?? '',
-            data: (data['data'] as Timestamp?)?.toDate() ?? DateTime.now(),
-            tamanho: data['tamanho'] ?? '',
-            vendedor: data['vendedor'] ?? '',
-            frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
-            desconto: (data['desconto'] as num?)?.toDouble() ?? 0.0,
-            observacao: data['observacao'] ?? '',
-            itens: itens.isNotEmpty ? itens : null,
-            pagamentoDinheiro: (data['pagamentoDinheiro'] as num?)?.toDouble() ?? 0.0,
-            pagamentoPix: (data['pagamentoPix'] as num?)?.toDouble() ?? 0.0,
-            pagamentoCartao: (data['pagamentoCartao'] as num?)?.toDouble() ?? 0.0,
-            taxas: (data['taxas'] as num?)?.toDouble() ?? 0.0,
-            custoProdutos: (data['custoProdutos'] as num?)?.toDouble() ?? 0.0,
-            descontoValor: (data['descontoValor'] as num?)?.toDouble() ?? 0.0,
-            lojaId: lojaId,
-            idFirebase: vendaId,
-            clienteId: data['clienteId'] as String?,
-          );
+          final venda = vendaFromFirestoreMap(data, vendaId, lojaId);
 
           // Salvar no Hive
           await vendasBox.add(venda);
@@ -425,11 +520,13 @@ class VendasFirestoreService {
           .get();
 
       double totalVendas = 0;
-      int quantidadeVendas = vendasSnap.docs.length;
+      int quantidadeVendas = 0;
       Map<String, double> vendasPorMes = {};
 
       for (final doc in vendasSnap.docs) {
         final data = doc.data();
+        if (!incluirVendaFirestoreMap(data)) continue;
+        quantidadeVendas++;
         final total = (data['total'] as num?)?.toDouble() ?? 0;
         totalVendas += total;
 

@@ -8,6 +8,15 @@ import '../../core/safe_cast.dart';
 class CatalogEstoqueHelper {
   CatalogEstoqueHelper._();
 
+  /// Documento vindo do Firestore (`produtos` LIVE): deve aparecer na vitrine web.
+  /// Qualquer um dos campos [publicadoNoCatalogo], [publicarNoCatalogo], [publicar]
+  /// explicitamente `false` esconde o item (botão Publicar desmarcado / sync).
+  /// Ausente ou `true`: considera publicado (compatível com documentos antigos).
+  static bool catalogoWebDocPublicado(Map<String, dynamic> m) {
+    final v = m['publicadoNoCatalogo'] ?? m['publicarNoCatalogo'] ?? m['publicar'];
+    return v != false;
+  }
+
   static int parseQtd(dynamic v) {
     if (v == null) return 0;
     if (v is int) return v;
@@ -173,7 +182,8 @@ class CatalogEstoqueHelper {
       } else if (estoquePorCorOut != null && variacoes != null && somaVar == 0) {
         quantidadeTotal = estoquePorCorOut.values.fold(0, (a, b) => a + b) + extraRootCor;
       } else {
-        quantidadeTotal = estoqueBase > 0 ? estoqueBase : 1;
+        // Sem estoque real: não inventar quantidade (evita combo “fantasma” no catálogo).
+        quantidadeTotal = estoqueBase > 0 ? estoqueBase : 0;
       }
     } else {
       if (somaVar > 0) {
@@ -192,7 +202,8 @@ class CatalogEstoqueHelper {
         somaTam > 0 ||
         somaCorOnly > 0 ||
         estoqueBase > 0;
-    final incluirNoCatalogo = isCombo || temAlgum;
+    // Combo também precisa de estoque > 0 em alguma forma (não listar kit zerado).
+    final incluirNoCatalogo = temAlgum;
 
     return (
       quantidadeTotal: quantidadeTotal,

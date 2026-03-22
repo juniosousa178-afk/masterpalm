@@ -1,0 +1,34 @@
+---
+description: Métricas, KPIs, agregações de venda e identidade MP no MasterPalm
+globs: lib/**/*.dart
+alwaysApply: false
+---
+
+# MasterPalm — métricas e vendas
+
+Ao adicionar ou alterar **métrica de negócio**, **KPI**, **ranking**, **fechamento**, **resumo de IA**, **comparativo**, **gráfico** ou **agregação de vendas**:
+
+## 1. Filtro obrigatório
+
+- Dados **Hive** (`Venda`): usar `incluirVendaEmMetricas(v)` de `lib/core/venda_metrics_filter.dart`.
+- Dados **Firestore** (`Map`): usar `incluirVendaFirestoreMap(map)` no mesmo ficheiro.
+
+## 2. Exceção documentada
+
+Se **não** aplicar o filtro, comentar no código que é intencionalmente: **auditoria operacional**, **histórico bruto**, **exportação integral** ou **conferência manual**.
+
+## 3. Proibido duplicar regras
+
+Não reinventar exclusão de cancelada/estornada; sempre o helper central.
+
+## 4. Produto parado
+
+Não criar constante paralela. Usar `kDiasProdutoParadoMetricas` em `lib/core/metricas_constants.dart`.
+
+## 5. Mercado Pago / idempotência
+
+Não gerar UUID ou id aleatório para venda MP quando `paymentId` e `orderId`/`prePedidoId` já permitirem identidade canónica. Usar `mpVendaFirestoreDocumentId` e utilitários em `lib/core/mp_venda_identity.dart` e `lib/services/vendas_firestore_service.dart` (`resolveFirestoreVendaDocId`, etc.).
+
+## 6. Antes de escrever código novo
+
+Procurar helpers e padrões existentes em `venda_metrics_filter.dart`, `metricas_constants.dart`, `mp_venda_identity.dart` e serviços de vendas/sync já usados nas telas de relatório/painel.

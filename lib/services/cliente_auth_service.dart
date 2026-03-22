@@ -493,7 +493,10 @@ class ClienteAuthService {
       final emailNorm = email.trim().toLowerCase();
       if (emailNorm.isEmpty) return null;
 
-      final callable = FirebaseFunctions.instance.httpsCallable('getClienteCatalog');
+      // Mesma região que functions/index.js (setGlobalOptions: southamerica-east1).
+      // FirebaseFunctions.instance usa us-central1 por omissão — a CF não existe lá.
+      final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+      final callable = functions.httpsCallable('getClienteCatalog');
       final result = await callable.call<Map<String, dynamic>>({
         'lojaId': lojaId,
         'clienteId': clienteId,

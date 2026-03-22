@@ -4,6 +4,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 
 import '../core/logger.dart';
+import '../core/venda_metrics_filter.dart';
 import 'package:hive/hive.dart';
 
 import '../models/cliente.dart';
@@ -339,6 +340,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   List<String> _produtosMaisVendidos({int limit = 5}) {
     final contagem = <String, int>{};
     for (final v in widget.vendasBox.values) {
+      if (!incluirVendaEmMetricas(v)) continue;
       if (v.lojaId != null && v.lojaId != lojaId) continue;
       if (v.itens != null && v.itens!.isNotEmpty) {
         for (final item in v.itens!) {

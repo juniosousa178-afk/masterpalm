@@ -9,6 +9,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/store_resolver_facade.dart';
+import '../core/venda_metrics_filter.dart';
 
 class AnaliseVendasIaScreen extends StatefulWidget {
   const AnaliseVendasIaScreen({super.key});
@@ -37,7 +38,9 @@ class _AnaliseVendasIaScreenState extends State<AnaliseVendasIaScreen> {
       final box = Hive.box<Venda>(HiveBoxNames.vendas(lojaId));
       final agora = DateTime.now();
       final inicio = agora.subtract(const Duration(days: 30));
-      final vendas = box.values.where((v) => v.data.isAfter(inicio)).toList();
+      final vendas = box.values
+          .where((v) => incluirVendaEmMetricas(v) && v.data.isAfter(inicio))
+          .toList();
       if (vendas.isEmpty) {
         return 'Últimos 30 dias: nenhuma venda registrada.';
       }

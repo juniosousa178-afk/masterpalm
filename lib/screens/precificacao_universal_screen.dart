@@ -13,6 +13,7 @@ import 'package:printing/printing.dart';
 import '../core/hive_box_names.dart';
 import '../models/produto.dart';
 import '../services/store_resolver_facade.dart';
+import '../services/produtos_firestore_service.dart';
 import '../utils/moeda_input_formatter.dart';
 
 class PrecificacaoUniversalScreen extends StatefulWidget {
@@ -325,9 +326,9 @@ class _PrecificacaoUniversalScreenState
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
                       Navigator.pop(ctx);
-                      _executarPrecificacao();
+                      await _executarPrecificacao();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _successColor,
@@ -348,7 +349,7 @@ class _PrecificacaoUniversalScreenState
     );
   }
 
-  void _executarPrecificacao() {
+  Future<void> _executarPrecificacao() async {
     if (estoqueBox == null || _lojaId == null) return;
 
     int atualizados = 0;
@@ -369,28 +370,37 @@ class _PrecificacaoUniversalScreenState
       if (produtoExistente != null) {
         produtoExistente
           ..custoReal = custo
-          ..precoUnitario = custo
+          // precoUnitario = preço de venda (igual ao cadastro; vendas usam precoFinal)
+          ..precoUnitario = precoFinal
           ..precoSugerido = precoSugerido
-          ..precoFinal = precoFinal;
-        produtoExistente.save();
+          ..precoFinal = precoFinal
+          ..custoEditadoNoCadastro = false
+          ..updatedAt = DateTime.now();
+        await produtoExistente.save();
+        await ProdutosFirestoreService.syncProduto(
+          produtoExistente,
+          lojaId: _lojaId,
+        );
         atualizados++;
       } else {
-        estoqueBox!.add(
-          Produto(
-            nome: nome,
-            custoReal: custo,
-            frete: 0,
-            gastosFixos: 0,
-            gastosVariaveis: 0,
-            precoSugerido: precoSugerido,
-            precoFinal: precoFinal,
-            quantidade: 0,
-            precoUnitario: custo,
-            categoria: '',
-            dataEntrada: DateTime.now(),
-            lojaId: _lojaId!,
-          ),
+        final novo = Produto(
+          nome: nome,
+          custoReal: custo,
+          frete: 0,
+          gastosFixos: 0,
+          gastosVariaveis: 0,
+          precoSugerido: precoSugerido,
+          precoFinal: precoFinal,
+          quantidade: 0,
+          precoUnitario: precoFinal,
+          categoria: '',
+          dataEntrada: DateTime.now(),
+          lojaId: _lojaId!,
+          custoEditadoNoCadastro: false,
+          updatedAt: DateTime.now(),
         );
+        await estoqueBox!.add(novo);
+        await ProdutosFirestoreService.syncProduto(novo, lojaId: _lojaId);
         criados++;
       }
     }

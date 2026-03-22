@@ -10,6 +10,13 @@ String normalizeText(String text) {
   return removeDiacritics(text.trim().toLowerCase());
 }
 
+/// Forma canônica para categoria/subcategoria: sem acentos, capitalizada.
+/// Unifica "Anel", "anel", "ANEL" em "Anel" para evitar duplicatas.
+String canonicalizeCategoria(String text) {
+  if (text.isEmpty) return '';
+  return capitalizeWords(normalizeText(text));
+}
+
 /// Capitaliza a primeira letra de cada palavra.
 /// Ex: "joão da silva" → "João Da Silva"
 String capitalizeWords(String text) {

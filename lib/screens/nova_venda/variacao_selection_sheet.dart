@@ -2,6 +2,8 @@
 // Modal de seleção de tamanho/cor por boxes (estilo catálogo) para Nova Venda
 
 import 'package:flutter/material.dart';
+
+import '../../core/catalog_color_from_name.dart';
 import '../../models/produto.dart';
 
 /// Sheet para selecionar variação (tamanho/cor) ao adicionar produto na Nova Venda.
@@ -117,26 +119,6 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       return widget.produto.estoquePorTamanho[_tamanhoSelecionado] ?? 0;
     }
     return widget.produto.quantidade;
-  }
-
-  Color _getColorFromName(String nome) {
-    const coresMap = {
-      'preto': Colors.black,
-      'branco': Colors.white,
-      'vermelho': Colors.red,
-      'azul': Colors.blue,
-      'verde': Colors.green,
-      'amarelo': Colors.yellow,
-      'rosa': Colors.pink,
-      'roxo': Colors.purple,
-      'laranja': Colors.orange,
-      'cinza': Colors.grey,
-      'marrom': Colors.brown,
-      'bege': Color(0xFFF5F5DC),
-      'dourado': Color(0xFFFFD700),
-      'prata': Color(0xFFC0C0C0),
-    };
-    return coresMap[nome.toLowerCase()] ?? Colors.grey;
   }
 
   void _confirmar() {
@@ -288,7 +270,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       final qtd = e.value;
                       final sel = _corSelecionada == cor;
                       final hasStock = qtd > 0;
-                      final corVisual = _getColorFromName(cor);
+                      final corVisual = catalogColorFromName(cor);
                       return InkWell(
                         onTap: hasStock
                             ? () => setState(() => _corSelecionada = cor)

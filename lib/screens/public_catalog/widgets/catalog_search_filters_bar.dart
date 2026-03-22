@@ -1,8 +1,11 @@
 // lib/screens/public_catalog/widgets/catalog_search_filters_bar.dart
 // Barra de busca, filtros de categoria/subcategoria, ordenação e chips (UI extraída de public_catalog_screen.dart)
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+
+import '../../../utils/platform_adaptive.dart';
 
 /// Barra de pesquisa do catálogo (TextField).
 class CatalogSearchBar extends StatelessWidget {
@@ -545,7 +548,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
               ),
             ],
           ),
-          if (totalPaginas > 1 && kIsWeb) ...[
+          if (totalPaginas > 1 && usePointerFirstChrome(context)) ...[
             const SizedBox(height: 8),
             CatalogPaginacaoRow(
               paginaAtual: paginaAtual,
@@ -580,110 +583,143 @@ class CatalogSortFiltersSection extends StatelessWidget {
   }
 
   Future<void> _showFilterMenu(BuildContext context) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: false,
-      backgroundColor: cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 44,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: textColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(2),
+    if (!context.mounted) return;
+    final wideChrome = usePointerFirstChrome(context);
+
+    Widget filterMenuBody(BuildContext sheetContext) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 44,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: textColor.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Filtro',
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Filtro',
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _FilterActionTile(
-                  label: 'Nome',
-                  selected: ordenacaoProdutos == 'nome',
-                  textColor: textColor,
-                  primaryColor: primaryColor,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    onSortChanged('nome');
-                  },
-                ),
-                _FilterActionTile(
-                  label: 'Novidade',
-                  selected: ordenacaoProdutos == 'novidade',
-                  textColor: textColor,
-                  primaryColor: primaryColor,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    onSortChanged('novidade');
-                  },
-                ),
-                _FilterActionTile(
-                  label: 'Menor preço',
-                  selected: ordenacaoProdutos == 'preco_asc',
-                  textColor: textColor,
-                  primaryColor: primaryColor,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    onSortChanged('preco_asc');
-                  },
-                ),
-                _FilterActionTile(
-                  label: 'Maior preço',
-                  selected: ordenacaoProdutos == 'preco_desc',
-                  textColor: textColor,
-                  primaryColor: primaryColor,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    onSortChanged('preco_desc');
-                  },
-                ),
-                const SizedBox(height: 6),
-                _FilterSwitchTile(
-                  label: 'Apenas em estoque',
-                  value: apenasEmEstoque,
-                  textColor: textColor,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    onFilterEmEstoqueToggled();
-                  },
-                ),
-                _FilterActionTile(
-                  label: (precoMin != null || precoMax != null)
-                      ? 'Faixa de preço (ativo)'
-                      : 'Faixa de preço',
-                  selected: precoMin != null || precoMax != null,
-                  textColor: textColor,
-                  primaryColor: primaryColor,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    onFilterPrecoTap();
-                  },
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 10),
+              _FilterActionTile(
+                label: 'Nome',
+                selected: ordenacaoProdutos == 'nome',
+                textColor: textColor,
+                primaryColor: primaryColor,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onSortChanged('nome');
+                },
+              ),
+              _FilterActionTile(
+                label: 'Novidade',
+                selected: ordenacaoProdutos == 'novidade',
+                textColor: textColor,
+                primaryColor: primaryColor,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onSortChanged('novidade');
+                },
+              ),
+              _FilterActionTile(
+                label: 'Menor preço',
+                selected: ordenacaoProdutos == 'preco_asc',
+                textColor: textColor,
+                primaryColor: primaryColor,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onSortChanged('preco_asc');
+                },
+              ),
+              _FilterActionTile(
+                label: 'Maior preço',
+                selected: ordenacaoProdutos == 'preco_desc',
+                textColor: textColor,
+                primaryColor: primaryColor,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onSortChanged('preco_desc');
+                },
+              ),
+              const SizedBox(height: 6),
+              _FilterSwitchTile(
+                label: 'Apenas em estoque',
+                value: apenasEmEstoque,
+                textColor: textColor,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onFilterEmEstoqueToggled();
+                },
+              ),
+              _FilterActionTile(
+                label: (precoMin != null || precoMax != null)
+                    ? 'Faixa de preço (ativo)'
+                    : 'Faixa de preço',
+                selected: precoMin != null || precoMax != null,
+                textColor: textColor,
+                primaryColor: primaryColor,
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onFilterPrecoTap();
+                },
+              ),
+            ],
           ),
-        );
-      },
-    );
+        ),
+      );
+    }
+
+    if (wideChrome) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (sheetContext) {
+          final mq = MediaQuery.of(sheetContext);
+          final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: maxW,
+                maxHeight: mq.size.height * 0.65,
+              ),
+              child: Material(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(20),
+                clipBehavior: Clip.antiAlias,
+                child: filterMenuBody(sheetContext),
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: false,
+        backgroundColor: cardColor,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        ),
+        builder: (sheetContext) => filterMenuBody(sheetContext),
+      );
+    }
   }
 }
 

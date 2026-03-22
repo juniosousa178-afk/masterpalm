@@ -2842,10 +2842,10 @@ function gerarCodigoCupom(prefixo = 'CUPOM', tamanho = 8) {
 }
 
 /**
- * Gera número da sorte (6 dígitos)
+ * Número da sorte — 5 dígitos (10000–99999), alinhado ao app / mpWebhookPromo.
  */
 function gerarNumeroSorte() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(Math.floor(10000 + Math.random() * 90000));
 }
 
 /**

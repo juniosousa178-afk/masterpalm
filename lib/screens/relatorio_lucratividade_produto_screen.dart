@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/venda_metrics_filter.dart';
 import '../models/venda.dart';
 import '../models/produto.dart';
 
@@ -84,6 +85,7 @@ class _RelatorioLucratividadeProdutoScreenState
 
       final vendas = vendasBox.values.where((v) {
         if (v.lojaId != widget.lojaId) return false;
+        if (!incluirVendaEmMetricas(v)) return false;
         return !v.data.isBefore(inicio) && !v.data.isAfter(fim);
       }).toList();
 

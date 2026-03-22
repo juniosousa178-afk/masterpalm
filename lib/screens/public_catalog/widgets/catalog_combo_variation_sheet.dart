@@ -1,9 +1,13 @@
 // lib/screens/public_catalog/widgets/catalog_combo_variation_sheet.dart
 // Modal para selecionar tamanho/cor de cada produto do combo no catálogo público.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../../../utils/platform_adaptive.dart';
 import '../../../utils/safe_parse.dart' show safeDouble, safeBool, safeInt, safeListString, safeStr;
+import '../../../core/catalog_color_from_name.dart';
 import '../../../core/safe_cast.dart' show asMap, asMapDeep;
 import '../catalog_estoque_helper.dart';
 
@@ -15,17 +19,54 @@ void showCatalogComboVariationSheet({
   required void Function(Map<String, dynamic> item) onAdd,
   VoidCallback? onAbrirCarrinho,
 }) {
-  showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) => CatalogComboVariationSheet(
+  if (!context.mounted) return;
+  final wideChrome = usePointerFirstChrome(context);
+
+  Widget sheetBody() {
+    return CatalogComboVariationSheet(
       comboProduct: comboProduct,
       todosProdutos: todosProdutos,
       onAdd: onAdd,
       onAbrirCarrinho: onAbrirCarrinho,
-    ),
-  );
+    );
+  }
+
+  if (wideChrome) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (sheetContext) {
+        final mq = MediaQuery.of(sheetContext);
+        final theme = Theme.of(sheetContext);
+        final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
+        return Dialog(
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: maxW,
+              maxHeight: mq.size.height * 0.92,
+            ),
+            child: Material(
+              color: theme.cardColor,
+              borderRadius: BorderRadius.circular(20),
+              clipBehavior: Clip.antiAlias,
+              child: sheetBody(),
+            ),
+          ),
+        );
+      },
+    );
+  } else {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => sheetBody(),
+    );
+  }
 }
 
 class CatalogComboVariationSheet extends StatefulWidget {
@@ -237,17 +278,6 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
       });
     }
     return resultado;
-  }
-
-  static Color _getColorFromName(String nome) {
-    const coresMap = {
-      'preto': Colors.black, 'branco': Colors.white, 'vermelho': Colors.red,
-      'azul': Colors.blue, 'verde': Colors.green, 'amarelo': Colors.yellow,
-      'rosa': Colors.pink, 'roxo': Colors.purple, 'laranja': Colors.orange,
-      'cinza': Colors.grey, 'marrom': Colors.brown, 'bege': Color(0xFFF5F5DC),
-      'dourado': Color(0xFFFFD700), 'prata': Color(0xFFC0C0C0),
-    };
-    return coresMap[nome.toLowerCase()] ?? Colors.grey;
   }
 
   void _confirmar() {
@@ -598,7 +628,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                     final sel = (_selecoes[i]['cor'] ?? '') == e.key;
                                     return FilterChip(
                                       avatar: CircleAvatar(
-                                        backgroundColor: _getColorFromName(e.key),
+                                        backgroundColor: catalogColorFromName(e.key),
                                         radius: 12,
                                       ),
                                       label: Padding(

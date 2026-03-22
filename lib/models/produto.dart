@@ -151,6 +151,11 @@ class Produto extends HiveObject {
   @HiveField(40)
   DateTime? updatedAt;
 
+  /// true = última edição veio do cadastro (produto/combo/catálogo/import): no pull Firestore→Hive
+  /// **não** aplicar snapshot remoto (todos os campos). false = aceitar nuvem (ex.: Precificação).
+  @HiveField(41, defaultValue: false)
+  bool custoEditadoNoCadastro;
+
   Produto({
     required this.nome,
     required this.custoReal,
@@ -193,6 +198,7 @@ class Produto extends HiveObject {
     this.tipoProduto = 'simples',
     this.itensCombo,
     this.updatedAt,
+    this.custoEditadoNoCadastro = false,
   });
 
   bool get ehCombo => tipoProduto == 'combo';
@@ -275,6 +281,7 @@ class Produto extends HiveObject {
       precoPorTamanho: null,
       tipoProduto: 'simples',
       itensCombo: null,
+      custoEditadoNoCadastro: false,
     );
   }
 

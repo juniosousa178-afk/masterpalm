@@ -14,6 +14,7 @@ import '../utils/limpar_firestore.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
+import 'pre_pedidos/pre_pedido_operacional.dart';
 
 /// Tela unificada para gerenciar pedidos (pré-pedidos do catálogo web)
 /// ✅ APENAS ADMIN/PROGRAMADOR pode acessar (vendedor NUNCA)
@@ -528,10 +529,11 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           lojaId: widget.lojaId, status: 'todos'),
       builder: (context, countSnapshot) {
         final allPedidos = countSnapshot.data ?? [];
-        final pendenteCount = allPedidos
-            .where((p) => (p['status'] ?? 'pendente') == 'pendente')
-            .length;
-        final todosCount = allPedidos.length;
+        final operacionalStats =
+            PrePedidoOperacionalStats.fromLista(allPedidos);
+        // Badge “Pendentes”: só fila ativa (pendente recente, não substituído, não “abandonado” heurístico)
+        final pendenteCount = operacionalStats.filaAtiva;
+        final todosCount = operacionalStats.total;
 
         // Destacar pedido ao abrir por "Ver pedido" na notificação
         if (widget.initialPedidoId != null &&
@@ -778,7 +780,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       controller: _searchController,
                       onChanged: (_) => setState(() {}),
                       decoration: InputDecoration(
-                        hintText: 'Buscar por cliente ou telefone...',
+                        hintText:
+                            'Buscar por cliente, telefone ou ID do pedido...',
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _searchController.text.isNotEmpty
                             ? IconButton(
@@ -842,6 +845,21 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       ],
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Text(
+                      'Fila ativa: ${operacionalStats.filaAtiva} · '
+                      'Abandono potencial (≥${kPrePedidoHorasAbandonoPotencial}h): ${operacionalStats.abandonadosPotencial} · '
+                      'Substituídos: ${operacionalStats.substituidos} · '
+                      'Histórico: ${operacionalStats.historicoEncerrado} · '
+                      'Total: ${operacionalStats.total}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey[700],
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
                   Expanded(
                     child: TabBarView(
                       controller: _tabController,
@@ -880,8 +898,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         final tel = (cliente?['telefone'] ?? '')
             .toString()
             .replaceAll(RegExp(r'[^\d]'), '');
+        final id = (p['id'] ?? '').toString().toLowerCase();
         return nome.contains(busca) ||
-            (buscaNum.isNotEmpty && tel.contains(buscaNum));
+            (buscaNum.isNotEmpty && tel.contains(buscaNum)) ||
+            (busca.length >= 6 && id.contains(busca));
       }).toList();
     }
     if (_ordenacao == 'antigo') {
@@ -901,7 +921,28 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         ..sort(
             (a, b) => _compareData(a['dataCriacao'], b['dataCriacao'], true));
     }
-    return result;
+    // Ordem operacional: fila ativa → possível abandono → substituídos → histórico encerrado
+    final fila = <Map<String, dynamic>>[];
+    final aband = <Map<String, dynamic>>[];
+    final subst = <Map<String, dynamic>>[];
+    final hist = <Map<String, dynamic>>[];
+    for (final p in result) {
+      switch (classificarPrePedidoOperacional(p)) {
+        case PrePedidoFilaOperacional.filaAtiva:
+          fila.add(p);
+          break;
+        case PrePedidoFilaOperacional.potencialmenteAbandonado:
+          aband.add(p);
+          break;
+        case PrePedidoFilaOperacional.substituidoGovernanca:
+          subst.add(p);
+          break;
+        case PrePedidoFilaOperacional.historicoEncerrado:
+          hist.add(p);
+          break;
+      }
+    }
+    return [...fila, ...aband, ...subst, ...hist];
   }
 
   Widget _buildSkeletonLoading() {
@@ -1077,6 +1118,12 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     final total = (prePedido['total'] as num?)?.toDouble() ?? 0.0;
     final pagamento = (prePedido['pagamento'] ?? '').toString();
     final dataCriacao = prePedido['dataCriacao'];
+    final substituidoPor = prePedido['substituidoPor']?.toString();
+    final isSubstituidoGovernanca =
+        isGovernancaSubstituidoPrePedido(prePedido);
+    final operacional = classificarPrePedidoOperacional(prePedido);
+    final isAbandonoPotencial = operacional ==
+        PrePedidoFilaOperacional.potencialmenteAbandonado;
     final isGateway = _isPagamentoGateway(pagamento);
     final aguardandoPagamento =
         isGateway && (statusPagamento == 'pendente' || status == 'pendente');
@@ -1127,6 +1174,14 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: isAbandonoPotencial
+            ? Border(
+                left: BorderSide(
+                  color: Colors.orange.shade400,
+                  width: 4,
+                ),
+              )
+            : null,
         boxShadow: [
           BoxShadow(
             color: statusColor.withValues(alpha:0.1),
@@ -1194,6 +1249,30 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                           ),
                         ],
                       ),
+                      if (isSubstituidoGovernanca) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          substituidoPor != null && substituidoPor.isNotEmpty
+                              ? 'Substituído por #$substituidoPor'
+                              : 'Substituído (nova tentativa de checkout)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.orange.shade800,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                      if (isAbandonoPotencial) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Possível abandono — sem atividade recente (≥${kPrePedidoHorasAbandonoPotencial}h; estimativa)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.brown.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -2291,6 +2370,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         premioRoletaDescricao: prePedido['premioRoleta']?['descricao'],
         totalOverride: totalPedido,
         subtotalOverride: subtotalPedido,
+        baixarEstoque: false, // Baixa centralizada no PosPagamentoService
       );
 
       if (vendaId != null) {

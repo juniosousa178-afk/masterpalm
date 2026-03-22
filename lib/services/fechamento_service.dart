@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 
 import '../models/venda.dart';
 import '../models/fechamento_mensal.dart';
+import '../core/venda_metrics_filter.dart';
 import 'fechamento_firestore_service.dart';
 
 class FechamentoService {
@@ -74,7 +75,10 @@ class FechamentoService {
   }) async {
     // 🔥 só vendas da loja + mês informado
     final vendasMes = vendasBox.values.where(
-      (v) => v.lojaId == lojaId && _sameMonth(v.data, ano, mes),
+      (v) =>
+          v.lojaId == lojaId &&
+          incluirVendaEmMetricas(v) &&
+          _sameMonth(v.data, ano, mes),
     );
 
     double vendaTotal = 0, custoTotal = 0, taxasTotal = 0;
@@ -194,7 +198,10 @@ class FechamentoService {
     required Box<Venda> vendasBox,
   }) {
     final vendasMes = vendasBox.values.where(
-      (v) => v.lojaId == lojaId && _sameMonth(v.data, ano, mes),
+      (v) =>
+          v.lojaId == lojaId &&
+          incluirVendaEmMetricas(v) &&
+          _sameMonth(v.data, ano, mes),
     );
 
     double venda = 0, custo = 0, taxas = 0;

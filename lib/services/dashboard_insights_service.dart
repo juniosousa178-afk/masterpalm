@@ -9,14 +9,13 @@ import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/dashboard_insight.dart';
 import '../utils/store_access_guard.dart';
+import '../core/metricas_constants.dart';
+import '../core/venda_metrics_filter.dart';
 
 /// Serviço de agregação de insights para o painel (Home).
 /// Lê apenas dados existentes em Hive; não cria boxes nem altera Firestore.
 class DashboardInsightsService {
   DashboardInsightsService._();
-
-  /// Número de dias sem venda para considerar produto "parado".
-  static const int diasParaProdutoParado = 25;
 
   /// Carrega insights para a loja. [vendedorNome] quando preenchido filtra
   /// vendas por vendedor (ex.: vendedor vendo apenas seus dados em "melhor vendedor").
@@ -29,7 +28,8 @@ class DashboardInsightsService {
     final now = DateTime.now();
     final mesInicio = DateTime(now.year, now.month, 1);
     final mesFim = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-    final limiteParado = now.subtract(const Duration(days: diasParaProdutoParado));
+    final limiteParado =
+        now.subtract(const Duration(days: kDiasProdutoParadoMetricas));
     final insights = <DashboardInsight>[];
 
     double? metaAtual;
@@ -46,7 +46,9 @@ class DashboardInsightsService {
         vendasBox = await Hive.openBox<Venda>(vendasBoxName);
       }
 
-      final vendasLoja = vendasBox.values.where((v) => v.lojaId == lojaId).toList();
+      final vendasLoja = vendasBox.values
+          .where((v) => v.lojaId == lojaId && incluirVendaEmMetricas(v))
+          .toList();
       final vendasFiltradas = vendedorNome != null && vendedorNome.trim().isNotEmpty
           ? vendasLoja.where((v) => (v.vendedor).trim().toLowerCase() == vendedorNome.trim().toLowerCase()).toList()
           : vendasLoja;
@@ -149,7 +151,7 @@ class DashboardInsightsService {
         final primeiro = parados.first;
         insights.add(DashboardInsight(
           type: DashboardInsightType.produtoParado,
-          message: 'O produto "${_elipse(primeiro.nome, 30)}" está há mais de $diasParaProdutoParado dias sem vender.',
+          message: 'O produto "${_elipse(primeiro.nome, 30)}" está há mais de $kDiasProdutoParadoMetricas dias sem vender.',
           subtitle: parados.length > 1 ? '${parados.length} produtos parados no estoque.' : null,
           data: {'nome': primeiro.nome, 'totalParados': parados.length},
         ));

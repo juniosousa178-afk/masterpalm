@@ -61,13 +61,14 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
           ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
           ?.toList(),
       updatedAt: fields[40] as DateTime?,
+      custoEditadoNoCadastro: fields[41] == null ? false : fields[41] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, Produto obj) {
     writer
-      ..writeByte(41)
+      ..writeByte(42)
       ..writeByte(0)
       ..write(obj.nome)
       ..writeByte(1)
@@ -149,7 +150,9 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       ..writeByte(39)
       ..write(obj.itensCombo)
       ..writeByte(40)
-      ..write(obj.updatedAt);
+      ..write(obj.updatedAt)
+      ..writeByte(41)
+      ..write(obj.custoEditadoNoCadastro);
   }
 
   @override

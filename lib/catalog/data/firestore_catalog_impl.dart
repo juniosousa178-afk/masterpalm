@@ -65,7 +65,7 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
     final produtos = <Map<String, dynamic>>[];
     for (final d in docs) {
       final m = asMap(d.data());
-      if (m['publicadoNoCatalogo'] == false || m['publicarNoCatalogo'] == false) continue;
+      if (!CatalogEstoqueHelper.catalogoWebDocPublicado(m)) continue;
       if (m['exibir_no_catalogo'] == false || m['ocultar_catalogo'] == true || m['catalog_ativo'] == false) continue;
 
       final tipoEarly =

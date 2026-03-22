@@ -8,6 +8,7 @@ import '../models/produto.dart';
 import '../utils/store_access_guard.dart';
 import '../models/venda.dart';
 import '../models/meta.dart';
+import '../core/venda_metrics_filter.dart';
 
 const Color _primaryColor = Color(0xFF6366F1);
 const Color _successColor = Color(0xFF22C55E);
@@ -100,6 +101,7 @@ class DashboardHomeCards extends StatelessWidget {
       }
       for (final v in vendasBox.values) {
         if (v.lojaId != lojaId) continue;
+        if (!incluirVendaEmMetricas(v)) continue;
         final dt = v.data;
         if (dt.isAfter(hojeInicio) && dt.isBefore(hojeFim)) {
           vendasHoje += v.total;
@@ -153,6 +155,7 @@ class DashboardHomeCards extends StatelessWidget {
           final mesFim = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
           for (final v in box.values) {
             if (v.lojaId != lojaId) continue;
+            if (!incluirVendaEmMetricas(v)) continue;
             if (!v.data.isBefore(mesInicio) && !v.data.isAfter(mesFim)) {
               metaAtingida += v.total;
             }

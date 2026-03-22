@@ -1,20 +1,13 @@
 // functions/src/posPagamento.js
 /**
- * ⚠️ LEGADO / NÃO EM USO EM PRODUÇÃO
+ * ╔═══════════════════════════════════════════════════════════════════════════╗
+ * ║  ⛔ DEPRECADO — NÃO USE EM PRODUÇÃO                                        ║
+ * ║  Este arquivo NÃO está em uso. O webhook mercadopagoWebhook NÃO é          ║
+ * ║  exportado em index.js. Uso acidental pode gerar inconsistência.           ║
+ * ║  Fluxo correto: mpWebhook → processMpWebhook (mpWebhookHandler.js)         ║
+ * ╚═══════════════════════════════════════════════════════════════════════════╝
  *
- * O webhook mercadopagoWebhook deste arquivo NÃO está exportado em index.js.
- * O fluxo real de pós-pagamento em produção é:
- *   mpWebhook (index.js) → processMpWebhook (mpWebhookHandler.js)
- *
- * Use mpWebhookHandler.js para alterações no processamento de pagamentos.
- * Este arquivo é mantido para referência, fallback futuro ou migração.
- * NÃO configure o Mercado Pago para chamar mercadopagoWebhook - use mpWebhook.
- *
- * Funcionalidades históricas:
- * - Webhook do Mercado Pago (mercadopagoWebhook - não deployado)
- * - Baixa de estoque
- * - Geração de número da sorte
- * - Envio de Email e WhatsApp
+ * Mantido apenas para referência. Não configurar no Mercado Pago.
  */
 
 import { onRequest } from "firebase-functions/v2/https";

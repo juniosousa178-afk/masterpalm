@@ -521,15 +521,17 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           ..nome = nome
           ..precoFinal = preco
           ..precoUnitario = preco
-          ..categoria = capitalizeWords(_categoria.text.trim())
-          ..subcategoria = capitalizeWords(_subcategoria.text.trim())
+          ..categoria = canonicalizeCategoria(_categoria.text.trim())
+          ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
           ..descricao = _descricao.text.trim()
           ..imagens = List.from(_imagens)
           ..publicadoNoCatalogo = _publicar
           ..tipoProduto = 'combo'
           ..itensCombo = itensValidos
           ..quantidade = qtd < 0 ? 0 : qtd
-          ..lojaId = lojaId!;
+          ..lojaId = lojaId!
+          ..custoEditadoNoCadastro = true
+          ..updatedAt = DateTime.now();
         await combo.save();
       } else {
         final guard = LimitsGuard();
@@ -553,7 +555,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           precoFinal: preco,
           quantidade: qtd < 0 ? 0 : qtd,
           precoUnitario: preco,
-          categoria: capitalizeWords(_categoria.text.trim()),
+          categoria: canonicalizeCategoria(_categoria.text.trim()),
+          subcategoria: canonicalizeCategoria(_subcategoria.text.trim()),
           dataEntrada: DateTime.now(),
           descricao: _descricao.text.trim(),
           imagens: List.from(_imagens),
@@ -562,6 +565,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           lojaId: lojaId!,
           tipoProduto: 'combo',
           itensCombo: itensValidos,
+          custoEditadoNoCadastro: true,
+          updatedAt: DateTime.now(),
         );
         await produtosBox.add(combo);
       }

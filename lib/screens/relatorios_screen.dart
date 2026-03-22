@@ -18,6 +18,7 @@ import '../services/hive_multi_store.dart';
 import '../services/loja_id_service.dart';
 import '../utils/chart_utils.dart';
 import '../services/catalog_visitas_service.dart';
+import '../core/venda_metrics_filter.dart';
 import 'relatorio_ranking_clientes_screen.dart';
 import 'relatorio_lucratividade_produto_screen.dart';
 import 'carrinhos_abandonados_screen.dart';
@@ -109,6 +110,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
     if (lojaId == null || _vendasBox == null) return [];
     return _vendasBox!.values.where((venda) {
       if (venda.lojaId != lojaId) return false;
+      if (!incluirVendaEmMetricas(venda)) return false;
       if (dataInicial != null && venda.data.isBefore(dataInicial!)) {
         return false;
       }
@@ -721,7 +723,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                               Text(
                                 snap.connectionState == ConnectionState.waiting
                                     ? 'Carregando...'
-                                    : '$visitas visita(s) no catálogo público',
+                                    : '$visitas visita(s) acumuladas (catálogo público; não é período do gráfico)',
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                               ),
                             ],

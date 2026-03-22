@@ -16,6 +16,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/venda_metrics_filter.dart';
 import '../core/logger.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
@@ -528,10 +529,14 @@ class _VendasScreenState extends State<VendasScreen>
   bool _vendaDaLoja(Venda v) =>
       v.lojaId == null || (v.lojaId?.isEmpty ?? true) || v.lojaId == lojaId;
 
+  /// KPIs / IA: mesma regra que painel e relatórios (exclui cancelada/estornada).
+  bool _vendaParaKpis(Venda v) =>
+      _vendaDaLoja(v) && incluirVendaEmMetricas(v);
+
   double get totalVendasDia {
     final hoje = DateTime.now();
     return vendasBox.values
-        .where(_vendaDaLoja)
+        .where(_vendaParaKpis)
         .where((v) =>
             v.data.day == hoje.day &&
             v.data.month == hoje.month &&
@@ -542,7 +547,7 @@ class _VendasScreenState extends State<VendasScreen>
   double get totalVendasMes {
     final hoje = DateTime.now();
     return vendasBox.values
-        .where(_vendaDaLoja)
+        .where(_vendaParaKpis)
         .where((v) => v.data.month == hoje.month && v.data.year == hoje.year)
         .fold(0.0, (s, v) => s + v.total);
   }
@@ -550,13 +555,13 @@ class _VendasScreenState extends State<VendasScreen>
   double get totalVendasAno {
     final hoje = DateTime.now();
     return vendasBox.values
-        .where(_vendaDaLoja)
+        .where(_vendaParaKpis)
         .where((v) => v.data.year == hoje.year)
         .fold(0.0, (s, v) => s + v.total);
   }
 
   int get totalVendasCount {
-    return vendasBox.values.where(_vendaDaLoja).length;
+    return vendasBox.values.where(_vendaParaKpis).length;
   }
 
   // ---------------- LISTA FILTRADA (por loja) ----------------
@@ -608,7 +613,7 @@ class _VendasScreenState extends State<VendasScreen>
   }
 
   String _montarResumoVendasParaIa() {
-    final lista = vendasBox.values.where(_vendaDaLoja).toList();
+    final lista = vendasBox.values.where(_vendaParaKpis).toList();
     if (lista.isEmpty) return 'Nenhuma venda registrada nesta loja.';
     final total = lista.fold<double>(0, (s, v) => s + v.total);
     final ticketMedio = total / lista.length;

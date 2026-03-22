@@ -1,4 +1,8 @@
 // lib/services/sorteio_numero_service.dart
+//
+// Usado pelo fluxo APK (`PosPagamentoService`). Pedidos do catálogo pagos via
+// Mercado Pago: participação em campanha é registrada no servidor em
+// `functions/src/mpWebhookPromo.js` após pagamento aprovado (idempotente).
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';

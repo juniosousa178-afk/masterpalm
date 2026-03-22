@@ -1,7 +1,8 @@
 // lib/services/campaign_engine_service.dart
 //
 // Serviço CENTRALIZADO para gerenciar participações em campanhas de sorteio.
-// Chamado automaticamente quando uma venda é concluída (catálogo ou manual).
+// Chamado quando uma venda é concluída no app (ex.: `registrarVendaCatalogo` / PIX manual).
+// Catálogo Mercado Pago: o servidor usa `mpWebhookPromo.js` no webhook MP; não duplicar fluxos.
 //
 // Responsabilidades:
 // - Verificar se existe campanha ativa

@@ -13,7 +13,6 @@ import 'package:hive/hive.dart';
 import '../core/logger.dart';
 import '../models/venda.dart';
 import 'firestore_paths.dart';
-import '../models/venda_item.dart';
 import 'vendas_firestore_service.dart';
 
 /// Resultado da importação
@@ -109,6 +108,14 @@ class ImportarVendasFirestoreService {
           final vendaId = doc.id;
           try {
             final data = doc.data();
+            if (VendasFirestoreService.localVendaJaExisteParaDocFirestore(
+                vendasBox, data)) {
+              jaExistentes++;
+              logD(
+                '[IMPORT-VENDAS] ⏭️ origem MP já no Hive (doc=$vendaId)',
+              );
+              continue;
+            }
             final dataFirestore = (data['data'] as Timestamp?)?.toDate() ??
                 (data['createdAt'] as Timestamp?)?.toDate() ??
                 DateTime.now();
@@ -162,44 +169,8 @@ class ImportarVendasFirestoreService {
             }
 
             // 3) Converter e salvar (venda nova)
-            final itensRaw = data['itens'] as List? ?? [];
-            final itens = itensRaw.map((e) {
-              final m = Map<String, dynamic>.from(e as Map);
-              final pid = m['productId'] as String?;
-              return VendaItem(
-                produtoNome: m['produtoNome'] as String? ?? '',
-                quantidade: (m['quantidade'] as num?)?.toInt() ?? 0,
-                precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ?? 0.0,
-                tamanho: m['tamanho'] as String? ?? '',
-                cor: m['cor'] as String? ?? '',
-                productId: pid != null && pid.trim().isNotEmpty ? pid : null,
-              );
-            }).toList();
-
-            final venda = Venda(
-              clienteNome: data['clienteNome'] ?? '',
-              produtosDescricao: data['produtosDescricao'] ?? '',
-              quantidade: (data['quantidade'] as num?)?.toInt() ?? itens.length,
-              preco: (data['preco'] as num?)?.toDouble() ?? 0.0,
-              total: (data['total'] as num?)?.toDouble() ?? 0.0,
-              formasPagamento: data['formasPagamento'] ?? '',
-              data: dataFirestore,
-              tamanho: data['tamanho'] ?? '',
-              vendedor: data['vendedor'] ?? '',
-              frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
-              desconto: (data['desconto'] as num?)?.toDouble() ?? 0.0,
-              observacao: data['observacao'] ?? '',
-              itens: itens.isNotEmpty ? itens : null,
-              pagamentoDinheiro: (data['pagamentoDinheiro'] as num?)?.toDouble() ?? 0.0,
-              pagamentoPix: (data['pagamentoPix'] as num?)?.toDouble() ?? 0.0,
-              pagamentoCartao: (data['pagamentoCartao'] as num?)?.toDouble() ?? 0.0,
-              taxas: (data['taxas'] as num?)?.toDouble() ?? 0.0,
-              custoProdutos: (data['custoProdutos'] as num?)?.toDouble() ?? 0.0,
-              descontoValor: (data['descontoValor'] as num?)?.toDouble() ?? 0.0,
-              lojaId: lojaId,
-              idFirebase: vendaId,
-              clienteId: data['clienteId'] as String?,
-            );
+            final venda =
+                VendasFirestoreService.vendaFromFirestoreMap(data, vendaId, lojaId);
 
             await vendasBox.add(venda);
             importadas++;

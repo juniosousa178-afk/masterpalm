@@ -1,6 +1,7 @@
 // lib/screens/produto_form_screen.dart
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:io' as io if (dart.library.html) 'package:master_palm/utils/io_stub.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
@@ -84,6 +85,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   bool _salvando = false;
   bool _removendoImagem = false;
   bool _sugerindoDescricao = false;
+
+  /// Evita várias gravações em paralelo ao reordenar imagens (corrida na nuvem).
+  Timer? _debouncePersistImagens;
 
   /// Produto existente encontrado por chave única (nome+categoria) - para modo "Atualizar"
   Produto? _produtoExistenteAlvo;
@@ -402,7 +406,18 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     _percentualDescontoPix.dispose();
     _maxParcelasSemJuros.dispose();
     _uploader.dispose();
+    _debouncePersistImagens?.cancel();
     super.dispose();
+  }
+
+  /// Persistência após gestos rápidos (ex.: arrastar fotos) — um save após debounce.
+  void _agendarPersistenciaAposReordenarImagens() {
+    if (widget.produto == null || lojaId == null) return;
+    _debouncePersistImagens?.cancel();
+    _debouncePersistImagens = Timer(const Duration(milliseconds: 500), () async {
+      if (!mounted || widget.produto == null) return;
+      await _persistirProdutoAtual(widget.produto!, mostrarSnackSucesso: false);
+    });
   }
 
   // ------------------------------
@@ -440,27 +455,44 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       setState(() => _salvando = true);
       try {
         final urls = <String>[];
-        for (var i = 0; i < x.length && urls.length < slots; i++) {
-          final rawBytes = await x[i].readAsBytes().timeout(
-            const Duration(seconds: 15),
-            onTimeout: () => throw TimeoutException('Leitura da imagem demorou muito'),
-          );
-          // Redimensionar para 600x800 + JPEG 85% = upload ~15x mais rápido
-          final bytes = CatalogThumbnailService.generateJpegFromBytes(rawBytes) ??
-              CatalogThumbnailService.generateFromBytes(rawBytes) ??
-              rawBytes;
-          final url = await ImageUploadService.uploadImageFromBytes(
-            bytes: bytes,
-            folder: 'produtos',
-            lojaId: lojaId!,
-            extension: 'jpg',
-            contentType: 'image/jpeg',
-          ).timeout(
-            const Duration(seconds: 60),
-            onTimeout: () => throw TimeoutException('Upload da imagem ${i + 1} demorou muito'),
-          );
-          if (url != null) urls.add(url);
+        var falhas = 0;
+        final maxTentativas = math.min(x.length, slots);
+        for (var i = 0; i < maxTentativas; i++) {
+          try {
+            final rawBytes = await x[i].readAsBytes().timeout(
+              const Duration(seconds: 15),
+              onTimeout: () => throw TimeoutException('Leitura da imagem demorou muito'),
+            );
+            // Redimensionar para 600x800 + JPEG 85% = upload ~15x mais rápido
+            final bytes = CatalogThumbnailService.generateJpegFromBytes(rawBytes) ??
+                CatalogThumbnailService.generateFromBytes(rawBytes) ??
+                rawBytes;
+            final url = await ImageUploadService.uploadImageFromBytes(
+              bytes: bytes,
+              folder: 'produtos',
+              lojaId: lojaId!,
+              extension: 'jpg',
+              contentType: 'image/jpeg',
+            ).timeout(
+              const Duration(seconds: 60),
+              onTimeout: () => throw TimeoutException('Upload da imagem ${i + 1} demorou muito'),
+            );
+            if (url != null) {
+              urls.add(url);
+            } else {
+              falhas++;
+              debugPrint('[ProdutoForm] Upload retornou null (imagem ${i + 1})');
+            }
+          } on TimeoutException catch (e) {
+            falhas++;
+            debugPrint('[ProdutoForm] Timeout imagem ${i + 1}: $e');
+          } catch (e) {
+            falhas++;
+            debugPrint('[ProdutoForm] Erro imagem ${i + 1} (type=${e.runtimeType}): $e');
+          }
         }
+        final ok = urls.length;
+        final total = ok + falhas;
         if (urls.isNotEmpty && mounted) {
           setState(() => _imagens.addAll(urls));
           if (widget.produto != null) {
@@ -469,9 +501,29 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               onTimeout: () => throw TimeoutException('Sincronização após adicionar imagens demorou muito'),
             );
           }
-          if (!mounted) return;
+        }
+        if (!mounted) return;
+        if (ok == 0 && falhas > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('${urls.length} imagem(ns) adicionada(s)')),
+            SnackBar(
+              content: Text(
+                'Nenhuma imagem foi enviada ($falhas falha(s)). Verifique rede, formato ou tamanho.',
+              ),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+        } else if (ok > 0 && falhas > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Enviadas $ok de $total imagem(ns). $falhas falha(s) — verifique as que faltaram.',
+              ),
+              backgroundColor: Colors.orange.shade800,
+            ),
+          );
+        } else if (ok > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$ok imagem(ns) adicionada(s)')),
           );
         }
       } on TimeoutException catch (e) {
@@ -495,7 +547,26 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     final paths = x.map((e) => e.path).toList();
     final aAdicionar = paths.take(slots).toList();
     setState(() => _imagens.addAll(aAdicionar));
-    if (widget.produto != null) await _persistirProdutoAtual(widget.produto!);
+    if (widget.produto != null) {
+      try {
+        await _persistirProdutoAtual(widget.produto!);
+      } on TimeoutException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Imagens adicionadas localmente; nuvem: ${e.message ?? 'timeout'}'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao sincronizar imagens: $e'), backgroundColor: Colors.red.shade700),
+          );
+        }
+      }
+    }
   }
 
   // ------------------------------
@@ -523,6 +594,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ],
       ),
     );
+    ctrl.dispose();
 
     if ((url ?? '').isNotEmpty && lojaId != null) {
       final guard = LimitsGuard();
@@ -542,13 +614,33 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         return;
       }
       setState(() => _imagens.add(url!));
-      if (widget.produto != null) await _persistirProdutoAtual(widget.produto!);
+      if (widget.produto != null) {
+        try {
+          await _persistirProdutoAtual(widget.produto!);
+        } on TimeoutException catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('URL salva localmente; nuvem: ${e.message ?? 'timeout'}'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Erro ao sincronizar imagem por URL: $e'), backgroundColor: Colors.red.shade700),
+            );
+          }
+        }
+      }
     }
   }
 
   /// Aplica estado atual do formulário ao produto e sincroniza Hive + Firestore.
   /// Chamado ao salvar ou quando editar foto/variação (auto-persist).
-  Future<void> _persistirProdutoAtual(Produto p) async {
+  /// [mostrarSnackSucesso]: false em auto-save frequente (reordenação) para não spammar.
+  Future<void> _persistirProdutoAtual(Produto p, {bool mostrarSnackSucesso = true}) async {
     if (lojaId == null) return;
     try {
       final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
@@ -600,8 +692,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..custoReal = custo
         ..precoFinal = preco
         ..precoUnitario = preco
-        ..categoria = capitalizeWords(_categoria.text.trim())
-        ..subcategoria = capitalizeWords(_subcategoria.text.trim())
+        ..categoria = canonicalizeCategoria(_categoria.text.trim())
+        ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
         ..descricao = _descricao.text.trim()
         ..imagens = List.from(_imagens)
         ..videoUrl = ''
@@ -624,7 +716,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..cores = coresList
         ..marketplaces = _marketplacesSelecionados.toList()
         ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
-        ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0;
+        ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
+        ..custoEditadoNoCadastro = true;
       _initPrecoPorTamanhoControllers();
       final precoPorTamanhoMap = <String, double>{};
       for (final e in _precoPorTamanhoCtrl.entries) {
@@ -642,7 +735,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live)
           .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Catálogo demorou muito'));
       await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
-      if (mounted) {
+      if (mounted && mostrarSnackSucesso) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Alterações salvas localmente e na nuvem.')),
         );
@@ -650,13 +743,25 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     } on TimeoutException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? 'Operação demorou. Tente novamente.'), backgroundColor: Colors.orange),
+          SnackBar(
+            content: Text(
+              'Salvo no aparelho; a nuvem demorou demais (${e.message ?? 'timeout'}). Verifique a conexão e salve de novo.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao salvar alterações: $e')),
+          SnackBar(
+            content: Text(
+              mostrarSnackSucesso
+                  ? 'Erro ao salvar alterações: $e'
+                  : 'Falha ao sincronizar (ordem das imagens): $e',
+            ),
+            backgroundColor: Colors.red.shade700,
+          ),
         );
       }
     }
@@ -1002,7 +1107,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               produtosBox,
               lojaId!,
               nome: capitalizeWords(_nome.text.trim()),
-              categoria: capitalizeWords(_categoria.text.trim()),
+              categoria: canonicalizeCategoria(_categoria.text.trim()),
             );
 
         if (existente != null) {
@@ -1013,8 +1118,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..custoReal = custo
             ..precoFinal = preco
             ..precoUnitario = preco
-            ..categoria = capitalizeWords(_categoria.text.trim())
-            ..subcategoria = capitalizeWords(_subcategoria.text.trim())
+            ..categoria = canonicalizeCategoria(_categoria.text.trim())
+            ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
             ..descricao = _descricao.text.trim()
             ..imagens = List.from(_imagens)
             ..publicadoNoCatalogo = _publicar
@@ -1036,7 +1141,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
             ..videoUrl = ''
             ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
-            ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
+            ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
+            ..custoEditadoNoCadastro = true;
 
           if (variacoesMap.isNotEmpty) {
             existente.recalcularQuantidadeTotal();
@@ -1076,8 +1182,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             custoReal: custo,
             precoFinal: preco,
             precoUnitario: preco,
-            categoria: capitalizeWords(_categoria.text.trim()),
-            subcategoria: capitalizeWords(_subcategoria.text.trim()),
+            categoria: canonicalizeCategoria(_categoria.text.trim()),
+            subcategoria: canonicalizeCategoria(_subcategoria.text.trim()),
             descricao: _descricao.text.trim(),
             dataEntrada: DateTime.now(),
             imagens: List.from(_imagens),
@@ -1108,6 +1214,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?? 0,
             precoPorTamanho: precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null,
             updatedAt: DateTime.now(),
+            custoEditadoNoCadastro: true,
           );
 
           await produtosBox.add(novo);
@@ -1128,8 +1235,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..custoReal = custo
           ..precoFinal = preco
           ..precoUnitario = preco
-          ..categoria = capitalizeWords(_categoria.text.trim())
-          ..subcategoria = capitalizeWords(_subcategoria.text.trim())
+          ..categoria = canonicalizeCategoria(_categoria.text.trim())
+          ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
           ..descricao = _descricao.text.trim()
           ..imagens = List.from(_imagens)
           ..videoUrl = ''
@@ -1155,7 +1262,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..marketplaces = _marketplacesSelecionados.toList()
           ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
           ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
-          ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
+          ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
+          ..custoEditadoNoCadastro = true;
 
         // 🔹 Recalcular quantidade total com base nas variações
         if (variacoesMap.isNotEmpty) {
@@ -1194,7 +1302,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erro ao salvar: $e')),
+        SnackBar(
+          content: Text(
+            'Falha na sincronização com a nuvem. Se o produto já existia, as alterações podem estar só neste aparelho. '
+            'Detalhes: $e',
+          ),
+          backgroundColor: Colors.red.shade700,
+        ),
       );
     } finally {
       if (mounted) setState(() => _salvando = false);
@@ -1269,7 +1383,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Categoria e Subcategoria (autocomplete com sugestões existentes)
+                      // Categoria e Subcategoria (unificadas: Anel/anel → Anel; ignora acentos)
                       Row(
                         children: [
                           Expanded(
@@ -1277,12 +1391,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                               controller: _categoria,
                               label: 'Categoria',
                               icon: Icons.category_outlined,
-                              opcoes: produtosBox.values
-                                  .map((p) => p.categoria.trim())
-                                  .where((s) => s.isNotEmpty)
-                                  .toSet()
-                                  .toList()
-                                ..sort(),
+                              opcoes: _opcoesUnicasCategoria(produtosBox.values),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -1291,12 +1400,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                               controller: _subcategoria,
                               label: 'Subcategoria',
                               icon: Icons.label_outline,
-                              opcoes: produtosBox.values
-                                  .map((p) => p.subcategoria.trim())
-                                  .where((s) => s.isNotEmpty)
-                                  .toSet()
-                                  .toList()
-                                ..sort(),
+                              opcoes: _opcoesUnicasSubcategoria(produtosBox.values),
                             ),
                           ),
                         ],
@@ -1763,9 +1867,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                               final src = _imagens.removeAt(oldIndex);
                               _imagens.insert(newIndex, src);
                             });
-                            if (widget.produto != null) {
-                              _persistirProdutoAtual(widget.produto!);
-                            }
+                            _agendarPersistenciaAposReordenarImagens();
                           },
                           itemBuilder: (context, i) {
                             final src = _imagens[i];
@@ -2389,7 +2491,34 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     );
   }
 
+  List<String> _opcoesUnicasCategoria(Iterable<Produto> produtos) {
+    final normToCanon = <String, String>{};
+    for (final p in produtos) {
+      final c = p.categoria.trim();
+      if (c.isEmpty) continue;
+      final n = normalizeText(c);
+      normToCanon[n] = canonicalizeCategoria(c);
+    }
+    final list = normToCanon.values.toList();
+    list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  List<String> _opcoesUnicasSubcategoria(Iterable<Produto> produtos) {
+    final normToCanon = <String, String>{};
+    for (final p in produtos) {
+      final s = p.subcategoria.trim();
+      if (s.isEmpty) continue;
+      final n = normalizeText(s);
+      normToCanon[n] = canonicalizeCategoria(s);
+    }
+    final list = normToCanon.values.toList();
+    list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
   /// Autocomplete para categoria/subcategoria com sugestões existentes
+  /// Match ignora maiúsculas, acentos etc.
   Widget _buildCategoriaAutocomplete({
     required TextEditingController controller,
     required String label,
@@ -2402,8 +2531,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         if (textEditingValue.text.isEmpty) {
           return opcoes;
         }
-        final lower = textEditingValue.text.toLowerCase();
-        return opcoes.where((s) => s.toLowerCase().contains(lower)).toList();
+        final norm = normalizeText(textEditingValue.text);
+        return opcoes.where((s) => normalizeText(s).contains(norm)).toList();
       },
       onSelected: (value) {
         controller.text = value;

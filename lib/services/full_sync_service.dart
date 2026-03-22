@@ -318,6 +318,8 @@ class FullSyncService {
       lojaId: data['lojaId']?.toString() ?? '',
       idFirebase: docId,
       dataEntrada: DateTime.now(),
+      custoEditadoNoCadastro:
+          (data['custoEditadoNoCadastro'] as bool?) ?? false,
     );
   }
 

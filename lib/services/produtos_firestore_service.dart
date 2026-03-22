@@ -32,7 +32,10 @@ import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_w
 class ProdutosFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// Sincroniza um produto para o Firestore (Hive → Firestore)
+  /// Sincroniza um produto para o Firestore (Hive → Firestore).
+  ///
+  /// Chamado após salvar no cadastro (produto/combo/catálogo), import e fluxos que alteram
+  /// o registro manualmente — mantém a nuvem alinhada à edição local.
   static Future<void> syncProduto(Produto produto, {String? lojaId}) async {
     try {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
@@ -151,6 +154,7 @@ class ProdutosFirestoreService {
         'precoSugerido': produto.precoSugerido,
         'peso': produto.peso,
         'tipoEmbalagem': produto.tipoEmbalagem,
+        'custoEditadoNoCadastro': produto.custoEditadoNoCadastro,
 
         // Promoção
         'emPromocao': produto.emPromocao,
@@ -291,6 +295,31 @@ class ProdutosFirestoreService {
     }
   }
 
+  /// Aplica apenas campos de **estoque** do snapshot remoto (vendas catálogo, Nova Venda,
+  /// transações em outro aparelho). Não altera nome, preço, descrição, imagens, etc.
+  static void _aplicarSomenteEstoqueDoRemoto(Produto p, Map<String, dynamic> data) {
+    p.estoquePorTamanho = Map<String, int>.from(
+      data['estoquePorTamanho'] ?? p.estoquePorTamanho,
+    );
+    final varData = data['variacoes'];
+    if (varData != null && varData is Map) {
+      p.variacoes = _parseVariacoesFromFirestore(varData);
+    }
+    p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
+  }
+
+  /// Hive com [updatedAt] mais recente que o documento remoto (evita sobrescrever
+  /// qualquer campo editado localmente antes do upload terminar).
+  static bool _localUpdatedAtNewerThanRemote(Produto p, Map<String, dynamic> data) {
+    final local = p.updatedAt;
+    final raw = data['updatedAt'];
+    if (local == null) return false;
+    if (raw == null || raw is! Timestamp) return false;
+    final remote = raw.toDate();
+    // Margem para diferença relógio aparelho vs servidor
+    return local.isAfter(remote.subtract(const Duration(seconds: 15)));
+  }
+
   /// Sincroniza produtos do Firestore para o Hive (Firestore → Hive)
   /// Usa paginação para buscar TODOS os produtos (evita limit 1000 cortar a lista).
   static Future<int> syncFirestoreToHive({
@@ -352,17 +381,42 @@ class ProdutosFirestoreService {
           }
 
           if (produtoExistente != null) {
-            // Atualizar produto existente com todos os dados do Firestore,
-            // para que alterações feitas em outro aparelho (custo, peso, etc.) apareçam aqui.
+            // Atualizar produto existente com dados do Firestore.
             final p = produtoExistente;
+            final localMaisRecente = _localUpdatedAtNewerThanRemote(p, data);
+            // [custoEditadoNoCadastro]: edição vinda do cadastro (produto/combo/import)
+            // deve prevalecer no pull para dados de cadastro — mas o **estoque** na nuvem
+            // continua autoritativo (vendas no catálogo, Nova Venda, outro PDV).
+            // Precificação define a flag como false para permitir alinhar com a nuvem.
+            final skipRemoteMerge =
+                localMaisRecente || p.custoEditadoNoCadastro;
+
+            if (skipRemoteMerge) {
+              if (p.idFirebase.isEmpty) {
+                p.idFirebase = produtoId;
+              }
+              if (p.slug.isEmpty && slug.isNotEmpty) {
+                p.slug = slug.toString();
+              }
+              _aplicarSomenteEstoqueDoRemoto(p, data);
+              await p.save();
+              atualizados++;
+              logD(
+                '🔄 Produto $produtoId: cadastro local preservado; estoque aplicado da nuvem',
+              );
+              continue;
+            }
+
             p.nome = data['nome'] ?? p.nome;
-            p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
             p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
+            p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
             p.custoReal = (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
             p.frete = (data['frete'] as num?)?.toDouble() ?? p.frete;
             p.gastosFixos = (data['gastosFixos'] as num?)?.toDouble() ?? p.gastosFixos;
             p.gastosVariaveis = (data['gastosVariaveis'] as num?)?.toDouble() ?? p.gastosVariaveis;
             p.precoSugerido = (data['precoSugerido'] as num?)?.toDouble() ?? p.precoSugerido;
+            final ce = data['custoEditadoNoCadastro'];
+            p.custoEditadoNoCadastro = ce is bool ? ce : false;
             p.peso = (data['peso'] as num?)?.toDouble() ?? p.peso;
             p.tipoEmbalagem = (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
             p.categoria = data['categoria'] ?? p.categoria;
@@ -460,6 +514,8 @@ class ProdutosFirestoreService {
               peso: (data['peso'] as num?)?.toDouble() ?? 0.0,
               tipoEmbalagem: (data['tipoEmbalagem'] ?? 'padrao').toString(),
               updatedAt: updatedAtDt,
+              custoEditadoNoCadastro:
+                  (data['custoEditadoNoCadastro'] as bool?) ?? false,
             );
 
             await produtosBox.add(produto);

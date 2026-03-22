@@ -112,6 +112,22 @@ service cloud.firestore {
         && request.resource.data.total <= 999999.99;
     }
 
+    /// Atualização mínima pelo catálogo público: marcar pré-pedido anterior como substituído (governança).
+    function isValidPrePedidoGovernancaSubstituicao() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['governancaStatus', 'substituidoPor', 'substituidoEm', 'dataAtualizacao'])
+        && request.resource.data.lojaId == resource.data.lojaId
+        && request.resource.data.governancaStatus == 'substituido'
+        && request.resource.data.substituidoPor is string
+        && request.resource.data.substituidoPor.size() >= 10
+        && request.resource.data.substituidoPor.size() <= 128
+        // FieldValue.serverTimestamp() nas regras equivale a request.time no commit
+        && request.resource.data.substituidoEm == request.time
+        && request.resource.data.dataAtualizacao == request.time
+        && (!resource.data.keys().hasAny(['governancaStatus'])
+            || resource.data.governancaStatus != 'substituido');
+    }
+
     function isValidPedidoTempCreate() {
       return request.resource.data.size() <= 35
         && (!request.resource.data.keys().hasAny(['lojaId'])
@@ -591,7 +607,10 @@ service cloud.firestore {
         allow read: if belongsToStore(lojaId);
         allow create: if isValidPrePedidoCreate()
           && request.resource.data.lojaId == lojaId;
-        allow update, delete: if isAdminOrSystem();
+        allow update: if isAdminOrSystem()
+          || (resource.data.lojaId == lojaId
+              && isValidPrePedidoGovernancaSubstituicao());
+        allow delete: if isAdminOrSystem();
       }
 
       match /pedido_status_publico/{pedidoId} {

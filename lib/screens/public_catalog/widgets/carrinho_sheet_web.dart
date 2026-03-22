@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -15,6 +16,7 @@ import 'package:flutter/services.dart';
 import '../../../core/logger.dart';
 import '../../../core/safe_cast.dart';
 import '../../../utils/http_client_helper.dart';
+import '../../../utils/platform_adaptive.dart';
 import '../../../utils/keyboard_utils.dart';
 import '../../../models/cupom.dart';
 import '../../../models/cupom_cliente.dart';
@@ -27,6 +29,7 @@ import '../../../widgets/roleta_web_widget_v3.dart';
 import '../../auth/login_screen_cliente.dart';
 import 'catalog_image_placeholder.dart';
 import '../catalog_estoque_helper.dart';
+import '../checkout_total_helper.dart';
 
 // ==================== CARRINHO (BottomSheet) ====================
 
@@ -68,6 +71,9 @@ class CarrinhoSheetWeb extends StatefulWidget {
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
     String? premioRoletaDescricao,
+    String? cupomCodigo,
+    required double descontoCupom,
+    required double valorTotalCheckout,
     Future<void> Function(String? pedidoId)? onSuccess,
     void Function(String message)? showErrorInCart,
   }) onCheckoutWhatsapp;
@@ -80,6 +86,9 @@ class CarrinhoSheetWeb extends StatefulWidget {
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
     String? premioRoletaDescricao,
+    String? cupomCodigo,
+    required double descontoCupom,
+    required double valorTotalCheckout,
     void Function(String message)? showErrorInCart,
   }) onCheckoutMercadoPago;
 
@@ -215,86 +224,58 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   String _pagamento = 'PIX';
   int _freteIndex = 0;
 
-  double get _subtotal => widget.items.fold<double>(
-        0.0,
-        (s, e) {
-          final price = (e['preco'] as num?)?.toDouble() ??
-              0.0; // ✅ CORRIGIDO: 'preco' em vez de 'price'
-          final qty =
-              CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
-          return s + price * qty;
+  /// Mesma base de fretes do `build` (fallback quando vazio).
+  List<Map<String, dynamic>> _fretesExibirSnapshot() {
+    final list = _fretesLocal.isNotEmpty
+        ? List<Map<String, dynamic>>.from(_fretesLocal)
+        : widget.fretes.map((e) => asMapDeep(e)).toList();
+    if (list.isEmpty) {
+      list.addAll([
+        {
+          'nome': 'Retirada',
+          'valor': 0.0,
+          'tipo': 'retirada',
+          'plataforma': 'manual',
+          'freteGratis': true,
         },
-      );
+        {
+          'nome': 'Combinar com vendedor',
+          'valor': 0.0,
+          'tipo': 'combinar',
+          'plataforma': 'manual',
+          'freteGratis': true,
+        },
+      ]);
+    }
+    return list;
+  }
+
+  /// Totais alinhados ao checkout (PIX por item, cupom, frete) — ver [computeCatalogCheckoutTotals].
+  CatalogCheckoutTotals get _totals {
+    final fretes = _fretesExibirSnapshot();
+    final idx = _freteIndex.clamp(0, fretes.isEmpty ? 0 : fretes.length - 1);
+    return computeCatalogCheckoutTotals(
+      items: widget.items,
+      pagamento: _pagamento,
+      cupomAplicado: _cupomAplicado,
+      fretesParaCalculo: fretes,
+      freteIndex: idx,
+      freteGratisRoleta: _freteGratisRoleta,
+    );
+  }
+
+  double get _subtotal => _totals.subtotalBruto;
 
   /// Subtotal com desconto PIX aplicado (quando produto tem percentualDescontoPix)
-  double get _subtotalPix => widget.items.fold<double>(
-        0.0,
-        (s, e) {
-          final price = (e['preco'] as num?)?.toDouble() ?? 0.0;
-          final qty =
-              CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
-          final pctPix =
-              (e['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
-          final precoEfetivo = pctPix > 0 ? price * (1 - pctPix / 100) : price;
-          return s + precoEfetivo * qty;
-        },
-      );
+  double get _subtotalPix => _totals.subtotalPix;
 
   /// Subtotal conforme forma de pagamento (PIX aplica desconto quando disponível)
   double get _subtotalConformePagamento =>
-      _pagamento.toUpperCase() == 'PIX' ? _subtotalPix : _subtotal;
+      _totals.subtotalConformePagamento;
 
-  double get _descontoCupomProdutos {
-    if (_cupomAplicado == null) return 0.0;
+  double get _descontoCupomProdutos => _totals.descontoCupom;
 
-    final tipo = (_cupomAplicado!['tipo'] ?? '').toString();
-    final valor = (_cupomAplicado!['valor'] as num?)?.toDouble() ?? 0.0;
-    final aplicarEm = (_cupomAplicado!['aplicarEm'] ?? 'produtos').toString();
-
-    // base: produtos ou total (produtos + frete) - usa subtotal conforme pagamento (PIX com desconto)
-    double base;
-    if (aplicarEm == 'total') {
-      if (_fretesLocal.isEmpty) {
-        base = _subtotalConformePagamento;
-      } else {
-        final frete =
-            _fretesLocal[_freteIndex.clamp(0, _fretesLocal.length - 1)];
-        final double freteVal = (frete['valor'] as num?)?.toDouble() ?? 0.0;
-        base = _subtotalConformePagamento + (_freteGratis ? 0.0 : freteVal);
-      }
-    } else {
-      base = _subtotalConformePagamento;
-    }
-
-    if (tipo == 'percent') {
-      final d = base * (valor / 100);
-      return d.clamp(0.0, base);
-    }
-    if (tipo == 'valor') {
-      return valor.clamp(0.0, base);
-    }
-    // frete_gratis não dá desconto em valor, só na flag _freteGratis
-    return 0.0;
-  }
-
-  bool get _freteGratis {
-    // 1) frete grátis ganho na roleta
-    if (_freteGratisRoleta) {
-      return true;
-    }
-    // 2) cupom frete grátis (tipo ou flag)
-    if (_cupomAplicado != null &&
-        (_cupomAplicado!['tipo'] == 'frete_gratis' ||
-            _cupomAplicado!['freteGratis'] == true)) {
-      return true;
-    }
-    // 3) frete marcado como grátis na configuração
-    if (_fretesLocal.isNotEmpty &&
-        _fretesLocal[_freteIndex]['freteGratis'] == true) {
-      return true;
-    }
-    return false;
-  }
+  bool get _freteGratis => _totals.freteGratis;
 
   @override
   void initState() {
@@ -705,6 +686,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     super.dispose();
   }
 
+  /// Código do cupom da loja/cliente para persistir no pré-pedido (null se vazio).
+  String? _cupomCodigoParaPedido() {
+    if (_cupomAplicado == null) return null;
+    final c =
+        (_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '').toString().trim();
+    return c.isEmpty ? null : c;
+  }
+
   Map<String, dynamic> _customerPayload() {
     final tipoFrete = (_fretesLocal.isNotEmpty && _freteIndex >= 0 && _freteIndex < _fretesLocal.length)
         ? (_fretesLocal[_freteIndex]['tipo'] ?? '').toString().toLowerCase()
@@ -1093,10 +1082,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         '💰 [TOTAL] Valor frete final: R\$ $valorFreteFinal (frete grátis: $_freteGratis)');
     logD('💰 [TOTAL] Subtotal: R\$ $_subtotal (PIX: R\$ $_subtotalPix)');
 
-    final double descontoProdutos = _descontoCupomProdutos;
-    final double total =
-        ((_subtotalConformePagamento + valorFreteFinal) - descontoProdutos)
-            .clamp(0.0, double.infinity);
+    final tSnap = _totals;
+    final double descontoProdutos = tSnap.descontoCupom;
+    final double total = tSnap.total;
 
     logD(
         '💰 [TOTAL] Total calculado: R\$ $_subtotalConformePagamento + R\$ $valorFreteFinal - R\$ $descontoProdutos = R\$ $total');
@@ -1375,15 +1363,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final selectedBorder = theme.colorScheme.primary;
 
     if (!context.mounted) return;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: bgModal,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
+    final wideChrome = usePointerFirstChrome(context);
+
+    Widget opcoesFreteContent(BuildContext sheetContext) {
+      return StatefulBuilder(
           builder: (context, setModalState) {
             return Container(
               constraints: BoxConstraints(
@@ -1462,8 +1445,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 setState(() {});
 
                                 // Fechar modal
-                                if (!ctx.mounted) return;
-                                Navigator.of(ctx).pop();
+                                if (!sheetContext.mounted) return;
+                                Navigator.of(sheetContext).pop();
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Container(
@@ -1648,8 +1631,45 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             );
           },
         );
-      },
-    );
+    }
+
+    if (wideChrome) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (sheetContext) {
+          final mq = MediaQuery.of(sheetContext);
+          final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: maxW,
+                maxHeight: mq.size.height * 0.75,
+              ),
+              child: Material(
+                color: bgModal,
+                borderRadius: BorderRadius.circular(20),
+                clipBehavior: Clip.antiAlias,
+                child: opcoesFreteContent(sheetContext),
+              ),
+            ),
+          );
+        },
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: bgModal,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (sheetContext) => opcoesFreteContent(sheetContext),
+      );
+    }
   }
 
   // -------------------------------------------------------------
@@ -3224,36 +3244,43 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                         if (cliente == null) {
                           showDialog(
                             context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Login Necessário'),
-                              content: const Text(
-                                'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
-                                'Assim você poderá:\n'
-                                '• Receber cupons de desconto\n'
-                                '• Concorrer a prêmios com números da sorte\n'
-                                '• Acompanhar seus pedidos',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Cancelar'),
+                            builder: (context) {
+                              final maxW = math.min(
+                                kMaxContentWidth,
+                                MediaQuery.sizeOf(context).width - 40,
+                              );
+                              return AlertDialog(
+                                constraints: BoxConstraints(maxWidth: maxW),
+                                title: const Text('Login Necessário'),
+                                content: const Text(
+                                  'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
+                                  'Assim você poderá:\n'
+                                  '• Receber cupons de desconto\n'
+                                  '• Concorrer a prêmios com números da sorte\n'
+                                  '• Acompanhar seus pedidos',
                                 ),
-                                ElevatedButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    if (!context.mounted) return;
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => LoginScreenCliente(
-                                            lojaId: widget.lojaId),
-                                      ),
-                                    );
-                                  },
-                                  child: const Text('Fazer Login'),
-                                ),
-                              ],
-                            ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      if (!context.mounted) return;
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => LoginScreenCliente(
+                                              lojaId: widget.lojaId),
+                                        ),
+                                      );
+                                    },
+                                    child: const Text('Fazer Login'),
+                                  ),
+                                ],
+                              );
+                            },
                           );
                           return;
                         }
@@ -3307,6 +3334,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               cupomRoletaCodigo: _cupomRoletaCodigo,
                               cupomRoletaDesconto: _cupomRoletaDesconto,
                               premioRoletaDescricao: _premioRoletaDescricao,
+                              cupomCodigo: _cupomCodigoParaPedido(),
+                              descontoCupom: _totals.descontoCupom,
+                              valorTotalCheckout: _totals.total,
                               onSuccess: (String? pedidoId) async {
                                 if (mounted) Navigator.pop(context);
                                 if (cupomId != null &&
@@ -3404,31 +3434,38 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             if (cliente == null) {
                               showDialog(
                                 context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text('Login Necessário'),
-                                  content: const Text(
-                                    'Para finalizar sua compra, você precisa fazer login ou criar uma conta.',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(ctx),
-                                      child: const Text('Cancelar'),
+                                builder: (ctx) {
+                                  final maxW = math.min(
+                                    kMaxContentWidth,
+                                    MediaQuery.sizeOf(ctx).width - 40,
+                                  );
+                                  return AlertDialog(
+                                    constraints: BoxConstraints(maxWidth: maxW),
+                                    title: const Text('Login Necessário'),
+                                    content: const Text(
+                                      'Para finalizar sua compra, você precisa fazer login ou criar uma conta.',
                                     ),
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        Navigator.pop(ctx);
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => LoginScreenCliente(
-                                                lojaId: widget.lojaId),
-                                          ),
-                                        );
-                                      },
-                                      child: const Text('Fazer Login'),
-                                    ),
-                                  ],
-                                ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        child: const Text('Cancelar'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.pop(ctx);
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => LoginScreenCliente(
+                                                  lojaId: widget.lojaId),
+                                            ),
+                                          );
+                                        },
+                                        child: const Text('Fazer Login'),
+                                      ),
+                                    ],
+                                  );
+                                },
                               );
                               return;
                             }
@@ -3583,35 +3620,42 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             if (cliente == null) {
                               showDialog(
                                 context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('Login Necessário'),
-                                  content: const Text(
-                                    'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
-                                    'Assim você poderá:\n'
-                                    '? Receber cupons de desconto\n'
-                                    '? Concorrer a prêmios com números da sorte\n'
-                                    '? Acompanhar seus pedidos',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('Cancelar'),
+                                builder: (context) {
+                                  final maxW = math.min(
+                                    kMaxContentWidth,
+                                    MediaQuery.sizeOf(context).width - 40,
+                                  );
+                                  return AlertDialog(
+                                    constraints: BoxConstraints(maxWidth: maxW),
+                                    title: const Text('Login Necessário'),
+                                    content: const Text(
+                                      'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
+                                      'Assim você poderá:\n'
+                                      '• Receber cupons de desconto\n'
+                                      '• Concorrer a prêmios com números da sorte\n'
+                                      '• Acompanhar seus pedidos',
                                     ),
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => LoginScreenCliente(
-                                                lojaId: widget.lojaId),
-                                          ),
-                                        );
-                                      },
-                                      child: const Text('Fazer Login'),
-                                    ),
-                                  ],
-                                ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Cancelar'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.pop(context);
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => LoginScreenCliente(
+                                                  lojaId: widget.lojaId),
+                                            ),
+                                          );
+                                        },
+                                        child: const Text('Fazer Login'),
+                                      ),
+                                    ],
+                                  );
+                                },
                               );
                               return;
                             }
@@ -3653,6 +3697,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               cupomRoletaCodigo: _cupomRoletaCodigo,
                               cupomRoletaDesconto: _cupomRoletaDesconto,
                               premioRoletaDescricao: _premioRoletaDescricao,
+                              cupomCodigo: _cupomCodigoParaPedido(),
+                              descontoCupom: _totals.descontoCupom,
+                              valorTotalCheckout: _totals.total,
                               showErrorInCart: (msg) {
                                 if (mounted) {
                                   setState(() => _checkoutError = msg);

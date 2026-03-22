@@ -118,7 +118,8 @@ class PosPagamentoService {
         valorTotal: valorTotal,
       );
 
-      // 3.1. Registrar número na campanha ativa (schema canônico)
+      // 3.1. Campanha (APK / vendas locais). Pedidos MP web: `mpWebhookPromo` + idempotência.
+      // `estoque_baixa_pagamento` já evita reprocessar o mesmo vendaId.
       await SorteioNumeroService.registrarNumeroEmCampanhas(
         lojaId: lojaId,
         clienteNome: customer['nome']?.toString() ?? 'Cliente',
@@ -223,7 +224,8 @@ class PosPagamentoService {
   static Future<void> _baixarEstoque(String lojaId, List<Map<String, dynamic>> items) async {
     final txItems = <Map<String, dynamic>>[];
     for (final item in items) {
-      final productId = item['productId']?.toString();
+      // Alinhado com EstoqueTransactionService: productId | produtosId | id
+      final productId = (item['productId'] ?? item['produtosId'] ?? item['id'])?.toString().trim();
       final qty = (item['qty'] as int?) ?? (item['quantidade'] as int?) ?? 1;
 
       if (productId == null || productId.isEmpty) {

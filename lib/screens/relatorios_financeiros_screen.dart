@@ -20,6 +20,7 @@ import '../utils/responsive.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
+import '../core/venda_metrics_filter.dart';
 
 class RelatoriosFinanceirosScreen extends StatefulWidget {
   const RelatoriosFinanceirosScreen({super.key});
@@ -166,6 +167,7 @@ class _RelatoriosFinanceirosScreenState
 
   void _aplicarFiltros() {
     _vendasFiltradas = _todasVendas.where((v) {
+      if (!incluirVendaEmMetricas(v)) return false;
       if (_filtroVendedor != 'GERAL') {
         final vendedor = v.vendedor.trim().toLowerCase();
         if (vendedor != _filtroVendedor.toLowerCase()) return false;

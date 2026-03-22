@@ -1,8 +1,11 @@
 // lib/screens/public_catalog/widgets/catalog_product_details_sheet.dart
 // Modal de detalhes do produto – extraído do public_catalog_screen.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../utils/platform_adaptive.dart';
 import '../../../services/catalog_share_service.dart';
 import '../../../services/ai_loja_service.dart';
 import '../../../services/ia_uso_limite_service.dart';
@@ -696,7 +699,12 @@ class _DuvidasPergunteDialogState extends State<_DuvidasPergunteDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final maxW = math.min(
+      kMaxContentWidth,
+      MediaQuery.sizeOf(context).width - 40,
+    );
     return AlertDialog(
+      constraints: BoxConstraints(maxWidth: maxW),
       title: const Text('Dúvidas? Pergunte'),
       content: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),

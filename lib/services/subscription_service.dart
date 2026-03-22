@@ -133,19 +133,19 @@ class SubscriptionService {
     'maxProducts': 80,
     'maxClients': 150,
     'vendasMes': 50,
-    'maxImagesPerProduct': 3,
-    'maxBanners': 6,
+    'maxImagesPerProduct': 10,
+    'maxBanners': 10,
     'maxMembers': 3,
     'maxOrdersPerDay': 50,
   };
 
-  /// Limites do plano pago (pro_monthly, pro_yearly, lifetime): 6 fotos/produto, 6 banners
+  /// Limites do plano pago (pro_monthly, pro_yearly, lifetime): 10 fotos/produto, 10 banners
   static const Map<String, int> paidLimits = {
     'maxProducts': 999999,
     'maxClients': 999999,
     'vendasMes': 999999,
-    'maxImagesPerProduct': 6,
-    'maxBanners': 6,
+    'maxImagesPerProduct': 10,
+    'maxBanners': 10,
     'maxMembers': 10,
     'maxOrdersPerDay': 999,
   };

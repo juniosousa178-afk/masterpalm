@@ -1,10 +1,13 @@
 // lib/widgets/compartilhar_catalogo_widget.dart
 // Widget para vendedores compartilharem catálogo com tracking
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/tracking_service.dart';
+import '../utils/platform_adaptive.dart';
 
 /// Widget de botão para compartilhar catálogo com tracking
 class CompartilharCatalogoButton extends StatefulWidget {
@@ -353,7 +356,12 @@ class _CompartilharCatalogoDialogState extends State<CompartilharCatalogoDialog>
 
   @override
   Widget build(BuildContext context) {
+    final maxW = math.min(
+      kMaxContentWidth,
+      MediaQuery.sizeOf(context).width - 40,
+    );
     return AlertDialog(
+      constraints: BoxConstraints(maxWidth: maxW),
       title: const Row(
         children: [
           Icon(Icons.send, color: Colors.green),

@@ -5,6 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
+import '../../core/catalog_color_from_name.dart';
 import '../../models/produto.dart';
 
 class ComboVariacaoSelectionSheet extends StatefulWidget {
@@ -125,17 +126,6 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
       });
     }
     return resultado;
-  }
-
-  Color _getColorFromName(String nome) {
-    const coresMap = {
-      'preto': Colors.black, 'branco': Colors.white, 'vermelho': Colors.red,
-      'azul': Colors.blue, 'verde': Colors.green, 'amarelo': Colors.yellow,
-      'rosa': Colors.pink, 'roxo': Colors.purple, 'laranja': Colors.orange,
-      'cinza': Colors.grey, 'marrom': Colors.brown, 'bege': Color(0xFFF5F5DC),
-      'dourado': Color(0xFFFFD700), 'prata': Color(0xFFC0C0C0),
-    };
-    return coresMap[nome.toLowerCase()] ?? Colors.grey;
   }
 
   @override
@@ -273,7 +263,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                                   final sel = _selecoes[i]['cor'] == e.key;
                                   return ChoiceChip(
                                     avatar: CircleAvatar(
-                                      backgroundColor: _getColorFromName(e.key),
+                                      backgroundColor: catalogColorFromName(e.key),
                                       radius: 10,
                                     ),
                                     label: Text(e.key),
