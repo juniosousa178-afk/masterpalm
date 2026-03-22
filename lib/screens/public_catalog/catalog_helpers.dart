@@ -186,3 +186,41 @@ bool isValidHttpUrl(String? url) {
   if (uri == null) return false;
   return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
 }
+
+// ===================================================================
+// BANNER HERO (CATÁLOGO MINIMALISTA)
+// ===================================================================
+
+/// Caixa de texto do banner: `none` | `lowercase` | `uppercase`.
+String applyHeroLetterCase(String text, String mode) {
+  final m = mode.trim().toLowerCase();
+  if (m == 'uppercase') return text.toUpperCase();
+  if (m == 'lowercase') return text.toLowerCase();
+  return text;
+}
+
+/// Peso da fonte (config loja: 400–900, "w600", "bold").
+FontWeight parseFontWeightCfg(dynamic v, FontWeight fallback) {
+  if (v == null) return fallback;
+  if (v is int) {
+    final n = v.clamp(100, 900);
+    if (n % 100 == 0) {
+      final i = (n ~/ 100) - 1;
+      if (i >= 0 && i < FontWeight.values.length) return FontWeight.values[i];
+    }
+  }
+  final s = v.toString().trim().toLowerCase();
+  if (s == 'bold' || s == 'w700' || s == '700') return FontWeight.w700;
+  if (s == 'w800' || s == '800') return FontWeight.w800;
+  if (s == 'w600' || s == '600' || s == 'semibold') return FontWeight.w600;
+  if (s == 'w500' || s == '500' || s == 'medium') return FontWeight.w500;
+  if (s == 'w400' || s == '400' || s == 'normal' || s == 'regular') {
+    return FontWeight.w400;
+  }
+  final parsed = int.tryParse(s);
+  if (parsed != null && parsed % 100 == 0 && parsed >= 100 && parsed <= 900) {
+    final i = (parsed ~/ 100) - 1;
+    if (i >= 0 && i < FontWeight.values.length) return FontWeight.values[i];
+  }
+  return fallback;
+}

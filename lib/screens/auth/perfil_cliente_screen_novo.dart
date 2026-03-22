@@ -5,7 +5,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../services/cliente_auth_service.dart';
 
-/// Tela de Perfil do Cliente (usando novo sistema de autenticação)
+/// Tela de Perfil do Cliente (catálogo público).
+///
+/// FONTE DOS DADOS (FASE 4):
+/// - Identidade/cadastro: clientes (via CF getClienteCatalog)
+/// - Meus Pedidos: clientes_portal (principal) + clientes.pedidos (legacy)
+/// - Cupons: clientes.cupons + clientes_catalogo (roleta, complemento)
+/// - Favoritos: clientes
+/// Ver docs/MAPA_CLIENTES_E_PATHS.md.
 class PerfilClienteScreenNovo extends StatefulWidget {
   final String lojaId;
   final String clienteId;
@@ -180,7 +187,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                 ),
                 const SizedBox(height: 32),
 
-                // Seção de Cupons (doc clientes + roleta clientes_catalogo)
+                // Seção Cupons: clientes (principal) + clientes_catalogo (roleta, complemento)
                 _buildSecao(
                   context,
                   'Meus Cupons',
@@ -313,7 +320,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                 ),
                 const SizedBox(height: 24),
 
-                // Seção de Meus Pedidos (de pre_pedidos - status real)
+                // Seção Meus Pedidos: clientes_portal (espelho de pre_pedidos)
                 _buildSecao(
                   context,
                   'Meus Pedidos',
@@ -615,7 +622,8 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
     );
   }
 
-  /// Mescla cupons do doc clientes com cupons da roleta (clientes_catalogo)
+  /// Mescla cupons: clientes (principal) + clientes_catalogo (roleta, complemento).
+  /// Arquitetura FASE 4: clientes_catalogo é USO ESPECÍFICO, não fonte de identidade.
   static List<Map<String, dynamic>> _mesclarCupons(
     List<Map<String, dynamic>> doc,
     List<Map<String, dynamic>> roleta,
@@ -657,7 +665,8 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
       ..sort((a, b) => (b['data'] ?? '').compareTo(a['data'] ?? ''));
   }
 
-  /// Busca pedidos de clientes_portal + doc cliente (MP) e mescla ordenados por data
+  /// Busca pedidos: clientes_portal (principal) + clientes.pedidos (legacy MP).
+  /// ESPELHO: clientes_portal é a fonte para Meus Pedidos; clientes.pedidos é fallback legado.
   static Future<({List<Map<String, dynamic>> pedidos, bool precisaReconectar})>
       _buscarPedidosCompletos(
     String lojaId,
@@ -670,10 +679,10 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
       email: email,
       clienteId: clienteId,
     );
-    final fromPortal = result.pedidos;
+    final fromPortal = result.pedidos; // clientes_portal (fonte principal)
     final idsPrePedidos = fromPortal.map((p) => p['id']?.toString()).toSet();
 
-    // Pedidos do doc (gerarCupomNumeroSorte) que não estão em pre_pedidos = MP
+    // Legacy: clientes.pedidos (MP/antigo) que não estão em clientes_portal
     final onlyFromDoc = pedidosClienteDoc
         .where((p) => !idsPrePedidos.contains(p['id']?.toString()))
         .map((p) => {

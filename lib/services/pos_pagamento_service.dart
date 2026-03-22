@@ -118,7 +118,7 @@ class PosPagamentoService {
         valorTotal: valorTotal,
       );
 
-      // 3.1. Registrar número na campanha ativa (mesmo fluxo da nova venda)
+      // 3.1. Registrar número na campanha ativa (schema canônico)
       await SorteioNumeroService.registrarNumeroEmCampanhas(
         lojaId: lojaId,
         clienteNome: customer['nome']?.toString() ?? 'Cliente',
@@ -126,6 +126,7 @@ class PosPagamentoService {
         valorCompra: valorTotal,
         dataCompra: DateTime.now(),
         numeroSorte: numeroSorte,
+        vendaIdOuPedidoId: vendaId,
       );
 
       // 4. Ativar prêmio da roleta (se houver)
@@ -698,14 +699,16 @@ Obrigado por comprar conosco! 💜
         'premioRoleta.dataAtivacao': FieldValue.serverTimestamp(),
       });
 
-      // ✅ Se for cupom ou frete grátis, salvar no estoque_clientes (por telefone) e no perfil do catálogo (por email)
+      // ✅ Se for cupom ou frete grátis, salvar em dois locais:
+      // 1) estoque_clientes (admin/histórico por telefone) — DOMÍNIO ADMIN, não perfil catálogo
+      // 2) clientes_catalogo (cupons roleta por email) — USO ESPECÍFICO
       if (tipo == 'desconto' || tipo == 'frete_gratis') {
         final clienteData = pedidoData['cliente'] as Map<String, dynamic>?;
         final telefone = (clienteData?['telefone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
         final email = (clienteData?['email'] ?? '').toString().trim().toLowerCase();
 
         if (telefone.isNotEmpty) {
-          // 1) estoque_clientes (por telefone)
+          // 1) estoque_clientes (admin) — side-effect para historico admin
           final clienteRef = firestore
               .collection('lojas')
               .doc(lojaId)
@@ -734,7 +737,7 @@ Obrigado por comprar conosco! 💜
           }
         }
 
-        // 2) Perfil do cliente no catálogo (clientes_catalogo por email) – para aparecer em "Meus Cupons"
+        // 2) clientes_catalogo (USO ESPECÍFICO: cupons roleta por email) – "Meus Cupons"
         if (email.isNotEmpty) {
           final codigo = (premioRoleta['codigo'] ?? '').toString();
           if (codigo.isNotEmpty) {

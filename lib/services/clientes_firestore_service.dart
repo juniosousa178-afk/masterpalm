@@ -12,7 +12,8 @@ import 'store_resolver_facade.dart';
 import 'image_upload_service.dart';
 import 'sync_queue_service.dart';
 
-/// Serviço para sincronizar clientes com Firestore
+/// Serviço para sincronizar clientes do admin com Firestore (estoque_clientes).
+/// DOMÍNIO ADMIN (FASE 4): Não é perfil do catálogo. Ver docs/MAPA_CLIENTES_E_PATHS.md.
 class ClientesFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 

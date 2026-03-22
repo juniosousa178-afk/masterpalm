@@ -90,6 +90,7 @@ class Participacao {
     'clienteEmail': email,
     'clienteTelefone': telefone,
     'pedidoId': vendaId,
+    'vendaId': vendaId, // Para cancelarParticipacao encontrar por ambos
     'valorPedido': totalVenda,
     'dataParticipacao': Timestamp.fromDate(criadoEm),
     'sorteado': false,
@@ -634,15 +635,16 @@ Equipe $nomeLoja
   // CANCELAMENTO DE PARTICIPAÇÃO
   // ============================================================
 
-  /// Cancela participação (quando venda é estornada/cancelada)
+  /// Cancela participação (quando venda é estornada/cancelada).
+  /// Busca por vendaId e pedidoId — participações de Nova Venda usam vendaId,
+  /// participações do Catálogo usam pedidoId.
   static Future<bool> cancelarParticipacao({
     required String lojaId,
     required String vendaId,
   }) async {
     try {
-      logD('🔄 [CampaignEngine] Cancelando participação para venda: $vendaId');
+      logD('🔄 [CampaignEngine] Cancelando participação para venda/pedido: $vendaId');
 
-      // Buscar campanhas (limit para reduzir custo)
       final campanhas = await _db
           .collection('lojas')
           .doc(lojaId)
@@ -650,18 +652,45 @@ Equipe $nomeLoja
           .limit(50)
           .get();
 
+      final docsParaCancelar = <String>{};
+
       for (final campanha in campanhas.docs) {
-        final participantes = await campanha.reference
+        // Buscar por vendaId (Nova Venda manual)
+        var participantes = await campanha.reference
             .collection('participantes')
             .where('vendaId', isEqualTo: vendaId)
             .get();
-
         for (final part in participantes.docs) {
-          await part.reference.update({
+          docsParaCancelar.add('${campanha.id}::${part.id}');
+        }
+
+        // Buscar por pedidoId (Catálogo, pré-pedido convertido)
+        participantes = await campanha.reference
+            .collection('participantes')
+            .where('pedidoId', isEqualTo: vendaId)
+            .get();
+        for (final part in participantes.docs) {
+          docsParaCancelar.add('${campanha.id}::${part.id}');
+        }
+      }
+
+      for (final key in docsParaCancelar) {
+        final parts = key.split('::');
+        if (parts.length == 2) {
+          final campanhaId = parts[0];
+          final participanteId = parts[1];
+          await _db
+              .collection('lojas')
+              .doc(lojaId)
+              .collection('campanhas_sorteio')
+              .doc(campanhaId)
+              .collection('participantes')
+              .doc(participanteId)
+              .update({
             'status': 'cancelado',
             'canceladoEm': FieldValue.serverTimestamp(),
           });
-          logD('✅ [CampaignEngine] Participação ${part.id} cancelada');
+          logD('✅ [CampaignEngine] Participação $participanteId cancelada');
         }
       }
 
@@ -694,7 +723,7 @@ Equipe $nomeLoja
         query = query.where('status', isEqualTo: 'valido');
       }
 
-      final snap = await query.orderBy('criadoEm', descending: true).limit(100).get();
+      final snap = await query.orderBy('dataParticipacao', descending: true).limit(100).get();
 
       return snap.docs.map((doc) => Participacao.fromFirestore(doc)).toList();
     } catch (e, st) {
@@ -720,12 +749,12 @@ Equipe $nomeLoja
       query = query.where('status', isEqualTo: 'valido');
     }
 
-    return query.orderBy('criadoEm', descending: true).limit(100).snapshots().map(
+    return query.orderBy('dataParticipacao', descending: true).limit(100).snapshots().map(
       (snap) => snap.docs.map((doc) => Participacao.fromFirestore(doc)).toList(),
     );
   }
 
-  /// Busca participação por vendaId
+  /// Busca participação por vendaId ou pedidoId
   static Future<Participacao?> buscarPorVendaId({
     required String lojaId,
     required String vendaId,
@@ -739,12 +768,18 @@ Equipe $nomeLoja
           .get();
 
       for (final campanha in campanhas.docs) {
-        final participantes = await campanha.reference
+        var participantes = await campanha.reference
             .collection('participantes')
             .where('vendaId', isEqualTo: vendaId)
             .limit(1)
             .get();
-
+        if (participantes.docs.isEmpty) {
+          participantes = await campanha.reference
+              .collection('participantes')
+              .where('pedidoId', isEqualTo: vendaId)
+              .limit(1)
+              .get();
+        }
         if (participantes.docs.isNotEmpty) {
           return Participacao.fromFirestore(participantes.docs.first);
         }

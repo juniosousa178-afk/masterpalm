@@ -351,6 +351,7 @@ class VendasService {
     bool isFiado = false, // 🔹 venda fiada: gera conta a receber
     DateTime? dataVencimentoFiado, // 🔹 vencimento da conta (quando isFiado)
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
+    void Function(String? numeroSorte)? onNumeroSorteGerado,
   }) async {
     if (itens.isEmpty) {
       throw Exception('Nenhum item informado.');
@@ -595,6 +596,7 @@ class VendasService {
 
       if (resultado.sucesso) {
         debugPrint('🎫 [VENDA-MANUAL] Número da sorte gerado: ${resultado.numero}');
+        onNumeroSorteGerado?.call(resultado.numero);
       } else if (resultado.erro != null) {
         debugPrint('ℹ️ [VENDA-MANUAL] Campanha: ${resultado.erro}');
       }

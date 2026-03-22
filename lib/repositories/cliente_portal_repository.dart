@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/firestore_paths.dart';
 
+/// Repositório do espelho "Meus Pedidos" (clientes_portal).
+///
+/// ESPELHO DERIVADO (FASE 4): clientes_portal não é fonte de identidade.
+/// A fonte principal é clientes. Ver docs/MAPA_CLIENTES_E_PATHS.md.
 class ClientePortalRepository {
   ClientePortalRepository({FirebaseFirestore? db})
       : _db = db ?? FirebaseFirestore.instance;

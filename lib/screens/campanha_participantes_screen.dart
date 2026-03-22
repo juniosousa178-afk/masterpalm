@@ -27,7 +27,9 @@ class CampanhaParticipantesScreen extends StatelessWidget {
         title: const Text("Participantes do Sorteio"),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: participantesRef.orderBy("criadoEm", descending: true).snapshots(),
+        stream: participantesRef
+            .orderBy("dataParticipacao", descending: true)
+            .snapshots(),
         builder: (context, snap) {
           if (!snap.hasData) {
             return const Center(
@@ -52,9 +54,12 @@ class CampanhaParticipantesScreen extends StatelessWidget {
             itemBuilder: (_, i) {
               final data = docs[i].data() as Map<String, dynamic>;
 
-              final nome = data["nomeCliente"] ?? "Cliente não informado";
-              final valor = (data["valorCompra"] ?? 0).toDouble();
-              final numeros = List<String>.from(data["numeros"] ?? []);
+              final nome = (data["clienteNome"] ?? data["nomeCliente"] ?? "Cliente não informado") as String;
+              final valor = ((data["valorPedido"] ?? data["valorCompra"]) as num?)?.toDouble() ?? 0.0;
+              var numeros = List<String>.from(data["numeros"] ?? []);
+              if (numeros.isEmpty && data["numeroSorte"] != null) {
+                numeros = [data["numeroSorte"] as String];
+              }
 
               return Card(
                 color: const Color(0xFF10121A),

@@ -726,7 +726,7 @@ class CatalogoVendaService {
         logE('⚠️ [CATÁLOGO] Erro ao registrar campanha (não crítico) (type=${e.runtimeType})', error: e, st: st);
       }
 
-      // 10. 🎁 Cupom da roleta: só salva no perfil após finalização e confirmação da compra
+      // 10. 🎁 Cupom da roleta: salva em clientes_catalogo (USO ESPECÍFICO: cupons por email)
       if (cupomRoletaCodigo != null &&
           cupomRoletaCodigo.isNotEmpty &&
           email.isNotEmpty) {

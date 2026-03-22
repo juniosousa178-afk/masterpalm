@@ -14,7 +14,7 @@ class NumeroSorteService {
           .collection('lojas')
           .doc(lojaId)
           .collection('campanhas_sorteio')
-          .where('ativo', isEqualTo: true)
+          .where('ativa', isEqualTo: true)
           .where('dataInicio', isLessThanOrEqualTo: Timestamp.fromDate(now))
           .where('dataFim', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
           .limit(1)

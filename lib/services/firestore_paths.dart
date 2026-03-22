@@ -10,15 +10,16 @@ class FSPaths {
 
   /// Coleções de estoque/sync (admin) — use com .collection(lojas).doc(lojaId).collection(...)
   static const String estoqueProdutosCol = 'estoque_produtos';
-  static const String estoqueClientesCol = 'estoque_clientes';
+  static const String estoqueClientesCol = 'estoque_clientes'; // DOMÍNIO ADMIN: sync/histórico, não é perfil catálogo
   static const String estoqueVendasCol = 'estoque_vendas';
   static const String draftProdutosCol = 'draft_produtos';
 
   /// Coleções de clientes (auth catálogo, cupons, perfil) — use com .collection(lojas).doc(lojaId).collection(...)
+  /// FASE 4: clientes = FONTE PRINCIPAL; clientes_portal = espelho; clientes_catalogo = cupons/roleta; clientes_web = legado.
   static const String clientesCol = 'clientes';
-  static const String clientesCatalogoCol = 'clientes_catalogo';
-  static const String clientesWebCol = 'clientes_web';
-  static const String clientesPortalCol = 'clientes_portal';
+  static const String clientesCatalogoCol = 'clientes_catalogo'; // USO ESPECÍFICO: cupons roleta
+  static const String clientesWebCol = 'clientes_web'; // LEGADO: catálogo admin, não usar para catálogo público
+  static const String clientesPortalCol = 'clientes_portal'; // ESPELHO DERIVADO: Meus Pedidos
 
   /// Coleção de categorias
   static String categoriasCol(String lojaId) => 'lojas/$lojaId/categorias';

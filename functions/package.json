@@ -34,7 +34,9 @@
     "fix:gateways": "node ./scripts/fix_payments_gateways.js",
     "seed:fretes": "node ./scripts/seed_fretes_e_gateways.js",
     "criar-usuario-teste": "node ./scripts/criar_usuario_teste.js",
-    "firestore:tree": "node ./scripts/firestore_tree.js"
+    "firestore:tree": "node ./scripts/firestore_tree.js",
+    "migrar:participantes": "node ./scripts/migrar_participantes_schema.js",
+    "migrar:participantes:dry": "node ./scripts/migrar_participantes_schema.js --dry-run"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -26,20 +26,22 @@ class SorteioNumeroService {
   //     (chamado automaticamente na tela de Vendas)
   //     Retorna true se foi registrado em pelo menos uma campanha ativa
   // =====================================================================
+  /// [vendaIdOuPedidoId] — ID da venda/pedido (para cancelarParticipacao e idempotência).
   static Future<bool> registrarNumeroEmCampanhas({
     required String lojaId,
     required String clienteNome,
-    required String? clienteId,
+    String? clienteId,
     required double valorCompra,
     required DateTime dataCompra,
     required String numeroSorte,
+    String? vendaIdOuPedidoId,
   }) async {
     final ts = Timestamp.fromDate(dataCompra);
+    final now = FieldValue.serverTimestamp();
 
     final campanhasRef =
         _db.collection('lojas').doc(lojaId).collection('campanhas_sorteio');
 
-    // Buscar campanhas ativas no período
     final snap = await campanhasRef
         .where('ativa', isEqualTo: true)
         .where('dataInicio', isLessThanOrEqualTo: ts)
@@ -56,15 +58,20 @@ class SorteioNumeroService {
 
       if (valorCompra < minimo) continue;
 
-      final participantesRef = doc.reference.collection('participantes');
-
-      await participantesRef.add({
+      await doc.reference.collection('participantes').add({
         'clienteId': clienteId,
-        'nomeCliente': clienteNome,
+        'clienteNome': clienteNome,
+        'nomeCliente': clienteNome, // legado
         'valorCompra': valorCompra,
+        'valorPedido': valorCompra,
         'dataCompra': ts,
+        'dataParticipacao': now, // schema canônico
         'numeroSorte': numeroSorte,
-        'criadoEm': FieldValue.serverTimestamp(),
+        'criadoEm': now, // legado
+        if (vendaIdOuPedidoId != null) 'pedidoId': vendaIdOuPedidoId,
+        if (vendaIdOuPedidoId != null) 'vendaId': vendaIdOuPedidoId,
+        'sorteado': false,
+        'status': 'valido',
       });
 
       registrouEmAlguma = true;

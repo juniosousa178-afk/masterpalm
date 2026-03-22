@@ -31,7 +31,7 @@ import '../services/catalog_visitas_service.dart';
 
 import '../utils/instagram_launcher.dart';
 import '../utils/pix_brcode.dart';
-import '../widgets/pix_qr_dialog.dart';
+import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
 import 'public_catalog/catalog_helpers.dart';
 import 'public_catalog/catalog_best_sellers_helper.dart';
 import 'public_catalog/catalog_product_card_size.dart';
@@ -873,6 +873,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _clienteEmail = null;
         _favoritosIds = [];
       });
+      if (lid != null) await _loadCarrinhoLocal();
     }
   }
 
@@ -907,10 +908,51 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   Future<void> _saveCarrinho() async {
     final lid = _resolvedLojaId;
+    if (lid == null) return;
     final cid = _clienteId;
-    if (lid == null || cid == null) return;
-    await ClienteAuthService.saveCarrinho(
-        lojaId: lid, clienteId: cid, items: _cart);
+    if (cid != null) {
+      await ClienteAuthService.saveCarrinho(
+          lojaId: lid, clienteId: cid, items: _cart);
+    } else {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final serializable = _cart.map((e) {
+          final m = <String, dynamic>{};
+          for (final entry in e.entries) {
+            final v = entry.value;
+            if (v == null) continue;
+            if (v is DateTime) {
+              m[entry.key] = v.toIso8601String();
+            } else if (v is Map || v is List || v is num || v is bool || v is String) {
+              m[entry.key] = v;
+            }
+          }
+          return m;
+        }).toList();
+        await prefs.setString('catalog_cart_items_$lid', jsonEncode(serializable));
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _loadCarrinhoLocal() async {
+    final lid = _resolvedLojaId;
+    if (lid == null || _clienteId != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString('catalog_cart_items_$lid');
+      if (json != null && json.isNotEmpty) {
+        final decoded = jsonDecode(json);
+        if (decoded is List && mounted) {
+          _cart.clear();
+          for (final e in decoded) {
+            if (e is Map) _cart.add(Map<String, dynamic>.from(e));
+          }
+          _ultimoPrePedidoId = null;
+          _ultimoPrePedidoData = null;
+          setState(() {});
+        }
+      }
+    } catch (_) {}
   }
 
   /// Reseta o estado da roleta (chamado quando inicia nova compra, ex: após checkout)
@@ -1680,9 +1722,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final key = 'catalog_cart_form_$lojaId';
       final json = prefs.getString(key);
       if (json != null && json.isNotEmpty) {
-        initialFormData = Map<String, dynamic>.from(jsonDecode(json) as Map);
+        final decoded = jsonDecode(json);
+        if (decoded is Map) {
+          initialFormData = Map<String, dynamic>.from(decoded);
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      initialFormData = null;
+    }
 
     await showModalBottomSheet(
       context: context,
@@ -1753,10 +1800,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         required Map<String, dynamic> entrega,
                         required double valorTotal,
                         String observacao = '',
+                        String? cupomCodigo,
+                        double desconto = 0.0,
                         String? cupomRoletaCodigo,
                         double? cupomRoletaDesconto,
                         String? premioRoletaDescricao,
                         void Function(String message)? showErrorInCart,
+                        Future<void> Function(String? pedidoId)? onPedidoCriado,
                       }) async {
                         void showErr(String msg) {
                           if (showErrorInCart != null) {
@@ -1777,8 +1827,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             entrega: entrega,
                             pagamento: 'PIX',
                             observacao: observacao,
-                            cupomCodigo: null,
-                            desconto: 0.0,
+                            cupomCodigo: cupomCodigo,
+                            desconto: desconto,
                             cupomRoletaCodigo: cupomRoletaCodigo,
                             cupomRoletaDesconto: cupomRoletaDesconto,
                             premioRoletaDescricao: premioRoletaDescricao,
@@ -1789,6 +1839,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           if (!ctx.mounted) return;
                           showErr('Erro ao criar pedido. Tente novamente.');
                           return;
+                        }
+                        try {
+                          await onPedidoCriado?.call(vendaId);
+                        } catch (e, st) {
+                          logD('❌ [PIX] onPedidoCriado falhou (cupom não marcado): ${e.runtimeType}');
+                          if (kDebugMode) debugPrintStack(stackTrace: st);
                         }
                         final payload = gerarPixCopiaECola(
                           chavePix: pixKey,
@@ -1872,6 +1928,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       indicacaoClienteId: widget.indicacaoClienteRef,
                       clienteId: clienteLogado?['clienteId']?.toString(),
                       origemCheckout: 'whatsapp',
+                      portalTokenFromSession: clienteLogado?['portalToken']?.toString(),
                     );
 
                     if (prePedido == null) {
@@ -2078,6 +2135,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     premioRoletaDescricao: premioRoletaDescricao,
                     vendedorRef: widget.vendedorRef,
                     indicacaoClienteId: widget.indicacaoClienteRef,
+                    portalTokenFromSession: cliente?['portalToken']?.toString(),
                   );
                   pedidoId = prePedido?['id']?.toString();
                   if (pedidoId != null && mounted) {
@@ -2239,6 +2297,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         email: customer['email']?.toString(),
                         cpf: customer['cpf']?.toString(),
                         externalReference: pedidoId,
+                        lojaId: lojaId,
                       );
                     } else {
                       logD('💳 Criando checkout para cartão...');
@@ -2250,6 +2309,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         quantidade: 1,
                         descricao: 'Compra em $lojaId',
                         externalReference: pedidoId,
+                        lojaId: lojaId,
                         payer: customer['email'] != null
                             ? {'email': customer['email'].toString()}
                             : null,
@@ -3236,6 +3296,59 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final bestSellersLimit = safeInt(
                     minimalBestSellersCfg['count'], 10)
                     .clamp(3, 24);
+
+                // Banner hero minimalista: card / tipografia / botão (Loja Config — draft_config).
+                final heroCardCfg = mpMapDyn(heroBannerCfg['card']);
+                final heroTitleStyle = mpMapDyn(heroBannerCfg['titleStyle']);
+                final heroSubtitleStyle = mpMapDyn(heroBannerCfg['subtitleStyle']);
+                final heroButtonStyle = mpMapDyn(heroBannerCfg['buttonStyle']);
+                final Color heroLegacyText =
+                    readColorFromCfg(heroBannerCfg['textColor']) ?? Colors.white;
+                final Color heroLegacyCardBg =
+                    readColorFromCfg(heroBannerCfg['backgroundColor']) ??
+                        cardColor;
+                final Color heroLegacyBtnBg =
+                    readColorFromCfg(heroBannerCfg['buttonColor']) ??
+                        primaryColor;
+                final Color heroBannerCardBg =
+                    readColorFromCfg(heroCardCfg['backgroundColor']) ??
+                        heroLegacyCardBg;
+                final double heroBannerCardRadius = safeDouble(
+                  heroCardCfg['borderRadius'],
+                  safeDouble(heroBannerCfg['borderRadius'], 18),
+                );
+                final Color heroBannerTitleColor =
+                    readColorFromCfg(heroTitleStyle['color']) ?? heroLegacyText;
+                final double heroBannerTitleSize =
+                    safeDouble(heroTitleStyle['fontSize'], 17);
+                final FontWeight heroBannerTitleW = parseFontWeightCfg(
+                    heroTitleStyle['fontWeight'], FontWeight.w600);
+                final String heroBannerTitleCase =
+                    (heroTitleStyle['letterCase'] ?? 'none').toString();
+                final Color heroBannerSubtitleColor =
+                    readColorFromCfg(heroSubtitleStyle['color']) ??
+                        heroLegacyText.withValues(alpha: 0.96);
+                final double heroBannerSubtitleSize =
+                    safeDouble(heroSubtitleStyle['fontSize'], 13);
+                final FontWeight heroBannerSubtitleW = parseFontWeightCfg(
+                    heroSubtitleStyle['fontWeight'], FontWeight.w400);
+                final String heroBannerSubtitleCase =
+                    (heroSubtitleStyle['letterCase'] ?? 'none').toString();
+                final Color heroBannerBtnBg =
+                    readColorFromCfg(heroButtonStyle['backgroundColor']) ??
+                        readColorFromCfg(heroButtonStyle['background']) ??
+                        heroLegacyBtnBg;
+                final Color heroBannerBtnText =
+                    readColorFromCfg(heroButtonStyle['textColor']) ??
+                        Colors.white;
+                final double heroBannerBtnSize =
+                    safeDouble(heroButtonStyle['fontSize'], 13);
+                final FontWeight heroBannerBtnW = parseFontWeightCfg(
+                    heroButtonStyle['fontWeight'], FontWeight.w600);
+                final double heroBannerBtnRadius =
+                    safeDouble(heroButtonStyle['borderRadius'], 8);
+                final String heroBannerBtnCase =
+                    (heroButtonStyle['letterCase'] ?? 'none').toString();
 
                 TextAlign parseTextAlign(dynamic raw, TextAlign fallback) {
                   final v = (raw ?? '').toString().trim().toLowerCase();
@@ -4460,31 +4573,45 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             heroBannerCfg[
                                                                 'image'] ??
                                                             '',
-                                                    textColor: readColorFromCfg(
-                                                            heroBannerCfg[
-                                                                'textColor']) ??
-                                                        Colors.white,
-                                                    buttonColor:
-                                                        readColorFromCfg(
-                                                                heroBannerCfg[
-                                                                    'buttonColor']) ??
-                                                            primaryColor,
                                                     backgroundColor:
-                                                        readColorFromCfg(
-                                                                heroBannerCfg[
-                                                                    'backgroundColor']) ??
-                                                            cardColor,
+                                                        heroBannerCardBg,
+                                                    borderRadius:
+                                                        heroBannerCardRadius,
                                                     height: safeDouble(
                                                         heroBannerCfg['height'],
                                                         isDesktop ? 210 : 164),
-                                                    borderRadius: safeDouble(
-                                                        heroBannerCfg[
-                                                            'borderRadius'],
-                                                        18),
                                                     overlayOpacity: safeDouble(
                                                         heroBannerCfg[
                                                             'overlayOpacity'],
                                                         0.16),
+                                                    titleColor:
+                                                        heroBannerTitleColor,
+                                                    titleFontSize:
+                                                        heroBannerTitleSize,
+                                                    titleFontWeight:
+                                                        heroBannerTitleW,
+                                                    titleLetterCase:
+                                                        heroBannerTitleCase,
+                                                    subtitleColor:
+                                                        heroBannerSubtitleColor,
+                                                    subtitleFontSize:
+                                                        heroBannerSubtitleSize,
+                                                    subtitleFontWeight:
+                                                        heroBannerSubtitleW,
+                                                    subtitleLetterCase:
+                                                        heroBannerSubtitleCase,
+                                                    buttonBackgroundColor:
+                                                        heroBannerBtnBg,
+                                                    buttonTextColor:
+                                                        heroBannerBtnText,
+                                                    buttonFontSize:
+                                                        heroBannerBtnSize,
+                                                    buttonFontWeight:
+                                                        heroBannerBtnW,
+                                                    buttonBorderRadius:
+                                                        heroBannerBtnRadius,
+                                                    buttonLetterCase:
+                                                        heroBannerBtnCase,
                                                     onTap: () {
                                                       final link = (heroBannerCfg[
                                                                   'buttonLink'] ??

@@ -1,4 +1,6 @@
 // lib/services/campanhas_sorteio_service.dart
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class CampanhasSorteioService {
@@ -18,7 +20,14 @@ class CampanhasSorteioService {
     return _db.collection('lojas').doc(lojaId).collection('roleta_vendas');
   }
 
+  /// Fonte oficial da configuração da Roleta (ETAPA 3).
+  /// Antes: campanhas_sorteio_config/roleta. Agora: config/roleta_sorte.
   static DocumentReference<Map<String, dynamic>> roletaConfigDoc(String lojaId) {
+    return _db.collection('lojas').doc(lojaId).collection('config').doc('roleta_sorte');
+  }
+
+  /// Referência legada (apenas para migração).
+  static DocumentReference<Map<String, dynamic>> _roletaConfigDocLegado(String lojaId) {
     return _db.collection('lojas')
       .doc(lojaId)
       .collection('campanhas_sorteio_config')
@@ -97,36 +106,21 @@ class CampanhasSorteioService {
   }
 
   // ============================================================
-  // GERAÇÃO AUTOMÁTICA DE NÚMEROS
+  // GERAÇÃO AUTOMÁTICA DE NÚMEROS (regra oficial: aleatório 5 dígitos)
   // ============================================================
 
-  static Future<List<String>> _gerarNumeros(
-    String lojaId,
-    int quantidade,
-  ) async {
+  static String _gerarNumeroAleatorio() {
+    final r = Random();
+    return (10000 + r.nextInt(90000)).toString();
+  }
+
+  static List<String> _gerarNumerosAleatorios(int quantidade) {
     if (quantidade <= 0) return [];
-
-    final counterRef = numeroCounterDoc(lojaId);
-
-    return await _db.runTransaction((transaction) async {
-      final snap = await transaction.get(counterRef);
-
-      int ultimo = 10000; // inicia na casa das dezenas
-      if (snap.exists) {
-        ultimo = (snap.data()?['ultimo'] as int? ?? 10000);
-      }
-
-      int novoUltimo = ultimo + quantidade;
-
-      transaction.set(counterRef, {'ultimo': novoUltimo}, SetOptions(merge: true));
-
-      final numeros = <String>[];
-      for (int i = 1; i <= quantidade; i++) {
-        numeros.add((ultimo + i).toString().padLeft(5, '0'));
-      }
-
-      return numeros;
-    });
+    final numeros = <String>[];
+    for (int i = 0; i < quantidade; i++) {
+      numeros.add(_gerarNumeroAleatorio());
+    }
+    return numeros;
   }
 
   // ============================================================
@@ -165,25 +159,34 @@ class CampanhasSorteioService {
     for (final doc in snap.docs) {
       final data = doc.data();
       final valorMinimo = (data['valorMinimo'] as num?)?.toDouble() ?? 0.0;
-      final x = (data['valorX'] as num?)?.toDouble() ?? 50.0;
+      final valorX = (data['valorX'] as num?)?.toDouble() ?? (data['valorXPorNumero'] as num?)?.toDouble() ?? 50.0;
 
       if (valorCompra < valorMinimo) continue;
 
-      int quantidadeNumeros = (valorCompra ~/ x);
+      // Regra oficial: valorMinimo > 0 → 1 número; senão floor(valor/valorX)
+      final int quantidadeNumeros = valorMinimo > 0 ? 1 : (valorCompra ~/ valorX).clamp(1, 999);
       if (quantidadeNumeros <= 0) continue;
 
-      final numerosGerados = await _gerarNumeros(lojaId, quantidadeNumeros);
+      final numerosGerados = _gerarNumerosAleatorios(quantidadeNumeros);
       todosNumeros.addAll(numerosGerados);
+      final numeroSorte = numerosGerados.isNotEmpty ? numerosGerados.first : '';
 
+      final now = FieldValue.serverTimestamp();
       await doc.reference.collection('participantes').add({
         'clienteId': clienteId,
         'nomeCliente': clienteNome,
         'clienteEmail': clienteEmail,
         'clienteTelefone': clienteTelefone,
         'valorCompra': valorCompra,
+        'valorPedido': valorCompra,
         'dataCompra': agora,
+        'dataParticipacao': now,
+        'numeroSorte': numeroSorte,
         'numeros': numerosGerados,
-        'criadoEm': FieldValue.serverTimestamp(),
+        'criadoEm': now,
+        'status': 'valido',
+        'sorteado': false,
+        'campanhaId': doc.id,
       });
 
       todasCampanhas.add({
@@ -273,13 +276,24 @@ static Future<void> salvarHistoricoSorteio({
     required String lojaId,
   }) async {
     final docRef = roletaConfigDoc(lojaId);
-    final snap = await docRef.get();
+    var snap = await docRef.get();
+
+    // Fallback: migrar de campanhas_sorteio_config/roleta se existir
+    if (!snap.exists) {
+      final legadoRef = _roletaConfigDocLegado(lojaId);
+      final legadoSnap = await legadoRef.get();
+      if (legadoSnap.exists && legadoSnap.data() != null) {
+        final dados = Map<String, dynamic>.from(legadoSnap.data()!);
+        await docRef.set(dados, SetOptions(merge: true));
+        snap = await docRef.get();
+      }
+    }
 
     // Se ainda não existe, cria configuração padrão para ESSA loja
     if (!snap.exists) {
       final defaultData = <String, dynamic>{
-        'ativo': true,
-        'valorMinimo': 50.0, // valor mínimo para habilitar a roleta (ajuste se quiser)
+        'ativa': true,
+        'valorMinimo': 50.0,
         'premios': [
           {
             'label': '10% de desconto',

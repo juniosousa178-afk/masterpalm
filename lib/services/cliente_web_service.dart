@@ -6,7 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cliente_web.dart';
 import 'firestore_paths.dart';
 
-/// Serviço de autenticação e gerenciamento de clientes do catálogo web
+/// Serviço de autenticação e gerenciamento de clientes do catálogo web.
+///
+/// LEGADO (FASE 4): Usa clientes_web. Destinado ao catálogo admin (rota /catalogo).
+/// NÃO usar para novas features do catálogo público. Use ClienteAuthService (clientes).
+/// Ver docs/MAPA_CLIENTES_E_PATHS.md.
 class ClienteWebService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 

@@ -1,6 +1,7 @@
 // lib/screens/public_catalog/widgets/carrinho_sheet_web.dart
 // Carrinho/checkout em bottom sheet – extraído do public_catalog_screen.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -21,7 +22,7 @@ import '../../../services/cliente_auth_service.dart';
 import '../../../services/cupom_desconto_service.dart';
 import '../../../services/cupons_service.dart';
 import '../../../services/frete_service.dart';
-import '../../../widgets/selecionar_cupom_modal.dart';
+import '../../../widgets/selecionar_cupom_modal.dart' show mostrarModalSelecionarCupom;
 import '../../../widgets/roleta_web_widget_v3.dart';
 import '../../auth/login_screen_cliente.dart';
 import 'catalog_image_placeholder.dart';
@@ -83,15 +84,19 @@ class CarrinhoSheetWeb extends StatefulWidget {
   }) onCheckoutMercadoPago;
 
   /// Callback para PIX manual (chave PIX da loja) - gera QR com valor e mostra dialog.
+  /// [onPedidoCriado] chamado após criar pedido (para registrar uso de cupom).
   final Future<void> Function({
     required Map<String, dynamic> customer,
     required Map<String, dynamic> entrega,
     required double valorTotal,
     String observacao,
+    String? cupomCodigo,
+    double desconto,
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
     String? premioRoletaDescricao,
     void Function(String message)? showErrorInCart,
+    Future<void> Function(String? pedidoId)? onPedidoCriado,
   })? onCheckoutPix;
 
   final void Function(String message) showSnack;
@@ -199,6 +204,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   // Validação visual: campos com erro ficam vermelhos
   String? _erroValidacao;
   final Set<String> _camposComErro = {};
+
+  /// Debounce para persistir formulário (reduz perda ao fechar rapidamente)
+  Timer? _formSaveDebounce;
 
   late List<Map<String, dynamic>> _fretesLocal;
 
@@ -310,7 +318,15 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       _complemento.text = (init['complemento'] ?? '').toString();
       _obs.text = (init['obs'] ?? '').toString();
       _cupomCtrl.text = (init['cupomCodigo'] ?? '').toString();
-      final savedFrete = (init['freteIndex'] as int?) ?? 0;
+      final rawFrete = init['freteIndex'];
+      int savedFrete = 0;
+      if (rawFrete is int) {
+        savedFrete = rawFrete;
+      } else if (rawFrete is num) {
+        savedFrete = rawFrete.toInt();
+      } else if (rawFrete is String) {
+        savedFrete = int.tryParse(rawFrete) ?? 0;
+      }
       final maxFrete = _fretesLocal.isEmpty ? 0 : _fretesLocal.length - 1;
       _freteIndex = savedFrete.clamp(0, maxFrete);
       _pagamento = (init['pagamento'] ?? 'PIX').toString();
@@ -671,6 +687,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
   @override
   void dispose() {
+    _formSaveDebounce?.cancel();
     widget.onFormDataToSave?.call(_getFormDataMap());
     _nome.dispose();
     _cpf.dispose();
@@ -689,9 +706,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   }
 
   Map<String, dynamic> _customerPayload() {
-    final enderecoFmt =
-        'CEP ${_cep.text.trim()} - ${_rua.text.trim()}, ${_numero.text.trim()} - ${_bairro.text.trim()}, ${_cidade.text.trim()}'
-        '${_complemento.text.trim().isNotEmpty ? ' (${_complemento.text.trim()})' : ''}';
+    final tipoFrete = (_fretesLocal.isNotEmpty && _freteIndex >= 0 && _freteIndex < _fretesLocal.length)
+        ? (_fretesLocal[_freteIndex]['tipo'] ?? '').toString().toLowerCase()
+        : '';
+    final isRetirada = tipoFrete == 'retirada';
+    final enderecoFmt = isRetirada
+        ? 'Retirada em loja'
+        : 'CEP ${_cep.text.trim()} - ${_rua.text.trim()}, ${_numero.text.trim()} - ${_bairro.text.trim()}, ${_cidade.text.trim()}'
+            '${_complemento.text.trim().isNotEmpty ? ' (${_complemento.text.trim()})' : ''}';
     // Email em lowercase para bater com a query do perfil (getPedidosDoCliente)
     final email = _email.text.trim();
     return {
@@ -712,6 +734,13 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     };
   }
 
+  void _scheduleFormSave() {
+    _formSaveDebounce?.cancel();
+    _formSaveDebounce = Timer(const Duration(milliseconds: 600), () {
+      widget.onFormDataToSave?.call(_getFormDataMap());
+    });
+  }
+
   void _limparErroCampo(String campo) {
     if (_camposComErro.contains(campo)) {
       setState(() {
@@ -719,6 +748,39 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         if (_camposComErro.isEmpty) _erroValidacao = null;
       });
     }
+  }
+
+  /// Valida CPF com dígitos verificadores. Rejeita sequências repetidas.
+  static bool _validarCpf(String cpfDigits) {
+    if (cpfDigits.length != 11) return false;
+    final allSame = cpfDigits.split('').toSet().length == 1;
+    if (allSame) return false;
+    int sum = 0;
+    for (var i = 0; i < 9; i++) {
+      sum += int.parse(cpfDigits[i]) * (10 - i);
+    }
+    int d1 = (sum * 10) % 11;
+    if (d1 == 10) d1 = 0;
+    if (d1 != int.parse(cpfDigits[9])) return false;
+    sum = 0;
+    for (var i = 0; i < 10; i++) {
+      sum += int.parse(cpfDigits[i]) * (11 - i);
+    }
+    int d2 = (sum * 10) % 11;
+    if (d2 == 10) d2 = 0;
+    return d2 == int.parse(cpfDigits[10]);
+  }
+
+  /// Valida formato de e-mail quando preenchido. Simples e segura.
+  static bool _validarEmailFormato(String email) {
+    if (email.trim().isEmpty) return true;
+    final e = email.trim();
+    if (e.length < 5) return false;
+    final atIdx = e.indexOf('@');
+    if (atIdx <= 0 || atIdx >= e.length - 1) return false;
+    final dotIdx = e.lastIndexOf('.');
+    if (dotIdx <= atIdx + 1 || dotIdx >= e.length - 1) return false;
+    return true;
   }
 
   bool _validarCampos() {
@@ -730,6 +792,12 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final cep = _cep.text.replaceAll(RegExp(r'[^0-9]'), '');
     final tel = _tel.text.replaceAll(RegExp(r'[^0-9]'), '');
 
+    // Se frete for retirada, não exige endereço completo
+    final tipoFrete = (_fretesLocal.isNotEmpty && _freteIndex >= 0 && _freteIndex < _fretesLocal.length)
+        ? (_fretesLocal[_freteIndex]['tipo'] ?? '').toString().toLowerCase()
+        : '';
+    final isRetirada = tipoFrete == 'retirada';
+
     if (_nome.text.trim().isEmpty) {
       _camposComErro.add('nome');
       obrigatorios.add('Nome');
@@ -740,40 +808,49 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     } else if (cpf.length != 11) {
       _camposComErro.add('cpf');
       _erroValidacao = 'CPF deve ter 11 dígitos.';
+    } else if (!_validarCpf(cpf)) {
+      _camposComErro.add('cpf');
+      _erroValidacao = 'CPF inválido.';
     }
     if (_tel.text.trim().isEmpty) {
       _camposComErro.add('tel');
       obrigatorios.add('Telefone');
     } else if (tel.length < 10) {
       _camposComErro.add('tel');
-      _erroValidacao ??= 'Telefone deve ter no mínimo 10 dígitos.';
+      _erroValidacao ??= 'Telefone deve ter no mínimo 10 dígitos (DDD + número).';
     }
-    if (_cep.text.trim().isEmpty) {
-      _camposComErro.add('cep');
-      obrigatorios.add('CEP');
-    } else if (cep.length != 8) {
-      _camposComErro.add('cep');
-      _erroValidacao ??= 'CEP deve ter 8 dígitos.';
+    if (_email.text.trim().isNotEmpty && !_validarEmailFormato(_email.text)) {
+      _camposComErro.add('email');
+      _erroValidacao ??= 'E-mail inválido.';
     }
-    if (_rua.text.trim().isEmpty) {
-      _camposComErro.add('rua');
-      obrigatorios.add('Rua');
-    }
-    if (_numero.text.trim().isEmpty) {
-      _camposComErro.add('numero');
-      obrigatorios.add('Número');
-    }
-    if (_bairro.text.trim().isEmpty) {
-      _camposComErro.add('bairro');
-      obrigatorios.add('Bairro');
-    }
-    if (_cidade.text.trim().isEmpty) {
-      _camposComErro.add('cidade');
-      obrigatorios.add('Cidade');
-    }
-    if (_estado.text.trim().isEmpty) {
-      _camposComErro.add('estado');
-      obrigatorios.add('UF');
+    if (!isRetirada) {
+      if (_cep.text.trim().isEmpty) {
+        _camposComErro.add('cep');
+        obrigatorios.add('CEP');
+      } else if (cep.length != 8) {
+        _camposComErro.add('cep');
+        _erroValidacao ??= 'CEP deve ter 8 dígitos.';
+      }
+      if (_rua.text.trim().isEmpty) {
+        _camposComErro.add('rua');
+        obrigatorios.add('Rua');
+      }
+      if (_numero.text.trim().isEmpty) {
+        _camposComErro.add('numero');
+        obrigatorios.add('Número');
+      }
+      if (_bairro.text.trim().isEmpty) {
+        _camposComErro.add('bairro');
+        obrigatorios.add('Bairro');
+      }
+      if (_cidade.text.trim().isEmpty) {
+        _camposComErro.add('cidade');
+        obrigatorios.add('Cidade');
+      }
+      if (_estado.text.trim().isEmpty) {
+        _camposComErro.add('estado');
+        obrigatorios.add('UF');
+      }
     }
 
     if (_erroValidacao == null && obrigatorios.isNotEmpty) {
@@ -787,6 +864,20 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
           .showSnack(_erroValidacao ?? 'Verifique os dados e tente novamente.');
       setState(() {});
       return false;
+    }
+    return true;
+  }
+
+  /// Verifica se todos os itens têm preço válido (> 0).
+  bool _validarItensComPreco() {
+    for (var i = 0; i < widget.items.length; i++) {
+      final item = widget.items[i];
+      final price = (item['preco'] as num?)?.toDouble() ?? (item['price'] as num?)?.toDouble() ?? 0.0;
+      if (price <= 0) {
+        final nome = (item['nome'] ?? item['name'] ?? 'Item ${i + 1}').toString();
+        widget.showSnack('Produto "$nome" sem preço. Remova ou verifique no catálogo.');
+        return false;
+      }
     }
     return true;
   }
@@ -835,7 +926,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       }
     }
 
-    // 2) Se não encontrou, tenta cupom da roleta no perfil do cliente (clientes_catalogo)
+    // 2) Cupom roleta: clientes_catalogo (USO ESPECÍFICO, complemento)
     if (found == null) {
       final clienteLogado = await ClienteAuthService.getClienteLogado();
       if (clienteLogado != null) {
@@ -907,7 +998,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
     // Validar data de validade ao aplicar (evita uso de cupom expirado)
     final now = DateTime.now();
-    final df = found['dataFim'] ?? found['validade'] ?? found['dataValidade'] ?? found['dataExpiracao'];
+    final df = found['dataFim'] ?? found['validade'] ?? found['dataValidade'] ??
+        found['dataExpiracao'] ?? found['expiraEm'];
     if (df != null) {
       DateTime? fim;
       if (df is Timestamp) {
@@ -927,10 +1019,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     // Validar valor mínimo do cupom (se existir)
     final vMin = found['valorMinimo'] ?? found['valor_minimo'];
     final valorMinimo = (vMin is num) ? vMin.toDouble() : null;
-    if (valorMinimo != null && valorMinimo > 0 && _subtotal < valorMinimo) {
-      widget.showSnack(
-          'Cupom exige compra mínima de R\$ ${valorMinimo.toStringAsFixed(2)}.');
-      return;
+    if (valorMinimo != null && valorMinimo > 0) {
+      final aplicarEm = (found['aplicarEm'] ?? 'produtos').toString();
+      double baseValor = _subtotalConformePagamento;
+      if (aplicarEm == 'total' && _fretesLocal.isNotEmpty) {
+        final frete = _fretesLocal[_freteIndex.clamp(0, _fretesLocal.length - 1)];
+        baseValor += _freteGratis ? 0.0 : ((frete['valor'] as num?)?.toDouble() ?? 0.0);
+      }
+      if (baseValor < valorMinimo) {
+        widget.showSnack(
+            'Cupom exige compra mínima de R\$ ${valorMinimo.toStringAsFixed(2)}.');
+        return;
+      }
     }
 
     setState(() {
@@ -951,21 +1051,31 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
   @override
   Widget build(BuildContext context) {
-    if (_fretesLocal.isEmpty) {
-      return const Center(
-        child: Text(
-          'Nenhuma opção de frete configurada.',
-          style: TextStyle(color: Colors.white70),
-        ),
-      );
+    // Fallback: nunca ocultar checkout; usar widget.fretes ou padrão se _fretesLocal vazio
+    final List<Map<String, dynamic>> fretesExibir = _fretesLocal.isNotEmpty
+        ? List<Map<String, dynamic>>.from(_fretesLocal)
+        : widget.fretes.map((e) => asMapDeep(e)).toList();
+    if (fretesExibir.isEmpty) {
+      fretesExibir.addAll([
+        {'nome': 'Retirada', 'valor': 0.0, 'tipo': 'retirada', 'plataforma': 'manual', 'freteGratis': true},
+        {'nome': 'Combinar com vendedor', 'valor': 0.0, 'tipo': 'combinar', 'plataforma': 'manual', 'freteGratis': true},
+      ]);
+    }
+    // Restaurar _fretesLocal quando vazio para interações (modal, etc.)
+    if (_fretesLocal.isEmpty && fretesExibir.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _fretesLocal.isEmpty) {
+          setState(() {
+            _fretesLocal.addAll(fretesExibir);
+            _freteIndex = _freteIndex.clamp(0, _fretesLocal.length - 1);
+          });
+        }
+      });
     }
 
-    // ✅ segurança: garante índice válido mesmo após atualizar a lista
-    if (_freteIndex < 0 || _freteIndex >= _fretesLocal.length) {
-      _freteIndex = 0;
-    }
-
-    final frete = _fretesLocal[_freteIndex];
+    // ✅ segurança: garante índice válido
+    final idxFrete = _freteIndex.clamp(0, fretesExibir.length - 1);
+    final frete = fretesExibir[idxFrete];
 
     // 🔍 DEBUG: Log do frete selecionado
     logD(
@@ -1049,14 +1159,20 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   /// Retorna: {'pesoTotal': double, 'embalagem': Map, 'pesoEmbalagem': double}
   Future<Map<String, dynamic>> _calcularPesoComEmbalagem(
       List<Map<String, dynamic>> items) async {
-    // 1. Carregar configurações de embalagens
+    // 1. Carregar configurações de embalagens (isolado por loja no web)
     List<Map<String, dynamic>> embalagens = [];
     try {
       if (!Hive.isBoxOpen('config')) {
         await Hive.openBox('config');
       }
       final configBox = Hive.box('config');
-      final rawEmbalagens = configBox.get('embalagens');
+      final lojaId = widget.lojaId.trim();
+      var rawEmbalagens = lojaId.isNotEmpty
+          ? configBox.get('embalagens_$lojaId')
+          : null;
+      if (rawEmbalagens == null || (rawEmbalagens is List && rawEmbalagens.isEmpty)) {
+        rawEmbalagens = configBox.get('embalagens');
+      }
 
       if (rawEmbalagens is List && rawEmbalagens.isNotEmpty) {
         embalagens = rawEmbalagens.map<Map<String, dynamic>>((e) {
@@ -1143,6 +1259,21 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       ];
     }
 
+    // Garantir que embalagens nunca esteja vazia (evita firstWhere/orElse com lista vazia)
+    if (embalagens.isEmpty) {
+      embalagens = [
+        {
+          'id': 'padrao',
+          'nome': 'Padrão',
+          'peso': 50.0,
+          'tamanho': 1,
+          'altura': 10.0,
+          'largura': 20.0,
+          'comprimento': 30.0,
+        },
+      ];
+    }
+
     // 2. Calcular peso total dos produtos
     double pesoProdutos = 0.0;
     int maiorTamanho = 0;
@@ -1154,7 +1285,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       final peso = (item['peso'] as num?)?.toDouble() ?? 0.0;
       final tipoEmb = item['tipoEmbalagem'] as String? ?? 'padrao';
 
-      // Soma peso dos produtos
+      if (peso <= 0 && qty > 0) {
+        logW('📦 [PESO] Produto sem peso: ${item['nome'] ?? item['name'] ?? '?'}');
+      }
       pesoProdutos += peso * qty;
 
       // Encontra embalagem deste produto
@@ -1180,6 +1313,19 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final larguraEmb = safeDouble(embalagemMaior?['largura'], fallback: 20.0);
     final comprimentoEmb = safeDouble(embalagemMaior?['comprimento'], fallback: 30.0);
     final pesoTotal = pesoProdutos + pesoEmbalagem;
+
+    if (items.isNotEmpty && pesoProdutos <= 0) {
+      return {
+        'pesoTotal': 300.0,
+        'pesoProdutos': 0.0,
+        'pesoEmbalagem': pesoEmbalagem,
+        'altura': alturaEmb,
+        'largura': larguraEmb,
+        'comprimento': comprimentoEmb,
+        'embalagem': embalagemMaior,
+        'erro': 'Produtos sem peso cadastrado. Verifique os itens no catálogo.',
+      };
+    }
 
     logD(
         '📦 [PESO] Produtos: ${pesoProdutos}g + Embalagem ${embalagemMaior?['nome']}: ${pesoEmbalagem}g = Total: ${pesoTotal}g');
@@ -1521,7 +1667,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     try {
       // ✅ Calcular peso total com seleção inteligente de embalagem
       final pesoCalc = await _calcularPesoComEmbalagem(widget.items);
-      double pesoTotal = pesoCalc['pesoTotal'] as double;
+      final erroPeso = pesoCalc['erro'] as String?;
+      if (erroPeso != null && erroPeso.isNotEmpty) {
+        widget.showSnack(erroPeso);
+        if (!mounted) return;
+        setState(() {});
+        return;
+      }
+      double pesoTotal = (pesoCalc['pesoTotal'] as num?)?.toDouble() ?? 300.0;
 
       // ✅ Pegar dimensões da embalagem maior selecionada
       double altura = (pesoCalc['altura'] as num?)?.toDouble() ?? 10.0;
@@ -1558,14 +1711,21 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         comprimento: comprimento,
       );
 
+      // ✅ Preservar manuais se API retornar vazio (nunca sobrescrever com lista vazia)
+      final manuaisAtuais = _fretesLocal
+          .where((f) => ((f['plataforma'] ?? '').toString()) == 'manual')
+          .toList();
+      final fallbackManuais = widget.fretes.isNotEmpty
+          ? widget.fretes.map((e) => asMapDeep(e)).toList()
+          : [
+              {'nome': 'Retirada', 'valor': 0.0, 'tipo': 'retirada', 'plataforma': 'manual', 'freteGratis': true},
+              {'nome': 'Combinar com vendedor', 'valor': 0.0, 'tipo': 'combinar', 'plataforma': 'manual', 'freteGratis': true},
+            ];
+
       // ✅ Limpar e reconstruir _fretesLocal
       _fretesLocal.clear();
 
-      // ✅ FIX: Não adicionar fretes manuais do widget.fretes aqui, pois o FreteService
-      // já retorna os fretes manuais junto com as opções das APIs.
-      // Isso evita duplicação de "Retirada" e "Entrega local"
-
-      // Adicionar todas as opções retornadas pela API (que já inclui manuais)
+      // Adicionar opções retornadas pela API (que já inclui manuais)
       if (opcoesFretes.isNotEmpty) {
         logD(
             '📦 [CATALOGO] Processando ${opcoesFretes.length} opções da API:');
@@ -1635,6 +1795,12 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         }
       }
 
+      // ✅ Se API retornou vazio ou filtrou tudo: preservar manuais (nunca deixar lista vazia)
+      if (_fretesLocal.isEmpty) {
+        _fretesLocal.addAll(manuaisAtuais.isNotEmpty ? manuaisAtuais : fallbackManuais);
+        logD('📦 [CATALOGO] API sem opções; preservando ${_fretesLocal.length} manuais.');
+      }
+
       // ✅ Manter índice selecionado pelo usuário, ou selecionar primeira opção de API
       // Só resetar o índice se for o primeiro cálculo (índice ainda não foi setado pelo usuário)
       if (_freteIndex < 0 || _freteIndex >= _fretesLocal.length) {
@@ -1675,7 +1841,21 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       setState(() {});
     } catch (e, st) {
       logE('❌ [CATALOGO] Erro ao calcular frete (type=${e.runtimeType})', error: e, st: st);
-      widget.showSnack('Erro ao calcular frete. Usando valor padrão.');
+      widget.showSnack('Erro ao calcular frete. Mantendo opções atuais.');
+      // Preservar lista existente; se estava vazia, restaurar de widget.fretes
+      if (_fretesLocal.isEmpty && widget.fretes.isNotEmpty && mounted) {
+        setState(() {
+          _fretesLocal.addAll(widget.fretes.map((e) => asMapDeep(e)));
+          _freteIndex = _freteIndex.clamp(0, _fretesLocal.length - 1);
+        });
+      } else if (_fretesLocal.isEmpty && mounted) {
+        setState(() {
+          _fretesLocal.addAll([
+            {'nome': 'Retirada', 'valor': 0.0, 'tipo': 'retirada', 'plataforma': 'manual', 'freteGratis': true},
+            {'nome': 'Combinar com vendedor', 'valor': 0.0, 'tipo': 'combinar', 'plataforma': 'manual', 'freteGratis': true},
+          ]);
+        });
+      }
     }
   }
 
@@ -2121,7 +2301,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       controller: _nome,
                       style: const TextStyle(color: Colors.white),
                       decoration: deco('Nome completo *', campoKey: 'nome'),
-                      onChanged: (_) => _limparErroCampo('nome'),
+                      onChanged: (_) { _limparErroCampo('nome'); _scheduleFormSave(); },
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2131,7 +2311,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       style: const TextStyle(color: Colors.white),
                       keyboardType: kKeyboardDecimal,
                       decoration: deco('CPF *', campoKey: 'cpf'),
-                      onChanged: (_) => _limparErroCampo('cpf'),
+                      onChanged: (_) { _limparErroCampo('cpf'); _scheduleFormSave(); },
                     ),
                   ),
                 ],
@@ -2146,7 +2326,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: deco('E-mail (opcional)'),
+                      decoration: deco('E-mail (opcional)', campoKey: 'email'),
+                      onChanged: (_) { _limparErroCampo('email'); _scheduleFormSave(); },
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2156,7 +2337,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       keyboardType: TextInputType.phone,
                       decoration:
                           deco('Telefone / WhatsApp *', campoKey: 'tel'),
-                      onChanged: (_) => _limparErroCampo('tel'),
+                      onChanged: (_) { _limparErroCampo('tel'); _scheduleFormSave(); },
                     ),
                   ),
                 ],
@@ -2231,6 +2412,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       ],
                       onChanged: (v) {
                         _limparErroCampo('cep');
+                        _scheduleFormSave();
                         final cep = v.replaceAll(RegExp(r'[^0-9]'), '');
                         if (cep.length == 8) {
                           _buscarEnderecoPorCep();
@@ -2293,7 +2475,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _rua,
                       decoration: deco('Rua *', campoKey: 'rua'),
-                      onChanged: (_) => _limparErroCampo('rua'),
+                      onChanged: (_) { _limparErroCampo('rua'); _scheduleFormSave(); },
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2302,7 +2484,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       controller: _numero,
                       keyboardType: kKeyboardDecimal,
                       decoration: deco('Número *', campoKey: 'numero'),
-                      onChanged: (_) => _limparErroCampo('numero'),
+                      onChanged: (_) { _limparErroCampo('numero'); _scheduleFormSave(); },
                     ),
                   ),
                 ],
@@ -2316,7 +2498,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _bairro,
                       decoration: deco('Bairro *', campoKey: 'bairro'),
-                      onChanged: (_) => _limparErroCampo('bairro'),
+                      onChanged: (_) { _limparErroCampo('bairro'); _scheduleFormSave(); },
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2324,7 +2506,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _cidade,
                       decoration: deco('Cidade *', campoKey: 'cidade'),
-                      onChanged: (_) => _limparErroCampo('cidade'),
+                      onChanged: (_) { _limparErroCampo('cidade'); _scheduleFormSave(); },
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2332,7 +2514,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _estado,
                       decoration: deco('UF *', campoKey: 'estado'),
-                      onChanged: (_) => _limparErroCampo('estado'),
+                      onChanged: (_) { _limparErroCampo('estado'); _scheduleFormSave(); },
                     ),
                   ),
                 ],
@@ -2342,6 +2524,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
               TextField(
                 controller: _complemento,
                 decoration: deco('Complemento'),
+                onChanged: (_) => _scheduleFormSave(),
               ),
               const SizedBox(height: 10),
 
@@ -2349,6 +2532,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 controller: _obs,
                 maxLines: 2,
                 decoration: deco('Observações (opcional)'),
+                onChanged: (_) => _scheduleFormSave(),
               ),
             ],
           ),
@@ -2559,7 +2743,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '$precoTexto${prazo.isNotEmpty ? ' ? $prazo' : ''}',
+                                  '$precoTexto${prazo.isNotEmpty ? ' - $prazo' : ''}',
                                   style: TextStyle(
                                     color: textoCampo.withValues(alpha:0.7),
                                     fontSize: 13,
@@ -3045,9 +3229,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               content: const Text(
                                 'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
                                 'Assim você poderá:\n'
-                                '? Receber cupons de desconto\n'
-                                '? Concorrer a prêmios com números da sorte\n'
-                                '? Acompanhar seus pedidos',
+                                '• Receber cupons de desconto\n'
+                                '• Concorrer a prêmios com números da sorte\n'
+                                '• Acompanhar seus pedidos',
                               ),
                               actions: [
                                 TextButton(
@@ -3074,6 +3258,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           return;
                         }
 
+                        if (!_validarItensComPreco()) return;
                         if (!_validarCampos()) return;
 
                         // ✅ MARCA COMO PROCESSANDO
@@ -3210,8 +3395,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             _processandoCheckout = true;
                             _checkoutError = null;
                           });
-                          await Future.delayed(Duration.zero);
                           try {
+                            await Future.delayed(Duration.zero);
                             final cliente =
                                 await ClienteAuthService.getClienteLogado();
                             if (!mounted) return;
@@ -3247,6 +3432,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               );
                               return;
                             }
+                            if (!_validarItensComPreco()) return;
                             if (!_validarCampos()) return;
                             final customer = _customerPayload();
                             final freteSelecionado = _fretesLocal.isNotEmpty &&
@@ -3271,11 +3457,19 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               if (freteSelecionado['service_id'] != null)
                                 'service_id': freteSelecionado['service_id'],
                             };
+                            final cupomCod = _cupomAplicado != null
+                                ? ((_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '').toString().trim())
+                                : '';
+                            final cupomId = _cupomAplicado?['id'] as String?;
+                            final clienteLogadoPix = await ClienteAuthService.getClienteLogado();
+                            final clienteIdPix = clienteLogadoPix?['clienteId']?.toString();
                             await widget.onCheckoutPix!(
                               customer: customer,
                               entrega: entrega,
                               valorTotal: total,
                               observacao: _obs.text.trim(),
+                              cupomCodigo: cupomCod.isEmpty ? null : cupomCod,
+                              desconto: _descontoCupomProdutos,
                               cupomRoletaCodigo: _cupomRoletaCodigo,
                               cupomRoletaDesconto: _cupomRoletaDesconto,
                               premioRoletaDescricao: _premioRoletaDescricao,
@@ -3284,21 +3478,46 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                   setState(() => _checkoutError = msg);
                                 }
                               },
+                              onPedidoCriado: (pedidoId) async {
+                                final origem = _cupomAplicado?['origem']?.toString();
+                                if (origem != 'roleta_sorte' &&
+                                    origem != 'cupom_cliente' &&
+                                    cupomId != null &&
+                                    clienteIdPix != null &&
+                                    cupomId.isNotEmpty &&
+                                    clienteIdPix.isNotEmpty) {
+                                  await CupomDescontoService().registrarUso(
+                                    lojaId: widget.lojaId,
+                                    cupomId: cupomId,
+                                    clienteId: clienteIdPix,
+                                  );
+                                }
+                                if (_cupomAplicado != null &&
+                                    _cupomAplicado!['origem'] == 'roleta_sorte') {
+                                  final email = (clienteLogadoPix?['email'] ?? '').toString().trim();
+                                  final cod = cupomCod;
+                                  if (email.isNotEmpty && cod.isNotEmpty) {
+                                    await ClienteAuthService.marcarCupomRoletaComoUsado(
+                                      lojaId: widget.lojaId,
+                                      email: email,
+                                      codigo: cod,
+                                    );
+                                  }
+                                }
+                                if (_cupomAplicado != null &&
+                                    _cupomAplicado!['origem'] == 'cupom_cliente' &&
+                                    pedidoId != null && pedidoId.isNotEmpty) {
+                                  final cupomClienteId = (_cupomAplicado!['id'] ?? '').toString();
+                                  if (cupomClienteId.isNotEmpty) {
+                                    await CuponsService.usarCupom(
+                                      lojaId: widget.lojaId,
+                                      cupomId: cupomClienteId,
+                                      pedidoId: pedidoId,
+                                    );
+                                  }
+                                }
+                              },
                             );
-                            // Cupom da roleta (perfil): marcar como usado
-                            if (_cupomAplicado != null &&
-                                _cupomAplicado!['origem'] == 'roleta_sorte') {
-                              final clientePix = await ClienteAuthService.getClienteLogado();
-                              final emailPix = (clientePix?['email'] ?? '').toString().trim();
-                              final codigoPix = (_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '').toString();
-                              if (emailPix.isNotEmpty && codigoPix.isNotEmpty) {
-                                await ClienteAuthService.marcarCupomRoletaComoUsado(
-                                  lojaId: widget.lojaId,
-                                  email: emailPix,
-                                  codigo: codigoPix,
-                                );
-                              }
-                            }
                           } finally {
                             if (mounted) {
                               setState(() => _processandoCheckout = false);
@@ -3397,6 +3616,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               return;
                             }
 
+                            if (!_validarItensComPreco()) return;
                             if (!_validarCampos()) return;
                             final customer = _customerPayload();
 

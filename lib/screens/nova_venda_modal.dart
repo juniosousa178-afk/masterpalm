@@ -15,8 +15,6 @@ import '../services/limits_guard.dart';
 import 'dart:async';
 import 'dart:math';
 import '../services/campanhas_sorteio_service.dart';
-import '../services/sorteio_numero_service.dart';
-import '../services/pos_pagamento_service.dart';
 import '../utils/moeda_input_formatter.dart';
 import '../utils/text_utils.dart';
 import 'barcode_scanner_screen.dart';
@@ -657,103 +655,58 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // 🔹 NÚMERO DA SORTE – gera e registra na campanha (SÓ SE HOUVER CAMPANHA ATIVA)
-  // Retorna o numeroSorte quando registrado em campanha, senão null.
-  // ---------------------------------------------------------------------------
-  Future<String?> _registrarNumeroSorteio({
-    required double totalCompra,
-    required String nomeClienteFinal,
-    String? clienteId,
-    Cliente? cliente,
-  }) async {
-    try {
-      // Gera número 5 dígitos
-      final numeroSorte = SorteioNumeroService.gerarNumeroCliente();
-
-      // Registra nas campanhas ativas da loja
-      // Retorna true apenas se houver pelo menos uma campanha ativa
-      final registrou = await SorteioNumeroService.registrarNumeroEmCampanhas(
-        lojaId: lojaId,
-        clienteNome: nomeClienteFinal,
-        clienteId: clienteId ?? cliente?.idFirebase,
-        valorCompra: totalCompra,
-        dataCompra: DateTime.now(),
-        numeroSorte: numeroSorte,
-      );
-
-      // ✅ SÓ mostra o diálogo se houver campanha ativa
-      if (!registrou) {
-        logD('ℹ️ [SORTEIO] Nenhuma campanha ativa - número da sorte não exibido');
-        return null;
-      }
-
-      if (!mounted) return null;
-
-      // Mostra pro vendedor/cliente
-      await showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            'Número da sorte gerado!',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Cliente: $nomeClienteFinal',
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Número da sorte:',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 4),
-              Center(
-                child: Text(
-                  numeroSorte,
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 4,
-                  ),
+  /// Mostra dialog com número da sorte gerado pelo CampaignEngine.
+  Future<void> _mostrarDialogNumeroSorte(String numeroSorte, String nomeClienteFinal) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          'Número da sorte gerado!',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cliente: $nomeClienteFinal',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Número da sorte:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                numeroSorte,
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 4,
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Guarde esse número. Ele será usado no sorteio da campanha.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Guarde esse número. Ele será usado no sorteio da campanha.',
+              style: TextStyle(fontSize: 12),
             ),
           ],
         ),
-      );
-      return numeroSorte;
-    } catch (e, st) {
-      if (!mounted) return null;
-      logE('❌ [VENDA] Erro ao registrar número do sorteio (type=${e.runtimeType})', error: e, st: st);
-      // Não bloqueia a venda se der erro no sorteio
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Venda concluída, mas houve erro ao registrar o número do sorteio: $e',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
           ),
-        ),
-      );
-      return null;
-    }
+        ],
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1216,7 +1169,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final onVendaFinalizadaRef = widget.onVendaFinalizada;
 
       // Só fecha o modal após o salvamento principal ter sido concluído com sucesso.
-      final ok = await _salvarVendaEmBackground(
+      final (ok, numeroSorte) = await _salvarVendaEmBackground(
         produtosBox: produtosBox,
         clientesBox: clientesBox,
         vendasBox: vendasBox,
@@ -1238,6 +1191,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _pendenteFiado = false;
       if (!mounted) return;
       if (ok) {
+        // Mostrar dialog com número da sorte (CampaignEngine já envia WhatsApp/Email)
+        if (numeroSorte != null && numeroSorte.isNotEmpty) {
+          await _mostrarDialogNumeroSorte(numeroSorte, nomeClienteFinal);
+        }
+        if (!mounted) return;
         onVendaFinalizadaRef();
         Navigator.of(context).pop(true);
       }
@@ -1253,9 +1211,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
   }
 
-  /// Executa guard, registrarVendaMulti e número da sorte. Não usa widget/context.
-  /// Retorna true se salvou com sucesso; false em caso de erro (onErro já chamado).
-  Future<bool> _salvarVendaEmBackground({
+  /// Executa guard, registrarVendaMulti e participação em campanha (CampaignEngine).
+  /// Retorna (sucesso, numeroSorte?) — não usa widget/context.
+  Future<(bool, String?)> _salvarVendaEmBackground({
     required Box<Produto> produtosBox,
     required Box<Cliente> clientesBox,
     required Box<Venda> vendasBox,
@@ -1292,10 +1250,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         onErro?.call(
           'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.',
         );
-        return false;
+        return (false, null);
       }
 
-      final venda = await VendasService.registrarVendaMulti(
+      // ✅ ETAPA 1: Fluxo único de participação — apenas CampaignEngine (via VendasService).
+      // Removido _registrarNumeroSorteio (SorteioNumeroService) para evitar duplicidade.
+      String? numeroSorteRecebido;
+      await VendasService.registrarVendaMulti(
         produtosBox: produtosBox,
         clientesBox: clientesBox,
         vendasBox: vendasBox,
@@ -1315,43 +1276,17 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         isFiado: isFiado,
         dataVencimentoFiado: isFiado ? DateTime.now().add(Duration(days: diasVencimentoFiado)) : null,
         itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+        onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
       );
 
-      final numeroSorte = await _registrarNumeroSorteio(
-        totalCompra: total,
-        nomeClienteFinal: nomeClienteFinal,
-        clienteId: null,
-        cliente: cliente,
-      );
-
-      // Enviar número da sorte ao cliente por WhatsApp e e-mail (quando houver contato)
-      if (numeroSorte != null) {
-        final email = (cliente?.email ?? '').trim();
-        final telefone = (cliente?.telefone ?? '').trim();
-        if (email.isNotEmpty || telefone.isNotEmpty) {
-          final vendaId = venda.key.toString();
-          final customer = <String, dynamic>{
-            'nome': nomeClienteFinal,
-            'email': email,
-            'telefone': telefone,
-          };
-          await PosPagamentoService.enviarNotificacaoNumeroSorte(
-            lojaId: lojaId,
-            vendaId: vendaId,
-            customer: customer,
-            numeroSorte: numeroSorte,
-            valorTotal: total,
-          );
-        }
-      }
-      return true;
+      return (true, numeroSorteRecebido);
     } catch (e, stackTrace) {
       final erroReal = _extrairErroReal(e);
       logE('❌ [VENDA] Erro ao salvar em background (type=${erroReal.runtimeType})', error: erroReal, st: stackTrace);
       onErro?.call(
         'Erro ao salvar venda. Verifique conexão e estoque. $erroReal',
       );
-      return false;
+      return (false, null);
     }
   }
 

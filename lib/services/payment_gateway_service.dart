@@ -49,6 +49,7 @@ class PaymentGatewayService {
         case 'mp':
           return await _processarMercadoPago(
             config: config,
+            lojaId: lojaId,
             valor: valor,
             descricao: descricao,
             email: emailPagador,
@@ -115,6 +116,7 @@ class PaymentGatewayService {
   /// Processa pagamento via Mercado Pago
   static Future<Map<String, dynamic>?> _processarMercadoPago({
     required Map<String, dynamic> config,
+    required String lojaId,
     required double valor,
     required String descricao,
     String? email,
@@ -136,6 +138,7 @@ class PaymentGatewayService {
       email: email,
       cpf: cpf,
       externalReference: externalReference,
+      lojaId: lojaId,
     );
 
     if (result != null) {

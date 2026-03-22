@@ -2,6 +2,7 @@
 
 /// Modelo de cliente do catálogo web
 /// Armazenado em: lojas/{lojaId}/clientes_web/{clienteId}
+/// LEGADO (FASE 4): clientes_web = catálogo admin. Não usar para catálogo público.
 class ClienteWeb {
   final String id;
   final String nome;

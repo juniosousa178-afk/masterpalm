@@ -15,6 +15,9 @@ import 'cliente_auth_helpers.dart';
 
 /// Serviço de autenticação EXCLUSIVO para clientes do catálogo (quem compra na loja).
 ///
+/// FONTE PRINCIPAL (FASE 4): Usa lojas/{lojaId}/clientes como identidade.
+/// Ver docs/MAPA_CLIENTES_E_PATHS.md.
+///
 /// ═══════════════════════════════════════════════════════════════════════════
 /// 🔒 SEPARAÇÃO OBRIGATÓRIA: cadastro/login do cliente no catálogo NÃO PODE ter
 ///    nada a ver com o cadastro ou uso do APK/app web (dono da loja).
@@ -479,8 +482,8 @@ class ClienteAuthService {
     }
   }
 
-  /// Buscar dados completos do cliente via CF (leitura segura, sem get público).
-  /// Requer email para validação; dados vêm de getClienteCatalog.
+  /// Buscar dados completos do cliente via CF getClienteCatalog.
+  /// FONTE: clientes (identidade, cupons, favoritos, pedidos legados).
   static Future<Map<String, dynamic>?> getDadosCompletos({
     required String lojaId,
     required String clienteId,
@@ -529,7 +532,7 @@ class ClienteAuthService {
   }
 
   /// Busca pedidos do cliente para exibir no perfil.
-  /// ETAPA 9: gera portalToken on-demand se faltar (clientes legados).
+  /// FONTE: clientes_portal (espelho Meus Pedidos). Gera portalToken on-demand se faltar.
   /// Retorna pedidos e indica se é preciso reconectar (quando não foi possível obter portalToken).
   static Future<({List<Map<String, dynamic>> pedidos, bool precisaReconectar})>
       getPedidosDoCliente({
@@ -592,7 +595,8 @@ class ClienteAuthService {
     }
   }
 
-  /// Busca cupons da roleta (clientes_catalogo/{email}/cupons) e normaliza formato
+  /// Busca cupons da roleta (clientes_catalogo/{email}/cupons) e normaliza formato.
+  /// USO ESPECÍFICO: clientes_catalogo é cache de cupons roleta; identidade em clientes.
   static Future<List<Map<String, dynamic>>> getCuponsRoleta({
     required String lojaId,
     required String email,
@@ -629,7 +633,7 @@ class ClienteAuthService {
   }
 
   /// Marca um cupom da roleta como usado no perfil do cliente (não pode ser usado novamente).
-  /// Atualiza clientes_catalogo/{email}/cupons/{codigo} com usado: true e dataUso.
+  /// Atualiza clientes_catalogo/{email}/cupons/{codigo}. USO ESPECÍFICO: cupons roleta.
   static Future<bool> marcarCupomRoletaComoUsado({
     required String lojaId,
     required String email,
@@ -1068,6 +1072,7 @@ class ClienteAuthService {
     }
   }
 
+  /// Último endereço usado em pedido. FONTE: clientes_portal (espelho).
   static Future<Map<String, dynamic>?> getUltimoEnderecoIndexado({
     required String lojaId,
     String? portalToken,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../widgets/smart_image.dart';
+import '../catalog_helpers.dart';
 
 /// Letreiro promocional; com [marqueeWhenOverflow] rola o texto quando não couber (layout minimalista).
 class CatalogPromoBar extends StatefulWidget {
@@ -368,11 +369,28 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   final VoidCallback? onTap;
   final String imageUrl;
   final double height;
-  final Color textColor;
-  final Color buttonColor;
+  /// Cor do card/fundo do banner (atrás da imagem ou gradiente sem imagem).
   final Color backgroundColor;
+  /// Raio do card do banner.
   final double borderRadius;
   final double overlayOpacity;
+
+  final Color titleColor;
+  final double titleFontSize;
+  final FontWeight titleFontWeight;
+  final String titleLetterCase;
+
+  final Color subtitleColor;
+  final double subtitleFontSize;
+  final FontWeight subtitleFontWeight;
+  final String subtitleLetterCase;
+
+  final Color buttonBackgroundColor;
+  final Color buttonTextColor;
+  final double buttonFontSize;
+  final FontWeight buttonFontWeight;
+  final double buttonBorderRadius;
+  final String buttonLetterCase;
 
   const CatalogMinimalHeroBanner({
     super.key,
@@ -383,11 +401,23 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
     this.onTap,
     required this.imageUrl,
     required this.height,
-    required this.textColor,
-    required this.buttonColor,
     required this.backgroundColor,
     required this.borderRadius,
     this.overlayOpacity = 0.18,
+    required this.titleColor,
+    this.titleFontSize = 17,
+    this.titleFontWeight = FontWeight.w600,
+    this.titleLetterCase = 'none',
+    required this.subtitleColor,
+    this.subtitleFontSize = 13,
+    this.subtitleFontWeight = FontWeight.w400,
+    this.subtitleLetterCase = 'none',
+    required this.buttonBackgroundColor,
+    required this.buttonTextColor,
+    this.buttonFontSize = 13,
+    this.buttonFontWeight = FontWeight.w600,
+    this.buttonBorderRadius = 8,
+    this.buttonLetterCase = 'none',
   });
 
   @override
@@ -403,11 +433,16 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
     final boxH = hasImage
         ? height.clamp(120, 360).toDouble()
         : (hasCopy ? 96.0 : 0.0);
+    final titleDisplay = applyHeroLetterCase(title.trim(), titleLetterCase);
+    final subtitleDisplay =
+        applyHeroLetterCase(subtitle.trim(), subtitleLetterCase);
+    final buttonDisplay =
+        applyHeroLetterCase(buttonText.trim(), buttonLetterCase);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(
-          borderRadius.clamp(8, 28).toDouble(),
+          borderRadius.clamp(8, 36).toDouble(),
         ),
         child: Stack(
           children: [
@@ -443,44 +478,52 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (title.trim().isNotEmpty)
+                    if (titleDisplay.isNotEmpty)
                       Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-        ),
-                      ),
-                    if (subtitle.trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        subtitle,
+                        titleDisplay,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: textColor.withValues(alpha: 0.96),
-                          fontSize: 13,
+                          color: titleColor,
+                          fontSize: titleFontSize.clamp(10, 40),
+                          fontWeight: titleFontWeight,
+                        ),
+                      ),
+                    if (subtitleDisplay.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitleDisplay,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: subtitleColor,
+                          fontSize: subtitleFontSize.clamp(9, 32),
+                          fontWeight: subtitleFontWeight,
                         ),
                       ),
                     ],
-                    if (buttonText.trim().isNotEmpty) ...[
+                    if (buttonDisplay.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       FilledButton(
                         onPressed: onTap,
                         style: FilledButton.styleFrom(
-                          backgroundColor: buttonColor,
+                          backgroundColor: buttonBackgroundColor,
+                          foregroundColor: buttonTextColor,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           minimumSize: const Size(0, 36),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(
+                              buttonBorderRadius.clamp(0, 28),
+                            ),
                           ),
                         ),
                         child: Text(
-                          buttonText,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          buttonDisplay,
+                          style: TextStyle(
+                            fontSize: buttonFontSize.clamp(9, 24),
+                            fontWeight: buttonFontWeight,
+                            color: buttonTextColor,
+                          ),
                         ),
                       ),
                     ],

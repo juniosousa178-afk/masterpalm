@@ -79,8 +79,9 @@ async function fetchPaymentFromMp(paymentId, token) {
 /**
  * Resolve lojaId e payment.
  * Ordem: 1) token global (se houver) 2) busca em todas as lojas com token MP
+ * Exportado para uso em posPagamento.js (multi-loja).
  */
-async function resolveLojaAndPayment(paymentId, globalToken) {
+export async function resolveLojaAndPayment(paymentId, globalToken) {
   // 1) Tentar token global primeiro (fallback para lojas sem OAuth)
   if (globalToken && globalToken.length > 10) {
     const payment = await fetchPaymentFromMp(paymentId, globalToken);

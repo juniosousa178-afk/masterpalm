@@ -12,9 +12,9 @@ function gerarCodigo(prefixo = 'CUPOM', tamanho = 8) {
   return codigo;
 }
 
-// Função para gerar número da sorte (6 dígitos)
+// Função para gerar número da sorte (5 dígitos — alinhado ao app)
 function gerarNumeroSorte() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(Math.floor(10000 + Math.random() * 90000));
 }
 
 /**
@@ -120,14 +120,35 @@ exports.gerarCupomNumeroSorte = functions
 
         if (!campanhasSnapshot.empty) {
           const campanhaDoc = campanhasSnapshot.docs[0];
-          await campanhaDoc.ref.collection('participantes').add({
-            clienteId: clienteId,
-            numeroSorte: numeroSorte,
-            pedidoId: pedidoId,
-            clienteNome: clienteNome,
-            clienteEmail: clienteEmail,
-            data: admin.firestore.FieldValue.serverTimestamp()
-          });
+          // Verificar duplicidade por pedidoId
+          const dup = await campanhaDoc.ref.collection('participantes')
+            .where('pedidoId', '==', pedidoId)
+            .limit(1)
+            .get();
+          if (!dup.empty) {
+            console.warn('Participação duplicada para pedidoId:', pedidoId);
+          } else {
+          const participante = {
+            clienteId,
+            numeroSorte,
+            pedidoId,
+            vendaId: pedidoId,
+            clienteNome: clienteNome || '',
+            clienteEmail: clienteEmail || null,
+            clienteTelefone: clienteTelefone || null,
+            valorPedido: valorPedido ?? 0,
+            valorCompra: valorPedido ?? 0,
+            dataParticipacao: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'valido',
+            sorteado: false,
+            campanhaId: campanhaDoc.id,
+            origem: 'gerar_cupom',
+            nomeCliente: clienteNome || '',
+            numeros: [numeroSorte],
+            criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+          };
+          await campanhaDoc.ref.collection('participantes').add(participante);
+          }
         }
       } catch (campErr) {
         console.error('Erro ao registrar na campanha:', campErr);

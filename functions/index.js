@@ -31,6 +31,7 @@ import {
   getCallableIdentifier,
 } from "./src/rateLimiter.js";
 import { processMpWebhook } from "./src/mpWebhookHandler.js";
+import { writeOrderLojaIndex } from "./src/orderLojaIndex.js";
 import {
   sugerirDescricaoProduto as aiSugerirDescricao,
   chatDicasLoja as aiChatDicas,
@@ -178,6 +179,7 @@ async function resolveClientePortalTarget(lojaId, pedidoData = {}) {
   let clienteDoc = null;
   const clienteId = normalizeOptionalString(cliente.id);
   const clienteEmail = normalizeEmail(cliente.email);
+  const portalTokenFromPedido = normalizeOptionalString(cliente.portalToken);
 
   if (clienteId) {
     const snap = await db
@@ -205,9 +207,19 @@ async function resolveClientePortalTarget(lojaId, pedidoData = {}) {
     }
   }
 
+  // Usar portalToken do pedido (app passou da sessão) quando não encontrou cliente em clientes
+  if (!clienteDoc && portalTokenFromPedido && clienteEmail) {
+    console.log("[resolveClientePortalTarget] Usando portalToken do pedido (cliente não em clientes, email=" + clienteEmail + ")");
+    return {
+      clienteId: clienteId || "",
+      portalToken: portalTokenFromPedido,
+      clienteData: {},
+    };
+  }
+
   if (!clienteDoc) return null;
 
-  let portalToken = normalizeOptionalString(clienteDoc.data.portalToken);
+  let portalToken = normalizeOptionalString(clienteDoc.data.portalToken) || portalTokenFromPedido;
   if (!portalToken) {
     portalToken = createPortalToken();
     await clienteDoc.ref.set({ portalToken }, { merge: true });
@@ -1255,11 +1267,14 @@ export const mpCatalogPayment = onRequest(
         }
         const emailStr = email && String(email).trim() ? String(email).trim() : "cliente@mastepalm.com.br";
         const cpfLimpo = cpf ? String(cpf).replace(/\D/g, "") : "";
+        const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         const mpBody = {
           transaction_amount: numValor,
           description: String(descricao),
           payment_method_id: "pix",
           ...(externalReference && { external_reference: String(externalReference) }),
+          metadata: { lojaId: String(lojaId) },
+          ...(notifUrl && { notification_url: notifUrl }),
           payer: {
             email: emailStr,
             ...(cpfLimpo.length >= 11 && {
@@ -1314,9 +1329,12 @@ export const mpCatalogPayment = onRequest(
           return res.status(400).json({ error: "Preferência requer titulo e valor" });
         }
         const WEB_BASE = (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
+        const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         const mpBody = {
           items: [{ title: String(titulo), description: descricao || titulo, quantity: Number(quantidade) || 1, currency_id: "BRL", unit_price: Number(valor) }],
           ...(externalReference && { external_reference: String(externalReference) }),
+          metadata: { lojaId: String(lojaId) },
+          ...(notifUrl && { notification_url: notifUrl }),
           ...(payer && { payer: payer }),
           back_urls: backUrls || {
             success: `${WEB_BASE}/pagamento/sucesso`,
@@ -1360,11 +1378,18 @@ export const mpCatalogPayment = onRequest(
 );
 
 /**
- * Webhook de pagamentos de pedidos (Mercado Pago)
+ * WEBHOOK OFICIAL DE PRODUÇÃO — Mercado Pago
  *
+ * URL: https://southamerica-east1-{PROJECT_ID}.cloudfunctions.net/mpWebhook
+ * Configure esta URL no painel do Mercado Pago (Webhooks / Notificações).
+ *
+ * Responsabilidades:
  * - Idempotência por paymentId (reenvios não duplicam)
  * - Token correto por lojaId (multi-tenant)
- * - Transação atômica evita duplicar baixa de estoque
+ * - Atualiza pedidos/pre_pedidos, baixa estoque, notifica admin
+ *
+ * NOTA: mercadopagoWebhook (posPagamento.js) NÃO está em uso; campanhas/números
+ * via webhook requerem integração futura se necessário.
  */
 export const mpWebhook = onRequest(
   { cors: true, secrets: [S_MP_ACCESS_TOKEN], timeoutSeconds: 30, memory: "256MiB" },
@@ -1854,6 +1879,7 @@ export const syncPedidoStatusPublico = onDocumentWritten(
         .doc(pedidoId)
         .set(payload, { merge: false });
       await upsertClientePortalFromPedido(lojaId, pedidoId, afterData);
+      await writeOrderLojaIndex(db, pedidoId, lojaId, "pre_pedidos");
       console.log("[syncPedidoStatusPublico] Espelho público atualizado:", pedidoId);
     } catch (e) {
       console.error("[syncPedidoStatusPublico] Erro:", e);

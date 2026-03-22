@@ -17,6 +17,7 @@ import 'pedido_collection_resolver.dart';
 import 'indicacao_config_service.dart';
 import 'cupons_service.dart';
 import 'cliente_auth_service.dart';
+import 'cliente_auth_helpers.dart';
 import 'pre_pedido_helpers.dart';
 
 /// Serviço para gerenciar pré-pedidos do catálogo
@@ -42,43 +43,164 @@ class PrePedidoService {
     return base64UrlEncode(bytes).replaceAll('=', '');
   }
 
+  /// Resolve portalToken para salvar pedido em clientes_portal.
+  /// Ordem de prioridade: portalTokenFromSession > getDadosCompletos > query por clienteId > query por email > criar cliente.
+  /// Logs rastreáveis em cada etapa.
   static Future<String?> _resolvePortalTokenForPedido({
     required String lojaId,
     required Map<String, dynamic> pedidoData,
+    String? portalTokenFromSession,
   }) async {
     final cliente = pedidoData['cliente'];
     final clienteMap =
         cliente is Map ? Map<String, dynamic>.from(cliente) : <String, dynamic>{};
     final clienteId = (clienteMap['id'] ?? '').toString().trim();
     final email = (clienteMap['email'] ?? '').toString().trim().toLowerCase();
-    if (email.isEmpty) return null;
-
-    if (clienteId.isNotEmpty) {
-      final dados = await ClienteAuthService.getDadosCompletos(
-        lojaId: lojaId,
-        clienteId: clienteId,
-        email: email,
-      );
-      return (dados?['portalToken'] ?? '').toString().trim();
+    if (email.isEmpty) {
+      logW('[PORTAL] _resolvePortalTokenForPedido: email vazio, não é possível vincular ao portal');
+      return null;
     }
 
-    final snapshot = await _firestore
+    // 1) Usar portalToken da sessão ou do próprio pedido (evita dependência de CF)
+    final tokenSessao = (portalTokenFromSession ?? '').toString().trim();
+    final tokenNoPedido = (clienteMap['portalToken'] ?? '').toString().trim();
+    final tokenPrioritario = tokenSessao.isNotEmpty ? tokenSessao : tokenNoPedido;
+    if (tokenPrioritario.isNotEmpty) {
+      logD('[PORTAL] Usando portalToken ${tokenSessao.isNotEmpty ? "da sessão" : "do pedido"} (lojaId=$lojaId clienteId=$clienteId)');
+      return tokenPrioritario;
+    }
+
+    // 2) Por clienteId: tentar getDadosCompletos (CF)
+    if (clienteId.isNotEmpty) {
+      try {
+        final dados = await ClienteAuthService.getDadosCompletos(
+          lojaId: lojaId,
+          clienteId: clienteId,
+          email: email,
+        );
+        final token = (dados?['portalToken'] ?? '').toString().trim();
+        if (token.isNotEmpty) {
+          logD('[PORTAL] portalToken obtido via getDadosCompletos (clienteId=$clienteId)');
+          return token;
+        }
+      } catch (e) {
+        logW('[PORTAL] getDadosCompletos falhou (clienteId=$clienteId): $e');
+      }
+
+      // 2b) Fallback: leitura direta do doc clientes (se CF falhou)
+      try {
+        final doc = await _firestore
+            .collection('lojas')
+            .doc(lojaId)
+            .collection('clientes')
+            .doc(clienteId)
+            .get();
+        if (doc.exists) {
+          final data = doc.data() ?? {};
+          var token = (data['portalToken'] ?? '').toString().trim();
+          if (token.isEmpty) {
+            token = _gerarPortalToken();
+            await doc.reference.update({'portalToken': token});
+            logD('[PORTAL] portalToken criado no doc clientes (clienteId=$clienteId)');
+          }
+          return token;
+        }
+      } catch (e) {
+        logW('[PORTAL] Fallback leitura clientes por id falhou: $e');
+      }
+    }
+
+    // 3) Query por email em clientes
+    try {
+      final snapshot = await _firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('clientes')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+      if (snapshot.docs.isNotEmpty) {
+        final doc = snapshot.docs.first;
+        final clienteData = doc.data();
+        var portalToken = (clienteData['portalToken'] ?? '').toString().trim();
+        if (portalToken.isEmpty) {
+          portalToken = _gerarPortalToken();
+          await doc.reference.update({'portalToken': portalToken});
+          logD('[PORTAL] portalToken criado no doc clientes (por email, docId=${doc.id})');
+        }
+        return portalToken;
+      }
+    } catch (e) {
+      logW('[PORTAL] Query clientes por email falhou: $e');
+    }
+
+    // 4) Último recurso: criar cliente mínimo com portalToken (garante que pedido apareça em Meus Pedidos)
+    try {
+      final result = await _ensureClienteComPortalToken(
+        lojaId: lojaId,
+        email: email,
+        nome: (clienteMap['nome'] ?? 'Cliente').toString().trim(),
+        telefone: (clienteMap['telefone'] ?? '').toString().trim(),
+      );
+      if (result != null && result.isNotEmpty) {
+        logD('[PORTAL] Cliente criado com portalToken (email=$email) - pedido ficará visível em Meus Pedidos');
+        return result;
+      }
+    } catch (e) {
+      logE('[PORTAL] Falha ao criar cliente mínimo para portal (email=$email)', error: e);
+    }
+
+    logW('[PORTAL] Não foi possível resolver portalToken - pedido NÃO aparecerá em Meus Pedidos');
+    return null;
+  }
+
+  /// Cria cliente mínimo em clientes quando não existe, para garantir vínculo com clientes_portal.
+  /// Retorna portalToken ou null em caso de falha.
+  /// Usa doc id determinístico (clienteIdPorEmail) + transação: duas execuções simultâneas
+  /// para o mesmo email gravam no mesmo doc, eliminando race e duplicidade.
+  /// Nota: Transaction.get() no client SDK não aceita Query; confiamos no id determinístico.
+  static Future<String?> _ensureClienteComPortalToken({
+    required String lojaId,
+    required String email,
+    required String nome,
+    required String telefone,
+  }) async {
+    final emailNorm = email.trim().toLowerCase();
+    if (emailNorm.isEmpty) return null;
+
+    final docId = clienteIdPorEmail(lojaId, emailNorm);
+    final docRef = _firestore
         .collection('lojas')
         .doc(lojaId)
         .collection('clientes')
-        .where('email', isEqualTo: email)
-        .limit(1)
-        .get();
-    if (snapshot.docs.isEmpty) return null;
+        .doc(docId);
 
-    final doc = snapshot.docs.first;
-    final clienteData = doc.data();
-    var portalToken = (clienteData['portalToken'] ?? '').toString().trim();
-    if (portalToken.isEmpty) {
-      portalToken = _gerarPortalToken();
-      await doc.reference.update({'portalToken': portalToken});
-    }
-    return portalToken;
+    return _firestore.runTransaction<String?>((tx) async {
+      final snap = await tx.get(docRef);
+      if (snap.exists) {
+        final data = snap.data() ?? {};
+        var token = (data['portalToken'] ?? '').toString().trim();
+        if (token.isEmpty) {
+          token = _gerarPortalToken();
+          tx.update(docRef, {'portalToken': token});
+        }
+        return token;
+      }
+
+      final portalToken = _gerarPortalToken();
+      tx.set(docRef, {
+        'id': docId,
+        'email': emailNorm,
+        'nome': nome.isNotEmpty ? nome : emailNorm.split('@').first,
+        'telefone': telefone,
+        'portalToken': portalToken,
+        'dataCadastro': FieldValue.serverTimestamp(),
+        'cupons': <dynamic>[],
+        'favoritos': <dynamic>[],
+        'ativo': true,
+      });
+      return portalToken;
+    });
   }
 
   static Future<void> _saveClientePortalPedidoResumo({
@@ -86,12 +208,17 @@ class PrePedidoService {
     required String pedidoId,
     required Map<String, dynamic> pedidoData,
     String? overrideStatus,
+    String? portalTokenFromSession,
   }) async {
     final portalToken = await _resolvePortalTokenForPedido(
       lojaId: lojaId,
       pedidoData: pedidoData,
+      portalTokenFromSession: portalTokenFromSession,
     );
-    if (portalToken == null || portalToken.isEmpty) return;
+    if (portalToken == null || portalToken.isEmpty) {
+      logW('[PORTAL] _saveClientePortalPedidoResumo: portalToken nulo (pedidoId=$pedidoId) - pedido não aparecerá em Meus Pedidos');
+      return;
+    }
 
     final frete = pedidoData['frete'];
     final freteMap = frete is Map ? Map<String, dynamic>.from(frete) : null;
@@ -169,6 +296,7 @@ class PrePedidoService {
     String? indicacaoClienteId, // ✅ ID do cliente que indicou (link ?indicacao=clienteId)
     String?
         origemCheckout, // 'whatsapp' quando finalizado por WhatsApp (para notificação específica)
+    String? portalTokenFromSession, // ✅ portalToken da sessão (evita falha em Meus Pedidos)
   }) async {
     try {
       // Calcular totais (aplica desconto PIX quando pagamento é PIX)
@@ -225,6 +353,8 @@ class PrePedidoService {
           'endereco': customer['endereco'] ?? {},
           'enderecoFormatado': customer['enderecoFormatado'] ?? '',
           if (clienteId != null && clienteId.isNotEmpty) 'id': clienteId,
+          if (portalTokenFromSession != null && portalTokenFromSession.isNotEmpty)
+            'portalToken': portalTokenFromSession,
         },
 
         // Itens
@@ -294,6 +424,28 @@ class PrePedidoService {
         total: total,
       );
 
+      // ✅ [PORTAL] Garantir portalToken em cliente ANTES de salvar (CF syncPedidoStatusPublico
+      // precisa disso para gravar em clientes_portal). Sem isso, pedido não aparece em Meus Pedidos.
+      final emailParaPortal = (customer['email'] ?? '').toString().trim().toLowerCase();
+      if (emailParaPortal.isNotEmpty) {
+        String? portalTokenParaPedido = portalTokenFromSession?.trim().isNotEmpty == true
+            ? portalTokenFromSession!.trim()
+            : null;
+        if (portalTokenParaPedido == null) {
+          portalTokenParaPedido = await _ensureClienteComPortalToken(
+            lojaId: lojaId,
+            email: emailParaPortal,
+            nome: (customer['nome'] ?? 'Cliente').toString().trim(),
+            telefone: (customer['telefone'] ?? '').toString().trim(),
+          );
+        }
+        if (portalTokenParaPedido != null) {
+          final clienteAtual = Map<String, dynamic>.from(prePedidoData['cliente'] as Map);
+          clienteAtual['portalToken'] = portalTokenParaPedido;
+          prePedidoData['cliente'] = clienteAtual;
+        }
+      }
+
       // Salvar no Firestore
       final docRef = await _pedidoRepository.createPedido(
         flowType: PedidoFlowType.prePedidos,
@@ -304,6 +456,16 @@ class PrePedidoService {
       logD('✅ Pré-pedido criado: ${docRef.id}');
 
       // Notificação admin é criada pela Cloud Function onPrePedidoCreated (funciona na web e no APK)
+
+      // 🎯 [PORTAL] Gravar em clientes_portal (ESPELHO DERIVADO) IMEDIATAMENTE para "Meus Pedidos"
+      final pedidoDataComId = {'id': docRef.id, ...prePedidoData};
+      unawaited(_saveClientePortalPedidoResumo(
+        lojaId: lojaId,
+        pedidoId: docRef.id,
+        pedidoData: pedidoDataComId,
+        portalTokenFromSession: portalTokenFromSession,
+      ).then((_) => logD('[PORTAL] clientes_portal atualizado para pedido ${docRef.id}'))
+          .catchError((e) => logW('[PORTAL] Erro ao gravar clientes_portal (não bloqueia): $e')));
 
       // ✅ Atualizar endereço na coleção clientes para "Usar último endereço" (catálogo web/APK)
       try {
@@ -1152,8 +1314,9 @@ class PrePedidoService {
 
   /// Formata valor monetário
 
-  // ✅ Salva ou atualiza cliente automaticamente
-  /// Cria ou atualiza um cliente do catálogo na coleção de clientes da loja
+  // ✅ Salva ou atualiza cliente no estoque_clientes (admin/histórico)
+  /// DOMÍNIO ADMIN: estoque_clientes não é perfil do catálogo. Side-effect para historico admin.
+  /// Identidade do catálogo está em clientes (via _ensureClienteComPortalToken).
   static Future<void> _salvarOuAtualizarCliente({
     required String lojaId,
     required Map<String, dynamic> customer,
@@ -1242,8 +1405,8 @@ class PrePedidoService {
     }
   }
 
-  // ✅ Adiciona pedido ao histórico do cliente
-  /// Registra um pedido no histórico de compras do cliente
+  // ✅ Adiciona pedido ao histórico do cliente em estoque_clientes
+  /// DOMÍNIO ADMIN: estoque_clientes (histórico para admin). Não é perfil do catálogo.
   static Future<void> _adicionarPedidoAoHistoricoCliente({
     required String lojaId,
     required Map<String, dynamic> customer,

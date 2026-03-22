@@ -30,6 +30,8 @@ class CartItem {
   });
 }
 
+/// LEGADO (FASE 4): Usa ClienteWebService (clientes_web). Catálogo admin (rota /catalogo).
+/// Para catálogo público use PublicCatalogScreen + ClienteAuthService (clientes).
 class CatalogoScreen extends StatefulWidget {
   const CatalogoScreen({super.key});
 

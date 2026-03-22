@@ -15,6 +15,18 @@ String gerarClienteId() {
   return '${DateTime.now().millisecondsSinceEpoch}_${DateTime.now().microsecond % 10000}';
 }
 
+/// Gera ID determinístico para cliente por (lojaId, email).
+/// Usado em _ensureClienteComPortalToken para evitar duplicatas em criações concorrentes:
+/// duas execuções simultâneas para o mesmo email gravam no mesmo doc, eliminando race.
+String clienteIdPorEmail(String lojaId, String email) {
+  final norm = email.trim().toLowerCase();
+  if (norm.isEmpty) return gerarClienteId();
+  final input = '$lojaId:$norm';
+  final digest = sha256.convert(utf8.encode(input));
+  final b64 = base64UrlEncode(digest.bytes).replaceAll('=', '');
+  return 'ec_${b64.substring(0, 28.clamp(0, b64.length))}';
+}
+
 /// Gerar portalToken aleatório e URL-safe.
 String gerarPortalToken() {
   final random = Random.secure();

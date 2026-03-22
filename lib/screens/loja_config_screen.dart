@@ -230,6 +230,32 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   final TextEditingController _heroBannerButtonLinkCtrl = TextEditingController();
   final TextEditingController _heroBannerImageCtrl = TextEditingController();
   final TextEditingController _heroBannerMobileImageCtrl = TextEditingController();
+  // Banner minimalista: cartão + tipografia (separado do tema geral)
+  Color _heroCardBg = const Color(0xFFE8E8E8);
+  Color _heroTitleColor = Colors.white;
+  Color _heroSubtitleColor = Colors.white;
+  Color _heroButtonBg = const Color(0xFF00A8FF);
+  Color _heroButtonTextColor = Colors.white;
+  final TextEditingController _heroBannerHeightCtrl =
+      TextEditingController(text: '180');
+  final TextEditingController _heroBannerCardRadiusCtrl =
+      TextEditingController(text: '18');
+  final TextEditingController _heroBannerOverlayCtrl =
+      TextEditingController(text: '0.16');
+  final TextEditingController _heroBannerTitleSizeCtrl =
+      TextEditingController(text: '17');
+  final TextEditingController _heroBannerSubtitleSizeCtrl =
+      TextEditingController(text: '13');
+  final TextEditingController _heroBannerButtonSizeCtrl =
+      TextEditingController(text: '13');
+  final TextEditingController _heroBannerButtonRadiusCtrl =
+      TextEditingController(text: '8');
+  int _heroTitleFontWeight = 600;
+  int _heroSubtitleFontWeight = 400;
+  int _heroButtonFontWeight = 600;
+  String _heroTitleCase = 'none';
+  String _heroSubtitleCase = 'none';
+  String _heroButtonCase = 'none';
 
   final TextEditingController _catImgModaCtrl = TextEditingController();
   final TextEditingController _catImgCalcadosCtrl = TextEditingController();
@@ -367,6 +393,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _heroBannerButtonLinkCtrl.addListener(_scheduleAutoSave);
     _heroBannerImageCtrl.addListener(_scheduleAutoSave);
     _heroBannerMobileImageCtrl.addListener(_scheduleAutoSave);
+    _heroBannerHeightCtrl.addListener(_scheduleAutoSave);
+    _heroBannerCardRadiusCtrl.addListener(_scheduleAutoSave);
+    _heroBannerOverlayCtrl.addListener(_scheduleAutoSave);
+    _heroBannerTitleSizeCtrl.addListener(_scheduleAutoSave);
+    _heroBannerSubtitleSizeCtrl.addListener(_scheduleAutoSave);
+    _heroBannerButtonSizeCtrl.addListener(_scheduleAutoSave);
+    _heroBannerButtonRadiusCtrl.addListener(_scheduleAutoSave);
     _catImgCategoriaCtrl.addListener(_scheduleAutoSave);
     _catImgCategoriaIdCtrl.addListener(_scheduleAutoSave);
     _catImgUrlCtrl.addListener(_scheduleAutoSave);
@@ -1088,6 +1121,98 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _heroBannerMobileImageCtrl.text =
           (heroBanner['mobileImage'] ?? _heroBannerMobileImageCtrl.text).toString();
 
+      int heroWeightFrom(dynamic v, int def) {
+        if (v is int) return v.clamp(100, 900);
+        if (v is num) return v.toInt().clamp(100, 900);
+        final s = '$v'.toLowerCase();
+        if (s.contains('bold') || s == 'w700' || s == '700') return 700;
+        if (s == 'w800' || s == '800') return 800;
+        if (s == 'w600' || s == '600') return 600;
+        if (s == 'w500' || s == '500') return 500;
+        if (s == 'w400' || s == '400') return 400;
+        final p = int.tryParse(s);
+        if (p != null && p >= 100 && p <= 900) return p;
+        return def;
+      }
+
+      final heroCard = heroBanner['card'] is Map
+          ? Map<String, dynamic>.from(heroBanner['card'] as Map)
+          : <String, dynamic>{};
+      final heroTitleStyle = heroBanner['titleStyle'] is Map
+          ? Map<String, dynamic>.from(heroBanner['titleStyle'] as Map)
+          : <String, dynamic>{};
+      final heroSubtitleStyle = heroBanner['subtitleStyle'] is Map
+          ? Map<String, dynamic>.from(heroBanner['subtitleStyle'] as Map)
+          : <String, dynamic>{};
+      final heroButtonStyle = heroBanner['buttonStyle'] is Map
+          ? Map<String, dynamic>.from(heroBanner['buttonStyle'] as Map)
+          : <String, dynamic>{};
+
+      final hcBg =
+          colorToInt(heroCard['backgroundColor']) ?? colorToInt(heroBanner['backgroundColor']);
+      if (hcBg != null) {
+        _heroCardBg = Color(hcBg);
+      } else {
+        _heroCardBg = _cCard;
+      }
+      final legacyText = colorToInt(heroBanner['textColor']);
+      final tCol = colorToInt(heroTitleStyle['color']) ?? legacyText;
+      if (tCol != null) _heroTitleColor = Color(tCol);
+      final sCol = colorToInt(heroSubtitleStyle['color']);
+      if (sCol != null) {
+        _heroSubtitleColor = Color(sCol);
+      } else if (tCol != null) {
+        _heroSubtitleColor = Color(tCol).withValues(alpha: 0.96);
+      }
+      final btnBg = colorToInt(heroButtonStyle['backgroundColor']) ??
+          colorToInt(heroButtonStyle['background']) ??
+          colorToInt(heroBanner['buttonColor']);
+      if (btnBg != null) {
+        _heroButtonBg = Color(btnBg);
+      } else {
+        _heroButtonBg = _cPrimaria;
+      }
+      final btnTx = colorToInt(heroButtonStyle['textColor']);
+      if (btnTx != null) _heroButtonTextColor = Color(btnTx);
+
+      if (heroBanner['height'] != null) {
+        _heroBannerHeightCtrl.text = '${heroBanner['height']}';
+      }
+      final cr = heroCard['borderRadius'] ?? heroBanner['borderRadius'];
+      if (cr != null) {
+        _heroBannerCardRadiusCtrl.text = '$cr';
+      }
+      if (heroBanner['overlayOpacity'] != null) {
+        _heroBannerOverlayCtrl.text = '${heroBanner['overlayOpacity']}';
+      }
+      if (heroTitleStyle['fontSize'] != null) {
+        _heroBannerTitleSizeCtrl.text = '${heroTitleStyle['fontSize']}';
+      }
+      if (heroSubtitleStyle['fontSize'] != null) {
+        _heroBannerSubtitleSizeCtrl.text = '${heroSubtitleStyle['fontSize']}';
+      }
+      if (heroButtonStyle['fontSize'] != null) {
+        _heroBannerButtonSizeCtrl.text = '${heroButtonStyle['fontSize']}';
+      }
+      if (heroButtonStyle['borderRadius'] != null) {
+        _heroBannerButtonRadiusCtrl.text = '${heroButtonStyle['borderRadius']}';
+      }
+      _heroTitleFontWeight =
+          heroWeightFrom(heroTitleStyle['fontWeight'], _heroTitleFontWeight);
+      _heroSubtitleFontWeight =
+          heroWeightFrom(heroSubtitleStyle['fontWeight'], _heroSubtitleFontWeight);
+      _heroButtonFontWeight =
+          heroWeightFrom(heroButtonStyle['fontWeight'], _heroButtonFontWeight);
+      _heroTitleCase =
+          (heroTitleStyle['letterCase'] ?? 'none').toString().trim();
+      if (_heroTitleCase.isEmpty) _heroTitleCase = 'none';
+      _heroSubtitleCase =
+          (heroSubtitleStyle['letterCase'] ?? 'none').toString().trim();
+      if (_heroSubtitleCase.isEmpty) _heroSubtitleCase = 'none';
+      _heroButtonCase =
+          (heroButtonStyle['letterCase'] ?? 'none').toString().trim();
+      if (_heroButtonCase.isEmpty) _heroButtonCase = 'none';
+
       final catVisualRaw = data['categoryVisuals'];
       final catVisual = catVisualRaw is Map
           ? Map<String, dynamic>.from(catVisualRaw)
@@ -1493,12 +1618,52 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'buttonLink': _heroBannerButtonLinkCtrl.text.trim(),
         'image': _heroBannerImageCtrl.text.trim(),
         'mobileImage': _heroBannerMobileImageCtrl.text.trim(),
-        'height': 180,
-        'borderRadius': 18,
-        'overlayOpacity': 0.16,
-        'textColor': Colors.white.toARGB32(),
-        'buttonColor': _cPrimaria.toARGB32(),
-        'backgroundColor': _cCard.toARGB32(),
+        'height': double.tryParse(
+                _heroBannerHeightCtrl.text.replaceAll(',', '.')) ??
+            180,
+        'borderRadius': double.tryParse(
+                _heroBannerCardRadiusCtrl.text.replaceAll(',', '.')) ??
+            18,
+        'overlayOpacity': double.tryParse(
+                _heroBannerOverlayCtrl.text.replaceAll(',', '.')) ??
+            0.16,
+        'textColor': _heroTitleColor.toARGB32(),
+        'buttonColor': _heroButtonBg.toARGB32(),
+        'backgroundColor': _heroCardBg.toARGB32(),
+        'card': {
+          'backgroundColor': _heroCardBg.toARGB32(),
+          'borderRadius': double.tryParse(
+                  _heroBannerCardRadiusCtrl.text.replaceAll(',', '.')) ??
+              18,
+        },
+        'titleStyle': {
+          'color': _heroTitleColor.toARGB32(),
+          'fontSize': double.tryParse(
+                  _heroBannerTitleSizeCtrl.text.replaceAll(',', '.')) ??
+              17,
+          'fontWeight': _heroTitleFontWeight,
+          'letterCase': _heroTitleCase,
+        },
+        'subtitleStyle': {
+          'color': _heroSubtitleColor.toARGB32(),
+          'fontSize': double.tryParse(
+                  _heroBannerSubtitleSizeCtrl.text.replaceAll(',', '.')) ??
+              13,
+          'fontWeight': _heroSubtitleFontWeight,
+          'letterCase': _heroSubtitleCase,
+        },
+        'buttonStyle': {
+          'backgroundColor': _heroButtonBg.toARGB32(),
+          'textColor': _heroButtonTextColor.toARGB32(),
+          'fontSize': double.tryParse(
+                  _heroBannerButtonSizeCtrl.text.replaceAll(',', '.')) ??
+              13,
+          'fontWeight': _heroButtonFontWeight,
+          'borderRadius': double.tryParse(
+                  _heroBannerButtonRadiusCtrl.text.replaceAll(',', '.')) ??
+              8,
+          'letterCase': _heroButtonCase,
+        },
       },
       'categoryVisuals': {
         'showTitle': true,
@@ -4946,6 +5111,337 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 onChanged: (_) => _scheduleAutoSave(),
               ),
               const SizedBox(height: 12),
+              ExpansionTile(
+                title: const Text(
+                  'Aparência do banner (layout minimalista)',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Cores do card, tipografia do título/subtítulo e do botão — independentes do tema geral.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Card do banner',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _ColorPickerChip(
+                        label: 'Fundo do card',
+                        color: _heroCardBg,
+                        onPick: (c) {
+                          setState(() => _heroCardBg = c);
+                          _salvarRascunho(validar: false);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _heroBannerHeightCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Altura do banner (px)',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _heroBannerCardRadiusCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Raio dos cantos do card',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _heroBannerOverlayCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Escurecimento sobre a imagem (0–0,8)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => _scheduleAutoSave(),
+                  ),
+                  const Divider(height: 24),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Título',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _ColorPickerChip(
+                        label: 'Cor do título',
+                        color: _heroTitleColor,
+                        onPick: (c) {
+                          setState(() => _heroTitleColor = c);
+                          _salvarRascunho(validar: false);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _heroBannerTitleSizeCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Tamanho da fonte (título)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => _scheduleAutoSave(),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<int>(
+                    value: _heroTitleFontWeight,
+                    decoration: const InputDecoration(
+                      labelText: 'Peso da fonte (título)',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 400, child: Text('400 (Regular)')),
+                      DropdownMenuItem(value: 500, child: Text('500 (Medium)')),
+                      DropdownMenuItem(value: 600, child: Text('600 (Semibold)')),
+                      DropdownMenuItem(value: 700, child: Text('700 (Bold)')),
+                      DropdownMenuItem(value: 800, child: Text('800 (Extra bold)')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _heroTitleFontWeight = v);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _heroTitleCase,
+                    decoration: const InputDecoration(
+                      labelText: 'Caixa do texto (título)',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'none', child: Text('Normal')),
+                      DropdownMenuItem(
+                          value: 'lowercase', child: Text('minúsculas')),
+                      DropdownMenuItem(
+                          value: 'uppercase', child: Text('MAIÚSCULAS')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _heroTitleCase = v);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  const Divider(height: 24),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Subtítulo',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _ColorPickerChip(
+                        label: 'Cor do subtítulo',
+                        color: _heroSubtitleColor,
+                        onPick: (c) {
+                          setState(() => _heroSubtitleColor = c);
+                          _salvarRascunho(validar: false);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _heroBannerSubtitleSizeCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Tamanho da fonte (subtítulo)',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => _scheduleAutoSave(),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<int>(
+                    value: _heroSubtitleFontWeight,
+                    decoration: const InputDecoration(
+                      labelText: 'Peso da fonte (subtítulo)',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 400, child: Text('400 (Regular)')),
+                      DropdownMenuItem(value: 500, child: Text('500 (Medium)')),
+                      DropdownMenuItem(value: 600, child: Text('600 (Semibold)')),
+                      DropdownMenuItem(value: 700, child: Text('700 (Bold)')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _heroSubtitleFontWeight = v);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _heroSubtitleCase,
+                    decoration: const InputDecoration(
+                      labelText: 'Caixa do texto (subtítulo)',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'none', child: Text('Normal')),
+                      DropdownMenuItem(
+                          value: 'lowercase', child: Text('minúsculas')),
+                      DropdownMenuItem(
+                          value: 'uppercase', child: Text('MAIÚSCULAS')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _heroSubtitleCase = v);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  const Divider(height: 24),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Botão / destaque',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _ColorPickerChip(
+                        label: 'Fundo do botão',
+                        color: _heroButtonBg,
+                        onPick: (c) {
+                          setState(() => _heroButtonBg = c);
+                          _salvarRascunho(validar: false);
+                        },
+                      ),
+                      _ColorPickerChip(
+                        label: 'Texto do botão',
+                        color: _heroButtonTextColor,
+                        onPick: (c) {
+                          setState(() => _heroButtonTextColor = c);
+                          _salvarRascunho(validar: false);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _heroBannerButtonSizeCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Tamanho da fonte (botão)',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _heroBannerButtonRadiusCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Raio dos cantos do botão',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (_) => _scheduleAutoSave(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<int>(
+                    value: _heroButtonFontWeight,
+                    decoration: const InputDecoration(
+                      labelText: 'Peso da fonte (botão)',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 400, child: Text('400 (Regular)')),
+                      DropdownMenuItem(value: 500, child: Text('500 (Medium)')),
+                      DropdownMenuItem(value: 600, child: Text('600 (Semibold)')),
+                      DropdownMenuItem(value: 700, child: Text('700 (Bold)')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _heroButtonFontWeight = v);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _heroButtonCase,
+                    decoration: const InputDecoration(
+                      labelText: 'Caixa do texto (botão)',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'none', child: Text('Normal')),
+                      DropdownMenuItem(
+                          value: 'lowercase', child: Text('minúsculas')),
+                      DropdownMenuItem(
+                          value: 'uppercase', child: Text('MAIÚSCULAS')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _heroButtonCase = v);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+              const SizedBox(height: 12),
               const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
@@ -6687,6 +7183,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _heroBannerButtonLinkCtrl.dispose();
     _heroBannerImageCtrl.dispose();
     _heroBannerMobileImageCtrl.dispose();
+    _heroBannerHeightCtrl.dispose();
+    _heroBannerCardRadiusCtrl.dispose();
+    _heroBannerOverlayCtrl.dispose();
+    _heroBannerTitleSizeCtrl.dispose();
+    _heroBannerSubtitleSizeCtrl.dispose();
+    _heroBannerButtonSizeCtrl.dispose();
+    _heroBannerButtonRadiusCtrl.dispose();
     _catImgModaCtrl.dispose();
     _catImgCalcadosCtrl.dispose();
     _catImgBolsasCtrl.dispose();

@@ -20,6 +20,7 @@ class MercadoPagoService {
     int? maxInstallments,
     String? descricao,
     String? externalReference,
+    String? lojaId,
     Map<String, dynamic>? payer,
     Map<String, dynamic>? backUrls,
   }) async {
@@ -41,6 +42,7 @@ class MercadoPagoService {
             }
           ],
           if (externalReference != null) 'external_reference': externalReference,
+          if (lojaId != null && lojaId.isNotEmpty) 'metadata': {'lojaId': lojaId},
           if (payer != null) 'payer': payer,
           'back_urls': backUrls ?? {
             'success': 'https://app.mastepalm.com.br/pagamento/sucesso',
@@ -86,6 +88,7 @@ class MercadoPagoService {
     String? email,
     String? cpf,
     String? externalReference,
+    String? lojaId,
   }) async {
     try {
       final response = await HttpClientHelper.post(
@@ -100,6 +103,7 @@ class MercadoPagoService {
           'description': descricao,
           'payment_method_id': 'pix',
           if (externalReference != null) 'external_reference': externalReference,
+          if (lojaId != null && lojaId.isNotEmpty) 'metadata': {'lojaId': lojaId},
           'payer': {
             'email': email ?? 'cliente@mastepalm.com.br', // Email obrigatório
             if (cpf != null && cpf.isNotEmpty)

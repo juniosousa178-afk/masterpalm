@@ -1,116 +1,154 @@
 # Mapa de Clientes e Paths Firestore – MasterPalm
 
-Documentação interna (Etapa 2 do plano seguro). Não altera runtime.
+Documentação interna. Arquitetura FASE 4 (Unificação do Modelo de Cliente do Catálogo).
+
+**Documentos relacionados:**
+- **Status final (fechamento):** [STATUS_FINAL_ARQUITETURA_CLIENTE_CATALOGO.md](STATUS_FINAL_ARQUITETURA_CLIENTE_CATALOGO.md) — Regras, riscos, o que não alterar
+- **Diagnóstico FASE 4:** `FASE4_UNIFICACAO_MODELO_CLIENTE_CATALOGO.md`
+
+---
+
+## Arquitetura FASE 4 — Papéis das coleções
+
+| Coleção | Papel | Uso |
+|---------|-------|-----|
+| **clientes** | **FONTE PRINCIPAL** | Identidade do cliente do catálogo público (login, perfil, portalToken) |
+| **clientes_portal** | Espelho derivado | Vista "Meus Pedidos" por portalToken — não é fonte de identidade |
+| **clientes_catalogo** | Uso específico | Cupons da roleta por email — cache complementar |
+| **clientes_web** | Legado | Catálogo admin (rota /catalogo) — não usar para novas features do catálogo público |
+| **estoque_clientes** | Domínio admin | Sync Hive, histórico admin — não é perfil do catálogo |
+
+**Regra:** Novas features do catálogo público devem usar `clientes` como fonte principal. Não escrever identidade em `clientes_web`. Não tratar `estoque_clientes` como perfil do catálogo.
 
 ---
 
 ## 1. Coleções/estruturas de clientes
 
-### estoque_clientes
-- **Path:** `lojas/{lojaId}/estoque_clientes`
-- **Finalidade:** Clientes do **admin** (tela Clientes, Nova Venda, sync). Fonte autoritativa para sync Firestore ↔ Hive.
-- **Escrevem:** ClientesFirestoreService, FullSyncService (não escreve, só lê), PrePedidoService (_saveClienteAuto, _adicionarPedidoAoHistoricoCliente), PosPagamentoService (cupom roleta por telefone).
-- **Leem:** ClientesFirestoreService (sync, stream, get, delete, search), FullSyncService, PrePedidoService, LimitsGuard (contagem).
-- **Sincroniza com Hive:** Sim.
-- **Box Hive:** `clientes_{lojaId}` (HiveBoxNames.clientes(lojaId)).
-- **Risco:** Baixo (bem definido como “admin + sync”).
+### clientes — FONTE PRINCIPAL (catálogo público)
 
-### clientes
 - **Path:** `lojas/{lojaId}/clientes`
-- **Finalidade:** **Autenticação e perfil do catálogo** (login/cadastro por email+senha), **carrinho abandonado**, **pré-pedido** (portalToken, endereço, indicação). Documento por clienteId (gerado) ou UID (em telas legadas com Firebase Auth).
-- **Escrevem:** ClienteAuthService (cadastro, login, atualização, Google), PrePedidoService (portalToken, endereço, indicação), CarrinhoAbandonadoService (lembrete enviado), auth/cadastro_screen (Firebase Auth UID), SyncFirestoreScript (script legado Hive→Firestore).
-- **Leem:** ClienteAuthService (login, cupons, perfil), PrePedidoService (_resolvePortalTokenForPedido, endereço, indicação), CarrinhoAbandonadoService (listar abandonados), auth/perfil_cliente_screen (por user.uid – legado), FirestoreCleanupScript, SyncFirestoreScript (stats), MigrarParaEstoque (migração clientes→estoque_clientes).
-- **Sincroniza com Hive:** Não (admin usa estoque_clientes + Hive).
-- **Box Hive:** Nenhuma (clientes do catálogo não usam box de clientes do admin).
-- **Risco:** Médio (mesmo nome “clientes” para auth catálogo, carrinho e pré-pedido; scripts legados usam para sync).
-
-### clientes_catalogo
-- **Path:** `lojas/{lojaId}/clientes_catalogo/{email}` e subcoleção `cupons`
-- **Finalidade:** Perfil do cliente no **catálogo por email**; cupons da roleta e “Meus Cupons”.
-- **Escrevem:** ClienteAuthService (cupons roleta: usado/dataUso), PosPagamentoService (cupom roleta após pagamento), CatalogoVendaService (cupom roleta após confirmação de compra).
-- **Leem:** ClienteAuthService (buscar cupons roleta), perfil_cliente_screen_novo (comentários), carrinho_sheet_web (comentário sobre fallback cupom).
+- **Finalidade:** **Autenticação e perfil do catálogo público** (login/cadastro por email+senha), carrinho, pré-pedido (portalToken, endereço). Documento por clienteId.
+- **Escrevem:** ClienteAuthService (cadastro, login, atualização, Google), PrePedidoService (_ensureClienteComPortalToken, endereço), CF resolveClientePortalTarget (portalToken).
+- **Leem:** ClienteAuthService (login, cupons, perfil), PrePedidoService (_resolvePortalTokenForPedido), CF getClienteCatalog, CF solicitarRedefinicaoSenhaCatalogo.
+- **Fluxos:** PublicCatalogScreen (/loja), pré-pedido, checkout, Meus Pedidos (via portalToken).
+- **Chave:** clienteId (timestamp ou ec_xxx determinístico por loja+email).
 - **Sincroniza com Hive:** Não.
-- **Box Hive:** Nenhuma.
-- **Risco:** Baixo (bem delimitado a cupons por email no catálogo).
 
-### clientes_web
-- **Path:** `lojas/{lojaId}/clientes_web/{clienteId}`
-- **Finalidade:** Autenticação do **catálogo web** (login/cadastro por email, sem senha; modelo ClienteWeb).
-- **Escrevem:** ClienteWebService (loginOuCadastro, update, logout).
-- **Leem:** ClienteWebService (getClienteAutenticado, pedidos, etc.).
-- **Sincroniza com Hive:** Não.
-- **Box Hive:** Nenhuma.
-- **Risco:** Baixo (isolado em ClienteWebService).
+---
 
-### clientes_portal
+### clientes_portal — ESPELHO DERIVADO
+
 - **Path:** `lojas/{lojaId}/clientes_portal/{portalToken}` e subcoleção `pedidos`
-- **Finalidade:** **Portal do cliente** (Meus Pedidos): perfil por portalToken, resumo de pedidos.
-- **Escrevem:** ClientePortalRepository (savePedidoResumo, deletePedidoResumo); PrePedidoService (_saveClientePortalPedidoResumo).
-- **Leem:** ClientePortalRepository (getPerfil, getUltimoEndereco, getPedidosDoCliente), MeusPedidosRepository (via ClientePortalRepository).
+- **Finalidade:** Vista "Meus Pedidos" por portalToken. **Não é fonte de identidade.**
+- **Escrevem:** PrePedidoService (_saveClientePortalPedidoResumo), ClientePortalRepository, CF syncPedidoStatusPublico (upsertClientePortalFromPedido), backfill_fontes_cliente_pedidos.js.
+- **Leem:** ClientePortalRepository, MeusPedidosRepository.
+- **Fluxos:** Meus Pedidos (portal).
+- **Chave:** portalToken (aleatório).
 - **Sincroniza com Hive:** Não.
-- **Box Hive:** Nenhuma.
-- **Risco:** Baixo (uso concentrado em repositórios).
+
+---
+
+### clientes_catalogo — USO ESPECÍFICO (cupons/roleta)
+
+- **Path:** `lojas/{lojaId}/clientes_catalogo/{email}` e subcoleção `cupons/{codigo}`
+- **Finalidade:** Cupons da roleta da sorte por email. Cache complementar ao doc `clientes`.
+- **Escrevem:** PosPagamentoService (cupom roleta após pagamento webhook), CatalogoVendaService (cupom após venda local), ClienteAuthService (marcarCupomRoletaComoUsado).
+- **Leem:** ClienteAuthService (getCuponsRoleta), perfil_cliente_screen_novo (mescla com cupons de clientes).
+- **Fluxos:** Roleta, "Meus Cupons" (mesclado com clientes.cupons).
+- **Chave:** email normalizado.
+- **Sincroniza com Hive:** Não.
+
+---
+
+### clientes_web — LEGADO (catálogo admin)
+
+- **Path:** `lojas/{lojaId}/clientes_web/{clienteId}`
+- **Finalidade:** Autenticação do catálogo **interno/admin** (rota /catalogo). Login/cadastro por email sem senha. **Não usar para novas features do catálogo público.**
+- **Escrevem:** ClienteWebService (loginOuCadastro, update).
+- **Leem:** ClienteWebService, CatalogoScreen, ClienteLoginScreen, ClientePerfilScreen.
+- **Fluxos:** CatalogoScreen (rota /catalogo) — app admin.
+- **Chave:** doc id (Firestore add).
+- **Sincroniza com Hive:** Não.
+
+---
+
+### estoque_clientes — DOMÍNIO ADMIN (sync/histórico)
+
+- **Path:** `lojas/{lojaId}/estoque_clientes`
+- **Finalidade:** Clientes do **admin** (tela Clientes, Nova Venda, sync). Histórico de compras. **Não é perfil do catálogo público.**
+- **Escrevem:** ClientesFirestoreService (admin CRUD), PrePedidoService (_salvarOuAtualizarCliente, _adicionarPedidoAoHistoricoCliente — side-effect do pré-pedido para admin), PosPagamentoService (cupom roleta por telefone — quando cliente já existe em estoque).
+- **Leem:** ClientesFirestoreService, FullSyncService, PrePedidoService (LimitsGuard).
+- **Fluxos:** Admin, sync Firestore ↔ Hive, historico_clientes_screen.
+- **Chave:** telefone (dígitos).
+- **Box Hive:** `clientes_{lojaId}` (HiveBoxNames.clientes(lojaId)).
+- **Sincroniza com Hive:** Sim.
+
+---
 
 ### cupons_clientes (indicação)
-- **Path:** `lojas/{lojaId}/cupons_clientes` (coleção de cupons de indicação).
+
+- **Path:** `lojas/{lojaId}/cupons_clientes`
 - **Finalidade:** Programa de indicação (primeira compra do indicado; cupom indicador).
-- **Leem:** PrePedidoService (verificar se destinatário já recebeu cupom daquele indicador).
-- **Escrevem:** CuponsService (criar cupons indicação) – chamado a partir de PrePedidoService.
-- **Sincroniza com Hive:** Não. **Box Hive:** Nenhuma. **Risco:** Baixo.
+- **Escrevem:** CuponsService (via PrePedidoService).
+- **Leem:** PrePedidoService.
+- **Sincroniza com Hive:** Não.
+
+---
 
 ### Box Hive legada "clientes" (sem lojaId)
+
 - **Nome:** `'clientes'` (string literal).
 - **Finalidade:** Legado; importação Excel e bootstrap antigo; **não multi-loja**.
-- **Arquivos:** main.dart (openTyped<Cliente>('clientes')), excel_import_service.dart, importar_clientes.dart.
-- **Risco:** Médio (confusão com coleção Firestore “clientes”; uso residual).
+- **Arquivos:** main.dart, excel_import_service.dart, importar_clientes.dart.
 
 ---
 
-## 2. Paths Firestore por domínio
+## 2. Fluxos por coleção
+
+| Fluxo | Coleção principal | Outras |
+|-------|-------------------|--------|
+| Catálogo público (PublicCatalogScreen, /loja) | clientes | clientes_portal, clientes_catalogo |
+| Pré-pedido / checkout | clientes, clientes_portal | estoque_clientes (historico admin) |
+| Meus Pedidos | clientes_portal | — |
+| Roleta / Meus Cupons | clientes_catalogo + clientes | — |
+| Catálogo admin (CatalogoScreen, /catalogo) | clientes_web | — |
+| Admin (Clientes, Nova Venda) | estoque_clientes | — |
+
+---
+
+## 3. Paths Firestore por domínio
 
 ### Produtos
-- `lojas/{lojaId}/estoque_produtos` – estoque oficial; sync Hive; baixa; listeners.
-- `lojas/{lojaId}/produtos` – publicação/catálogo; draft→produtos; marketplace; alguns reads.
-- `lojas/{lojaId}/draft_produtos` – rascunhos; cadastro_produto_screen; catalog_publish_service.
+- `lojas/{lojaId}/estoque_produtos` – estoque oficial; sync Hive.
+- `lojas/{lojaId}/produtos` – publicação/catálogo.
+- `lojas/{lojaId}/draft_produtos` – rascunhos.
 
 ### Clientes
-- Ver seção 1 (estoque_clientes, clientes, clientes_catalogo, clientes_web, clientes_portal).
+- Ver seção 1.
 
 ### Vendas
-- `lojas/{lojaId}/estoque_vendas` – vendas oficiais; sync Hive; importar; admin painel; LimitsGuard.
-- `lojas/{lojaId}/vendas` – citado em sync_firestore_script, limpar_firestore, migrar_para_estoque (legado/migração).
+- `lojas/{lojaId}/estoque_vendas` – vendas oficiais; sync Hive.
+- `lojas/{lojaId}/vendas` – legado/migração.
 
-### Pedidos / pré-pedidos
-- Centralizados em **PedidoCollectionResolver** / **FSPaths**: pedidos, pre_pedidos, pedido_status_publico, pedidos_pendentes, pedidos_temp, pedido_temp, pedidos_catalogo, temp_orders, root.
+### Pedidos
+- Centralizados em PedidoCollectionResolver / FSPaths: pre_pedidos, pedido_status_publico, etc.
 
-### Catálogo
-- Config e produtos: lojas/{lojaId}/config, estoque_produtos, produtos; clientes_catalogo para cupons.
-
-### Autenticação / sessão
-- Admin: `users/{uid}`, `usuarios/{email}` (store_id, etc.).
-- Cliente catálogo: `lojas/{lojaId}/clientes` (ClienteAuthService); `clientes_web` (ClienteWebService).
+### Autenticação
+- Admin: `users/{uid}`, `usuarios/{email}`.
+- Cliente catálogo: `lojas/{lojaId}/clientes` (ClienteAuthService). Catálogo admin legado: `clientes_web` (ClienteWebService).
 
 ---
 
-## 3. Centralização de paths
+## 4. Centralização de paths
 
-- **Centralizados:** Pedidos (PedidoCollectionResolver, FSPaths); nomes de boxes Hive (HiveBoxNames).
-- **Parcialmente centralizados:** FSPaths tem lojaDoc, produtosCol (produtos, não estoque_produtos), categorias, subcategorias e pedidos; **não** tem estoque_produtos, estoque_clientes, estoque_vendas, clientes, clientes_catalogo, clientes_web, clientes_portal.
-- **Literais espalhados:** estoque_clientes, clientes, clientes_catalogo, clientes_web, clientes_portal, estoque_produtos, estoque_vendas, produtos, draft_produtos em vários serviços e telas.
-
----
-
-## 4. Riscos de confusão
-
-- Usar “clientes” (coleção) para auth catálogo + carrinho + pré-pedido + script legado pode levar a achar que é a mesma base do admin (que é estoque_clientes + Hive).
-- MigrarParaEstoque documenta clientes→estoque_clientes; em produção o admin já usa estoque_clientes; quem ainda escreve em “clientes” é auth/catálogo e scripts.
-- Box Hive `'clientes'` sem sufixo é legado; novo fluxo é clientes_{lojaId}.
+- **FSPaths:** clientesCol, clientesCatalogoCol, clientesWebCol, clientesPortalCol, estoqueClientesCol.
+- **Literais:** Alguns serviços ainda usam strings como `'estoque_clientes'`; preferir FSPaths quando possível.
 
 ---
 
-## 5. Recomendação futura (não implementar agora)
+## 5. Riscos e regras
 
-1. Introduzir constantes ou FSPaths para: estoque_clientes, clientes, clientes_catalogo, clientes_web, clientes_portal, estoque_produtos, estoque_vendas e substituir literais gradualmente.
-2. Documentar em código (ou este doc) qual coleção usar para cada fluxo (admin vs catálogo vs portal vs web).
-3. Deprecar box `'clientes'` sem lojaId e migrar usos para HiveBoxNames.clientes(lojaId) quando possível.
-4. Manter clientes (auth catálogo) e estoque_clientes (admin/sync) separados; não unificar sem plano de migração e regras.
+- **Não** usar `clientes_web` para novas features do catálogo público.
+- **Não** tratar `estoque_clientes` como perfil do catálogo.
+- **Sempre** usar `clientes` como fonte de identidade no fluxo catálogo público.
+- `clientes_portal` é espelho — mantido em sincronia por PrePedidoService e CF.

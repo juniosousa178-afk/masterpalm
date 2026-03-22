@@ -235,6 +235,20 @@
       ]
     },
     {
+      "collectionGroup": "participantes",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dataParticipacao",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "canais",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
