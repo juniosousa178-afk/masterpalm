@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../models/nota_fiscal.dart';
+import 'nota_fiscal_service.dart';
 import 'store_resolver_facade.dart';
 
 /// Serviço para sincronizar notas fiscais com Firestore
@@ -96,7 +97,9 @@ class NotaFiscalFirestoreService {
             numero: data['numero'] ?? '',
             serie: data['serie'] ?? '1',
             chaveAcesso: data['chaveAcesso'],
-            status: data['status'] ?? 'pendente',
+            status: NotaFiscalService.normalizarStatusApiParaApp(
+              (data['status'] ?? 'pendente').toString(),
+            ),
             vendaId: data['vendaId'],
             clienteNome: data['clienteNome'] ?? '',
             clienteCpfCnpj: data['clienteCpfCnpj'] ?? '',

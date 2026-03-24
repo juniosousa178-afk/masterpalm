@@ -1,8 +1,11 @@
 // lib/services/nota_fiscal_service.dart
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
 import '../models/nota_fiscal.dart';
 
 /// Serviço de integração com API de Nota Fiscal
@@ -17,6 +20,9 @@ class NotaFiscalService {
   // ========================================
   // CONFIGURAÇÃO DA API
   // ========================================
+
+  /// Timeout para chamadas HTTP à Focus (emissão/consulta/cancelamento).
+  static const Duration httpTimeout = Duration(seconds: 90);
 
   /// URL base da API (configurar conforme provedor)
   static const String _baseUrl = 'https://api.focusnfe.com.br/v2'; // Exemplo: Focus NFe
@@ -36,6 +42,68 @@ class NotaFiscalService {
     _isProducao = producao;
   }
 
+  /// Converte status retornado pela Focus (e variações) para o modelo interno da UI:
+  /// `emitida`, `pendente`, `cancelada`, `erro`.
+  static String normalizarStatusApiParaApp(String statusRaw) {
+    final s = statusRaw.trim().toLowerCase();
+    if (s.isEmpty) return 'pendente';
+    switch (s) {
+      case 'autorizado':
+      case 'autorizada':
+        return 'emitida';
+      case 'cancelado':
+      case 'cancelada':
+        return 'cancelada';
+      case 'denegado':
+      case 'rejeitado':
+      case 'erro_autorizacao':
+        return 'erro';
+      case 'processando_autorizacao':
+      case 'processando':
+        return 'pendente';
+      case 'emitida':
+      case 'pendente':
+      case 'erro':
+        return s;
+      default:
+        if (s.contains('autoriz')) return 'emitida';
+        if (s.contains('cancel')) return 'cancelada';
+        if (s.contains('rejeit') || s.contains('deneg') || s.contains('erro')) {
+          return 'erro';
+        }
+        return 'pendente';
+    }
+  }
+
+  /// Mensagem amigável para exibir ao usuário (timeout, rede, JSON inválido, API).
+  static String mensagemErroHumano(Object erro) {
+    if (erro is TimeoutException) {
+      return 'Tempo esgotado ao falar com a Focus NFe. Verifique a conexão e tente de novo.';
+    }
+    if (erro is http.ClientException) {
+      return 'Falha de conexão com a API Focus. Verifique a internet e tente de novo.';
+    }
+    if (erro is FormatException) {
+      return 'Resposta inválida da API (formato inesperado). Tente novamente ou contate o suporte.';
+    }
+    final t = erro.toString();
+    if (t.startsWith('Exception: ')) return t.substring('Exception: '.length);
+    return t;
+  }
+
+  static String _mensagemCorpoRespostaApi(String body) {
+    if (body.isEmpty) return 'Resposta vazia do servidor.';
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final m = decoded['mensagem'] ?? decoded['message'] ?? decoded['erro'];
+        if (m != null && m.toString().isNotEmpty) return m.toString();
+      }
+    } catch (_) {}
+    final trimmed = body.trim();
+    return trimmed.length > 280 ? '${trimmed.substring(0, 280)}…' : trimmed;
+  }
+
   // ========================================
   // EMISSÃO DE NOTA FISCAL
   // ========================================
@@ -43,7 +111,7 @@ class NotaFiscalService {
   /// Emite uma nota fiscal
   static Future<Map<String, dynamic>> emitirNotaFiscal(NotaFiscal nota) async {
     if (_apiToken == null || _apiToken!.isEmpty) {
-      throw Exception('API Token não configurado. Use NotaFiscalService.configure()');
+      throw Exception('API Token não configurado. Salve o token na aba Config ou reabra a tela após configurar.');
     }
 
     try {
@@ -62,33 +130,41 @@ class NotaFiscalService {
       };
 
       // Envia requisição
-      final response = await http.post(
-        url,
-        headers: headers,
-        body: jsonEncode(payload),
-      );
+      final response = await http
+          .post(
+            url,
+            headers: headers,
+            body: jsonEncode(payload),
+          )
+          .timeout(httpTimeout);
 
       debugPrint('🧾 [NF-e] Status Code: ${response.statusCode}');
       debugPrint('🧾 [NF-e] Response: ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        Map<String, dynamic> data;
+        try {
+          data = jsonDecode(response.body) as Map<String, dynamic>;
+        } on FormatException {
+          throw Exception(
+            'Resposta inválida da Focus após emissão (corpo não é JSON).',
+          );
+        }
 
         // Atualizar nota com dados retornados
         if (data['chave_nfe'] != null) {
-          nota.chaveAcesso = data['chave_nfe'];
+          nota.chaveAcesso = data['chave_nfe'].toString();
         }
         if (data['protocolo'] != null) {
-          nota.protocoloAutorizacao = data['protocolo'];
+          nota.protocoloAutorizacao = data['protocolo'].toString();
         }
-        if (data['status'] != null) {
-          nota.status = data['status'];
-        }
+        final statusApi = data['status']?.toString() ?? 'emitida';
+        nota.status = normalizarStatusApiParaApp(statusApi);
         if (data['caminho_xml_nota_fiscal'] != null) {
-          nota.xmlUrl = data['caminho_xml_nota_fiscal'];
+          nota.xmlUrl = data['caminho_xml_nota_fiscal'].toString();
         }
         if (data['caminho_danfe'] != null) {
-          nota.pdfUrl = data['caminho_danfe'];
+          nota.pdfUrl = data['caminho_danfe'].toString();
         }
 
         await nota.save();
@@ -103,8 +179,9 @@ class NotaFiscalService {
           'pdfUrl': nota.pdfUrl,
         };
       } else {
-        final error = jsonDecode(response.body);
-        throw Exception('Erro ao emitir NF-e: ${error['mensagem'] ?? response.body}');
+        throw Exception(
+          'Erro ao emitir NF-e (HTTP ${response.statusCode}): ${_mensagemCorpoRespostaApi(response.body)}',
+        );
       }
     } catch (e) {
       debugPrint('❌ [NF-e] Erro ao emitir nota (type=${e.runtimeType})');
@@ -182,14 +259,21 @@ class NotaFiscalService {
         'Authorization': 'Basic ${base64Encode(utf8.encode('$_apiToken:'))}',
       };
 
-      final response = await http.get(url, headers: headers);
+      final response =
+          await http.get(url, headers: headers).timeout(httpTimeout);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        debugPrint('✅ [NF-e] Nota consultada: ${data['status']}');
-        return data;
+        try {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          debugPrint('✅ [NF-e] Nota consultada: ${data['status']}');
+          return data;
+        } on FormatException {
+          throw Exception('Resposta da consulta não é JSON válido.');
+        }
       } else {
-        throw Exception('Erro ao consultar NF-e: ${response.body}');
+        throw Exception(
+          'Erro ao consultar NF-e (HTTP ${response.statusCode}): ${_mensagemCorpoRespostaApi(response.body)}',
+        );
       }
     } catch (e) {
       debugPrint('❌ [NF-e] Erro ao consultar nota (type=${e.runtimeType})');
@@ -227,18 +311,32 @@ class NotaFiscalService {
         'justificativa': justificativa,
       };
 
-      final response = await http.delete(
-        url,
-        headers: headers,
-        body: jsonEncode(payload),
-      );
+      // Focus NFe v2: DELETE /v2/nfe/{referencia} com JSON { "justificativa": "..." }
+      final response = await http
+          .delete(
+            url,
+            headers: headers,
+            body: jsonEncode(payload),
+          )
+          .timeout(httpTimeout);
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        debugPrint('✅ [NF-e] Nota cancelada com sucesso');
-        return data;
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        if (response.body.isEmpty) {
+          debugPrint('✅ [NF-e] Nota cancelada com sucesso (sem corpo)');
+          return <String, dynamic>{};
+        }
+        try {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          debugPrint('✅ [NF-e] Nota cancelada com sucesso');
+          return data;
+        } on FormatException {
+          debugPrint('✅ [NF-e] Cancelamento OK; corpo não era JSON');
+          return <String, dynamic>{};
+        }
       } else {
-        throw Exception('Erro ao cancelar NF-e: ${response.body}');
+        throw Exception(
+          'Erro ao cancelar NF-e (HTTP ${response.statusCode}): ${_mensagemCorpoRespostaApi(response.body)}',
+        );
       }
     } catch (e) {
       debugPrint('❌ [NF-e] Erro ao cancelar nota (type=${e.runtimeType})');

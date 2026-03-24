@@ -77,14 +77,23 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
       debugPrint('⚠️ Erro ao sincronizar notas do Firestore (type=${e.runtimeType})');
     }
 
-    // Carregar configurações salvas
+    // Carregar configurações salvas e aplicar no serviço (evita token “morto” até salvar de novo)
     await _carregarConfiguracoes();
+    _aplicarConfigNoNotaFiscalService();
 
     if (mounted) {
       setState(() {
         _carregando = false;
       });
     }
+  }
+
+  /// Aplica token/ambiente da UI (ou Hive recém-carregado) em [NotaFiscalService].
+  void _aplicarConfigNoNotaFiscalService() {
+    NotaFiscalService.configure(
+      apiToken: _apiTokenController.text.trim(),
+      producao: _modoProducao,
+    );
   }
 
   Future<void> _carregarConfiguracoes() async {
@@ -107,11 +116,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
       await configBox.put('provider', _providerSelecionado);
       await configBox.put('producao', _modoProducao);
 
-      // Configurar NotaFiscalService
-      NotaFiscalService.configure(
-        apiToken: _apiTokenController.text.trim(),
-        producao: _modoProducao,
-      );
+      _aplicarConfigNoNotaFiscalService();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -190,7 +195,11 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
     var notas = notasBox.values.where((n) => n.lojaId == lojaId).toList();
 
     if (_filtroStatus != 'todas') {
-      notas = notas.where((n) => n.status == _filtroStatus).toList();
+      notas = notas
+          .where((n) =>
+              NotaFiscalService.normalizarStatusApiParaApp(n.status) ==
+              _filtroStatus)
+          .toList();
     }
 
     final busca = _buscaClienteController.text.trim().toLowerCase();
@@ -209,8 +218,14 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
   // Estatísticas
   Map<String, dynamic> _calcularEstatisticas() {
     final notas = notasBox.values.where((n) => n.lojaId == lojaId).toList();
-    final emitidas = notas.where((n) => n.status == 'emitida').toList();
-    final pendentes = notas.where((n) => n.status == 'pendente').toList();
+    final emitidas = notas
+        .where((n) =>
+            NotaFiscalService.normalizarStatusApiParaApp(n.status) == 'emitida')
+        .toList();
+    final pendentes = notas
+        .where((n) =>
+            NotaFiscalService.normalizarStatusApiParaApp(n.status) == 'pendente')
+        .toList();
     final valorTotal = emitidas.fold<double>(0, (sum, n) => sum + n.valorTotal);
 
     return {
@@ -996,7 +1011,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao cancelar: $e'),
+          content: Text(NotaFiscalService.mensagemErroHumano(e)),
           backgroundColor: _errorColor,
           behavior: SnackBarBehavior.floating,
         ),
@@ -1032,6 +1047,14 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
 
       if (!mounted) return;
       Navigator.pop(context); // Fechar loading
+
+      try {
+        await NotaFiscalFirestoreService.syncNotaFiscal(nota, lojaId: lojaId!);
+      } catch (e) {
+        debugPrint('⚠️ Sync Firestore pós-emissão (type=${e.runtimeType}): $e');
+      }
+
+      if (!mounted) return;
 
       await showDialog(
         context: context,
@@ -1104,7 +1127,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               const Text('Erro ao Emitir'),
             ],
           ),
-          content: Text(e.toString()),
+          content: Text(NotaFiscalService.mensagemErroHumano(e)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -1438,11 +1461,13 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
   }
 
   Widget _buildNotaCard(NotaFiscal nota) {
+    final statusNorm =
+        NotaFiscalService.normalizarStatusApiParaApp(nota.status);
     Color statusColor;
     IconData statusIcon;
     String statusLabel;
 
-    switch (nota.status) {
+    switch (statusNorm) {
       case 'emitida':
         statusColor = _successColor;
         statusIcon = Icons.check_circle;
@@ -1569,7 +1594,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                   ),
                 ),
                 const Spacer(),
-                if (nota.status == 'pendente')
+                if (statusNorm == 'pendente')
                   TextButton.icon(
                     onPressed: () => _emitirNotaFiscal(nota),
                     icon: const Icon(Icons.send, size: 16),
@@ -1579,7 +1604,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                     ),
                   ),
-                if (nota.status == 'emitida' && nota.chaveAcesso != null)
+                if (statusNorm == 'emitida' && nota.chaveAcesso != null)
                   TextButton.icon(
                     onPressed: () => _cancelarNotaFiscal(nota),
                     icon: const Icon(Icons.cancel, size: 16),

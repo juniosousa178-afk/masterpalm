@@ -183,6 +183,7 @@ class ProdutosFirestoreService {
         'videoUrl': produto.videoUrl.isNotEmpty ? produto.videoUrl : null,
         'codigoBarras': produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
         'estoqueMinimo': produto.estoqueMinimo,
+        'marketplaces': produto.marketplaces,
 
         // Metadata
         'createdAt': FieldValue.serverTimestamp(),
@@ -205,13 +206,39 @@ class ProdutosFirestoreService {
               .collection('produtos')
               .doc(produtoId)
               .update({
+            'nome': produto.nome,
+            'descricao': produto.descricao,
+            'preco': produto.precoFinal,
+            'preco_venda': produto.precoFinal,
+            'precoFinal': produto.precoFinal,
             'quantidade': produto.quantidade,
+            'estoque': produto.quantidade,
+            'imagens': imagensFinais,
+            'slug': produto.slug,
             'variacoes': produto.variacoes,
             'estoquePorTamanho': produto.estoquePorTamanho,
             'cores': produto.cores,
+            if (produto.precoPorTamanho != null &&
+                produto.precoPorTamanho!.isNotEmpty)
+              'precoPorTamanho': produto.precoPorTamanho,
+            'emPromocao': produto.emPromocao,
+            'percentualPromo': produto.percentualPromo,
+            'valorPromo': produto.valorPromo,
+            'peso': produto.peso,
+            'tipoEmbalagem': produto.tipoEmbalagem,
+            'codigoBarras': produto.codigoBarras.isNotEmpty
+                ? produto.codigoBarras
+                : null,
+            'estoqueMinimo': produto.estoqueMinimo,
+            'marketplaces': produto.marketplaces,
+            'custoReal': produto.custoReal,
+            'divideSemJuros': produto.divideSemJuros,
+            'maxParcelasSemJuros': produto.maxParcelasSemJuros,
+            'percentualDescontoPix': produto.percentualDescontoPix,
+            if (produto.videoUrl.isNotEmpty) 'videoUrl': produto.videoUrl,
             'updatedAt': FieldValue.serverTimestamp(),
           });
-          logD('✅ [PRODUTOS-SYNC] Estoque atualizado no catálogo público');
+          logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
         } catch (e) {
           logW('⚠️ [PRODUTOS-SYNC] Produto não encontrado no catálogo público (normal se não publicado) (type=${e.runtimeType})');
         }
@@ -462,6 +489,31 @@ class ProdutosFirestoreService {
             p.maxParcelasSemJuros = (data['maxParcelasSemJuros'] is num)
                 ? (data['maxParcelasSemJuros'] as num).toInt()
                 : p.maxParcelasSemJuros;
+            if (data.containsKey('emPromocao')) {
+              p.emPromocao = data['emPromocao'] == true;
+            }
+            if (data.containsKey('percentualPromo')) {
+              p.percentualPromo = (data['percentualPromo'] as num?)?.toDouble();
+            }
+            if (data.containsKey('valorPromo')) {
+              p.valorPromo = (data['valorPromo'] as num?)?.toDouble();
+            }
+            if (data.containsKey('dataInicioPromo')) {
+              final dip = data['dataInicioPromo'];
+              p.dataInicioPromo = dip is Timestamp ? dip.toDate() : null;
+            }
+            if (data.containsKey('dataFimPromo')) {
+              final dfp = data['dataFimPromo'];
+              p.dataFimPromo = dfp is Timestamp ? dfp.toDate() : null;
+            }
+            final vu = data['videoUrl'];
+            if (vu != null && vu.toString().trim().isNotEmpty) {
+              p.videoUrl = vu.toString().trim();
+            }
+            final mk = data['marketplaces'];
+            if (mk is List) {
+              p.marketplaces = mk.map((e) => e.toString()).toList();
+            }
             final updatedAt = data['updatedAt'];
             if (updatedAt != null && updatedAt is Timestamp) {
               p.updatedAt = updatedAt.toDate();
@@ -516,6 +568,20 @@ class ProdutosFirestoreService {
               updatedAt: updatedAtDt,
               custoEditadoNoCadastro:
                   (data['custoEditadoNoCadastro'] as bool?) ?? false,
+              emPromocao: data['emPromocao'] == true,
+              percentualPromo: (data['percentualPromo'] as num?)?.toDouble(),
+              valorPromo: (data['valorPromo'] as num?)?.toDouble(),
+              dataInicioPromo: data['dataInicioPromo'] is Timestamp
+                  ? (data['dataInicioPromo'] as Timestamp).toDate()
+                  : null,
+              dataFimPromo: data['dataFimPromo'] is Timestamp
+                  ? (data['dataFimPromo'] as Timestamp).toDate()
+                  : null,
+              videoUrl: (data['videoUrl'] ?? '').toString(),
+              marketplaces: (data['marketplaces'] as List?)
+                      ?.map((e) => e.toString())
+                      .toList() ??
+                  const [],
             );
 
             await produtosBox.add(produto);

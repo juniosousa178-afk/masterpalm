@@ -696,7 +696,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
         ..descricao = _descricao.text.trim()
         ..imagens = List.from(_imagens)
-        ..videoUrl = ''
         ..publicadoNoCatalogo = _publicar
         ..divideSemJuros = _divideSemJuros
         ..percentualDescontoPix = percentualDescontoPix
@@ -1139,7 +1138,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..cores = coresList
             ..marketplaces = _marketplacesSelecionados.toList()
             ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
-            ..videoUrl = ''
             ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
             ..custoEditadoNoCadastro = true;
@@ -1239,7 +1237,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
           ..descricao = _descricao.text.trim()
           ..imagens = List.from(_imagens)
-          ..videoUrl = ''
           ..publicadoNoCatalogo = _publicar
           ..divideSemJuros = _divideSemJuros
           ..percentualDescontoPix = percentualDescontoPix
