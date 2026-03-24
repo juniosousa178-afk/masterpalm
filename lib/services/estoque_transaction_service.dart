@@ -40,6 +40,56 @@ class EstoqueTransactionResult {
 class EstoqueTransactionService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  static Exception _erroProdutoNaoSincronizado({
+    required String? produtoId,
+    required String? slug,
+    required String? nome,
+  }) {
+    final alvo = (produtoId != null && produtoId.trim().isNotEmpty)
+        ? 'ID $produtoId'
+        : ((slug != null && slug.trim().isNotEmpty)
+            ? 'slug "$slug"'
+            : 'nome "$nome"');
+    return Exception(
+      'Produto não encontrado no estoque da nuvem ($alvo). '
+      'Abra o cadastro do produto e sincronize/publice novamente antes de finalizar a venda.',
+    );
+  }
+
+  static String? _extrairDocIdProdutosNotFound(Object e, String lojaId) {
+    final msg = e.toString();
+    if (!msg.toLowerCase().contains('not-found') ||
+        !msg.contains('/produtos/')) {
+      return null;
+    }
+    final escapedLoja = RegExp.escape(lojaId);
+    final m = RegExp('lojas\\/$escapedLoja\\/produtos\\/([^\\s,)]+)')
+        .firstMatch(msg);
+    final docId = m?.group(1)?.trim();
+    return (docId == null || docId.isEmpty) ? null : docId;
+  }
+
+  static Future<bool> _repararEspelhoProdutosSeAusente({
+    required String lojaId,
+    required String docId,
+  }) async {
+    try {
+      final base = _db.collection('lojas').doc(lojaId);
+      final estoqueRef = base.collection(FSPaths.estoqueProdutosCol).doc(docId);
+      final produtosRef = base.collection('produtos').doc(docId);
+      final estoqueSnap = await estoqueRef.get();
+      if (!estoqueSnap.exists) return false;
+      final data = Map<String, dynamic>.from(estoqueSnap.data() ?? {});
+      data['updatedAt'] = FieldValue.serverTimestamp();
+      await produtosRef.set(data, SetOptions(merge: true));
+      debugPrint('[ESTOQUE-TX] 🔧 Espelho produtos reparado: lojas/$lojaId/produtos/$docId');
+      return true;
+    } catch (e) {
+      debugPrint('[ESTOQUE-TX] ⚠️ Falha ao reparar espelho produtos (type=${e.runtimeType})');
+      return false;
+    }
+  }
+
   /// Baixa estoque de forma atômica usando transação Firestore.
   ///
   /// [lojaId] - ID da loja
@@ -70,13 +120,15 @@ class EstoqueTransactionService {
 
     final produtoRef = await _resolverProdutoRef(lojaId: lojaId, produtoId: produtoId, slug: slug, nome: nome);
     if (produtoRef == null) {
-      throw Exception(
-        'Produto não encontrado no servidor: ${produtoId ?? slug ?? nome}. '
-        'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
+      throw _erroProdutoNaoSincronizado(
+        produtoId: produtoId,
+        slug: slug,
+        nome: nome,
       );
     }
 
-    return _db.runTransaction<EstoqueTransactionResult>((transaction) async {
+    Future<EstoqueTransactionResult> executarTransacao() {
+      return _db.runTransaction<EstoqueTransactionResult>((transaction) async {
       final produtoSnap = await transaction.get(produtoRef);
 
       if (!produtoSnap.exists) {
@@ -235,11 +287,9 @@ class EstoqueTransactionService {
           .collection(FSPaths.estoqueProdutosCol)
           .doc(docId);
 
-      try {
-        transaction.update(estoqueRef, updateData);
-      } catch (_) {
-        // estoque_produtos pode não existir para todos os produtos
-      }
+      // Em transações, update em doc inexistente pode falhar apenas no commit.
+      // Usar set+merge evita abortar a venda quando coleção espelho não existe.
+      transaction.set(estoqueRef, updateData, SetOptions(merge: true));
 
       // Propagar para produtos (catálogo web)
       final produtosRef = _db
@@ -247,11 +297,8 @@ class EstoqueTransactionService {
           .doc(lojaId)
           .collection('produtos')
           .doc(docId);
-      try {
-        transaction.update(produtosRef, updateData);
-      } catch (_) {
-        // Doc pode não existir (produto não publicado no catálogo)
-      }
+      // Coleção de catálogo pode não ter o doc publicado; manter espelho sem falhar.
+      transaction.set(produtosRef, updateData, SetOptions(merge: true));
 
       debugPrint('[ESTOQUE-TX] ✅ Baixa atômica: $produtoNome -$quantidade');
 
@@ -265,12 +312,32 @@ class EstoqueTransactionService {
         estoquePorTamanhoAtualizado: novoEstoquePorTamanho,
         quantidadeTotalAtualizada: novaQuantidadeTotal,
       );
-    }).timeout(
-      const Duration(seconds: 20),
-      onTimeout: () => throw TimeoutException(
-        'Conexão demorou muito. Verifique sua internet e tente novamente.',
-      ),
-    );
+      }).timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => throw TimeoutException(
+          'Conexão demorou muito. Verifique sua internet e tente novamente.',
+        ),
+      );
+    }
+
+    try {
+      return await executarTransacao();
+    } catch (e) {
+      final docId = _extrairDocIdProdutosNotFound(e, lojaId);
+      if (docId == null) rethrow;
+      final reparado = await _repararEspelhoProdutosSeAusente(
+        lojaId: lojaId,
+        docId: docId,
+      );
+      if (!reparado) {
+        throw Exception(
+          'Produto sem documento válido de estoque na nuvem (ID: $docId). '
+          'Sincronize o produto no cadastro e tente finalizar novamente.',
+        );
+      }
+      debugPrint('[ESTOQUE-TX] 🔁 Retry transação após reparar produtos/$docId');
+      return executarTransacao();
+    }
   }
 
   static Map<String, int> _parseMapStringInt(dynamic data) {
@@ -426,15 +493,17 @@ class EstoqueTransactionService {
         nome: nome,
       );
       if (ref == null) {
-        throw Exception(
-          'Produto não encontrado no servidor: ${produtoId ?? slug ?? nome}. '
-          'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
+        throw _erroProdutoNaoSincronizado(
+          produtoId: produtoId,
+          slug: slug,
+          nome: nome,
         );
       }
       resolvedItems.add((ref: ref, quantidade: quantidade, tamanho: tamanho, cor: cor));
     }
 
-    return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
+    Future<List<EstoqueTransactionResult>> executarTransacao() {
+      return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
       // FASE 1: Todas as leituras antes de qualquer escrita (regra do Firestore)
       final updates = <({DocumentReference<Map<String, dynamic>> ref, DocumentReference<Map<String, dynamic>>? estoqueRef, Map<String, dynamic> updateData, EstoqueTransactionResult result})>[];
 
@@ -616,11 +685,7 @@ class EstoqueTransactionService {
       for (final u in updates) {
         transaction.update(u.ref, u.updateData);
         if (u.estoqueRef != null) {
-          try {
-            transaction.update(u.estoqueRef!, u.updateData);
-          } catch (e) {
-            debugPrint('[ESTOQUE-TX] ⚠️ Update estoqueRef falhou (doc pode não existir): ${e.runtimeType}');
-          }
+          transaction.set(u.estoqueRef!, u.updateData, SetOptions(merge: true));
         }
         // Propagar para produtos (catálogo web) — doc pode não existir se não publicado
         final produtosRef = _db
@@ -628,21 +693,37 @@ class EstoqueTransactionService {
             .doc(lojaId)
             .collection('produtos')
             .doc(u.result.produtoId);
-        try {
-          transaction.update(produtosRef, u.updateData);
-        } catch (e) {
-          debugPrint('[ESTOQUE-TX] produtos doc não existe ou erro (normal se não publicado): ${e.runtimeType}');
-        }
+        transaction.set(produtosRef, u.updateData, SetOptions(merge: true));
       }
 
       final results = updates.map((u) => u.result).toList();
       return results;
-    }).timeout(
-      const Duration(seconds: 25),
-      onTimeout: () => throw TimeoutException(
-        'Transação de estoque demorou muito. Tente novamente.',
-      ),
-    );
+      }).timeout(
+        const Duration(seconds: 25),
+        onTimeout: () => throw TimeoutException(
+          'Transação de estoque demorou muito. Tente novamente.',
+        ),
+      );
+    }
+
+    try {
+      return await executarTransacao();
+    } catch (e) {
+      final docId = _extrairDocIdProdutosNotFound(e, lojaId);
+      if (docId == null) rethrow;
+      final reparado = await _repararEspelhoProdutosSeAusente(
+        lojaId: lojaId,
+        docId: docId,
+      );
+      if (!reparado) {
+        throw Exception(
+          'Produto sem documento válido de estoque na nuvem (ID: $docId). '
+          'Sincronize o produto no cadastro e tente finalizar novamente.',
+        );
+      }
+      debugPrint('[ESTOQUE-TX] 🔁 Retry batch após reparar produtos/$docId');
+      return executarTransacao();
+    }
   }
 
   /// Devolve estoque de múltiplos itens (cancelamento/desfazer venda).
@@ -806,14 +887,10 @@ class EstoqueTransactionService {
       for (final u in updates) {
         transaction.update(u.ref, u.updateData);
         if (u.estoqueRef != null) {
-          try {
-            transaction.update(u.estoqueRef!, u.updateData);
-          } catch (_) {}
+          transaction.set(u.estoqueRef!, u.updateData, SetOptions(merge: true));
         }
         final produtosRef = _db.collection('lojas').doc(lojaId).collection('produtos').doc(u.result.produtoId);
-        try {
-          transaction.update(produtosRef, u.updateData);
-        } catch (_) {}
+        transaction.set(produtosRef, u.updateData, SetOptions(merge: true));
       }
 
       return updates.map((u) => u.result).toList();

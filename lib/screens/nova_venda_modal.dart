@@ -1,6 +1,7 @@
 // lib/screens/nova_venda_modal.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
+import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:flutter/material.dart';
 
 import '../core/logger.dart';
@@ -638,19 +639,108 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     return e.toString();
   }
 
+  String? _extrairPathFirestore(String texto) {
+    final m = RegExp(r'lojas\/[^\s,)]+', caseSensitive: false).firstMatch(texto);
+    return m?.group(0);
+  }
+
+  String _detalharErroSalvarVenda(Object e) {
+    final erroReal = _extrairErroReal(e);
+    String? code;
+    String? plugin;
+    String? message;
+    try {
+      final dyn = e as dynamic;
+      code = dyn.code?.toString();
+      plugin = dyn.plugin?.toString();
+      message = dyn.message?.toString();
+    } catch (_) {}
+
+    if (e is FirebaseException) {
+      code ??= e.code;
+      plugin ??= e.plugin;
+      message ??= e.message;
+    }
+
+    final path = _extrairPathFirestore('$erroReal ${message ?? ''}');
+    final extra = <String>[
+      if (plugin != null && plugin.isNotEmpty) 'plugin=$plugin',
+      if (code != null && code.isNotEmpty) 'code=$code',
+      if (path != null && path.isNotEmpty) 'path=$path',
+    ].join(' | ');
+
+    if ((code ?? '').toLowerCase() == 'not-found') {
+      return 'Firestore not-found${extra.isNotEmpty ? ' ($extra)' : ''}';
+    }
+    if (extra.isNotEmpty) return '$erroReal ($extra)';
+    return erroReal;
+  }
+
+  void _logErroSalvarVenda({
+    required String etapa,
+    required Object erro,
+    StackTrace? st,
+  }) {
+    final detalhe = _detalharErroSalvarVenda(erro);
+    logE('❌ [VENDA][$etapa] $detalhe', error: erro, st: st);
+  }
+
   Future<void> _mostrarErro(String mensagem) async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Atenção'),
+        icon: Icon(Icons.error_outline, size: 48, color: Colors.red.shade700),
+        title: const Text(
+          'Erro ao salvar venda',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
         content: SingleChildScrollView(
-          child: Text(mensagem),
+          child: Text(
+            mensagem,
+            style: const TextStyle(fontSize: 16),
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Dialog de sucesso bem visível ao finalizar venda.
+  Future<void> _mostrarSucessoVenda() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        icon: Icon(Icons.check_circle, size: 64, color: Colors.green.shade600),
+        title: const Text(
+          'Venda salva com sucesso!',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'A venda foi registrada e o estoque foi atualizado.',
+          style: TextStyle(fontSize: 16),
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          Center(
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.check),
+              label: const Text('OK'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade600,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+            ),
           ),
         ],
       ),
@@ -1171,7 +1261,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final onVendaFinalizadaRef = widget.onVendaFinalizada;
 
       // Só fecha o modal após o salvamento principal ter sido concluído com sucesso.
-      final (ok, numeroSorte) = await _salvarVendaEmBackground(
+      final (ok, numeroSorte, mensagemErro) = await _salvarVendaEmBackground(
         produtosBox: produtosBox,
         clientesBox: clientesBox,
         vendasBox: vendasBox,
@@ -1198,24 +1288,29 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           await _mostrarDialogNumeroSorte(numeroSorte, nomeClienteFinal);
         }
         if (!mounted) return;
+        await _mostrarSucessoVenda();
+        if (!mounted) return;
         onVendaFinalizadaRef();
         Navigator.of(context).pop(true);
+      } else if (mensagemErro != null && mensagemErro.isNotEmpty) {
+        await _mostrarErro(
+          'A venda não foi salva.\n\n$mensagemErro',
+        );
       }
     } catch (e, stackTrace) {
       if (!mounted) return;
-      final erroReal = _extrairErroReal(e);
-      logE('❌ [VENDA] Erro (type=${erroReal.runtimeType})', error: erroReal, st: stackTrace);
+      _logErroSalvarVenda(etapa: 'UI_FINALIZAR', erro: e, st: stackTrace);
       await _mostrarErro(
         'Erro ao salvar venda. '
         'Verifique sua conexão e se o produto está no estoque. '
-        'Detalhe: $erroReal',
+        'Detalhe: ${_detalharErroSalvarVenda(e)}',
       );
     }
   }
 
   /// Executa guard, registrarVendaMulti e participação em campanha (CampaignEngine).
-  /// Retorna (sucesso, numeroSorte?) — não usa widget/context.
-  Future<(bool, String?)> _salvarVendaEmBackground({
+  /// Retorna (sucesso, numeroSorte?, mensagemErro?) — não usa widget/context.
+  Future<(bool, String?, String?)> _salvarVendaEmBackground({
     required Box<Produto> produtosBox,
     required Box<Cliente> clientesBox,
     required Box<Venda> vendasBox,
@@ -1249,10 +1344,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final guard = LimitsGuard();
       final podeVenda = await guard.canAddVenda(lojaId);
       if (!podeVenda) {
-        onErro?.call(
-          'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.',
-        );
-        return (false, null);
+        const msg = 'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
+        onErro?.call(msg);
+        return (false, null, msg);
       }
 
       // ✅ ETAPA 1: Fluxo único de participação — apenas CampaignEngine (via VendasService).
@@ -1281,14 +1375,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
       );
 
-      return (true, numeroSorteRecebido);
+      return (true, numeroSorteRecebido, null);
     } catch (e, stackTrace) {
-      final erroReal = _extrairErroReal(e);
-      logE('❌ [VENDA] Erro ao salvar em background (type=${erroReal.runtimeType})', error: erroReal, st: stackTrace);
-      onErro?.call(
-        'Erro ao salvar venda. Verifique conexão e estoque. $erroReal',
-      );
-      return (false, null);
+      _logErroSalvarVenda(etapa: 'BACKGROUND_SAVE', erro: e, st: stackTrace);
+      final msg =
+          'Erro ao salvar venda. Verifique conexão e estoque. ${_detalharErroSalvarVenda(e)}';
+      onErro?.call(msg);
+      return (false, null, msg);
     }
   }
 

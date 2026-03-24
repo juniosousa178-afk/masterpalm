@@ -387,7 +387,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           if (kDebugMode) debugPrint('[LOGIN-FIREBASE] signInWithEmailAndPassword tentativa $attempt');
           try {
             cred = await FirebaseAuth.instance
-                .signInWithEmailAndPassword(email: login, password: senhaDigitada);
+                .signInWithEmailAndPassword(email: login, password: senhaDigitada)
+                .timeout(const Duration(seconds: 20), onTimeout: () {
+              throw TimeoutException('Login demorou demais. Verifique a conexão.');
+            });
             break;
           } on FirebaseAuthException catch (e) {
             final code = e.code.toLowerCase();
@@ -510,6 +513,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         debugPrint('[LOGIN-FIREBASE] Erro (type=${e.runtimeType}): $e');
       }
       final errStr = e.toString().toLowerCase();
+      if (e is TimeoutException || errStr.contains('timeout') || errStr.contains('demorou')) {
+        setState(() => _carregando = false);
+        if (!mounted) return;
+        _showModernSnackBar(
+          'Login demorou. Verifique a conexão e tente novamente.',
+          isError: true,
+        );
+        return;
+      }
       // 400 / identitytoolkit / captcha — NUNCA acusar senha errada; incentivar nova tentativa
       if (errStr.contains('400') ||
           errStr.contains('bad request') ||
@@ -700,7 +712,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       final GoogleSignIn googleSignIn =
           GoogleSignIn(serverClientId: _webGoogleClientId);
       await googleSignIn.signOut();
-      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      // Timeout evita travamento quando DEVELOPER_ERROR ou Play Services falha
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn().timeout(
+        const Duration(seconds: 25),
+        onTimeout: () {
+          throw TimeoutException(
+            'Login com Google demorou demais. Tente usar e-mail e senha.',
+          );
+        },
+      );
       if (googleUser == null) {
         if (kDebugMode) debugPrint('[LOGIN-GOOGLE] Usuário cancelou ou null.');
         setState(() => _carregando = false);
@@ -710,8 +730,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       await _handleGoogleUser(googleUser);
     } on FirebaseAuthException catch (e) {
       _handleGoogleAuthError(e);
+    } on PlatformException catch (e) {
+      _handleGooglePlatformError(e);
     } catch (e, st) {
       _handleGoogleGenericError(e, st);
+    } finally {
+      if (mounted) setState(() => _carregando = false);
     }
   }
 
@@ -869,6 +893,33 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _showModernSnackBar(msg, isError: true);
   }
 
+  void _handleGooglePlatformError(PlatformException e) {
+    if (kDebugMode) {
+      debugPrint('[LOGIN-GOOGLE] PlatformException: ${e.code} ${e.message}');
+    }
+    setState(() => _carregando = false);
+    if (!mounted) return;
+    HapticFeedback.heavyImpact();
+    _playShakeAnimation();
+    final code = e.code.toLowerCase();
+    final msg = (e.message ?? '').toLowerCase();
+    final isDeveloperError = code.contains('developer_error') ||
+        code.contains('sign_in_failed') ||
+        msg.contains('developer_error') ||
+        msg.contains('12501') ||
+        msg.contains('unknown calling package') ||
+        msg.contains('sha-1') ||
+        msg.contains('signature');
+    String userMsg = 'Erro ao entrar com Google. Tente novamente.';
+    if (isDeveloperError) {
+      userMsg = 'Configuração do Google incompleta. Execute o script '
+          'atualizar-firebase.ps1 e use login com e-mail e senha.';
+    } else if (msg.contains('network') || msg.contains('connection')) {
+      userMsg = 'Sem conexão. Verifique a internet.';
+    }
+    _showModernSnackBar(userMsg, isError: true);
+  }
+
   void _handleGoogleGenericError(Object e, StackTrace st) {
     if (kDebugMode) {
       debugPrint('[LOGIN-GOOGLE] Erro genérico (type=${e.runtimeType}): $e');
@@ -878,14 +929,16 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (!mounted) return;
     HapticFeedback.heavyImpact();
     _playShakeAnimation();
-    final msg = e.toString();
-    final is403 = msg.contains('403') || msg.contains('access_denied') || msg.contains('Access denied');
-    _showModernSnackBar(
-      is403
-          ? 'Google bloqueou o acesso. Ative o People API e confira as origens em Google Cloud Console.'
-          : 'Erro ao entrar com Google. Tente novamente.',
-      isError: true,
-    );
+    final msg = e.toString().toLowerCase();
+    String userMsg = 'Erro ao entrar com Google. Tente novamente.';
+    if (e is TimeoutException || msg.contains('timeout') || msg.contains('demorou')) {
+      userMsg = 'Login com Google demorou. Use e-mail e senha ou tente novamente.';
+    } else if (msg.contains('403') || msg.contains('access_denied')) {
+      userMsg = 'Google bloqueou o acesso. Ative o People API em Google Cloud Console.';
+    } else if (msg.contains('developer_error') || msg.contains('sha-1') || msg.contains('signature')) {
+      userMsg = 'Configuração incompleta. Execute atualizar-firebase.ps1 e use e-mail e senha.';
+    }
+    _showModernSnackBar(userMsg, isError: true);
   }
 
   /// Cria usuário + loja quando login com Google (conta nova).

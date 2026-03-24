@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -64,6 +65,21 @@ class _AppStartRouterState extends State<AppStartRouter> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _run());
   }
 
+  bool _isFirebaseReady() {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _routeWithoutFirebase() async {
+    logW(
+      '⚠️ [ROUTE_GUARD] Firebase indisponível. Entrando em modo seguro sem Auth.',
+    );
+    _setBusy('Conexão com Firebase indisponível. Tente novamente em instantes.');
+  }
+
   Future<void> _run() async {
     try {
       logD(
@@ -71,6 +87,11 @@ class _AppStartRouterState extends State<AppStartRouter> {
       );
       _setBusy('Verificando sessão...');
       logD('[BOOT-ROUTER] Iniciando verificação de sessão');
+
+      if (!_isFirebaseReady()) {
+        await _routeWithoutFirebase();
+        return;
+      }
 
       final auth = FirebaseAuth.instance;
       final user = auth.currentUser;
@@ -461,9 +482,11 @@ class _AppStartRouterState extends State<AppStartRouter> {
       logE('❌ [ROUTER] ERRO (type=${e.runtimeType})', error: e, st: stack);
       // Em erro (sessão corrompida, rede, Firestore), redirecionar para login em vez de home para evitar dados errados.
       if (mounted) {
-        try {
-          await FirebaseAuth.instance.signOut();
-        } catch (_) {}
+        if (_isFirebaseReady()) {
+          try {
+            await FirebaseAuth.instance.signOut();
+          } catch (_) {}
+        }
         if (mounted) _go(_routeLogin);
       }
     }
@@ -576,7 +599,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
         final fromSessao = (sessao.get('store_id') ?? sessao.get('lojaId') ?? '').toString().trim();
         final fromConfig = (config.get('last_loja_id') ?? config.get('store_id') ?? '').toString().trim();
 
-        final current = FirebaseAuth.instance.currentUser;
+        final current = _isFirebaseReady() ? FirebaseAuth.instance.currentUser : null;
         final currentEmail = (current?.email ?? '').trim().toLowerCase();
         final cachedUsuario = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
 

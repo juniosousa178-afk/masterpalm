@@ -4,7 +4,12 @@
   "description": "A new Flutter project.",
   "main": "setup_usuarios_lojas.js",
   "directories": { "lib": "lib", "test": "test" },
-  "scripts": { "test": "echo \"Error: no test specified\" && exit 1" },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "firebase:sha": "cd scripts && npm run sha:firebase",
+    "firebase:atualizar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/atualizar-firebase.ps1",
+    "firebase:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/atualizar-firebase.ps1 -DeployFunctions"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

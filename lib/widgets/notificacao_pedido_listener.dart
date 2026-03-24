@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
@@ -42,6 +43,14 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
   String? _storeId;
   static const int _maxRetries = 20; // ~40s no APK até store_id estar na sessão
 
+  bool _isFirebaseReady() {
+    try {
+      return Firebase.apps.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// ✅ Multi-loja: LojaIdService primeiro, Hive apenas fallback offline
   Future<String?> _resolveStoreId() async {
     try {
@@ -74,6 +83,7 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
 
   Future<void> _iniciarListener() async {
     if (_inicializado) return;
+    if (!_isFirebaseReady()) return;
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -119,6 +129,7 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
   @override
   void initState() {
     super.initState();
+    if (!_isFirebaseReady()) return;
     // Ao trocar de conta: cancelar stream da loja anterior (evita PERMISSION_DENIED em lojas/master)
     _authSub = FirebaseAuth.instance.authStateChanges().listen((User? user) {
       final newUid = user?.uid;

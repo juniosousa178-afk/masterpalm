@@ -645,7 +645,7 @@ class _VendasScreenState extends State<VendasScreen>
     );
   }
 
-  void _showSnackBar(String message, {bool isError = false}) {
+  void _showSnackBar(String message, {bool isError = false, Duration? duration}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -653,14 +653,20 @@ class _VendasScreenState extends State<VendasScreen>
             Icon(
               isError ? Icons.error_outline : Icons.check_circle_outline,
               color: Colors.white,
-              size: 20,
+              size: 24,
             ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+              ),
+            ),
           ],
         ),
         backgroundColor: isError ? _errorColor : _successColor,
         behavior: SnackBarBehavior.floating,
+        duration: duration ?? (isError ? const Duration(seconds: 5) : const Duration(seconds: 4)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
       ),
@@ -1768,7 +1774,10 @@ class _VendasScreenState extends State<VendasScreen>
     );
     if (!mounted) return;
     if (result == true) {
-      _showSnackBar('Venda finalizada com sucesso');
+      _showSnackBar(
+        'Venda registrada com sucesso! O estoque foi atualizado.',
+        duration: const Duration(seconds: 5),
+      );
     }
   }
 
@@ -1909,7 +1918,7 @@ class _VendasScreenState extends State<VendasScreen>
 
     if (!mounted) return;
 
-    showModalBottomSheet(
+    final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -1924,12 +1933,16 @@ class _VendasScreenState extends State<VendasScreen>
         onVendaFinalizada: () => setState(() {}),
         onErroAoFinalizar: (msg) {
           if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700),
-          );
+          _showSnackBar(msg, isError: true);
         },
       ),
     );
+    if (result == true && mounted) {
+      _showSnackBar(
+        'Venda atualizada com sucesso! O estoque foi recalculado.',
+        duration: const Duration(seconds: 5),
+      );
+    }
   }
 
   Future<void> _imprimirPedido(Venda venda) async {
