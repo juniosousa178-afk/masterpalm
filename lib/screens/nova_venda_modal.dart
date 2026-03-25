@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
 import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/logger.dart';
 import '../core/venda_metrics_filter.dart';
@@ -86,6 +87,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   double frete = 0.0;
   double desconto = 0.0;
 
+  /// false = valor do campo em %; true = valor do campo em R$.
+  bool _descontoEmReais = false;
+
   /// pagamentos: {'forma': 'Pix'|'Dinheiro'|'Cartão', 'valor': double}
   List<Map<String, dynamic>> pagamentos = [
     {'forma': 'Pix', 'valor': 0.0},
@@ -127,8 +131,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     observacaoController.text = v.observacao;
     frete = v.frete;
     desconto = v.desconto;
+    _descontoEmReais = false;
     freteController.text = MoedaInputFormatter.format(v.frete);
-    descontoController.text = MoedaInputFormatter.format(v.desconto);
+    descontoController.text =
+        v.desconto > 0 ? _formatPercentualCampo(v.desconto) : '';
 
     if (v.itens != null && v.itens!.isNotEmpty) {
       produtosSelecionados = v.itens!
@@ -285,9 +291,49 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     });
   }
 
+  static double _parsePercentualBrasil(String raw) {
+    final s = raw.trim().replaceAll(',', '.');
+    if (s.isEmpty) return 0.0;
+    return double.tryParse(s) ?? 0.0;
+  }
+
+  static String _formatPercentualCampo(double p) {
+    if (p <= 0) return '';
+    if ((p * 100).round() % 100 == 0) return p.round().toString();
+    return p.toStringAsFixed(2).replaceAll('.', ',');
+  }
+
+  /// Valor do desconto em R$ (limitado ao subtotal), conforme tipo do campo.
+  double _descontoValorAplicadoSobreSubtotal(double subtotal) {
+    if (subtotal <= 0) return 0;
+    if (_descontoEmReais) {
+      return desconto.clamp(0.0, subtotal);
+    }
+    final v = subtotal * (desconto / 100);
+    return v.clamp(0.0, subtotal);
+  }
+
+  void _onTrocarTipoDesconto(bool paraReais) {
+    if (paraReais == _descontoEmReais) return;
+    final subtotal = _calcularSubtotal();
+    setState(() {
+      if (paraReais) {
+        final pct = desconto;
+        desconto = subtotal > 0 ? (subtotal * (pct / 100)).clamp(0.0, subtotal) : 0.0;
+        descontoController.text =
+            desconto > 0 ? MoedaInputFormatter.format(desconto) : '';
+      } else {
+        final reais = desconto.clamp(0.0, subtotal > 0 ? subtotal : 0.0);
+        desconto = subtotal > 0 ? ((reais / subtotal) * 100).clamp(0.0, 100.0) : 0.0;
+        descontoController.text = _formatPercentualCampo(desconto);
+      }
+      _descontoEmReais = paraReais;
+    });
+  }
+
   double _calcularTotalSemRoleta() {
     final subtotal = _calcularSubtotal();
-    final descontoAplicado = subtotal * (desconto / 100);
+    final descontoAplicado = _descontoValorAplicadoSobreSubtotal(subtotal);
     return subtotal - descontoAplicado + frete;
   }
 
@@ -301,6 +347,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     return subtotal;
+  }
+
+  /// [VendasService] espera %. Para desconto em R$, envia o % equivalente ao valor aplicado.
+  double _descontoPctEquivalenteParaSalvar() {
+    final subtotal = _calcularSubtotal();
+    if (subtotal <= 0) return 0;
+    final d = _descontoValorAplicadoSobreSubtotal(subtotal);
+    return (d / subtotal) * 100;
   }
 
   double _calcularTotal() {
@@ -505,8 +559,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             .toList();
         frete = venda.frete;
         desconto = venda.desconto;
+        _descontoEmReais = false;
         freteController.text = MoedaInputFormatter.format(venda.frete);
-        descontoController.text = MoedaInputFormatter.format(venda.desconto);
+        descontoController.text = venda.desconto > 0
+            ? _formatPercentualCampo(venda.desconto)
+            : '';
         if (pagamentos.isNotEmpty) {
           pagamentos[0]['valor'] = venda.total;
           if (_valorControllers.isNotEmpty) {
@@ -535,8 +592,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         ];
         frete = venda.frete;
         desconto = venda.desconto;
+        _descontoEmReais = false;
         freteController.text = MoedaInputFormatter.format(venda.frete);
-        descontoController.text = MoedaInputFormatter.format(venda.desconto);
+        descontoController.text = venda.desconto > 0
+            ? _formatPercentualCampo(venda.desconto)
+            : '';
         if (pagamentos.isNotEmpty) {
           pagamentos[0]['valor'] = venda.total;
           if (_valorControllers.isNotEmpty) {
@@ -570,8 +630,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       roletaPremioAplicado = true;
 
       if (tipo == 'percent') {
-        // soma no desconto % existente
-        desconto += valor;
+        final sub = _calcularSubtotal();
+        if (_descontoEmReais) {
+          desconto += sub * (valor / 100);
+          if (sub > 0) desconto = desconto.clamp(0.0, sub);
+          descontoController.text =
+              desconto > 0 ? MoedaInputFormatter.format(desconto) : '';
+        } else {
+          desconto += valor;
+        }
       } else if (tipo == 'valor') {
         // desconto em R$ direto no total (campo separado)
         descontoRoletaValor += valor;
@@ -918,7 +985,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     final subtotal = _calcularSubtotal();
-    final descontoValor = subtotal * (desconto / 100);
+    final descontoValor = _descontoValorAplicadoSobreSubtotal(subtotal);
 
     // Sincroniza valores dos controllers com pagamentos e quantidades antes de abrir o dialog
     for (var i = 0; i < pagamentos.length && i < _valorControllers.length; i++) {
@@ -1364,7 +1431,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         vendedor: vendedor,
         observacao: observacao,
         frete: frete,
-        descontoPct: desconto,
+        descontoPct: _descontoPctEquivalenteParaSalvar(),
         lojaId: lojaId,
         clienteExistente: cliente,
         idFirebaseToReuse: idFirebaseToReuse,
@@ -1842,6 +1909,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: MoedaTextField(
@@ -1852,11 +1920,69 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: MoedaTextField(
-                              controller: descontoController,
-                              labelText: 'Desconto (%)',
-                              hintText: 'Ex: 10',
-                              onChanged: (value) => desconto = value,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Desconto',
+                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              color: Theme.of(context).hintColor,
+                                            ),
+                                      ),
+                                    ),
+                                    ChoiceChip(
+                                      label: const Text('%'),
+                                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+                                      visualDensity: VisualDensity.compact,
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      selected: !_descontoEmReais,
+                                      onSelected: (_) => _onTrocarTipoDesconto(false),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    ChoiceChip(
+                                      label: const Text('R\$'),
+                                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+                                      visualDensity: VisualDensity.compact,
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      selected: _descontoEmReais,
+                                      onSelected: (_) => _onTrocarTipoDesconto(true),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                if (_descontoEmReais)
+                                  MoedaTextField(
+                                    key: const ValueKey('desconto_reais'),
+                                    controller: descontoController,
+                                    labelText: 'Valor do desconto',
+                                    hintText: 'Ex: 10,00',
+                                    onChanged: (value) {
+                                      desconto = value;
+                                      setState(() {});
+                                    },
+                                  )
+                                else
+                                  TextFormField(
+                                    key: const ValueKey('desconto_pct'),
+                                    controller: descontoController,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                                    ],
+                                    decoration: const InputDecoration(
+                                      labelText: 'Percentual',
+                                      hintText: 'Ex: 10',
+                                      suffixText: '%',
+                                    ),
+                                    onChanged: (s) {
+                                      desconto = _parsePercentualBrasil(s);
+                                      setState(() {});
+                                    },
+                                  ),
+                              ],
                             ),
                           ),
                         ],
