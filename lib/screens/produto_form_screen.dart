@@ -1562,7 +1562,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                         controller: _fornecedor,
                         label: 'Fornecedor',
                         icon: Icons.local_shipping_outlined,
-                        helperText: 'Opcional. Salvo no aparelho e na nuvem.',
+                        helperText:
+                            'Opcional. Uso interno (app/estoque); não aparece no catálogo público.',
                       ),
                     ],
                   ),

@@ -231,7 +231,8 @@ class ProdutosFirestoreService {
                 ? produto.codigoBarras
                 : null,
             'estoqueMinimo': produto.estoqueMinimo,
-            if (produto.fornecedor.isNotEmpty) 'fornecedor': produto.fornecedor,
+            // Fornecedor só em estoque_produtos / Hive — nunca no catálogo público
+            'fornecedor': FieldValue.delete(),
             'marketplaces': produto.marketplaces,
             'custoReal': produto.custoReal,
             'divideSemJuros': produto.divideSemJuros,
