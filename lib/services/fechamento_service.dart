@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import '../models/venda.dart';
 import '../models/fechamento_mensal.dart';
 import '../core/venda_metrics_filter.dart';
+import '../core/financeiro_relatorio_taxas.dart';
 import 'fechamento_firestore_service.dart';
 
 class FechamentoService {
@@ -81,11 +82,12 @@ class FechamentoService {
           _sameMonth(v.data, ano, mes),
     );
 
+    final cfg = await RelatorioTaxasConfig.loadForLoja(lojaId);
     double vendaTotal = 0, custoTotal = 0, taxasTotal = 0;
     for (final v in vendasMes) {
       vendaTotal += v.total;
       custoTotal += v.custoProdutos;
-      taxasTotal += v.taxas;
+      taxasTotal += FinanceiroRelatorioTaxas.taxasParaVenda(v, cfg);
     }
     final lucroTotal = vendaTotal - (custoTotal + taxasTotal);
     final porForma = _pagamentosDoMes(vendasMes);
@@ -183,7 +185,7 @@ class FechamentoService {
   }
 
   /// Retorna um resumo simples (sem salvar) para um mês de uma loja.
-  static ({
+  static Future<({
     double venda,
     double custo,
     double taxas,
@@ -191,12 +193,12 @@ class FechamentoService {
     double dinheiro,
     double pix,
     double cartao
-  }) resumoMes({
+  })> resumoMes({
     required int ano,
     required int mes,
     required String lojaId,
     required Box<Venda> vendasBox,
-  }) {
+  }) async {
     final vendasMes = vendasBox.values.where(
       (v) =>
           v.lojaId == lojaId &&
@@ -204,11 +206,12 @@ class FechamentoService {
           _sameMonth(v.data, ano, mes),
     );
 
+    final cfg = await RelatorioTaxasConfig.loadForLoja(lojaId);
     double venda = 0, custo = 0, taxas = 0;
     for (final v in vendasMes) {
       venda += v.total;
       custo += v.custoProdutos;
-      taxas += v.taxas;
+      taxas += FinanceiroRelatorioTaxas.taxasParaVenda(v, cfg);
     }
     final lucro = venda - (custo + taxas);
     final p = _pagamentosDoMes(vendasMes);

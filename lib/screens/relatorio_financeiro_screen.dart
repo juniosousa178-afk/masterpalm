@@ -15,6 +15,7 @@ import '../services/fechamento_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/vendas_firestore_service.dart';
 import '../core/venda_metrics_filter.dart';
+import '../core/financeiro_relatorio_taxas.dart';
 
 class RelatorioFinanceiroScreen extends StatefulWidget {
   const RelatorioFinanceiroScreen({super.key});
@@ -54,6 +55,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
   String _ordenacaoFech = 'recente'; // recente | antigo | valor_maior | valor_menor
   DateTime? _periodoInicio;
   DateTime? _periodoFim;
+
+  /// Mesmas regras que Relatórios Financeiros + Metas e fechamento mensal.
+  RelatorioTaxasConfig _taxasRelatorio = RelatorioTaxasConfig.defaults;
 
   @override
   void initState() {
@@ -102,6 +106,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     }
 
     lojaId = resolvedId.trim();
+    _taxasRelatorio = await RelatorioTaxasConfig.loadForLoja(lojaId);
     final vendasBoxName = HiveBoxNames.vendas(lojaId);
 
     if (Hive.isBoxOpen(vendasBoxName)) {
@@ -224,7 +229,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
   }
 
   double _custo(Venda v) => v.custoProdutos;
-  double _taxas(Venda v) => v.taxas;
+  double _taxas(Venda v) =>
+      FinanceiroRelatorioTaxas.taxasParaVenda(v, _taxasRelatorio);
 
   Iterable<Venda> _vendasFiltradasPor(bool Function(Venda v) filtro) {
     return vendasBox.values

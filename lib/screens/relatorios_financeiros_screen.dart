@@ -21,6 +21,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
 import '../core/venda_metrics_filter.dart';
+import '../core/financeiro_relatorio_taxas.dart';
 
 class RelatoriosFinanceirosScreen extends StatefulWidget {
   const RelatoriosFinanceirosScreen({super.key});
@@ -55,11 +56,8 @@ class _RelatoriosFinanceirosScreenState
   Box<Meta>? _metasBox;
   Meta? _metaAtual;
 
-  // Taxas configuráveis
-  double _taxaCartao = 5.0;
-  double _taxaMEI = 3.5;
-  double _custosFixos = 10.0;
-  double _custoEmbalagem = 3.0;
+  /// Taxas de relatório (Loja Config) — mesmo critério que Relatório Financeiro e fechamento.
+  RelatorioTaxasConfig _taxasCfg = RelatorioTaxasConfig.defaults;
 
   // Cores do tema
   static const _primaryColor = Color(0xFF00A8FF);
@@ -148,21 +146,7 @@ class _RelatoriosFinanceirosScreenState
   }
 
   Future<void> _carregarTaxasConfig() async {
-    try {
-      final configBox =
-          await Hive.openBox(HiveBoxNames.relatorioFinanceiro(_lojaId));
-      // Lê draft_config (rascunho em Loja Config) com fallback para config (publicado)
-      final config = configBox.get('draft_config') ?? configBox.get('config');
-      if (config is Map) {
-        final taxas = config['taxas'];
-        if (taxas is Map) {
-          _taxaCartao = (taxas['cartao'] ?? _taxaCartao).toDouble();
-          _taxaMEI = (taxas['mei'] ?? _taxaMEI).toDouble();
-          _custosFixos = (taxas['custosFixos'] ?? _custosFixos).toDouble();
-          _custoEmbalagem = (taxas['embalagem'] ?? _custoEmbalagem).toDouble();
-        }
-      }
-    } catch (_) {}
+    _taxasCfg = await RelatorioTaxasConfig.loadForLoja(_lojaId);
   }
 
   void _aplicarFiltros() {
@@ -198,20 +182,7 @@ class _RelatoriosFinanceirosScreenState
   double get _totalTaxas {
     double taxas = 0;
     for (final v in _vendasFiltradas) {
-      if (v.taxas > 0) {
-        taxas += v.taxas;
-      } else {
-        // pagamentoCartao é double (valor pago em cartão)
-        final isCartao = v.pagamentoCartao > 0 ||
-            v.formasPagamento.toLowerCase().contains('cart');
-        if (isCartao) {
-          taxas += v.total * (_taxaCartao / 100);
-        }
-        taxas += v.total * (_taxaMEI / 100);
-        taxas += v.total * (_custosFixos / 100);
-        final qtdItens = v.itens?.length ?? 1;
-        taxas += qtdItens * _custoEmbalagem;
-      }
+      taxas += FinanceiroRelatorioTaxas.taxasParaVenda(v, _taxasCfg);
     }
     return taxas;
   }
@@ -229,37 +200,8 @@ class _RelatoriosFinanceirosScreenState
   double get _totalCartao =>
       _vendasFiltradas.fold(0.0, (s, v) => s + _valorPorForma(v, 'cartao'));
 
-  double _valorPorForma(Venda v, String forma) {
-    if (forma == 'dinheiro') {
-      if (v.pagamentoDinheiro > 0) return v.pagamentoDinheiro;
-    } else if (forma == 'pix') {
-      if (v.pagamentoPix > 0) return v.pagamentoPix;
-    } else if (forma == 'cartao') {
-      if (v.pagamentoCartao > 0) return v.pagamentoCartao;
-    }
-    final soma = v.pagamentoDinheiro + v.pagamentoPix + v.pagamentoCartao;
-    if (soma > 0) return 0;
-    // fallback: parsing formasPagamento para vendas antigas
-    final linhas = (v.formasPagamento.isNotEmpty ? v.formasPagamento : '')
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty);
-    for (final l in linhas) {
-      final low = l.toLowerCase();
-      final numStr = l
-          .replaceAll(RegExp(r'[^0-9,.\-]'), '')
-          .replaceAll('.', '')
-          .replaceAll(',', '.');
-      final val = double.tryParse(numStr) ?? 0.0;
-      if (val <= 0) continue;
-      if (forma == 'dinheiro' && low.contains('dinheiro')) return val;
-      if (forma == 'pix' && low.contains('pix')) return val;
-      if (forma == 'cartao' && (low.contains('cart') || low.contains('cartão'))) {
-        return val;
-      }
-    }
-    return 0;
-  }
+  double _valorPorForma(Venda v, String forma) =>
+      FinanceiroRelatorioTaxas.valorPorForma(v, forma);
 
   // =================== METAS ===================
 
@@ -1830,36 +1772,41 @@ class _RelatoriosFinanceirosScreenState
               const SizedBox(height: 12),
               _buildCalculoItem(
                   'Taxa de Cartão',
-                  '${_taxaCartao.toStringAsFixed(1)}%',
-                  'Aplicada sobre pagamentos em cartão'),
-              _buildCalculoItem('Taxa MEI', '${_taxaMEI.toStringAsFixed(1)}%',
-                  'Imposto simplificado sobre o total'),
+                  '${_taxasCfg.taxaCartaoPercent.toStringAsFixed(1)}%',
+                  'Só sobre o valor pago em cartão (Pix/dinheiro não entram na base)'),
+              _buildCalculoItem(
+                  'Taxa MEI',
+                  '${_taxasCfg.taxaMEIPercent.toStringAsFixed(1)}%',
+                  'Sobre o total da venda'),
               _buildCalculoItem(
                   'Custos Fixos',
-                  '${_custosFixos.toStringAsFixed(1)}%',
-                  'Luz, internet, aluguel etc.'),
+                  '${_taxasCfg.custosFixosPercent.toStringAsFixed(1)}%',
+                  'Luz, internet, aluguel etc. — sobre o total da venda'),
               _buildCalculoItem(
                   'Embalagem',
-                  'R\$ ${_custoEmbalagem.toStringAsFixed(2)}/item',
-                  'Custo por unidade vendida'),
+                  'R\$ ${_taxasCfg.custoEmbalagemUnit.toStringAsFixed(2)}/item',
+                  'Custo por item na venda (quando taxas não vêm gravadas na venda)'),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                     color: _primaryColor.withValues(alpha:0.1),
                     borderRadius: BorderRadius.circular(8)),
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Fórmula do Lucro Estimado:',
+                    const Text('Fórmula do Lucro Estimado:',
                         style: TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8),
-                    Text('Lucro = Total Vendido - Taxas - Custo dos Produtos',
+                    const SizedBox(height: 8),
+                    const Text('Lucro = Total Vendido - Taxas - Custo dos Produtos',
                         style: TextStyle(color: Colors.white70, fontSize: 13)),
-                    SizedBox(height: 4),
-                    Text('Taxas = Taxa Cartão + MEI + Custos Fixos + Embalagem',
-                        style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Taxas = (% cartão só sobre cartão) + MEI + custos fixos + embalagem '
+                      '(vendas com taxas já gravadas usam o valor da venda)',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+                    ),
                   ],
                 ),
               ),

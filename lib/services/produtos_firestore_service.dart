@@ -414,14 +414,21 @@ class ProdutosFirestoreService {
             // Atualizar produto existente com dados do Firestore.
             final p = produtoExistente;
             final localMaisRecente = _localUpdatedAtNewerThanRemote(p, data);
-            // [custoEditadoNoCadastro]: edição vinda do cadastro (produto/combo/import)
-            // deve prevalecer no pull para dados de cadastro — mas o **estoque** na nuvem
-            // continua autoritativo (vendas no catálogo, Nova Venda, outro PDV).
-            // Precificação define a flag como false para permitir alinhar com a nuvem.
-            final skipRemoteMerge =
-                localMaisRecente || p.custoEditadoNoCadastro;
+            // Regra "última alteração vence": quando o local é mais recente,
+            // preserva cadastro local e aplica somente estoque da nuvem.
+            // Caso contrário, aplica snapshot remoto completo (inclui custo/peso).
+            final skipRemoteMerge = localMaisRecente;
 
             if (skipRemoteMerge) {
+              if ((data['custoReal'] is num) || (data['peso'] is num)) {
+                final custoRemoto = (data['custoReal'] as num?)?.toDouble();
+                final pesoRemoto = (data['peso'] as num?)?.toDouble();
+                logD(
+                  '[AUDIT_SYNC] Produto $produtoId preservou LOCAL (mais recente). '
+                  'custo local=${p.custoReal.toStringAsFixed(2)} remoto=${(custoRemoto ?? p.custoReal).toStringAsFixed(2)} | '
+                  'peso local=${p.peso.toStringAsFixed(2)} remoto=${(pesoRemoto ?? p.peso).toStringAsFixed(2)}',
+                );
+              }
               if (p.idFirebase.isEmpty) {
                 p.idFirebase = produtoId;
               }
@@ -437,6 +444,8 @@ class ProdutosFirestoreService {
               continue;
             }
 
+            final custoAntes = p.custoReal;
+            final pesoAntes = p.peso;
             p.nome = data['nome'] ?? p.nome;
             p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
             p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
@@ -523,6 +532,14 @@ class ProdutosFirestoreService {
             final updatedAt = data['updatedAt'];
             if (updatedAt != null && updatedAt is Timestamp) {
               p.updatedAt = updatedAt.toDate();
+            }
+            if ((p.custoReal - custoAntes).abs() > 0.0001 ||
+                (p.peso - pesoAntes).abs() > 0.0001) {
+              logD(
+                '[AUDIT_SYNC] Produto $produtoId aplicou REMOTO (mais recente). '
+                'custo ${custoAntes.toStringAsFixed(2)} -> ${p.custoReal.toStringAsFixed(2)} | '
+                'peso ${pesoAntes.toStringAsFixed(2)} -> ${p.peso.toStringAsFixed(2)}',
+              );
             }
             if (p.idFirebase.isEmpty) {
               p.idFirebase = produtoId;
