@@ -57,6 +57,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   final _nome = TextEditingController();
   final _quantidade = TextEditingController(text: '1');
   final _estoqueMinimo = TextEditingController(text: '0');
+  final _fornecedor = TextEditingController();
   final _custo = TextEditingController();
   final _preco = TextEditingController();
   final _categoria = TextEditingController();
@@ -120,6 +121,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _nome.text = p.nome;
       _quantidade.text = '${p.quantidade}';
       _estoqueMinimo.text = '${p.estoqueMinimo}';
+      _fornecedor.text = p.fornecedor;
       _custo.text = MoedaInputFormatter.format(p.custoReal);
       _preco.text = MoedaInputFormatter.format(p.precoFinal);
       _categoria.text = p.categoria;
@@ -384,6 +386,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     _nome.dispose();
     _quantidade.dispose();
     _estoqueMinimo.dispose();
+    _fornecedor.dispose();
     _custo.dispose();
     _preco.dispose();
     _categoria.dispose();
@@ -716,6 +719,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..marketplaces = _marketplacesSelecionados.toList()
         ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
         ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
+        ..fornecedor = _fornecedor.text.trim()
         ..custoEditadoNoCadastro = true;
       _initPrecoPorTamanhoControllers();
       final precoPorTamanhoMap = <String, double>{};
@@ -1139,6 +1143,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..marketplaces = _marketplacesSelecionados.toList()
             ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
             ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
+            ..fornecedor = _fornecedor.text.trim()
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
             ..custoEditadoNoCadastro = true;
 
@@ -1210,6 +1215,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             variacoes: variacoesMap.isNotEmpty ? variacoesMap : null,
             videoUrl: '',
             estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?? 0,
+            fornecedor: _fornecedor.text.trim(),
             precoPorTamanho: precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null,
             updatedAt: DateTime.now(),
             custoEditadoNoCadastro: true,
@@ -1259,6 +1265,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..marketplaces = _marketplacesSelecionados.toList()
           ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
           ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
+          ..fornecedor = _fornecedor.text.trim()
           ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
           ..custoEditadoNoCadastro = true;
 
@@ -1549,6 +1556,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                         icon: Icons.warning_amber_outlined,
                         keyboardType: TextInputType.number,
                         helperText: '0 = usa padrão 5. Quando estoque ≤ este valor, aparece no card "Estoque baixo" da home.',
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: _fornecedor,
+                        label: 'Fornecedor',
+                        icon: Icons.local_shipping_outlined,
+                        helperText: 'Opcional. Salvo no aparelho e na nuvem.',
                       ),
                     ],
                   ),

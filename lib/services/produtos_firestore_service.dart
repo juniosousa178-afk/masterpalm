@@ -183,6 +183,7 @@ class ProdutosFirestoreService {
         'videoUrl': produto.videoUrl.isNotEmpty ? produto.videoUrl : null,
         'codigoBarras': produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
         'estoqueMinimo': produto.estoqueMinimo,
+        'fornecedor': produto.fornecedor.isNotEmpty ? produto.fornecedor : null,
         'marketplaces': produto.marketplaces,
 
         // Metadata
@@ -230,6 +231,7 @@ class ProdutosFirestoreService {
                 ? produto.codigoBarras
                 : null,
             'estoqueMinimo': produto.estoqueMinimo,
+            if (produto.fornecedor.isNotEmpty) 'fornecedor': produto.fornecedor,
             'marketplaces': produto.marketplaces,
             'custoReal': produto.custoReal,
             'divideSemJuros': produto.divideSemJuros,
@@ -453,6 +455,9 @@ class ProdutosFirestoreService {
             p.slug = data['slug'] ?? p.slug;
             p.codigoBarras = (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
             p.estoqueMinimo = (data['estoqueMinimo'] is num) ? (data['estoqueMinimo'] as num).toInt() : p.estoqueMinimo;
+            if (data.containsKey('fornecedor')) {
+              p.fornecedor = (data['fornecedor'] ?? '').toString().trim();
+            }
             p.publicadoNoCatalogo = data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
             p.tamanhos = (data['tamanhos'] as List?)?.cast<String>() ?? p.tamanhos;
             p.estoquePorTamanho = Map<String, int>.from(data['estoquePorTamanho'] ?? p.estoquePorTamanho);
@@ -563,6 +568,7 @@ class ProdutosFirestoreService {
                   : 12,
               codigoBarras: (data['codigoBarras'] ?? '').toString(),
               estoqueMinimo: (data['estoqueMinimo'] is num) ? (data['estoqueMinimo'] as num).toInt() : 0,
+              fornecedor: (data['fornecedor'] ?? '').toString().trim(),
               peso: (data['peso'] as num?)?.toDouble() ?? 0.0,
               tipoEmbalagem: (data['tipoEmbalagem'] ?? 'padrao').toString(),
               updatedAt: updatedAtDt,

@@ -156,6 +156,10 @@ class Produto extends HiveObject {
   @HiveField(41, defaultValue: false)
   bool custoEditadoNoCadastro;
 
+  /// Nome ou identificação do fornecedor (opcional).
+  @HiveField(42, defaultValue: '')
+  String fornecedor;
+
   Produto({
     required this.nome,
     required this.custoReal,
@@ -199,6 +203,7 @@ class Produto extends HiveObject {
     this.itensCombo,
     this.updatedAt,
     this.custoEditadoNoCadastro = false,
+    this.fornecedor = '',
   });
 
   bool get ehCombo => tipoProduto == 'combo';
@@ -282,6 +287,7 @@ class Produto extends HiveObject {
       tipoProduto: 'simples',
       itensCombo: null,
       custoEditadoNoCadastro: false,
+      fornecedor: '',
     );
   }
 

@@ -1926,6 +1926,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         videoUrl: p.videoUrl,
         codigoBarras: p.codigoBarras,
         estoqueMinimo: p.estoqueMinimo,
+        fornecedor: p.fornecedor,
         precoPorTamanho: p.precoPorTamanho != null ? Map.from(p.precoPorTamanho!) : null,
         tipoProduto: p.tipoProduto,
         itensCombo: p.itensCombo?.map((e) => Map<String, dynamic>.from(e)).toList(),
