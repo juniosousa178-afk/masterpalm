@@ -111,6 +111,78 @@ enum UpsertResult { inserted, updated, skippedConflict }
 /// Resultado com o produto afetado (para sync).
 typedef UpsertResultWithProduct = (UpsertResult, Produto?);
 
+bool _temTexto(String? v) => v != null && v.trim().isNotEmpty;
+bool _listaComDados(List<dynamic>? v) => v != null && v.isNotEmpty;
+bool _mapaComDados(Map<dynamic, dynamic>? v) => v != null && v.isNotEmpty;
+
+void _mergeProdutoExistente(Produto existente, Produto novo) {
+  // Campos numéricos principais (importação traz valores concretos)
+  existente.quantidade = novo.quantidade;
+  existente.custoReal = novo.custoReal;
+  existente.precoFinal = novo.precoFinal;
+  existente.precoUnitario = novo.precoUnitario;
+  existente.precoSugerido = novo.precoSugerido;
+  if (novo.frete > 0) existente.frete = novo.frete;
+  if (novo.gastosFixos > 0) existente.gastosFixos = novo.gastosFixos;
+  if (novo.gastosVariaveis > 0) existente.gastosVariaveis = novo.gastosVariaveis;
+  if (novo.peso > 0) existente.peso = novo.peso;
+  if (novo.estoqueMinimo > 0) existente.estoqueMinimo = novo.estoqueMinimo;
+
+  // Texto/listas/mapas: só sobrescreve quando o novo trouxer dado válido.
+  if (_temTexto(novo.nome)) existente.nome = novo.nome;
+  if (_temTexto(novo.descricao)) existente.descricao = novo.descricao.trim();
+  if (_temTexto(novo.categoria)) existente.categoria = novo.categoria.trim();
+  if (_temTexto(novo.subcategoria)) existente.subcategoria = novo.subcategoria.trim();
+  if (_temTexto(novo.codigoBarras)) existente.codigoBarras = novo.codigoBarras.trim();
+  if (_temTexto(novo.videoUrl)) existente.videoUrl = novo.videoUrl.trim();
+  if (_temTexto(novo.fornecedor)) existente.fornecedor = novo.fornecedor.trim();
+  if (_temTexto(novo.lojaId)) existente.lojaId = novo.lojaId.trim();
+  if (_temTexto(novo.slug)) existente.slug = novo.slug.trim();
+
+  if (novo.publicadoNoCatalogo) {
+    existente.publicadoNoCatalogo = true;
+  }
+  final trouxePromocao = novo.emPromocao ||
+      novo.percentualPromo != null ||
+      novo.valorPromo != null ||
+      novo.dataInicioPromo != null ||
+      novo.dataFimPromo != null;
+  if (trouxePromocao) {
+    existente.emPromocao = novo.emPromocao;
+    existente.percentualPromo = novo.percentualPromo;
+    existente.valorPromo = novo.valorPromo;
+    existente.dataInicioPromo = novo.dataInicioPromo;
+    existente.dataFimPromo = novo.dataFimPromo;
+  }
+  existente.tipoEmbalagem = _temTexto(novo.tipoEmbalagem)
+      ? (novo.tipoEmbalagem == 'padrao'
+          ? existente.tipoEmbalagem
+          : novo.tipoEmbalagem)
+      : existente.tipoEmbalagem;
+  if (novo.divideSemJuros || novo.percentualDescontoPix > 0 || novo.maxParcelasSemJuros != 12) {
+    existente.divideSemJuros = novo.divideSemJuros;
+    existente.percentualDescontoPix = novo.percentualDescontoPix;
+    existente.maxParcelasSemJuros = novo.maxParcelasSemJuros;
+  }
+
+  if (_listaComDados(novo.imagens)) {
+    existente.imagens = List<String>.from(novo.imagens);
+  }
+  if (_listaComDados(novo.marketplaces)) {
+    existente.marketplaces = List<String>.from(novo.marketplaces);
+  }
+  if (_listaComDados(novo.tamanhos)) {
+    existente.tamanhos = List<String>.from(novo.tamanhos);
+  }
+  if (_listaComDados(novo.cores)) {
+    existente.cores = List<String>.from(novo.cores);
+  }
+
+  if (_mapaComDados(novo.estoquePorTamanho)) {
+    existente.estoquePorTamanho = Map<String, int>.from(novo.estoquePorTamanho);
+  }
+}
+
 /// Upsert: atualiza se existir, insere se não existir.
 /// Retorna (resultado, produto) para permitir sync no Firestore.
 Future<UpsertResultWithProduct> upsertProduto(
@@ -149,25 +221,16 @@ Future<UpsertResultWithProduct> upsertProduto(
       return (UpsertResult.skippedConflict, null);
     }
 
-    existente.quantidade = novo.quantidade;
-    existente.custoReal = novo.custoReal;
-    existente.precoFinal = novo.precoFinal;
-    existente.precoUnitario = novo.precoUnitario;
-    existente.precoSugerido = novo.precoSugerido;
-    existente.estoquePorTamanho = Map<String, int>.from(novo.estoquePorTamanho);
-    existente.tamanhos = List<String>.from(novo.tamanhos);
-    existente.cores = List<String>.from(novo.cores);
+    _mergeProdutoExistente(existente, novo);
 
     if (novo.precoPorTamanho != null && novo.precoPorTamanho!.isNotEmpty) {
       existente.precoPorTamanho = Map<String, double>.from(novo.precoPorTamanho!);
-    } else {
-      existente.precoPorTamanho = null;
     }
-    existente.tipoProduto = novo.tipoProduto;
+    if (_temTexto(novo.tipoProduto)) {
+      existente.tipoProduto = novo.tipoProduto;
+    }
     if (novo.itensCombo != null && novo.itensCombo!.isNotEmpty) {
       existente.itensCombo = novo.itensCombo!.map((m) => Map<String, dynamic>.from(m)).toList();
-    } else {
-      existente.itensCombo = null;
     }
 
     if (novo.variacoes != null && novo.variacoes!.isNotEmpty) {
@@ -186,13 +249,10 @@ Future<UpsertResultWithProduct> upsertProduto(
       }
       existente.variacoes = deepCopy;
       existente.recalcularQuantidadeTotal();
-    } else {
-      // Sem variações novas: zera variacoes e recalcula quantidade a partir do estoquePorTamanho (se existir).
-      existente.variacoes = null;
-      if (existente.estoquePorTamanho.isNotEmpty) {
-        existente.quantidade =
-            existente.estoquePorTamanho.values.fold(0, (a, b) => a + b);
-      }
+    } else if (novo.estoquePorTamanho.isNotEmpty) {
+      // Sem variacoes explícitas, usa grade por tamanho quando veio no import.
+      existente.quantidade =
+          existente.estoquePorTamanho.values.fold(0, (a, b) => a + b);
     }
 
     // Atualizar slug apenas se não tiver código e o existente tiver
@@ -205,6 +265,9 @@ Future<UpsertResultWithProduct> upsertProduto(
     existente.custoEditadoNoCadastro = true;
     existente.updatedAt = DateTime.now();
     await existente.save();
+    if (kDebugMode) {
+      debugPrint('[ProdutoImport] merge atualizado: ${existente.nome}');
+    }
     onLog?.call('Atualizado: ${existente.nome}');
     return (UpsertResult.updated, existente);
   }

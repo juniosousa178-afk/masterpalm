@@ -15,7 +15,7 @@ import 'dart:convert' show latin1, utf8;
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart' as xls;
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../core/hive_box_names.dart';
@@ -1934,6 +1934,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         updatedAt: DateTime.now(),
       );
       _box.add(copia);
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print('[ProdutoDuplicar] cópia local criada; sincroniza ao salvar no formulário');
+      }
       if (mounted) setState(() {});
       _showSnackBar('Produto duplicado. Edite se necessário.');
       await _abrirForm(produto: copia);

@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/hive_box_names.dart';
@@ -31,6 +31,13 @@ import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_w
 ///   após operações de venda para não sobrescrever saldos já atualizados por transações.
 class ProdutosFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  static void _dlog(String msg) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(msg);
+    }
+  }
 
   /// Sincroniza um produto para o Firestore (Hive → Firestore).
   ///
@@ -132,6 +139,15 @@ class ProdutosFirestoreService {
       produto.updatedAt = DateTime.now();
       await produto.save();
 
+      final docRef = _db
+          .collection('lojas')
+          .doc(storeId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(produtoId);
+      final docSnap = await docRef.get();
+      final existingData = docSnap.data();
+      final dynamic createdAtPersistido = existingData?['createdAt'];
+
       final produtoData = {
         'id': produtoId,
         'lojaId': storeId,
@@ -185,28 +201,37 @@ class ProdutosFirestoreService {
         'estoqueMinimo': produto.estoqueMinimo,
         'fornecedor': produto.fornecedor.isNotEmpty ? produto.fornecedor : null,
         'marketplaces': produto.marketplaces,
+        // Campos internos úteis para continuidade multi-dispositivo (admin)
+        'dataEntrada': Timestamp.fromDate(produto.dataEntrada),
+        'ativoNoRascunho': produto.ativoNoRascunho,
 
         // Metadata
-        'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       };
+      if (docSnap.exists) {
+        if (createdAtPersistido != null) {
+          produtoData['createdAt'] = createdAtPersistido;
+        } else {
+          // Fallback conservador para docs legados sem createdAt.
+          produtoData['createdAt'] = FieldValue.serverTimestamp();
+        }
+        _dlog('[ProdutoSync] update estoque_produtos/$produtoId (createdAt preservado)');
+      } else {
+        produtoData['createdAt'] = FieldValue.serverTimestamp();
+        _dlog('[ProdutoSync] create estoque_produtos/$produtoId');
+      }
 
-      await _db
-          .collection('lojas')
-          .doc(storeId)
-          .collection(FSPaths.estoqueProdutosCol)
-          .doc(produtoId)
-          .set(produtoData);  // ✅ Remove merge: true para substituir completamente
+      await docRef.set(produtoData, SetOptions(merge: true));
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
       if (produto.publicadoNoCatalogo) {
         try {
-          await _db
+          final publicoRef = _db
               .collection('lojas')
               .doc(storeId)
               .collection('produtos')
-              .doc(produtoId)
-              .update({
+              .doc(produtoId);
+          await publicoRef.set({
             'nome': produto.nome,
             'descricao': produto.descricao,
             'preco': produto.precoFinal,
@@ -231,16 +256,23 @@ class ProdutosFirestoreService {
                 ? produto.codigoBarras
                 : null,
             'estoqueMinimo': produto.estoqueMinimo,
-            // Fornecedor só em estoque_produtos / Hive — nunca no catálogo público
+            // Campos internos/admin nunca no documento público
             'fornecedor': FieldValue.delete(),
+            'frete': FieldValue.delete(),
+            'gastosFixos': FieldValue.delete(),
+            'gastosVariaveis': FieldValue.delete(),
+            'precoSugerido': FieldValue.delete(),
+            'custoEditadoNoCadastro': FieldValue.delete(),
+            'dataEntrada': FieldValue.delete(),
+            'ativoNoRascunho': FieldValue.delete(),
             'marketplaces': produto.marketplaces,
-            'custoReal': produto.custoReal,
             'divideSemJuros': produto.divideSemJuros,
             'maxParcelasSemJuros': produto.maxParcelasSemJuros,
             'percentualDescontoPix': produto.percentualDescontoPix,
             if (produto.videoUrl.isNotEmpty) 'videoUrl': produto.videoUrl,
             'updatedAt': FieldValue.serverTimestamp(),
-          });
+          }, SetOptions(merge: true));
+          _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
           logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
         } catch (e) {
           logW('⚠️ [PRODUTOS-SYNC] Produto não encontrado no catálogo público (normal se não publicado) (type=${e.runtimeType})');
@@ -465,6 +497,12 @@ class ProdutosFirestoreService {
             p.slug = data['slug'] ?? p.slug;
             p.codigoBarras = (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
             p.estoqueMinimo = (data['estoqueMinimo'] is num) ? (data['estoqueMinimo'] as num).toInt() : p.estoqueMinimo;
+            if (data['dataEntrada'] is Timestamp) {
+              p.dataEntrada = (data['dataEntrada'] as Timestamp).toDate();
+            }
+            if (data.containsKey('ativoNoRascunho')) {
+              p.ativoNoRascunho = data['ativoNoRascunho'] == true;
+            }
             if (data.containsKey('fornecedor')) {
               p.fornecedor = (data['fornecedor'] ?? '').toString().trim();
             }
@@ -563,7 +601,9 @@ class ProdutosFirestoreService {
               precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?? (data['preco'] as num?)?.toDouble() ?? 0.0,
               quantidade: (data['quantidade'] as num?)?.toInt() ?? 0,
               categoria: data['categoria'] ?? '',
-              dataEntrada: DateTime.now(),
+              dataEntrada: data['dataEntrada'] is Timestamp
+                  ? (data['dataEntrada'] as Timestamp).toDate()
+                  : DateTime.now(),
               descricao: data['descricao'] ?? '',
               imagens: (data['imagens'] as List?)?.cast<String>() ?? [],
               slug: data['slug'] ?? '',
@@ -606,6 +646,7 @@ class ProdutosFirestoreService {
                       ?.map((e) => e.toString())
                       .toList() ??
                   const [],
+              ativoNoRascunho: data['ativoNoRascunho'] == true,
             );
 
             await produtosBox.add(produto);

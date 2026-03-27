@@ -273,7 +273,6 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       'tipoEmbalagem': pdt.tipoEmbalagem,
       'estoqueMinimo': pdt.estoqueMinimo,
       'marketplaces': pdt.marketplaces,
-      'custoReal': pdt.custoReal,
       if (pdt.codigoBarras.isNotEmpty) 'codigoBarras': pdt.codigoBarras,
       if (pdt.videoUrl.isNotEmpty) 'videoUrl': pdt.videoUrl,
 

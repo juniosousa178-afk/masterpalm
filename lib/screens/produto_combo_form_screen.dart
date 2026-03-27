@@ -5,7 +5,7 @@
 import 'dart:io' show File;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -66,6 +66,13 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
 
   /// Itens do combo: {nome, slug, quantidade, tamanho, cor, productId?}. productId opcional para hardening ID-first.
   final List<Map<String, dynamic>> _itensCombo = [];
+
+  void _dlog(String msg) {
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print(msg);
+    }
+  }
 
   @override
   void initState() {
@@ -517,6 +524,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       if (widget.combo != null) {
         combo = widget.combo!;
         final qtd = int.tryParse(_quantidadeDisponivel.text.trim()) ?? 1;
+        // Edição de combo: atualiza somente campos explícitos da UI de combo.
+        // Campos administrativos não expostos nesta tela permanecem como estavam.
         combo
           ..nome = nome
           ..precoFinal = preco
@@ -532,6 +541,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           ..lojaId = lojaId!
           ..custoEditadoNoCadastro = true
           ..updatedAt = DateTime.now();
+        _dlog('[ProdutoCombo] edição conservadora: campos não expostos preservados');
         await combo.save();
       } else {
         final guard = LimitsGuard();
@@ -569,6 +579,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           updatedAt: DateTime.now(),
         );
         await produtosBox.add(combo);
+        _dlog('[ProdutoCombo] novo combo criado com defaults seguros');
       }
 
       await ProdutosFirestoreService.syncProduto(combo, lojaId: lojaId);
