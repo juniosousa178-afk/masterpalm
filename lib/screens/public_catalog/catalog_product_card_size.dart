@@ -17,12 +17,12 @@ class CatalogProductCardSize {
   static double standardAspectRatio(String size) {
     switch (normalize(size)) {
       case small:
-        return 0.52;
+        return 0.50;
       case large:
-        return 0.36;
+        return 0.34;
       case medium:
       default:
-        return 0.44;
+        return 0.42;
     }
   }
 

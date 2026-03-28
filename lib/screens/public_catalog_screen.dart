@@ -4263,15 +4263,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     backgroundColor: headerColor,
                     elevation: 0,
                     // Altura dinâmica: desktop maior; mobile inalterado
+                    // Margem extra vs conteúdo do título (busca + chips) para evitar overflow vertical residual.
                     toolbarHeight: useMinimalLayout
                         ? (isDesktop ? 100 : 88)
                         : (isDesktop
                             ? (categoriasMenu.isEmpty
-                                ? 140
-                                : (_selectedCategory != null ? 236 : 186))
+                                ? 152
+                                : (_selectedCategory != null ? 248 : 198))
                             : (categoriasMenu.isEmpty
-                                ? 120
-                                : (_selectedCategory != null ? 216 : 166))),
+                                ? 132
+                                : (_selectedCategory != null ? 228 : 178))),
                     titleSpacing: 0,
                     automaticallyImplyLeading: false,
                     title: LayoutBuilder(
@@ -4280,7 +4281,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             ? constraints.maxHeight
                             : (useMinimalLayout
                                 ? (isDesktop ? 100.0 : 88.0)
-                                : (isDesktop ? 200.0 : 180.0));
+                                : (isDesktop ? 260.0 : 240.0));
                         return Align(
                           alignment: Alignment.topCenter,
                           child: FittedBox(

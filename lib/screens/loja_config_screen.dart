@@ -3919,14 +3919,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             }
 
             return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: preview),
                 const SizedBox(width: 12),
-                SizedBox(
-                  width: 360,
-                  child: dimRow(
-                    h: isDesktop ? _dLogoH : _mLogoH,
-                    w: isDesktop ? _dLogoW : _mLogoW,
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 360),
+                    child: dimRow(
+                      h: isDesktop ? _dLogoH : _mLogoH,
+                      w: isDesktop ? _dLogoW : _mLogoW,
+                    ),
                   ),
                 ),
               ],
@@ -4375,29 +4378,43 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                                   const SizedBox(height: 8),
                                   Row(
                                     children: [
-                                      Text(
-                                        'R\$ 129,90',
-                                        style: TextStyle(
-                                          color: _cPriceHighlight,
-                                          fontWeight: FontWeight.bold,
+                                      Flexible(
+                                        child: Text(
+                                          'R\$ 129,90',
+                                          style: TextStyle(
+                                            color: _cPriceHighlight,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                      const Spacer(),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _cPrimaria,
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
-                                        child: Text(
-                                          'Ver detalhes',
-                                          style: TextStyle(
-                                            color: _cBotaoTexto,
-                                            fontSize: 12,
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Align(
+                                          alignment: Alignment.centerRight,
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerRight,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: _cPrimaria,
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                'Ver detalhes',
+                                                style: TextStyle(
+                                                  color: _cBotaoTexto,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -4524,29 +4541,39 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Text(
-                          'Resumo do pedido',
-                          style: TextStyle(
-                            color: _cCarrinhoLabel,
-                            fontWeight: FontWeight.w700,
+                        Expanded(
+                          child: Text(
+                            'Resumo do pedido',
+                            style: TextStyle(
+                              color: _cCarrinhoLabel,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(999),
-                            color: _cCarrinhoTotal,
-                          ),
-                          child: const Text(
-                            'Total R\$ 99,66',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(999),
+                                color: _cCarrinhoTotal,
+                              ),
+                              child: const Text(
+                                'Total R\$ 99,66',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -4567,14 +4594,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                         children: [
                           Row(
                             children: [
-                              Text(
-                                'Subtotal',
-                                style: TextStyle(
-                                  color: _cCarrinhoTexto.withValues(alpha:0.8),
-                                  fontSize: 12,
+                              Expanded(
+                                child: Text(
+                                  'Subtotal',
+                                  style: TextStyle(
+                                    color: _cCarrinhoTexto
+                                        .withValues(alpha:0.8),
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const Spacer(),
                               Text(
                                 'R\$ 99,66',
                                 style: TextStyle(
@@ -4588,20 +4619,28 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           const SizedBox(height: 6),
                           Row(
                             children: [
-                              Text(
-                                'Total a pagar',
-                                style: TextStyle(
-                                  color: _cCarrinhoLabel,
-                                  fontWeight: FontWeight.w700,
+                              Expanded(
+                                child: Text(
+                                  'Total a pagar',
+                                  style: TextStyle(
+                                    color: _cCarrinhoLabel,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const Spacer(),
-                              Text(
-                                'R\$ 99,66',
-                                style: TextStyle(
-                                  color: _cCarrinhoTotal,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 18,
+                              Flexible(
+                                child: Text(
+                                  'R\$ 99,66',
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    color: _cCarrinhoTotal,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 18,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
@@ -4700,27 +4739,35 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                                 color: _cCarrinhoTexto.withValues(alpha:0.7),
                                 fontSize: 12,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Container(
-                          height: 42,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _cPrimaria,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            'Aplicar',
-                            style: TextStyle(
-                              color: _cBotaoTexto,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.center,
+                            child: Container(
+                              height: 42,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _cPrimaria,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                'Aplicar',
+                                style: TextStyle(
+                                  color: _cBotaoTexto,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -4844,9 +4891,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                       children: [
                         Icon(Icons.email_outlined, color: _cFooterIcon, size: 16),
                         const SizedBox(width: 8),
-                        Text(
-                          'contato@exemplo.com',
-                          style: TextStyle(color: _cFooterLink, fontSize: 12),
+                        Expanded(
+                          child: Text(
+                            'contato@exemplo.com',
+                            style: TextStyle(color: _cFooterLink, fontSize: 12),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
