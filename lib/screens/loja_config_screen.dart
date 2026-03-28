@@ -3,14 +3,16 @@
 // ✅ CORRIGIDO: Alinhado 100% com public_catalog_screen.dart
 
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:collection/collection.dart';
+import 'package:diacritic/diacritic.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData, FilteringTextInputFormatter;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive/hive.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -27,6 +29,10 @@ import '../services/limits_guard.dart';
 import '../services/sync_firestore_script.dart';
 import '../core/logger.dart';
 import '../widgets/catalog_color_field_editor.dart';
+import '../widgets/catalog_store_palette_card.dart';
+import '../widgets/catalog_visual_palette_presets_panel.dart';
+import '../widgets/catalog_store_mini_preview.dart';
+import '../theme/catalog_visual_palette_presets.dart';
 
 enum _LayoutPreset { masterPadrao, masterLuxo, darkClean }
 enum _MediaTab { desktop, mobile }
@@ -43,45 +49,19 @@ enum _Pane {
   publicar,
 }
 
-/// Agrupamento só de UX no mobile. Não altera [_Pane] nem persistência.
-class _LojaConfigUiSection {
-  const _LojaConfigUiSection({
-    required this.title,
-    required this.hint,
-    required this.panes,
-  });
-  final String title;
-  final String hint;
-  final List<_Pane> panes;
-}
+/// Indicadores do hub da Loja Config (erro > pendência > ok).
+enum _HubModuleSignal { error, pending, ok, neutral }
 
-const List<_LojaConfigUiSection> _kLojaConfigUiSections = [
-  _LojaConfigUiSection(
-    title: 'Informações gerais',
-    hint: 'Nome da loja, contato e identidade na web',
-    panes: [_Pane.identidade],
-  ),
-  _LojaConfigUiSection(
-    title: 'Mídia e aparência',
-    hint: 'Logos, banners, cores e layout dos cards',
-    panes: [_Pane.midias, _Pane.tema, _Pane.layout],
-  ),
-  _LojaConfigUiSection(
-    title: 'Conteúdo do catálogo',
-    hint: 'Menu, páginas institucionais e rodapé',
-    panes: [_Pane.menu, _Pane.dicas, _Pane.rodape],
-  ),
-  _LojaConfigUiSection(
-    title: 'Financeiro',
-    hint: 'Taxas e metas em relatórios',
-    panes: [_Pane.financeiro],
-  ),
-  _LojaConfigUiSection(
-    title: 'Campanhas e publicação',
-    hint: 'Sorteios, roleta e colocar o catálogo no ar',
-    panes: [_Pane.publicar],
-  ),
-];
+/// Filtro do hub por estado visual dos cards.
+enum _HubModuleFilter { all, error, pending, ok, neutral }
+
+/// Campos de [_LojaConfigScreenState._coletarProblemasSalvar] → módulo do hub.
+const Map<String, _Pane> _kCampoSalvarParaPane = {
+  'whatsapp': _Pane.identidade,
+  'pedido_base': _Pane.identidade,
+  'sac_whatsapp': _Pane.menu,
+  'whatsapp_rodape': _Pane.rodape,
+};
 
 class LojaConfigScreen extends StatefulWidget {
   const LojaConfigScreen({super.key});
@@ -122,6 +102,362 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     return _resolvedLojaId!;
   }
 
+  void _goToHub() {
+    setState(() => _hubMode = true);
+  }
+
+  void _openConfigModule(_Pane pane) {
+    setState(() {
+      _pane = pane;
+      _hubMode = false;
+    });
+  }
+
+  // --- Hub: baseline do rascunho por módulo (comparação de fatias do [_buildConfigMap]) ---
+  static final Map<_Pane, List<String>> _kHubPaneTopLevelKeys = {
+    _Pane.identidade: [
+      'slug',
+      'linkCurto',
+      'subdominioMascara',
+      'subdominioDominioBase',
+      'nome',
+      'whatsapp',
+      'pedidoBaseUrl',
+      'lojaId',
+    ],
+    _Pane.midias: [
+      'media',
+      'logoDesktopUrl',
+      'logoMobileUrl',
+      'bannersDesktop',
+      'bannersMobile',
+      'dLogoH',
+      'dLogoW',
+      'mLogoH',
+      'mLogoW',
+      'dBanH',
+      'dBanW',
+      'mBanH',
+      'mBanW',
+      'categoryVisuals',
+    ],
+    _Pane.tema: [
+      'layoutPreset',
+      'theme',
+      'checkoutTheme',
+      'uiColors',
+      'catalogHeaderColors',
+      'catalogFooterColors',
+      'catalogDicasColors',
+      'promoBar',
+      'minimalSearch',
+      'heroBanner',
+      'minimalBestSellers',
+    ],
+    _Pane.layout: [
+      'gridDesktopCols',
+      'gridMobileCols',
+      'cardShowShadow',
+      'cardBorderRadius',
+      'layoutCatalogo',
+      'productCardSize',
+      'minimalProductGrid',
+    ],
+    _Pane.menu: ['menu', 'quemSomos', 'sac'],
+    _Pane.dicas: ['dicas'],
+    _Pane.rodape: ['rodape', 'links'],
+    _Pane.financeiro: ['taxas'],
+    _Pane.publicar: [],
+  };
+
+  static const List<String> _kHubFretesTopKeys = [
+    'freteProvider',
+    'melhorEnvioToken',
+    'correiosUser',
+    'correiosSenha',
+    'frenetToken',
+    'fretes',
+    'cupons',
+  ];
+
+  static final DeepCollectionEquality _hubDeepEq = DeepCollectionEquality();
+
+  void _captureHubBaseline() {
+    if (_resolvedLojaId == null) return;
+    try {
+      final m = _buildConfigMap(storeId: _activeStoreId());
+      _hubBaselineMap = json.decode(json.encode(m)) as Map<String, dynamic>;
+      _hubBaselineFreteConfig =
+          _mergeFreteConfigCache == null ? null : json.decode(json.encode(_mergeFreteConfigCache));
+      _hubBaselineCuponsMerge =
+          _mergeCuponsCache == null ? null : json.decode(json.encode(_mergeCuponsCache));
+      _hubBaselinePublicarCampanha = _campanhaAtiva;
+      _hubBaselinePublicarRoleta = _roletaAtiva;
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> _hubSliceForKeys(Map<String, dynamic> full, List<String> keys) {
+    final out = <String, dynamic>{};
+    for (final k in keys) {
+      if (full.containsKey(k)) out[k] = full[k];
+    }
+    return out;
+  }
+
+  bool _hubSliceDirty(Map<String, dynamic> currentFull, Map<String, dynamic>? baseline, List<String> keys) {
+    if (baseline == null) return false;
+    final a = _hubSliceForKeys(currentFull, keys);
+    final b = _hubSliceForKeys(baseline, keys);
+    return !_hubDeepEq.equals(a, b);
+  }
+
+  bool _hubModuleHasPendingChanges(_Pane pane, Map<String, dynamic> currentFull) {
+    if (_hubBaselineMap == null) return false;
+    if (pane == _Pane.publicar) {
+      return _campanhaAtiva != _hubBaselinePublicarCampanha || _roletaAtiva != _hubBaselinePublicarRoleta;
+    }
+    final keys = _kHubPaneTopLevelKeys[pane];
+    if (keys == null || keys.isEmpty) return false;
+    return _hubSliceDirty(currentFull, _hubBaselineMap, keys);
+  }
+
+  bool _hubFretesShortcutHasPendingChanges(Map<String, dynamic> currentFull) {
+    if (_hubBaselineMap == null) return false;
+    if (_hubSliceDirty(currentFull, _hubBaselineMap, _kHubFretesTopKeys)) return true;
+    if (!_hubDeepEq.equals(_mergeFreteConfigCache, _hubBaselineFreteConfig)) return true;
+    if (!_hubDeepEq.equals(_mergeCuponsCache, _hubBaselineCuponsMerge)) return true;
+    return false;
+  }
+
+  /// Hierarquia: erro de validação → alterações pendentes → ok (com baseline) → neutro.
+  ({_HubModuleSignal signal, String? tooltip}) _hubCardStateForPane(
+    _Pane pane,
+    bool dirty,
+    List<({String campo, String msg})> salvarItems,
+    List<String> pubAvisos,
+  ) {
+    String? errDetail;
+    for (final p in salvarItems) {
+      if (_kCampoSalvarParaPane[p.campo] == pane) {
+        errDetail = p.msg;
+        break;
+      }
+    }
+    if (errDetail == null && salvarItems.isEmpty) {
+      if (pane == _Pane.identidade && _nomeCtrl.text.trim().isEmpty) {
+        errDetail = 'Informe o nome da loja.';
+      } else if (pane == _Pane.midias &&
+          _logoUrlDesktop == null &&
+          _logoUrlMobile == null) {
+        errDetail = 'Adicione pelo menos uma logo (desktop ou mobile).';
+      }
+    }
+    if (errDetail == null && pane == _Pane.publicar) {
+      if (salvarItems.isNotEmpty || pubAvisos.isNotEmpty) {
+        errDetail = [
+          ...salvarItems.map((e) => e.msg),
+          ...pubAvisos,
+        ].join('\n');
+      }
+    }
+
+    if (errDetail != null) {
+      return (
+        signal: _HubModuleSignal.error,
+        tooltip: errDetail,
+      );
+    }
+    if (dirty) {
+      return (
+        signal: _HubModuleSignal.pending,
+        tooltip: 'Há alterações de rascunho neste módulo em relação ao último ponto salvo.',
+      );
+    }
+    if (_hubBaselineMap != null) {
+      return (
+        signal: _HubModuleSignal.ok,
+        tooltip: 'Sem pendências de rascunho nem problemas detectados neste módulo.',
+      );
+    }
+    return (signal: _HubModuleSignal.neutral, tooltip: null);
+  }
+
+  ({_HubModuleSignal signal, String? tooltip}) _hubCardStateFretes(bool dirty) {
+    if (dirty) {
+      return (
+        signal: _HubModuleSignal.pending,
+        tooltip: 'Há alterações de fretes ou cupons no rascunho em relação ao último ponto salvo.',
+      );
+    }
+    if (_hubBaselineMap != null) {
+      return (
+        signal: _HubModuleSignal.ok,
+        tooltip: 'Sem alterações pendentes de fretes/cupons no rascunho.',
+      );
+    }
+    return (
+      signal: _HubModuleSignal.neutral,
+      tooltip: 'Abrir fretes e cupons em tela dedicada.',
+    );
+  }
+
+  bool _hubFilterAcceptsSignal(_HubModuleFilter filter, _HubModuleSignal signal) {
+    return switch (filter) {
+      _HubModuleFilter.all => true,
+      _HubModuleFilter.error => signal == _HubModuleSignal.error,
+      _HubModuleFilter.pending => signal == _HubModuleSignal.pending,
+      _HubModuleFilter.ok => signal == _HubModuleSignal.ok,
+      _HubModuleFilter.neutral => signal == _HubModuleSignal.neutral,
+    };
+  }
+
+  /// Ordenação visual do hub: erro → pendente → ok → neutro (empate = ordem de [_lojaConfigNavItems]).
+  int _hubSignalPriority(_HubModuleSignal s) {
+    return switch (s) {
+      _HubModuleSignal.error => 0,
+      _HubModuleSignal.pending => 1,
+      _HubModuleSignal.ok => 2,
+      _HubModuleSignal.neutral => 3,
+    };
+  }
+
+  /// Normaliza texto para busca (minúsculas + sem acentos, via pacote [diacritic]).
+  String _hubFoldForSearch(String raw) => removeDiacritics(raw.toLowerCase());
+
+  bool _hubSearchMatchesModule(Map<String, dynamic> item, String queryFolded) {
+    if (queryFolded.isEmpty) return true;
+    final label = _hubFoldForSearch('${item['label'] ?? ''}');
+    final sub = _hubFoldForSearch('${item['subtitle'] ?? ''}');
+    final rail = _hubFoldForSearch('${item['railLabel'] ?? ''}');
+    return label.contains(queryFolded) ||
+        sub.contains(queryFolded) ||
+        rail.contains(queryFolded);
+  }
+
+  /// Texto agregado para o atalho Fretes & Cupons (título + subtítulo + palavras-chave).
+  static const String _kHubFretesSearchBlob =
+      'fretes cupons frete cupom cupons desconto entrega envio shipping correios melhor envio melhorenvio frenet tela dedicada';
+
+  bool _hubSearchMatchesFretes(String queryFolded) {
+    if (queryFolded.isEmpty) return true;
+    return _hubFoldForSearch(_kHubFretesSearchBlob).contains(queryFolded);
+  }
+
+  /// Contexto compartilhado para navegação por erros no hub (sem duplicar leitura de draft).
+  ({
+    Map<String, dynamic>? currentFull,
+    List<({String campo, String msg})> hubSalvar,
+    List<String> hubPubAvisos,
+    _HubModuleSignal fretesSignal,
+  }) _hubNavigationContext() {
+    Map<String, dynamic>? currentFull;
+    try {
+      if (_resolvedLojaId != null) {
+        currentFull = _buildConfigMap(storeId: _activeStoreId());
+      }
+    } catch (_) {}
+    final hubSalvar = _coletarProblemasSalvar();
+    final hubPubAvisos = hubSalvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
+    final fretesDirty =
+        currentFull != null && _hubFretesShortcutHasPendingChanges(currentFull);
+    final fretesSignal = _hubCardStateFretes(fretesDirty).signal;
+    return (
+      currentFull: currentFull,
+      hubSalvar: hubSalvar,
+      hubPubAvisos: hubPubAvisos,
+      fretesSignal: fretesSignal,
+    );
+  }
+
+  /// Ordem global do hub (sem filtro/busca): Fretes com `origIndex` -1, depois módulos na ordem de [_lojaConfigNavItems].
+  List<({bool fretes, _Pane? pane, _HubModuleSignal signal, int origIndex})> _hubGlobalSortedRows({
+    required Map<String, dynamic>? currentFull,
+    required List<({String campo, String msg})> hubSalvar,
+    required List<String> hubPubAvisos,
+    required _HubModuleSignal fretesSignal,
+  }) {
+    final nav = _lojaConfigNavItems();
+    final rows = <({bool fretes, _Pane? pane, _HubModuleSignal signal, int origIndex})>[];
+    rows.add((fretes: true, pane: null, signal: fretesSignal, origIndex: -1));
+    for (var i = 0; i < nav.length; i++) {
+      final item = nav[i];
+      final pane = item['pane'] as _Pane;
+      final dirty =
+          currentFull != null && _hubModuleHasPendingChanges(pane, currentFull);
+      final signal = _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
+      rows.add((fretes: false, pane: pane, signal: signal, origIndex: i));
+    }
+    rows.sort((a, b) {
+      final c = _hubSignalPriority(a.signal).compareTo(_hubSignalPriority(b.signal));
+      if (c != 0) return c;
+      return a.origIndex.compareTo(b.origIndex);
+    });
+    return rows;
+  }
+
+  /// Abre o primeiro item em erro na ordem global do hub (ignora filtro/busca). Fretes só se `signal == error`.
+  void _openFirstHubErrorTarget() {
+    final ctx = _hubNavigationContext();
+    final rows = _hubGlobalSortedRows(
+      currentFull: ctx.currentFull,
+      hubSalvar: ctx.hubSalvar,
+      hubPubAvisos: ctx.hubPubAvisos,
+      fretesSignal: ctx.fretesSignal,
+    );
+
+    for (final r in rows) {
+      if (r.signal != _HubModuleSignal.error) continue;
+      if (r.fretes) {
+        Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => const FretesCuponsScreen(),
+          ),
+        );
+        return;
+      }
+      _openConfigModule(r.pane!);
+      return;
+    }
+  }
+
+  /// Próximo item com erro após o módulo atual (mesma ordem global). Só aplica se o painel atual estiver na fila de erros.
+  ({bool fretes, _Pane? pane})? _hubNextErrorAfterCurrentPane() {
+    final ctx = _hubNavigationContext();
+    final rows = _hubGlobalSortedRows(
+      currentFull: ctx.currentFull,
+      hubSalvar: ctx.hubSalvar,
+      hubPubAvisos: ctx.hubPubAvisos,
+      fretesSignal: ctx.fretesSignal,
+    );
+    final errs = rows.where((r) => r.signal == _HubModuleSignal.error).toList();
+    for (var i = 0; i < errs.length; i++) {
+      final e = errs[i];
+      if (e.fretes) continue;
+      if (e.pane == _pane) {
+        if (i + 1 >= errs.length) return null;
+        final n = errs[i + 1];
+        return (fretes: n.fretes, pane: n.pane);
+      }
+    }
+    return null;
+  }
+
+  void _openNextHubErrorTarget() {
+    final next = _hubNextErrorAfterCurrentPane();
+    if (next == null) return;
+    if (next.fretes) {
+      Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => const FretesCuponsScreen(),
+        ),
+      );
+      return;
+    }
+    _openConfigModule(next.pane!);
+  }
+
   // ---------------------------------
   // ESTADO GERAL
   // ---------------------------------
@@ -137,7 +473,33 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   String? _lojaId;
   String? _resolvedLojaId;
 
+  /// Evita [initState] + pull-to-refresh simultâneos disparando dois loads completos.
+  Future<void>? _initConfigInFlight;
+
+  /// Preserva `frete_config` / `cupons` do draft sem `get()` em todo auto-save (ver [_salvarRascunho]).
+  dynamic _mergeFreteConfigCache;
+  dynamic _mergeCuponsCache;
+
+  int? _catalogPaletteContentHash;
+  List<CatalogColorSuggestion>? _cachedPaletteSuggestions;
+  List<CatalogColorSuggestion>? _cachedPaletteOverview;
+
+  int _debugLojaConfigBuildCount = 0;
+
+  /// Snapshot do rascunho após carga/salvamento — comparação por módulo (hub).
+  Map<String, dynamic>? _hubBaselineMap;
+  dynamic _hubBaselineFreteConfig;
+  dynamic _hubBaselineCuponsMerge;
+  bool _hubBaselinePublicarCampanha = false;
+  bool _hubBaselinePublicarRoleta = false;
+
   _Pane _pane = _Pane.identidade;
+  /// `true` = painel inicial com cards; `false` = tela cheia de um módulo (mesmo [State], sem duplicar lógica).
+  bool _hubMode = true;
+  /// Filtro dos cards no hub (módulos + atalho Fretes & Cupons).
+  _HubModuleFilter _hubModuleFilter = _HubModuleFilter.all;
+  /// Busca por nome/descrição no hub (combina com o filtro por estado).
+  final TextEditingController _hubSearchCtrl = TextEditingController();
   _MediaTab _mediaTab = _MediaTab.desktop;
   _LayoutPreset? _layoutPreset;
 
@@ -400,7 +762,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
     _animationController.forward();
-    _initConfig();
+    unawaited(_initConfig());
     _verificarConectividade();
     _setupAutoSaveListeners();
   }
@@ -491,11 +853,26 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   Future<void> _initConfig() async {
+    if (_initConfigInFlight != null) {
+      if (kDebugMode) logD('[LOJA_CONFIG_LOAD_ONCE] coalescing with in-flight init');
+      return _initConfigInFlight!;
+    }
+    final f = _runInitConfig();
+    _initConfigInFlight = f;
+    try {
+      await f;
+    } finally {
+      _initConfigInFlight = null;
+    }
+  }
+
+  Future<void> _runInitConfig() async {
     try {
       // 1) Descobre lojaId/slug usando StoreContext (FONTE ÚNICA)
       final id = await StoreResolverFacade.resolveForAdminApp();
       logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       logD('🏪 [LOJA CONFIG] StoreResolverFacade.resolveForAdminApp() = $id');
+      if (kDebugMode) logD('[LOJA_CONFIG_RESOLVE_ONCE] resolve concluído (carga inicial / refresh)');
 
       // Mostra todas as fontes de loja
       final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : null;
@@ -587,6 +964,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         setState(() => _carregando = false);
         _verificarTutorialPrimeiraVez();
       }
+      if (mounted && !_erroCarregamento && _resolvedLojaId != null) {
+        _captureHubBaseline();
+      }
     }
   }
 
@@ -653,6 +1033,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     try {
       final lojaId = _resolvedLojaId!;
+      if (kDebugMode) logD('[LOJA_CONFIG_CAMPANHAS_ONCE] buscando campanhas/roleta (init ou refresh)');
       logD('🎰 [CONFIG] Carregando status de campanhas e roleta para: $lojaId');
 
       // 1. Buscar campanhas ativas (limit para reduzir custo; suficiente para achar uma ativa)
@@ -740,6 +1121,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         _campanhaAtiva = novoValor;
       });
 
+      _captureHubBaseline();
       _snack(novoValor
           ? '✅ Campanha ativada! O banner aparecerá no catálogo.'
           : '⏸️ Campanha desativada.');
@@ -769,6 +1151,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         _roletaAtiva = novoValor;
       });
 
+      _captureHubBaseline();
       _snack(novoValor
           ? '✅ Roleta ativada! Clientes poderão girar após compras.'
           : '⏸️ Roleta desativada.');
@@ -813,10 +1196,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         logD('✅ [FIRESTORE] draft_config encontrado! Aplicando...');
+        if (kDebugMode) logD('[LOJA_CONFIG_FIRESTORE_ONCE] draft_config aplicado (carga inicial / refresh)');
         final converted = Map<String, dynamic>.from(data);
         _applyConfigMap(converted);
+        _mergeFreteConfigCache = data['frete_config'];
+        _mergeCuponsCache = data['cupons'];
       } else {
         logD('⚠️ [FIRESTORE] draft_config não encontrado');
+        _mergeFreteConfigCache = null;
+        _mergeCuponsCache = null;
       }
 
       // Doc da loja: pré-preenche nome/WhatsApp (cadastro inicial) e fallback de mídia
@@ -1878,30 +2266,59 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     }
   }
 
-  /// Retorna lista de erros e set de campos com erro
-  ({List<String> erros, Set<String> campos}) _validarAntesDeSalvar({bool incluirCampos = true}) {
-    final erros = <String>[];
-    final campos = <String>{};
+  /// Problemas que impedem salvar/publicar (fonte única para [_validarAntesDeSalvar] e indicadores do hub).
+  List<({String campo, String msg})> _coletarProblemasSalvar() {
+    final out = <({String campo, String msg})>[];
     if (!_validarWhatsApp(_waCtrl.text)) {
-      erros.add('WhatsApp do vendedor inválido. Use 10 a 15 dígitos (ex: 5533999998888).');
-      if (incluirCampos) campos.add('whatsapp');
+      out.add((
+        campo: 'whatsapp',
+        msg: 'WhatsApp do vendedor inválido. Use 10 a 15 dígitos (ex: 5533999998888).',
+      ));
     }
     if (!_validarWhatsApp(_sacWhatsappCtrl.text)) {
-      erros.add('WhatsApp do SAC inválido (se preenchido, use 10 a 15 dígitos).');
-      if (incluirCampos) campos.add('sac_whatsapp');
+      out.add((
+        campo: 'sac_whatsapp',
+        msg: 'WhatsApp do SAC inválido (se preenchido, use 10 a 15 dígitos).',
+      ));
     }
     if (!_validarWhatsApp(_whatsappRodapeCtrl.text)) {
-      erros.add('WhatsApp do rodapé inválido (se preenchido, use 10 a 15 dígitos).');
-      if (incluirCampos) campos.add('whatsapp_rodape');
+      out.add((
+        campo: 'whatsapp_rodape',
+        msg: 'WhatsApp do rodapé inválido (se preenchido, use 10 a 15 dígitos).',
+      ));
     }
     if (!_validarUrl(_pedidoBaseCtrl.text)) {
-      erros.add('URL de pedido inválida.');
-      if (incluirCampos) campos.add('pedido_base');
+      out.add((campo: 'pedido_base', msg: 'URL de pedido inválida.'));
     }
+    return out;
+  }
+
+  /// Avisos de publicação quando [_coletarProblemasSalvar] está vazio (mesmas regras que [_validarAntesDePublicar]).
+  List<String> _listaAvisosPublicarNomeLogo() {
+    final avisos = <String>[];
+    if (_nomeCtrl.text.trim().isEmpty) {
+      avisos.add('Informe o nome da loja.');
+    }
+    if (_logoUrlDesktop == null && _logoUrlMobile == null) {
+      avisos.add('Adicione pelo menos uma logo (desktop ou mobile).');
+    }
+    return avisos;
+  }
+
+  void _corrigirDimensoesMidiaForm() {
     for (final c in [_dLogoH, _dLogoW, _mLogoH, _mLogoW, _dBanH, _dBanW, _mBanH, _mBanW]) {
       _corrigirDimensao(c);
     }
-    return (erros: erros, campos: campos);
+  }
+
+  /// Retorna lista de erros e set de campos com erro
+  ({List<String> erros, Set<String> campos}) _validarAntesDeSalvar({bool incluirCampos = true}) {
+    final items = _coletarProblemasSalvar();
+    _corrigirDimensoesMidiaForm();
+    return (
+      erros: items.map((e) => e.msg).toList(),
+      campos: incluirCampos ? items.map((e) => e.campo).toSet() : <String>{},
+    );
   }
 
   void _limparErroCampo(String campo) {
@@ -1910,19 +2327,25 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   /// Validação extra antes de publicar (requisitos mínimos)
   List<String>? _validarAntesDePublicar() {
-    final r = _validarAntesDeSalvar();
-    if (r.erros.isNotEmpty) return r.erros;
-    final avisos = <String>[];
-    if (_nomeCtrl.text.trim().isEmpty) {
-      avisos.add('Informe o nome da loja.');
-    }
-    if (_logoUrlDesktop == null && _logoUrlMobile == null) {
-      avisos.add('Adicione pelo menos uma logo (desktop ou mobile).');
-    }
+    _corrigirDimensoesMidiaForm();
+    final items = _coletarProblemasSalvar();
+    if (items.isNotEmpty) return items.map((e) => e.msg).toList();
+    final avisos = _listaAvisosPublicarNomeLogo();
     return avisos.isEmpty ? null : avisos;
   }
 
   Future<bool> _syncAndValidateLojaAtiva() async {
+    final id = _resolvedLojaId?.trim();
+    if (id != null &&
+        id.isNotEmpty &&
+        _lojaId == id &&
+        _slug == id) {
+      if (kDebugMode) {
+        logD('[LOJA_CONFIG_RESOLVE_ONCE] skip StoreResolver — loja já resolvida ($_resolvedLojaId)');
+      }
+      return true;
+    }
+
     final atual = (await StoreResolverFacade.resolveForAdminApp())?.trim();
     if (atual == null || atual.isEmpty) {
       _snack('Nenhuma loja ativa. Faça login novamente.', isError: true);
@@ -1961,6 +2384,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         setState(() {
           _camposComErro.clear();
           _camposComErro.addAll(r.campos);
+          _hubMode = false;
           if (r.campos.contains('whatsapp') || r.campos.contains('pedido_base')) {
             _pane = _Pane.identidade;
           } else if (r.campos.contains('sac_whatsapp')) {
@@ -1983,26 +2407,46 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     try {
       Map<String, dynamic> data = _buildConfigMap(storeId: loja);
 
-      // Preservar frete_config e cupons do draft atual (salvos na tela Fretes e Cupons)
+      // Preservar frete_config e cupons do draft atual (salvos na tela Fretes e Cupons).
+      // Auto-save: sem GET no Firestore — usa cache do último load/save (evita leitura a cada 2s).
+      // Salvar com validação: GET para capturar alterações feitas em Fretes/Cupons noutra aba.
       try {
-        final draftSnap = await FirebaseFirestore.instance
-            .collection('lojas')
-            .doc(loja)
-            .collection('draft_config')
-            .doc('config')
-            .get();
-        if (draftSnap.exists && draftSnap.data() != null) {
-          final draft = draftSnap.data()!;
-          if (draft['frete_config'] != null) {
-            data = Map<String, dynamic>.from(data);
-            data['frete_config'] = draft['frete_config'];
+        if (validar) {
+          if (kDebugMode) logD('[LOJA_CONFIG_FIRESTORE_ONCE] merge draft GET (salvar com validação)');
+          final draftSnap = await FirebaseFirestore.instance
+              .collection('lojas')
+              .doc(loja)
+              .collection('draft_config')
+              .doc('config')
+              .get();
+          if (draftSnap.exists && draftSnap.data() != null) {
+            final draft = draftSnap.data()!;
+            if (draft['frete_config'] != null) {
+              data = Map<String, dynamic>.from(data);
+              data['frete_config'] = draft['frete_config'];
+              _mergeFreteConfigCache = draft['frete_config'];
+            }
+            if (draft['cupons'] != null) {
+              data = Map<String, dynamic>.from(data);
+              data['cupons'] = draft['cupons'];
+              _mergeCuponsCache = draft['cupons'];
+            }
           }
-          if (draft['cupons'] != null) {
+        } else {
+          if (kDebugMode) logD('[LOJA_CONFIG_FIRESTORE_ONCE] skip draft GET (auto-save; cache merge)');
+          if (_mergeFreteConfigCache != null) {
             data = Map<String, dynamic>.from(data);
-            data['cupons'] = draft['cupons'];
+            data['frete_config'] = _mergeFreteConfigCache;
+          }
+          if (_mergeCuponsCache != null) {
+            data = Map<String, dynamic>.from(data);
+            data['cupons'] = _mergeCuponsCache;
           }
         }
       } catch (_) {}
+
+      if (data['frete_config'] != null) _mergeFreteConfigCache = data['frete_config'];
+      if (data['cupons'] != null) _mergeCuponsCache = data['cupons'];
 
       if (kDebugMode) {
         logD('\n${"=" * 80}');
@@ -2036,10 +2480,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
         logD('✅ [CONFIG] Salvo no Firestore: lojas/$loja/draft_config/config');
         _snack('Rascunho salvo com sucesso.');
+        _captureHubBaseline();
       } on FirebaseException catch (e) {
         if (e.code == 'permission-denied') {
           logD('⚠️ [CONFIG] Sem permissão para salvar no Firestore - mantido apenas localmente');
           _snack('Rascunho salvo localmente (sem permissão para sincronizar online).');
+          _captureHubBaseline();
         } else {
           rethrow;
         }
@@ -2143,6 +2589,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       setState(() {
         _camposComErro.clear();
         _camposComErro.addAll(r.campos);
+        _hubMode = false;
         if (r.campos.contains('whatsapp') || r.campos.contains('pedido_base')) {
           _pane = _Pane.identidade;
         } else if (r.campos.contains('sac_whatsapp')) {
@@ -2373,6 +2820,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       }
 
       _snack('Catálogo publicado! Alterações já estão no site e no app.');
+      _captureHubBaseline();
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {
         logD('⚠️ [PUBLICAR] Sem permissão para publicar');
@@ -2558,6 +3006,172 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _salvarRascunho(validar: false);
   }
 
+  /// Preenche o estado de cores do catálogo a partir de um preset visual (sem alterar [_layoutPreset]).
+  void _applyCatalogPaletteColorsToState(CatalogPaletteColors p) {
+    _cFundo = p.cFundo;
+    _cCard = p.cCard;
+    _cTexto = p.cTexto;
+    _cPrimaria = p.cPrimaria;
+    _cBotaoTexto = p.cBotaoTexto;
+    _cCabecalho = p.cCabecalho;
+    _cCarrinhoCard = p.cCarrinhoCard;
+    _cCarrinhoCampo = p.cCarrinhoCampo;
+    _cCarrinhoTexto = p.cCarrinhoTexto;
+    _cCarrinhoLabel = p.cCarrinhoLabel;
+    _cCarrinhoTotal = p.cCarrinhoTotal;
+    _cTextSecondary = p.cTextSecondary;
+    _cCardTextPrimary = p.cCardTextPrimary;
+    _cCardTextSecondary = p.cCardTextSecondary;
+    _cPriceHighlight = p.cPriceHighlight;
+    _cDanger = p.cDanger;
+    _cFieldHint = p.cFieldHint;
+    _cFieldBorder = p.cFieldBorder;
+    _cDivider = p.cDivider;
+    _cButtonSecondaryBg = p.cButtonSecondaryBg;
+    _cButtonSecondaryText = p.cButtonSecondaryText;
+    _cButtonSecondaryBorder = p.cButtonSecondaryBorder;
+    _cBadgeBackground = p.cBadgeBackground;
+    _cBadgeText = p.cBadgeText;
+    _cIcon = p.cIcon;
+    _cShadow = p.cShadow;
+    _cHeaderText = p.cHeaderText;
+    _cHeaderIcon = p.cHeaderIcon;
+    _cHeaderSearchBg = p.cHeaderSearchBg;
+    _cHeaderSearchText = p.cHeaderSearchText;
+    _cHeaderSearchHint = p.cHeaderSearchHint;
+    _cFooterBackground = p.cFooterBackground;
+    _cFooterText = p.cFooterText;
+    _cFooterTextSecondary = p.cFooterTextSecondary;
+    _cFooterIcon = p.cFooterIcon;
+    _cFooterLink = p.cFooterLink;
+    _cFooterDivider = p.cFooterDivider;
+    _cDicasBackground = p.cDicasBackground;
+    _cDicasFooterBg = p.cDicasFooterBg;
+    _cDicasFooterText = p.cDicasFooterText;
+    _cDicasButtonBg = p.cDicasButtonBg;
+    _cDicasButtonText = p.cDicasButtonText;
+    _cDicasTopicPrimary = p.cDicasTopicPrimary;
+    _promoBarBg = p.promoBarBg;
+    _promoBarText = p.promoBarText;
+    _heroCardBg = p.heroCardBg;
+    _heroTitleColor = p.heroTitleColor;
+    _heroSubtitleColor = p.heroSubtitleColor;
+    _heroButtonBg = p.heroButtonBg;
+    _heroButtonTextColor = p.heroButtonTextColor;
+  }
+
+  Future<void> _confirmApplyVisualPalette(CatalogVisualPalettePreset preset) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final sw = preset.colors.previewSwatches;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: Text('Aplicar “${preset.title}”?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(preset.description, style: Theme.of(ctx).textTheme.bodyMedium),
+                const SizedBox(height: 14),
+                Text(
+                  'Serão atualizadas de uma vez as principais cores do catálogo: página, cards, textos, botões, preços, carrinho, cabeçalho, rodapé, dicas, barra promocional e banner hero. '
+                  'Nada é publicado automaticamente no site — use Publicar quando quiser. Você pode editar cada cor depois.',
+                  style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                        height: 1.4,
+                      ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Prévia',
+                  style: Theme.of(ctx).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final c in sw)
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: c,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Theme.of(ctx).colorScheme.outline.withValues(alpha: 0.3),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Aplicar paleta'),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _applyCatalogPaletteColorsToState(preset.colors));
+    _salvarRascunho(validar: false);
+    _snack('Paleta “${preset.title}” aplicada ao rascunho. Ajuste as cores se quiser e publique quando estiver pronto.');
+  }
+
+  CatalogStoreMiniPreviewColors _catalogMiniPreviewColors() {
+    return CatalogStoreMiniPreviewColors(
+      pageBackground: _cFundo,
+      headerBackground: _cCabecalho,
+      headerText: _cHeaderText,
+      headerIcon: _cHeaderIcon,
+      searchBackground: _cHeaderSearchBg,
+      searchHint: _cHeaderSearchHint,
+      promoBackground: _promoBarBg,
+      promoForeground: _promoBarText,
+      heroCardBackground: _heroCardBg,
+      heroTitle: _heroTitleColor,
+      heroSubtitle: _heroSubtitleColor,
+      heroButtonBackground: _heroButtonBg,
+      heroButtonForeground: _heroButtonTextColor,
+      cardBackground: _cCard,
+      cardShadow: _cShadow,
+      cardTitle: _cCardTextPrimary,
+      cardSubtitle: _cCardTextSecondary,
+      priceHighlight: _cPriceHighlight,
+      badgeBackground: _cBadgeBackground,
+      badgeForeground: _cBadgeText,
+      primaryButtonBackground: _cPrimaria,
+      primaryButtonForeground: _cBotaoTexto,
+      outlineButtonBorder: _cButtonSecondaryBorder,
+      outlineButtonForeground: _cButtonSecondaryText,
+      cartPanelBackground: _cCarrinhoCard,
+      cartFieldBackground: _cCarrinhoCampo,
+      cartLabel: _cCarrinhoLabel,
+      cartBody: _cCarrinhoTexto,
+      cartTotal: _cCarrinhoTotal,
+      footerBackground: _cFooterBackground,
+      footerText: _cFooterText,
+      footerSecondary: _cFooterTextSecondary,
+      divider: _cDivider,
+    );
+  }
+
+  String _miniPreviewStoreName() {
+    final t = _nomeCtrl.text.trim();
+    return t.isEmpty ? 'Sua loja' : t;
+  }
+
   Future<void> _abrirPreviewCatalogo() async {
     final lojaId = _activeStoreId();
 
@@ -2608,6 +3222,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (kDebugMode) {
+      _debugLojaConfigBuildCount++;
+      if (_debugLojaConfigBuildCount == 1 || _debugLojaConfigBuildCount % 50 == 0) {
+        logD('[LOJA_CONFIG_BUILD_COUNT] $_debugLojaConfigBuildCount');
+      }
+    }
     if (_carregando && !_erroCarregamento) {
       return Scaffold(
         backgroundColor: _surfaceColor,
@@ -2707,6 +3327,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    if (!_hubMode) {
+      return Stack(
+        children: [
+          FadeTransition(
+            opacity: _fadeAnimation,
+            child: _buildModuleConfigView(cs, isDark),
+          ),
+          if (_mostrarTutorial) _buildTutorialOverlay(),
+        ],
+      );
+    }
+
     return Scaffold(
       backgroundColor: cs.surface,
       body: Stack(
@@ -2732,54 +3364,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 icon: const Icon(Icons.arrow_back, color: Colors.white),
                 onPressed: () => Navigator.pop(context),
               ),
-              actions: [
-                if (_salvando)
-                  const Padding(
-                    padding: EdgeInsets.only(right: 16),
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    ),
-                  ),
-                IconButton(
-                  icon: Icon(Icons.save_outlined, color: isDark ? cs.primary : Colors.white),
-                  tooltip: 'Salvar',
-                  onPressed: _salvando ? null : _salvarRascunho,
-                ),
-                if (_sincronizando)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    ),
-                  )
-                else
-                  IconButton(
-                    icon: Icon(Icons.cloud_sync_outlined, color: isDark ? cs.primary : Colors.white),
-                    tooltip: 'Sincronizar dados',
-                    onPressed: _sincronizarTudo,
-                  ),
-                IconButton(
-                  icon: Icon(Icons.cloud_upload_outlined, color: isDark ? cs.primary : Colors.white),
-                  tooltip: 'Publicar (salva e publica)',
-                  onPressed: _salvando ? null : _publicarTudo,
-                ),
-                IconButton(
-                  icon: Icon(Icons.visibility_outlined, color: isDark ? cs.primary : Colors.white),
-                  tooltip: 'Pré-visualizar',
-                  onPressed: _salvando ? null : _abrirPreviewCatalogo,
-                ),
-                const SizedBox(width: 8),
-              ],
+              actions: _buildLojaConfigAppBarActions(cs, isDark),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
                   decoration: const BoxDecoration(
@@ -2832,7 +3417,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Personalize sua loja virtual',
+                              'Escolha um módulo abaixo para editar com foco',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha:0.9),
                                 fontSize: 14,
@@ -2884,7 +3469,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                       subtitle: 'Use este link para enviar somente a página de dicas ao cliente',
                     ),
                     const SizedBox(height: 16),
-                    _buildMenuDashboard(isWide),
+                    CatalogStorePaletteCard(
+                      entries: _catalogPaletteOverviewEntries(),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildLojaConfigHub(isWide),
                   ],
                 ),
               ),
@@ -3085,6 +3674,180 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
   }
 
+  /// Ações compartilhadas entre o hub (SliverAppBar) e a vista de módulo (AppBar).
+  List<Widget> _buildLojaConfigAppBarActions(ColorScheme cs, bool isDark) {
+    final nextHubErr = !_hubMode ? _hubNextErrorAfterCurrentPane() : null;
+    final actionIconColor = isDark ? cs.primary : Colors.white;
+
+    return [
+      if (_salvando)
+        const Padding(
+          padding: EdgeInsets.only(right: 16),
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+        ),
+      IconButton(
+        icon: Icon(Icons.save_outlined, color: actionIconColor),
+        tooltip: 'Salvar',
+        onPressed: _salvando ? null : _salvarRascunho,
+      ),
+      if (_sincronizando)
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+        )
+      else
+        IconButton(
+          icon: Icon(Icons.cloud_sync_outlined, color: actionIconColor),
+          tooltip: 'Sincronizar dados',
+          onPressed: _sincronizarTudo,
+        ),
+      IconButton(
+        icon: Icon(Icons.cloud_upload_outlined, color: actionIconColor),
+        tooltip: 'Publicar (salva e publica)',
+        onPressed: _salvando ? null : _publicarTudo,
+      ),
+      IconButton(
+        icon: Icon(Icons.visibility_outlined, color: actionIconColor),
+        tooltip: 'Pré-visualizar',
+        onPressed: _salvando ? null : _abrirPreviewCatalogo,
+      ),
+      if (nextHubErr != null)
+        Tooltip(
+          message: 'Abre o próximo módulo com erro na ordem do hub.',
+          waitDuration: const Duration(milliseconds: 400),
+          child: TextButton.icon(
+            onPressed: _openNextHubErrorTarget,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            icon: const Icon(Icons.skip_next_rounded, size: 20),
+            label: const Text(
+              'Próximo erro',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: -0.1),
+            ),
+          ),
+        ),
+      const SizedBox(width: 8),
+    ];
+  }
+
+  /// Tela cheia de um módulo: mesmos widgets de edição, mesmo estado (sem [Navigator.push]).
+  Widget _buildModuleConfigView(ColorScheme cs, bool isDark) {
+    final items = _lojaConfigNavItems();
+    final meta = items.firstWhere((e) => e['pane'] == _pane, orElse: () => items.first);
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _goToHub();
+      },
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        appBar: AppBar(
+          backgroundColor: _primaryColor,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _goToHub,
+            tooltip: 'Módulos',
+          ),
+          titleSpacing: 8,
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                meta['label'] as String,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              Text(
+                meta['subtitle'] as String,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withValues(alpha: 0.92),
+                  fontWeight: FontWeight.w400,
+                  height: 1.25,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+          actions: _buildLojaConfigAppBarActions(cs, isDark),
+        ),
+        body: Column(
+          children: [
+            if (_offline)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                color: _warningColor.withValues(alpha: 0.15),
+                child: Row(
+                  children: [
+                    const Icon(Icons.wifi_off, color: _warningColor, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Sem conexão. As alterações serão salvas localmente e sincronizadas quando a conexão voltar.',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _verificarConectividade,
+                      child: const Text('Verificar'),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  setState(() => _erroCarregamento = false);
+                  await _verificarConectividade();
+                  await _initConfig();
+                },
+                color: _primaryColor,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: _wrapLojaConfigFieldTheme(
+                        context,
+                        _buildPaneEditorFor(_pane),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Metadados de navegação por painel (mesma ordem do enum de fluxo atual).
   List<Map<String, dynamic>> _lojaConfigNavItems() {
     return <Map<String, dynamic>>[
@@ -3226,9 +3989,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     };
   }
 
-  /// Cores atuais da loja (draft) para sugestões de reutilização — só UX, não altera schema.
-  List<CatalogColorSuggestion> _catalogColorPaletteSuggestions() {
-    final bucket = <int, Set<String>>{};
+  /// Agrega cores do draft atual por valor ARGB (mesma base da paleta e das sugestões nos editores).
+  void _fillCatalogPaletteBucket(Map<int, Set<String>> bucket) {
     void put(Color c, String label) {
       bucket.putIfAbsent(c.toARGB32(), () => <String>{}).add(label);
     }
@@ -3283,18 +4045,205 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     put(_heroSubtitleColor, 'Banner hero – subtítulo');
     put(_heroButtonBg, 'Banner hero – botão fundo');
     put(_heroButtonTextColor, 'Banner hero – botão texto');
+  }
 
+  /// Hash das cores da paleta — invalida cache de sugestões / card “Paleta da Loja”.
+  int _computeCatalogPaletteHash() {
+    return Object.hashAll([
+      _cFundo.toARGB32(),
+      _cCard.toARGB32(),
+      _cTexto.toARGB32(),
+      _cPrimaria.toARGB32(),
+      _cBotaoTexto.toARGB32(),
+      _cCabecalho.toARGB32(),
+      _cCarrinhoCard.toARGB32(),
+      _cCarrinhoCampo.toARGB32(),
+      _cCarrinhoTexto.toARGB32(),
+      _cCarrinhoLabel.toARGB32(),
+      _cCarrinhoTotal.toARGB32(),
+      _cTextSecondary.toARGB32(),
+      _cCardTextPrimary.toARGB32(),
+      _cCardTextSecondary.toARGB32(),
+      _cPriceHighlight.toARGB32(),
+      _cDanger.toARGB32(),
+      _cFieldHint.toARGB32(),
+      _cFieldBorder.toARGB32(),
+      _cDivider.toARGB32(),
+      _cButtonSecondaryBg.toARGB32(),
+      _cButtonSecondaryText.toARGB32(),
+      _cButtonSecondaryBorder.toARGB32(),
+      _cBadgeBackground.toARGB32(),
+      _cBadgeText.toARGB32(),
+      _cIcon.toARGB32(),
+      _cShadow.toARGB32(),
+      _cHeaderText.toARGB32(),
+      _cHeaderIcon.toARGB32(),
+      _cHeaderSearchBg.toARGB32(),
+      _cHeaderSearchText.toARGB32(),
+      _cHeaderSearchHint.toARGB32(),
+      _cFooterBackground.toARGB32(),
+      _cFooterText.toARGB32(),
+      _cFooterTextSecondary.toARGB32(),
+      _cFooterIcon.toARGB32(),
+      _cFooterLink.toARGB32(),
+      _cFooterDivider.toARGB32(),
+      _cDicasBackground.toARGB32(),
+      _cDicasFooterBg.toARGB32(),
+      _cDicasFooterText.toARGB32(),
+      _cDicasButtonBg.toARGB32(),
+      _cDicasButtonText.toARGB32(),
+      _cDicasTopicPrimary.toARGB32(),
+      _promoBarBg.toARGB32(),
+      _promoBarText.toARGB32(),
+      _heroCardBg.toARGB32(),
+      _heroTitleColor.toARGB32(),
+      _heroSubtitleColor.toARGB32(),
+      _heroButtonBg.toARGB32(),
+      _heroButtonTextColor.toARGB32(),
+    ]);
+  }
+
+  void _ensureCatalogPaletteCaches() {
+    final h = _computeCatalogPaletteHash();
+    if (_catalogPaletteContentHash == h &&
+        _cachedPaletteSuggestions != null &&
+        _cachedPaletteOverview != null) {
+      return;
+    }
+    _catalogPaletteContentHash = h;
+    _cachedPaletteSuggestions = _buildCatalogColorPaletteSuggestions();
+    _cachedPaletteOverview = _buildCatalogPaletteOverviewEntries();
+  }
+
+  /// Agrupamento só visual para sugestões (editor). Ordem de avaliação importa.
+  String _groupKeyForCatalogOrigins(Set<String> origins) {
+    bool any(bool Function(String o) fn) => origins.any(fn);
+
+    if (any((o) {
+      final l = o.toLowerCase();
+      return (l.contains('comprar') && l.contains('fundo')) ||
+          l.contains('botão ver') ||
+          (l.contains('hero') && l.contains('botão')) ||
+          l.contains('dicas – botões');
+    })) {
+      return 'principal';
+    }
+    if (any((o) {
+      final l = o.toLowerCase();
+      return l.contains('preço') ||
+          l.contains('total a pagar') ||
+          l.contains('barra promo') ||
+          l.contains('badge') ||
+          l.contains('dicas – tópicos');
+    })) {
+      return 'destaque';
+    }
+    if (any((o) {
+      final l = o.toLowerCase();
+      return l.contains('texto') ||
+          l.contains('nome do produto') ||
+          l.contains('hint') ||
+          l.contains('rótulos');
+    })) {
+      return 'texto';
+    }
+    if (any((o) {
+      final l = o.toLowerCase();
+      return l.contains('fundo') ||
+          l.contains('cards') ||
+          l.contains('cabeçalho') ||
+          l.contains('carrinho – fundo') ||
+          l.contains('banner hero – card') ||
+          l.contains('rodapé – fundo') ||
+          l.contains('dicas – fundo');
+    })) {
+      return 'fundo';
+    }
+    return 'outro';
+  }
+
+  CatalogColorSuggestion _catalogSuggestionFromBucketEntry(int k, Map<int, Set<String>> bucket) {
+    final origins = bucket[k]!.toList()..sort();
+    return CatalogColorSuggestion(
+      color: Color(k),
+      originLabel: origins.join(' · '),
+      group: _groupKeyForCatalogOrigins(origins.toSet()),
+    );
+  }
+
+  /// Cores atuais da loja (draft) para sugestões de reutilização — só UX, não altera schema.
+  List<CatalogColorSuggestion> _catalogColorPaletteSuggestions() {
+    _ensureCatalogPaletteCaches();
+    return _cachedPaletteSuggestions!;
+  }
+
+  List<CatalogColorSuggestion> _buildCatalogColorPaletteSuggestions() {
+    final bucket = <int, Set<String>>{};
+    _fillCatalogPaletteBucket(bucket);
     final list = bucket.entries
-        .map((e) {
-          final origins = e.value.toList()..sort();
-          return CatalogColorSuggestion(
-            color: Color(e.key),
-            originLabel: origins.join(' · '),
-          );
-        })
+        .map((e) => _catalogSuggestionFromBucketEntry(e.key, bucket))
         .toList();
     list.sort((a, b) => a.originLabel.compareTo(b.originLabel));
     return list;
+  }
+
+  /// Paleta resumida para o card no topo: ordem útil + até [maxItems] cores distintas.
+  List<CatalogColorSuggestion> _catalogPaletteOverviewEntries({int maxItems = 20}) {
+    _ensureCatalogPaletteCaches();
+    return _cachedPaletteOverview!.take(maxItems).toList();
+  }
+
+  List<CatalogColorSuggestion> _buildCatalogPaletteOverviewEntries() {
+    const maxItems = 20;
+    final bucket = <int, Set<String>>{};
+    _fillCatalogPaletteBucket(bucket);
+    CatalogColorSuggestion build(int k) => _catalogSuggestionFromBucketEntry(k, bucket);
+
+    final seen = <int>{};
+    final out = <CatalogColorSuggestion>[];
+
+    void pick(Color c) {
+      final k = c.toARGB32();
+      if (!bucket.containsKey(k) || seen.contains(k)) return;
+      seen.add(k);
+      out.add(build(k));
+    }
+
+    // Identidade e fluxos principais primeiro
+    pick(_cPrimaria);
+    pick(_cBotaoTexto);
+    pick(_cFundo);
+    pick(_cCard);
+    pick(_cTexto);
+    pick(_cTextSecondary);
+    pick(_cPriceHighlight);
+    pick(_cCabecalho);
+    pick(_cHeaderText);
+    pick(_cCarrinhoCard);
+    pick(_cCarrinhoTotal);
+    pick(_cCarrinhoLabel);
+    pick(_cFooterBackground);
+    pick(_cFooterText);
+    pick(_promoBarBg);
+    pick(_promoBarText);
+    pick(_heroCardBg);
+    pick(_heroButtonBg);
+    pick(_heroTitleColor);
+    pick(_cCardTextPrimary);
+    pick(_cDanger);
+
+    final restKeys = bucket.keys.where((k) => !seen.contains(k)).toList()
+      ..sort((a, b) {
+        final sa = bucket[a]!.join(' · ');
+        final sb = bucket[b]!.join(' · ');
+        return sa.compareTo(sb);
+      });
+    for (final k in restKeys) {
+      if (out.length >= maxItems) break;
+      seen.add(k);
+      out.add(build(k));
+    }
+    return out;
   }
 
   Widget _catalogColorField({
@@ -3315,431 +4264,739 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
   }
 
-  Widget _buildFretesCuponsShortcutCard(ColorScheme cs) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 4),
-      elevation: 0,
-      color: cs.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
-          color: _warningColor.withValues(alpha: 0.35),
-        ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        leading: Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: _warningColor.withValues(alpha: 0.12),
-          ),
-          child: const Icon(Icons.local_shipping_outlined, color: _warningColor, size: 22),
-        ),
-        title: Text(
-          'Fretes & Cupons',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-            color: cs.onSurface,
-            letterSpacing: -0.1,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Text(
-            'Fretes e cupons em tela dedicada',
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.35,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.92),
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-        ),
-        trailing: Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const FretesCuponsScreen(),
-            ),
-          );
-        },
-      ),
-    );
+  Color _hubModuleBorderColor(_HubModuleSignal s, ColorScheme cs) {
+    switch (s) {
+      case _HubModuleSignal.error:
+        return cs.error.withValues(alpha: 0.32);
+      case _HubModuleSignal.pending:
+        return cs.primary.withValues(alpha: 0.28);
+      case _HubModuleSignal.ok:
+        return _successColor.withValues(alpha: 0.26);
+      case _HubModuleSignal.neutral:
+        return Colors.transparent;
+    }
   }
 
-  Widget _buildMenuDashboard(bool isWide) {
-    final items = _lojaConfigNavItems();
-    final cs = Theme.of(context).colorScheme;
-    final mq = MediaQuery.of(context);
+  Color? _hubModuleDotColor(_HubModuleSignal s, ColorScheme cs) {
+    switch (s) {
+      case _HubModuleSignal.error:
+        return cs.error;
+      case _HubModuleSignal.pending:
+        return cs.primary;
+      case _HubModuleSignal.ok:
+        return _successColor;
+      case _HubModuleSignal.neutral:
+        return null;
+    }
+  }
 
-    Map<String, dynamic> itemForPane(_Pane p) => items.firstWhere(
-          (e) => e['pane'] == p,
-          orElse: () => items.first,
-        );
+  String? _hubModuleStatusCaption(_HubModuleSignal s) {
+    switch (s) {
+      case _HubModuleSignal.error:
+        return 'Revisar configuração';
+      case _HubModuleSignal.pending:
+        return 'Alterações pendentes';
+      case _HubModuleSignal.ok:
+        return 'Sem pendências';
+      case _HubModuleSignal.neutral:
+        return null;
+    }
+  }
 
-    Widget dashboardHeader() {
-      final tt = Theme.of(context).textTheme;
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _primaryColor.withValues(alpha: 0.07),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: _primaryColor.withValues(alpha: 0.14),
+  Widget _buildFretesCuponsShortcutCard(
+    ColorScheme cs, {
+    required _HubModuleSignal signal,
+    String? tooltip,
+  }) {
+    final caption = _hubModuleStatusCaption(signal);
+    final dotColor = _hubModuleDotColor(signal, cs);
+    final borderColor = switch (signal) {
+      _HubModuleSignal.neutral => _warningColor.withValues(alpha: 0.35),
+      _ => _hubModuleBorderColor(signal, cs),
+    };
+
+    final tile = ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: _warningColor.withValues(alpha: 0.12),
+            ),
+            child: const Icon(Icons.local_shipping_outlined, color: _warningColor, size: 22),
+          ),
+          if (dotColor != null)
+            Positioned(
+              right: -1,
+              bottom: -1,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: cs.surface, width: 2),
                 ),
               ),
-              child: const Icon(Icons.admin_panel_settings_outlined, color: _primaryColor, size: 22),
             ),
-            const SizedBox(width: 18),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Configurações da Loja',
-                    style: tt.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.25,
-                      height: 1.15,
-                      color: cs.onSurface,
-                    ),
+        ],
+      ),
+      title: Text(
+        'Fretes & Cupons',
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 15,
+          color: cs.onSurface,
+          letterSpacing: -0.1,
+        ),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (caption != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  caption,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.2,
+                    fontWeight: FontWeight.w500,
+                    color: switch (signal) {
+                      _HubModuleSignal.error => cs.error.withValues(alpha: 0.95),
+                      _HubModuleSignal.pending => cs.primary.withValues(alpha: 0.95),
+                      _HubModuleSignal.ok => _successColor.withValues(alpha: 0.92),
+                      _HubModuleSignal.neutral => cs.onSurfaceVariant,
+                    },
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    isWide
-                        ? 'Escolha a área no menu à esquerda. Opções e salvamento permanecem os mesmos.'
-                        : 'Opções agrupadas por tema. Toque no bloco para expandir e editar.',
-                    style: tt.bodyMedium?.copyWith(
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.92),
-                      height: 1.45,
-                      fontWeight: FontWeight.w400,
-                      fontSize: 13.5,
-                    ),
-                  ),
-                ],
+                ),
+              ),
+            Text(
+              'Fretes e cupons em tela dedicada',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                fontWeight: FontWeight.w400,
               ),
             ),
           ],
         ),
+      ),
+      trailing: Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const FretesCuponsScreen(),
+          ),
+        );
+      },
+    );
+
+    final t = tooltip ?? 'Abrir fretes e cupons em tela dedicada';
+    return Tooltip(
+      message: t,
+      waitDuration: const Duration(milliseconds: 400),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 4),
+        elevation: 0,
+        color: cs.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: borderColor, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: tile,
+      ),
+    );
+  }
+
+  Widget _buildHubSearchField(ColorScheme cs, TextTheme tt) {
+    final hasText = _hubSearchCtrl.text.trim().isNotEmpty;
+    return TextField(
+      controller: _hubSearchCtrl,
+      onChanged: (_) => setState(() {}),
+      textInputAction: TextInputAction.search,
+      style: tt.bodyMedium?.copyWith(
+        color: cs.onSurface,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: cs.surface,
+        hintText: 'Buscar módulo ou configuração',
+        hintStyle: tt.bodyMedium?.copyWith(
+          color: cs.onSurfaceVariant.withValues(alpha: 0.65),
+          fontSize: 14,
+          fontWeight: FontWeight.w400,
+        ),
+        prefixIcon: Icon(
+          Icons.search_rounded,
+          size: 22,
+          color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+        ),
+        suffixIcon: hasText
+            ? IconButton(
+                tooltip: 'Limpar busca',
+                icon: Icon(Icons.close_rounded, size: 20, color: cs.onSurfaceVariant),
+                onPressed: () {
+                  _hubSearchCtrl.clear();
+                  setState(() {});
+                },
+              )
+            : null,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.55)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.55)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: _primaryColor.withValues(alpha: 0.65), width: 1.5),
+        ),
+      ),
+    );
+  }
+
+  /// Chips de filtro por estado (módulos + Fretes & Cupons no contagem).
+  Widget _buildHubFilterStrip(
+    ColorScheme cs,
+    TextTheme tt, {
+    required int countAll,
+    required int countError,
+    required int countPending,
+    required int countOk,
+    required int countNeutral,
+    required bool showFirstErrorShortcut,
+  }) {
+    Widget chip(String label, _HubModuleFilter value) {
+      final sel = _hubModuleFilter == value;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8, bottom: 4),
+        child: ChoiceChip(
+          label: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
+              letterSpacing: -0.1,
+            ),
+          ),
+          selected: sel,
+          onSelected: (_) {
+            if (_hubModuleFilter != value) {
+              setState(() => _hubModuleFilter = value);
+            }
+          },
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          selectedColor: _primaryColor.withValues(alpha: 0.16),
+          backgroundColor: cs.surface.withValues(alpha: 0.65),
+          labelStyle: TextStyle(
+            color: sel ? _primaryColor : cs.onSurface.withValues(alpha: 0.82),
+          ),
+          side: BorderSide(
+            color: sel
+                ? _primaryColor.withValues(alpha: 0.42)
+                : cs.outlineVariant.withValues(alpha: 0.55),
+            width: 1,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          showCheckmark: false,
+        ),
       );
     }
 
-    if (isWide) {
-      final panelH = (mq.size.height - mq.padding.vertical - 248).clamp(448.0, 880.0);
-      final railExtended = mq.size.width >= 1180;
-      var idx = items.indexWhere((e) => e['pane'] == _pane);
-      if (idx < 0) idx = 0;
-      final current = items[idx];
-
-      return Card(
-        elevation: 0,
-        color: cs.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              dashboardHeader(),
-              Divider(height: 28, thickness: 1, color: cs.outlineVariant.withValues(alpha: 0.35)),
-              _buildFretesCuponsShortcutCard(cs),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: panelH,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: Material(
-                    color: cs.surface,
-                    surfaceTintColor: Colors.transparent,
-                    elevation: 0,
-                    shadowColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.4)),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 14, 4, 14),
-                          child: NavigationRail(
-                            selectedIndex: idx,
-                            extended: railExtended,
-                            groupAlignment: -1,
-                            minWidth: railExtended ? 92 : 76,
-                            minExtendedWidth: 216,
-                            labelType: railExtended
-                                ? NavigationRailLabelType.all
-                                : NavigationRailLabelType.selected,
-                            backgroundColor: Colors.transparent,
-                            indicatorColor: _primaryColor.withValues(alpha: 0.14),
-                            selectedIconTheme: const IconThemeData(color: _primaryColor, size: 22),
-                            unselectedIconTheme: IconThemeData(
-                              color: cs.onSurfaceVariant.withValues(alpha: 0.85),
-                              size: 22,
-                            ),
-                            selectedLabelTextStyle: const TextStyle(
-                              color: _primaryColor,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                              height: 1.2,
-                            ),
-                            unselectedLabelTextStyle: TextStyle(
-                              color: cs.onSurfaceVariant.withValues(alpha: 0.88),
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              height: 1.2,
-                            ),
-                            onDestinationSelected: (i) {
-                              setState(() {
-                                _pane = items[i]['pane'] as _Pane;
-                              });
-                            },
-                            destinations: [
-                              for (final item in items)
-                                NavigationRailDestination(
-                                  padding: const EdgeInsets.symmetric(vertical: 2),
-                                  icon: Icon(item['icon'] as IconData, size: 22),
-                                  selectedIcon: Icon(item['icon'] as IconData, size: 22),
-                                  label: Text(
-                                    railExtended
-                                        ? item['label'] as String
-                                        : item['railLabel'] as String,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 1,
-                          color: cs.outlineVariant.withValues(alpha: 0.45),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      current['label'] as String,
-                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                            fontWeight: FontWeight.w600,
-                                            letterSpacing: -0.15,
-                                            color: cs.onSurface,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      current['subtitle'] as String,
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                            color: cs.onSurfaceVariant.withValues(alpha: 0.9),
-                                            height: 1.4,
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                child: SingleChildScrollView(
-                                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
-                                  child: Align(
-                                    alignment: Alignment.topCenter,
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 720),
-                                      child: _wrapLojaConfigFieldTheme(
-                                        context,
-                                        _buildPaneEditorFor(_pane),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                'Filtrar',
+                style: tt.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+            if (showFirstErrorShortcut)
+              Tooltip(
+                message:
+                    'Abre o primeiro módulo com erro na ordem do hub (independente do filtro e da busca atual).',
+                waitDuration: const Duration(milliseconds: 450),
+                child: TextButton.icon(
+                  onPressed: _openFirstHubErrorTarget,
+                  style: TextButton.styleFrom(
+                    foregroundColor: cs.error.withValues(alpha: 0.92),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: Icon(Icons.arrow_circle_right_outlined, size: 18, color: cs.error.withValues(alpha: 0.92)),
+                  label: Text(
+                    'Primeiro erro',
+                    style: tt.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      letterSpacing: -0.1,
                     ),
                   ),
                 ),
               ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              chip('Todos ($countAll)', _HubModuleFilter.all),
+              chip('Erros ($countError)', _HubModuleFilter.error),
+              chip('Pendentes ($countPending)', _HubModuleFilter.pending),
+              chip('OK ($countOk)', _HubModuleFilter.ok),
+              chip('Neutros ($countNeutral)', _HubModuleFilter.neutral),
             ],
           ),
         ),
-      );
+      ],
+    );
+  }
+
+  /// Painel principal: atalho Fretes & Cupons + grid de módulos (cada um abre tela dedicada no mesmo [State]).
+  Widget _buildLojaConfigHub(bool isWide) {
+    final items = _lojaConfigNavItems();
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    Map<String, dynamic>? currentFull;
+    if (_resolvedLojaId != null) {
+      try {
+        currentFull = _buildConfigMap(storeId: _activeStoreId());
+      } catch (_) {
+        currentFull = null;
+      }
     }
 
-    // Mobile / estreito: mesmos ExpansionTiles, agrupados por seção.
+    final hubSalvar = _coletarProblemasSalvar();
+    final hubPubAvisos = hubSalvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
+    final fretesDirty =
+        currentFull != null && _hubFretesShortcutHasPendingChanges(currentFull);
+    final fretesHub = _hubCardStateFretes(fretesDirty);
+
+    var countError = 0;
+    var countPending = 0;
+    var countOk = 0;
+    var countNeutral = 0;
+    void tally(_HubModuleSignal s) {
+      switch (s) {
+        case _HubModuleSignal.error:
+          countError++;
+        case _HubModuleSignal.pending:
+          countPending++;
+        case _HubModuleSignal.ok:
+          countOk++;
+        case _HubModuleSignal.neutral:
+          countNeutral++;
+      }
+    }
+
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      final pane = item['pane'] as _Pane;
+      final dirty =
+          currentFull != null && _hubModuleHasPendingChanges(pane, currentFull);
+      final signal = _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
+      tally(signal);
+    }
+    tally(fretesHub.signal);
+
+    final queryRaw = _hubSearchCtrl.text.trim();
+    final queryFolded = queryRaw.isEmpty ? '' : _hubFoldForSearch(queryRaw);
+
+    final hubRows = <({bool fretes, Map<String, dynamic>? item, _HubModuleSignal signal, int origIndex})>[];
+    final fretesMatches = _hubFilterAcceptsSignal(_hubModuleFilter, fretesHub.signal) &&
+        _hubSearchMatchesFretes(queryFolded);
+    if (fretesMatches) {
+      hubRows.add((
+        fretes: true,
+        item: null,
+        signal: fretesHub.signal,
+        origIndex: -1,
+      ));
+    }
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      final pane = item['pane'] as _Pane;
+      final dirty =
+          currentFull != null && _hubModuleHasPendingChanges(pane, currentFull);
+      final signal = _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
+      if (!_hubFilterAcceptsSignal(_hubModuleFilter, signal)) continue;
+      if (!_hubSearchMatchesModule(item, queryFolded)) continue;
+      hubRows.add((
+        fretes: false,
+        item: item,
+        signal: signal,
+        origIndex: i,
+      ));
+    }
+
+    hubRows.sort((a, b) {
+      final pa = _hubSignalPriority(a.signal);
+      final pb = _hubSignalPriority(b.signal);
+      if (pa != pb) return pa.compareTo(pb);
+      return a.origIndex.compareTo(b.origIndex);
+    });
+
+    final countAll = items.length + 1;
+    final hubGridEmpty = hubRows.isEmpty;
+    final anyModuleRow = hubRows.any((r) => !r.fretes);
+
+    List<Widget> hubDynamicBody() {
+      if (hubGridEmpty) {
+        return [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 20, 8, 12),
+            child: Center(
+              child: Text(
+                queryRaw.isNotEmpty
+                    ? 'Nenhum módulo corresponde à busca e ao filtro atual.'
+                    : 'Nenhum módulo com este status.',
+                textAlign: TextAlign.center,
+                style: tt.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.9),
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ),
+        ];
+      }
+
+      final out = <Widget>[];
+      var showedAreasTitle = false;
+      var idx = 0;
+      while (idx < hubRows.length) {
+        final row = hubRows[idx];
+        if (row.fretes) {
+          out.add(
+            _buildFretesCuponsShortcutCard(
+              cs,
+              signal: fretesHub.signal,
+              tooltip: fretesHub.tooltip,
+            ),
+          );
+          out.add(const SizedBox(height: 18));
+          idx++;
+          continue;
+        }
+        if (!showedAreasTitle) {
+          out.add(
+            Text(
+              'Áreas da loja',
+              style: tt.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface,
+                letterSpacing: -0.1,
+              ),
+            ),
+          );
+          out.add(const SizedBox(height: 12));
+          showedAreasTitle = true;
+        }
+        var j = idx;
+        while (j < hubRows.length && !hubRows[j].fretes) {
+          j++;
+        }
+        final batch = hubRows.sublist(idx, j);
+        out.add(
+          LayoutBuilder(
+            builder: (context, c) {
+              final w = c.maxWidth;
+              final cross = w >= 1100 ? 3 : (w >= 560 ? 2 : 1);
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: cross,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: cross == 1 ? 2.2 : 1.42,
+                children: [
+                  for (final r in batch)
+                    _buildHubModuleCard(
+                      r.item!,
+                      cs,
+                      dirty: currentFull != null &&
+                          _hubModuleHasPendingChanges(r.item!['pane'] as _Pane, currentFull),
+                      hubSalvar: hubSalvar,
+                      hubPubAvisos: hubPubAvisos,
+                    ),
+                ],
+              );
+            },
+          ),
+        );
+        idx = j;
+      }
+
+      if (!anyModuleRow) {
+        out.add(
+          Text(
+            'Áreas da loja',
+            style: tt.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface,
+              letterSpacing: -0.1,
+            ),
+          ),
+        );
+        out.add(const SizedBox(height: 12));
+        out.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            child: Center(
+              child: Text(
+                queryRaw.isNotEmpty
+                    ? 'Nenhuma área da loja corresponde à busca e ao filtro atual.'
+                    : 'Nenhuma área da loja corresponde a este filtro.',
+                textAlign: TextAlign.center,
+                style: tt.bodyMedium?.copyWith(
+                  color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      return out;
+    }
+
     return Card(
       elevation: 0,
       color: cs.surfaceContainerHighest,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.4)),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            dashboardHeader(),
-            Divider(height: 24, thickness: 1, color: cs.outlineVariant.withValues(alpha: 0.35)),
-            _buildFretesCuponsShortcutCard(cs),
-            for (var si = 0; si < _kLojaConfigUiSections.length; si++) ...[
-              Padding(
-                padding: EdgeInsets.only(top: si == 0 ? 14 : 22, bottom: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _primaryColor.withValues(alpha: 0.07),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _primaryColor.withValues(alpha: 0.14)),
+                  ),
+                  child: const Icon(Icons.dashboard_customize_outlined, color: _primaryColor, size: 22),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Módulos de configuração',
+                        style: tt.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.2,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        isWide
+                            ? 'Abra cada área em tela própria para editar com foco. Salvar, sincronizar, publicar e pré-visualizar continuam no topo.'
+                            : 'Toque em um card para abrir o módulo. Use voltar para retornar ao painel.',
+                        style: tt.bodyMedium?.copyWith(
+                          color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                          height: 1.45,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            Divider(height: 28, thickness: 1, color: cs.outlineVariant.withValues(alpha: 0.35)),
+            _buildHubSearchField(cs, tt),
+            const SizedBox(height: 14),
+            _buildHubFilterStrip(
+              cs,
+              tt,
+              countAll: countAll,
+              countError: countError,
+              countPending: countPending,
+              countOk: countOk,
+              countNeutral: countNeutral,
+              showFirstErrorShortcut: countError > 0,
+            ),
+            const SizedBox(height: 14),
+            ...hubDynamicBody(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHubModuleCard(
+    Map<String, dynamic> item,
+    ColorScheme cs, {
+    required bool dirty,
+    required List<({String campo, String msg})> hubSalvar,
+    required List<String> hubPubAvisos,
+  }) {
+    final icon = item['icon'] as IconData;
+    final label = item['label'] as String;
+    final subtitle = item['subtitle'] as String;
+    final pane = item['pane'] as _Pane;
+
+    final hub = _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos);
+    final signal = hub.signal;
+    final caption = _hubModuleStatusCaption(signal);
+    final dotColor = _hubModuleDotColor(signal, cs);
+    final borderColor = _hubModuleBorderColor(signal, cs);
+
+    final body = Material(
+      color: cs.surfaceContainerLow,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: borderColor, width: 1),
+      ),
+      clipBehavior: Clip.antiAlias,
+      elevation: 0,
+      child: InkWell(
+        onTap: () => _openConfigModule(pane),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: _primaryColor.withValues(alpha: 0.1),
+                      border: Border.all(color: _primaryColor.withValues(alpha: 0.2)),
+                    ),
+                    child: Icon(icon, color: _primaryColor, size: 24),
+                  ),
+                  if (dotColor != null)
+                    Positioned(
+                      right: -1,
+                      bottom: -1,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: dotColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: cs.surfaceContainerLow, width: 2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _kLojaConfigUiSections[si].title,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.1,
-                            color: cs.onSurface,
-                          ),
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        letterSpacing: -0.1,
+                        color: cs.onSurface,
+                        height: 1.2,
+                      ),
                     ),
+                    if (caption != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        caption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          height: 1.25,
+                          fontWeight: FontWeight.w500,
+                          color: switch (signal) {
+                            _HubModuleSignal.error => cs.error.withValues(alpha: 0.92),
+                            _HubModuleSignal.pending => cs.primary.withValues(alpha: 0.92),
+                            _HubModuleSignal.ok => _successColor.withValues(alpha: 0.9),
+                            _HubModuleSignal.neutral => cs.onSurfaceVariant.withValues(alpha: 0.88),
+                          },
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
-                      _kLojaConfigUiSections[si].hint,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant.withValues(alpha: 0.9),
-                            height: 1.4,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w400,
-                          ),
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.3,
+                        color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
                   ],
                 ),
               ),
-              ..._kLojaConfigUiSections[si].panes.map((pane) {
-                final item = itemForPane(pane);
-                final isExpanded = _pane == pane;
-                final tileShape = RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(
-                    color: isExpanded
-                        ? _primaryColor.withValues(alpha: 0.55)
-                        : cs.outlineVariant.withValues(alpha: 0.75),
-                    width: isExpanded ? 1.5 : 1,
-                  ),
-                );
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Material(
-                    color: isExpanded ? cs.surface : cs.surfaceContainerLow,
-                    surfaceTintColor: Colors.transparent,
-                    elevation: isExpanded ? 1 : 0,
-                    shadowColor: Colors.black.withValues(alpha: 0.06),
-                    shape: tileShape,
-                    clipBehavior: Clip.antiAlias,
-                    child: Theme(
-                      data: Theme.of(context).copyWith(
-                        dividerColor: Colors.transparent,
-                        listTileTheme: ListTileThemeData(
-                          iconColor: cs.onSurfaceVariant,
-                          textColor: cs.onSurface,
-                        ),
-                      ),
-                      child: ExpansionTile(
-                        key: ValueKey('config_pane_$pane'),
-                        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                        childrenPadding: EdgeInsets.zero,
-                        shape: tileShape,
-                        collapsedShape: tileShape,
-                        initiallyExpanded: isExpanded,
-                        onExpansionChanged: (expanded) {
-                          if (expanded) {
-                            setState(() {
-                              _pane = pane;
-                            });
-                          }
-                        },
-                        leading: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: isExpanded
-                                ? _primaryColor.withValues(alpha: 0.12)
-                                : cs.surfaceContainerHigh,
-                            border: Border.all(
-                              color: isExpanded
-                                  ? _primaryColor.withValues(alpha: 0.25)
-                                  : cs.outlineVariant.withValues(alpha: 0.35),
-                            ),
-                          ),
-                          child: Icon(
-                            item['icon'] as IconData,
-                            color: isExpanded ? _primaryColor : cs.onSurfaceVariant,
-                            size: 22,
-                          ),
-                        ),
-                        title: Text(
-                          item['label'] as String,
-                          style: TextStyle(
-                            fontWeight: isExpanded ? FontWeight.w600 : FontWeight.w500,
-                            fontSize: 15,
-                            letterSpacing: -0.1,
-                            color: isExpanded ? cs.onSurface : cs.onSurface,
-                          ),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            item['subtitle'] as String,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              height: 1.35,
-                              color: cs.onSurfaceVariant.withValues(alpha: 0.88),
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                        iconColor: cs.onSurfaceVariant.withValues(alpha: 0.65),
-                        collapsedIconColor: cs.onSurfaceVariant.withValues(alpha: 0.65),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                            child: _wrapLojaConfigFieldTheme(
-                              context,
-                              _buildPaneEditorFor(pane),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }),
+              Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.65)),
             ],
-          ],
+          ),
         ),
       ),
+    );
+
+    final tip = hub.tooltip;
+    if (tip == null || tip.isEmpty) return body;
+
+    return Tooltip(
+      message: tip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: body,
     );
   }
 
@@ -4475,6 +5732,30 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         child: Column(
           children: [
             _Section(
+              title: 'Prévia visual',
+              subtitle:
+                  'Miniatura estática com as cores do rascunho (não carrega produtos nem o catálogo real). Atualiza ao mudar cores, presets ou editor.',
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final narrow = c.maxWidth < 440;
+                  return Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: narrow ? double.infinity : 420),
+                      child: CatalogStoreMiniPreview(
+                        colors: _catalogMiniPreviewColors(),
+                        storeName: _miniPreviewStoreName(),
+                        density: narrow
+                            ? CatalogStoreMiniPreviewDensity.compact
+                            : CatalogStoreMiniPreviewDensity.comfortable,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            _Section(
               title: 'Presets de Layout (Master)',
               child: Wrap(
             spacing: 8,
@@ -4502,6 +5783,16 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           ),
         ),
           const SizedBox(height: 12),
+          _Section(
+            title: 'Paletas prontas',
+            subtitle:
+                'Cores harmonizadas como ponto de partida. Só aplicam após você confirmar; edite manualmente depois se quiser.',
+            child: CatalogVisualPalettePresetsPanel(
+              presets: CatalogVisualPalettePresets.all,
+              onApplyRequested: _confirmApplyVisualPalette,
+            ),
+          ),
+          const SizedBox(height: 12),
 
           // ===== FUNDO E CARDS =====
           _Section(
@@ -4509,10 +5800,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           subtitle: 'Cores de fundo da página e dos cards de produto',
           child: Wrap(
             spacing: 12,
-            runSpacing: 12,
+            runSpacing: 14,
             children: [
               _catalogColorField(
                 label: 'Fundo da página',
+                description: 'Plano de fundo geral do catálogo público.',
                 color: _cFundo,
                 onChanged: (c) => setState(() => _cFundo = c),
               ),
@@ -4563,6 +5855,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             children: [
               _catalogColorField(
                 label: 'Botão Comprar – fundo',
+                description: 'Cor principal de ação (comprar, aplicar cupom, etc.).',
                 color: _cPrimaria,
                 onChanged: (c) => setState(() => _cPrimaria = c),
               ),
@@ -5423,20 +6716,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 children: [
                   Expanded(
                     child: _catalogColorField(
-                label: 'Cor fundo promo',
-                color: _promoBarBg,
-                onChanged: (c) => setState(() => _promoBarBg = c),
-              ),
-
+                      label: 'Cor fundo promo',
+                      color: _promoBarBg,
+                      onChanged: (c) => setState(() => _promoBarBg = c),
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: _catalogColorField(
-                label: 'Cor texto promo',
-                color: _promoBarText,
-                onChanged: (c) => setState(() => _promoBarText = c),
-              ),
-
+                      label: 'Cor texto promo',
+                      color: _promoBarText,
+                      onChanged: (c) => setState(() => _promoBarText = c),
+                    ),
                   ),
                 ],
               ),
@@ -5545,11 +6836,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     runSpacing: 8,
                     children: [
                       _catalogColorField(
-                label: 'Fundo do card',
-                color: _heroCardBg,
-                onChanged: (c) => setState(() => _heroCardBg = c),
-              ),
-
+                        label: 'Fundo do card',
+                        color: _heroCardBg,
+                        onChanged: (c) => setState(() => _heroCardBg = c),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -5610,11 +6900,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     runSpacing: 8,
                     children: [
                       _catalogColorField(
-                label: 'Cor do título',
-                color: _heroTitleColor,
-                onChanged: (c) => setState(() => _heroTitleColor = c),
-              ),
-
+                        label: 'Cor do título',
+                        color: _heroTitleColor,
+                        onChanged: (c) => setState(() => _heroTitleColor = c),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -5685,11 +6974,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     runSpacing: 8,
                     children: [
                       _catalogColorField(
-                label: 'Cor do subtítulo',
-                color: _heroSubtitleColor,
-                onChanged: (c) => setState(() => _heroSubtitleColor = c),
-              ),
-
+                        label: 'Cor do subtítulo',
+                        color: _heroSubtitleColor,
+                        onChanged: (c) => setState(() => _heroSubtitleColor = c),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -5759,17 +7047,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     runSpacing: 8,
                     children: [
                       _catalogColorField(
-                label: 'Fundo do botão',
-                color: _heroButtonBg,
-                onChanged: (c) => setState(() => _heroButtonBg = c),
-              ),
-
+                        label: 'Fundo do botão',
+                        color: _heroButtonBg,
+                        onChanged: (c) => setState(() => _heroButtonBg = c),
+                      ),
                       _catalogColorField(
-                label: 'Texto do botão',
-                color: _heroButtonTextColor,
-                onChanged: (c) => setState(() => _heroButtonTextColor = c),
-              ),
-
+                        label: 'Texto do botão',
+                        color: _heroButtonTextColor,
+                        onChanged: (c) => setState(() => _heroButtonTextColor = c),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -7633,6 +8919,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _linkedinCtrl.dispose();
     _emailRodapeCtrl.dispose();
     _whatsappRodapeCtrl.dispose();
+    _hubSearchCtrl.dispose();
     _sobreCtrl.dispose();
     _trocasCtrl.dispose();
     _loginCtrl.dispose();

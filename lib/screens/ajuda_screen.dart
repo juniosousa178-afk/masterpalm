@@ -263,7 +263,7 @@ class AjudaScreen extends StatelessWidget {
           'A tela de Precificação permite calcular o preço de venda sugerido para seus produtos com base no custo e nas taxas operacionais.',
         ),
         _buildSubtitulo('Como adicionar produtos:'),
-        _buildItemLista('Importar Excel: planilha com colunas Nome (A), Custo (B), Quantidade (C). Custo em reais (ex: 22,50).'),
+        _buildItemLista('Importar Excel: colunas Nome (A), Custo (B), Quantidade (C); código do produto (D) é opcional e grava no campo código de barras do estoque. Custo em reais (ex: 22,50).'),
         _buildItemLista('Adicionar manualmente: informe nome, custo (ex: 10,90) e quantidade.'),
         _buildSubtitulo('Fórmula do preço sugerido:'),
         _buildFormula(

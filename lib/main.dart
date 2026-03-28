@@ -569,6 +569,122 @@ Future<void> _fixPedidoLinkBase() async {
 }
 
 // ===========================================================================
+// ⚡ BOOT: trabalho pesado após o 1º frame (reduz skipped frames na subida)
+// ===========================================================================
+bool _loggedInHeavyWorkScheduled = false;
+
+/// Agenda [work] após o próximo frame; [delay] extra evita competir com transição runApp.
+void scheduleBootstrapDeferredWork({
+  Duration delay = Duration.zero,
+  required Future<void> Function() work,
+  required String logTag,
+}) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    logD('[BOOT_DEFERRED] $logTag (pós-frame + ${delay.inMilliseconds}ms)');
+    if (delay == Duration.zero) {
+      unawaited(work());
+    } else {
+      Future<void>.delayed(delay, () => unawaited(work()));
+    }
+  });
+}
+
+/// Boxes legadas, fila de sync, push, auto-sync, backup — fora do caminho crítico até a UI respirar.
+Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
+  logD('[BOOT_CRITICAL] → [BOOT_DEFERRED] início _bootstrapLoggedInHeavy');
+  try {
+    await _openRemainingHiveBoxes();
+    boot.mark('hive.boxes.ok');
+
+    try {
+      await SyncQueueService.init();
+      SyncQueueService.setOnReconnect(AutoSyncService.syncEmBackground);
+      SyncQueueService.startConnectivityListener();
+      unawaited(SyncQueueService.processPending().then((r) {
+        if (r.processed > 0) {
+          logD('📋 [BOOT_DEFERRED] SyncQueue: ${r.processed} itens processados');
+        }
+      }));
+    } catch (e) {
+      logW('⚠️ [BOOT_DEFERRED] SyncQueueService (type=${e.runtimeType})');
+    }
+
+    if (firebaseOk && !kIsWeb) {
+      try {
+        FcmPedidoService.setNavigatorKey(navigatorKey);
+        await FcmPedidoService.init();
+      } catch (e) {
+        logW('⚠️ [BOOT_DEFERRED] FCM pedido (type=${e.runtimeType})');
+      }
+    }
+
+    if (!kIsWeb) {
+      try {
+        await NotificacaoService.init();
+        logD('🔔 [BOOT_DEFERRED] NotificacaoService OK');
+      } catch (e) {
+        logW('⚠️ [BOOT_DEFERRED] NotificacaoService (type=${e.runtimeType})');
+      }
+    }
+
+    try {
+      final lojaDiag = await LojaIdService.get();
+      logD('🟪 [BOOT_DEFERRED] LojaIdService.get() → $lojaDiag');
+    } catch (e) {
+      logD('🟥 [BOOT_DEFERRED] LojaIdService.get() (type=${e.runtimeType})');
+    }
+
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        await refreshPermissoesLocais();
+      } catch (e) {
+        logW('⚠️ [BOOT_DEFERRED] refreshPermissoesLocais (type=${e.runtimeType})');
+      }
+    }
+
+    try {
+      await backup_auto_service.BackupAutoService.iniciarAgendamento();
+      boot.mark('backup.auto.ok');
+    } catch (e) {
+      logW('⚠️ [BOOT_DEFERRED] BackupAuto (type=${e.runtimeType})');
+      boot.mark('backup.auto.fail', e);
+    }
+
+    try {
+      await ProdutoAutoSyncService().start();
+      boot.mark('autosync.ok');
+      logD('✅ [BOOT_DEFERRED] Auto-sincronização de produtos iniciada');
+    } catch (e) {
+      logW('⚠️ [BOOT_DEFERRED] auto-sync (type=${e.runtimeType})');
+      boot.mark('autosync.fail', e);
+    }
+
+    try {
+      await SoftDeleteService.processOnStartup();
+      logD('🟢 [BOOT_DEFERRED] SoftDeleteService.processOnStartup OK');
+    } catch (e) {
+      logW('⚠️ [BOOT_DEFERRED] SoftDelete (type=${e.runtimeType})');
+    }
+
+    logD('🟢 [BOOT_DEFERRED] _bootstrapLoggedInHeavy concluído');
+    logD(boot.dump());
+  } catch (e, st) {
+    logW('⚠️ [BOOT_DEFERRED] _bootstrapLoggedInHeavy falhou (type=${e.runtimeType})');
+    if (kDebugMode) logD('$st');
+  }
+}
+
+void _scheduleLoggedInHeavyOnce({required bool firebaseOk}) {
+  if (_loggedInHeavyWorkScheduled) return;
+  _loggedInHeavyWorkScheduled = true;
+  scheduleBootstrapDeferredWork(
+    delay: const Duration(milliseconds: 80),
+    logTag: 'logged_in_heavy',
+    work: () => _bootstrapLoggedInHeavy(firebaseOk: firebaseOk),
+  );
+}
+
+// ===========================================================================
 // ✅ Helpers de slug/store_id
 // ===========================================================================
 String _safeSlug(String s) {
@@ -1429,13 +1545,15 @@ Future<void> _bootstrapSafe() async {
     boot.mark('hive.adapters.ok');
     await Hive.openBox('sessao');
     await Hive.openBox('config');
-    boot.mark('hive.boxes.ok');
+    boot.mark('hive.boxes.critical');
     await SessionSanity.fixIfNoFirebaseUser();
     initDarkModeFromHive();
     boot.mark('local.fix.ok');
-    boot.mark('backup.auto.ok');
-    boot.mark('autosync.ok');
-    unawaited(_bootstrapDeferredFull(firebaseOk: firebaseOk));
+    scheduleBootstrapDeferredWork(
+      delay: const Duration(milliseconds: 120),
+      logTag: 'fastpath_full',
+      work: () => _bootstrapDeferredFull(firebaseOk: firebaseOk),
+    );
     logD('✅ [BOOT] Bootstrap fast path concluído – mostrando login');
     logD(boot.dump());
     return;
@@ -1443,35 +1561,28 @@ Future<void> _bootstrapSafe() async {
 
   // Fluxo completo (mobile ou web com usuário já logado)
   if (firebaseOk) {
-    logD('➡️ RemoteConfig...');
-    try {
-      await RemoteConfigService.init()
+    logD('[BOOT_FIREBASE_PHASE] RemoteConfig + AppCheck + Monitoring (paralelo)');
+    await Future.wait<void>([
+      RemoteConfigService.init()
           .timeout(const Duration(seconds: 8), onTimeout: () {
         logD('[BOOT-OFFLINE] RemoteConfig timeout – usando defaults');
-      });
-    } catch (e) {
-      logW('[BOOT-OFFLINE] RemoteConfig falhou (type=${e.runtimeType}) – usando defaults');
-    }
-    boot.mark('remoteconfig.ok');
-    logD('➡️ FirebaseAppCheck...');
-    try {
-      await initFirebaseAppCheck()
+      }).catchError((Object e, StackTrace _) {
+        logW('[BOOT-OFFLINE] RemoteConfig falhou (type=${e.runtimeType}) – usando defaults');
+      }),
+      initFirebaseAppCheck()
           .timeout(const Duration(seconds: 5), onTimeout: () {
         logD('[BOOT-OFFLINE] AppCheck timeout – continuando sem proteção');
-      });
-    } catch (e, st) {
-      logW('[AppCheck] (ignorado) Falha não bloqueia render do catálogo. Login Google continua.', tag: 'APP-CHECK');
-      if (kDebugMode) logD('   (type=${e.runtimeType})');
-      if (kDebugMode) logD('   $st');
-    }
-    boot.mark('appcheck.ok');
-    logD('➡️ Crashlytics + Analytics...');
-    try {
-      await initFirebaseMonitoring()
+      }).catchError((Object e, StackTrace st) {
+        logW('[AppCheck] (ignorado) Falha não bloqueia render.', tag: 'APP-CHECK');
+        if (kDebugMode) logD('   (type=${e.runtimeType})\n   $st');
+      }),
+      initFirebaseMonitoring()
           .timeout(const Duration(seconds: 3), onTimeout: () {
         logD('[BOOT-OFFLINE] Monitoring timeout – ignorado');
-      });
-    } catch (_) {}
+      }).catchError((Object _, StackTrace __) {}),
+    ]);
+    boot.mark('remoteconfig.ok');
+    boot.mark('appcheck.ok');
     boot.mark('monitoring.ok');
   } else {
     boot.mark('appcheck.skip_offline');
@@ -1497,14 +1608,7 @@ Future<void> _bootstrapSafe() async {
   }
   boot.mark('auth.end');
 
-  if (firebaseOk && !kIsWeb) {
-    try {
-      FcmPedidoService.setNavigatorKey(navigatorKey);
-      await FcmPedidoService.init();
-    } catch (e) {
-      logW('⚠️ [BOOT] FCM pedido (type=${e.runtimeType})');
-    }
-  }
+  // FCM: adiado para [BOOT_DEFERRED] (_bootstrapLoggedInHeavy) — não bloqueia 1º frame útil.
 
   FirebaseGuard.markReady();
 
@@ -1568,118 +1672,34 @@ Future<void> _bootstrapSafe() async {
   // ✅ Reset controlado de boxes com schema antigo (evita crash por typeId inválido)
   await resetHiveIfSchemaChanged();
 
-  // ✅ Inicializar serviço de notificações (web: plugin não suportado, pula)
-  if (!kIsWeb) {
-    try {
-      await NotificacaoService.init();
-      logD('🔔 [BOOT] NotificacaoService inicializado');
-    } catch (e) {
-      logW('⚠️ [BOOT] Erro ao inicializar NotificacaoService (type=${e.runtimeType})');
-    }
-  } else {
-    logD('🔔 [BOOT] NotificacaoService omitido (web)');
-  }
+  // [BOOT_HIVE_LAZY] NotificacaoService, SyncQueue, boxes legadas → _bootstrapLoggedInHeavy (pós-frame)
 
-  // ✅ Fila de sincronização offline-first (Hive ↔ Firestore)
-  try {
-    await SyncQueueService.init();
-    SyncQueueService.setOnReconnect(AutoSyncService.syncEmBackground);
-    SyncQueueService.startConnectivityListener();
-    // Processa pendentes ao iniciar (ex.: app fechou offline e reabriu)
-    unawaited(SyncQueueService.processPending().then((r) {
-      if (r.processed > 0) {
-        logD('📋 [BOOT] SyncQueue: ${r.processed} itens processados');
-      }
-    }));
-    logD('📋 [BOOT] SyncQueueService inicializado');
-  } catch (e) {
-    logW('⚠️ [BOOT] Erro ao inicializar SyncQueueService (type=${e.runtimeType})');
-  }
-
-  Future<void> openTyped<T>(String name) async {
-    if (Hive.isBoxOpen(name)) return;
-    try {
-      await Hive.openBox<T>(name);
-      logD('📦 [BOOT] Box tipada aberta: $name (T=$T)');
-    } catch (e) {
-      logD('🟥 [BOOT] Erro ao abrir box tipada $name (type=${e.runtimeType})');
-      if (kIsWeb) {
-        // Web: fallback para box dinâmica (evita TypeError em release quando dados não batem com o tipo)
-        try {
-          await Hive.openBox(name);
-          logW(
-            '[WEB_BOX_FALLBACK] [HIVE_BOX] box=$name plataforma=Web motivo=tipagem_falhou_abertura_dinamica contexto=bootstrap',
-            tag: 'WEB_BOX_FALLBACK',
-          );
-        } catch (e2) {
-          logD('🟥 [BOOT] Falha ao abrir box $name (web) (type=${e2.runtimeType})');
-        }
-      } else {
-        try {
-          final dirPath = await getAppDocsDirPath();
-          final file = File('$dirPath/$name.hive');
-          if (await file.exists()) {
-            logD('🧹 [BOOT] Deletando arquivo corrompido: $name.hive');
-            await file.delete();
-          }
-          await Hive.openBox<T>(name);
-          logD(
-              '📦 [BOOT] Box tipada reaberta após limpar arquivo: $name');
-        } catch (e2) {
-          logD('🟥 [BOOT] Falha ao recuperar box $name (type=${e2.runtimeType})');
-        }
-      }
-    }
-  }
-
-  Future<void> openDynamic(String name) async {
+  Future<void> openDynamicCritical(String name) async {
     if (Hive.isBoxOpen(name)) return;
     try {
       await Hive.openBox(name);
-      logD('📦 [BOOT] Box dinâmica aberta: $name');
+      logD('[BOOT_CRITICAL] Hive box: $name');
     } catch (e) {
-      logD('🟥 [BOOT] Erro ao abrir box dinâmica $name (type=${e.runtimeType})');
+      logD('🟥 [BOOT_CRITICAL] Erro ao abrir $name (type=${e.runtimeType})');
       if (!kIsWeb) {
         try {
           final dirPath = await getAppDocsDirPath();
           final file = File('$dirPath/$name.hive');
           if (await file.exists()) {
-            logD('🧹 [BOOT] Deletando arquivo corrompido: $name.hive');
+            logD('🧹 [BOOT_CRITICAL] Deletando arquivo corrompido: $name.hive');
             await file.delete();
           }
           await Hive.openBox(name);
-          logD(
-              '📦 [BOOT] Box dinâmica reaberta após limpar arquivo: $name');
         } catch (e2) {
-          logD('🟥 [BOOT] Falha ao recuperar box $name (type=${e2.runtimeType})');
+          logD('🟥 [BOOT_CRITICAL] Falha ao recuperar $name (type=${e2.runtimeType})');
         }
       }
     }
   }
 
-  await openDynamic('sessao');
-  await openDynamic('config');
-  await openDynamic('licenca');
-  await openDynamic('temp_orders');
-  await openDynamic('notificacoes_centro');
-
-  // ⚠️ [LEGADO] As boxes tipadas abaixo usam nomes genéricos (sem lojaId).
-  // Elas são mantidas apenas para compat/migração; o fluxo multi-tenant atual
-  // deve usar sempre HiveBoxNames.*(lojaId) para leitura/gravação.
-  await openTyped<Cliente>('clientes');
-  logW('[LEGADO_BOX] Box genérica aberta no bootstrap: clientes | uso apenas compat/migração', tag: 'LEGADO_BOX');
-  await openTyped<Venda>('vendas');
-  logW('[LEGADO_BOX] Box genérica aberta no bootstrap: vendas | uso apenas compat/migração', tag: 'LEGADO_BOX');
-  await openTyped<Produto>('produtos');
-  logW('[LEGADO_BOX] Box genérica aberta no bootstrap: produtos | uso apenas compat/migração', tag: 'LEGADO_BOX');
-  await openTyped<EstoqueItem>('estoque');
-  logW('[LEGADO_BOX] Box genérica aberta no bootstrap: estoque | uso apenas compat/migração', tag: 'LEGADO_BOX');
-  await openTyped<Fornecedor>('fornecedores');
-  await openTyped<ProdutoCatalogo>('catalogo');
-  await openTyped<CatalogoConfig>('config_catalogo');
-  await openTyped<Usuario>('usuarios');
-  await openTyped<FechamentoMensal>('fechamentos_mensais');
-  boot.mark('hive.boxes.ok');
+  await openDynamicCritical('sessao');
+  await openDynamicCritical('config');
+  boot.mark('hive.boxes.critical');
 
   await SessionSanity.fixIfNoFirebaseUser();
 
@@ -1698,66 +1718,27 @@ Future<void> _bootstrapSafe() async {
   await _ensureStoreIdOnBootstrap(firebaseOk: firebaseOk);
   mpStoreDiag('BOOT.afterEnsureStoreId');
 
-  final sessao = Hive.box('sessao');
-  final config = Hive.box('config');
-
-  logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  logD('🔎 [BOOT] ESTADO DAS BOXES HIVE (sessao/config)');
-  logD('   sessao.keys → ${sessao.keys.toList()}');
-  logD('   config.keys → ${config.keys.toList()}');
-  logD('   sessao["store_id"]      → ${sessao.get("store_id")}');
-  logD('   sessao["usuario_logado"]→ ${sessao.get("usuario_logado")}');
-  logD('   config["store_id"]      → ${config.get("store_id")}');
-  logD('   config["store_slug"]    → ${config.get("store_slug")}');
-  logD('   config["loja_slug"]     → ${config.get("loja_slug")}');
-  logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  if (kDebugMode) {
+    final sessao = Hive.box('sessao');
+    final config = Hive.box('config');
+    logD('[BOOT_CRITICAL] sessao.keys → ${sessao.keys.toList()}');
+    logD('[BOOT_CRITICAL] config.keys → ${config.keys.toList()}');
+    logD(
+        '[BOOT_CRITICAL] store_id sessao=${sessao.get("store_id")} config=${config.get("store_id")}');
+  }
 
   initDarkModeFromHive();
 
-  String? lojaSoft;
-  try {
-    lojaSoft = await LojaIdService.get();
-    logD('🟪 [BOOT] LojaIdService.get() durante bootstrap → $lojaSoft');
-  } catch (e) {
-    logD(
-        '🟥 [BOOT] Erro ao chamar LojaIdService.get() durante bootstrap (type=${e.runtimeType})');
-  }
-
   await _fixPedidoLinkBase();
 
-  if (Firebase.apps.isNotEmpty) {
-    await refreshPermissoesLocais();
-  } else {
-    logD('ℹ️ Firebase OFFLINE – pulando refreshPermissoesLocais.');
-  }
   boot.mark('local.fix.ok');
 
-  await backup_auto_service.BackupAutoService.iniciarAgendamento();
-  boot.mark('backup.auto.ok');
-
-  // Inicia auto-sincronização de produtos
-  try {
-    final autoSync = ProdutoAutoSyncService();
-    await autoSync.start();
-    boot.mark('autosync.ok');
-    logD('✅ [BOOT] Auto-sincronização de produtos iniciada');
-  } catch (e) {
-    logW('⚠️ [BOOT] Erro ao iniciar auto-sync (type=${e.runtimeType})');
-    boot.mark('autosync.fail', e);
-  }
-
-  logD('✅ Bootstrap concluído com sucesso (lojaSoft=$lojaSoft)');
+  logD('✅ [BOOT_CRITICAL] Caminho crítico concluído — [BOOT_DEFERRED] agendado');
   logD(boot.dump());
 
-  // Processar exclusões pendentes (30 s) que expiraram com app fechado
-  try {
-    await SoftDeleteService.processOnStartup();
-    logD('🟢 [BOOT] SoftDeleteService.processOnStartup() OK');
-  } catch (e) {
-    logW('⚠️ [BOOT] SoftDeleteService.processOnStartup() falhou (type=${e.runtimeType})');
-  }
+  _scheduleLoggedInHeavyOnce(firebaseOk: firebaseOk);
 
-  logD('🟢 [BOOT] _bootstrapSafe() finalizado com sucesso');
+  logD('🟢 [BOOT] _bootstrapSafe() finalizado (crítico; pesado em background)');
 }
 
 /// Executa etapas do bootstrap em background (usado no fast path web sem usuário).
@@ -1835,6 +1816,17 @@ Future<void> _openRemainingHiveBoxes() async {
       if (kIsWeb) {
         try {
           await Hive.openBox(name);
+          logW(
+            '[WEB_BOX_FALLBACK] box=$name contexto=deferred_open',
+            tag: 'WEB_BOX_FALLBACK',
+          );
+        } catch (_) {}
+      } else {
+        try {
+          final dirPath = await getAppDocsDirPath();
+          final file = File('$dirPath/$name.hive');
+          if (await file.exists()) await file.delete();
+          await Hive.openBox<T>(name);
         } catch (_) {}
       }
     }

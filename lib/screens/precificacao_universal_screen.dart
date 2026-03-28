@@ -151,7 +151,20 @@ class _PrecificacaoUniversalScreenState
   }
 
   String _chaveItem(Map<String, dynamic> item) =>
-      '${item['_uid'] ?? identityHashCode(item)}_${item['nome']}_${item['custo']}_${item['quantidade']}';
+      '${item['_uid'] ?? identityHashCode(item)}_${item['nome']}_${item['custo']}_${item['quantidade']}_${item['codigoProduto'] ?? ''}';
+
+  Produto? _produtoExistenteParaItem(String nome, String codigoProduto) {
+    final codigo = codigoProduto.trim();
+    if (codigo.isNotEmpty) {
+      final porCodigo = estoqueBox!.values.firstWhereOrNull(
+        (p) => p.codigoBarras == codigo,
+      );
+      if (porCodigo != null) return porCodigo;
+    }
+    return estoqueBox!.values.firstWhereOrNull(
+      (p) => p.nome.toLowerCase() == nome.toLowerCase(),
+    );
+  }
 
   TextEditingController _controllerPretendido(Map<String, dynamic> item) {
     final key = _chaveItem(item);
@@ -194,20 +207,27 @@ class _PrecificacaoUniversalScreenState
       }
 
       final novos = <Map<String, dynamic>>[];
+      var importSeq = 0;
       for (var row in sheet.rows.skip(1)) {
         final nome = row[0]?.value.toString().trim() ?? '';
         final custo = (double.tryParse(row[1]?.value.toString() ?? '0') ?? 0)
             .clamp(0.0, double.infinity);
         final quantidade = (int.tryParse(row[2]?.value.toString() ?? '0') ?? 1)
             .clamp(1, 999999);
+        final codigoProduto = row.length > 3
+            ? (row[3]?.value.toString().trim() ?? '')
+            : '';
 
         if (nome.isNotEmpty && custo > 0) {
           novos.add({
+            '_uid': DateTime.now().microsecondsSinceEpoch + importSeq,
             'nome': nome,
             'custo': custo,
             'quantidade': quantidade,
             'precoPretendido': 0.0,
+            'codigoProduto': codigoProduto,
           });
+          importSeq++;
         }
       }
 
@@ -221,7 +241,7 @@ class _PrecificacaoUniversalScreenState
         _showSnackBar('${novos.length} produto(s) importado(s) com sucesso!');
       } else {
         _showSnackBar(
-            'Nenhum produto válido encontrado. Verifique: Nome (col A), Custo (col B), Quantidade (col C)',
+            'Nenhum produto válido encontrado. Verifique: Nome (A), Custo (B), Quantidade (C); código do produto (D) é opcional.',
             isWarning: true);
       }
     } catch (e) {
@@ -358,16 +378,22 @@ class _PrecificacaoUniversalScreenState
     for (var item in produtos) {
       final nome = item['nome'] as String;
       final custo = item['custo'] as double;
+      final codigoProduto =
+          (item['codigoProduto'] as String?)?.trim() ?? '';
       final precoPretendido =
           (item['precoPretendido'] as num?)?.toDouble() ?? 0.0;
       final precoSugerido = calcularPrecoVenda(custo);
       final precoFinal = precoPretendido > 0 ? precoPretendido : precoSugerido;
 
-      final produtoExistente = estoqueBox!.values.firstWhereOrNull(
-        (p) => p.nome.toLowerCase() == nome.toLowerCase(),
-      );
+      final produtoExistente =
+          _produtoExistenteParaItem(nome, codigoProduto);
 
       if (produtoExistente != null) {
+        if (codigoProduto.isNotEmpty &&
+            (produtoExistente.codigoBarras.isEmpty ||
+                produtoExistente.codigoBarras == codigoProduto)) {
+          produtoExistente.codigoBarras = codigoProduto;
+        }
         produtoExistente
           ..custoReal = custo
           // precoUnitario = preço de venda (igual ao cadastro; vendas usam precoFinal)
@@ -398,6 +424,7 @@ class _PrecificacaoUniversalScreenState
           lojaId: _lojaId!,
           custoEditadoNoCadastro: false,
           updatedAt: DateTime.now(),
+          codigoBarras: codigoProduto,
         );
         await estoqueBox!.add(novo);
         await ProdutosFirestoreService.syncProduto(novo, lojaId: _lojaId);
@@ -432,12 +459,15 @@ class _PrecificacaoUniversalScreenState
                     pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 10),
             pw.TableHelper.fromTextArray(
-              headers: ['Produto', 'Custo', 'Sugerido', 'Pretendido'],
+              headers: ['Produto', 'Código', 'Custo', 'Sugerido', 'Pretendido'],
               data: produtos.map((item) {
                 final sugerido = calcularPrecoVenda(item['custo'] as double);
                 final pretendido = item['precoPretendido'] as num? ?? 0;
+                final cod =
+                    (item['codigoProduto'] as String?)?.trim() ?? '';
                 return [
                   item['nome'],
+                  cod.isEmpty ? '-' : cod,
                   'R\$ ${(item['custo'] as num).toStringAsFixed(2)}',
                   'R\$ ${sugerido.toStringAsFixed(2)}',
                   pretendido > 0 ? 'R\$ ${pretendido.toStringAsFixed(2)}' : '-',
@@ -478,6 +508,7 @@ class _PrecificacaoUniversalScreenState
               'custo': custo,
               'quantidade': quantidade,
               'precoPretendido': 0.0,
+              'codigoProduto': '',
             });
           });
           Navigator.pop(ctx);
@@ -592,9 +623,12 @@ class _PrecificacaoUniversalScreenState
   List<Map<String, dynamic>> get _produtosFiltrados {
     if (_filtroBusca.isEmpty) return produtos;
     final q = _filtroBusca.toLowerCase();
-    return produtos
-        .where((p) => (p['nome'] as String).toLowerCase().contains(q))
-        .toList();
+    return produtos.where((p) {
+      final nome = (p['nome'] as String).toLowerCase();
+      final cod =
+          ((p['codigoProduto'] as String?) ?? '').toLowerCase();
+      return nome.contains(q) || (cod.isNotEmpty && cod.contains(q));
+    }).toList();
   }
 
   @override
@@ -895,7 +929,7 @@ class _PrecificacaoUniversalScreenState
                 child: Icon(Icons.file_upload, color: primaryColor, size: 20),
               ),
               onPressed: _importando ? null : importarExcel,
-              tooltip: 'Importar Excel',
+              tooltip: 'Importar Excel (col. D código opcional)',
             ),
             IconButton(
               icon: Container(
@@ -989,7 +1023,7 @@ class _PrecificacaoUniversalScreenState
             ),
             const SizedBox(height: 8),
             Text(
-              'Importe do Excel (colunas: Nome, Custo, Quantidade) ou adicione manualmente',
+              'Importe do Excel (Nome, Custo, Quantidade; coluna D código opcional) ou adicione manualmente',
               textAlign: TextAlign.center,
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 14),
               overflow: TextOverflow.visible,
@@ -1103,6 +1137,19 @@ class _PrecificacaoUniversalScreenState
                         overflow: TextOverflow.ellipsis,
                         maxLines: 2,
                       ),
+                      if (((item['codigoProduto'] as String?) ?? '')
+                          .trim()
+                          .isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Código: ${(item['codigoProduto'] as String).trim()}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                       const SizedBox(height: 4),
                       Wrap(
                         spacing: 12,
