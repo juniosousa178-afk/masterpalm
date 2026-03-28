@@ -12,6 +12,7 @@ import 'firestore_paths.dart';
 import '../core/logger.dart';
 import 'package:hive/hive.dart';
 import '../models/produto.dart';
+import 'catalogo_sync_service.dart';
 import 'produto_auto_sync_service.dart';
 import 'store_resolver_facade.dart';
 import 'catalog_thumbnail_service.dart';
@@ -326,6 +327,24 @@ class ProdutosFirestoreService {
     } catch (e) {
       logE('[PRODUTOS-SYNC] Erro ao fazer upload de data:image (type=${e.runtimeType})');
       return null;
+    }
+  }
+
+  /// Sincroniza apenas produtos cujas chaves Hive foram alteradas (ex.: ações em lote na tela de estoque).
+  static Future<void> syncProdutosPorChavesHive({
+    required Box<Produto> box,
+    required String lojaId,
+    required Iterable<int> hiveKeys,
+  }) async {
+    for (final k in hiveKeys) {
+      final produto = box.get(k);
+      if (produto == null) continue;
+      if (produto.lojaId.isNotEmpty && produto.lojaId != lojaId) continue;
+      try {
+        await syncProduto(produto, lojaId: lojaId);
+      } catch (e, st) {
+        logE('❌ [PRODUTOS-SYNC] Erro sync item hiveKey=$k (type=${e.runtimeType})', error: e, st: st);
+      }
     }
   }
 
@@ -854,5 +873,68 @@ class ProdutosFirestoreService {
     } catch (e, st) {
       logE('❌ [PRODUTOS-SYNC] Erro ao deletar produto (type=${e.runtimeType})', error: e, st: st);
     }
+  }
+
+  /// Remove de [estoque_produtos] com fallback quando [Produto.idFirebase] está vazio.
+  /// Exige confirmação forte: slug (campo ou docId == slug local), ou código de barras.
+  /// Não apaga só por nome (evita homônimos / doc errado).
+  static Future<void> deleteProdutoRobusto({
+    required Produto produto,
+    required String lojaId,
+  }) async {
+    final idFb = produto.idFirebase.trim();
+    if (idFb.isNotEmpty) {
+      await deleteProduto(idFb, lojaId: lojaId);
+      return;
+    }
+
+    final col = _db.collection('lojas').doc(lojaId).collection(FSPaths.estoqueProdutosCol);
+    final tried = <String>{};
+
+    Future<bool> tryDeleteDoc(String docId) async {
+      final d = docId.trim();
+      if (d.isEmpty || tried.contains(d)) return false;
+      tried.add(d);
+      final ref = col.doc(d);
+      final snap = await ref.get();
+      if (!snap.exists) return false;
+      final data = snap.data() ?? {};
+      final nomeR = (data['nome'] ?? '').toString().trim().toLowerCase();
+      final nomeL = produto.nome.trim().toLowerCase();
+      final slugR = (data['slug'] ?? '').toString().trim();
+      final slugL = produto.slug.trim();
+      final barrasR = (data['codigoBarras'] ?? '').toString().trim();
+      final barrasL = produto.codigoBarras.trim();
+
+      final matchSlug = slugL.isNotEmpty && slugR == slugL;
+      final matchBarras = barrasL.isNotEmpty && barrasR == barrasL;
+      final docIdIsLocalSlug = slugL.isNotEmpty && d == slugL;
+      final strongMatch = matchSlug || matchBarras || docIdIsLocalSlug;
+
+      if (!strongMatch) {
+        final nomeIgual = nomeL.isNotEmpty && nomeR == nomeL;
+        if (nomeIgual) {
+          logW(
+            '[DELETE_FALLBACK] docId=$d: nome igual mas sem slug/barras/docId=slug — abortado (ambiguidade)',
+          );
+        } else {
+          logW(
+            '[DELETE_FALLBACK] docId=$d sem match forte (slug/barras/docId=slug) — não apagando',
+          );
+        }
+        return false;
+      }
+      await ref.delete();
+      logD('[DELETE_FALLBACK] estoque removido docId=$d (idFirebase vazio, match forte)');
+      return true;
+    }
+
+    if (await tryDeleteDoc(produto.slug)) return;
+    final fromNome = CatalogoSyncService.slugify(produto.nome);
+    if (await tryDeleteDoc(fromNome)) return;
+
+    logW(
+      '[DELETE_FALLBACK] Sem remoção em estoque_produtos (idFirebase vazio e sem match forte slug/barras/docId=slug) loja=$lojaId nome=${produto.nome}',
+    );
   }
 }

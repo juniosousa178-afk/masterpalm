@@ -220,13 +220,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       'lojaId': lojaId,
       'store_id': lojaId, // ✅ NOVO: store_id para consistência
       'ownerOf': lojaId,  // ✅ NOVO: indica que é dono da loja
+      // Canônico de planos (LEGACY `plan` aposentado para novas escritas)
+      'currentPlanId': 'free_trial_90d',
+      'status': 'trialing',
+      'trialing': true,
+      'currentPeriodEnd': Timestamp.fromDate(trialEnd),
+      'trialUsed': true,
+      'trialUsedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'plan': {
-        'planId': 'free_trial',
-        'status': 'trialing',
-        'trialEndsAt': Timestamp.fromDate(trialEnd),
-      },
     }, SetOptions(merge: true));
 
     // ---------- 3) Compat: "usuarios/{email}" ----------

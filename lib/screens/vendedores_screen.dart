@@ -662,12 +662,14 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
         'lojaId': widget.storeId,
         'storeId': widget.storeId,
         'store_id': widget.storeId,
+        // Canônico de planos (LEGACY `plan` aposentado para novas escritas)
+        'currentPlanId': 'free_trial_90d',
+        'status': 'trialing',
+        'trialing': true,
+        'currentPeriodEnd': Timestamp.fromDate(trialEnd),
+        'trialUsed': true,
+        'trialUsedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
-        'plan': {
-          'planId': 'free_trial',
-          'status': 'trialing',
-          'trialEndsAt': Timestamp.fromDate(trialEnd),
-        },
       }, SetOptions(merge: true));
 
       // Salvar em usuarios/{email}

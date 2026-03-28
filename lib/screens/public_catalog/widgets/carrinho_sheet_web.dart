@@ -1,5 +1,9 @@
 // lib/screens/public_catalog/widgets/carrinho_sheet_web.dart
 // Carrinho/checkout em bottom sheet – extraído do public_catalog_screen.
+//
+// ÚNICO checkout do catálogo PÚBLICO (PublicCatalogScreen): loja online /loja/…,
+// preview /loja_preview, app mobile. Não confundir com CatalogoScreen (rota /catalogo),
+// que usa modal legado em catalago_screen.dart.
 
 import 'dart:async';
 import 'dart:convert';
@@ -29,7 +33,10 @@ import '../../../widgets/roleta_web_widget_v3.dart';
 import '../../auth/login_screen_cliente.dart';
 import 'catalog_image_placeholder.dart';
 import '../catalog_estoque_helper.dart';
+import '../catalog_cart_checkout_visual_config.dart';
 import '../checkout_total_helper.dart';
+import '../catalog_checkout_summary_tokens.dart';
+import 'catalog_first_purchase_coupon_dialog.dart';
 
 // ==================== CARRINHO (BottomSheet) ====================
 
@@ -132,6 +139,15 @@ class CarrinhoSheetWeb extends StatefulWidget {
   /// Chamado ao fechar o sheet com os dados atuais para persistir
   final void Function(Map<String, dynamic> formData)? onFormDataToSave;
 
+  /// Cores do card escuro de resumo (subtotal, frete, total). Se null, deriva dos demais checkout colors.
+  final CatalogCheckoutSummaryTokens? checkoutSummaryStyle;
+
+  /// Tokens visuais do carrinho (uiColors). Se null, deriva dos campos legacy [checkoutCardColor], etc.
+  final CatalogCartUiTokens? cartUiTokens;
+
+  /// Cupom de primeira compra (config + modal). Null = desligado.
+  final CatalogFirstPurchaseCouponOffer? firstPurchaseCoupon;
+
   const CarrinhoSheetWeb({
     super.key,
     required this.lojaId,
@@ -167,6 +183,9 @@ class CarrinhoSheetWeb extends StatefulWidget {
     this.onRoletaPremioGanho,
     this.initialFormData,
     this.onFormDataToSave,
+    this.checkoutSummaryStyle,
+    this.cartUiTokens,
+    this.firstPurchaseCoupon,
   });
 
   @override
@@ -220,6 +239,57 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   late List<Map<String, dynamic>> _fretesLocal;
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  /// Resumo financeiro (card escuro): vem do config ou fallback dos demais checkout colors.
+  CatalogCheckoutSummaryTokens get _summaryTokens =>
+      widget.checkoutSummaryStyle ??
+      CatalogCheckoutSummaryTokens.fallbackFromCheckoutColors(
+        checkoutCardColor: widget.checkoutCardColor,
+        checkoutFieldTextColor: widget.checkoutFieldTextColor,
+        checkoutLabelColor: widget.checkoutLabelColor,
+        checkoutTotalColor: widget.checkoutTotalColor,
+      );
+
+  /// Fallback seguro quando o parent não passa [CatalogCartUiTokens] (compatibilidade).
+  CatalogCartUiTokens get _cartUi {
+    final w = widget.cartUiTokens;
+    if (w != null) return w;
+    final card = widget.checkoutCardColor ?? widget.cardColor;
+    final field = widget.checkoutFieldBg ?? card.withValues(alpha: 0.92);
+    final ft = widget.checkoutFieldTextColor ?? widget.textColor;
+    final lb = widget.checkoutLabelColor ?? widget.textColor;
+    final bord =
+        widget.checkoutFieldBorder ?? Colors.white.withValues(alpha: 0.12);
+    return CatalogCartUiTokens(
+      sheetBackground: Colors.transparent,
+      cartCardBackground: card,
+      sectionTitleColor: lb.withValues(alpha: 0.95),
+      primaryTextColor: ft,
+      secondaryTextColor: ft.withValues(alpha: 0.88),
+      mutedTextColor: widget.textColor.withValues(alpha: 0.62),
+      inputBackground: field,
+      inputTextColor: ft,
+      inputHintColor: Colors.white.withValues(alpha: 0.48),
+      inputBorderColor: bord,
+      summaryCardBackground: card,
+      summaryLabelColor: lb,
+      summaryValueColor: ft,
+      summaryDiscountColor: Colors.redAccent,
+      summaryTotalColor: widget.checkoutTotalColor ?? widget.primary,
+      primaryActionBackground: widget.primary,
+      primaryActionTextColor: widget.buttonText,
+      secondaryActionBackground: Colors.transparent,
+      secondaryActionTextColor: widget.primary,
+      whatsappButtonBackground: const Color(0xFF25D366),
+      whatsappButtonTextColor: Colors.white,
+      pixButtonBorderColor: const Color(0xFF0D9488),
+      pixButtonTextColor: const Color(0xFF0D9488),
+      itemDividerColor: Colors.white.withValues(alpha: 0.06),
+      removeIconColor: Colors.redAccent.withValues(alpha: 0.82),
+    );
+  }
+
+  bool _firstPurchasePromoInFlight = false;
 
   String _pagamento = 'PIX';
   int _freteIndex = 0;
@@ -280,6 +350,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   @override
   void initState() {
     super.initState();
+    if (kDebugMode) {
+      debugPrint(
+        '[CART_WIDGET_RENDERED] CarrinhoSheetWeb.initState lojaId=${widget.lojaId}',
+      );
+    }
     _fretesLocal =
         widget.fretes.map((e) => asMapDeep(e)).toList();
 
@@ -320,6 +395,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     _premioRoletaDescricao = widget.initialPremioRoletaDescricao;
     _freteGratisRoleta = widget.initialFreteGratisRoleta;
 
+    // Linha de base para regra da roleta (evita mutação no getter durante build)
+    _quantidadeProdutosAoMostrarRoleta = widget.items.length;
+
     // 🔍 Debug: Mostrar fretes iniciais
     logD(
         '🛒 [CARRINHO] initState - Fretes recebidos: ${widget.fretes.length}');
@@ -352,6 +430,82 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     _bairro.addListener(_atualizarEstadoRoleta);
     _cidade.addListener(_atualizarEstadoRoleta);
     _estado.addListener(_atualizarEstadoRoleta);
+
+    _scheduleFirstPurchasePromoCheck();
+  }
+
+  void _scheduleFirstPurchasePromoCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_maybeShowFirstPurchaseCoupon());
+    });
+  }
+
+  /// Linha secundária: variação (tamanho/cor) ou combo.
+  String _cartItemVariantSubtitle(Map<String, dynamic> item) {
+    final tam = (item['tamanho'] ?? '').toString().trim();
+    final cor = (item['cor'] ?? '').toString().trim();
+    final parts = <String>[];
+    if (tam.isNotEmpty) parts.add(tam);
+    if (cor.isNotEmpty) parts.add(cor);
+    final combo = item['itensComboComSelecao'];
+    if (combo is List && combo.isNotEmpty && parts.length < 2) {
+      parts.add('${combo.length} itens');
+    }
+    return parts.join(' · ');
+  }
+
+  Future<void> _maybeShowFirstPurchaseCoupon() async {
+    final offer = widget.firstPurchaseCoupon;
+    if (offer == null || !offer.enabled) return;
+    if (widget.items.isEmpty) return;
+    if (CatalogFirstPurchasePromoSession.wasShownForLoja(widget.lojaId)) {
+      return;
+    }
+    if (_firstPurchasePromoInFlight) return;
+
+    _firstPurchasePromoInFlight = true;
+    try {
+      if (offer.requireClienteSemPedidos) {
+        final c = await ClienteAuthService.getClienteLogado();
+        if (!mounted) return;
+        if (c == null) return;
+        final email = (c['email'] ?? '').toString().trim();
+        if (email.isEmpty) return;
+        final r = await ClienteAuthService.getPedidosDoCliente(
+          lojaId: widget.lojaId,
+          email: email,
+          clienteId: c['clienteId']?.toString(),
+        );
+        if (!mounted) return;
+        if (r.precisaReconectar) return;
+        if (r.pedidos.isNotEmpty) return;
+      }
+
+      if (!mounted) return;
+      CatalogFirstPurchasePromoSession.markShownForLoja(widget.lojaId);
+      if (kDebugMode) {
+        debugPrint(
+          '[FIRST_PURCHASE_MODAL] showCatalogFirstPurchaseCouponDialog '
+          '(CarrinhoSheetWeb, lojaId=${widget.lojaId})',
+        );
+      }
+      await showCatalogFirstPurchaseCouponDialog(
+        context: context,
+        offer: offer,
+        onUseCoupon: () {
+          if (!mounted) return;
+          setState(() {
+            _cupomCtrl.text = offer.couponCode;
+          });
+          _scheduleFormSave();
+          unawaited(_aplicarCupom());
+        },
+        onDismiss: () {},
+      );
+    } finally {
+      _firstPurchasePromoInFlight = false;
+    }
   }
 
   /// Preenche automaticamente os dados do cliente logado.
@@ -456,6 +610,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   void didUpdateWidget(covariant CarrinhoSheetWeb oldWidget) {
     super.didUpdateWidget(oldWidget);
 
+    if (widget.items.isNotEmpty &&
+        (oldWidget.items.isEmpty ||
+            oldWidget.items.length != widget.items.length)) {
+      _scheduleFirstPurchasePromoCheck();
+    }
+
+    if (oldWidget.items.length != widget.items.length) {
+      if (widget.items.length > _quantidadeProdutosAoMostrarRoleta) {
+        _quantidadeProdutosAoMostrarRoleta = widget.items.length;
+      }
+    }
+
     if (oldWidget.initialRoletaJaGirada != widget.initialRoletaJaGirada ||
         oldWidget.initialCupomRoletaCodigo != widget.initialCupomRoletaCodigo ||
         oldWidget.initialFreteGratisRoleta != widget.initialFreteGratisRoleta) {
@@ -464,26 +630,26 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       _cupomRoletaDesconto = widget.initialCupomRoletaDesconto;
       _premioRoletaDescricao = widget.initialPremioRoletaDescricao;
       _freteGratisRoleta = widget.initialFreteGratisRoleta;
-      setState(() {});
     }
 
     if (oldWidget.fretes != widget.fretes) {
-      _fretesLocal =
-          widget.fretes.map((e) => asMapDeep(e)).toList();
+      _fretesLocal = widget.fretes.map((e) => asMapDeep(e)).toList();
 
       if (_fretesLocal.isEmpty) {
         _freteIndex = 0;
       } else if (_freteIndex >= _fretesLocal.length) {
         _freteIndex = 0;
       }
-
-      setState(() {});
-      _atualizarEstadoRoleta(); // Atualizar quando mudar o frete
     }
 
-    // Verificar se os produtos mudaram
-    if (oldWidget.items.length != widget.items.length) {
-      _atualizarEstadoRoleta();
+    final precisaAtualizarRoleta = oldWidget.fretes != widget.fretes ||
+        oldWidget.items.length != widget.items.length;
+    if (precisaAtualizarRoleta) {
+      // Evita setState durante o update do elemento (árvore pode estar bloqueada)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _atualizarEstadoRoleta();
+      });
     }
   }
 
@@ -623,24 +789,19 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
   }
 
-  /// Verifica se a roleta pode ser exibida (só quando roleta ativa, não campanha)
+  /// Verifica se a roleta pode ser exibida (só quando roleta ativa, não campanha).
+  /// Sem efeitos colaterais — a contagem é sincronizada em [initState]/[didUpdateWidget].
   bool get _podeExibirRoleta {
     if (!_roletaAtiva) return false;
     if (_roletaJaGirada) return false;
     if (!_todosOsDadosPreenchidos) return false;
-    if (_subtotal < _valorMinimoRoleta) return false; // ✅ Verifica valor mínimo
+    if (_subtotal < _valorMinimoRoleta) return false;
 
-    // Se a quantidade de produtos mudou (usuário adicionou/removeu produtos)
-    // Perde a chance, a não ser que tenha ADICIONADO produtos
     if (widget.items.length != _quantidadeProdutosAoMostrarRoleta) {
       if (widget.items.length > _quantidadeProdutosAoMostrarRoleta) {
-        // Adicionou produtos - atualiza a quantidade e mantém a chance
-        _quantidadeProdutosAoMostrarRoleta = widget.items.length;
         return true;
-      } else {
-        // Removeu produtos - perde a chance
-        return false;
       }
+      return false;
     }
 
     return true;
@@ -1067,73 +1228,94 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final frete = fretesExibir[idxFrete];
 
     // 🔍 DEBUG: Log do frete selecionado
-    logD(
-        '💰 [TOTAL] Frete selecionado (índice $_freteIndex): ${frete['nome']}');
-    logD('💰 [TOTAL] Frete completo: $frete');
-    logD(
-        '💰 [TOTAL] Campo valor bruto: ${frete['valor']} (tipo: ${frete['valor'].runtimeType})');
+    if (kDebugMode) {
+      logD(
+          '💰 [TOTAL] Frete selecionado (índice $_freteIndex): ${frete['nome']}');
+      logD('💰 [TOTAL] Frete completo: $frete');
+      logD(
+          '💰 [TOTAL] Campo valor bruto: ${frete['valor']} (tipo: ${frete['valor'].runtimeType})');
+    }
 
     final double valorFreteOriginal =
         (frete['valor'] as num?)?.toDouble() ?? 0.0;
     final double valorFreteFinal = _freteGratis ? 0.0 : valorFreteOriginal;
 
-    logD('💰 [TOTAL] Valor frete original: R\$ $valorFreteOriginal');
-    logD(
-        '💰 [TOTAL] Valor frete final: R\$ $valorFreteFinal (frete grátis: $_freteGratis)');
-    logD('💰 [TOTAL] Subtotal: R\$ $_subtotal (PIX: R\$ $_subtotalPix)');
+    if (kDebugMode) {
+      logD('💰 [TOTAL] Valor frete original: R\$ $valorFreteOriginal');
+      logD(
+          '💰 [TOTAL] Valor frete final: R\$ $valorFreteFinal (frete grátis: $_freteGratis)');
+      logD('💰 [TOTAL] Subtotal: R\$ $_subtotal (PIX: R\$ $_subtotalPix)');
+    }
 
     final tSnap = _totals;
     final double descontoProdutos = tSnap.descontoCupom;
     final double total = tSnap.total;
 
-    logD(
-        '💰 [TOTAL] Total calculado: R\$ $_subtotalConformePagamento + R\$ $valorFreteFinal - R\$ $descontoProdutos = R\$ $total');
+    if (kDebugMode) {
+      logD(
+          '💰 [TOTAL] Total calculado: R\$ $_subtotalConformePagamento + R\$ $valorFreteFinal - R\$ $descontoProdutos = R\$ $total');
+    }
 
+    final sheetBg = _cartUi.sheetBackground;
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      child: ColoredBox(
+        color: sheetBg.a == 0 ? Colors.transparent : sheetBg,
         child: LayoutBuilder(
           builder: (_, c) {
-            final isWide = c.maxWidth > 1040;
-            return SingleChildScrollView(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1300),
-                  child: isWide
-                      ? Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: _left(context)),
-                            const SizedBox(width: 18),
-                            Expanded(child: _centerForm(context)),
-                            const SizedBox(width: 18),
-                            SizedBox(
-                              width: 420,
-                              child: _right(
+            // Checkout em 2 colunas (desktop): principal | resumo+CTA — estilo e-commerce.
+            final isWide = c.maxWidth > 1080;
+            final padH = c.maxWidth < 420 ? 12.0 : 16.0;
+            final gapStack = c.maxWidth < 420 ? 18.0 : 22.0;
+            final summaryW = math.min(400.0, (c.maxWidth * 0.34).clamp(300.0, 420.0));
+            final mainCheckout = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _left(context),
+                SizedBox(height: gapStack),
+                _centerForm(context),
+                SizedBox(height: gapStack),
+                _checkoutFulfillmentAndPayment(context),
+              ],
+            );
+            return Padding(
+              padding: EdgeInsets.fromLTRB(padH, 10, padH, 24),
+              child: SingleChildScrollView(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1280),
+                    child: isWide
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: mainCheckout),
+                              SizedBox(width: gapStack),
+                              SizedBox(
+                                width: summaryW,
+                                child: _right(
+                                  context,
+                                  total,
+                                  frete,
+                                  valorFreteOriginal,
+                                  descontoProdutos,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              mainCheckout,
+                              SizedBox(height: gapStack),
+                              _right(
                                 context,
                                 total,
                                 frete,
                                 valorFreteOriginal,
                                 descontoProdutos,
                               ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            _left(context),
-                            const SizedBox(height: 16),
-                            _centerForm(context),
-                            const SizedBox(height: 16),
-                            _right(
-                              context,
-                              total,
-                              frete,
-                              valorFreteOriginal,
-                              descontoProdutos,
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             );
@@ -1368,13 +1550,12 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     Widget opcoesFreteContent(BuildContext sheetContext) {
       return StatefulBuilder(
           builder: (context, setModalState) {
-            return Container(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.65,
-              ),
+            final modalH = MediaQuery.of(context).size.height * 0.65;
+            return SizedBox(
+              height: modalH,
+              child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Título
@@ -1399,8 +1580,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Lista de opções de frete (com altura limitada e scroll)
-                  Flexible(
+                  // Lista de opções de frete (altura limitada + scroll; evita Column min + Flexible)
+                  Expanded(
                     child: SingleChildScrollView(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -1628,6 +1809,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   const SizedBox(height: 10),
                 ],
               ),
+            ),
             );
           },
         );
@@ -1950,93 +2132,92 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   }
 
 // ---------------------------------------------------------------------
-// COLUNA ESQUERDA – ITENS DO CARRINHO (visual premium)
+// COLUNA ESQUERDA – ITENS (checkout e-commerce)
 // ---------------------------------------------------------------------
   Widget _left(BuildContext context) {
     final theme = Theme.of(context);
-    final textStyleTitle = theme.textTheme.titleMedium?.copyWith(
-      fontWeight: FontWeight.w700,
-      color: widget.textColor,
+    final cu = _cartUi;
+    final mq = MediaQuery.sizeOf(context);
+    final compact = mq.width < 420;
+    final border = Color.alphaBlend(
+      cu.inputBorderColor.withValues(alpha: 0.38),
+      cu.cartCardBackground,
     );
 
-    final productNameColor = widget.productNameColor ?? widget.textColor;
-    final productPriceColor = widget.productPriceColor ?? widget.primary;
+    final productNameColor = widget.productNameColor ?? cu.primaryTextColor;
+    final productPriceColor = widget.productPriceColor ?? cu.summaryTotalColor;
 
-    return Card(
-      color: widget.checkoutCardColor ?? widget.cardColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cu.cartCardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border),
       ),
-      elevation: 8,
-      shadowColor: Colors.black.withValues(alpha:0.45),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 14),
+        padding: EdgeInsets.fromLTRB(
+          compact ? 16 : 18,
+          compact ? 16 : 18,
+          compact ? 12 : 16,
+          compact ? 16 : 18,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: widget.primary.withValues(alpha:0.15),
-                  ),
-                  child: Icon(
-                    Icons.shopping_bag_outlined,
-                    size: 20,
-                    color: widget.primary,
+                Expanded(
+                  child: Text(
+                    'ITENS DO PEDIDO',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.35,
+                      color: cu.sectionTitleColor.withValues(alpha: 0.88),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Text('Itens do carrinho', style: textStyleTitle),
-                const Spacer(),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        widget.primary.withValues(alpha:0.24),
-                        widget.primary.withValues(alpha:0.14),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '${widget.items.length} item${widget.items.length == 1 ? '' : 's'}',
-                    style: TextStyle(
-                      color: widget.primary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
+                const SizedBox(width: 8),
+                Text(
+                  '${widget.items.length}',
+                  style: TextStyle(
+                    color: cu.mutedTextColor,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            Divider(
-              height: 1,
-              color: Colors.white.withValues(alpha:0.06),
+            const SizedBox(height: 4),
+            Text(
+              'Revise produtos e quantidades',
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.3,
+                color: cu.mutedTextColor,
+              ),
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: compact ? 14 : 16),
+            Divider(height: 1, thickness: 1, color: cu.itemDividerColor),
+            SizedBox(height: compact ? 10 : 12),
 
             if (widget.items.isEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 22),
+                padding: const EdgeInsets.symmetric(vertical: 26),
                 child: Row(
                   children: [
                     Icon(
                       Icons.remove_shopping_cart_outlined,
-                      color: widget.textColor.withValues(alpha:0.5),
+                      color: cu.mutedTextColor,
+                      size: 22,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         'Seu carrinho está vazio.',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: widget.textColor.withValues(alpha:0.7),
+                          color: cu.secondaryTextColor,
+                          height: 1.35,
                         ),
                       ),
                     ),
@@ -2048,10 +2229,19 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: widget.items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, __) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Divider(
+                    height: 1,
+                    thickness: 1,
+                    indent: compact ? 76 : 80,
+                    color: cu.itemDividerColor,
+                  ),
+                ),
                 itemBuilder: (_, i) {
                   final item = widget.items[i];
                   final name = (item['name'] ?? item['nome'] ?? '').toString();
+                  final sub = _cartItemVariantSubtitle(item);
 
                   final rawImageUrl =
                       (item['imageUrl'] ?? '').toString().trim();
@@ -2066,8 +2256,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
                   final qty = CatalogEstoqueHelper.parseCartItemQuantidade(
                       item['quantidade']);
-                  final price = (item['preco'] as num?)?.toDouble() ??
-                      0.0; // ✅ CORRIGIDO: 'preco'
+                  final price = (item['preco'] as num?)?.toDouble() ?? 0.0;
                   final pctPix =
                       (item['percentualDescontoPix'] as num?)?.toDouble() ??
                           0.0;
@@ -2077,43 +2266,26 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           : price;
                   final total = precoEfetivo * qty;
 
-                  return Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha:0.06),
-                      ),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          widget.cardColor.withValues(alpha:0.98),
-                          widget.cardColor.withValues(alpha:0.92),
-                        ],
-                      ),
-                    ),
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ClipRRect(
-                          borderRadius: const BorderRadius.horizontal(
-                            left: Radius.circular(18),
-                          ),
+                          borderRadius: BorderRadius.circular(8),
                           child: SizedBox(
-                            width: 76,
-                            height: 76,
+                            width: compact ? 64 : 68,
+                            height: compact ? 64 : 68,
                             child: CatalogImagePlaceholder(
                               url: fixedImageUrl,
                               fit: BoxFit.cover,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        SizedBox(width: compact ? 12 : 14),
                         Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 10,
-                              horizontal: 2,
-                            ),
+                            padding: const EdgeInsets.only(top: 1, right: 2),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -2123,30 +2295,38 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    fontSize: 14,
+                                    fontSize: compact ? 14 : 15,
+                                    height: 1.25,
+                                    letterSpacing: -0.15,
                                     color: productNameColor,
                                   ),
                                 ),
-                                const SizedBox(height: 4),
+                                if (sub.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    sub,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      height: 1.35,
+                                      color: cu.mutedTextColor.withValues(
+                                        alpha: 0.88,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                SizedBox(height: compact ? 8 : 10),
                                 Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 3,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        borderRadius:
-                                            BorderRadius.circular(999),
-                                        color: Colors.white
-                                            .withValues(alpha:0.05),
-                                      ),
-                                      child: Text(
-                                        'Qtd: $qty',
-                                        style: TextStyle(
-                                          fontSize: 11.5,
-                                          color: widget.textColor
-                                              .withValues(alpha:0.7),
+                                    Text(
+                                      'Qtd $qty',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                        color: cu.mutedTextColor.withValues(
+                                          alpha: 0.85,
                                         ),
                                       ),
                                     ),
@@ -2155,7 +2335,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                       'R\$ ${_fmt2(total)}',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w700,
-                                        fontSize: 14.5,
+                                        fontSize: compact ? 14 : 15,
+                                        letterSpacing: -0.2,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
                                         color: productPriceColor,
                                       ),
                                     ),
@@ -2166,10 +2350,22 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           ),
                         ),
                         IconButton(
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                          style: IconButton.styleFrom(
+                            foregroundColor:
+                                cu.removeIconColor.withValues(alpha: 0.75),
+                            hoverColor: cu.removeIconColor.withValues(alpha: 0.08),
+                          ),
                           tooltip: 'Remover item',
                           icon: Icon(
-                            Icons.delete_outline,
-                            color: Colors.redAccent.withValues(alpha:0.9),
+                            Icons.close_rounded,
+                            size: 18,
+                            color: cu.removeIconColor.withValues(alpha: 0.85),
                           ),
                           onPressed: () => _removeItemAndRefresh(i),
                         ),
@@ -2185,52 +2381,66 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   }
 
 // ---------------------------------------------------------------------
-// COLUNA CENTRAL – DADOS DO CLIENTE (premium)
+// COLUNA CENTRAL – DADOS DO CLIENTE / ENTREGA (checkout e-commerce)
 // ---------------------------------------------------------------------
   Widget _centerForm(BuildContext context) {
     final theme = Theme.of(context);
+    final cu = _cartUi;
+    final compact = MediaQuery.sizeOf(context).width < 420;
+    final border = Color.alphaBlend(
+      cu.inputBorderColor.withValues(alpha: 0.38),
+      cu.cartCardBackground,
+    );
 
     InputDecoration deco(String label, {String? hint, String? campoKey}) {
       final hasError = campoKey != null && _camposComErro.contains(campoKey);
       const erroColor = Color(0xFFEF4444);
+      final borderIdle = Color.alphaBlend(
+        cu.inputBorderColor.withValues(alpha: 0.65),
+        cu.inputBackground,
+      );
       return InputDecoration(
         labelText: label,
         hintText: hint,
         hintStyle: TextStyle(
-          color: Colors.white.withValues(alpha:0.5),
+          color: cu.inputHintColor.withValues(alpha: 0.88),
+          fontWeight: FontWeight.w400,
+          fontSize: 14,
         ),
         labelStyle: TextStyle(
-          color: hasError ? erroColor : Colors.white.withValues(alpha:0.8),
+          color: hasError ? erroColor : cu.secondaryTextColor,
           fontWeight: FontWeight.w600,
-          fontSize: 13,
+          fontSize: 12,
+          letterSpacing: -0.1,
         ),
         filled: true,
         fillColor: hasError
-            ? erroColor.withValues(alpha:0.08)
-            : (widget.checkoutFieldBg ??
-                widget.cardColor.withValues(alpha:0.9)),
+            ? erroColor.withValues(alpha: 0.08)
+            : cu.inputBackground,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(
-            color: hasError ? erroColor : Colors.white.withValues(alpha:0.16),
+            color: hasError ? erroColor : borderIdle,
+            width: 1,
           ),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(
-            color: hasError ? erroColor : Colors.white.withValues(alpha:0.12),
+            color: hasError ? erroColor : borderIdle,
+            width: 1,
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(
             color: hasError ? erroColor : widget.primary,
             width: 1.5,
           ),
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 10,
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: compact ? 14 : 16,
+          vertical: compact ? 13 : 14,
         ),
       );
     }
@@ -2238,19 +2448,23 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     return Theme(
       data: Theme.of(context).copyWith(
         textTheme: Theme.of(context).textTheme.apply(
-              bodyColor: Colors.white,
-              displayColor: Colors.white,
+              bodyColor: cu.primaryTextColor,
+              displayColor: cu.primaryTextColor,
             ),
       ),
-      child: Card(
-        color: widget.checkoutCardColor ?? widget.cardColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(26),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: cu.cartCardBackground,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: border),
         ),
-        elevation: 10,
-        shadowColor: const Color.fromARGB(255, 9, 9, 9).withValues(alpha:0.55),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+          padding: EdgeInsets.fromLTRB(
+            compact ? 16 : 18,
+            compact ? 16 : 18,
+            compact ? 16 : 18,
+            compact ? 18 : 18,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -2261,7 +2475,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEF4444).withValues(alpha:0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                         color: const Color(0xFFEF4444).withValues(alpha:0.5)),
                   ),
@@ -2285,32 +2499,25 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 ),
                 const SizedBox(height: 14),
               ],
-              // título
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: widget.primary.withValues(alpha:0.15),
-                    ),
-                    child: Icon(
-                      Icons.person_outline,
-                      size: 20,
-                      color: widget.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Dados do cliente',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: widget.textColor,
-                    ),
-                  ),
-                ],
+              Text(
+                'DADOS E ENTREGA',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.35,
+                  color: cu.sectionTitleColor.withValues(alpha: 0.88),
+                ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 4),
+              Text(
+                'Informações para contato e envio',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.3,
+                  color: cu.mutedTextColor,
+                ),
+              ),
+              SizedBox(height: compact ? 14 : 16),
 
               // Nome + CPF
               Row(
@@ -2319,7 +2526,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     flex: 2,
                     child: TextField(
                       controller: _nome,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(
+                        color: cu.inputTextColor,
+                        fontSize: 15,
+                        height: 1.25,
+                      ),
                       decoration: deco('Nome completo *', campoKey: 'nome'),
                       onChanged: (_) { _limparErroCampo('nome'); _scheduleFormSave(); },
                     ),
@@ -2328,7 +2539,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   Expanded(
                     child: TextField(
                       controller: _cpf,
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(
+                        color: cu.inputTextColor,
+                        fontSize: 15,
+                        height: 1.25,
+                      ),
                       keyboardType: kKeyboardDecimal,
                       decoration: deco('CPF *', campoKey: 'cpf'),
                       onChanged: (_) { _limparErroCampo('cpf'); _scheduleFormSave(); },
@@ -2336,7 +2551,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
 
               // Email + Telefone
               Row(
@@ -2346,6 +2561,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
+                      style: TextStyle(
+                        color: cu.inputTextColor,
+                        fontSize: 15,
+                        height: 1.25,
+                      ),
                       decoration: deco('E-mail (opcional)', campoKey: 'email'),
                       onChanged: (_) { _limparErroCampo('email'); _scheduleFormSave(); },
                     ),
@@ -2355,6 +2575,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _tel,
                       keyboardType: TextInputType.phone,
+                      style: TextStyle(
+                        color: cu.inputTextColor,
+                        fontSize: 15,
+                        height: 1.25,
+                      ),
                       decoration:
                           deco('Telefone / WhatsApp *', campoKey: 'tel'),
                       onChanged: (_) { _limparErroCampo('tel'); _scheduleFormSave(); },
@@ -2369,13 +2594,19 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   Expanded(
                     child: Text(
                       'Endereço de entrega',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: widget.textColor.withValues(alpha:0.9),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        letterSpacing: -0.15,
+                        color: cu.secondaryTextColor,
                       ),
                     ),
                   ),
-                  TextButton.icon(
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: TextButton.icon(
                     onPressed: () async {
                       setState(() {}); // Feedback imediato ao toque
                       final resultado = await _preencherDadosClienteLogado();
@@ -2414,6 +2645,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     style: TextButton.styleFrom(
                       foregroundColor: widget.primary,
                     ),
+                  ),
                   ),
                 ],
               ),
@@ -2561,8 +2793,622 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     );
   }
 
+  /// Painel de seção estilo checkout de loja (borda leve, sem “card boutique”).
+  Widget _commercePanel({
+    required String title,
+    String? subtitle,
+    required Widget child,
+  }) {
+    final cu = _cartUi;
+    final border = Color.alphaBlend(
+      cu.inputBorderColor.withValues(alpha: 0.38),
+      cu.cartCardBackground,
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cu.cartCardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.35,
+                color: cu.sectionTitleColor.withValues(alpha: 0.88),
+              ),
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: cu.mutedTextColor,
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Frete, pagamento, cupom e roleta — coluna principal (antes do resumo / CTAs).
+  Widget _checkoutFulfillmentAndPayment(BuildContext context) {
+    final theme = Theme.of(context);
+    final cu = _cartUi;
+    final compact = MediaQuery.sizeOf(context).width < 420;
+    final Color campoBg = cu.inputBackground;
+    final Color bordaCampo = cu.inputBorderColor;
+    final Color textoCampo = cu.inputTextColor;
+    final Color textoLabel = cu.sectionTitleColor;
+    final Color textoMutado = cu.mutedTextColor;
+
+    TextStyle checkoutSectionTitle() => TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 12.5,
+          letterSpacing: 0.28,
+          height: 1.35,
+          color: textoLabel.withValues(alpha: 0.92),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _commercePanel(
+          title: 'ENTREGA',
+          subtitle: 'Opção de envio ou retirada',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_fretesLocal.isNotEmpty)
+                InkWell(
+                  onTap: () => _mostrarOpcoesDeFrete(context),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 14 : 15,
+                      vertical: compact ? 13 : 14,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Color.alphaBlend(
+                          bordaCampo.withValues(alpha: 0.55),
+                          campoBg,
+                        ),
+                      ),
+                      color: campoBg,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.local_shipping_outlined,
+                            color: textoCampo, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: () {
+                            if (_freteIndex >= 0 &&
+                                _freteIndex < _fretesLocal.length) {
+                              final f = _fretesLocal[_freteIndex];
+                              final nome =
+                                  (f['nome'] ?? f['label'] ?? '').toString();
+                              final valor =
+                                  (f['valor'] as num?)?.toDouble() ?? 0.0;
+                              final prazo = (f['prazo'] ?? '').toString();
+                              final precoTexto = _freteGratis
+                                  ? 'Grátis'
+                                  : 'R\$ ${_fmt2(valor)}';
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    nome,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: textoCampo,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$precoTexto${prazo.isNotEmpty ? ' · $prazo' : ''}',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: textoCampo.withValues(alpha: 0.72),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+                            return Text(
+                              'Selecionar frete',
+                              style:
+                                  TextStyle(color: textoCampo, fontSize: 15),
+                            );
+                          }(),
+                        ),
+                        Icon(Icons.keyboard_arrow_down,
+                            color: textoCampo, size: 24),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_fretesLocal.isEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Color.alphaBlend(
+                        bordaCampo.withValues(alpha: 0.55),
+                        campoBg,
+                      ),
+                    ),
+                    color: campoBg,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline,
+                          color: textoCampo.withValues(alpha: 0.6), size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Calcule o frete digitando seu CEP acima',
+                          style: TextStyle(
+                              color: textoCampo.withValues(alpha: 0.72),
+                              fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(height: compact ? 14 : 16),
+        _commercePanel(
+          title: 'PAGAMENTO E CUPOM',
+          subtitle: 'Forma de pagamento e benefícios',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Forma de pagamento', style: checkoutSectionTitle()),
+              const SizedBox(height: 8),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Color.alphaBlend(
+                      bordaCampo.withValues(alpha: 0.55),
+                      campoBg,
+                    ),
+                  ),
+                  color: campoBg,
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _pagamento,
+                    isExpanded: true,
+                    borderRadius: BorderRadius.circular(10),
+                    dropdownColor: campoBg,
+                    iconEnabledColor: textoCampo,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 12 : 14,
+                      vertical: 4,
+                    ),
+                    style: TextStyle(
+                      color: textoCampo,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'PIX',
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10),
+                          child: Text('PIX'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'CARTAO',
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10),
+                          child: Text('Cartão de crédito / débito'),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'DINHEIRO',
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 10),
+                          child: Text('Dinheiro'),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _pagamento = v);
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text('Cupom de desconto', style: checkoutSectionTitle()),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _cupomCtrl,
+                      style: TextStyle(
+                        color: textoCampo,
+                        fontSize: 15,
+                        height: 1.25,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Digite o cupom',
+                        hintStyle: TextStyle(
+                          color: textoMutado.withValues(alpha: 0.88),
+                          fontSize: 14,
+                        ),
+                        filled: true,
+                        fillColor: campoBg,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: compact ? 14 : 16,
+                          vertical: compact ? 14 : 15,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: Color.alphaBlend(
+                              bordaCampo.withValues(alpha: 0.55),
+                              campoBg,
+                            ),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: Color.alphaBlend(
+                              bordaCampo.withValues(alpha: 0.55),
+                              campoBg,
+                            ),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: widget.primary,
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  FilledButton(
+                    onPressed: _aplicarCupom,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: cu.primaryActionBackground,
+                      foregroundColor: cu.primaryActionTextColor,
+                      elevation: 0,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 16 : 20,
+                        vertical: compact ? 14 : 15,
+                      ),
+                      minimumSize: Size(0, compact ? 48 : 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text(
+                      'Aplicar',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600, letterSpacing: 0.1),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final cliente = await ClienteAuthService.getClienteLogado();
+                  final clienteId = cliente?['clienteId']?.toString();
+                  if (clienteId == null || clienteId.isEmpty) {
+                    widget.showSnack(
+                      'Faça login para escolher um cupom da lista de cupons ativos.',
+                    );
+                    return;
+                  }
+                  final valorPedido = _subtotalConformePagamento;
+                  if (!context.mounted) return;
+                  final cupomEscolhido = await mostrarModalSelecionarCupom(
+                    context: context,
+                    lojaId: widget.lojaId,
+                    clienteId: clienteId,
+                    valorPedido: valorPedido,
+                  );
+                  if (!mounted) return;
+                  if (cupomEscolhido != null) {
+                    setState(() {
+                      if (cupomEscolhido is Cupom) {
+                        _cupomAplicado = _cupomMapFromCupom(cupomEscolhido);
+                      } else if (cupomEscolhido is Map) {
+                        _cupomAplicado =
+                            Map<String, dynamic>.from(cupomEscolhido);
+                      }
+                    });
+                    final codigo = cupomEscolhido is Cupom
+                        ? cupomEscolhido.codigo
+                        : (cupomEscolhido is Map
+                            ? (cupomEscolhido['codigo']?.toString() ?? '')
+                            : '');
+                    widget.showSnack(
+                      codigo.isNotEmpty
+                          ? 'Cupom aplicado: $codigo'
+                          : 'Cupom aplicado.',
+                    );
+                  }
+                },
+                icon: const Icon(Icons.local_offer_outlined, size: 20),
+                label: const Text(
+                  'Selecionar cupom',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w500, letterSpacing: 0.05),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: cu.secondaryActionTextColor,
+                  side: BorderSide(
+                    color: cu.secondaryActionTextColor.withValues(alpha: 0.38),
+                    width: 1.05,
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    vertical: compact ? 13 : 14,
+                    horizontal: 14,
+                  ),
+                  minimumSize: Size(0, compact ? 46 : 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              if (_cupomAplicado != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle,
+                      size: 18,
+                      color: widget.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Cupom aplicado: '
+                                '${(_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '')}'
+                            .toString()
+                            .toUpperCase(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: textoCampo,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (_cupomRoletaCodigo != null &&
+                  _cupomRoletaCodigo!.isNotEmpty &&
+                  _cupomAplicado == null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.stars, size: 18, color: Colors.amber[700]),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Cupom da roleta: ${_cupomRoletaCodigo!.toUpperCase()}',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: textoCampo),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              Builder(
+                builder: (context) {
+                  if (!_roletaAtiva) {
+                    return const SizedBox.shrink();
+                  }
+                  logD('🎰 Verificando exibição da roleta:');
+                  logD('   _roletaAtiva: $_roletaAtiva');
+                  logD('   _roletaJaGirada: $_roletaJaGirada');
+                  logD(
+                      '   _todosOsDadosPreenchidos: $_todosOsDadosPreenchidos');
+                  logD('   _podeExibirRoleta: $_podeExibirRoleta');
+
+                  if (_podeExibirRoleta) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.stars,
+                                  color: Colors.black, size: 24),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Você completou seus dados! Gire a roleta e concorra a prêmios!',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        RoletaWebWidgetV3(
+                          lojaId: widget.lojaId,
+                          totalCarrinho: _subtotal,
+                          clienteEmail: _email.text.trim().isEmpty
+                              ? null
+                              : _email.text.trim(),
+                          onCupomGerado: () {
+                            setState(() => _roletaJaGirada = true);
+                            widget.onRoletaPremioGanho?.call(
+                              jaGirada: true,
+                              codigo: _cupomRoletaCodigo,
+                              desconto: _cupomRoletaDesconto,
+                              descricao: _premioRoletaDescricao,
+                              freteGratis: _freteGratisRoleta,
+                            );
+                            widget.showSnack(
+                                '🎉 Cupom gerado! Use na próxima compra.');
+                          },
+                          onCupomGeradoComDados: (codigo, desconto) {
+                            final freteGratis = codigo == 'FRETE_GRATIS';
+                            setState(() {
+                              _roletaJaGirada = true;
+                              _cupomRoletaCodigo = codigo;
+                              _cupomRoletaDesconto = desconto;
+                              if (freteGratis) _freteGratisRoleta = true;
+                              if (freteGratis) {
+                                widget.showSnack(
+                                    '🎉 Frete grátis aplicado nesta compra!');
+                              }
+                            });
+                            widget.onRoletaPremioGanho?.call(
+                              jaGirada: true,
+                              codigo: codigo,
+                              desconto: desconto,
+                              descricao: _premioRoletaDescricao,
+                              freteGratis: freteGratis,
+                            );
+                            logD(
+                                '💾 Cupom da roleta salvo: $codigo ($desconto%)');
+                          },
+                          onPremioGanho: (codigo, desconto, descricao) {
+                            final freteGratis = codigo == 'FRETE_GRATIS';
+                            setState(() {
+                              _roletaJaGirada = true;
+                              _cupomRoletaCodigo = codigo;
+                              _cupomRoletaDesconto = desconto;
+                              _premioRoletaDescricao = descricao;
+                              if (freteGratis) _freteGratisRoleta = true;
+                            });
+                            widget.onRoletaPremioGanho?.call(
+                              jaGirada: true,
+                              codigo: codigo,
+                              desconto: desconto,
+                              descricao: descricao,
+                              freteGratis: freteGratis,
+                            );
+                            logD(
+                                '💾 Prêmio da roleta salvo: $codigo - $descricao');
+                          },
+                        ),
+                      ],
+                    );
+                  } else {
+                    final atingiuValorMinimo = _subtotal >= _valorMinimoRoleta;
+
+                    if (!_todosOsDadosPreenchidos && atingiuValorMinimo) {
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.symmetric(vertical: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.info_outline,
+                                color: Colors.blue.shade700, size: 24),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Complete todos os dados acima para liberar a Roleta da Sorte e concorrer a prêmios!',
+                                style: TextStyle(
+                                  color: Colors.blue.shade700,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+              if (_checkoutError != null && _checkoutError!.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline,
+                          color: Colors.red.shade700, size: 24),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _checkoutError!,
+                          style: TextStyle(
+                              color: Colors.red.shade900, fontSize: 14),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: () => setState(() => _checkoutError = null),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
 // ---------------------------------------------------------------------
-// COLUNA DIREITA – RESUMO + FRETE + PAGAMENTO + CUPOM (premium)
+// COLUNA DIREITA – RESUMO + CTAs (checkout e-commerce)
 // ---------------------------------------------------------------------
   Widget _right(
     BuildContext context,
@@ -2579,77 +3425,74 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     // ✅ sempre usa o valor final (0 se grátis)
     final double valorFreteFinal = _freteGratis ? 0.0 : valorFreteOriginal;
 
-    // ======================================================================
-    // CORES DO CARRINHO — 100% configuráveis
-    // ======================================================================
-    final Color resumoBg = widget.checkoutCardColor ?? const Color(0xFF020617);
+    final s = _summaryTokens;
+    final cu = _cartUi;
+    final compact = MediaQuery.sizeOf(context).width < 420;
 
-    final Color campoBg = widget.checkoutFieldBg ?? const Color(0xFF0F172A);
+    final sidebarBorder = Color.alphaBlend(
+      cu.inputBorderColor.withValues(alpha: 0.4),
+      cu.summaryCardBackground,
+    );
 
-    final Color bordaCampo = widget.checkoutFieldBorder ?? Colors.white24;
-
-    final Color textoCampo = widget.checkoutFieldTextColor ?? Colors.white;
-
-    final Color textoLabel = widget.checkoutLabelColor ?? Colors.white;
-
-    final Color textoTotal =
-        widget.checkoutTotalColor ?? const Color(0xFF22C55E);
-
-    final Color textoMutado = textoCampo.withValues(alpha:0.7);
-
-    return Card(
-      color: resumoBg,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(26),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cu.summaryCardBackground,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: sidebarBorder),
+        boxShadow: [
+          BoxShadow(
+            color: s.cardShadowColor.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      elevation: 10,
-      shadowColor: const Color.fromARGB(255, 9, 9, 9).withValues(alpha:0.55),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+        padding: EdgeInsets.fromLTRB(
+          compact ? 16 : 18,
+          compact ? 18 : 20,
+          compact ? 16 : 18,
+          compact ? 18 : 20,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // HEADER + TOTAL
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    color: textoTotal,
-                  ),
-                  child: Text(
-                    'Total R\$ ${_fmt2(total)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-              ],
+            Text(
+              'RESUMO DO PEDIDO',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.35,
+                color: cu.sectionTitleColor.withValues(alpha: 0.88),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Confira valores antes de finalizar',
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.3,
+                color: cu.mutedTextColor,
+              ),
             ),
 
-            const SizedBox(height: 16),
+            SizedBox(height: compact ? 14 : 16),
 
-            // BLOCO RESUMO
+            // Valores (visual plano, tipo checkout de loja)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 12 : 14,
+                vertical: compact ? 14 : 15,
               ),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFF0F172A),
-                    resumoBg.withValues(alpha:0.95),
-                  ],
+                borderRadius: BorderRadius.circular(10),
+                color: Color.alphaBlend(
+                  s.panelGradientStart.withValues(alpha: 0.14),
+                  cu.summaryCardBackground,
+                ),
+                border: Border.all(
+                  color: cu.inputBorderColor.withValues(alpha: 0.28),
                 ),
               ),
               child: Column(
@@ -2657,20 +3500,46 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 children: [
                   if (_pagamento.toUpperCase() == 'PIX' &&
                       _subtotalPix < _subtotal) ...[
-                    _resumeRow('Subtotal (cartão)', _subtotal),
-                    _resumeRow('Desconto PIX', -(_subtotal - _subtotalPix),
-                        strOverride: '- R\$ ${_fmt2(_subtotal - _subtotalPix)}',
-                        color: Colors.greenAccent),
-                    _resumeRow('Subtotal produtos', _subtotalPix),
+                    _resumeRow(
+                      catalogSubtotalBeforePixItemDiscountLabel(_pagamento),
+                      _subtotal,
+                      labelColor: cu.summaryLabelColor,
+                      valueColor: cu.summaryValueColor,
+                      sum: s,
+                    ),
+                    _resumeRow(
+                      'Desconto PIX',
+                      -(_subtotal - _subtotalPix),
+                      strOverride:
+                          '- R\$ ${_fmt2(_subtotal - _subtotalPix)}',
+                      labelColor: cu.summaryLabelColor,
+                      valueColor: s.pixDiscountValueColor,
+                      sum: s,
+                    ),
+                    _resumeRow(
+                      'Subtotal produtos',
+                      _subtotalPix,
+                      labelColor: cu.summaryLabelColor,
+                      valueColor: cu.summaryValueColor,
+                      sum: s,
+                    ),
                   ] else
-                    _resumeRow('Subtotal', _subtotalConformePagamento),
+                    _resumeRow(
+                      'Subtotal',
+                      _subtotalConformePagamento,
+                      labelColor: cu.summaryLabelColor,
+                      valueColor: cu.summaryValueColor,
+                      sum: s,
+                    ),
 
                   if (descontoProdutos > 0)
                     _resumeRow(
                       'Descontos',
                       -descontoProdutos,
                       highlight: true,
-                      color: Colors.redAccent,
+                      labelColor: cu.summaryLabelColor,
+                      valueColor: cu.summaryDiscountColor,
+                      sum: s,
                     ),
 
                   // ✅ frete com label e valor corretos
@@ -2680,25 +3549,34 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     strOverride: _freteGratis
                         ? 'R\$ 0,00'
                         : 'R\$ ${_fmt2(valorFreteFinal)}',
+                    labelColor: cu.summaryLabelColor,
+                    valueColor: cu.summaryValueColor,
+                    sum: s,
                   ),
 
-                  const SizedBox(height: 6),
+                  SizedBox(height: compact ? 12 : 14),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(
-                        'Total a pagar',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: textoCampo,
+                      Expanded(
+                        child: Text(
+                          'Total a pagar',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13.5,
+                            letterSpacing: -0.05,
+                            color: cu.summaryLabelColor.withValues(alpha: 0.95),
+                          ),
                         ),
                       ),
-                      const Spacer(),
                       Text(
                         'R\$ ${_fmt2(total)}',
                         style: theme.textTheme.headlineSmall?.copyWith(
-                          color: textoTotal,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 22,
+                          color: cu.summaryTotalColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: compact ? 21 : 22,
+                          letterSpacing: -0.45,
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                     ],
@@ -2707,530 +3585,45 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
               ),
             ),
 
-            const SizedBox(height: 20),
-
-            // ENTREGA
-            Text(
-              'Entrega',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: textoLabel,
-              ),
-            ),
-            const SizedBox(height: 6),
-
-            // ✅ Botão para abrir modal com opções de frete
-            if (_fretesLocal.isNotEmpty)
-              InkWell(
-                onTap: () => _mostrarOpcoesDeFrete(context),
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: bordaCampo),
-                    color: campoBg,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.local_shipping_outlined,
-                          color: textoCampo, size: 22),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: () {
-                          if (_freteIndex >= 0 &&
-                              _freteIndex < _fretesLocal.length) {
-                            final f = _fretesLocal[_freteIndex];
-                            final nome =
-                                (f['nome'] ?? f['label'] ?? '').toString();
-                            final valor =
-                                (f['valor'] as num?)?.toDouble() ?? 0.0;
-                            final prazo = (f['prazo'] ?? '').toString();
-                            final precoTexto =
-                                _freteGratis ? 'Grátis' : 'R\$ ${_fmt2(valor)}';
-
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  nome,
-                                  style: TextStyle(
-                                    color: textoCampo,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '$precoTexto${prazo.isNotEmpty ? ' - $prazo' : ''}',
-                                  style: TextStyle(
-                                    color: textoCampo.withValues(alpha:0.7),
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-                          return Text(
-                            'Selecionar frete',
-                            style: TextStyle(color: textoCampo, fontSize: 15),
-                          );
-                        }(),
-                      ),
-                      Icon(Icons.keyboard_arrow_down,
-                          color: textoCampo, size: 24),
-                    ],
-                  ),
-                ),
-              ),
-
-            // ✅ Mensagem quando não há opções de frete
-            if (_fretesLocal.isEmpty)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: bordaCampo),
-                  color: campoBg,
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline,
-                        color: textoCampo.withValues(alpha:0.6), size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Calcule o frete digitando seu CEP acima',
-                        style: TextStyle(
-                            color: textoCampo.withValues(alpha:0.7),
-                            fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            const SizedBox(height: 16),
-
-            // PAGAMENTO
-            Text(
-              'Forma de pagamento',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: textoLabel,
-              ),
-            ),
-            const SizedBox(height: 6),
-
-            DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: bordaCampo),
-                color: campoBg,
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _pagamento,
-                  isExpanded: true,
-                  borderRadius: BorderRadius.circular(16),
-                  dropdownColor: campoBg,
-                  iconEnabledColor: textoCampo,
-                  style: TextStyle(color: textoCampo),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'PIX',
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 10),
-                        child: Text('PIX'),
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'CARTAO',
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 10),
-                        child: Text('Cartão de crédito / débito'),
-                      ),
-                    ),
-                    DropdownMenuItem(
-                      value: 'DINHEIRO',
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 10),
-                        child: Text('Dinheiro'),
-                      ),
-                    ),
-                  ],
-                  onChanged: (v) {
-                    if (v == null) return;
-                    setState(() => _pagamento = v);
-                  },
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 18),
-
-            // CUPOM
-            Text(
-              'Cupom de desconto',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: textoLabel,
-              ),
-            ),
-            const SizedBox(height: 6),
-
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _cupomCtrl,
-                    style: TextStyle(color: textoCampo),
-                    decoration: InputDecoration(
-                      hintText: 'Digite o cupom',
-                      hintStyle: TextStyle(color: textoMutado),
-                      filled: true,
-                      fillColor: campoBg,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(color: bordaCampo),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(color: bordaCampo),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide(
-                          color: widget.primary,
-                          width: 1.4,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _aplicarCupom,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: widget.primary,
-                    foregroundColor: widget.buttonText,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text('Aplicar'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final cliente = await ClienteAuthService.getClienteLogado();
-                final clienteId = cliente?['clienteId']?.toString();
-                if (clienteId == null || clienteId.isEmpty) {
-                  widget.showSnack(
-                    'Faça login para escolher um cupom da lista de cupons ativos.',
-                  );
-                  return;
-                }
-                final valorPedido = _subtotalConformePagamento;
-                if (!context.mounted) return;
-                final cupomEscolhido = await mostrarModalSelecionarCupom(
-                  context: context,
-                  lojaId: widget.lojaId,
-                  clienteId: clienteId,
-                  valorPedido: valorPedido,
-                );
-                if (!mounted) return;
-                if (cupomEscolhido != null) {
-                  setState(() {
-                    if (cupomEscolhido is Cupom) {
-                      _cupomAplicado = _cupomMapFromCupom(cupomEscolhido);
-                    } else if (cupomEscolhido is Map) {
-                      _cupomAplicado =
-                          Map<String, dynamic>.from(cupomEscolhido);
-                    }
-                  });
-                  final codigo = cupomEscolhido is Cupom
-                      ? cupomEscolhido.codigo
-                      : (cupomEscolhido is Map
-                              ? (cupomEscolhido['codigo']?.toString() ?? '')
-                              : '');
-                  widget.showSnack(
-                    codigo.isNotEmpty
-                        ? 'Cupom aplicado: $codigo'
-                        : 'Cupom aplicado.',
-                  );
-                }
-              },
-              icon: const Icon(Icons.local_offer_outlined, size: 20),
-              label: const Text('Selecionar cupom'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: widget.primary,
-                side: BorderSide(color: widget.primary),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-
-            if (_cupomAplicado != null) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Icon(
-                    Icons.check_circle,
-                    size: 18,
-                    color: widget.primary,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Cupom aplicado: '
-                              '${(_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '')}'
-                          .toString()
-                          .toUpperCase(),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: textoCampo,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            // Cupom da roleta (quando ganhou mas não está em cupom aplicado)
-            if (_cupomRoletaCodigo != null && _cupomRoletaCodigo!.isNotEmpty && _cupomAplicado == null) ...[
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Icon(Icons.stars, size: 18, color: Colors.amber[700]),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Cupom da roleta: ${_cupomRoletaCodigo!.toUpperCase()}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: textoCampo),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-
-            // ✨ ROLETA — só aparece quando ROLETA ativa (config/roleta_sorte). Campanha é função separada.
-            Builder(
-              builder: (context) {
-                if (!_roletaAtiva) {
-                  return const SizedBox.shrink();
-                }
-                logD('🎰 Verificando exibição da roleta:');
-                logD('   _roletaAtiva: $_roletaAtiva');
-                logD('   _roletaJaGirada: $_roletaJaGirada');
-                logD(
-                    '   _todosOsDadosPreenchidos: $_todosOsDadosPreenchidos');
-                logD('   _podeExibirRoleta: $_podeExibirRoleta');
-
-                if (_podeExibirRoleta) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(height: 16),
-
-                      // Aviso de que a roleta está disponível
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.stars,
-                                    color: Colors.black, size: 24),
-                                SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    'Você completou seus dados! Gire a roleta e concorra a prêmios!',
-                                    style: TextStyle(
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          RoletaWebWidgetV3(
-                        lojaId: widget
-                            .lojaId, // Usa widget.lojaId (dentro do _CarrinhoSheetWebState)
-                        totalCarrinho: _subtotal,
-                        clienteEmail: _email.text.trim().isEmpty
-                            ? null
-                            : _email.text.trim(),
-                        onCupomGerado: () {
-                          setState(() => _roletaJaGirada = true);
-                          widget.onRoletaPremioGanho?.call(
-                            jaGirada: true,
-                            codigo: _cupomRoletaCodigo,
-                            desconto: _cupomRoletaDesconto,
-                            descricao: _premioRoletaDescricao,
-                            freteGratis: _freteGratisRoleta,
-                          );
-                          widget.showSnack(
-                              '🎉 Cupom gerado! Use na próxima compra.');
-                        },
-                        onCupomGeradoComDados: (codigo, desconto) {
-                          final freteGratis = codigo == 'FRETE_GRATIS';
-                          setState(() {
-                            _roletaJaGirada = true;
-                            _cupomRoletaCodigo = codigo;
-                            _cupomRoletaDesconto = desconto;
-                            if (freteGratis) _freteGratisRoleta = true;
-                            if (freteGratis) {
-                              widget.showSnack(
-                                  '🎉 Frete grátis aplicado nesta compra!');
-                            }
-                          });
-                          widget.onRoletaPremioGanho?.call(
-                            jaGirada: true,
-                            codigo: codigo,
-                            desconto: desconto,
-                            descricao: _premioRoletaDescricao,
-                            freteGratis: freteGratis,
-                          );
-                          logD(
-                              '💾 Cupom da roleta salvo: $codigo ($desconto%)');
-                        },
-                        onPremioGanho: (codigo, desconto, descricao) {
-                          final freteGratis = codigo == 'FRETE_GRATIS';
-                          setState(() {
-                            _roletaJaGirada = true;
-                            _cupomRoletaCodigo = codigo;
-                            _cupomRoletaDesconto = desconto;
-                            _premioRoletaDescricao = descricao;
-                            if (freteGratis) _freteGratisRoleta = true;
-                          });
-                          widget.onRoletaPremioGanho?.call(
-                            jaGirada: true,
-                            codigo: codigo,
-                            desconto: desconto,
-                            descricao: descricao,
-                            freteGratis: freteGratis,
-                          );
-                          logD(
-                              '💾 Prêmio da roleta salvo: $codigo - $descricao');
-                        },
-                      ),
-                    ],
-                  );
-                } else {
-                  // Roleta ativa mas ainda não pode girar (falta preencher dados ou valor mínimo)
-                  final atingiuValorMinimo = _subtotal >= _valorMinimoRoleta;
-
-                  if (!_todosOsDadosPreenchidos && atingiuValorMinimo) {
-                    // Atingiu valor mínimo mas precisa preencher dados
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      margin: const EdgeInsets.symmetric(vertical: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.info_outline,
-                              color: Colors.blue.shade700, size: 24),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Complete todos os dados acima para liberar a Roleta da Sorte e concorrer a prêmios!',
-                              style: TextStyle(
-                                color: Colors.blue.shade700,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-
-            const SizedBox(height: 22),
-
-            // Banner de erro de pagamento (visível na tela do carrinho)
-            if (_checkoutError != null && _checkoutError!.isNotEmpty) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red.shade300),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.error_outline,
-                        color: Colors.red.shade700, size: 24),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _checkoutError!,
-                        style:
-                            TextStyle(color: Colors.red.shade900, fontSize: 14),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20),
-                      onPressed: () => setState(() => _checkoutError = null),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            SizedBox(height: compact ? 18 : 22),
 
             // BOTÃO WHATSAPP
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
                 icon: _processandoCheckout
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white,
+                          color: cu.whatsappButtonTextColor,
                         ),
                       )
                     : const FaIcon(
                         FontAwesomeIcons.whatsapp,
                         size: 18,
                       ),
-                label: Text(_processandoCheckout
-                    ? 'Processando...'
-                    : 'Finalizar pelo WhatsApp'),
+                label: Text(
+                  _processandoCheckout
+                      ? 'Processando...'
+                      : 'Finalizar pelo WhatsApp',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.15,
+                  ),
+                ),
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  backgroundColor: cu.whatsappButtonBackground,
+                  foregroundColor: cu.whatsappButtonTextColor,
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
+                  padding: EdgeInsets.symmetric(
+                    vertical: compact ? 15 : 16,
+                  ),
+                  minimumSize: const Size.fromHeight(50),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
                 onPressed: _processandoCheckout
@@ -3397,23 +3790,35 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 widget.pixKey.trim().isNotEmpty &&
                 widget.onCheckoutPix != null &&
                 _pagamento.toUpperCase() == 'PIX') ...[
-              const SizedBox(height: 10),
+              SizedBox(height: compact ? 10 : 12),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   icon: _processandoCheckout
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.pix),
-                  label: Text(_processandoCheckout
-                      ? 'Processando...'
-                      : 'Pagar com PIX'),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: cu.pixButtonTextColor,
+                          ),
+                        )
+                      : Icon(Icons.pix, size: 22, color: cu.pixButtonTextColor),
+                  label: Text(
+                    _processandoCheckout ? 'Processando...' : 'Pagar com PIX',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.teal,
-                    side: const BorderSide(color: Colors.teal, width: 1.3),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    foregroundColor: cu.pixButtonTextColor,
+                    side: BorderSide(
+                      color: cu.pixButtonBorderColor.withValues(alpha: 0.85),
+                      width: 1.1,
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: compact ? 14 : 15),
+                    minimumSize: const Size.fromHeight(50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -3568,20 +3973,25 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             if (widget.checkoutGateway != 'whatsapp' &&
                 widget.checkoutGateway != 'pix' &&
                 _pagamento.toUpperCase() != 'DINHEIRO') ...[
-              const SizedBox(height: 10),
+              SizedBox(height: compact ? 10 : 12),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   icon: _processandoCheckout
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: cu.secondaryActionTextColor,
+                          ),
                         )
                       : Icon(
                           _pagamento.toUpperCase() == 'PIX'
                               ? Icons.pix
                               : Icons.payment,
+                          size: 22,
+                          color: cu.secondaryActionTextColor,
                         ),
                   label: Text(
                     _processandoCheckout
@@ -3589,14 +3999,19 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                         : (_pagamento.toUpperCase() == 'PIX'
                             ? 'Pagar com PIX'
                             : widget.checkoutButtonLabel),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.08,
+                    ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: widget.textColor,
+                    foregroundColor: cu.secondaryActionTextColor,
                     side: BorderSide(
-                      color: widget.primary.withValues(alpha:0.8),
-                      width: 1.3,
+                      color: cu.secondaryActionTextColor.withValues(alpha: 0.42),
+                      width: 1.1,
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    padding: EdgeInsets.symmetric(vertical: compact ? 14 : 15),
+                    minimumSize: const Size.fromHeight(50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -3739,28 +4154,41 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     String label,
     double valor, {
     bool highlight = false,
-    Color? color,
+    Color? valueColor,
+    Color? labelColor,
     String? strOverride,
+    required CatalogCheckoutSummaryTokens sum,
   }) {
-    final c = color ?? Colors.white.withValues(alpha:0.85);
+    final vc = valueColor ?? sum.rowValueColor;
+    final lc = labelColor ?? sum.rowLabelColor;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.white.withValues(alpha:0.7),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.3,
+                letterSpacing: -0.05,
+                color: lc.withValues(alpha: 0.94),
+              ),
             ),
           ),
-          const Spacer(),
+          const SizedBox(width: 10),
           Text(
             strOverride ?? 'R\$ ${_fmt2(valor)}',
+            textAlign: TextAlign.right,
             style: TextStyle(
               fontSize: 13,
-              fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
-              color: c,
+              fontWeight: highlight ? FontWeight.w600 : FontWeight.w500,
+              letterSpacing: -0.1,
+              fontFeatures: const [FontFeature.tabularFigures()],
+              color: vc,
             ),
           ),
         ],

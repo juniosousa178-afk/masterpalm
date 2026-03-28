@@ -50,6 +50,26 @@ const Map<String, PlanLimits> kLimitsByPlan = {
 
 /// -------- GERENCIADOR DE LICENÇA --------
 class LicenseManager {
+  static String _normalizePlanId(String? raw) {
+    final p = (raw ?? '').trim().toLowerCase();
+    switch (p) {
+      case 'mensal':
+      case 'pro_monthly':
+        return PlanId.proMonthly;
+      case 'anual':
+      case 'pro_yearly':
+        return PlanId.proYearly;
+      case 'trial_90d':
+      case 'free_trial_90d':
+      case 'free_trial':
+        return 'free_trial_90d';
+      case 'free_limited':
+        return 'free_limited';
+      default:
+        return p;
+    }
+  }
+
   // ========== DEVICE ID ==========
   static Future<String> getDeviceId() async {
     final di = DeviceInfoPlugin();
@@ -87,12 +107,19 @@ class LicenseManager {
     required String planId,
     required DateTime? expiresAt,
   }) async {
+    final normalized = _normalizePlanId(planId);
     final box = await Hive.openBox('licenca');
-    await box.put('currentPlanId', planId);
+    await box.put('currentPlanId', normalized);
     if (expiresAt != null) {
       await box.put('expiresAt', expiresAt.toIso8601String());
     }
     await box.put('ativado', true);
+    try {
+      final sessao = await Hive.openBox('sessao');
+      await sessao.put('plan_plan_id', normalized);
+      await sessao.put('plan_expired', expiresAt != null && expiresAt.isBefore(DateTime.now()));
+      await sessao.put('plan_cache_until', DateTime.now().millisecondsSinceEpoch + 3600000);
+    } catch (_) {}
   }
 
   static Future<String?> getCachedPlanId() async {
@@ -133,9 +160,11 @@ class LicenseManager {
 
     final d = doc.data() ?? <String, dynamic>{};
 
-    final planId =
-        (d['currentPlanId'] ?? d['current_plan_id'] ?? '') as String? ?? '';
-    final status = (d['status'] as String?) ?? 'active';
+    String planId = _normalizePlanId(
+      (d['currentPlanId'] ?? d['current_plan_id'])?.toString(),
+    );
+    String status = (d['status'] ?? 'active').toString();
+    if (status.isEmpty) status = 'active';
     final end =
         _parseEnd(d['current_period_end'] ?? d['currentPeriodEnd']);
 
@@ -154,14 +183,15 @@ class LicenseManager {
 
     try {
       final snap = await col
-          .orderBy('created_at', descending: true)
+          .orderBy('createdAt', descending: true)
           .limit(5)
           .get();
 
       for (final doc in snap.docs) {
         final s = doc.data();
-        final planId =
-            (s['plan_id'] ?? s['planId'] ?? '') as String? ?? '';
+        final planId = _normalizePlanId(
+          (s['plan_id'] ?? s['planId'] ?? '').toString(),
+        );
         final status = (s['status'] as String?) ?? 'active';
         final end =
             _parseEnd(s['current_period_end'] ?? s['currentPeriodEnd']);
@@ -206,14 +236,11 @@ class LicenseManager {
       }
     } catch (_) {}
 
-    // 4) legado: código offline atrelado ao deviceId
+    // 4) DEPRECATED: `licenca.codigo` aposentado para liberação funcional.
+    // Mantido apenas para leitura passiva/compatibilidade de dados antigos.
     try {
       final box = await Hive.openBox('licenca');
-      final codigo = (box.get('codigo') as String?)?.trim();
-      if (codigo != null && codigo.isNotEmpty) {
-        final device = await getDeviceId();
-        return isLicenseValid(device, codigo);
-      }
+      box.get('codigo');
     } catch (_) {}
 
     return false;

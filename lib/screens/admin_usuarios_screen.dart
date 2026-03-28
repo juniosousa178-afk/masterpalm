@@ -39,6 +39,15 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
     return false;
   }
 
+  String _toCanonicalPlanId(String raw) {
+    final p = raw.trim().toLowerCase();
+    if (p == 'anual' || p == 'pro_yearly') return 'pro_yearly';
+    if (p == 'mensal' || p == 'pro_monthly') return 'pro_monthly';
+    if (p == 'trial_90d' || p == 'free_trial_90d') return 'free_trial_90d';
+    if (p == 'lifetime') return 'lifetime';
+    return p;
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -334,6 +343,8 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                               final data = doc.data();
                               final email = data['email']?.toString() ?? doc.id;
                               final tipo = data['tipo']?.toString() ?? 'vendedor';
+                              // Modelo operacional legado/admin em `usuarios/{email}`.
+                              // Fonte global canônica de assinatura permanece em `users/{uid}`.
                               final planoAtivo = data['planoAtivo'] ?? false;
                               final planoId = data['planoId']?.toString() ?? 'free';
                               final manualOverride = data['manualOverride'] ?? false;
@@ -616,6 +627,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
     try {
       final endDate = DateTime.now().add(Duration(days: dias));
       final grantedBy = FirebaseAuth.instance.currentUser?.email ?? 'masterpalm26@gmail.com';
+      final canonicalPlanId = _toCanonicalPlanId(planoId);
 
       await _db.collection('usuarios').doc(email).set({
         'email': email,
@@ -636,13 +648,13 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
             .get();
         if (usersQuery.docs.isNotEmpty) {
           await usersQuery.docs.first.reference.set({
-            'currentPlanId': planoId,
+            'currentPlanId': canonicalPlanId,
             'status': 'active',
             'trialing': false,
             'currentPeriodEnd': Timestamp.fromDate(endDate),
             'manualOverride': {
               'enabled': true,
-              'planId': planoId,
+              'planId': canonicalPlanId,
               'grantedBy': grantedBy,
               'grantedAt': FieldValue.serverTimestamp(),
             },

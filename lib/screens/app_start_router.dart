@@ -109,9 +109,11 @@ class _AppStartRouterState extends State<AppStartRouter> {
       _setBusy('Carregando dados locais...');
       await Hive.openBox('sessao');
       await Hive.openBox('config');
+      await Hive.openBox('licenca');
 
       final sessao = Hive.box('sessao');
       final config = Hive.box('config');
+      final licenca = Hive.box('licenca');
 
       // Sessão de cliente do catálogo não deve abrir o app admin; redirecionar para login.
       if (sessao.get('auth_context') == 'cliente') {
@@ -378,8 +380,14 @@ class _AppStartRouterState extends State<AppStartRouter> {
       PlanInfo? plan;
       if (cacheValid) {
         logD('✅ [ROUTER] Plano em cache, entrando na home');
+        final licencaPlan = (licenca.get('currentPlanId') ?? '').toString();
+        final cachedPlan = PlanosService.normalizePlanId(
+          licencaPlan.isNotEmpty
+              ? licencaPlan
+              : (sessao.get('plan_plan_id') ?? 'free_limited').toString(),
+        );
         plan = PlanInfo(
-          planId: (sessao.get('plan_plan_id') ?? 'free_limited').toString(),
+          planId: cachedPlan.isEmpty ? 'free_limited' : cachedPlan,
           status: 'active',
           trialing: false,
           currentPeriodEnd: null,
@@ -398,16 +406,24 @@ class _AppStartRouterState extends State<AppStartRouter> {
               DateTime.now().millisecondsSinceEpoch + 3600000); // 1h
           sessao.put('plan_expired', plan.isExpired);
           sessao.put('plan_plan_id', plan.planId);
+          // Cache local apenas para boot/offline; Firestore segue canônico.
+          licenca.put('currentPlanId', plan.planId);
+          licenca.put('expiresAt', plan.currentPeriodEnd?.toIso8601String());
+          licenca.put('ativado', !plan.isExpired);
         }
       }
 
       if (plan == null) {
         // Offline ou timeout: usar plano em cache se existir
-        final cachedPlanId = (sessao.get('plan_plan_id') ?? 'free_limited').toString();
-        if (cachedPlanId.isNotEmpty) {
-          logD('📴 [ROUTER] Usando plano em cache (offline/timeout): $cachedPlanId');
+        final licencaPlan = (licenca.get('currentPlanId') ?? '').toString();
+        final cachedPlanId = licencaPlan.isNotEmpty
+            ? licencaPlan
+            : (sessao.get('plan_plan_id') ?? 'free_limited').toString();
+        final normalizedCached = PlanosService.normalizePlanId(cachedPlanId);
+        if (normalizedCached.isNotEmpty) {
+          logD('📴 [ROUTER] Usando plano em cache (offline/timeout): $normalizedCached');
           plan = PlanInfo(
-            planId: cachedPlanId,
+            planId: normalizedCached,
             status: 'active',
             trialing: false,
             currentPeriodEnd: null,

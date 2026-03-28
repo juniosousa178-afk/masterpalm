@@ -16,7 +16,9 @@ Widget buildCatalogProductsGridSliver({
   /// Lista completa do catálogo (antes de filtro/página) para o modal "Configurar kit" encontrar cada item do combo.
   List<Map<String, dynamic>>? todosProdutosParaCombo,
   required String lojaId,
-  required void Function(Map<String, dynamic>) onAdd,
+  required bool Function(Map<String, dynamic>) onAdd,
+  /// Só layout minimalista: feedback após ícone carrinho quando o item entra no carrinho (não abre sheet).
+  VoidCallback? onMinimalSilentAddFeedback,
   void Function(String productId)? onProductViewed,
   void Function(String productId)? onToggleFavorito,
   VoidCallback? onAbrirLoginParaFavorito,
@@ -65,6 +67,7 @@ Widget buildCatalogProductsGridSliver({
               produto: p,
               lojaId: lojaId,
               onAdd: onAdd,
+              onMinimalSilentAddFeedback: onMinimalSilentAddFeedback,
               onProductViewed: onProductViewed,
               onToggleFavorito: clienteId != null
                   ? () => onToggleFavorito?.call(safeStr(p['id']))

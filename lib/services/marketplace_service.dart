@@ -12,6 +12,9 @@ import 'package:http/http.dart' as http;
 class MarketplaceService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  /// Limite do Firestore para `whereIn` em `documentId`.
+  static const int _whereInMax = 30;
+
   // URLs base das APIs
   static const String _tiktokShopBaseUrl = 'https://open-api.tiktokglobalshop.com';
   static const String _mercadoLivreBaseUrl = 'https://api.mercadolibre.com';
@@ -323,66 +326,92 @@ class MarketplaceService {
         return {'success': false, 'error': 'Credenciais TikTok Shop não configuradas'};
       }
 
-      Query query = _firestore.collection('lojas').doc(lojaId).collection('produtos');
-      if (produtoIds != null && produtoIds.isNotEmpty) {
-        query = query.where(FieldPath.documentId, whereIn: produtoIds);
+      if (produtoIds != null && produtoIds.isEmpty) {
+        return {
+          'success': true,
+          'sincronizados': 0,
+          'erros': 0,
+          'total': 0,
+          'resultados': <Map<String, dynamic>>[],
+        };
       }
-      final produtosSnapshot = await query.get();
 
       int sincronizados = 0;
       int erros = 0;
       List<Map<String, dynamic>> resultados = [];
+      var total = 0;
 
-      for (var doc in produtosSnapshot.docs) {
-        try {
-          final produto = doc.data() as Map<String, dynamic>;
-          final produtoId = doc.id;
-          final tiktokId = produto['tiktok_product_id'] as String?;
+      Future<void> processarChunk(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+        for (var doc in docs) {
+          try {
+            final produto = doc.data();
+            final produtoId = doc.id;
+            final tiktokId = produto['tiktok_product_id'] as String?;
 
-          Map<String, dynamic> resultado;
-          if (tiktokId != null && tiktokId.isNotEmpty) {
-            resultado = await _atualizarProdutoTikTok(
-              appKey: appKey,
-              appSecret: appSecret,
-              accessToken: accessToken,
-              shopId: shopId,
-              tiktokProductId: tiktokId,
-              produto: produto,
-            );
-          } else {
-            resultado = await _criarProdutoTikTok(
-              appKey: appKey,
-              appSecret: appSecret,
-              accessToken: accessToken,
-              shopId: shopId,
-              produto: produto,
-            );
-            if (resultado['success'] == true && resultado['product_id'] != null) {
-              await doc.reference.update({
-                'tiktok_product_id': resultado['product_id'],
-                'tiktok_synced_at': FieldValue.serverTimestamp(),
-              });
+            Map<String, dynamic> resultado;
+            if (tiktokId != null && tiktokId.isNotEmpty) {
+              resultado = await _atualizarProdutoTikTok(
+                appKey: appKey,
+                appSecret: appSecret,
+                accessToken: accessToken,
+                shopId: shopId,
+                tiktokProductId: tiktokId,
+                produto: produto,
+              );
+            } else {
+              resultado = await _criarProdutoTikTok(
+                appKey: appKey,
+                appSecret: appSecret,
+                accessToken: accessToken,
+                shopId: shopId,
+                produto: produto,
+              );
+              if (resultado['success'] == true && resultado['product_id'] != null) {
+                await doc.reference.update({
+                  'tiktok_product_id': resultado['product_id'],
+                  'tiktok_synced_at': FieldValue.serverTimestamp(),
+                });
+              }
             }
-          }
 
-          if (resultado['success'] == true) {
-            sincronizados++;
-          } else {
+            if (resultado['success'] == true) {
+              sincronizados++;
+            } else {
+              erros++;
+            }
+            resultados.add({'produto_id': produtoId, 'nome': produto['nome'] ?? 'Sem nome', ...resultado});
+          } catch (e) {
+            debugPrint('❌ [TIKTOK] Erro produto ${doc.id} (type=${e.runtimeType})');
             erros++;
+            resultados.add({'produto_id': doc.id, 'success': false, 'error': e.toString()});
           }
-          resultados.add({'produto_id': produtoId, 'nome': produto['nome'] ?? 'Sem nome', ...resultado});
-        } catch (e) {
-          debugPrint('❌ [TIKTOK] Erro produto ${doc.id} (type=${e.runtimeType})');
-          erros++;
-          resultados.add({'produto_id': doc.id, 'success': false, 'error': e.toString()});
         }
+      }
+
+      if (produtoIds != null && produtoIds.isNotEmpty) {
+        for (var i = 0; i < produtoIds.length; i += _whereInMax) {
+          final end = (i + _whereInMax < produtoIds.length) ? i + _whereInMax : produtoIds.length;
+          final chunk = produtoIds.sublist(i, end);
+          final snap = await _firestore
+              .collection('lojas')
+              .doc(lojaId)
+              .collection('produtos')
+              .where(FieldPath.documentId, whereIn: chunk)
+              .get();
+          total += snap.docs.length;
+          await processarChunk(snap.docs);
+        }
+      } else {
+        final snap = await _firestore.collection('lojas').doc(lojaId).collection('produtos').get();
+        total = snap.docs.length;
+        await processarChunk(snap.docs);
       }
 
       return {
         'success': true,
         'sincronizados': sincronizados,
         'erros': erros,
-        'total': produtosSnapshot.docs.length,
+        'total': total,
         'resultados': resultados,
       };
     } catch (e) {
@@ -514,45 +543,65 @@ class MarketplaceService {
         return {'success': false, 'error': 'Access Token não configurado ou expirado. Configure Client ID, Secret e Refresh Token para renovação automática.'};
       }
 
-      Query query = _firestore.collection('lojas').doc(lojaId).collection('produtos');
-      if (produtoIds != null && produtoIds.isNotEmpty) {
-        query = query.where(FieldPath.documentId, whereIn: produtoIds);
+      if (produtoIds != null && produtoIds.isEmpty) {
+        return {'success': true, 'sincronizados': 0, 'erros': 0, 'total': 0};
       }
-      final produtosSnapshot = await query.get();
 
       int sincronizados = 0;
       int erros = 0;
+      var total = 0;
 
-      for (var doc in produtosSnapshot.docs) {
-        try {
-          final produto = doc.data() as Map<String, dynamic>;
-          final mlId = produto['mercadolivre_id'] as String?;
+      Future<void> processarChunk(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+        for (var doc in docs) {
+          try {
+            final produto = doc.data();
+            final mlId = produto['mercadolivre_id'] as String?;
 
-          Map<String, dynamic> resultado;
-          if (mlId != null && mlId.isNotEmpty) {
-            resultado = await _atualizarProdutoMercadoLivre(accessToken: accessToken, mlId: mlId, produto: produto);
-          } else {
-            resultado = await _criarProdutoMercadoLivre(accessToken: accessToken, produto: produto);
-            if (resultado['success'] == true && resultado['id'] != null) {
-              await doc.reference.update({
-                'mercadolivre_id': resultado['id'],
-                'mercadolivre_permalink': resultado['permalink'],
-                'mercadolivre_synced_at': FieldValue.serverTimestamp(),
-              });
+            Map<String, dynamic> resultado;
+            if (mlId != null && mlId.isNotEmpty) {
+              resultado = await _atualizarProdutoMercadoLivre(accessToken: accessToken, mlId: mlId, produto: produto);
+            } else {
+              resultado = await _criarProdutoMercadoLivre(accessToken: accessToken, produto: produto);
+              if (resultado['success'] == true && resultado['id'] != null) {
+                await doc.reference.update({
+                  'mercadolivre_id': resultado['id'],
+                  'mercadolivre_permalink': resultado['permalink'],
+                  'mercadolivre_synced_at': FieldValue.serverTimestamp(),
+                });
+              }
             }
-          }
-          if (resultado['success'] == true) {
-            sincronizados++;
-          } else {
+            if (resultado['success'] == true) {
+              sincronizados++;
+            } else {
+              erros++;
+            }
+          } catch (e) {
+            debugPrint('❌ [ML] Erro produto ${doc.id} (type=${e.runtimeType})');
             erros++;
           }
-        } catch (e) {
-          debugPrint('❌ [ML] Erro produto ${doc.id} (type=${e.runtimeType})');
-          erros++;
         }
       }
 
-      return {'success': true, 'sincronizados': sincronizados, 'erros': erros, 'total': produtosSnapshot.docs.length};
+      if (produtoIds != null && produtoIds.isNotEmpty) {
+        for (var i = 0; i < produtoIds.length; i += _whereInMax) {
+          final end = (i + _whereInMax < produtoIds.length) ? i + _whereInMax : produtoIds.length;
+          final chunk = produtoIds.sublist(i, end);
+          final snap = await _firestore
+              .collection('lojas')
+              .doc(lojaId)
+              .collection('produtos')
+              .where(FieldPath.documentId, whereIn: chunk)
+              .get();
+          total += snap.docs.length;
+          await processarChunk(snap.docs);
+        }
+      } else {
+        final snap = await _firestore.collection('lojas').doc(lojaId).collection('produtos').get();
+        total = snap.docs.length;
+        await processarChunk(snap.docs);
+      }
+
+      return {'success': true, 'sincronizados': sincronizados, 'erros': erros, 'total': total};
     } catch (e) {
       return {'success': false, 'error': _mensagemErroAmigavel(e)};
     }
@@ -651,57 +700,77 @@ class MarketplaceService {
         return {'success': false, 'error': 'Credenciais Shopee incompletas. Preencha Partner ID, Partner Key, Shop ID e Access Token.'};
       }
 
-      Query query = _firestore.collection('lojas').doc(lojaId).collection('produtos');
-      if (produtoIds != null && produtoIds.isNotEmpty) {
-        query = query.where(FieldPath.documentId, whereIn: produtoIds);
+      if (produtoIds != null && produtoIds.isEmpty) {
+        return {'success': true, 'sincronizados': 0, 'erros': 0, 'total': 0};
       }
-      final produtosSnapshot = await query.get();
 
       int sincronizados = 0;
       int erros = 0;
+      var total = 0;
 
-      for (var doc in produtosSnapshot.docs) {
-        try {
-          final produto = doc.data() as Map<String, dynamic>;
-          final shopeeItemId = produto['shopee_item_id'] as String?;
+      Future<void> processarChunk(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs) async {
+        for (var doc in docs) {
+          try {
+            final produto = doc.data();
+            final shopeeItemId = produto['shopee_item_id'] as String?;
 
-          Map<String, dynamic> resultado;
-          if (shopeeItemId != null && shopeeItemId.isNotEmpty) {
-            resultado = await _atualizarProdutoShopee(
-              partnerId: partnerId,
-              partnerKey: partnerKey,
-              shopId: shopId,
-              accessToken: accessToken,
-              itemId: shopeeItemId,
-              produto: produto,
-            );
-          } else {
-            resultado = await _criarProdutoShopee(
-              partnerId: partnerId,
-              partnerKey: partnerKey,
-              shopId: shopId,
-              accessToken: accessToken,
-              produto: produto,
-            );
-            if (resultado['success'] == true && resultado['item_id'] != null) {
-              await doc.reference.update({
-                'shopee_item_id': resultado['item_id'].toString(),
-                'shopee_synced_at': FieldValue.serverTimestamp(),
-              });
+            Map<String, dynamic> resultado;
+            if (shopeeItemId != null && shopeeItemId.isNotEmpty) {
+              resultado = await _atualizarProdutoShopee(
+                partnerId: partnerId,
+                partnerKey: partnerKey,
+                shopId: shopId,
+                accessToken: accessToken,
+                itemId: shopeeItemId,
+                produto: produto,
+              );
+            } else {
+              resultado = await _criarProdutoShopee(
+                partnerId: partnerId,
+                partnerKey: partnerKey,
+                shopId: shopId,
+                accessToken: accessToken,
+                produto: produto,
+              );
+              if (resultado['success'] == true && resultado['item_id'] != null) {
+                await doc.reference.update({
+                  'shopee_item_id': resultado['item_id'].toString(),
+                  'shopee_synced_at': FieldValue.serverTimestamp(),
+                });
+              }
             }
-          }
-          if (resultado['success'] == true) {
-            sincronizados++;
-          } else {
+            if (resultado['success'] == true) {
+              sincronizados++;
+            } else {
+              erros++;
+            }
+          } catch (e) {
+            debugPrint('❌ [SHOPEE] Erro produto ${doc.id} (type=${e.runtimeType})');
             erros++;
           }
-        } catch (e) {
-          debugPrint('❌ [SHOPEE] Erro produto ${doc.id} (type=${e.runtimeType})');
-          erros++;
         }
       }
 
-      return {'success': true, 'sincronizados': sincronizados, 'erros': erros, 'total': produtosSnapshot.docs.length};
+      if (produtoIds != null && produtoIds.isNotEmpty) {
+        for (var i = 0; i < produtoIds.length; i += _whereInMax) {
+          final end = (i + _whereInMax < produtoIds.length) ? i + _whereInMax : produtoIds.length;
+          final chunk = produtoIds.sublist(i, end);
+          final snap = await _firestore
+              .collection('lojas')
+              .doc(lojaId)
+              .collection('produtos')
+              .where(FieldPath.documentId, whereIn: chunk)
+              .get();
+          total += snap.docs.length;
+          await processarChunk(snap.docs);
+        }
+      } else {
+        final snap = await _firestore.collection('lojas').doc(lojaId).collection('produtos').get();
+        total = snap.docs.length;
+        await processarChunk(snap.docs);
+      }
+
+      return {'success': true, 'sincronizados': sincronizados, 'erros': erros, 'total': total};
     } catch (e) {
       return {'success': false, 'error': _mensagemErroAmigavel(e)};
     }

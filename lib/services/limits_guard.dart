@@ -189,7 +189,8 @@ class LimitsGuard {
   // ---------- Retrocompatibilidade (userStatus) ----------
 
   String _planOf(Map<String, dynamic>? userStatus) {
-    final plan = userStatus?['plan'] ?? userStatus?['currentPlanId'];
+    // Canônico obrigatório para os fluxos atuais.
+    final plan = userStatus?['currentPlanId'];
     return (plan as String?)?.toLowerCase().trim() ?? 'freelight';
   }
 

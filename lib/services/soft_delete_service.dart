@@ -359,11 +359,14 @@ class SoftDeleteService {
       if (r.type == 'produto') {
         final trashBox = await _trashProdutosBox();
         final prod = trashBox.get(r.trashKey);
-        if (prod != null && prod.idFirebase.isNotEmpty) {
-          await ProdutosFirestoreService.deleteProduto(prod.idFirebase, lojaId: r.lojaId);
+        if (prod != null) {
+          await ProdutosFirestoreService.deleteProdutoRobusto(
+            produto: prod,
+            lojaId: r.lojaId,
+          );
         }
         await trashBox.delete(r.trashKey);
-        logD('🗑️ [SOFT-DELETE] Produto ${r.idFirebase} excluído permanentemente (Firestore + local)');
+        logD('🗑️ [SOFT-DELETE] Produto excluído permanentemente (Firestore + lixeira local)');
       } else if (r.type == 'venda') {
         final trashBox = await _trashVendasBox();
         final venda = trashBox.get(r.trashKey);

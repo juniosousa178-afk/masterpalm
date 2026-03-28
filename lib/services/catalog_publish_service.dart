@@ -48,12 +48,16 @@ class CatalogPublishService {
 
   /// Promove UM item do draft para live (mantém o mesmo docId).
   /// Se não existir no draft, remove do live.
-  static Future<void> promoteOne(String docId) async {
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
-if (lojaId == null) {
-  // Tratar caso não exista loja
-  throw StateError('Nenhuma loja ativa');
-}
+  ///
+  /// [lojaIdOverride] evita re-resolver loja quando o chamador já tem o id da tela ativa.
+  static Future<void> promoteOne(String docId, {String? lojaIdOverride}) async {
+    final resolved = lojaIdOverride?.trim();
+    final lojaId = (resolved != null && resolved.isNotEmpty)
+        ? resolved
+        : await StoreResolverFacade.resolveForAdminApp();
+    if (lojaId == null || lojaId.isEmpty) {
+      throw StateError('Nenhuma loja ativa');
+    }
     final base = _db.collection('lojas').doc(lojaId);
     final draftRef = base.collection('draft_produtos').doc(docId);
     final liveRef  = base.collection('produtos').doc(docId);
@@ -80,48 +84,64 @@ if (lojaId == null) {
     }
   }
 
+  /// Limite seguro de operações por commit (Firestore max 500).
+  static const int _maxBatchOps = 450;
+
   /// Promove TODOS do draft para live; também faz "purge" de órfãos.
+  /// Commits em chunks para não estourar o limite de 500 ops do Firestore.
   static Future<void> promoteAll() async {
     final lojaId = await StoreResolverFacade.resolveForAdminApp();
-if (lojaId == null) {
-  // Tratar caso não exista loja
-  throw StateError('Nenhuma loja ativa');
-}
+    if (lojaId == null || lojaId.isEmpty) {
+      throw StateError('Nenhuma loja ativa');
+    }
     final base = _db.collection('lojas').doc(lojaId);
     final draftCol = base.collection('draft_produtos');
-    final liveCol  = base.collection('produtos');
+    final liveCol = base.collection('produtos');
 
     final draft = await draftCol.get();
-    final batch = _db.batch();
-    final draftIds = <String>{};
+    final live = await liveCol.get();
+    final draftIds = draft.docs.map((d) => d.id).toSet();
+
+    WriteBatch batch = _db.batch();
+    var opCount = 0;
+
+    Future<void> commitIfNeeded({bool force = false}) async {
+      if (opCount == 0) return;
+      if (!force && opCount < _maxBatchOps) return;
+      await batch.commit();
+      if (kDebugMode) {
+        debugPrint('📦 [PUBLISH-ALL] batch commit ops=$opCount (chunk)');
+      }
+      batch = _db.batch();
+      opCount = 0;
+    }
 
     for (final d in draft.docs) {
       final data = Map<String, dynamic>.from(d.data());
       final ativoWeb = _isAtivoForWeb(data);
 
-      data['ativo']     = ativoWeb;
+      data['ativo'] = ativoWeb;
       data['publicado'] = ativoWeb;
       data['updatedAt'] = FieldValue.serverTimestamp();
-
-      draftIds.add(d.id);
 
       if (ativoWeb) {
         batch.set(liveCol.doc(d.id), data, SetOptions(merge: true));
       } else {
-        // não deve mais ficar visível no site
         batch.delete(liveCol.doc(d.id));
       }
+      opCount++;
+      await commitIfNeeded();
     }
 
-    // Purge: remove do live o que não existe mais no draft
-    final live = await liveCol.get();
     for (final l in live.docs) {
       if (!draftIds.contains(l.id)) {
         batch.delete(liveCol.doc(l.id));
+        opCount++;
+        await commitIfNeeded();
       }
     }
 
-    await batch.commit();
+    await commitIfNeeded(force: true);
   }
 
   /// ✨ Publica configurações gerais do draft para live

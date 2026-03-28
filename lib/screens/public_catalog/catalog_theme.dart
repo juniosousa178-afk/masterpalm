@@ -1,9 +1,17 @@
 // lib/screens/public_catalog/catalog_theme.dart
 // Parsing de cores e tema do config Firestore – extraído do build() para reduzir rebuilds.
+//
+// Onde achar o quê:
+// - Página / cards / texto: theme.*, uiColors (background, cardBackground, textPrimary…).
+// - Cabeçalho / rodapé: catalogHeaderColors, catalogFooterColors.
+// - Checkout (campos): field*, labelText, priceHighlight (total), checkoutTheme.* legado.
+// - Painel escuro de valores (subtotal, frete, total): chaves [CatalogCheckoutSummaryColorKeys]
+//   em catalog_ui_color_reference.dart → campos checkoutSummary* nesta classe.
 
 import 'package:flutter/material.dart';
 
 import 'catalog_helpers.dart';
+import 'catalog_ui_color_reference.dart';
 
 /// Dados de tema parseados do config – evita recalcular em todo rebuild.
 class CatalogThemeData {
@@ -47,6 +55,27 @@ class CatalogThemeData {
   final Color productNameColor;
   final Color productPriceColor;
 
+  /// Painel interno do resumo (gradiente): topo — [CatalogCheckoutSummaryColorKeys.gradientStart].
+  final Color checkoutSummaryPanelTop;
+  /// Painel interno do resumo (gradiente): base — [CatalogCheckoutSummaryColorKeys.gradientEnd].
+  final Color checkoutSummaryPanelBottom;
+  /// Rótulos das linhas do resumo (Subtotal, Frete…) — [CatalogCheckoutSummaryColorKeys.rowLabel].
+  final Color checkoutSummaryRowLabelColor;
+  /// Valor padrão à direita nas linhas — [CatalogCheckoutSummaryColorKeys.rowValue].
+  final Color checkoutSummaryRowValueColor;
+  /// Cor do valor "Desconto PIX" — [CatalogCheckoutSummaryColorKeys.pixDiscount].
+  final Color checkoutSummaryPixDiscountColor;
+  /// Descontos / valores negativos em destaque — [CatalogCheckoutSummaryColorKeys.deduction].
+  final Color checkoutSummaryDeductionColor;
+  /// Rótulo "Total a pagar" — [CatalogCheckoutSummaryColorKeys.totalLabel].
+  final Color checkoutSummaryTotalLabelColor;
+  /// Fundo da faixa "Total R$ …" — [CatalogCheckoutSummaryColorKeys.totalBannerBg].
+  final Color checkoutSummaryTotalBannerBg;
+  /// Texto sobre a faixa do total — [CatalogCheckoutSummaryColorKeys.totalBannerText].
+  final Color checkoutSummaryTotalBannerText;
+  /// Sombra do card do resumo — [CatalogCheckoutSummaryColorKeys.cardShadow].
+  final Color checkoutCardShadowColor;
+
   const CatalogThemeData({
     required this.primaryColor,
     required this.bgColor,
@@ -87,6 +116,16 @@ class CatalogThemeData {
     required this.checkoutFieldHint,
     required this.productNameColor,
     required this.productPriceColor,
+    required this.checkoutSummaryPanelTop,
+    required this.checkoutSummaryPanelBottom,
+    required this.checkoutSummaryRowLabelColor,
+    required this.checkoutSummaryRowValueColor,
+    required this.checkoutSummaryPixDiscountColor,
+    required this.checkoutSummaryDeductionColor,
+    required this.checkoutSummaryTotalLabelColor,
+    required this.checkoutSummaryTotalBannerBg,
+    required this.checkoutSummaryTotalBannerText,
+    required this.checkoutCardShadowColor,
   });
 
   /// Parseia tema completo a partir do config Firestore.
@@ -210,6 +249,30 @@ class CatalogThemeData {
     final productNameColor = cardTextPrimary;
     final productPriceColor = priceHighlightColor;
 
+    // Resumo financeiro (card escuro) — chaves em [CatalogCheckoutSummaryColorKeys]
+    final checkoutSummaryPanelTop = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.gradientStart, const Color(0xFF0F172A));
+    final checkoutSummaryPanelBottom = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.gradientEnd,
+        checkoutCardColor.withValues(alpha: 0.95));
+    final checkoutSummaryRowLabelColor = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.rowLabel, checkoutLabelColor);
+    final checkoutSummaryRowValueColor = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.rowValue, checkoutFieldTextColor);
+    final checkoutSummaryPixDiscountColor = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.pixDiscount, priceHighlightColor);
+    final checkoutSummaryDeductionColor = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.deduction, dangerColor);
+    final checkoutSummaryTotalLabelColor = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.totalLabel, checkoutFieldTextColor);
+    final checkoutSummaryTotalBannerBg = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.totalBannerBg, checkoutTotalColor);
+    final checkoutSummaryTotalBannerText = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.totalBannerText, Colors.white);
+    final checkoutCardShadowColor = colorFromUiColors(
+        CatalogCheckoutSummaryColorKeys.cardShadow,
+        const Color(0xFF090909).withValues(alpha: 0.55));
+
     return CatalogThemeData(
       primaryColor: primaryColor,
       bgColor: bgColor,
@@ -250,6 +313,16 @@ class CatalogThemeData {
       checkoutFieldHint: checkoutFieldHint,
       productNameColor: productNameColor,
       productPriceColor: productPriceColor,
+      checkoutSummaryPanelTop: checkoutSummaryPanelTop,
+      checkoutSummaryPanelBottom: checkoutSummaryPanelBottom,
+      checkoutSummaryRowLabelColor: checkoutSummaryRowLabelColor,
+      checkoutSummaryRowValueColor: checkoutSummaryRowValueColor,
+      checkoutSummaryPixDiscountColor: checkoutSummaryPixDiscountColor,
+      checkoutSummaryDeductionColor: checkoutSummaryDeductionColor,
+      checkoutSummaryTotalLabelColor: checkoutSummaryTotalLabelColor,
+      checkoutSummaryTotalBannerBg: checkoutSummaryTotalBannerBg,
+      checkoutSummaryTotalBannerText: checkoutSummaryTotalBannerText,
+      checkoutCardShadowColor: checkoutCardShadowColor,
     );
   }
 }

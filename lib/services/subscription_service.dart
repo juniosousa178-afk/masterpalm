@@ -39,8 +39,16 @@ class SubscriptionStatus {
 
   /// Aceita vários formatos de doc e nunca dá crash por cast errado.
   static SubscriptionStatus fromData(Map<String, dynamic> data) {
+    String normalizePlan(String? raw) {
+      final p = (raw ?? '').trim().toLowerCase();
+      if (p == 'mensal' || p == 'pro_monthly') return 'pro_monthly';
+      if (p == 'anual' || p == 'pro_yearly') return 'pro_yearly';
+      if (p == 'trial_90d' || p == 'free_trial_90d') return 'free_trial_90d';
+      return p.isEmpty ? 'freelight' : p;
+    }
+
     // ---------- PLAN ----------
-    dynamic rawPlan = data['plan'];
+    dynamic rawPlan = data['currentPlanId'] ?? data['planId'];
 
     // se vier aninhado, tipo { plan: { id: 'freelight', ... } }
     if (rawPlan is Map<String, dynamic>) {
@@ -50,13 +58,12 @@ class SubscriptionStatus {
     // fallback: alguns sistemas gravam planId na raiz
     rawPlan ??= data['planId'];
 
-    String plan = 'freelight';
-    if (rawPlan is String) {
-      plan = rawPlan.toLowerCase().trim();
-    }
+    String plan = rawPlan is String ? normalizePlan(rawPlan) : 'freelight';
 
     // ---------- ACTIVE ----------
     dynamic rawActive = data['active'];
+    final status = (data['status'] ?? '').toString().trim().toLowerCase();
+    final trialing = data['trialing'] == true;
 
     // se estiver dentro de um map de status, tenta extrair
     if (rawActive is Map<String, dynamic>) {
@@ -70,17 +77,19 @@ class SubscriptionStatus {
     if (rawActive is bool) {
       active = rawActive;
     } else {
-      // se não tiver nada claro, considera ativo quando não for freeloader
-      active = plan != 'freelight';
+      if (status.isNotEmpty) {
+        active = status == 'active' || status == 'trialing' || status == 'pending';
+      } else {
+        // fallback legado
+        active = plan != 'freelight';
+      }
     }
 
     // ---------- EXPIRES ----------
-    dynamic rawExpires = data['expiresAt'];
+    dynamic rawExpires = data['currentPeriodEnd'] ?? data['expiresAt'];
 
     // se vir dentro de plan como map
-    if (rawExpires == null && data['plan'] is Map<String, dynamic>) {
-      rawExpires = (data['plan'] as Map<String, dynamic>)['expiresAt'];
-    }
+    // Sem fallback em users.plan.*; currentPeriodEnd é a fonte principal.
 
     final expiresAt = _tsToDate(rawExpires);
 
@@ -88,9 +97,7 @@ class SubscriptionStatus {
     final Map<String, int> limits = {};
     dynamic rawLimits = data['limits'];
 
-    if (rawLimits == null && data['plan'] is Map<String, dynamic>) {
-      rawLimits = (data['plan'] as Map<String, dynamic>)['limits'];
-    }
+    // Sem fallback em users.plan.limits; limites vêm do plano canônico.
 
     if (rawLimits is Map) {
       rawLimits.forEach((k, v) {
@@ -102,6 +109,10 @@ class SubscriptionStatus {
 
     // Fallback: mescla com os limites do FREE para evitar null na UI
     final merged = {...SubscriptionService.freeLimits, ...limits};
+
+    if (trialing && plan == 'freelight') {
+      plan = 'free_trial_90d';
+    }
 
     return SubscriptionStatus(
       plan: plan,

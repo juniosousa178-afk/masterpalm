@@ -15,7 +15,7 @@ Widget buildCatalogPremiumSectionSliver({
   required List<Map<String, dynamic>> products,
   List<Map<String, dynamic>>? todosProdutos,
   required String lojaId,
-  required void Function(Map<String, dynamic>) onAdd,
+  required bool Function(Map<String, dynamic>) onAdd,
   void Function(String productId)? onProductViewed,
   void Function(String productId)? onToggleFavorito,
   VoidCallback? onAbrirLoginParaFavorito,

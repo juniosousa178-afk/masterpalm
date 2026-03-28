@@ -3,6 +3,22 @@
 
 import 'catalog_estoque_helper.dart';
 
+/// True quando a forma de pagamento é cartão (rótulo “Subtotal (cartão)” só nesse caso).
+bool catalogCheckoutPagamentoEhCartao(String pagamento) {
+  final p = pagamento.toUpperCase().trim();
+  if (p.contains('CARTAO') || p.contains('CARTÃO') || p == 'CARD') return true;
+  return false;
+}
+
+/// Rótulo da linha de subtotal “cheio” antes do desconto PIX por produto (breakdown no carrinho).
+/// Altera apenas o texto exibido; os valores numéricos não mudam.
+String catalogSubtotalBeforePixItemDiscountLabel(String pagamento) {
+  final p = pagamento.toUpperCase().trim();
+  if (p == 'PIX') return 'Subtotal';
+  if (catalogCheckoutPagamentoEhCartao(pagamento)) return 'Subtotal (cartão)';
+  return 'Subtotal';
+}
+
 /// Totais alinhados ao cálculo exibido em [CarrinhoSheetWeb].
 class CatalogCheckoutTotals {
   const CatalogCheckoutTotals({

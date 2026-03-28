@@ -238,12 +238,14 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
         'store_id': (_tipoUsuarioAtual == 'admin' && _tipoSelecionado == 'vendedor')
             ? _storeIdDoAdmin
             : null,
+        // Canônico de planos (LEGACY `plan` aposentado para novas escritas)
+        'currentPlanId': 'free_trial_90d',
+        'status': 'trialing',
+        'trialing': true,
+        'currentPeriodEnd': Timestamp.fromDate(trialEnd),
+        'trialUsed': true,
+        'trialUsedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
-        'plan': {
-          'planId': 'free_trial',
-          'status': 'trialing',
-          'trialEndsAt': Timestamp.fromDate(trialEnd),
-        },
       }, SetOptions(merge: true));
 
       await db.collection('usuarios').doc(email).set({

@@ -6,6 +6,26 @@ import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 
 const ROOT_EMAIL = "masterpalm@gmail.com";
 
+// LEGACY FLOW: callable mantido por retrocompatibilidade.
+// Fonte principal de assinatura/plano continua sendo o fluxo canônico
+// users/{uid}.currentPlanId/status/trialing/currentPeriodEnd.
+
+function normalizeCanonicalPlanId(raw) {
+  const p = String(raw || "").trim().toLowerCase();
+  if (p === "mensal" || p === "pro_monthly") return "pro_monthly";
+  if (p === "anual" || p === "pro_yearly") return "pro_yearly";
+  if (p === "trial" || p === "trial_90d" || p === "free_trial_90d") return "free_trial_90d";
+  if (p === "lifetime") return "lifetime";
+  return p;
+}
+
+function toLegacyPlanAlias(raw) {
+  const p = normalizeCanonicalPlanId(raw);
+  if (p === "pro_monthly") return "mensal";
+  if (p === "pro_yearly") return "anual";
+  return p;
+}
+
 // ✅ Admin init seguro (não cria duplicate-app)
 function initDb() {
   if (!getApps().length) initializeApp();
@@ -49,6 +69,10 @@ async function computePlanState({ db, uid, email }) {
       {
         email,
         isRoot: true,
+        currentPlanId: "lifetime",
+        status: "active",
+        trialing: false,
+        currentPeriodEnd: null,
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -73,8 +97,10 @@ async function computePlanState({ db, uid, email }) {
     await ref.set(
       {
         email,
-        plan: "lifetime",
-        plan_status: "active",
+        currentPlanId: "lifetime",
+        status: "active",
+        trialing: false,
+        currentPeriodEnd: null,
         blocked_reason: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -101,8 +127,10 @@ async function computePlanState({ db, uid, email }) {
       await ref.set(
         {
           email,
-          plan: data.plan || "manual",
-          plan_status: "active",
+          currentPlanId: normalizeCanonicalPlanId(data.currentPlanId || data.plan || "manual"),
+          status: "active",
+          trialing: false,
+          currentPeriodEnd: untilAt ? Timestamp.fromDate(untilAt) : null,
           blocked_reason: FieldValue.delete(),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -111,7 +139,7 @@ async function computePlanState({ db, uid, email }) {
 
       return {
         status: "active",
-        plan: data.plan || "manual",
+        plan: toLegacyPlanAlias(data.currentPlanId || data.plan || "manual"),
         isRoot: false,
         daysLeft,
         endsAt: untilAt.toISOString(),
@@ -123,10 +151,11 @@ async function computePlanState({ db, uid, email }) {
   }
 
   // 2) Plano pago (mensal/anual)
-  const plan = String(data.plan || "").toLowerCase();
-  const renewAt = toDateAny(data.plan_renewsAt);
+  const canonicalPlan = normalizeCanonicalPlanId(data.currentPlanId || data.plan || "");
+  const plan = toLegacyPlanAlias(canonicalPlan);
+  const renewAt = toDateAny(data.currentPeriodEnd || data.plan_renewsAt);
 
-  if ((plan === "mensal" || plan === "anual") && renewAt) {
+  if ((canonicalPlan === "pro_monthly" || canonicalPlan === "pro_yearly") && renewAt) {
     if (now <= renewAt) {
       const daysLeft = daysBetweenCeil(now, renewAt);
 
@@ -158,7 +187,10 @@ async function computePlanState({ db, uid, email }) {
       await ref.set(
         {
           email,
-          plan_status: "active",
+          currentPlanId: canonicalPlan,
+          status: "active",
+          trialing: false,
+          currentPeriodEnd: Timestamp.fromDate(renewAt),
           blocked_reason: FieldValue.delete(),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -183,7 +215,10 @@ async function computePlanState({ db, uid, email }) {
     await ref.set(
       {
         email,
-        plan_status: "expired",
+        currentPlanId: canonicalPlan,
+        status: "inactive",
+        trialing: false,
+        currentPeriodEnd: Timestamp.fromDate(renewAt),
         blocked_reason: "Plano pago vencido",
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -216,8 +251,10 @@ async function computePlanState({ db, uid, email }) {
     await ref.set(
       {
         email,
-        plan: "trial",
-        plan_status: "active",
+        currentPlanId: "free_trial_90d",
+        status: "trialing",
+        trialing: true,
+        currentPeriodEnd: Timestamp.fromDate(end),
         trial_used: true,
         trial_startedAt: Timestamp.fromDate(start),
         trial_endsAt: Timestamp.fromDate(end),
@@ -276,8 +313,10 @@ async function computePlanState({ db, uid, email }) {
       await ref.set(
         {
           email,
-          plan: "trial",
-          plan_status: "active",
+          currentPlanId: "free_trial_90d",
+          status: "trialing",
+          trialing: true,
+          currentPeriodEnd: Timestamp.fromDate(trialEndsAt),
           blocked_reason: FieldValue.delete(),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -302,8 +341,10 @@ async function computePlanState({ db, uid, email }) {
     await ref.set(
       {
         email,
-        plan: "trial",
-        plan_status: "expired",
+        currentPlanId: "free_trial_90d",
+        status: "inactive",
+        trialing: false,
+        currentPeriodEnd: Timestamp.fromDate(trialEndsAt),
         blocked_reason: "Trial expirou",
         updatedAt: FieldValue.serverTimestamp(),
       },
@@ -329,7 +370,8 @@ async function computePlanState({ db, uid, email }) {
   await ref.set(
     {
       email,
-      plan_status: "blocked",
+      status: "inactive",
+      trialing: false,
       blocked_reason: "Sem plano ativo (trial já utilizado)",
       updatedAt: FieldValue.serverTimestamp(),
     },
@@ -411,8 +453,11 @@ export const rootGrantPlan = onCall(async (request) => {
         note: String(note || "").slice(0, 200),
         grantedAt: FieldValue.serverTimestamp(),
       },
-      plan: type === "lifetime" ? "lifetime" : "manual",
-      plan_status: "active",
+      currentPlanId: type === "lifetime" ? "lifetime" : "pro_monthly",
+      status: "active",
+      trialing: false,
+      currentPeriodEnd:
+        type === "until" ? Timestamp.fromDate(new Date(untilIso)) : null,
       blocked_reason: FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     };

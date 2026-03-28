@@ -59,7 +59,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
   final String? nomeLoja;
   final String? contatoWhatsapp;
   final String? politicaFrete;
-  final void Function(Map<String, dynamic>) onAdd;
+  final bool Function(Map<String, dynamic>) onAdd;
   final VoidCallback? onAbrirCarrinho;
 
   const CatalogProductDetailScreen({
@@ -104,7 +104,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
   factory CatalogProductDetailScreen.fromProdutoMap({
     required Map<String, dynamic> p,
     required String lojaId,
-    required void Function(Map<String, dynamic>) onAdd,
+    required bool Function(Map<String, dynamic>) onAdd,
     VoidCallback? onAbrirCarrinho,
     String? catalogShareUrl,
     String? nomeLoja,

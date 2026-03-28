@@ -12,6 +12,34 @@ import 'master_config_service.dart';
 class CheckoutService {
   static final _db = FirebaseFirestore.instance;
 
+  static String _normalizePlanId(String? raw) {
+    final p = (raw ?? '').trim().toLowerCase();
+    switch (p) {
+      case 'mensal':
+      case 'pro_monthly':
+        return 'pro_monthly';
+      case 'anual':
+      case 'pro_yearly':
+        return 'pro_yearly';
+      case 'trial_90d':
+      case 'free_trial_90d':
+        return 'free_trial_90d';
+      default:
+        return p;
+    }
+  }
+
+  static String _legacyPlanAliasFromCanonical(String canonical) {
+    switch (canonical) {
+      case 'pro_yearly':
+        return 'anual';
+      case 'pro_monthly':
+        return 'mensal';
+      default:
+        return canonical;
+    }
+  }
+
   /// Cria preferência de pagamento no Mercado Pago e abre o checkout
   ///
   /// Parâmetros:
@@ -32,6 +60,10 @@ class CheckoutService {
       }
 
       final email = user.email?.toLowerCase().trim() ?? '';
+      final normalizedPlanId = _normalizePlanId(planoId);
+      final legacyPlanAlias = _legacyPlanAliasFromCanonical(normalizedPlanId);
+      final externalReference =
+          'plano_${legacyPlanAlias}_${DateTime.now().millisecondsSinceEpoch}';
 
       // Busca configurações do Mercado Pago da Tela Master
       final accessToken = await MasterConfigService.getMercadoPagoAccessToken();
@@ -50,7 +82,10 @@ class CheckoutService {
         preco: preco,
         quantidade: quantidade,
         email: email,
-        planoId: planoId,
+        planoId: legacyPlanAlias,
+        normalizedPlanId: normalizedPlanId,
+        externalReference: externalReference,
+        userId: user.uid,
       );
 
       if (preference == null || preference['init_point'] == null) {
@@ -61,12 +96,21 @@ class CheckoutService {
       await _db.collection('checkout_planos').add({
         'userId': user.uid,
         'userEmail': email,
-        'planoId': planoId,
+        'planoId': legacyPlanAlias, // legado/fallback
+        'normalizedPlanId': normalizedPlanId, // canônico
         'titulo': titulo,
         'preco': preco,
         'quantidade': quantidade,
         'preferenceId': preference['id'],
+        'externalReference': externalReference,
+        'source': 'planos_screen',
+        'metadata': {
+          'uid': user.uid,
+          'email': email,
+          'normalizedPlanId': normalizedPlanId,
+        },
         'status': 'pending',
+        'updatedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -93,6 +137,9 @@ class CheckoutService {
     required int quantidade,
     required String email,
     required String planoId,
+    required String normalizedPlanId,
+    required String externalReference,
+    required String userId,
   }) async {
     try {
       final url = Uri.parse('https://api.mercadopago.com/checkout/preferences');
@@ -122,9 +169,12 @@ class CheckoutService {
         },
         'auto_return': 'approved',
         'notification_url': planWebhookUrl,
-        'external_reference': 'plano_${planoId}_${DateTime.now().millisecondsSinceEpoch}',
+        'external_reference': externalReference,
         'metadata': {
           'plano_id': planoId,
+          'normalized_plan_id': normalizedPlanId,
+          'uid': userId,
+          'user_id': userId,
           'user_email': email,
         },
       };
@@ -194,6 +244,7 @@ class CheckoutService {
     required String paymentId,
   }) async {
     try {
+      // LEGADO/FALLBACK: manter compatibilidade sem ser fonte principal.
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         throw Exception('Usuário não autenticado');
@@ -203,9 +254,11 @@ class CheckoutService {
       int dias;
       switch (planoId) {
         case 'mensal':
+        case 'pro_monthly':
           dias = 30;
           break;
         case 'anual':
+        case 'pro_yearly':
           dias = 365;
           break;
         default:
@@ -213,8 +266,19 @@ class CheckoutService {
       }
 
       final endDate = DateTime.now().add(Duration(days: dias));
+      final normalizedPlanId = _normalizePlanId(planoId);
 
-      // Atualiza plano do usuário
+      // Fonte canônica: users/{uid}
+      await _db.collection('users').doc(user.uid).set({
+        'email': userEmail,
+        'currentPlanId': normalizedPlanId,
+        'status': 'active',
+        'trialing': false,
+        'currentPeriodEnd': Timestamp.fromDate(endDate),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // LEGADO/FALLBACK: manter em usuarios/{email} para não quebrar telas antigas.
       await _db.collection('usuarios').doc(userEmail).set({
         'email': userEmail,
         'planoId': planoId,
@@ -226,7 +290,7 @@ class CheckoutService {
         'currentPeriodEnd': Timestamp.fromDate(endDate),
       }, SetOptions(merge: true));
 
-      debugPrint('✅ Plano $planoId ativado para $userEmail até ${endDate.toIso8601String()}');
+      debugPrint('✅ [PlanosCheckout] Ativação manual fallback concluída para $userEmail');
     } catch (e) {
       debugPrint('❌ Erro ao ativar plano (type=${e.runtimeType})');
       rethrow;

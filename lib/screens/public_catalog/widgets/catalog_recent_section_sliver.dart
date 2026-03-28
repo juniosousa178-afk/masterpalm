@@ -14,7 +14,7 @@ Widget buildCatalogRecentSectionSliver({
   /// Lista completa de produtos do catálogo (para combos na seção recentes).
   List<Map<String, dynamic>>? todosProdutos,
   required String lojaId,
-  required void Function(Map<String, dynamic>) onAdd,
+  required bool Function(Map<String, dynamic>) onAdd,
   void Function(String productId)? onProductViewed,
   void Function(String productId)? onToggleFavorito,
   VoidCallback? onAbrirLoginParaFavorito,

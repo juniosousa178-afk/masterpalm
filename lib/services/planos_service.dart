@@ -74,6 +74,27 @@ class PlanosService {
     return null;
   }
 
+  static String normalizePlanId(String? raw) {
+    final p = (raw ?? '').trim().toLowerCase();
+    switch (p) {
+      case 'mensal':
+      case 'pro_monthly':
+        return PlanId.proMonthly;
+      case 'anual':
+      case 'pro_yearly':
+        return PlanId.proYearly;
+      case 'trial_90d':
+      case 'free_trial_90d':
+        return PlanId.freeTrial90d;
+      case 'free_limited':
+        return PlanId.freeLimited;
+      case 'lifetime':
+        return PlanId.lifetime;
+      default:
+        return p;
+    }
+  }
+
   Future<void> _mirror({
     required String uid,
     required String email,
@@ -125,7 +146,7 @@ class PlanosService {
       // 1) Verificar na collection 'users/{uid}'
       final doc = await _userRef(uid).get().timeout(const Duration(seconds: 2));
 
-      // 2) Verificar também na collection 'usuarios/{email}' (grants do admin)
+      // 2) Verificar também na collection 'usuarios/{email}' (fallback legado)
       Map<String, dynamic>? usuarioData;
       try {
         final usuarioDoc = await _db.collection('usuarios').doc(email).get()
@@ -133,73 +154,54 @@ class PlanosService {
         if (usuarioDoc.exists) usuarioData = usuarioDoc.data();
       } catch (_) {}
 
-      // ✅ Se 'usuarios/{email}' tem acesso vitalício ou manual, usar isso
-      if (usuarioData != null) {
-        final isLifetime = usuarioData['isLifetime'] == true;
-        final manualOverride = usuarioData['manualOverride'] == true;
-        final planoAtivo = usuarioData['planoAtivo'] == true;
+      if (doc.exists) {
+        final d = doc.data() ?? const <String, dynamic>{};
+        final mo = (d['manualOverride'] is Map) ? (d['manualOverride'] as Map) : null;
+        final moEnabled = mo != null && (mo['enabled'] == true);
 
-        if (planoAtivo && (isLifetime || manualOverride)) {
-          final planoId = (usuarioData['planoId'] ?? 'lifetime').toString();
-          final end = _parseEnd(usuarioData['currentPeriodEnd']);
+        // Fonte canônica
+        String planId = normalizePlanId(d['currentPlanId']?.toString());
+        String status = (d['status'] ?? 'active').toString();
+        bool trialing = (d['trialing'] ?? false) == true;
+        DateTime? end = _parseEnd(d['currentPeriodEnd']);
+        bool trialUsed = (d['trialUsed'] ?? false) == true;
+        // users/{uid} é canônico; legado em users.plan* não é mais lido.
+        if (status.trim().isEmpty) status = 'active';
 
+        if (moEnabled) {
+          planId = normalizePlanId((mo['planId'] ?? PlanId.lifetime).toString());
+          status = 'active';
+          trialing = false;
+          end = null; // override manual prevalece
+        }
+
+        if (planId.isNotEmpty) {
           return PlanInfo(
-            planId: planoId,
-            status: 'active',
-            trialing: false,
+            planId: planId,
+            status: status,
+            trialing: trialing,
             currentPeriodEnd: end,
-            trialUsed: true,
-            manualOverride: true,
+            trialUsed: trialUsed,
+            manualOverride: moEnabled,
           );
         }
       }
 
-      if (!doc.exists) {
-        // Fallback: verificar se 'usuarios/{email}' tem algum plano ativo
-        if (usuarioData != null && usuarioData['planoAtivo'] == true) {
-          final planoId = (usuarioData['planoId'] ?? '').toString();
-          if (planoId.isNotEmpty) {
-            return PlanInfo(
-              planId: planoId,
-              status: 'active',
-              trialing: false,
-              currentPeriodEnd: _parseEnd(usuarioData['currentPeriodEnd']),
-              trialUsed: true,
-              manualOverride: usuarioData['manualOverride'] == true,
-            );
-          }
+      // Fallback legado em usuarios/{email}
+      if (usuarioData != null && usuarioData['planoAtivo'] == true) {
+        final planoId = normalizePlanId((usuarioData['planoId'] ?? '').toString());
+        if (planoId.isNotEmpty) {
+          return PlanInfo(
+            planId: planoId,
+            status: 'active',
+            trialing: false,
+            currentPeriodEnd: _parseEnd(usuarioData['currentPeriodEnd']),
+            trialUsed: true,
+            manualOverride: usuarioData['manualOverride'] == true,
+          );
         }
-        return null;
       }
-
-    final d = doc.data() ?? const <String, dynamic>{};
-
-    final mo = (d['manualOverride'] is Map) ? (d['manualOverride'] as Map) : null;
-    final moEnabled = mo != null && (mo['enabled'] == true);
-
-    String planId = (d['currentPlanId'] ?? '')?.toString() ?? '';
-    String status = (d['status'] ?? 'active')?.toString() ?? 'active';
-    bool trialing = (d['trialing'] ?? false) == true;
-    DateTime? end = _parseEnd(d['currentPeriodEnd']);
-    final bool trialUsed = (d['trialUsed'] ?? false) == true;
-
-    if (moEnabled) {
-      planId = (mo['planId'] ?? PlanId.lifetime).toString();
-      status = 'active';
-      trialing = false;
-      end = null; // lifetime
-    }
-
-    if (planId.isEmpty) return null;
-
-    return PlanInfo(
-      planId: planId,
-      status: status,
-      trialing: trialing,
-      currentPeriodEnd: end,
-      trialUsed: trialUsed,
-      manualOverride: moEnabled,
-    );
+      return null;
     } catch (e) {
       // Sem internet - retornar plano lifetime para permitir acesso offline
       debugPrint('⚠️ Erro ao buscar plano (modo offline) (type=${e.runtimeType})');
@@ -232,42 +234,44 @@ class PlanosService {
     required String uid,
     required String email,
   }) async {
-    final userDoc = await _userRef(uid).get();
-    final data = userDoc.data() ?? {};
-    final alreadyUsed = (data['trialUsed'] ?? false) == true;
-
-    if (alreadyUsed) {
-      throw Exception('TRIAL_ALREADY_USED');
-    }
-
     final now = DateTime.now();
     final end = now.add(const Duration(days: 90));
-
-    final batch = _db.batch();
     final subRef = _subsCol(uid).doc();
+    await _db.runTransaction((tx) async {
+      final userRef = _userRef(uid);
+      final userDoc = await tx.get(userRef);
+      final data = userDoc.data() ?? const <String, dynamic>{};
+      final alreadyUsed = (data['trialUsed'] ?? false) == true;
+      if (alreadyUsed) {
+        throw Exception('TRIAL_ALREADY_USED');
+      }
 
-    batch.set(subRef, {
-      'planId': PlanId.freeTrial90d,
-      'status': 'trialing',
-      'trialing': true,
-      'createdAt': FieldValue.serverTimestamp(),
-      'currentPeriodEnd': Timestamp.fromDate(end),
-      'kind': 'trial',
+      tx.set(
+        userRef,
+        {
+          'email': email,
+          'currentPlanId': PlanId.freeTrial90d,
+          'status': 'trialing',
+          'trialing': true,
+          'currentPeriodEnd': Timestamp.fromDate(end),
+          'trialUsed': true,
+          'trialUsedAt': Timestamp.fromDate(now),
+          'manualOverride': {'enabled': false},
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      tx.set(subRef, {
+        'planId': PlanId.freeTrial90d,
+        'status': 'trialing',
+        'trialing': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'currentPeriodEnd': Timestamp.fromDate(end),
+        'kind': 'trial',
+      });
     });
-
-    await _mirror(
-      uid: uid,
-      email: email,
-      planId: PlanId.freeTrial90d,
-      status: 'trialing',
-      trialing: true,
-      currentPeriodEnd: end,
-      trialUsed: true,
-      trialUsedAt: now,
-      manualOverride: {'enabled': false},
-    );
-
-    await batch.commit();
+    debugPrint('✅ [PlanosTrial] Trial 90d ativado de forma atômica uid=$uid');
   }
 
   /// Marca plano pago como ativo (pós webhook)

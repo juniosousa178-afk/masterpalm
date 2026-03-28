@@ -504,6 +504,44 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     });
   }
 
+  /// Mesma loja da box Hive aberta na tela; fallback só se [_lojaId] ainda estiver vazio.
+  Future<String?> _lojaIdParaLote() async {
+    final cached = _lojaId?.trim();
+    if (cached != null && cached.isNotEmpty) return cached;
+    final resolved = await StoreResolverFacade.resolveForAdminApp();
+    if (kDebugMode && resolved != null) {
+      logD('[ESTOQUE_LOTE] lojaId resolvido via StoreResolverFacade (cache de tela vazio)');
+    }
+    return resolved;
+  }
+
+  List<int> _hiveKeysSelecionados() {
+    final keys = <int>[];
+    for (final keyStr in _produtosSelecionados) {
+      final k = int.tryParse(keyStr);
+      if (k != null) keys.add(k);
+    }
+    return keys;
+  }
+
+  /// IDs de documento em `lojas/{lojaId}/produtos` (slug ou slugify(nome)), alinhado ao [CatalogoSyncService].
+  List<String> _catalogDocIdsSelecionados() {
+    final ids = <String>[];
+    final seen = <String>{};
+    for (final keyStr in _produtosSelecionados) {
+      final key = int.tryParse(keyStr);
+      if (key == null) continue;
+      final p = _box.get(key);
+      if (p == null) continue;
+      final docId =
+          (p.slug.trim().isNotEmpty ? p.slug.trim() : CatalogoSyncService.slugify(p.nome)).trim();
+      if (docId.isEmpty || seen.contains(docId)) continue;
+      seen.add(docId);
+      ids.add(docId);
+    }
+    return ids;
+  }
+
   void _selecionarTodos() {
     setState(() {
       _searchDebounce?.cancel();
@@ -641,9 +679,16 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         await p.save();
         n++;
       }
-      final lojaIdSync = await StoreResolverFacade.resolveForAdminApp();
+      final lojaIdSync = await _lojaIdParaLote();
       if (lojaIdSync != null && lojaIdSync.trim().isNotEmpty) {
-        await ProdutosFirestoreService.syncTodosProdutos(boxName: _box.name, lojaId: lojaIdSync);
+        await ProdutosFirestoreService.syncProdutosPorChavesHive(
+          box: _box,
+          lojaId: lojaIdSync,
+          hiveKeys: _hiveKeysSelecionados(),
+        );
+        if (kDebugMode) {
+          logD('[ESTOQUE_LOTE] categoria: sync estoque_produtos ${_hiveKeysSelecionados().length} item(ns)');
+        }
       } else {
         logD('[ESTOQUE] Sync omitido: lojaId vazio após alterar categoria em lote');
         if (mounted) _showSnackBar('Alterações salvas localmente. Sincronize com a nuvem depois.');
@@ -745,9 +790,16 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         await p.save();
         n++;
       }
-      final lojaIdSync = await StoreResolverFacade.resolveForAdminApp();
+      final lojaIdSync = await _lojaIdParaLote();
       if (lojaIdSync != null && lojaIdSync.trim().isNotEmpty) {
-        await ProdutosFirestoreService.syncTodosProdutos(boxName: _box.name, lojaId: lojaIdSync);
+        await ProdutosFirestoreService.syncProdutosPorChavesHive(
+          box: _box,
+          lojaId: lojaIdSync,
+          hiveKeys: _hiveKeysSelecionados(),
+        );
+        if (kDebugMode) {
+          logD('[ESTOQUE_LOTE] subcategoria: sync estoque_produtos ${_hiveKeysSelecionados().length} item(ns)');
+        }
       } else {
         logD('[ESTOQUE] Sync omitido: lojaId vazio após alterar subcategoria em lote');
         if (mounted) _showSnackBar('Alterações salvas localmente. Sincronize com a nuvem depois.');
@@ -805,7 +857,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     setState(() => _publicando = true);
     try {
       int n = 0;
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await _lojaIdParaLote();
       for (final keyStr in _produtosSelecionados) {
         final key = int.tryParse(keyStr);
         if (key == null) continue;
@@ -816,8 +868,20 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         await p.save();
         n++;
       }
-      if (lojaId != null && n > 0) {
-        await ProdutosFirestoreService.syncTodosProdutos(boxName: _box.name, lojaId: lojaId);
+      if (lojaId != null && lojaId.isNotEmpty && n > 0) {
+        await ProdutosFirestoreService.syncProdutosPorChavesHive(
+          box: _box,
+          lojaId: lojaId,
+          hiveKeys: _hiveKeysSelecionados(),
+        );
+        if (kDebugMode) {
+          logD('[ESTOQUE_LOTE] dividir sem juros: sync $n item(ns) loja=$lojaId');
+        }
+      } else if (n > 0) {
+        logD('[ESTOQUE] Sync omitido: lojaId vazio após dividir sem juros em lote');
+        if (mounted) {
+          _showSnackBar('Alterações salvas localmente. Sincronize com a nuvem depois.');
+        }
       }
       if (!mounted) return;
       _showSnackBar('Dividir sem juros aplicado em $n produto(s)');
@@ -871,7 +935,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     setState(() => _publicando = true);
     try {
       int n = 0;
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await _lojaIdParaLote();
       for (final keyStr in _produtosSelecionados) {
         final key = int.tryParse(keyStr);
         if (key == null) continue;
@@ -881,8 +945,20 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         await p.save();
         n++;
       }
-      if (lojaId != null && n > 0) {
-        await ProdutosFirestoreService.syncTodosProdutos(boxName: _box.name, lojaId: lojaId);
+      if (lojaId != null && lojaId.isNotEmpty && n > 0) {
+        await ProdutosFirestoreService.syncProdutosPorChavesHive(
+          box: _box,
+          lojaId: lojaId,
+          hiveKeys: _hiveKeysSelecionados(),
+        );
+        if (kDebugMode) {
+          logD('[ESTOQUE_LOTE] desconto PIX: sync $n item(ns) loja=$lojaId');
+        }
+      } else if (n > 0) {
+        logD('[ESTOQUE] Sync omitido: lojaId vazio após desconto PIX em lote');
+        if (mounted) {
+          _showSnackBar('Alterações salvas localmente. Sincronize com a nuvem depois.');
+        }
       }
       if (!mounted) return;
       _showSnackBar('Desconto PIX de ${percentual.toStringAsFixed(1)}% aplicado em $n produto(s)');
@@ -915,7 +991,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     setState(() => _publicando = true);
 
     try {
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await _lojaIdParaLote();
       if (lojaId == null || lojaId.isEmpty) {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
@@ -975,17 +1051,15 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       int sucesso = 0;
       int erro = 0;
 
-      // ✅ Obter lojaId uma vez para todas as operações
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await _lojaIdParaLote();
       if (lojaId == null || lojaId.isEmpty) {
         _showSnackBar('Erro: Nenhuma loja ativa', isError: true);
         return;
       }
 
-      logD('📦 [LOTE] Adicionando ${_produtosSelecionados.length} produtos ao catálogo');
+      logD('[ESTOQUE_LOTE] adicionar catálogo: ${_produtosSelecionados.length} selecionado(s) loja=$lojaId');
 
       for (var keyStr in _produtosSelecionados) {
-        // Converter String para int
         final key = int.tryParse(keyStr);
 
         try {
@@ -1000,20 +1074,26 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
             continue;
           }
 
-          // ✅ CORREÇÃO: Marcar como publicado ANTES de sincronizar
           produto.publicadoNoCatalogo = true;
-          await produto.save(); // Salva no Hive
+          await produto.save();
 
-          logD('✅ [LOTE] Produto "${produto.nome}" marcado como publicado');
-
-          // ✅ 1) Sincronizar para DRAFT primeiro (fluxo consistente com "Publicar TUDO")
           await CatalogoSyncService.syncProduto(
             produto,
             target: SyncTarget.draft,
             lojaIdOverride: lojaId,
           );
 
-          logD('✅ [LOTE] Produto "${produto.nome}" sincronizado para DRAFT');
+          final docId = (produto.slug.trim().isNotEmpty
+                  ? produto.slug.trim()
+                  : CatalogoSyncService.slugify(produto.nome))
+              .trim();
+          if (docId.isNotEmpty) {
+            await CatalogPublishService.promoteOne(docId, lojaIdOverride: lojaId);
+            if (kDebugMode) {
+              logD('[ESTOQUE_LOTE] [CATALOGO_ITEM] publicado draft→live docId=$docId');
+            }
+          }
+
           sucesso++;
         } catch (e, st) {
           erro++;
@@ -1021,10 +1101,12 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         }
       }
 
-      // ✅ 2) Promover draft → live (mesmo fluxo que "Publicar TUDO")
-      if (sucesso > 0) {
-        await CatalogPublishService.promoteAll();
-        logD('📦 [LOTE] draft_produtos promovidos para produtos (live)');
+      if (sucesso > 0 && erro == 0) {
+        await CatalogPublishService.limparCatalogoPrecisaAtualizar();
+        if (mounted) setState(() => _catalogoPrecisaAtualizar = false);
+      } else if (sucesso > 0) {
+        await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        if (mounted) setState(() => _catalogoPrecisaAtualizar = true);
       }
 
       if (mounted) {
@@ -1056,17 +1138,15 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       int sucesso = 0;
       int erro = 0;
 
-      // ✅ Obter lojaId uma vez para todas as operações
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await _lojaIdParaLote();
       if (lojaId == null || lojaId.isEmpty) {
         _showSnackBar('Erro: Nenhuma loja ativa', isError: true);
         return;
       }
 
-      logD('🗑️ [LOTE] Removendo ${_produtosSelecionados.length} produtos do catálogo');
+      logD('[ESTOQUE_LOTE] remover catálogo: ${_produtosSelecionados.length} selecionado(s) loja=$lojaId');
 
       for (var keyStr in _produtosSelecionados) {
-        // Converter String para int
         final key = int.tryParse(keyStr);
 
         try {
@@ -1081,29 +1161,39 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
             continue;
           }
 
-          // ✅ CORREÇÃO: Marcar como NÃO publicado
           produto.publicadoNoCatalogo = false;
-          await produto.save(); // Salva no Hive
+          await produto.save();
 
-          logD('✅ [LOTE] Produto "${produto.nome}" marcado como não publicado');
-
-          final slug = produto.slug.isNotEmpty
-              ? produto.slug
-              : CatalogoSyncService.slugify(produto.nome);
-
-          // ✅ Remover do catálogo LIVE com lojaId explícito
-          await CatalogoSyncService.removeBySlug(
-            slug,
-            target: SyncTarget.live,
-            lojaIdOverride: lojaId, // ✅ Garante a loja correta
+          await CatalogoSyncService.syncProduto(
+            produto,
+            target: SyncTarget.draft,
+            lojaIdOverride: lojaId,
           );
 
-          logD('✅ [LOTE] Produto "${produto.nome}" removido do LIVE');
+          final docId = (produto.slug.trim().isNotEmpty
+                  ? produto.slug.trim()
+                  : CatalogoSyncService.slugify(produto.nome))
+              .trim();
+          if (docId.isNotEmpty) {
+            await CatalogPublishService.promoteOne(docId, lojaIdOverride: lojaId);
+            if (kDebugMode) {
+              logD('[ESTOQUE_LOTE] [CATALOGO_ITEM] despublicado draft+live docId=$docId');
+            }
+          }
+
           sucesso++;
         } catch (e, st) {
           erro++;
           logE('❌ [LOTE] Erro ao remover do catálogo (type=${e.runtimeType})', error: e, st: st);
         }
+      }
+
+      if (sucesso > 0 && erro == 0) {
+        await CatalogPublishService.limparCatalogoPrecisaAtualizar();
+        if (mounted) setState(() => _catalogoPrecisaAtualizar = false);
+      } else if (sucesso > 0) {
+        await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        if (mounted) setState(() => _catalogoPrecisaAtualizar = true);
       }
 
       if (mounted) {
@@ -1129,10 +1219,19 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       return;
     }
 
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
+    final lojaId = await _lojaIdParaLote();
     if (lojaId == null || lojaId.isEmpty) {
       _showSnackBar('Erro: Nenhuma loja ativa', isError: true);
       return;
+    }
+
+    final docIds = _catalogDocIdsSelecionados();
+    if (docIds.isEmpty) {
+      _showSnackBar('Nenhum identificador de catálogo válido nos produtos selecionados.', isError: true);
+      return;
+    }
+    if (kDebugMode) {
+      logD('[MARKETPLACE_LOTE] $marketplace loja=$lojaId docs=${docIds.length}');
     }
 
     setState(() {
@@ -1146,19 +1245,19 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       case 'Mercado Livre':
         resultado = await MarketplaceService.sincronizarProdutosMercadoLivre(
           lojaId: lojaId,
-          produtoIds: null,
+          produtoIds: docIds,
         );
         break;
       case 'TikTok Shop':
         resultado = await MarketplaceService.sincronizarProdutosTikTok(
           lojaId: lojaId,
-          produtoIds: null,
+          produtoIds: docIds,
         );
         break;
       case 'Shopee':
         resultado = await MarketplaceService.sincronizarProdutosShopee(
           lojaId: lojaId,
-          produtoIds: null,
+          produtoIds: docIds,
         );
         break;
       default:
@@ -1180,7 +1279,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       final total = (resultado['total'] is int) ? resultado['total'] as int : 0;
       if (total == 0) {
         _showSnackBar(
-          'Nenhum produto na nuvem. Publique os produtos no catálogo antes de sincronizar.',
+          'Nenhum documento encontrado em catálogo publicado para os selecionados. Publique no catálogo antes de sincronizar.',
           isError: true,
         );
       } else {

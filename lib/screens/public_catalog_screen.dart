@@ -41,12 +41,16 @@ import 'public_catalog/catalog_config_service.dart';
 import '../utils/platform_adaptive.dart';
 import '../utils/safe_parse.dart';
 import 'public_catalog/catalog_theme_extension.dart';
+import 'public_catalog/catalog_theme.dart';
+import 'public_catalog/catalog_checkout_summary_tokens.dart';
+import 'public_catalog/catalog_cart_checkout_visual_config.dart';
 import 'public_catalog/widgets/catalog_banner_carousel.dart';
 import 'public_catalog/widgets/catalog_config_error_state.dart';
 import 'public_catalog/widgets/catalog_config_loading_state.dart';
 import 'public_catalog/widgets/catalog_empty_products_state.dart';
 import 'public_catalog/widgets/catalog_error_loja_state.dart';
 import 'public_catalog/widgets/catalog_footer.dart';
+import 'public_catalog/widgets/catalog_creator_credit_bar.dart';
 import 'public_catalog/widgets/catalog_loading_state.dart';
 import 'public_catalog/widgets/catalog_search_filters_bar.dart';
 import 'public_catalog/widgets/catalog_products_grid_sliver.dart';
@@ -500,6 +504,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   String? _cachedConfigStreamKey;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _cachedProdutosStream;
   String? _cachedProdutosStreamKey;
+
+  /// Formulário do checkout (prefs) em memória — evita await antes de abrir o carrinho.
+  Map<String, dynamic>? _cachedCatalogCartForm;
 
   Stream<Map<String, dynamic>> _getConfigStream(String lojaId) {
     final key = '${lojaId}_${widget.preview}';
@@ -1225,6 +1232,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadMostrarQuantidadeNoCatalogo(
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
+        _refreshCatalogCartFormCache(
+            result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadRecentIds();
         _loadClienteAndFavoritos();
         if (!widget.preview &&
@@ -1265,6 +1274,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadMostrarQuantidadeNoCatalogo(
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
+        _refreshCatalogCartFormCache(
+            result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadRecentIds();
         _loadClienteAndFavoritos();
         if (!widget.preview &&
@@ -1300,9 +1311,42 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     return _resolvedLojaId!;
   }
 
+  void _refreshCatalogCartFormCache(String storeId) {
+    if (storeId.isEmpty) return;
+    SharedPreferences.getInstance().then((prefs) {
+      Map<String, dynamic>? parsed;
+      try {
+        final key = 'catalog_cart_form_$storeId';
+        final json = prefs.getString(key);
+        if (json != null && json.isNotEmpty) {
+          final decoded = jsonDecode(json);
+          if (decoded is Map) {
+            parsed = Map<String, dynamic>.from(decoded);
+          }
+        }
+      } catch (_) {
+        parsed = null;
+      }
+      if (!mounted) return;
+      if (_resolvedLojaId != storeId) return;
+      setState(() => _cachedCatalogCartForm = parsed);
+    });
+  }
+
   void _snack(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg)),
+    );
+  }
+
+  void _snackAdicionadoAoCarrinho() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Adicionado ao carrinho'),
+        duration: Duration(milliseconds: 2200),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -1399,7 +1443,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _saveCarrinho();
   }
 
-  void _addToCart(
+  bool _addToCart(
     Map<String, dynamic> item,
     List<Map<String, dynamic>> catalogProducts,
   ) {
@@ -1433,7 +1477,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _snack(avail <= 0
               ? 'Produto esgotado nesta variação.'
               : 'Estoque insuficiente. Disponível: $avail un.');
-          return;
+          return false;
         }
       }
     }
@@ -1454,6 +1498,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       _clearPrePedidoReuseSession();
     });
     _saveCarrinho();
+    return true;
   }
 
   // Flag para evitar spam de log de permission-denied
@@ -1803,30 +1848,26 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required String checkoutButtonLabel,
     required String pixKey,
     required String freightToken,
+    required CatalogCheckoutSummaryTokens checkoutSummaryTokens,
+    required CatalogCartUiTokens catalogCartUiTokens,
+    CatalogFirstPurchaseCouponOffer? catalogFirstPurchaseCouponOffer,
   }) async {
     if (_cart.isEmpty) {
       _snack('Seu carrinho está vazio.');
       return;
     }
 
-    // Carregar dados do formulário salvos anteriormente (persistência ao sair/voltar)
-    Map<String, dynamic>? initialFormData;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final key = 'catalog_cart_form_$lojaId';
-      final json = prefs.getString(key);
-      if (json != null && json.isNotEmpty) {
-        final decoded = jsonDecode(json);
-        if (decoded is Map) {
-          initialFormData = Map<String, dynamic>.from(decoded);
-        }
-      }
-    } catch (_) {
-      initialFormData = null;
-    }
+    final Map<String, dynamic>? initialFormData = _cachedCatalogCartForm;
 
     if (!mounted) return;
     final wideChrome = usePointerFirstChrome(context);
+
+    if (kDebugMode) {
+      debugPrint(
+        '[CART_WIDGET_REAL] OPEN_CARRINHO public_catalog → '
+        'CarrinhoSheetWeb (wideChrome=$wideChrome, preview=${widget.preview})',
+      );
+    }
 
     Widget carrinhoContent(BuildContext sheetContext) {
       return CarrinhoSheetWeb(
@@ -1836,6 +1877,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             cupons: cupons,
             initialFormData: initialFormData,
             onFormDataToSave: (data) {
+              final copy = Map<String, dynamic>.from(data);
+              if (mounted) {
+                setState(() => _cachedCatalogCartForm = copy);
+              }
               SharedPreferences.getInstance().then((prefs) {
                 prefs.setString('catalog_cart_form_$lojaId', jsonEncode(data));
               });
@@ -1873,6 +1918,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             checkoutTotalColor: checkoutTotalColor,
             productNameColor: productNameColor,
             productPriceColor: productPriceColor,
+            checkoutSummaryStyle: checkoutSummaryTokens,
+            cartUiTokens: catalogCartUiTokens,
+            firstPurchaseCoupon: catalogFirstPurchaseCouponOffer,
             checkoutGateway: checkoutGateway,
             checkoutButtonLabel: checkoutButtonLabel,
             pixKey: pixKey,
@@ -3026,6 +3074,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           final checkoutFieldBorder = uiColorsMap.isNotEmpty
               ? colorFromUiColors('fieldBorder', Colors.white.withValues(alpha: 0.25))
               : Colors.white.withValues(alpha: 0.25);
+
+          final catalogThemeDataResolved = CatalogThemeData.fromConfig(cfg);
+          final catalogCheckoutSummaryTokens =
+              CatalogCheckoutSummaryTokens.fromThemeData(
+                  catalogThemeDataResolved);
+          final catalogCartUiTokens = CatalogCartUiTokens.fromConfig(
+            cfg,
+            theme: catalogThemeDataResolved,
+          );
+          final catalogFirstPurchaseCouponOffer =
+              CatalogFirstPurchaseCouponOffer.parse(
+            cfg,
+            theme: catalogThemeDataResolved,
+          );
 
           // ===== Cores de nome e preço do produto =====
           final productNameColor = cardTextPrimary;
@@ -4317,6 +4379,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       checkoutButtonLabel: checkoutButtonLabel,
                                       pixKey: pixKey,
                                       freightToken: freightToken,
+                                      checkoutSummaryTokens:
+                                          catalogCheckoutSummaryTokens,
+                                      catalogCartUiTokens: catalogCartUiTokens,
+                                      catalogFirstPurchaseCouponOffer:
+                                          catalogFirstPurchaseCouponOffer,
                                     ),
                                   ),
                                   if (cartCount > 0)
@@ -4450,6 +4517,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             checkoutButtonLabel: checkoutButtonLabel,
                             pixKey: pixKey,
                             freightToken: freightToken,
+                            checkoutSummaryTokens: catalogCheckoutSummaryTokens,
+                            catalogCartUiTokens: catalogCartUiTokens,
+                            catalogFirstPurchaseCouponOffer:
+                                catalogFirstPurchaseCouponOffer,
                           ),
                           icon: const Icon(Icons.shopping_bag_outlined),
                           label: Text('Carrinho ($cartCount)'),
@@ -4855,6 +4926,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       pixKey: pixKey,
                                                       freightToken:
                                                           freightToken,
+                                                      checkoutSummaryTokens:
+                                                          catalogCheckoutSummaryTokens,
+                                                      catalogCartUiTokens:
+                                                          catalogCartUiTokens,
+                                                      catalogFirstPurchaseCouponOffer:
+                                                          catalogFirstPurchaseCouponOffer,
                                                     ),
                                                     catalogShareUrl:
                                                         CatalogShareService
@@ -4995,6 +5072,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       checkoutButtonLabel,
                                                   pixKey: pixKey,
                                                   freightToken: freightToken,
+                                                  checkoutSummaryTokens:
+                                                      catalogCheckoutSummaryTokens,
+                                                  catalogCartUiTokens:
+                                                      catalogCartUiTokens,
+                                                  catalogFirstPurchaseCouponOffer:
+                                                      catalogFirstPurchaseCouponOffer,
                                                 ),
                                                 clienteId: _clienteId,
                                                 favoritosIds: _favoritosIds,
@@ -5080,6 +5163,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     checkoutButtonLabel,
                                                 pixKey: pixKey,
                                                 freightToken: freightToken,
+                                                checkoutSummaryTokens:
+                                                    catalogCheckoutSummaryTokens,
+                                                catalogCartUiTokens:
+                                                    catalogCartUiTokens,
+                                                catalogFirstPurchaseCouponOffer:
+                                                    catalogFirstPurchaseCouponOffer,
                                               ),
                                               clienteId: _clienteId,
                                               favoritosIds: _favoritosIds,
@@ -5169,6 +5258,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 indicacao: widget.indicacaoClienteRef,
                                               ),
                                               useMinimalLayout: useMinimalLayout,
+                                              onMinimalSilentAddFeedback:
+                                                  useMinimalLayout
+                                                      ? _snackAdicionadoAoCarrinho
+                                                      : null,
                                               productCardSize: productCardSize,
                                             ),
                                             // Paginação: Anterior | Página X de Y | Próxima (sempre visível)
@@ -5350,6 +5443,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               ),
                                             ),
                                             Expanded(child: scrollBody),
+                                            CatalogCreatorCreditBar(
+                                              backgroundColor: footerBgColor,
+                                              textColor: textColor,
+                                              accentColor: primaryColor,
+                                              onOpenUrl: _openUrl,
+                                            ),
                                           ],
                                         );
                                       }
@@ -5370,7 +5469,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               Theme.of(context).colorScheme.primary;
                           return Positioned(
                             left: 16,
-                            bottom: _cart.isEmpty ? 24 : 88,
+                            bottom: (_cart.isEmpty ? 24 : 88) +
+                                catalogCreatorCreditBarReserveHeight(context),
                             child: Material(
                               elevation: 4,
                               color: primaryColor.withValues(alpha: 0.9),

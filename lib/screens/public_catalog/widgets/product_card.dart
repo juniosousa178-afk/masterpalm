@@ -24,7 +24,8 @@ Map<String, int> _mapToMapStringInt(Map<String, dynamic> raw) {
 class PublicCatalogProductCard extends StatelessWidget {
   final Map<String, dynamic> produto;
   final String lojaId;
-  final void Function(Map<String, dynamic>) onAdd;
+  final bool Function(Map<String, dynamic>) onAdd;
+  final VoidCallback? onMinimalSilentAddFeedback;
   final void Function(String productId)? onProductViewed;
   final void Function()? onToggleFavorito;
   final void Function()? onAbrirCarrinho;
@@ -54,6 +55,7 @@ class PublicCatalogProductCard extends StatelessWidget {
     required this.produto,
     required this.lojaId,
     required this.onAdd,
+    this.onMinimalSilentAddFeedback,
     this.onProductViewed,
     this.onToggleFavorito,
     this.onAbrirCarrinho,
@@ -139,6 +141,7 @@ class PublicCatalogProductCard extends StatelessWidget {
           ? asMapDeep(p['variacoes'])
           : null,
       onAdd: onAdd,
+      onMinimalSilentAddFeedback: onMinimalSilentAddFeedback,
       borderRadius: cardBorderRadius,
       showShadow: cardShowShadow,
       catalogShareUrl: catalogUrl,

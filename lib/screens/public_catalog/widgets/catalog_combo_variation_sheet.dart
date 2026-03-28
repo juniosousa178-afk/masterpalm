@@ -16,8 +16,9 @@ void showCatalogComboVariationSheet({
   required BuildContext context,
   required Map<String, dynamic> comboProduct,
   required List<Map<String, dynamic>> todosProdutos,
-  required void Function(Map<String, dynamic> item) onAdd,
+  required bool Function(Map<String, dynamic> item) onAdd,
   VoidCallback? onAbrirCarrinho,
+  VoidCallback? onAfterSilentAddWhenAdded,
 }) {
   if (!context.mounted) return;
   final wideChrome = usePointerFirstChrome(context);
@@ -28,6 +29,7 @@ void showCatalogComboVariationSheet({
       todosProdutos: todosProdutos,
       onAdd: onAdd,
       onAbrirCarrinho: onAbrirCarrinho,
+      onAfterSilentAddWhenAdded: onAfterSilentAddWhenAdded,
     );
   }
 
@@ -72,8 +74,9 @@ void showCatalogComboVariationSheet({
 class CatalogComboVariationSheet extends StatefulWidget {
   final Map<String, dynamic> comboProduct;
   final List<Map<String, dynamic>> todosProdutos;
-  final void Function(Map<String, dynamic> item) onAdd;
+  final bool Function(Map<String, dynamic> item) onAdd;
   final VoidCallback? onAbrirCarrinho;
+  final VoidCallback? onAfterSilentAddWhenAdded;
 
   const CatalogComboVariationSheet({
     super.key,
@@ -81,6 +84,7 @@ class CatalogComboVariationSheet extends StatefulWidget {
     required this.todosProdutos,
     required this.onAdd,
     this.onAbrirCarrinho,
+    this.onAfterSilentAddWhenAdded,
   });
 
   @override
@@ -330,9 +334,15 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
       'cor': '',
       'itensComboComSelecao': _buildSelecao(),
     };
-    widget.onAdd(item);
+    final added = widget.onAdd(item);
     Navigator.of(context).pop();
-    widget.onAbrirCarrinho?.call();
+    if (widget.onAbrirCarrinho != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onAbrirCarrinho!();
+      });
+    } else if (added && widget.onAfterSilentAddWhenAdded != null) {
+      widget.onAfterSilentAddWhenAdded!();
+    }
   }
 
   @override

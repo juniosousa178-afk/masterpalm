@@ -54,9 +54,14 @@ class PlanoService {
   static Future<void> salvarPlano(
       String email, Map<String, bool> permissoes) async {
     try {
+      // Fonte deste serviço: apenas permissões operacionais em usuarios/{email}.
+      // Plano/assinatura canônico deve permanecer em users/{uid}.
+      final safePermissoes = Map<String, bool>.from(
+        permissoes.map((k, v) => MapEntry(k.toString(), v == true)),
+      );
       await _ensureUserDoc(email); // garante doc e campo email
       await _userDocByEmail(email)
-          .set({'permissoes': permissoes}, SetOptions(merge: true));
+          .set({'permissoes': safePermissoes}, SetOptions(merge: true));
     } catch (e) {
       logger.e('Erro ao salvar plano no Firebase (type=${e.runtimeType})');
       rethrow;

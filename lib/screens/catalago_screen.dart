@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 import '../utils/image_helper.dart' as img_helper;
 import 'package:hive/hive.dart';
@@ -418,6 +419,12 @@ if (numero.isEmpty) {
   }
 
   void _abrirCarrinho() {
+    if (kDebugMode) {
+      debugPrint(
+        '[CART_WIDGET_REAL] OPEN_CARRINHO rota /catalogo → '
+        'CatalogoScreen (modal legado; NÃO usa carrinho_sheet_web.dart)',
+      );
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,

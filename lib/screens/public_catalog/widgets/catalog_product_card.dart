@@ -40,7 +40,7 @@ class CatalogProductCard extends StatefulWidget {
   final Map<String, int>? estoquePorTamanho;
   final Map<String, int>? estoquePorCor;
   final Map<String, dynamic>? variacoes;
-  final void Function(Map<String, dynamic>) onAdd;
+  final bool Function(Map<String, dynamic>) onAdd;
   final double borderRadius;
   final bool showShadow;
   final String? catalogShareUrl;
@@ -55,6 +55,8 @@ class CatalogProductCard extends StatefulWidget {
   final double percentualDescontoPix;
   /// Callback para abrir o carrinho após adicionar (usado pelo botão "Comprar")
   final void Function()? onAbrirCarrinho;
+  /// Layout minimalista: SnackBar discreto após ícone carrinho quando [onAdd] retorna true.
+  final VoidCallback? onMinimalSilentAddFeedback;
   /// Se true, exibe o selo "Últimas X" quando estoque <= 5
   final bool showStockBadge;
   /// Se true, exibe "X un." no modal de opções; se false, exibe "Disponível"
@@ -115,6 +117,7 @@ class CatalogProductCard extends StatefulWidget {
     num maxParcelas = 12,
     num percentualDescontoPix = 0.0,
     this.onAbrirCarrinho,
+    this.onMinimalSilentAddFeedback,
     this.showStockBadge = false,
     this.mostrarQuantidadeNoCatalogo = false,
     this.compact = false,
@@ -384,6 +387,11 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
       todosProdutos: widget.todosProdutosForCombo!,
       onAdd: widget.onAdd,
       onAbrirCarrinho: abrirCarrinhoDepois ? widget.onAbrirCarrinho : null,
+      onAfterSilentAddWhenAdded: (!abrirCarrinhoDepois &&
+              widget.minimalLayout &&
+              widget.onMinimalSilentAddFeedback != null)
+          ? widget.onMinimalSilentAddFeedback
+          : null,
     );
   }
 
@@ -427,10 +435,18 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             'cor': cor ?? '',
           };
 
-          widget.onAdd(itemParaCarrinho);
+          final added = widget.onAdd(itemParaCarrinho);
           Navigator.of(context).pop();
           if (comprarDirecto && widget.onAbrirCarrinho != null) {
-            widget.onAbrirCarrinho!();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              widget.onAbrirCarrinho!();
+            });
+          } else if (!comprarDirecto &&
+              added &&
+              widget.minimalLayout &&
+              widget.onMinimalSilentAddFeedback != null) {
+            widget.onMinimalSilentAddFeedback!();
           }
         },
       );
@@ -489,7 +505,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
       _openSelectionModal(comprarDirecto: true);
     } else {
       final img = widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl;
-      widget.onAdd({
+      if (!widget.onAdd({
         'produtosId': widget.id,
         'id': widget.id,
         'nome': widget.name,
@@ -505,8 +521,16 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
         'tipoEmbalagem': widget.tipoEmbalagem,
         'tamanho': '',
         'cor': '',
-      });
-      widget.onAbrirCarrinho?.call();
+      })) {
+        return;
+      }
+      final openCart = widget.onAbrirCarrinho;
+      if (openCart != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          openCart();
+        });
+      }
     }
   }
 
@@ -1073,12 +1097,19 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                     _openSelectionModal();
                                   } else {
                                     final img = widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl;
-                                    widget.onAdd({
+                                    final added = widget.onAdd({
                                       'produtosId': widget.id, 'id': widget.id, 'nome': widget.name, 'preco': widget.price,
-                                      'percentualDescontoPix': widget.percentualDescontoPix, 'quantidade': 1,
+                                      'percentualDescontoPix': widget.percentualDescontoPix,
+                                      'divideSemJuros': widget.divideSemJuros,
+                                      'maxParcelasSemJuros': widget.maxParcelas,
+                                      'quantidade': 1,
                                       'imageUrl': img, 'url_foto': img, 'slug': widget.slug, 'peso': widget.peso,
                                       'tipoEmbalagem': widget.tipoEmbalagem, 'tamanho': '', 'cor': '',
                                     });
+                                    if (added &&
+                                        widget.onMinimalSilentAddFeedback != null) {
+                                      widget.onMinimalSilentAddFeedback!();
+                                    }
                                   }
                                 },
                                 child: Icon(

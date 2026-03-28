@@ -14,7 +14,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
   final List<Map<String, dynamic>> products;
   final String lojaId;
   final List<Map<String, dynamic>> todosProdutos;
-  final void Function(Map<String, dynamic>) onAdd;
+  final bool Function(Map<String, dynamic>) onAdd;
   final VoidCallback? onAbrirCarrinho;
   final String? catalogShareUrl;
   final Color textColor;

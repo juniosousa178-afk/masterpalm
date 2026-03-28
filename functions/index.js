@@ -1416,36 +1416,114 @@ export const mpWebhook = onRequest(
 const PRICE_MENSAL = 25.9;
 const PRICE_ANUAL = 299.9;
 
+function normalizePlanId(raw) {
+  const p = String(raw || "").trim().toLowerCase();
+  if (p === "mensal" || p === "pro_monthly") return "pro_monthly";
+  if (p === "anual" || p === "pro_yearly") return "pro_yearly";
+  if (p === "trial_90d" || p === "free_trial_90d") return "free_trial_90d";
+  return p;
+}
+
+function toLegacyPlanAlias(planId) {
+  const p = normalizePlanId(planId);
+  if (p === "pro_yearly") return "anual";
+  if (p === "pro_monthly") return "mensal";
+  return p;
+}
+
+function mapCheckoutStatus(mpStatus) {
+  const s = String(mpStatus || "").trim().toLowerCase();
+  if (s === "approved") return "approved";
+  if (s === "pending" || s === "in_process") return "pending";
+  if (s === "cancelled" || s === "canceled") return "cancelled";
+  if (s === "refunded" || s === "charged_back") return "refunded";
+  return "rejected";
+}
+
+async function findCheckoutByPayment({ preferenceId, externalRef, userEmail, expectedPlanId }) {
+  const expected = normalizePlanId(expectedPlanId);
+  if (preferenceId) {
+    const q = await db
+      .collection("checkout_planos")
+      .where("preferenceId", "==", preferenceId)
+      .limit(1)
+      .get();
+    if (!q.empty) return { doc: q.docs[0], source: "preferenceId", ambiguous: false };
+  }
+  if (externalRef) {
+    const q = await db
+      .collection("checkout_planos")
+      .where("externalReference", "==", externalRef)
+      .limit(1)
+      .get();
+    if (!q.empty) return { doc: q.docs[0], source: "externalReference", ambiguous: false };
+  }
+  if (userEmail) {
+    const q = await db
+      .collection("checkout_planos")
+      .where("userEmail", "==", userEmail)
+      .orderBy("createdAt", "desc")
+      .limit(3)
+      .get();
+    if (!q.empty) {
+      const now = Date.now();
+      const recentAndCompatible = q.docs.filter((doc) => {
+        const d = doc.data() || {};
+        const created = d.createdAt?.toDate ? d.createdAt.toDate().getTime() : 0;
+        const isRecent = created > 0 && now - created <= 1000 * 60 * 30; // 30min
+        const planCandidate = normalizePlanId(d.normalizedPlanId || d.planoId || "");
+        const compatible = !expected || !planCandidate || planCandidate === expected;
+        return isRecent && compatible;
+      });
+      if (recentAndCompatible.length === 1) {
+        return { doc: recentAndCompatible[0], source: "userEmail_strict", ambiguous: false };
+      }
+      if (recentAndCompatible.length > 1) {
+        return { doc: null, source: "userEmail_strict", ambiguous: true };
+      }
+    }
+  }
+  return { doc: null, source: "none", ambiguous: false };
+}
+
 async function activatePlanForUser({ uid, plan, paymentId, status, amount }) {
   const now = new Date();
   let renew = null;
-
-  if (plan === "mensal") renew = addMonths(now, 1);
-  else if (plan === "anual") renew = addYears(now, 1);
+  const canonicalPlanId = normalizePlanId(plan);
+  if (canonicalPlanId === "pro_monthly") renew = addMonths(now, 1);
+  else if (canonicalPlanId === "pro_yearly") renew = addYears(now, 1);
   else renew = addDays(now, 7);
 
   const ref = db.collection("users").doc(uid);
 
-  // Mapeia para PlanosService (pro_monthly, pro_yearly) e ensureUserPlan (mensal, anual)
-  const planId = plan === "anual" ? "pro_yearly" : "pro_monthly";
-
   const payload = {
-    plan,
-    plan_status: status || "active",
-    plan_startedAt: admin.firestore.Timestamp.fromDate(now),
-    plan_renewsAt: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
-    plan_amount: amount ?? null,
-    plan_paymentId: paymentId ?? null,
-    mp_public_key: MP_PUBLIC_KEY || null,
-    // Compatibilidade com PlanosService (Flutter)
-    currentPlanId: planId,
+    // Canônico
+    currentPlanId: canonicalPlanId || "pro_monthly",
     status: "active",
     currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
     trialing: false,
+    trialUsed: true,
     updatedAt: nowTs,
   };
 
   await ref.set(payload, { merge: true });
+
+  // Histórico canônico de assinatura
+  await ref.collection("subscriptions").doc(String(paymentId || Date.now())).set(
+    {
+      planId: canonicalPlanId || "pro_monthly",
+      status: "active",
+      trialing: false,
+      currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
+      kind: "paid",
+      paymentId: String(paymentId || ""),
+      amount: amount ?? null,
+      createdAt: nowTs,
+      updatedAt: nowTs,
+    },
+    { merge: true }
+  );
+
   return payload;
 }
 
@@ -1560,11 +1638,44 @@ export const planWebhook = onRequest(
 
       const payment = await r.json();
       const status = payment.status;
+      const checkoutStatus = mapCheckoutStatus(status);
       const externalRef = payment.external_reference || "";
       const md = payment.metadata || {};
+      const preferenceId = payment.order?.id || payment.preference_id || md.preference_id || null;
+      const userEmailFromMd = String(md.user_email || md.email || payment.payer?.email || "")
+        .trim()
+        .toLowerCase();
 
-      let uid = md.uid || null;
-      let plan = md.plan || md.plano_id || null;
+      let uid = md.uid || md.userId || md.user_id || null;
+      let plan = md.normalized_plan_id || md.plan || md.plano_id || null;
+
+      // Fallback 1: lookup em checkout_planos (preference/external/email estrito)
+      let checkoutDoc = null;
+      let checkoutSource = "none";
+      let checkoutAmbiguous = false;
+      try {
+        const checkoutLookup = await findCheckoutByPayment({
+          preferenceId,
+          externalRef,
+          userEmail: userEmailFromMd,
+          expectedPlanId: plan,
+        });
+        checkoutDoc = checkoutLookup.doc;
+        checkoutSource = checkoutLookup.source;
+        checkoutAmbiguous = checkoutLookup.ambiguous === true;
+        if (checkoutDoc) {
+          const c = checkoutDoc.data() || {};
+          uid = uid || c.userId || null;
+          plan = plan || c.normalizedPlanId || c.planoId || null;
+        } else if (checkoutAmbiguous) {
+          console.warn(
+            "[PlanosWebhook] Ambiguidade no fallback por email; checkout NÃO será associado",
+            JSON.stringify({ paymentId, userEmailFromMd, preferenceId, externalRef })
+          );
+        }
+      } catch (e) {
+        console.warn("[PlanosWebhook] Falha ao localizar checkout_planos:", e?.message || e);
+      }
 
       // Formato 1: uid|plan (planCreatePreference)
       if ((!uid || !plan) && externalRef.includes("|")) {
@@ -1577,7 +1688,7 @@ export const planWebhook = onRequest(
       if (externalRef.startsWith("plano_") && !uid) {
         const match = externalRef.match(/^plano_(mensal|anual)_/);
         plan = plan || (match ? match[1] : null);
-        const userEmail = (md.user_email || "").trim().toLowerCase();
+        const userEmail = userEmailFromMd;
         if (userEmail) {
           try {
             const userRecord = await admin.auth().getUserByEmail(userEmail);
@@ -1586,6 +1697,69 @@ export const planWebhook = onRequest(
             console.warn("[planWebhook] getUserByEmail não encontrou:", userEmail, e.message);
           }
         }
+      }
+
+      // Fallback 2: resolver uid por e-mail
+      if (!uid && userEmailFromMd) {
+        try {
+          const userRecord = await admin.auth().getUserByEmail(userEmailFromMd);
+          uid = userRecord.uid;
+        } catch (e) {
+          console.warn("[PlanosWebhook] getUserByEmail fallback falhou:", userEmailFromMd, e?.message || e);
+        }
+      }
+
+      plan = normalizePlanId(plan);
+
+      // Idempotência explícita para approved
+      const processedRef = db.collection("processed_plan_payments").doc(String(paymentId));
+      if (status === "approved") {
+        let skipApproved = false;
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(processedRef);
+          const d = snap.exists ? snap.data() || {} : {};
+          if (snap.exists && d.status === "approved") {
+            skipApproved = true;
+            return;
+          }
+          tx.set(
+            processedRef,
+            {
+              paymentId: String(paymentId),
+              status: "processing",
+              rawStatus: String(status || ""),
+              updatedAt: nowTs,
+              createdAt: d.createdAt || nowTs,
+            },
+            { merge: true }
+          );
+        });
+        if (skipApproved) {
+          console.warn("[PlanosWebhook] payment já processado (dedupe):", paymentId);
+          return res.status(200).send("OK");
+        }
+      }
+
+      // Atualiza auditoria de checkout independentemente da ativação canônica
+      if (checkoutDoc) {
+        const update = {
+          status: checkoutStatus,
+          rawStatus: String(status || ""),
+          paymentId: String(paymentId || ""),
+          updatedAt: nowTs,
+          paidAt: status === "approved" ? nowTs : null,
+          lookupSource: checkoutSource,
+          failureReason:
+            status === "approved"
+              ? null
+              : String(payment.status_detail || payment.status || "payment_not_approved"),
+        };
+        await checkoutDoc.ref.set(update, { merge: true });
+      } else {
+        console.warn(
+          "[PlanosWebhook] checkout_planos não encontrado",
+          JSON.stringify({ paymentId, preferenceId, externalRef, userEmailFromMd })
+        );
       }
 
       if (!uid) {
@@ -1603,8 +1777,29 @@ export const planWebhook = onRequest(
           status: "active",
           amount: payment.transaction_amount,
         });
+        await processedRef.set(
+          {
+            paymentId: String(paymentId),
+            processedAt: nowTs,
+            uid: uid || null,
+            checkoutId: checkoutDoc?.id || null,
+            status: "approved",
+            rawStatus: String(status || ""),
+          },
+          { merge: true }
+        );
       } else {
-        await db.collection("users").doc(uid).set({ plan_status: status, updatedAt: nowTs }, { merge: true });
+        await db
+          .collection("users")
+          .doc(uid)
+          .set(
+            {
+              // Canônico: não ativa plano em falha
+              status: checkoutStatus === "pending" ? "pending" : "inactive",
+              updatedAt: nowTs,
+            },
+            { merge: true }
+          );
       }
 
       return res.status(200).send("OK");
