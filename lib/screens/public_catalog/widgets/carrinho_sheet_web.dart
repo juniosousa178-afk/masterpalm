@@ -1352,7 +1352,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
               children: [
                 _left(context),
                 SizedBox(height: gapStack),
-                _cartCheckoutAvisosBanner(context),
                 _centerForm(context),
                 SizedBox(height: gapStack),
                 _checkoutFulfillmentAndPayment(context),
@@ -3221,7 +3220,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
     if (children.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
@@ -3257,6 +3256,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _cartCheckoutAvisosBanner(context),
               if (_fretesLocal.isNotEmpty)
                 InkWell(
                   onTap: () => _mostrarOpcoesDeFrete(context),

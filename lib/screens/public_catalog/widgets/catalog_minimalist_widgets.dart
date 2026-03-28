@@ -519,102 +519,135 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
         applyHeroLetterCase(subtitle.trim(), subtitleLetterCase);
     final buttonDisplay =
         applyHeroLetterCase(buttonText.trim(), buttonLetterCase);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(
-          borderRadius.clamp(8, 36).toDouble(),
-        ),
-        child: Stack(
-          children: [
-            Container(
-              height: boxH,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                gradient: !hasImage && hasCopy
-                    ? LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          backgroundColor,
-                          backgroundColor.withValues(alpha: 0.88),
-                        ],
-                      )
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxW = constraints.maxWidth;
+        // Tablet/desktop largo: largura máxima centralizada e altura proporcional (mobile inalterado).
+        final isWide = maxW >= 900;
+        final double cardMaxW =
+            isWide ? math.min(960.0, maxW - 24.0) : maxW - 24.0;
+        final double layoutH = (!isWide || !hasImage)
+            ? boxH
+            : (cardMaxW / 2.38).clamp(148.0, 252.0);
+        final double overlayBlend = isWide && hasImage
+            ? (overlayOpacity + 0.06).clamp(0.0, 0.55)
+            : overlayOpacity.clamp(0.0, 0.8);
+
+        final inner = ClipRRect(
+          borderRadius: BorderRadius.circular(
+            borderRadius.clamp(8, 36).toDouble(),
+          ),
+          child: Stack(
+            children: [
+              Container(
+                height: layoutH,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: backgroundColor,
+                  gradient: !hasImage && hasCopy
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            backgroundColor,
+                            backgroundColor.withValues(alpha: 0.88),
+                          ],
+                        )
+                      : null,
+                ),
+                child: hasImage
+                    ? SmartImage(src: imageUrl, fit: BoxFit.cover)
                     : null,
               ),
-              child: hasImage
-                  ? SmartImage(src: imageUrl, fit: BoxFit.cover)
-                  : null,
-            ),
-            Container(
-              height: boxH,
-              width: double.infinity,
-              color: Colors.black.withValues(alpha: overlayOpacity.clamp(0.0, 0.8)),
-            ),
-            Positioned.fill(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (titleDisplay.isNotEmpty)
-                      Text(
-                        titleDisplay,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: titleColor,
-                          fontSize: titleFontSize.clamp(10, 40),
-                          fontWeight: titleFontWeight,
+              Container(
+                height: layoutH,
+                width: double.infinity,
+                color:
+                    Colors.black.withValues(alpha: overlayBlend),
+              ),
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (titleDisplay.isNotEmpty)
+                        Text(
+                          titleDisplay,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: titleColor,
+                            fontSize: titleFontSize.clamp(10, 40),
+                            fontWeight: titleFontWeight,
+                          ),
                         ),
-                      ),
-                    if (subtitleDisplay.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        subtitleDisplay,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: subtitleColor,
-                          fontSize: subtitleFontSize.clamp(9, 32),
-                          fontWeight: subtitleFontWeight,
+                      if (subtitleDisplay.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          subtitleDisplay,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: subtitleColor,
+                            fontSize: subtitleFontSize.clamp(9, 32),
+                            fontWeight: subtitleFontWeight,
+                          ),
                         ),
-                      ),
-                    ],
-                    if (buttonDisplay.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: onTap,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: buttonBackgroundColor,
-                          foregroundColor: buttonTextColor,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          minimumSize: const Size(0, 36),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              buttonBorderRadius.clamp(0, 28),
+                      ],
+                      if (buttonDisplay.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        FilledButton(
+                          onPressed: onTap,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: buttonBackgroundColor,
+                            foregroundColor: buttonTextColor,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 10),
+                            minimumSize: const Size(0, 36),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                buttonBorderRadius.clamp(0, 28),
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            buttonDisplay,
+                            style: TextStyle(
+                              fontSize: buttonFontSize.clamp(9, 24),
+                              fontWeight: buttonFontWeight,
+                              color: buttonTextColor,
                             ),
                           ),
                         ),
-                        child: Text(
-                          buttonDisplay,
-                          style: TextStyle(
-                            fontSize: buttonFontSize.clamp(9, 24),
-                            fontWeight: buttonFontWeight,
-                            color: buttonTextColor,
-                          ),
-                        ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            isWide ? 16 : 12,
+            8,
+            isWide ? 16 : 12,
+            12,
+          ),
+          child: isWide
+              ? Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: cardMaxW),
+                    child: inner,
+                  ),
+                )
+              : inner,
+        );
+      },
     );
   }
 }

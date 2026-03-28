@@ -1956,7 +1956,23 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
 
     Widget carrinhoContent(BuildContext sheetContext) {
-      return CarrinhoSheetWeb(
+      return ScaffoldMessenger(
+        child: Scaffold(
+          resizeToAvoidBottomInset: true,
+          backgroundColor: Colors.transparent,
+          body: Builder(
+            builder: (BuildContext cartCtx) {
+              void showCartSnack(String message) {
+                ScaffoldMessenger.of(cartCtx).showSnackBar(
+                  SnackBar(
+                    content: Text(message),
+                    behavior: SnackBarBehavior.floating,
+                    margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  ),
+                );
+              }
+
+              return CarrinhoSheetWeb(
             lojaId: lojaId,
             items: _cart,
             catalogProducts: catalogProducts,
@@ -2015,7 +2031,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             onRemove: _removeFromCart,
             onSetItemQuantity: (i, q) =>
                 _setCartItemQuantity(i, q, catalogProducts),
-            showSnack: _snack,
+            showSnack: showCartSnack,
             onCheckoutPix:
                 (checkoutGateway == 'pix' || checkoutGateway == 'whatsapp') &&
                         pixKey.trim().isNotEmpty
@@ -2037,8 +2053,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           if (showErrorInCart != null) {
                             showErrorInCart(msg);
                           } else {
-                            ScaffoldMessenger.of(Navigator.of(sheetContext).context)
-                                .showSnackBar(SnackBar(content: Text(msg)));
+                            showCartSnack(msg);
                           }
                         }
 
@@ -2095,13 +2110,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             );
                             if (showErrorInCart == null) {
                               if (!sheetContext.mounted) return;
-                              // ignore: use_build_context_synchronously
-                              final messenger =
-                                  ScaffoldMessenger.of(Navigator.of(sheetContext).context);
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        'Escaneie o QR Code ou copie o código para pagar.')),
+                              showCartSnack(
+                                'Escaneie o QR Code ou copie o código para pagar.',
                               );
                             }
                           });
@@ -2127,7 +2137,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 if (showErrorInCart != null) {
                   showErrorInCart(msg);
                 } else {
-                  _snack(msg);
+                  showCartSnack(msg);
                 }
               }
 
@@ -2376,8 +2386,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 if (showErrorInCart != null) {
                   showErrorInCart(msg);
                 } else {
-                  ScaffoldMessenger.of(Navigator.of(context).context)
-                      .showSnackBar(SnackBar(content: Text(msg)));
+                  showCartSnack(msg);
                 }
               }
 
@@ -2713,12 +2722,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     if (!ok) {
                       showErr('Não foi possível abrir o link de pagamento.');
                     } else if (showErrorInCart == null) {
-                      ScaffoldMessenger.of(Navigator.of(context).context)
-                          .showSnackBar(
-                        const SnackBar(
-                            content:
-                                Text('Pagamento criado! Abrindo checkout...')),
-                      );
+                      showCartSnack('Pagamento criado! Abrindo checkout...');
                     }
                     return;
                   }
@@ -2743,12 +2747,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     if (!ok) {
                       showErr('Não foi possível abrir o comprovante PIX.');
                     } else if (showErrorInCart == null) {
-                      ScaffoldMessenger.of(Navigator.of(context).context)
-                          .showSnackBar(
-                        const SnackBar(
-                            content:
-                                Text('PIX gerado! Abrindo comprovante...')),
-                      );
+                      showCartSnack('PIX gerado! Abrindo comprovante...');
                     }
                     return;
                   }
@@ -2766,11 +2765,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       _saveCarrinho();
                       if (!mounted) return;
                       if (showErrorInCart == null) {
-                        ScaffoldMessenger.of(Navigator.of(context).context)
-                            .showSnackBar(
-                          const SnackBar(
-                              content: Text(
-                                  'PIX gerado! Escaneie o QR Code para pagar.')),
+                        showCartSnack(
+                          'PIX gerado! Escaneie o QR Code para pagar.',
                         );
                       }
 
@@ -2796,6 +2792,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 showErr('Erro ao processar pagamento: $e');
               }
             },
+      );
+            },
+          ),
+        ),
       );
     }
 
@@ -2842,6 +2842,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           );
         },
       );
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
     }
   }
 
