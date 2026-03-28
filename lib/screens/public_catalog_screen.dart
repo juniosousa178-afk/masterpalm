@@ -1644,6 +1644,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     : tipoRaw.contains('frete')
                         ? 'frete_gratis'
                         : 'percent';
+                final produtoIdsRaw = d['produtoIds'] ?? d['produtoId'];
+                final List<String> produtoIds = produtoIdsRaw is List
+                    ? produtoIdsRaw
+                        .map((e) => e.toString().trim())
+                        .where((e) => e.isNotEmpty)
+                        .toList()
+                    : (produtoIdsRaw != null &&
+                            produtoIdsRaw.toString().trim().isNotEmpty
+                        ? [produtoIdsRaw.toString().trim()]
+                        : <String>[]);
                 cuponsList.add({
                   'codigo': cod,
                   'tipo': tipoNorm,
@@ -1651,6 +1661,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   'valor': safeDouble(d['valor']),
                   'aplicarEm': (d['aplicarEm'] ?? 'produtos').toString(),
                   'freteGratis': d['freteGratis'] == true,
+                  if (produtoIds.isNotEmpty) 'produtoIds': produtoIds,
                   'valorMinimo': d['valorMinimo'] == null
                       ? null
                       : safeDouble(d['valorMinimo']),
@@ -2851,7 +2862,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         !finalUrl.startsWith('https://')) {
       finalUrl = 'https://$finalUrl';
     }
-    if (!kIsWeb && await openInstagramInApp(finalUrl)) return;
+    // Só tenta app do Instagram para links reais do Instagram (evita abrir IG para sites como mastepalm.com.br).
+    if (!kIsWeb) {
+      final igUri = Uri.tryParse(finalUrl);
+      final host = igUri?.host.toLowerCase() ?? '';
+      if (host.contains('instagram.com') &&
+          await openInstagramInApp(finalUrl)) {
+        return;
+      }
+    }
     final facebookMatch = RegExp(
       r'(?:https?://)?(?:www\.)?(?:m\.)?facebook\.com/([a-zA-Z0-9.]+)',
       caseSensitive: false,
@@ -4277,20 +4296,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     automaticallyImplyLeading: false,
                     title: LayoutBuilder(
                       builder: (context, constraints) {
-                        final maxTitleH = constraints.maxHeight.isFinite
-                            ? constraints.maxHeight
-                            : (useMinimalLayout
-                                ? (isDesktop ? 100.0 : 88.0)
-                                : (isDesktop ? 260.0 : 240.0));
                         return Align(
                           alignment: Alignment.topCenter,
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             alignment: Alignment.topCenter,
+                            // Não limitar maxHeight aqui: o Column estoura antes do FittedBox escalar (overflow ~20px).
                             child: ConstrainedBox(
                               constraints: BoxConstraints(
                                 maxWidth: constraints.maxWidth,
-                                maxHeight: maxTitleH,
                               ),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
@@ -5453,6 +5467,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               termosUsoUrl: termosUsoUrl,
                                             ),
                                           ),
+                                          SliverToBoxAdapter(
+                                            child: CatalogCreatorCreditBar(
+                                              backgroundColor: footerBgColor,
+                                              textColor: textColor,
+                                              accentColor: primaryColor,
+                                              onOpenUrl: _openUrl,
+                                            ),
+                                          ),
                                         ],
                                       );
                                       if (isDesktopBody) {
@@ -5560,12 +5582,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               ),
                                             ),
                                             Expanded(child: scrollBody),
-                                            CatalogCreatorCreditBar(
-                                              backgroundColor: footerBgColor,
-                                              textColor: textColor,
-                                              accentColor: primaryColor,
-                                              onOpenUrl: _openUrl,
-                                            ),
                                           ],
                                         );
                                       }
@@ -5586,8 +5602,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               Theme.of(context).colorScheme.primary;
                           return Positioned(
                             left: 16,
-                            bottom: (_cart.isEmpty ? 24 : 88) +
-                                catalogCreatorCreditBarReserveHeight(context),
+                            bottom: _cart.isEmpty ? 24 : 88,
                             child: Material(
                               elevation: 4,
                               color: primaryColor.withValues(alpha: 0.9),

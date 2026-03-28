@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Rodapé fixo com crédito ao criador da plataforma (sempre visível na base da tela).
+/// Crédito ao sistema MasterPalm no rodapé do catálogo (texto fixo no código — a loja não edita).
+/// Rolagem junto com a página; toque abre o site oficial no navegador/app.
 class CatalogCreatorCreditBar extends StatelessWidget {
   final Color backgroundColor;
   final Color textColor;
@@ -8,7 +9,6 @@ class CatalogCreatorCreditBar extends StatelessWidget {
   final void Function(String url) onOpenUrl;
 
   static const String siteUrl = 'https://mastepalm.com.br';
-  static const String displayEmail = 'contato@mastepalm.com.br';
 
   const CatalogCreatorCreditBar({
     super.key,
@@ -17,6 +17,8 @@ class CatalogCreatorCreditBar extends StatelessWidget {
     required this.accentColor,
     required this.onOpenUrl,
   });
+
+  void _openSite() => onOpenUrl(siteUrl);
 
   @override
   Widget build(BuildContext context) {
@@ -29,72 +31,51 @@ class CatalogCreatorCreditBar extends StatelessWidget {
           color: backgroundColor,
           border: Border(
             top: BorderSide(
-              color: textColor.withValues(alpha: 0.08),
+              color: textColor.withValues(alpha: 0.12),
               width: 1,
             ),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
         ),
-        child: SafeArea(
-          top: false,
-          minimum: const EdgeInsets.only(bottom: 4),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Center(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Criado por ',
-                      style: TextStyle(
-                        color: muted,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    Text(
-                      'Master Palm',
-                      style: TextStyle(
-                        color: accentColor,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.6,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        '·',
-                        style: TextStyle(color: muted, fontSize: 12),
-                      ),
-                    ),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => onOpenUrl(siteUrl),
-                        child: Text(
-                          displayEmail,
-                          style: TextStyle(
-                            color: accentColor.withValues(alpha: 0.92),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            decoration: TextDecoration.underline,
-                            decorationColor:
-                                accentColor.withValues(alpha: 0.45),
-                          ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _openSite,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Criado por ',
+                        style: TextStyle(
+                          color: muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.15,
                         ),
                       ),
-                    ),
-                  ],
+                      Text(
+                        'MasterPalm',
+                        style: TextStyle(
+                          color: accentColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 6),
+                        child: Icon(
+                          Icons.open_in_new_rounded,
+                          size: 14,
+                          color: accentColor.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -103,10 +84,4 @@ class CatalogCreatorCreditBar extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Altura aproximada da barra + SafeArea inferior (para posicionar FAB / overlays).
-double catalogCreatorCreditBarReserveHeight(BuildContext context) {
-  final pad = MediaQuery.paddingOf(context).bottom;
-  return 44 + pad;
 }

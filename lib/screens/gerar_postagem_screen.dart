@@ -183,7 +183,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
           );
           if (sugestao.trim().isNotEmpty) {
             msgWa = sugestao;
-            chamada = sugestao.length > 80 ? '${sugestao.substring(0, 77)}…' : sugestao;
+            chamada = sugestao.trim();
           }
         } catch (_) {
           msgWa = _fallbackMensagemWhatsApp(nome, precoTexto);
@@ -195,7 +195,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
           legendaIg = _fallbackLegenda(nome);
         }
         final legenda = legendaIg;
-        legendaCurta = legenda.length > 80 ? '${legenda.substring(0, 77)}…' : legenda;
+        legendaCurta = legenda;
       } else {
         try {
           legendaIg = await AiLojaService.sugerirLegendaInstagram(produtoNome: nome, descricao: descricao.isNotEmpty ? descricao : null);
@@ -203,7 +203,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
           legendaIg = _fallbackLegenda(nome);
         }
         final legenda = legendaIg;
-        legendaCurta = legenda.length > 80 ? '${legenda.substring(0, 77)}…' : legenda;
+        legendaCurta = legenda;
 
         try {
           final contexto = [

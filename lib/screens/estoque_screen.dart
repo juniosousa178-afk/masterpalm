@@ -41,6 +41,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/loja_id_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../utils/text_utils.dart';
+import '../utils/moeda_input_formatter.dart';
 import 'barcode_scanner_screen.dart';
 import 'nova_venda/variacao_selection_sheet.dart';
 import 'public_catalog_screen.dart';
@@ -973,6 +974,241 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     }
   }
 
+  /// Ação em lote: ativar promoção (% ou valor fixo) e período opcional.
+  Future<void> _promocaoEmLote() async {
+    if (_produtosSelecionados.isEmpty) {
+      _showSnackBar('Nenhum produto selecionado', isError: true);
+      return;
+    }
+    final percentCtrl = TextEditingController(text: '10');
+    final valorCtrl = TextEditingController();
+    String tipoDesconto = 'percentual';
+    DateTime? dataInicio;
+    DateTime? dataFim;
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setLocal) {
+            return AlertDialog(
+              title: const Text('Promoção em lote'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Definir promoção para ${_produtosSelecionados.length} produto(s).',
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: const Text('%'),
+                            value: 'percentual',
+                            groupValue: tipoDesconto,
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setLocal(() => tipoDesconto = v);
+                            },
+                          ),
+                        ),
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: const Text('R\$ fixo'),
+                            value: 'fixo',
+                            groupValue: tipoDesconto,
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setLocal(() => tipoDesconto = v);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (tipoDesconto == 'percentual')
+                      TextField(
+                        controller: percentCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Desconto (%)',
+                          hintText: '10',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      )
+                    else
+                      TextField(
+                        controller: valorCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Valor de desconto (R\$)',
+                          hintText: '0,00',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [MoedaInputFormatter()],
+                      ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Período (opcional)',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final date = await showDatePicker(
+                                context: ctx,
+                                initialDate: dataInicio ?? DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2035),
+                              );
+                              if (date != null) {
+                                setLocal(() => dataInicio = date);
+                              }
+                            },
+                            icon: const Icon(Icons.calendar_today, size: 16),
+                            label: Text(
+                              dataInicio == null
+                                  ? 'Início'
+                                  : '${dataInicio!.day}/${dataInicio!.month}/${dataInicio!.year}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final date = await showDatePicker(
+                                context: ctx,
+                                initialDate: dataFim ?? DateTime.now(),
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2035),
+                              );
+                              if (date != null) {
+                                setLocal(() => dataFim = date);
+                              }
+                            },
+                            icon: const Icon(Icons.event, size: 16),
+                            label: Text(
+                              dataFim == null
+                                  ? 'Fim'
+                                  : '${dataFim!.day}/${dataFim!.month}/${dataFim!.year}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (dataInicio != null || dataFim != null)
+                      TextButton(
+                        onPressed: () {
+                          setLocal(() {
+                            dataInicio = null;
+                            dataFim = null;
+                          });
+                        },
+                        child: const Text('Limpar datas'),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Aplicar'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+      if (ok != true || !mounted) return;
+
+      double? pct;
+      double? valFixo;
+      if (tipoDesconto == 'percentual') {
+        pct = (double.tryParse(percentCtrl.text.trim().replaceAll(',', '.')) ?? 0)
+            .clamp(0.0, 100.0);
+        if (pct <= 0) {
+          _showSnackBar('Informe um percentual maior que zero.', isError: true);
+          return;
+        }
+      } else {
+        valFixo = MoedaInputFormatter.parse(valorCtrl.text);
+        if (valFixo <= 0) {
+          _showSnackBar('Informe um valor de desconto maior que zero.', isError: true);
+          return;
+        }
+      }
+
+      setState(() => _publicando = true);
+      int n = 0;
+      final lojaId = await _lojaIdParaLote();
+      for (final keyStr in _produtosSelecionados) {
+        final key = int.tryParse(keyStr);
+        if (key == null) continue;
+        final p = _box.get(key);
+        if (p == null) continue;
+        p.emPromocao = true;
+        if (tipoDesconto == 'percentual') {
+          p.percentualPromo = pct;
+          p.valorPromo = null;
+        } else {
+          p.percentualPromo = null;
+          p.valorPromo = valFixo;
+        }
+        p.dataInicioPromo = dataInicio;
+        p.dataFimPromo = dataFim;
+        await p.save();
+        n++;
+      }
+      if (lojaId != null && lojaId.isNotEmpty && n > 0) {
+        await ProdutosFirestoreService.syncProdutosPorChavesHive(
+          box: _box,
+          lojaId: lojaId,
+          hiveKeys: _hiveKeysSelecionados(),
+        );
+        if (kDebugMode) {
+          logD('[ESTOQUE_LOTE] promoção: sync $n item(ns) loja=$lojaId');
+        }
+      } else if (n > 0) {
+        logD('[ESTOQUE] Sync omitido: lojaId vazio após promoção em lote');
+        if (mounted) {
+          _showSnackBar('Alterações salvas localmente. Sincronize com a nuvem depois.');
+        }
+      }
+      if (!mounted) return;
+      final msg = tipoDesconto == 'percentual'
+          ? 'Promoção de ${pct!.toStringAsFixed(1)}% aplicada em $n produto(s)'
+          : 'Promoção de R\$ ${valFixo!.toStringAsFixed(2)} aplicada em $n produto(s)';
+      _showSnackBar(msg);
+      setState(() {
+        _produtosSelecionados.clear();
+        _modoSelecao = false;
+      });
+    } catch (e) {
+      if (mounted) _showSnackBar('Erro: $e', isError: true);
+    } finally {
+      percentCtrl.dispose();
+      valorCtrl.dispose();
+      if (mounted) setState(() => _publicando = false);
+    }
+  }
+
   Future<void> _excluirSelecionados() async {
     if (_produtosSelecionados.isEmpty) {
       _showSnackBar('Nenhum produto selecionado', isError: true);
@@ -1576,6 +1812,17 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                         onTap: () {
                           Navigator.pop(context);
                           _descontoPixLote();
+                        },
+                      ),
+
+                      _buildAcaoTile(
+                        icon: Icons.local_offer_outlined,
+                        titulo: 'Promoção em lote',
+                        subtitulo: 'Ativar promoção (% ou R\$ fixo) nos selecionados',
+                        cor: const Color(0xFFFF6D00),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _promocaoEmLote();
                         },
                       ),
 

@@ -13,6 +13,15 @@ double? _parseNumOrNull(dynamic v) {
   return n;
 }
 
+List<String> _parseProdutoIdsCfg(dynamic v) {
+  if (v == null) return [];
+  if (v is List) {
+    return v.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+  }
+  final s = v.toString().trim();
+  return s.isEmpty ? [] : [s];
+}
+
 // ===================================================================
 // FRETES
 // ===================================================================
@@ -164,6 +173,7 @@ List<Map<String, dynamic>> parseCupons(Map<String, dynamic> cfg) {
 
     final aplicarEm = (m['aplicarEm'] ?? 'produtos').toString();
     final freteGratis = m['freteGratis'] == true;
+    final produtoIds = _parseProdutoIdsCfg(m['produtoIds'] ?? m['produtoId']);
 
     cupons.add({
       'codigo': codigo,
@@ -172,6 +182,7 @@ List<Map<String, dynamic>> parseCupons(Map<String, dynamic> cfg) {
       'valor': valor,
       'aplicarEm': aplicarEm,
       'freteGratis': freteGratis,
+      if (produtoIds.isNotEmpty) 'produtoIds': produtoIds,
       'valorMinimo': _parseNumOrNull(m['valorMinimo'] ?? m['valor_minimo']),
       'dataFim': asDateTime(m['dataFim']),
       'validade': asDateTime(m['validade'] ?? m['dataValidade']),

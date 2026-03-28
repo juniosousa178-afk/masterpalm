@@ -42,6 +42,8 @@ class MotorCrescimentoExecutorService {
     String? cupomId;
     bool cupomCriado = false;
 
+    final produtoId = oportunidade.entidadeId.trim();
+
     if (sugestao.percentualDesconto > 0 && sugestao.percentualDesconto <= 100) {
       try {
         cupomId = await CupomDescontoService().criarCupom(
@@ -50,7 +52,8 @@ class MotorCrescimentoExecutorService {
           nome: sugestao.titulo.isNotEmpty ? sugestao.titulo : 'Motor IA - ${oportunidade.entidadeNome}',
           valor: sugestao.percentualDesconto,
           tipo: 'percentual',
-          aplicarEm: 'total',
+          aplicarEm: 'produtos',
+          produtoIds: produtoId.isNotEmpty ? [produtoId] : null,
           usoUnico: false,
           usoUnicoGlobal: false,
           dataInicio: DateTime.now(),

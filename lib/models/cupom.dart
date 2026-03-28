@@ -3,6 +3,15 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+List<String> _cupomProdutoIdsFromData(dynamic v) {
+  if (v == null) return [];
+  if (v is List) {
+    return v.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+  }
+  final s = v.toString().trim();
+  return s.isEmpty ? [] : [s];
+}
+
 class Cupom {
   final String id;
   final String codigo;
@@ -10,6 +19,8 @@ class Cupom {
   final double valor;
   final String tipo; // 'fixo' ou 'percentual'
   final String aplicarEm; // 'produtos', 'total', 'frete'
+  /// Se não vazio, o desconto só incide sobre linhas do carrinho cujo id está na lista.
+  final List<String> produtoIds;
   final bool freteGratis;
   final bool usoUnico; // Uso único por cliente
   final bool usoUnicoGlobal; // Uso único global (somente uma pessoa pode usar)
@@ -31,6 +42,7 @@ class Cupom {
     required this.valor,
     required this.tipo,
     this.aplicarEm = 'total',
+    this.produtoIds = const [],
     this.freteGratis = false,
     this.usoUnico = false,
     this.usoUnicoGlobal = false,
@@ -93,6 +105,7 @@ class Cupom {
       valor: (data['valor'] ?? 0).toDouble(),
       tipo: data['tipo'] ?? 'fixo',
       aplicarEm: data['aplicarEm'] ?? 'total',
+      produtoIds: _cupomProdutoIdsFromData(data['produtoIds'] ?? data['produtoId']),
       freteGratis: data['freteGratis'] ?? false,
       usoUnico: data['usoUnico'] ?? false,
       usoUnicoGlobal: data['usoUnicoGlobal'] ?? false,
@@ -123,6 +136,7 @@ class Cupom {
       'valor': valor,
       'tipo': tipo,
       'aplicarEm': aplicarEm,
+      if (produtoIds.isNotEmpty) 'produtoIds': produtoIds,
       'freteGratis': freteGratis,
       'usoUnico': usoUnico,
       'usoUnicoGlobal': usoUnicoGlobal,
@@ -147,6 +161,7 @@ class Cupom {
     double? valor,
     String? tipo,
     String? aplicarEm,
+    List<String>? produtoIds,
     bool? freteGratis,
     bool? usoUnico,
     bool? usoUnicoGlobal,
@@ -168,6 +183,7 @@ class Cupom {
       valor: valor ?? this.valor,
       tipo: tipo ?? this.tipo,
       aplicarEm: aplicarEm ?? this.aplicarEm,
+      produtoIds: produtoIds ?? this.produtoIds,
       freteGratis: freteGratis ?? this.freteGratis,
       usoUnico: usoUnico ?? this.usoUnico,
       usoUnicoGlobal: usoUnicoGlobal ?? this.usoUnicoGlobal,

@@ -35,12 +35,33 @@ function mensagemAmigavelGemini(status, errBody) {
 }
 
 /**
+ * Junta todo o texto retornado pelo Gemini (vários `parts` = resposta longa; usar só [0] cortava no meio).
+ */
+function extractGeminiCandidateText(data) {
+  const cand = data?.candidates?.[0];
+  if (!cand) return null;
+  const parts = cand.content?.parts;
+  if (!Array.isArray(parts)) return null;
+  const chunks = [];
+  for (const p of parts) {
+    if (p && typeof p.text === "string" && p.text.length) chunks.push(p.text);
+  }
+  if (chunks.length === 0) return null;
+  const joined = chunks.join("");
+  const fr = cand.finishReason;
+  if (fr === "MAX_TOKENS") {
+    console.warn("[aiLoja] Gemini finishReason=MAX_TOKENS — considere aumentar maxOutputTokens ou encurtar o prompt.");
+  }
+  return joined.trim();
+}
+
+/**
  * Chama o Gemini generateContent (REST). Tenta vários modelos se um retornar 404.
  */
 async function generateWithGemini(apiKey, prompt, systemInstruction) {
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
   };
   if (systemInstruction) body.systemInstruction = { parts: [{ text: systemInstruction }] };
 
@@ -55,8 +76,8 @@ async function generateWithGemini(apiKey, prompt, systemInstruction) {
     const errBody = await res.text();
     if (res.ok) {
       const data = JSON.parse(errBody);
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) return text.trim();
+      const text = extractGeminiCandidateText(data);
+      if (text) return text;
     }
     lastError = new Error(mensagemAmigavelGemini(res.status, errBody));
     if (res.status === 404) continue;
@@ -81,7 +102,7 @@ async function generateWithOpenAI(apiKey, prompt, systemInstruction) {
     body: JSON.stringify({
       model: OPENAI_MODEL,
       messages,
-      max_tokens: 1024,
+      max_tokens: 4096,
       temperature: 0.7,
     }),
   });

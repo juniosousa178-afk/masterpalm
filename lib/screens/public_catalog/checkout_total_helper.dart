@@ -80,9 +80,43 @@ double _subtotalPix(List<Map<String, dynamic>> items) {
   });
 }
 
+/// IDs de produto aos quais o cupom se aplica (lista vazia = qualquer item do pedido).
+List<String> catalogCupomProdutoIds(Map<String, dynamic>? cupom) {
+  if (cupom == null) return [];
+  final a = cupom['produtoIds'];
+  if (a is List) {
+    return a.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+  }
+  final single = cupom['produtoId'] ?? cupom['produto_id'];
+  if (single != null && single.toString().trim().isNotEmpty) {
+    return [single.toString().trim()];
+  }
+  return [];
+}
+
+String catalogItemIdProduto(Map<String, dynamic> e) {
+  return (e['id'] ?? e['produtoId'] ?? e['produtosId'] ?? '').toString().trim();
+}
+
+/// True se o carrinho tem pelo menos uma linha cujo produto está na lista do cupom.
+bool catalogCarrinhoCobreProdutosCupom({
+  required Map<String, dynamic>? cupomAplicado,
+  required List<Map<String, dynamic>> items,
+}) {
+  final ids = catalogCupomProdutoIds(cupomAplicado);
+  if (ids.isEmpty) return true;
+  for (final it in items) {
+    final pid = catalogItemIdProduto(it);
+    if (pid.isNotEmpty && ids.contains(pid)) return true;
+  }
+  return false;
+}
+
 double _descontoCupomProdutos({
   required Map<String, dynamic>? cupomAplicado,
   required double subtotalConformePagamento,
+  required List<Map<String, dynamic>> items,
+  required String pagamento,
   required List<Map<String, dynamic>> fretesParaCalculo,
   required int freteIndex,
   required bool freteGratis,
@@ -92,9 +126,19 @@ double _descontoCupomProdutos({
   final tipo = (cupomAplicado['tipo'] ?? '').toString();
   final valor = (cupomAplicado['valor'] as num?)?.toDouble() ?? 0.0;
   final aplicarEm = (cupomAplicado['aplicarEm'] ?? 'produtos').toString();
+  final restritoIds = catalogCupomProdutoIds(cupomAplicado);
 
   double base;
-  if (aplicarEm == 'total') {
+  if (restritoIds.isNotEmpty) {
+    final filtered = items.where((e) {
+      final pid = catalogItemIdProduto(e);
+      return pid.isNotEmpty && restritoIds.contains(pid);
+    }).toList();
+    if (filtered.isEmpty) return 0.0;
+    final brutoF = _subtotalBruto(filtered);
+    final subPixF = _subtotalPix(filtered);
+    base = pagamento.toUpperCase() == 'PIX' ? subPixF : brutoF;
+  } else if (aplicarEm == 'total') {
     if (fretesParaCalculo.isEmpty) {
       base = subtotalConformePagamento;
     } else {
@@ -148,6 +192,8 @@ CatalogCheckoutTotals computeCatalogCheckoutTotals({
   final desconto = _descontoCupomProdutos(
     cupomAplicado: cupomAplicado,
     subtotalConformePagamento: subConf,
+    items: items,
+    pagamento: pagamento,
     fretesParaCalculo: fretesParaCalculo,
     freteIndex: freteIndex,
     freteGratis: fg,

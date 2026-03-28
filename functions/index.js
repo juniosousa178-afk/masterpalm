@@ -2797,7 +2797,7 @@ export const enviarEmailVerificacao = onCall(
 // Usa Gemini (grátis) por padrão; OpenAI (ChatGPT, pago) se quiser. GEMINI: aistudio.google.com/app/apikey
 
 export const sugerirDescricaoProduto = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const identifier = getCallableIdentifier(request);
@@ -2829,7 +2829,7 @@ export const sugerirDescricaoProduto = onCall(
 );
 
 export const chatDicasLoja = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const identifier = getCallableIdentifier(request);
@@ -2872,7 +2872,7 @@ async function getIaKeys(request, callableName) {
 }
 
 export const sugerirTituloProduto = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "sugerirTituloProduto");
@@ -2887,7 +2887,7 @@ export const sugerirTituloProduto = onCall(
 );
 
 export const sugerirVariacoesDescricao = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "sugerirVariacoesDescricao");
@@ -2902,7 +2902,7 @@ export const sugerirVariacoesDescricao = onCall(
 );
 
 export const sugerirLegendaInstagram = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "sugerirLegendaInstagram");
@@ -2921,7 +2921,7 @@ export const sugerirLegendaInstagram = onCall(
 );
 
 export const sugerirMensagemWhatsApp = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "sugerirMensagemWhatsApp");
@@ -2936,7 +2936,7 @@ export const sugerirMensagemWhatsApp = onCall(
 );
 
 export const sugerirCategoriaSubcategoria = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "sugerirCategoriaSubcategoria");
@@ -2951,7 +2951,7 @@ export const sugerirCategoriaSubcategoria = onCall(
 );
 
 export const sugerirPromocaoEstoqueParado = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "sugerirPromocaoEstoqueParado");
@@ -2966,7 +2966,7 @@ export const sugerirPromocaoEstoqueParado = onCall(
 );
 
 export const analiseVendasNatural = onCall(
-  { timeoutSeconds: 45, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "analiseVendasNatural");
@@ -2985,7 +2985,7 @@ export const analiseVendasNatural = onCall(
 );
 
 export const chatAtendimentoCatalogo = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "chatAtendimentoCatalogo");
@@ -3004,7 +3004,7 @@ export const chatAtendimentoCatalogo = onCall(
 );
 
 export const sugerirPrecoCombo = onCall(
-  { timeoutSeconds: 30, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
+  { timeoutSeconds: 60, memory: "256MiB", secrets: [S_GEMINI_API_KEY, S_OPENAI_API_KEY] },
   async (request) => {
     try {
       const { geminiKey, openaiKey } = await getIaKeys(request, "sugerirPrecoCombo");

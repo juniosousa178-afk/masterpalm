@@ -1048,6 +1048,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       'tipo': c.tipo == 'percentual' ? 'percent' : 'valor',
       'valor': c.valor,
       'aplicarEm': c.aplicarEm,
+      if (c.produtoIds.isNotEmpty) 'produtoIds': List<String>.from(c.produtoIds),
       'freteGratis': c.freteGratis,
       'valorMinimo': c.valorMinimo,
       'dataFim': c.dataFim,
@@ -1153,10 +1154,31 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       return;
     }
 
+    var merged = Map<String, dynamic>.from(found);
+    if (merged['origem'] != 'roleta_sorte' && merged['origem'] != 'cupom_cliente') {
+      final cLoja = await CupomDescontoService().buscarPorCodigo(widget.lojaId, code);
+      if (cLoja != null) {
+        merged['id'] = cLoja.id;
+        if (cLoja.produtoIds.isNotEmpty) {
+          merged['produtoIds'] = cLoja.produtoIds;
+        }
+      }
+    }
+
+    if (!catalogCarrinhoCobreProdutosCupom(
+          cupomAplicado: merged,
+          items: widget.items,
+        )) {
+      widget.showSnack(
+        'Este cupom só vale para o produto da promoção. Adicione esse item ao carrinho.',
+      );
+      return;
+    }
+
     // Validar data de validade ao aplicar (evita uso de cupom expirado)
     final now = DateTime.now();
-    final df = found['dataFim'] ?? found['validade'] ?? found['dataValidade'] ??
-        found['dataExpiracao'] ?? found['expiraEm'];
+    final df = merged['dataFim'] ?? merged['validade'] ?? merged['dataValidade'] ??
+        merged['dataExpiracao'] ?? merged['expiraEm'];
     if (df != null) {
       DateTime? fim;
       if (df is Timestamp) {
@@ -1174,7 +1196,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
 
     // Validar valor mínimo do cupom (se existir)
-    final vMin = found['valorMinimo'] ?? found['valor_minimo'];
+    final vMin = merged['valorMinimo'] ?? merged['valor_minimo'];
     final valorMinimo = (vMin is num) ? vMin.toDouble() : null;
     if (valorMinimo != null && valorMinimo > 0) {
       final aplicarEm = (found['aplicarEm'] ?? 'produtos').toString();
@@ -1191,17 +1213,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
 
     setState(() {
-      _cupomAplicado = asMapDeep(found);
+      _cupomAplicado = asMapDeep(merged);
     });
-    // Se o cupom veio do config (sem id), buscar id no Firestore para poder registrar uso depois (só cupons da loja)
-    if (_cupomAplicado!['id'] == null && _cupomAplicado!['origem'] != 'roleta_sorte') {
-      final cupom = await CupomDescontoService().buscarPorCodigo(widget.lojaId, code);
-      if (cupom != null && mounted) {
-        setState(() {
-          _cupomAplicado!['id'] = cupom.id;
-        });
-      }
-    }
 
     widget.showSnack('Cupom aplicado: $code');
   }

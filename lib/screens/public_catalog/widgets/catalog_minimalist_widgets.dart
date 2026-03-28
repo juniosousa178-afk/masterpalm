@@ -42,10 +42,13 @@ class _CatalogPromoBarState extends State<CatalogPromoBar> {
     if (!widget.enabled || widget.text.trim().isEmpty) {
       return const SizedBox.shrink();
     }
-    final h = widget.height.clamp(28.0, 72.0).toDouble();
     final scaler = MediaQuery.textScalerOf(context);
     const baseFs = 11.5;
-    // Uma linha não pode ultrapassar ~45% da altura da barra (evita overflow no Row).
+    final baseH = widget.height.clamp(28.0, 72.0).toDouble();
+    final rawFs = math.min(scaler.scale(baseFs), baseH * 0.45);
+    final minH = rawFs * 2.65 + 6;
+    final h = math.max(baseH, minH).clamp(28.0, 72.0).toDouble();
+
     final fontSize = math.min(scaler.scale(baseFs), h * 0.45);
     TextStyle textStyle() => TextStyle(
           color: widget.textColor,
@@ -53,64 +56,79 @@ class _CatalogPromoBarState extends State<CatalogPromoBar> {
           fontWeight: widget.bold ? FontWeight.w600 : FontWeight.w500,
           height: 1.0,
         );
-    return InkWell(
-      onTap: widget.onTap,
-      child: ClipRect(
-        child: SizedBox(
-          height: h,
-          width: double.infinity,
-          child: Container(
-            color: widget.backgroundColor,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            alignment: Alignment.center,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                if (widget.icon != null) ...[
-                  Icon(widget.icon, size: 16, color: widget.textColor),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final style = textStyle();
-                      final tp = TextPainter(
-                        text: TextSpan(text: widget.text, style: style),
-                        maxLines: 1,
-                        textDirection: Directionality.of(context),
-                      )..layout(maxWidth: double.infinity);
-                      final iconW = widget.icon != null ? 24.0 : 0.0;
-                      final maxW =
-                          (constraints.maxWidth - iconW).clamp(40.0, 9999.0);
-                      final needMarquee = widget.marqueeWhenOverflow &&
-                          tp.width > maxW + 4;
 
-                      if (!needMarquee) {
-                        // Sem maxHeight no filho: Text mede altura natural; FittedBox escala até caber em [h].
-                        return FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.center,
-                          child: Text(
-                            widget.text,
-                            textAlign: widget.textAlign,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: style,
-                          ),
+    final double leading = widget.icon != null ? 44.0 : 0.0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: widget.onTap,
+        child: ClipRect(
+          child: SizedBox(
+            height: h,
+            width: double.infinity,
+            child: ColoredBox(
+              color: widget.backgroundColor,
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  if (widget.icon != null)
+                    Positioned(
+                      left: 12,
+                      top: 0,
+                      bottom: 0,
+                      width: 28,
+                      child: Center(
+                        child: Icon(
+                          widget.icon,
+                          size: 16,
+                          color: widget.textColor,
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    left: 12 + leading,
+                    right: 12,
+                    top: 0,
+                    bottom: 0,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final style = textStyle();
+                        final tp = TextPainter(
+                          text: TextSpan(text: widget.text, style: style),
+                          maxLines: 1,
+                          textDirection: Directionality.of(context),
+                        )..layout(maxWidth: double.infinity);
+                        final maxW = constraints.maxWidth.clamp(40.0, 9999.0);
+                        final useMarquee = widget.marqueeWhenOverflow &&
+                            tp.width > maxW + 4;
+
+                        if (!useMarquee) {
+                          return FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.center,
+                            child: Text(
+                              widget.text,
+                              textAlign: widget.textAlign,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: style,
+                            ),
+                          );
+                        }
+
+                        return _CatalogPromoMarqueeLine(
+                          key: ValueKey(widget.text),
+                          text: widget.text,
+                          style: style,
+                          textWidth: tp.width,
+                          barHeight: h,
                         );
-                      }
-
-                      return _CatalogPromoMarqueeLine(
-                        key: ValueKey(widget.text),
-                        text: widget.text,
-                        style: style,
-                        textWidth: tp.width,
-                        barHeight: h,
-                      );
-                    },
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -166,6 +184,18 @@ class _CatalogPromoMarqueeLineState extends State<_CatalogPromoMarqueeLine>
   Widget build(BuildContext context) {
     const gap = 56.0;
     final segment = widget.textWidth + gap;
+    // Uma linha só: evita altura intrínseca > [barHeight] (overflow ~20px típico).
+    final fs = math.min(
+      widget.style.fontSize ?? 11.5,
+      widget.barHeight * 0.42,
+    );
+    final lineStyle = widget.style.copyWith(height: 1.0, fontSize: fs);
+    final strut = StrutStyle(
+      fontSize: fs,
+      height: 1.0,
+      forceStrutHeight: true,
+      leadingDistribution: TextLeadingDistribution.even,
+    );
     // O Row do letreiro é muito mais largo que a tela; sem OverflowBox o Flex
     // do pai recebe largura intrínseca gigante (~mil px) e estoura à direita.
     return LayoutBuilder(
@@ -184,21 +214,33 @@ class _CatalogPromoMarqueeLineState extends State<_CatalogPromoMarqueeLine>
                 animation: _ctrl,
                 builder: (_, __) {
                   final off = _ctrl.value * segment;
+                  // Text.rich (sem Row): uma única linha, altura estável; evita overflow vertical.
+                  final rich = Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: widget.text, style: lineStyle),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: SizedBox(width: gap, height: fs),
+                        ),
+                        TextSpan(text: widget.text, style: lineStyle),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: SizedBox(width: gap, height: fs),
+                        ),
+                        TextSpan(text: widget.text, style: lineStyle),
+                      ],
+                    ),
+                    maxLines: 1,
+                    strutStyle: strut,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                  );
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Transform.translate(
                       offset: Offset(-off, 0),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(widget.text, style: widget.style),
-                          const SizedBox(width: gap),
-                          Text(widget.text, style: widget.style),
-                          const SizedBox(width: gap),
-                          Text(widget.text, style: widget.style),
-                        ],
-                      ),
+                      child: rich,
                     ),
                   );
                 },

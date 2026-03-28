@@ -225,6 +225,16 @@ class CatalogCacheService {
               : tipoRaw.contains('frete')
                   ? 'frete_gratis'
                   : 'percent';
+          final produtoIdsRaw = d['produtoIds'] ?? d['produtoId'];
+          final List<String> produtoIds = produtoIdsRaw is List
+              ? produtoIdsRaw
+                  .map((e) => e.toString().trim())
+                  .where((e) => e.isNotEmpty)
+                  .toList()
+              : (produtoIdsRaw != null &&
+                      produtoIdsRaw.toString().trim().isNotEmpty
+                  ? [produtoIdsRaw.toString().trim()]
+                  : <String>[]);
           cuponsList.add({
             'codigo': cod,
             'tipo': tipoNorm,
@@ -232,6 +242,7 @@ class CatalogCacheService {
             'valor': (asNum(d['valor'])?.toDouble()) ?? 0.0,
             'aplicarEm': (d['aplicarEm'] ?? 'produtos').toString(),
             'freteGratis': d['freteGratis'] == true,
+            if (produtoIds.isNotEmpty) 'produtoIds': produtoIds,
             'valorMinimo': asNum(d['valorMinimo'])?.toDouble(),
             'dataFim': dataFim,
             'validade': d['validade'],

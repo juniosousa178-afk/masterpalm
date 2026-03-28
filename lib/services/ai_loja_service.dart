@@ -13,6 +13,14 @@ class AiLojaService {
   static FirebaseFunctions get _functions =>
       FirebaseFunctions.instanceFor(region: 'southamerica-east1');
 
+  /// Timeout maior que o padrão (~10s) para respostas longas da IA no APK/web.
+  static final HttpsCallableOptions _iaCallableOptions = HttpsCallableOptions(
+    timeout: const Duration(seconds: 60),
+  );
+
+  static HttpsCallable _httpsIa(String name) =>
+      _functions.httpsCallable(name, options: _iaCallableOptions);
+
   /// Preferência: 'gemini' (padrão). OpenAI desabilitado temporariamente.
   static Future<String> getPreferirModelo() async {
     final prefs = await SharedPreferences.getInstance();
@@ -52,7 +60,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final callable = _functions.httpsCallable('sugerirDescricaoProduto');
+      final callable = _httpsIa('sugerirDescricaoProduto');
       final result = await callable.call(<String, dynamic>{
         'nome': nome.trim(),
         if (categoria != null && categoria.trim().isNotEmpty) 'categoria': categoria.trim(),
@@ -77,7 +85,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final callable = _functions.httpsCallable('chatDicasLoja');
+      final callable = _httpsIa('chatDicasLoja');
       final result = await callable.call(<String, dynamic>{
         'mensagem': mensagem.trim(),
         if (historico != null && historico.isNotEmpty) 'historico': historico,
@@ -94,7 +102,7 @@ class AiLojaService {
 
   static Future<String> _call(String name, Map<String, dynamic> params) async {
     params['preferirModelo'] = await _getPref();
-    final result = await _functions.httpsCallable(name).call(params);
+    final result = await _httpsIa(name).call(params);
     final data = result.data as Map<dynamic, dynamic>?;
     final text = data?.values.first?.toString();
     if (text == null || text.isEmpty) throw Exception('Resposta da IA vazia');
@@ -120,7 +128,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final callable = _functions.httpsCallable('sugerirVariacoesDescricao');
+      final callable = _httpsIa('sugerirVariacoesDescricao');
       final result = await callable.call(<String, dynamic>{
         'nome': nome.trim(),
         if (descricaoAtual != null && descricaoAtual.trim().isNotEmpty) 'descricaoAtual': descricaoAtual.trim(),
@@ -141,7 +149,7 @@ class AiLojaService {
   static Future<String> sugerirLegendaInstagram({required String produtoNome, String? descricao}) async {
     try {
       final pref = await _getPref();
-      final data = await _functions.httpsCallable('sugerirLegendaInstagram').call(<String, dynamic>{
+      final data = await _httpsIa('sugerirLegendaInstagram').call(<String, dynamic>{
         'produtoNome': produtoNome.trim(),
         if (descricao != null && descricao.trim().isNotEmpty) 'descricao': descricao.trim(),
         'preferirModelo': pref,
@@ -161,7 +169,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final data = await _functions.httpsCallable('sugerirMensagemWhatsApp').call(<String, dynamic>{
+      final data = await _httpsIa('sugerirMensagemWhatsApp').call(<String, dynamic>{
         'tipo': tipo,
         if (contexto != null && contexto.trim().isNotEmpty) 'contexto': contexto.trim(),
         'preferirModelo': pref,
@@ -181,7 +189,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final callable = _functions.httpsCallable('sugerirCategoriaSubcategoria');
+      final callable = _httpsIa('sugerirCategoriaSubcategoria');
       final result = await callable.call(<String, dynamic>{
         'nome': nome.trim(),
         if (descricao != null && descricao.trim().isNotEmpty) 'descricao': descricao.trim(),
@@ -205,7 +213,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final data = await _functions.httpsCallable('sugerirPromocaoEstoqueParado').call({
+      final data = await _httpsIa('sugerirPromocaoEstoqueParado').call({
         'produtos': produtos,
         'preferirModelo': pref,
       });
@@ -224,7 +232,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final data = await _functions.httpsCallable('analiseVendasNatural').call(<String, dynamic>{
+      final data = await _httpsIa('analiseVendasNatural').call(<String, dynamic>{
         'pergunta': pergunta.trim(),
         if (resumoVendas != null && resumoVendas.trim().isNotEmpty) 'resumoVendas': resumoVendas.trim(),
         'preferirModelo': pref,
@@ -244,7 +252,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final data = await _functions.httpsCallable('chatAtendimentoCatalogo').call(<String, dynamic>{
+      final data = await _httpsIa('chatAtendimentoCatalogo').call(<String, dynamic>{
         'pergunta': pergunta.trim(),
         if (contexto != null && contexto.isNotEmpty) 'contexto': contexto,
         'preferirModelo': pref,
@@ -264,7 +272,7 @@ class AiLojaService {
   }) async {
     try {
       final pref = await _getPref();
-      final data = await _functions.httpsCallable('sugerirPrecoCombo').call({
+      final data = await _httpsIa('sugerirPrecoCombo').call({
         'itens': itens,
         'somaItens': somaItens,
         'preferirModelo': pref,

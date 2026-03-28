@@ -43,7 +43,11 @@ class MotorCrescimentoSugestorService {
         ? 'Produto parado há 30 dias. Sugerimos desconto para movimentar o estoque.'
         : 'Estoque baixo. Destaque para venda rápida ou recompra.';
     final percentualDesconto = oportunidade.tipo == TipoOportunidade.produtoParado ? 15.0 : 0.0;
-    final codigoCupomSugerido = _gerarCodigoCupomSugerido(nome, oportunidade.tipo);
+    final codigoCupomSugerido = _gerarCodigoCupomSugerido(
+      nome,
+      oportunidade.tipo,
+      percentualDesconto,
+    );
 
     return SugestaoCampanha(
       tipoCampanha: tipoCampanha,
@@ -83,8 +87,7 @@ class MotorCrescimentoSugestorService {
   }
 
   static String _textoPromocaoFromIa(String msg, String nome, TipoOportunidade tipo) {
-    if (msg.length > 120) return '${msg.substring(0, 120).trim()}…';
-    return msg;
+    return msg.trim();
   }
 
   static String _fallbackTextoPromocao(String nome, TipoOportunidade tipo) {
@@ -108,12 +111,104 @@ class MotorCrescimentoSugestorService {
     return 'Últimas unidades de $nome! 🔥\n#estoque #urgente #loja';
   }
 
-  static String _gerarCodigoCupomSugerido(String nome, TipoOportunidade tipo) {
-    final base = nome.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
-    final pre = base.length >= 4 ? base.substring(0, 4) : base.padLeft(4, 'X');
-    if (tipo == TipoOportunidade.produtoParado) {
-      return 'PROMO${pre}15';
+  /// Cupom curto e único por peça: usa trechos do nome (ex.: Colar coração 15% → CLCORACAO15;
+  /// Colar coração vazado 15% → CLCOVAZADO15).
+  static String _gerarCodigoCupomSugerido(
+    String nome,
+    TipoOportunidade tipo,
+    double percentualDesconto,
+  ) {
+    var slug = _slugCupomFromNomeProduto(nome);
+    slug = slug.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (slug.isEmpty) slug = 'ITEM';
+    if (slug.length > 14) slug = slug.substring(0, 14);
+
+    final pct = percentualDesconto.round().clamp(0, 100);
+    if (tipo == TipoOportunidade.produtoParado && pct > 0) {
+      return '$slug$pct';
     }
-    return 'URG$pre';
+    if (tipo == TipoOportunidade.estoqueBaixo) {
+      if (pct > 0) return '$slug$pct';
+      return 'U$slug';
+    }
+    return pct > 0 ? '$slug$pct' : 'U$slug';
+  }
+
+  static String _normalizeAscii(String s) {
+    var t = s.toLowerCase();
+    const map = <String, String>{
+      'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a',
+      'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+      'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+      'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+      'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+      'ç': 'c', 'ñ': 'n',
+    };
+    for (final e in map.entries) {
+      t = t.replaceAll(e.key, e.value);
+    }
+    return t;
+  }
+
+  static const Set<String> _stopwordsCupom = {
+    'de', 'da', 'do', 'das', 'dos', 'e', 'para', 'com', 'em', 'no', 'na', 'nos', 'nas',
+    'a', 'o', 'as', 'os', 'um', 'uma', 'por', 'ao', 'aos',
+  };
+
+  static bool _isVowelPt(String ch) {
+    if (ch.isEmpty) return true;
+    return 'aeiou'.contains(ch[0]);
+  }
+
+  /// Duas primeiras consoantes (pt) ou, se não houver, duas primeiras letras.
+  static String _prefixoDuasConsoantes(String palavra) {
+    final w = palavra.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    if (w.isEmpty) return 'XX';
+    final buf = StringBuffer();
+    for (var i = 0; i < w.length && buf.length < 2; i++) {
+      final c = w[i];
+      if (!_isVowelPt(c)) buf.write(c);
+    }
+    if (buf.length >= 2) return buf.toString();
+    if (w.length >= 2) return w.substring(0, 2);
+    return w.padRight(2, 'x');
+  }
+
+  static String _slugCupomFromNomeProduto(String nome) {
+    final norm = _normalizeAscii(nome.trim());
+    var words = norm
+        .split(RegExp(r'\s+'))
+        .map((w) => w.replaceAll(RegExp(r'[^a-z0-9]'), ''))
+        .where((w) => w.isNotEmpty && !_stopwordsCupom.contains(w))
+        .toList();
+    if (words.isEmpty) {
+      words = _normalizeAscii(nome.trim())
+          .split(RegExp(r'\s+'))
+          .map((w) => w.replaceAll(RegExp(r'[^a-z0-9]'), ''))
+          .where((w) => w.isNotEmpty)
+          .toList();
+    }
+    if (words.isEmpty) return 'ITEM';
+
+    if (words.length == 1) {
+      final w = words[0];
+      final core = w.length <= 10 ? w : w.substring(0, 10);
+      return core.toUpperCase();
+    }
+
+    if (words.length == 2) {
+      final p0 = _prefixoDuasConsoantes(words[0]);
+      var w1 = words[1];
+      if (w1.length > 8) w1 = w1.substring(0, 8);
+      return (p0 + w1).toUpperCase();
+    }
+
+    // 3+ palavras: 2 consoantes da 1ª + 2 letras da 2ª + última palavra (ex.: CL + CO + VAZADO).
+    final p0 = _prefixoDuasConsoantes(words[0]);
+    final w1 = words[1];
+    final p1 = w1.length >= 2 ? w1.substring(0, 2) : w1.padRight(2, 'x');
+    var last = words.last;
+    if (last.length > 8) last = last.substring(0, 8);
+    return (p0 + p1 + last).toUpperCase();
   }
 }
