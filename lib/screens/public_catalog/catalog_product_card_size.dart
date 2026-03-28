@@ -17,12 +17,12 @@ class CatalogProductCardSize {
   static double standardAspectRatio(String size) {
     switch (normalize(size)) {
       case small:
-        return 0.50;
+        return 0.46;
       case large:
-        return 0.34;
+        return 0.30;
       case medium:
       default:
-        return 0.42;
+        return 0.38;
     }
   }
 
@@ -31,12 +31,12 @@ class CatalogProductCardSize {
   static double minimalAspectRatio(String size) {
     switch (normalize(size)) {
       case small:
-        return 0.50;
+        return 0.46;
       case large:
-        return 0.36;
+        return 0.32;
       case medium:
       default:
-        return 0.40;
+        return 0.36;
     }
   }
 

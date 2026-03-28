@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../widgets/smart_image.dart';
@@ -35,68 +37,82 @@ class CatalogPromoBar extends StatefulWidget {
 }
 
 class _CatalogPromoBarState extends State<CatalogPromoBar> {
-  TextStyle _textStyle() => TextStyle(
-        color: widget.textColor,
-        fontSize: 11.5,
-        fontWeight: widget.bold ? FontWeight.w600 : FontWeight.w500,
-      );
-
   @override
   Widget build(BuildContext context) {
     if (!widget.enabled || widget.text.trim().isEmpty) {
       return const SizedBox.shrink();
     }
     final h = widget.height.clamp(28.0, 72.0).toDouble();
+    final scaler = MediaQuery.textScalerOf(context);
+    const baseFs = 11.5;
+    // Uma linha não pode ultrapassar ~45% da altura da barra (evita overflow no Row).
+    final fontSize = math.min(scaler.scale(baseFs), h * 0.45);
+    TextStyle textStyle() => TextStyle(
+          color: widget.textColor,
+          fontSize: fontSize,
+          fontWeight: widget.bold ? FontWeight.w600 : FontWeight.w500,
+          height: 1.0,
+        );
     return InkWell(
       onTap: widget.onTap,
-      child: Container(
-        height: h,
-        width: double.infinity,
-        color: widget.backgroundColor,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          children: [
-            if (widget.icon != null) ...[
-              Icon(widget.icon, size: 16, color: widget.textColor),
-              const SizedBox(width: 8),
-            ],
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final style = _textStyle();
-                  final tp = TextPainter(
-                    text: TextSpan(text: widget.text, style: style),
-                    maxLines: 1,
-                    textDirection: Directionality.of(context),
-                  )..layout(maxWidth: double.infinity);
-                  final iconW = widget.icon != null ? 24.0 : 0.0;
-                  final maxW =
-                      (constraints.maxWidth - iconW).clamp(40.0, 9999.0);
-                  final needMarquee = widget.marqueeWhenOverflow &&
-                      tp.width > maxW + 4;
+      child: ClipRect(
+        child: SizedBox(
+          height: h,
+          width: double.infinity,
+          child: Container(
+            color: widget.backgroundColor,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.center,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (widget.icon != null) ...[
+                  Icon(widget.icon, size: 16, color: widget.textColor),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final style = textStyle();
+                      final tp = TextPainter(
+                        text: TextSpan(text: widget.text, style: style),
+                        maxLines: 1,
+                        textDirection: Directionality.of(context),
+                      )..layout(maxWidth: double.infinity);
+                      final iconW = widget.icon != null ? 24.0 : 0.0;
+                      final maxW =
+                          (constraints.maxWidth - iconW).clamp(40.0, 9999.0);
+                      final needMarquee = widget.marqueeWhenOverflow &&
+                          tp.width > maxW + 4;
 
-                  if (!needMarquee) {
-                    return Center(
-                      child: Text(
-                        widget.text,
-                        textAlign: widget.textAlign,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                      if (!needMarquee) {
+                        // Sem maxHeight no filho: Text mede altura natural; FittedBox escala até caber em [h].
+                        return FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.center,
+                          child: Text(
+                            widget.text,
+                            textAlign: widget.textAlign,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: style,
+                          ),
+                        );
+                      }
+
+                      return _CatalogPromoMarqueeLine(
+                        key: ValueKey(widget.text),
+                        text: widget.text,
                         style: style,
-                      ),
-                    );
-                  }
-
-                  return _CatalogPromoMarqueeLine(
-                    key: ValueKey(widget.text),
-                    text: widget.text,
-                    style: style,
-                    textWidth: tp.width,
-                  );
-                },
-              ),
+                        textWidth: tp.width,
+                        barHeight: h,
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -108,12 +124,14 @@ class _CatalogPromoMarqueeLine extends StatefulWidget {
   final String text;
   final TextStyle style;
   final double textWidth;
+  final double barHeight;
 
   const _CatalogPromoMarqueeLine({
     super.key,
     required this.text,
     required this.style,
     required this.textWidth,
+    required this.barHeight,
   });
 
   @override
@@ -148,26 +166,47 @@ class _CatalogPromoMarqueeLineState extends State<_CatalogPromoMarqueeLine>
   Widget build(BuildContext context) {
     const gap = 56.0;
     final segment = widget.textWidth + gap;
-    return ClipRect(
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        builder: (_, __) {
-          final off = _ctrl.value * segment;
-          return Transform.translate(
-            offset: Offset(-off, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(widget.text, style: widget.style),
-                const SizedBox(width: gap),
-                Text(widget.text, style: widget.style),
-                const SizedBox(width: gap),
-                Text(widget.text, style: widget.style),
-              ],
+    // O Row do letreiro é muito mais largo que a tela; sem OverflowBox o Flex
+    // do pai recebe largura intrínseca gigante (~mil px) e estoura à direita.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SizedBox(
+          height: widget.barHeight,
+          width: constraints.maxWidth,
+          child: ClipRect(
+            child: OverflowBox(
+              maxWidth: double.infinity,
+              minWidth: 0,
+              minHeight: widget.barHeight,
+              maxHeight: widget.barHeight,
+              alignment: Alignment.centerLeft,
+              child: AnimatedBuilder(
+                animation: _ctrl,
+                builder: (_, __) {
+                  final off = _ctrl.value * segment;
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: Transform.translate(
+                      offset: Offset(-off, 0),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(widget.text, style: widget.style),
+                          const SizedBox(width: gap),
+                          Text(widget.text, style: widget.style),
+                          const SizedBox(width: gap),
+                          Text(widget.text, style: widget.style),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

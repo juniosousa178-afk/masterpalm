@@ -1974,10 +1974,15 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
             ),
             const SizedBox(height: 16),
-            Row(
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 10,
               children: [
-                const Text('Considerar abandonado após (horas):', style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(width: 12),
+                const Text(
+                  'Considerar abandonado após (horas):',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 SizedBox(
                   width: 80,
                   child: TextField(
@@ -1989,12 +1994,16 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Text('(1 a 168)', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text(
+                  '(1 a 168)',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
               ],
             ),
             const SizedBox(height: 16),
-            Row(
+            Wrap(
+              spacing: 12,
+              runSpacing: 10,
               children: [
                 ElevatedButton.icon(
                   onPressed: _carrinhoAbandonadoSalvando ? null : _salvarCarrinhoAbandonadoConfig,
@@ -2004,7 +2013,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   label: Text(_carrinhoAbandonadoSalvando ? 'Salvando...' : 'Salvar'),
                   style: ElevatedButton.styleFrom(backgroundColor: _warningColor, foregroundColor: Colors.white),
                 ),
-                const SizedBox(width: 12),
                 OutlinedButton.icon(
                   onPressed: _slug == null
                       ? null
@@ -2229,7 +2237,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Text(
                             cupom.codigo,
@@ -2238,7 +2249,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                               fontSize: 16,
                             ),
                           ),
-                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
@@ -2260,8 +2270,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                               ),
                             ),
                           ),
-                          if (!cupom.ativo) ...[
-                            const SizedBox(width: 8),
+                          if (!cupom.ativo)
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 8,
@@ -2283,12 +2292,13 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                                 ),
                               ),
                             ),
-                          ],
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
                         cupom.nome,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.grey.shade700,
                           fontSize: 14,
@@ -2297,21 +2307,33 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                     ],
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: _successColor.withValues(alpha:0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    desconto,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: _successColor,
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 120),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _successColor.withValues(alpha:0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          desconto,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: _successColor,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

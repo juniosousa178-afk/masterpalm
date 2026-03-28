@@ -4985,6 +4985,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             children: [
               DropdownButtonFormField<String>(
                 initialValue: _layoutCatalogo,
+                isExpanded: true,
                 items: const [
                   DropdownMenuItem(value: 'padrao', child: Text('Padrão atual (retrocompatível)')),
                   DropdownMenuItem(value: 'minimalista_nuvemshop', child: Text('Minimalista estilo Nuvemshop')),
@@ -5002,6 +5003,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 initialValue: _productCardSize,
+                isExpanded: true,
                 items: const [
                   DropdownMenuItem(
                     value: 'small',
@@ -5275,6 +5277,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int>(
+                    isExpanded: true,
                     value: _heroTitleFontWeight,
                     decoration: const InputDecoration(
                       labelText: 'Peso da fonte (título)',
@@ -5295,6 +5298,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: _heroTitleCase,
                     decoration: const InputDecoration(
                       labelText: 'Caixa do texto (título)',
@@ -5350,6 +5354,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int>(
+                    isExpanded: true,
                     value: _heroSubtitleFontWeight,
                     decoration: const InputDecoration(
                       labelText: 'Peso da fonte (subtítulo)',
@@ -5369,6 +5374,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: _heroSubtitleCase,
                     decoration: const InputDecoration(
                       labelText: 'Caixa do texto (subtítulo)',
@@ -5452,6 +5458,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int>(
+                    isExpanded: true,
                     value: _heroButtonFontWeight,
                     decoration: const InputDecoration(
                       labelText: 'Peso da fonte (botão)',
@@ -5471,6 +5478,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     value: _heroButtonCase,
                     decoration: const InputDecoration(
                       labelText: 'Caixa do texto (botão)',
@@ -5508,6 +5516,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: (_catSelectedFromStore != null &&
                         _knownCategoryNames.contains(_catSelectedFromStore))
                     ? _catSelectedFromStore
@@ -5715,6 +5724,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: _gridDesktopCols,
                 items: const [2, 3, 4, 5, 6]
                     .map(
@@ -5746,6 +5756,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: _gridMobileCols,
                 items: const [1, 2, 3]
                     .map(
@@ -6283,6 +6294,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: tipo,
                       decoration: const InputDecoration(
                         labelText: 'Tipo',
@@ -7461,7 +7473,7 @@ class _Section extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            child,
+            SizedBox(width: double.infinity, child: child),
           ],
         ),
       ),
@@ -7555,6 +7567,7 @@ class _ColorPickerChip extends StatelessWidget {
       onTap: () => _showColorPicker(context),
       borderRadius: BorderRadius.circular(10),
       child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           border: Border.all(color: Colors.grey.shade300),
@@ -7562,7 +7575,7 @@ class _ColorPickerChip extends StatelessWidget {
           color: Colors.white,
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Container(
               width: 32,
@@ -7584,26 +7597,32 @@ class _ColorPickerChip extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                Text(
-                  _colorToHex(color),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                    fontFamily: 'monospace',
+                  Text(
+                    _colorToHex(color),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontFamily: 'monospace',
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(width: 8),
             Icon(

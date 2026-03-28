@@ -845,13 +845,14 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
               flex: contentFlex,
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  // Só limita a largura: maxHeight no filho faz o Column layoutar com teto finito
+                  // e estourar *antes* do FittedBox aplicar escala (overflow 9–25px).
                   return FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.topCenter,
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         maxWidth: constraints.maxWidth,
-                        maxHeight: constraints.maxHeight,
                       ),
                       child: Padding(
                         padding: EdgeInsets.only(

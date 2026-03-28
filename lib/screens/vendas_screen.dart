@@ -179,7 +179,11 @@ class _VendasScreenState extends State<VendasScreen>
       final user = FirebaseAuth.instance.currentUser;
       logD('[VENDAS_INIT] inicio _init');
       logD('[VENDAS_INIT] auth uid=${user?.uid ?? "null"} email=${user?.email ?? "null"}');
-      logD('[VENDAS_INIT] rota=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${kIsWeb ? Uri.base.toString() : "n/a"}');
+      // ModalRoute.of(context) não pode rodar antes de initState terminar — log após o 1º frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        logD('[VENDAS_INIT] rota=${ModalRoute.of(context)?.settings.name ?? "null"} uri=${kIsWeb ? Uri.base.toString() : "n/a"}');
+      });
       try {
         final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : await Hive.openBox('sessao');
         final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
