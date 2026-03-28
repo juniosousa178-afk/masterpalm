@@ -227,3 +227,7 @@ if (-not $SkipPlayStore) {
 Write-Host ""
 Write-Host "Para ver só a lista de comandos: .\scripts\ATUALIZAR-TUDO-COMANDOS.ps1 -ApenasLista" -ForegroundColor Gray
 Write-Host ""
+Write-Host "IMPORTANTE — Site de marketing (mastepalm.com.br com menu Download / Funcionalidades):" -ForegroundColor Yellow
+Write-Host "  Esse site e o projeto em .\site\ (Next.js). O firebase deploy acima NAO publica essa landing." -ForegroundColor Gray
+Write-Host "  Apos alterar site\: cd site && npm run build && faca deploy no Vercel/Netlify (ou o host que aponta o dominio)." -ForegroundColor Gray
+Write-Host ""

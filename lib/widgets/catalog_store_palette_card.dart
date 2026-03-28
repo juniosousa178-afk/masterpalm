@@ -123,11 +123,14 @@ class CatalogStorePaletteCard extends StatelessWidget {
     this.title = 'Paleta da Loja',
     this.subtitle =
         'Referência das cores do rascunho. Toque para ver onde cada cor aparece; use o ícone para copiar o HEX.',
+    /// No hub: mostra só uma faixa com as primeiras cores e abre o restante em sheet (mais leve).
+    this.compactStrip = false,
   });
 
   final List<CatalogColorSuggestion> entries;
   final String title;
   final String subtitle;
+  final bool compactStrip;
 
   @override
   Widget build(BuildContext context) {
@@ -193,6 +196,12 @@ class CatalogStorePaletteCard extends StatelessWidget {
                 'Nenhuma cor agregada ainda.',
                 style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
               )
+            else if (compactStrip && entries.length > 8)
+              _CompactPaletteStrip(
+                entries: entries,
+                title: title,
+                subtitle: subtitle,
+              )
             else
               LayoutBuilder(
                 builder: (context, c) {
@@ -214,6 +223,111 @@ class CatalogStorePaletteCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CompactPaletteStrip extends StatelessWidget {
+  const _CompactPaletteStrip({
+    required this.entries,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final List<CatalogColorSuggestion> entries;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final preview = entries.take(8).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Resumo rápido (${entries.length} cores distintas)',
+          style: tt.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: cs.onSurface.withValues(alpha: 0.88),
+          ),
+        ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final e in preview)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: InkWell(
+                    onTap: () => _showPaletteColorDetail(context, e),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: e.color,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: cs.outline.withValues(alpha: 0.35)),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          formatCatalogHexRgb(e.color),
+                          style: tt.labelSmall?.copyWith(
+                            fontFamily: 'monospace',
+                            fontSize: 9.5,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () {
+              showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                showDragHandle: true,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                ),
+                builder: (ctx) => DraggableScrollableSheet(
+                  expand: false,
+                  initialChildSize: 0.72,
+                  minChildSize: 0.45,
+                  maxChildSize: 0.92,
+                  builder: (ctx, scroll) => SingleChildScrollView(
+                    controller: scroll,
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: CatalogStorePaletteCard(
+                      entries: entries,
+                      title: title,
+                      subtitle: subtitle,
+                      compactStrip: false,
+                    ),
+                  ),
+                ),
+              );
+            },
+            icon: Icon(Icons.palette_outlined, size: 20, color: cs.primary.withValues(alpha: 0.9)),
+            label: Text('Ver paleta completa (${entries.length} cores)'),
+          ),
+        ),
+      ],
     );
   }
 }

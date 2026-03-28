@@ -710,6 +710,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   _MediaTab _mediaTab = _MediaTab.desktop;
   _LayoutPreset? _layoutPreset;
 
+  /// Temas e Cores: uma secção de grupos de cor aberta por vez; conteúdo pesado só quando expandida (lazy).
+  String? _temaAccordionOpenId = 'tema_fundo';
+
   // Tutorial flutuante (somente na primeira configuração)
   bool _mostrarTutorial = false;
   int _tutorialPasso = 0;
@@ -3688,6 +3691,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     const SizedBox(height: 16),
                     CatalogStorePaletteCard(
                       entries: _catalogPaletteOverviewEntries(),
+                      compactStrip: true,
                     ),
                     const SizedBox(height: 16),
                     _buildLojaConfigHub(isWide),
@@ -4513,6 +4517,27 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       description: description,
       color: color,
       suggestions: _catalogColorPaletteSuggestions(),
+      onColorChanged: (c) {
+        onChanged(c);
+        _salvarRascunho(validar: false);
+      },
+    );
+  }
+
+  /// Temas e Cores: lista de sugestões calculada uma vez; chips só no bottom sheet (tela mais leve).
+  Widget _catalogColorFieldTema({
+    required String label,
+    String? description,
+    required Color color,
+    required ValueChanged<Color> onChanged,
+    required List<CatalogColorSuggestion> suggestions,
+  }) {
+    return CatalogColorFieldEditor(
+      label: label,
+      description: description,
+      color: color,
+      suggestions: suggestions,
+      suggestionsLayout: CatalogColorSuggestionsLayout.bottomSheet,
       onColorChanged: (c) {
         onChanged(c);
         _salvarRascunho(validar: false);
@@ -5984,15 +6009,103 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
   }
 
+  /// Grupo colapsável no painel Temas e Cores — [child] só entra na árvore quando aberto.
+  Widget _buildTemaAccordionSection({
+    required String id,
+    required String title,
+    String? subtitle,
+    required Widget child,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final open = _temaAccordionOpenId == id;
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      color: cs.surface,
+      surfaceTintColor: Colors.transparent,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                if (open) {
+                  _temaAccordionOpenId = null;
+                } else {
+                  _temaAccordionOpenId = id;
+                }
+              });
+            },
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: tt.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.2,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                        if (subtitle != null && subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            subtitle,
+                            style: tt.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                              height: 1.4,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    open ? Icons.expand_less : Icons.expand_more,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: open
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                    child: RepaintBoundary(child: child),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ============== PANE: TEMA ==============
   Widget _paneTema() {
-    final maxHeight = MediaQuery.of(context).size.height * 0.65;
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          children: [
+    final paletteSuggestions = _catalogColorPaletteSuggestions();
+    final miniPreviewColors = _catalogMiniPreviewColors();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
             _Section(
               title: 'Prévia visual',
               subtitle:
@@ -6005,7 +6118,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     child: ConstrainedBox(
                       constraints: BoxConstraints(maxWidth: narrow ? double.infinity : 420),
                       child: CatalogStoreMiniPreview(
-                        colors: _catalogMiniPreviewColors(),
+                        colors: miniPreviewColors,
                         storeName: _miniPreviewStoreName(),
                         density: narrow
                             ? CatalogStoreMiniPreviewDensity.compact
@@ -6057,21 +6170,24 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           const SizedBox(height: 12),
 
           // ===== FUNDO E CARDS =====
-          _Section(
-          title: 'Fundo e Cards',
-          subtitle: 'Cores de fundo da página e dos cards de produto',
-          child: Wrap(
+          _buildTemaAccordionSection(
+            id: 'tema_fundo',
+            title: 'Fundo e Cards',
+            subtitle: 'Cores de fundo da página e dos cards de produto',
+            child: Wrap(
             spacing: 12,
             runSpacing: 14,
             children: [
-              _catalogColorField(
+              _catalogColorFieldTema(
+                suggestions: paletteSuggestions,
                 label: 'Fundo da página',
                 description: 'Plano de fundo geral do catálogo público.',
                 color: _cFundo,
                 onChanged: (c) => setState(() => _cFundo = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(
+                suggestions: paletteSuggestions,
                 label: 'Fundo dos cards',
                 color: _cCard,
                 onChanged: (c) => setState(() => _cCard = c),
@@ -6080,23 +6196,24 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
 
         // ===== PRODUTOS (Nome e Preço) =====
-        _Section(
+        _buildTemaAccordionSection(
+          id: 'tema_produtos',
           title: 'Produtos – Nome e Preço',
           subtitle: 'Cores do nome do produto e do valor (ex: R\$ 109,90)',
           child: Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Nome do produto',
                 color: _cCardTextPrimary,
                 onChanged: (c) => setState(() => _cCardTextPrimary = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Preço (valor)',
                 color: _cPriceHighlight,
                 onChanged: (c) => setState(() => _cPriceHighlight = c),
@@ -6105,36 +6222,37 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
 
         // ===== BOTÕES =====
-        _Section(
+        _buildTemaAccordionSection(
+          id: 'tema_botoes',
           title: 'Botões',
           subtitle: 'Cores dos botões Comprar, Ver e filtros de categoria',
           child: Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Botão Comprar – fundo',
                 description: 'Cor principal de ação (comprar, aplicar cupom, etc.).',
                 color: _cPrimaria,
                 onChanged: (c) => setState(() => _cPrimaria = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Botão Comprar – texto',
                 color: _cBotaoTexto,
                 onChanged: (c) => setState(() => _cBotaoTexto = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Botão Ver – fundo',
                 color: _cButtonSecondaryBg,
                 onChanged: (c) => setState(() => _cButtonSecondaryBg = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Botão Ver – texto e borda',
                 color: _cButtonSecondaryText,
                 onChanged: (c) => setState(() {
@@ -6145,53 +6263,54 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
 
         // ===== TEXTOS GERAIS =====
-        _Section(
+        _buildTemaAccordionSection(
+          id: 'tema_textos',
           title: 'Textos Gerais',
           subtitle: 'Textos da página, secundários, ícones e divisórias',
           child: Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Texto principal',
                 color: _cTexto,
                 onChanged: (c) => setState(() => _cTexto = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Texto secundário',
                 color: _cTextSecondary,
                 onChanged: (c) => setState(() => _cTextSecondary = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Texto card secundário',
                 color: _cCardTextSecondary,
                 onChanged: (c) => setState(() => _cCardTextSecondary = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Ícones',
                 color: _cIcon,
                 onChanged: (c) => setState(() => _cIcon = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Divisórias',
                 color: _cDivider,
                 onChanged: (c) => setState(() => _cDivider = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Sombras',
                 color: _cShadow,
                 onChanged: (c) => setState(() => _cShadow = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Cor de perigo',
                 color: _cDanger,
                 onChanged: (c) => setState(() => _cDanger = c),
@@ -6200,23 +6319,24 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
 
         // ===== BADGES =====
-        _Section(
+        _buildTemaAccordionSection(
+          id: 'tema_badges',
           title: 'Badges e Chips',
           subtitle: 'Selos, etiquetas e chips informativos',
           child: Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Badge – fundo',
                 color: _cBadgeBackground,
                 onChanged: (c) => setState(() => _cBadgeBackground = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Badge – texto',
                 color: _cBadgeText,
                 onChanged: (c) => setState(() => _cBadgeText = c),
@@ -6225,10 +6345,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
 
         // ===== CABEÇALHO DO CATÁLOGO =====
-        _Section(
+        _buildTemaAccordionSection(
+          id: 'tema_cabecalho',
           title: 'Cabeçalho do Catálogo',
           subtitle: 'Menu, logo, busca e ícones do topo',
           child: Column(
@@ -6238,37 +6359,37 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Fundo Cabeçalho',
                     color: _cCabecalho,
                     onChanged: (c) => setState(() => _cCabecalho = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Texto Cabeçalho',
                     color: _cHeaderText,
                     onChanged: (c) => setState(() => _cHeaderText = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Ícones Cabeçalho',
                     color: _cHeaderIcon,
                     onChanged: (c) => setState(() => _cHeaderIcon = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Busca Fundo',
                     color: _cHeaderSearchBg,
                     onChanged: (c) => setState(() => _cHeaderSearchBg = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Busca Texto',
                     color: _cHeaderSearchText,
                     onChanged: (c) => setState(() => _cHeaderSearchText = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Busca Hint',
                     color: _cHeaderSearchHint,
                     onChanged: (c) => setState(() => _cHeaderSearchHint = c),
@@ -6389,10 +6510,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           ),
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
 
         // ===== CORES DO CARRINHO (CHECKOUT) =====
-        _Section(
+        _buildTemaAccordionSection(
+          id: 'tema_carrinho',
           title: 'Cores do Carrinho (checkout)',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -6401,43 +6523,43 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Fundo do card',
                     color: _cCarrinhoCard,
                     onChanged: (c) => setState(() => _cCarrinhoCard = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Campos (dropdown / input)',
                     color: _cCarrinhoCampo,
                     onChanged: (c) => setState(() => _cCarrinhoCampo = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Texto dos campos',
                     color: _cCarrinhoTexto,
                     onChanged: (c) => setState(() => _cCarrinhoTexto = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Rótulos (Entrega, Pagamento...)',
                     color: _cCarrinhoLabel,
                     onChanged: (c) => setState(() => _cCarrinhoLabel = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Total a pagar',
                     color: _cCarrinhoTotal,
                     onChanged: (c) => setState(() => _cCarrinhoTotal = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Campo Hint',
                     color: _cFieldHint,
                     onChanged: (c) => setState(() => _cFieldHint = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Campo Borda',
                     color: _cFieldBorder,
                     onChanged: (c) => setState(() => _cFieldBorder = c),
@@ -6721,10 +6843,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           ),
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
 
         // ===== CORES DO RODAPÉ DO CATÁLOGO =====
-        _Section(
+        _buildTemaAccordionSection(
+          id: 'tema_rodape',
           title: 'Cores do Rodapé',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -6738,37 +6861,37 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Fundo Rodapé',
                     color: _cFooterBackground,
                     onChanged: (c) => setState(() => _cFooterBackground = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Texto Rodapé',
                     color: _cFooterText,
                     onChanged: (c) => setState(() => _cFooterText = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Texto Secundário',
                     color: _cFooterTextSecondary,
                     onChanged: (c) => setState(() => _cFooterTextSecondary = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Ícones Rodapé',
                     color: _cFooterIcon,
                     onChanged: (c) => setState(() => _cFooterIcon = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Links Rodapé',
                     color: _cFooterLink,
                     onChanged: (c) => setState(() => _cFooterLink = c),
                   ),
 
-                  _catalogColorField(
+                  _catalogColorFieldTema(suggestions: paletteSuggestions,
                     label: 'Divisórias Rodapé',
                     color: _cFooterDivider,
                     onChanged: (c) => setState(() => _cFooterDivider = c),
@@ -6836,47 +6959,48 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
 
         // ===== CORES DA TELA DICAS E INFORMAÇÕES =====
-        _Section(
+        _buildTemaAccordionSection(
+          id: 'tema_dicas',
           title: 'Cores da tela Dicas e Informações',
           subtitle: 'Fundo, rodapé, botões e etiqueta por tópico (Garantias, Cuidados, etc.)',
           child: Wrap(
             spacing: 12,
             runSpacing: 12,
             children: [
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Fundo',
                 color: _cDicasBackground,
                 onChanged: (c) => setState(() => _cDicasBackground = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Rodapé – fundo',
                 color: _cDicasFooterBg,
                 onChanged: (c) => setState(() => _cDicasFooterBg = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Rodapé – texto',
                 color: _cDicasFooterText,
                 onChanged: (c) => setState(() => _cDicasFooterText = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Botões',
                 color: _cDicasButtonBg,
                 onChanged: (c) => setState(() => _cDicasButtonBg = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Texto dos botões',
                 color: _cDicasButtonText,
                 onChanged: (c) => setState(() => _cDicasButtonText = c),
               ),
 
-              _catalogColorField(
+              _catalogColorFieldTema(suggestions: paletteSuggestions,
                 label: 'Por tópico (Garantias, Cuidados...)',
                 color: _cDicasTopicPrimary,
                 onChanged: (c) => setState(() => _cDicasTopicPrimary = c),
@@ -6885,9 +7009,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 

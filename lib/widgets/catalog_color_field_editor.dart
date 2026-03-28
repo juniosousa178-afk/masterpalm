@@ -36,6 +36,15 @@ class CatalogColorSuggestion {
   final String? group;
 }
 
+/// Onde mostrar as sugestões “cores já usadas” (mesmo dado, UX diferente).
+enum CatalogColorSuggestionsLayout {
+  /// Chips sob o campo (mais pesado quando há muitos editores na mesma tela).
+  inline,
+
+  /// Botão que abre bottom sheet — recomendado em Temas e Cores.
+  bottomSheet,
+}
+
 /// Editor de cor reutilizável: preview, hex manual, picker e sugestões do catálogo.
 class CatalogColorFieldEditor extends StatefulWidget {
   const CatalogColorFieldEditor({
@@ -46,6 +55,7 @@ class CatalogColorFieldEditor extends StatefulWidget {
     required this.onColorChanged,
     this.suggestions = const [],
     this.maxSuggestions = 16,
+    this.suggestionsLayout = CatalogColorSuggestionsLayout.inline,
   });
 
   final String label;
@@ -54,6 +64,9 @@ class CatalogColorFieldEditor extends StatefulWidget {
   final ValueChanged<Color> onColorChanged;
   final List<CatalogColorSuggestion> suggestions;
   final int maxSuggestions;
+
+  /// [inline] (padrão) ou [bottomSheet] para não renderizar chips até o usuário pedir.
+  final CatalogColorSuggestionsLayout suggestionsLayout;
 
   @override
   State<CatalogColorFieldEditor> createState() => _CatalogColorFieldEditorState();
@@ -209,8 +222,9 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
     List<CatalogColorSuggestion> suggestions,
     ColorScheme cs,
     TextTheme tt,
-    Color accentRose,
-  ) {
+    Color accentRose, {
+    VoidCallback? afterPickColor,
+  }) {
     if (suggestions.isEmpty) return [];
 
     Widget chipRow(CatalogColorSuggestion s) {
@@ -231,6 +245,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                       _hexError = null;
                       _hexCtrl.text = hex;
                     });
+                    afterPickColor?.call();
                   },
                   onLongPress: () => _showSuggestionUsesDialog(s),
                   borderRadius: BorderRadius.circular(10),
@@ -381,6 +396,59 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
         ],
       ),
     ).then((_) => hexPickerCtrl.dispose());
+  }
+
+  void _openSuggestionsBottomSheet(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    const accentRose = Color(0xFFC9A4A8);
+    final suggestions = widget.suggestions.take(widget.maxSuggestions).toList();
+    if (suggestions.isEmpty) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  widget.label,
+                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Toque no quadrado para aplicar neste campo. Ícones: copiar HEX ou ver onde a cor é usada.',
+                  style: tt.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ..._buildSuggestionGroups(
+                  suggestions,
+                  cs,
+                  tt,
+                  accentRose,
+                  afterPickColor: () {
+                    if (Navigator.of(sheetCtx).canPop()) {
+                      Navigator.of(sheetCtx).pop();
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -538,31 +606,49 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
               onSubmitted: (_) => _applyHexInput,
             ),
             if (suggestions.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome_outlined, size: 16, color: accentRose.withValues(alpha: 0.95)),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Cores já usadas no catálogo',
-                    style: tt.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface.withValues(alpha: 0.88),
-                      fontSize: 12,
+              if (widget.suggestionsLayout == CatalogColorSuggestionsLayout.inline) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Icon(Icons.auto_awesome_outlined, size: 16, color: accentRose.withValues(alpha: 0.95)),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Cores já usadas no catálogo',
+                      style: tt.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withValues(alpha: 0.88),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Quadrado: aplicar no campo · ícones: copiar HEX ou ver onde é usada.',
+                  style: tt.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.85),
+                    fontSize: 11.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ..._buildSuggestionGroups(suggestions, cs, tt, accentRose),
+              ] else ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => _openSuggestionsBottomSheet(context),
+                    icon: Icon(Icons.auto_awesome_outlined, size: 18, color: accentRose.withValues(alpha: 0.95)),
+                    label: Text(
+                      'Cores já usadas (${suggestions.length})',
+                      style: tt.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12.5,
+                      ),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Quadrado: aplicar no campo · ícones: copiar HEX ou ver onde é usada.',
-                style: tt.bodySmall?.copyWith(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.85),
-                  fontSize: 11.5,
                 ),
-              ),
-              const SizedBox(height: 8),
-              ..._buildSuggestionGroups(suggestions, cs, tt, accentRose),
+              ],
             ],
           ],
         ),
