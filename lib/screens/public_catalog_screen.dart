@@ -508,6 +508,28 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   /// Formulário do checkout (prefs) em memória — evita await antes de abrir o carrinho.
   Map<String, dynamic>? _cachedCatalogCartForm;
 
+  /// [SAFE_SETSTATE] Atualiza estado do catálogo após o frame (evita "widget tree was locked" com sheet/dialog).
+  void _safeSetStateAfterFrame(VoidCallback fn) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      fn();
+    });
+  }
+
+  /// Como [_safeSetStateAfterFrame], mas permite `await` antes da próxima etapa (ex.: abrir link de pagamento).
+  Future<void> _runStateAfterFrame(VoidCallback fn) {
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        if (!completer.isCompleted) completer.complete();
+        return;
+      }
+      fn();
+      if (!completer.isCompleted) completer.complete();
+    });
+    return completer.future;
+  }
+
   Stream<Map<String, dynamic>> _getConfigStream(String lojaId) {
     final key = '${lojaId}_${widget.preview}';
     if (_cachedConfigStreamKey == key && _cachedConfigStream != null) {
@@ -1443,6 +1465,56 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _saveCarrinho();
   }
 
+  /// Ajusta quantidade de uma linha do carrinho (respeita estoque como [_addToCart]).
+  bool _setCartItemQuantity(
+    int index,
+    int newQty,
+    List<Map<String, dynamic>> catalogProducts,
+  ) {
+    if (index < 0 || index >= _cart.length) return false;
+    if (newQty < 1) {
+      _removeFromCart(index);
+      return true;
+    }
+
+    final item = _cart[index];
+    final comboRaw = item['itensComboComSelecao'];
+    final isComboLine = comboRaw is List && comboRaw.isNotEmpty;
+    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
+    final tam = (item['tamanho'] ?? '').toString().trim();
+    final cor = (item['cor'] ?? '').toString().trim();
+
+    if (!isComboLine && id.isNotEmpty) {
+      final p = CatalogEstoqueHelper.findProductInList(catalogProducts, id);
+      if (p != null) {
+        final avail =
+            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor);
+        final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
+        var other = 0;
+        for (var i = 0; i < _cart.length; i++) {
+          if (i == index) continue;
+          if (CatalogEstoqueHelper.cartLineIdentity(_cart[i]) == lineKey) {
+            other += CatalogEstoqueHelper.parseCartItemQuantidade(
+                _cart[i]['quantidade']);
+          }
+        }
+        if (other + newQty > avail) {
+          _snack(avail <= 0
+              ? 'Produto esgotado nesta variação.'
+              : 'Estoque insuficiente. Disponível: $avail un.');
+          return false;
+        }
+      }
+    }
+
+    setState(() {
+      _cart[index]['quantidade'] = newQty;
+      _clearPrePedidoReuseSession();
+    });
+    _saveCarrinho();
+    return true;
+  }
+
   bool _addToCart(
     Map<String, dynamic> item,
     List<Map<String, dynamic>> catalogProducts,
@@ -1851,6 +1923,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required CatalogCheckoutSummaryTokens checkoutSummaryTokens,
     required CatalogCartUiTokens catalogCartUiTokens,
     CatalogFirstPurchaseCouponOffer? catalogFirstPurchaseCouponOffer,
+    required List<Map<String, dynamic>> catalogProducts,
   }) async {
     if (_cart.isEmpty) {
       _snack('Seu carrinho está vazio.');
@@ -1873,14 +1946,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       return CarrinhoSheetWeb(
             lojaId: lojaId,
             items: _cart,
+            catalogProducts: catalogProducts,
             fretes: fretes,
             cupons: cupons,
             initialFormData: initialFormData,
             onFormDataToSave: (data) {
               final copy = Map<String, dynamic>.from(data);
-              if (mounted) {
+              _safeSetStateAfterFrame(() {
                 setState(() => _cachedCatalogCartForm = copy);
-              }
+              });
               SharedPreferences.getInstance().then((prefs) {
                 prefs.setString('catalog_cart_form_$lojaId', jsonEncode(data));
               });
@@ -1926,6 +2000,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             pixKey: pixKey,
             freightToken: freightToken,
             onRemove: _removeFromCart,
+            onSetItemQuantity: (i, q) =>
+                _setCartItemQuantity(i, q, catalogProducts),
             showSnack: _snack,
             onCheckoutPix:
                 (checkoutGateway == 'pix' || checkoutGateway == 'whatsapp') &&
@@ -1989,28 +2065,31 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           txid: vendaId ?? '***',
                         );
                         if (sheetContext.mounted) {
-                          setState(() {
-                            _cart.clear();
-                            _resetRoletaState();
-                          });
-                          _saveCarrinho();
-                          showPixQrDialog(
-                            context: sheetContext,
-                            pixPayload: payload,
-                            valor: valorTotal,
-                            pedidoId: vendaId,
-                          );
-                          if (showErrorInCart == null) {
+                          await _runStateAfterFrame(() {
+                            setState(() {
+                              _cart.clear();
+                              _resetRoletaState();
+                            });
+                            _saveCarrinho();
                             if (!sheetContext.mounted) return;
-                            // ignore: use_build_context_synchronously
-                            final messenger =
-                                ScaffoldMessenger.of(Navigator.of(sheetContext).context);
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'Escaneie o QR Code ou copie o código para pagar.')),
+                            showPixQrDialog(
+                              context: sheetContext,
+                              pixPayload: payload,
+                              valor: valorTotal,
+                              pedidoId: vendaId,
                             );
-                          }
+                            if (showErrorInCart == null) {
+                              if (!sheetContext.mounted) return;
+                              // ignore: use_build_context_synchronously
+                              final messenger =
+                                  ScaffoldMessenger.of(Navigator.of(sheetContext).context);
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Escaneie o QR Code ou copie o código para pagar.')),
+                              );
+                            }
+                          });
                         }
                       }
                     : null,
@@ -2599,13 +2678,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   final uri = Uri.tryParse(initPoint);
                   if (uri != null) {
                     if (mounted) {
-                      setState(() {
-                        _cart.clear();
-                        _resetRoletaState();
-                        _clearPrePedidoReuseSession();
+                      await _runStateAfterFrame(() {
+                        setState(() {
+                          _cart.clear();
+                          _resetRoletaState();
+                          _clearPrePedidoReuseSession();
+                        });
+                        _saveCarrinho();
                       });
                     }
-                    _saveCarrinho();
                     final ok = await _launchPaymentUrl(uri);
                     if (!mounted) return;
                     if (!ok) {
@@ -2627,13 +2708,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   final uri = Uri.tryParse(ticketUrl);
                   if (uri != null) {
                     if (mounted) {
-                      setState(() {
-                        _cart.clear();
-                        _resetRoletaState();
-                        _clearPrePedidoReuseSession();
+                      await _runStateAfterFrame(() {
+                        setState(() {
+                          _cart.clear();
+                          _resetRoletaState();
+                          _clearPrePedidoReuseSession();
+                        });
+                        _saveCarrinho();
                       });
                     }
-                    _saveCarrinho();
                     final ok = await _launchPaymentUrl(uri);
                     if (!mounted) return;
                     if (!ok) {
@@ -2653,33 +2736,35 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 // Se tiver QR Code, mostrar dialog PIX
                 if (qrCode != null && qrCode.isNotEmpty) {
                   if (mounted) {
-                    setState(() {
-                      _cart.clear();
-                      _resetRoletaState();
-                      _clearPrePedidoReuseSession();
-                    });
-                  }
-                  _saveCarrinho();
-                  if (!mounted) return;
-                  if (showErrorInCart == null) {
-                    ScaffoldMessenger.of(Navigator.of(context).context)
-                        .showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'PIX gerado! Escaneie o QR Code para pagar.')),
-                    );
-                  }
+                    await _runStateAfterFrame(() {
+                      setState(() {
+                        _cart.clear();
+                        _resetRoletaState();
+                        _clearPrePedidoReuseSession();
+                      });
+                      _saveCarrinho();
+                      if (!mounted) return;
+                      if (showErrorInCart == null) {
+                        ScaffoldMessenger.of(Navigator.of(context).context)
+                            .showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  'PIX gerado! Escaneie o QR Code para pagar.')),
+                        );
+                      }
 
-                  // 🔔 O webhook processará a confirmação: pagamento concluído e novo pedido recebido
-                  if (!sheetContext.mounted) return;
-                  final scaffoldContext = Navigator.of(sheetContext).context;
-                  if (scaffoldContext.mounted) {
-                    showPixQrDialog(
-                      context: scaffoldContext,
-                      pixPayload: qrCode,
-                      valor: valorTotal,
-                      pedidoId: pedidoId,
-                    );
+                      // 🔔 O webhook processará a confirmação: pagamento concluído e novo pedido recebido
+                      if (!sheetContext.mounted) return;
+                      final scaffoldContext = Navigator.of(sheetContext).context;
+                      if (scaffoldContext.mounted) {
+                        showPixQrDialog(
+                          context: scaffoldContext,
+                          pixPayload: qrCode,
+                          valor: valorTotal,
+                          pedidoId: pedidoId,
+                        );
+                      }
+                    });
                   }
                   return;
                 }
@@ -3768,7 +3853,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                const Spacer(),
                                 IconButton(
                                   icon: const Icon(Icons.close),
                                   onPressed: () => Navigator.pop(context),
@@ -4190,9 +4274,28 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                 : (_selectedCategory != null ? 216 : 166))),
                     titleSpacing: 0,
                     automaticallyImplyLeading: false,
-                    title: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
+                    title: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final maxTitleH = constraints.maxHeight.isFinite
+                            ? constraints.maxHeight
+                            : (useMinimalLayout
+                                ? (isDesktop ? 100.0 : 88.0)
+                                : (isDesktop ? 200.0 : 180.0));
+                        return Align(
+                          alignment: Alignment.topCenter,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.topCenter,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: constraints.maxWidth,
+                                maxHeight: maxTitleH,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
                         // ======= LINHA SUPERIOR: MENU + LOGO + PUBLICAR + CARRINHO =======
                         Row(
                           children: [
@@ -4384,6 +4487,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       catalogCartUiTokens: catalogCartUiTokens,
                                       catalogFirstPurchaseCouponOffer:
                                           catalogFirstPurchaseCouponOffer,
+                                      catalogProducts: produtos,
                                     ),
                                   ),
                                   if (cartCount > 0)
@@ -4485,6 +4589,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       ],
                     ),
                   ),
+                ),
+              );
+            },
+          ),
+                  ),
 
                   // ========== FAB DO CARRINHO ==========
                   floatingActionButton: _cart.isEmpty
@@ -4521,9 +4630,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             catalogCartUiTokens: catalogCartUiTokens,
                             catalogFirstPurchaseCouponOffer:
                                 catalogFirstPurchaseCouponOffer,
+                            catalogProducts: produtos,
                           ),
                           icon: const Icon(Icons.shopping_bag_outlined),
-                          label: Text('Carrinho ($cartCount)'),
+                          label: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text('Carrinho ($cartCount)'),
+                          ),
                         ),
 
 // ================= CORPO =================
@@ -4932,6 +5045,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           catalogCartUiTokens,
                                                       catalogFirstPurchaseCouponOffer:
                                                           catalogFirstPurchaseCouponOffer,
+                                                      catalogProducts: produtos,
                                                     ),
                                                     catalogShareUrl:
                                                         CatalogShareService
@@ -5078,6 +5192,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       catalogCartUiTokens,
                                                   catalogFirstPurchaseCouponOffer:
                                                       catalogFirstPurchaseCouponOffer,
+                                                  catalogProducts: produtos,
                                                 ),
                                                 clienteId: _clienteId,
                                                 favoritosIds: _favoritosIds,
@@ -5169,6 +5284,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     catalogCartUiTokens,
                                                 catalogFirstPurchaseCouponOffer:
                                                     catalogFirstPurchaseCouponOffer,
+                                                catalogProducts: produtos,
                                               ),
                                               clienteId: _clienteId,
                                               favoritosIds: _favoritosIds,

@@ -43,9 +43,14 @@ import 'catalog_first_purchase_coupon_dialog.dart';
 class CarrinhoSheetWeb extends StatefulWidget {
   final String lojaId; // 👈 NOVO
   final List<Map<String, dynamic>> items;
+  /// Lista de produtos do catálogo (para teto de estoque e botões +/-).
+  final List<Map<String, dynamic>> catalogProducts;
   final List<Map<String, dynamic>> fretes;
   final List<Map<String, dynamic>> cupons;
   final void Function(int index) onRemove;
+
+  /// Altera a quantidade da linha [index]; retorna false se estoque insuficiente.
+  final bool Function(int index, int newQuantity) onSetItemQuantity;
 
   final Color primary;
   final Color buttonText;
@@ -152,6 +157,7 @@ class CarrinhoSheetWeb extends StatefulWidget {
     super.key,
     required this.lojaId,
     required this.items,
+    required this.catalogProducts,
     required this.fretes,
     required this.cupons,
     required this.primary,
@@ -171,6 +177,7 @@ class CarrinhoSheetWeb extends StatefulWidget {
     required this.pixKey,
     required this.freightToken,
     required this.onRemove,
+    required this.onSetItemQuantity,
     required this.showSnack,
     required this.onCheckoutWhatsapp,
     required this.onCheckoutMercadoPago,
@@ -2079,6 +2086,54 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
   }
 
+  /// Teto de unidades para esta linha (estoque da variação menos outras linhas iguais).
+  int _maxOrderableForCartIndex(int index) {
+    final item = widget.items[index];
+    final comboRaw = item['itensComboComSelecao'];
+    if (comboRaw is List && comboRaw.isNotEmpty) {
+      return 999999;
+    }
+    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
+    if (id.isEmpty) return 999999;
+    final p = CatalogEstoqueHelper.findProductInList(
+        widget.catalogProducts, id);
+    if (p == null) return 999999;
+    final avail = CatalogEstoqueHelper.estoqueDisponivelVariacao(
+      p,
+      (item['tamanho'] ?? '').toString().trim(),
+      (item['cor'] ?? '').toString().trim(),
+    );
+    final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
+    var other = 0;
+    for (var i = 0; i < widget.items.length; i++) {
+      if (i == index) continue;
+      if (CatalogEstoqueHelper.cartLineIdentity(widget.items[i]) ==
+          lineKey) {
+        other += CatalogEstoqueHelper.parseCartItemQuantidade(
+            widget.items[i]['quantidade']);
+      }
+    }
+    return math.max(0, avail - other);
+  }
+
+  Future<void> _changeLineQuantity(int index, int delta) async {
+    final cur = CatalogEstoqueHelper.parseCartItemQuantidade(
+        widget.items[index]['quantidade']);
+    final next = cur + delta;
+    if (next < 1) {
+      await _removeItemAndRefresh(index);
+      return;
+    }
+    final ok = widget.onSetItemQuantity(index, next);
+    if (!ok || !mounted) return;
+    setState(() {});
+    final cepDestino = _cep.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cepDestino.length == 8 && widget.items.isNotEmpty) {
+      await _recalcularFreteSelecionado();
+      if (mounted) setState(() {});
+    }
+  }
+
 // ---------------------------------------------------------------------
 // BUSCAR ENDEREÇO AUTOMATICAMENTE PELO CEP (ViaCEP)
 // ---------------------------------------------------------------------
@@ -2265,6 +2320,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           ? price * (1 - pctPix / 100)
                           : price;
                   final total = precoEfetivo * qty;
+                  final maxQ = _maxOrderableForCartIndex(i);
+                  final canInc = qty < maxQ;
 
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -2318,16 +2375,77 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 ],
                                 SizedBox(height: compact ? 8 : 10),
                                 Row(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    Text(
-                                      'Qtd $qty',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                        color: cu.mutedTextColor.withValues(
-                                          alpha: 0.85,
+                                    DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Color.alphaBlend(
+                                            cu.inputBorderColor
+                                                .withValues(alpha: 0.5),
+                                            cu.inputBackground,
+                                          ),
                                         ),
+                                        borderRadius: BorderRadius.circular(8),
+                                        color: cu.inputBackground,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            onPressed: () =>
+                                                _changeLineQuantity(i, -1),
+                                            icon: Icon(
+                                              Icons.remove_rounded,
+                                              size: 18,
+                                              color: cu.primaryTextColor,
+                                            ),
+                                            padding: const EdgeInsets.all(4),
+                                            constraints: const BoxConstraints(
+                                              minWidth: 30,
+                                              minHeight: 30,
+                                            ),
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            tooltip: 'Diminuir',
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6),
+                                            child: Text(
+                                              '$qty',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 14,
+                                                fontFeatures: const [
+                                                  FontFeature.tabularFigures(),
+                                                ],
+                                                color: cu.primaryTextColor,
+                                              ),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            onPressed: canInc
+                                                ? () =>
+                                                    _changeLineQuantity(i, 1)
+                                                : null,
+                                            icon: Icon(
+                                              Icons.add_rounded,
+                                              size: 18,
+                                              color: canInc
+                                                  ? cu.primaryTextColor
+                                                  : cu.mutedTextColor,
+                                            ),
+                                            padding: const EdgeInsets.all(4),
+                                            constraints: const BoxConstraints(
+                                              minWidth: 30,
+                                              minHeight: 30,
+                                            ),
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            tooltip: 'Aumentar',
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     const Spacer(),
@@ -2519,73 +2637,180 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
               ),
               SizedBox(height: compact ? 14 : 16),
 
-              // Nome + CPF
-              Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: TextField(
-                      controller: _nome,
-                      style: TextStyle(
-                        color: cu.inputTextColor,
-                        fontSize: 15,
-                        height: 1.25,
+              // Largura real do painel (não a tela inteira) — evita CPF/telefone espremidos na coluna do checkout.
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stackContactFields = constraints.maxWidth < 640;
+                  if (stackContactFields) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _nome,
+                          style: TextStyle(
+                            color: cu.inputTextColor,
+                            fontSize: 15,
+                            height: 1.25,
+                          ),
+                          decoration:
+                              deco('Nome completo *', campoKey: 'nome'),
+                          onChanged: (_) {
+                            _limparErroCampo('nome');
+                            _scheduleFormSave();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _cpf,
+                          style: TextStyle(
+                            color: cu.inputTextColor,
+                            fontSize: 15,
+                            height: 1.25,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
+                          keyboardType: kKeyboardDecimal,
+                          decoration: deco('CPF *', campoKey: 'cpf'),
+                          onChanged: (_) {
+                            _limparErroCampo('cpf');
+                            _scheduleFormSave();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _email,
+                          keyboardType: TextInputType.emailAddress,
+                          style: TextStyle(
+                            color: cu.inputTextColor,
+                            fontSize: 15,
+                            height: 1.25,
+                          ),
+                          decoration:
+                              deco('E-mail (opcional)', campoKey: 'email'),
+                          onChanged: (_) {
+                            _limparErroCampo('email');
+                            _scheduleFormSave();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _tel,
+                          keyboardType: TextInputType.phone,
+                          style: TextStyle(
+                            color: cu.inputTextColor,
+                            fontSize: 15,
+                            height: 1.25,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures(),
+                            ],
+                          ),
+                          decoration: deco(
+                              'Telefone / WhatsApp *',
+                              campoKey: 'tel'),
+                          onChanged: (_) {
+                            _limparErroCampo('tel');
+                            _scheduleFormSave();
+                          },
+                        ),
+                      ],
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _nome,
+                              style: TextStyle(
+                                color: cu.inputTextColor,
+                                fontSize: 15,
+                                height: 1.25,
+                              ),
+                              decoration: deco(
+                                  'Nome completo *',
+                                  campoKey: 'nome'),
+                              onChanged: (_) {
+                                _limparErroCampo('nome');
+                                _scheduleFormSave();
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _cpf,
+                              style: TextStyle(
+                                color: cu.inputTextColor,
+                                fontSize: 15,
+                                height: 1.25,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                              keyboardType: kKeyboardDecimal,
+                              decoration:
+                                  deco('CPF *', campoKey: 'cpf'),
+                              onChanged: (_) {
+                                _limparErroCampo('cpf');
+                                _scheduleFormSave();
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                      decoration: deco('Nome completo *', campoKey: 'nome'),
-                      onChanged: (_) { _limparErroCampo('nome'); _scheduleFormSave(); },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _cpf,
-                      style: TextStyle(
-                        color: cu.inputTextColor,
-                        fontSize: 15,
-                        height: 1.25,
+                      const SizedBox(height: 12),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _email,
+                              keyboardType: TextInputType.emailAddress,
+                              style: TextStyle(
+                                color: cu.inputTextColor,
+                                fontSize: 15,
+                                height: 1.25,
+                              ),
+                              decoration: deco(
+                                  'E-mail (opcional)',
+                                  campoKey: 'email'),
+                              onChanged: (_) {
+                                _limparErroCampo('email');
+                                _scheduleFormSave();
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextField(
+                              controller: _tel,
+                              keyboardType: TextInputType.phone,
+                              style: TextStyle(
+                                color: cu.inputTextColor,
+                                fontSize: 15,
+                                height: 1.25,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                              decoration: deco(
+                                  'Telefone / WhatsApp *',
+                                  campoKey: 'tel'),
+                              onChanged: (_) {
+                                _limparErroCampo('tel');
+                                _scheduleFormSave();
+                              },
+                            ),
+                          ),
+                        ],
                       ),
-                      keyboardType: kKeyboardDecimal,
-                      decoration: deco('CPF *', campoKey: 'cpf'),
-                      onChanged: (_) { _limparErroCampo('cpf'); _scheduleFormSave(); },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Email + Telefone
-              Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      style: TextStyle(
-                        color: cu.inputTextColor,
-                        fontSize: 15,
-                        height: 1.25,
-                      ),
-                      decoration: deco('E-mail (opcional)', campoKey: 'email'),
-                      onChanged: (_) { _limparErroCampo('email'); _scheduleFormSave(); },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _tel,
-                      keyboardType: TextInputType.phone,
-                      style: TextStyle(
-                        color: cu.inputTextColor,
-                        fontSize: 15,
-                        height: 1.25,
-                      ),
-                      decoration:
-                          deco('Telefone / WhatsApp *', campoKey: 'tel'),
-                      onChanged: (_) { _limparErroCampo('tel'); _scheduleFormSave(); },
-                    ),
-                  ),
-                ],
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 14),
 
@@ -3234,12 +3459,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   if (!_roletaAtiva) {
                     return const SizedBox.shrink();
                   }
-                  logD('🎰 Verificando exibição da roleta:');
-                  logD('   _roletaAtiva: $_roletaAtiva');
-                  logD('   _roletaJaGirada: $_roletaJaGirada');
-                  logD(
-                      '   _todosOsDadosPreenchidos: $_todosOsDadosPreenchidos');
-                  logD('   _podeExibirRoleta: $_podeExibirRoleta');
+                  if (kDebugMode) {
+                    logD('🎰 Verificando exibição da roleta:');
+                    logD('   _roletaAtiva: $_roletaAtiva');
+                    logD('   _roletaJaGirada: $_roletaJaGirada');
+                    logD(
+                        '   _todosOsDadosPreenchidos: $_todosOsDadosPreenchidos');
+                    logD('   _podeExibirRoleta: $_podeExibirRoleta');
+                  }
 
                   if (_podeExibirRoleta) {
                     return Column(

@@ -843,14 +843,24 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             ),
             Expanded(
               flex: contentFlex,
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: widget.compact ? 4 : 10,
-                  right: widget.compact ? 4 : 10,
-                  top: contentVPad,
-                  bottom: contentPadBottom,
-                ),
-                child: Column(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: constraints.maxWidth,
+                        maxHeight: constraints.maxHeight,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          left: widget.compact ? 4 : 10,
+                          right: widget.compact ? 4 : 10,
+                          top: contentVPad,
+                          bottom: contentPadBottom,
+                        ),
+                        child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
@@ -1243,6 +1253,10 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                     ],
                   ],
                 ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
