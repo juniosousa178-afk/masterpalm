@@ -111,6 +111,87 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _pane = pane;
       _hubMode = false;
     });
+    _scheduleFirstErrorFieldFocus(pane);
+  }
+
+  /// Foco/scroll no primeiro campo com erro (uma vez por abertura do módulo; post-frame).
+  void _scheduleFirstErrorFieldFocus(_Pane pane) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _hubMode || _pane != pane) return;
+      if (_listHubErrorMessagesForPane(pane).isEmpty) return;
+      _tryFocusFirstModuleErrorField(pane);
+    });
+  }
+
+  /// Primeiro campo lógico com erro, na mesma ordem de [_coletarProblemasSalvar] + nome/logo.
+  String? _firstHubErrorFieldKeyForPane(_Pane pane) {
+    final salvar = _coletarProblemasSalvar();
+
+    if (pane == _Pane.publicar) {
+      return null;
+    }
+
+    for (final p in salvar) {
+      if (_kCampoSalvarParaPane[p.campo] == pane) {
+        return p.campo;
+      }
+    }
+    if (salvar.isEmpty) {
+      if (pane == _Pane.identidade && _nomeCtrl.text.trim().isEmpty) {
+        return 'nome_loja';
+      }
+      if (pane == _Pane.midias &&
+          _logoUrlDesktop == null &&
+          _logoUrlMobile == null) {
+        return 'logo_midia';
+      }
+    }
+    return null;
+  }
+
+  FocusNode? _focusNodeForHubFieldKey(String key) {
+    return switch (key) {
+      'nome_loja' => _focusNomeLoja,
+      'whatsapp' => _focusWaVendedor,
+      'pedido_base' => _focusPedidoBaseUrl,
+      'sac_whatsapp' => _focusSacWhatsapp,
+      'whatsapp_rodape' => _focusWhatsappRodape,
+      _ => null,
+    };
+  }
+
+  void _tryFocusFirstModuleErrorField(_Pane pane) {
+    final id = _firstHubErrorFieldKeyForPane(pane);
+    if (id == null) return;
+
+    if (id == 'logo_midia') {
+      final ctx = _midiasLogoSectionKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.12,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      }
+      return;
+    }
+
+    final fn = _focusNodeForHubFieldKey(id);
+    if (fn == null) return;
+    fn.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final c = fn.context;
+      if (c != null) {
+        Scrollable.ensureVisible(
+          c,
+          alignment: 0.18,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
   }
 
   // --- Hub: baseline do rascunho por módulo (comparação de fatias do [_buildConfigMap]) ---
@@ -282,6 +363,128 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     return (signal: _HubModuleSignal.neutral, tooltip: null);
   }
 
+  List<String> _dedupeHubStrings(List<String> input) {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final s in input) {
+      final t = s.trim();
+      if (t.isEmpty) continue;
+      if (seen.add(t)) out.add(t);
+    }
+    return out;
+  }
+
+  /// Mensagens de validação/publicação exibidas no hub — mesma base para o banner do módulo.
+  List<String> _listHubErrorMessagesForPane(_Pane pane) {
+    final salvar = _coletarProblemasSalvar();
+    final pubAvisos = salvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
+
+    if (pane == _Pane.publicar) {
+      final m = <String>[];
+      if (salvar.isNotEmpty) {
+        m.addAll(salvar.map((e) => e.msg));
+      }
+      m.addAll(pubAvisos);
+      return _dedupeHubStrings(m);
+    }
+
+    final out = <String>[];
+    for (final p in salvar) {
+      if (_kCampoSalvarParaPane[p.campo] == pane) {
+        out.add(p.msg);
+      }
+    }
+    if (salvar.isEmpty) {
+      if (pane == _Pane.identidade && _nomeCtrl.text.trim().isEmpty) {
+        out.add('Informe o nome da loja.');
+      }
+      if (pane == _Pane.midias &&
+          _logoUrlDesktop == null &&
+          _logoUrlMobile == null) {
+        out.add('Adicione pelo menos uma logo (desktop ou mobile).');
+      }
+    }
+    return _dedupeHubStrings(out);
+  }
+
+  Widget _buildModulePaneErrorBanner(BuildContext context, ColorScheme cs, _Pane pane) {
+    final msgs = _listHubErrorMessagesForPane(pane);
+    if (msgs.isEmpty) return const SizedBox.shrink();
+
+    final onErr = cs.onErrorContainer;
+    final tt = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: cs.errorContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.report_outlined,
+                size: 22,
+                color: onErr.withValues(alpha: 0.88),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ajustes necessários',
+                      style: tt.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: onErr,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    for (var i = 0; i < msgs.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 6),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              '·',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: onErr.withValues(alpha: 0.75),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              msgs[i],
+                              style: tt.bodyMedium?.copyWith(
+                                fontSize: 13.5,
+                                height: 1.38,
+                                color: onErr.withValues(alpha: 0.94),
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   ({_HubModuleSignal signal, String? tooltip}) _hubCardStateFretes(bool dirty) {
     if (dirty) {
       return (
@@ -407,22 +610,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     for (final r in rows) {
       if (r.signal != _HubModuleSignal.error) continue;
-      if (r.fretes) {
-        Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) => const FretesCuponsScreen(),
-          ),
-        );
-        return;
-      }
-      _openConfigModule(r.pane!);
+      _openHubErrorTarget((fretes: r.fretes, pane: r.pane));
       return;
     }
   }
 
-  /// Próximo item com erro após o módulo atual (mesma ordem global). Só aplica se o painel atual estiver na fila de erros.
-  ({bool fretes, _Pane? pane})? _hubNextErrorAfterCurrentPane() {
+  /// Itens anterior/próximo na fila global de erros (mesma ordem do hub). Só posiciona se o painel atual estiver na fila (linhas de módulo, não Fretes).
+  ({({bool fretes, _Pane? pane})? prev, ({bool fretes, _Pane? pane})? next}) _hubErrorPrevNextForCurrentPane() {
     final ctx = _hubNavigationContext();
     final rows = _hubGlobalSortedRows(
       currentFull: ctx.currentFull,
@@ -435,18 +629,19 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final e = errs[i];
       if (e.fretes) continue;
       if (e.pane == _pane) {
-        if (i + 1 >= errs.length) return null;
-        final n = errs[i + 1];
-        return (fretes: n.fretes, pane: n.pane);
+        final p = i > 0 ? errs[i - 1] : null;
+        final n = i + 1 < errs.length ? errs[i + 1] : null;
+        return (
+          prev: p != null ? (fretes: p.fretes, pane: p.pane) : null,
+          next: n != null ? (fretes: n.fretes, pane: n.pane) : null,
+        );
       }
     }
-    return null;
+    return (prev: null, next: null);
   }
 
-  void _openNextHubErrorTarget() {
-    final next = _hubNextErrorAfterCurrentPane();
-    if (next == null) return;
-    if (next.fretes) {
+  void _openHubErrorTarget(({bool fretes, _Pane? pane}) t) {
+    if (t.fretes) {
       Navigator.push(
         context,
         MaterialPageRoute<void>(
@@ -455,7 +650,19 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       );
       return;
     }
-    _openConfigModule(next.pane!);
+    _openConfigModule(t.pane!);
+  }
+
+  void _openPrevHubErrorTarget() {
+    final p = _hubErrorPrevNextForCurrentPane().prev;
+    if (p == null) return;
+    _openHubErrorTarget(p);
+  }
+
+  void _openNextHubErrorTarget() {
+    final n = _hubErrorPrevNextForCurrentPane().next;
+    if (n == null) return;
+    _openHubErrorTarget(n);
   }
 
   // ---------------------------------
@@ -509,6 +716,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   // Campos com erro de validação (para destacar ao falhar Salvar)
   final Set<String> _camposComErro = {};
+
+  /// Foco no primeiro campo com erro ao abrir o módulo (não substitui os controllers).
+  final FocusNode _focusNomeLoja = FocusNode(debugLabel: 'lojaConfig_nomeLoja');
+  final FocusNode _focusWaVendedor = FocusNode(debugLabel: 'lojaConfig_waVendedor');
+  final FocusNode _focusPedidoBaseUrl = FocusNode(debugLabel: 'lojaConfig_pedidoBase');
+  final FocusNode _focusSacWhatsapp = FocusNode(debugLabel: 'lojaConfig_sacWa');
+  final FocusNode _focusWhatsappRodape = FocusNode(debugLabel: 'lojaConfig_waRodape');
+  final GlobalKey _midiasLogoSectionKey = GlobalKey(debugLabel: 'lojaConfig_midiasLogo');
 
   // ---------------------------------
   // CONTROLES BÁSICOS / IDENTIDADE
@@ -2395,6 +2610,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             _pane = _Pane.identidade;
           }
         });
+        _scheduleFirstErrorFieldFocus(_pane);
         _snack(r.erros.first, isError: true);
         return;
       }
@@ -2600,6 +2816,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           _pane = _Pane.identidade;
         }
       });
+      _scheduleFirstErrorFieldFocus(_pane);
       _snack(r.erros.first, isError: true);
       return;
     }
@@ -3676,7 +3893,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   /// Ações compartilhadas entre o hub (SliverAppBar) e a vista de módulo (AppBar).
   List<Widget> _buildLojaConfigAppBarActions(ColorScheme cs, bool isDark) {
-    final nextHubErr = !_hubMode ? _hubNextErrorAfterCurrentPane() : null;
+    final hubErrEdges =
+        !_hubMode ? _hubErrorPrevNextForCurrentPane() : (prev: null, next: null);
+    final compact = MediaQuery.sizeOf(context).width < 420;
     final actionIconColor = isDark ? cs.primary : Colors.white;
 
     return [
@@ -3725,25 +3944,56 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         tooltip: 'Pré-visualizar',
         onPressed: _salvando ? null : _abrirPreviewCatalogo,
       ),
-      if (nextHubErr != null)
-        Tooltip(
-          message: 'Abre o próximo módulo com erro na ordem do hub.',
-          waitDuration: const Duration(milliseconds: 400),
-          child: TextButton.icon(
-            onPressed: _openNextHubErrorTarget,
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            icon: const Icon(Icons.skip_next_rounded, size: 20),
-            label: const Text(
-              'Próximo erro',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: -0.1),
-            ),
-          ),
-        ),
+      if (hubErrEdges.next != null)
+        compact
+            ? IconButton(
+                icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
+                tooltip: 'Ir para o próximo erro',
+                onPressed: _openNextHubErrorTarget,
+              )
+            : Tooltip(
+                message: 'Ir para o próximo módulo com erro na ordem do hub.',
+                waitDuration: const Duration(milliseconds: 400),
+                child: TextButton.icon(
+                  onPressed: _openNextHubErrorTarget,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const Icon(Icons.skip_next_rounded, size: 20),
+                  label: const Text(
+                    'Próximo erro',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: -0.1),
+                  ),
+                ),
+              ),
+      if (hubErrEdges.prev != null)
+        compact
+            ? IconButton(
+                icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
+                tooltip: 'Ir para o erro anterior',
+                onPressed: _openPrevHubErrorTarget,
+              )
+            : Tooltip(
+                message: 'Ir para o módulo com erro anterior na ordem do hub.',
+                waitDuration: const Duration(milliseconds: 400),
+                child: TextButton.icon(
+                  onPressed: _openPrevHubErrorTarget,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const Icon(Icons.skip_previous_rounded, size: 20),
+                  label: const Text(
+                    'Erro anterior',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: -0.1),
+                  ),
+                ),
+              ),
       const SizedBox(width: 8),
     ];
   }
@@ -3833,9 +4083,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     alignment: Alignment.topCenter,
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 720),
-                      child: _wrapLojaConfigFieldTheme(
-                        context,
-                        _buildPaneEditorFor(_pane),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildModulePaneErrorBanner(context, cs, _pane),
+                          _wrapLojaConfigFieldTheme(
+                            context,
+                            _buildPaneEditorFor(_pane),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -5282,6 +5538,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           const SizedBox(height: 10),
           TextField(
             controller: _nomeCtrl,
+            focusNode: _focusNomeLoja,
             style: _fieldTextStyle(context),
             decoration: _inputDecoration(
               context,
@@ -5424,6 +5681,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 width: 420,
                 child: TextField(
                   controller: _waCtrl,
+                  focusNode: _focusWaVendedor,
                   style: _fieldTextStyle(context),
                   onChanged: (_) {
                     _limparErroCampo('whatsapp');
@@ -5448,6 +5706,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 width: 520,
                 child: TextField(
                   controller: _pedidoBaseCtrl,
+                  focusNode: _focusPedidoBaseUrl,
                   style: _fieldTextStyle(context),
                   onChanged: (_) {
                     _limparErroCampo('pedido_base');
@@ -5572,7 +5831,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         ),
         const SizedBox(height: 12),
 
-        _Section(
+        KeyedSubtree(
+          key: _midiasLogoSectionKey,
+          child: _Section(
           title: 'Logo',
           action: Wrap(
             spacing: 8,
@@ -5639,6 +5900,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               ],
             );
           }),
+        ),
         ),
 
         const SizedBox(height: 16),
@@ -7727,6 +7989,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   const SizedBox(height: 8),
                   TextField(
                     controller: _sacWhatsappCtrl,
+                    focusNode: _focusSacWhatsapp,
                     onChanged: (_) {
                       _limparErroCampo('sac_whatsapp');
                       _scheduleAutoSave();
@@ -8394,6 +8657,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             // WhatsApp row
             final whatsappRow = TextField(
               controller: _whatsappRodapeCtrl,
+              focusNode: _focusWhatsappRodape,
               onChanged: (_) {
                 _limparErroCampo('whatsapp_rodape');
                 _scheduleAutoSave();
@@ -8856,6 +9120,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   void dispose() {
     _autoSaveTimer?.cancel();
     _uploader.dispose();
+    _focusNomeLoja.dispose();
+    _focusWaVendedor.dispose();
+    _focusPedidoBaseUrl.dispose();
+    _focusSacWhatsapp.dispose();
+    _focusWhatsappRodape.dispose();
     _nomeCtrl.dispose();
     _slugCtrl.dispose();
     _linkCurtoCtrl.dispose();

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Modelos de planilha (CSV) para importação no MasterPalm: estoque, clientes, fornecedores e precificação.">
+  <title>Modelos de planilha — MasterPalm</title>
+  <link rel="icon" type="image/png" href="icons/Icon-192.png">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #eee;
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; }
+    a { color: #7dd3fc; }
+    a:hover { color: #bae6fd; }
+    .back { display: inline-block; margin-bottom: 20px; font-size: 0.95rem; }
+    h1 { font-size: 1.75rem; margin-bottom: 12px; color: #fff; }
+    .lead { color: #aaa; margin-bottom: 28px; font-size: 0.95rem; max-width: 42rem; }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+      padding-bottom: 16px;
+    }
+    .tabs button {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #ccc;
+      padding: 10px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .tabs button:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .tabs button[aria-selected="true"] {
+      background: rgba(255,161,0,0.2);
+      border-color: #ffa100;
+      color: #fff;
+    }
+    .panel {
+      display: none;
+      background: rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 24px;
+      border: 1px solid rgba(255,161,0,0.15);
+    }
+    .panel.active { display: block; }
+    .panel h2 { font-size: 1.15rem; margin-bottom: 12px; color: #fff; }
+    .panel p { color: #aaa; font-size: 0.9rem; margin-bottom: 16px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #ffa100;
+      color: #111;
+      text-decoration: none;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+    }
+    .btn:hover { filter: brightness(1.08); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; overflow: auto; display: block; }
+    thead { display: table; width: 100%; }
+    tbody { display: table; width: 100%; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    th { color: #cbd5e1; font-weight: 600; }
+    td { color: #e2e8f0; }
+    .note { font-size: 0.75rem; color: #888; margin-top: 16px; }
+    code { background: rgba(0,0,0,0.25); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="/">← Início</a>
+    <a class="back" href="/download.html" style="margin-left:16px">Download</a>
+
+    <h1>Modelos de planilha aceitos para importação</h1>
+    <p class="lead">
+      Baixe o CSV, edite no Excel ou Google Planilhas e importe no app MasterPalm.
+      Onde o app pedir só <strong>.xlsx</strong>, salve o arquivo como Excel antes de importar.
+    </p>
+
+    <div class="tabs" role="tablist" aria-label="Tipo de importação">
+      <button type="button" role="tab" aria-selected="true" aria-controls="p-estoque" id="t-estoque">Estoque</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="p-clientes" id="t-clientes">Clientes</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="p-forn" id="t-forn">Fornecedores</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="p-prec" id="t-prec">Precificação</button>
+    </div>
+
+    <section class="panel active" id="p-estoque" role="tabpanel" aria-labelledby="t-estoque">
+      <h2>Estoque (produtos)</h2>
+      <p>Formatos no app: <strong>.xlsx</strong>, <strong>.csv</strong> e <strong>.pdf</strong> (PDF não na Web). Primeira linha = cabeçalho.</p>
+      <a class="btn" href="/modelos-importacao/masterpalm-estoque-minimo.csv" download>Baixar modelo CSV</a>
+      <table>
+        <thead><tr>
+          <th>nome</th><th>preco</th><th>quantidade</th><th>categoria</th><th>subcategoria</th><th>sku</th><th>codigo_barras</th><th>descricao</th>
+        </tr></thead>
+        <tbody><tr>
+          <td>Exemplo Pulseira</td><td>29,90</td><td>10</td><td>Semijoias</td><td>Pulseiras</td><td>SKU-DEMO-001</td><td>7891234567890</td><td>…</td>
+        </tr></tbody>
+      </table>
+      <p class="note">Há outros cabeçalhos opcionais (imagens, custo, publicar, etc.). Use ponto e vírgula (;) ou vírgula conforme o arquivo.</p>
+    </section>
+
+    <section class="panel" id="p-clientes" role="tabpanel" aria-labelledby="t-clientes">
+      <h2>Clientes</h2>
+      <p>Importação no app: <strong>.xlsx</strong>. Abra o CSV, edite e salve como Excel. Colunas A–E; primeira linha = cabeçalho (ignorada).</p>
+      <a class="btn" href="/modelos-importacao/masterpalm-clientes-minimo.csv" download>Baixar modelo CSV</a>
+      <table>
+        <thead><tr>
+          <th>A Nome</th><th>B Telefone</th><th>C Instagram</th><th>D CEP</th><th>E Cidade</th>
+        </tr></thead>
+        <tbody><tr>
+          <td>Maria Silva</td><td>5511987654321</td><td>mariasilva</td><td>01310100</td><td>São Paulo</td>
+        </tr></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="p-forn" role="tabpanel" aria-labelledby="t-forn">
+      <h2>Fornecedores</h2>
+      <p>Importação: <strong>.xlsx</strong>. Salve o CSV como Excel após editar.</p>
+      <a class="btn" href="/modelos-importacao/masterpalm-fornecedores-minimo.csv" download>Baixar modelo CSV</a>
+      <table>
+        <thead><tr>
+          <th>A Nome</th><th>B Telefone</th><th>C E-mail</th><th>D Instagram</th><th>E WhatsApp</th>
+        </tr></thead>
+        <tbody><tr>
+          <td>Fornecedor Exemplo Ltda</td><td>5511977777777</td><td>contato@fornecedor.com.br</td><td>fornecedor_exemplo</td><td>5511977777777</td>
+        </tr></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="p-prec" role="tabpanel" aria-labelledby="t-prec">
+      <h2>Precificação universal</h2>
+      <p>Importação: <strong>.xlsx</strong>. Linha 1 ignorada. A = nome, B = custo, C = quantidade; coluna D (código) é <strong>opcional</strong>.</p>
+      <a class="btn" href="/modelos-importacao/masterpalm-precificacao-minimo.csv" download>Baixar modelo CSV</a>
+      <table>
+        <thead><tr>
+          <th>A Nome</th><th>B Custo</th><th>C Qtd</th><th>D Código (opc.)</th>
+        </tr></thead>
+        <tbody>
+          <tr><td>Pulseira modelo A</td><td>15,50</td><td>1</td><td>SKU-PUL-01</td></tr>
+          <tr><td>Colar modelo B</td><td>22,00</td><td>2</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      var tabs = document.querySelectorAll('.tabs [role="tab"]');
+      var panels = document.querySelectorAll('.panel');
+      function show(id) {
+        panels.forEach(function (p) {
+          p.classList.toggle('active', p.id === id);
+        });
+        tabs.forEach(function (t) {
+          var on = t.getAttribute('aria-controls') === id;
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+      }
+      tabs.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          show(btn.getAttribute('aria-controls'));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

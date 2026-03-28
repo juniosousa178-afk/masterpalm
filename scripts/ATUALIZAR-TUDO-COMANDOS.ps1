@@ -83,6 +83,7 @@ $comandosRef = @"
 
 URLs após deploy:
   - App Web:     https://mastepalm.com.br  ou  https://app.mastepalm.com.br
+  - Modelos CSV: https://mastepalm.com.br/modelos-importacao.html (barra fixa no app + aba no /modelos-importacao)
   - Download:    https://mastepalm.com.br/downloads/masterpalm.apk
   - Catálogo:    https://mastepalm.com.br/loja/SEU-SLUG  ou  /c/SEU-SLUG
   - Play Store:  https://play.google.com/console (upload do AAB)
@@ -185,6 +186,17 @@ if (Test-Path "public\privacidade.html") {
 }
 if (Test-Path "web\privacidade.html") {
     Copy-Item "web\privacidade.html" "build\web\" -Force
+}
+# Página e CSVs de modelos de planilha (importação no app) — sempre copiar após build web
+if (Test-Path "web\modelos-importacao.html") {
+    Copy-Item "web\modelos-importacao.html" "build\web\" -Force
+    Write-Host "  -> modelos-importacao.html" -ForegroundColor DarkGray
+}
+if (Test-Path "web\modelos-importacao") {
+    $destModelos = "build\web\modelos-importacao"
+    if (-not (Test-Path $destModelos)) { New-Item -ItemType Directory -Path $destModelos -Force | Out-Null }
+    Copy-Item "web\modelos-importacao\*" $destModelos -Force
+    Write-Host "  -> modelos-importacao/*.csv" -ForegroundColor DarkGray
 }
 Write-Host "  OK" -ForegroundColor Green
 
