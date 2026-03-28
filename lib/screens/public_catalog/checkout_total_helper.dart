@@ -19,13 +19,25 @@ String catalogSubtotalBeforePixItemDiscountLabel(String pagamento) {
   return 'Subtotal';
 }
 
+/// Cupom que só pode alterar frete (grátis ou desconto sobre o valor do frete), nunca subtotal de produtos.
+bool catalogCupomSomenteFrete(Map<String, dynamic>? c) {
+  if (c == null) return false;
+  final t = (c['tipo'] ?? '').toString();
+  if (t == 'frete_gratis') return true;
+  if (c['freteGratis'] == true) return true;
+  final ae = (c['aplicarEm'] ?? '').toString().toLowerCase().trim();
+  if (ae == 'frete') return true;
+  return false;
+}
+
 /// Totais alinhados ao cálculo exibido em [CarrinhoSheetWeb].
 class CatalogCheckoutTotals {
   const CatalogCheckoutTotals({
     required this.subtotalBruto,
     required this.subtotalPix,
     required this.subtotalConformePagamento,
-    required this.descontoCupom,
+    required this.descontoCupomProdutos,
+    required this.descontoCupomFrete,
     required this.valorFreteOriginal,
     required this.valorFreteFinal,
     required this.freteGratis,
@@ -35,25 +47,36 @@ class CatalogCheckoutTotals {
   final double subtotalBruto;
   final double subtotalPix;
   final double subtotalConformePagamento;
-  final double descontoCupom;
+
+  /// Desconto de cupom sobre produtos / total (nunca sobre frete).
+  final double descontoCupomProdutos;
+
+  /// Desconto de cupom aplicado só sobre o frete (ex.: % ou R$ no frete).
+  final double descontoCupomFrete;
+
   final double valorFreteOriginal;
   final double valorFreteFinal;
   final bool freteGratis;
   final double total;
+
+  /// Compat: soma dos descontos de cupom (admin / pedidos legados).
+  double get descontoCupom => descontoCupomProdutos + descontoCupomFrete;
 }
 
-/// Frete grátis: roleta, cupom frete grátis, ou opção de frete marcada como grátis.
+/// Frete grátis: roleta, cupom de frete, ou opção de frete marcada como grátis.
 bool catalogFreteGratisEfetivo({
   required bool freteGratisRoleta,
-  required Map<String, dynamic>? cupomAplicado,
+  required Map<String, dynamic>? cupomDescontoAplicado,
+  required Map<String, dynamic>? cupomFreteAplicado,
   required List<Map<String, dynamic>> fretesParaCalculo,
   required int freteIndex,
 }) {
   if (freteGratisRoleta) return true;
-  if (cupomAplicado != null &&
-      (cupomAplicado['tipo'] == 'frete_gratis' ||
-          cupomAplicado['freteGratis'] == true)) {
-    return true;
+  for (final c in [cupomFreteAplicado, cupomDescontoAplicado]) {
+    if (c == null) continue;
+    if (c['tipo'] == 'frete_gratis' || c['freteGratis'] == true) {
+      return true;
+    }
   }
   if (fretesParaCalculo.isNotEmpty) {
     final idx = freteIndex.clamp(0, fretesParaCalculo.length - 1);
@@ -112,8 +135,8 @@ bool catalogCarrinhoCobreProdutosCupom({
   return false;
 }
 
-double _descontoCupomProdutos({
-  required Map<String, dynamic>? cupomAplicado,
+double _descontoCupomSobreProdutosOuTotal({
+  required Map<String, dynamic>? cupom,
   required double subtotalConformePagamento,
   required List<Map<String, dynamic>> items,
   required String pagamento,
@@ -121,12 +144,13 @@ double _descontoCupomProdutos({
   required int freteIndex,
   required bool freteGratis,
 }) {
-  if (cupomAplicado == null) return 0.0;
+  if (cupom == null) return 0.0;
+  if (catalogCupomSomenteFrete(cupom)) return 0.0;
 
-  final tipo = (cupomAplicado['tipo'] ?? '').toString();
-  final valor = (cupomAplicado['valor'] as num?)?.toDouble() ?? 0.0;
-  final aplicarEm = (cupomAplicado['aplicarEm'] ?? 'produtos').toString();
-  final restritoIds = catalogCupomProdutoIds(cupomAplicado);
+  final tipo = (cupom['tipo'] ?? '').toString();
+  final valor = (cupom['valor'] as num?)?.toDouble() ?? 0.0;
+  final aplicarEm = (cupom['aplicarEm'] ?? 'produtos').toString();
+  final restritoIds = catalogCupomProdutoIds(cupom);
 
   double base;
   if (restritoIds.isNotEmpty) {
@@ -150,21 +174,49 @@ double _descontoCupomProdutos({
     base = subtotalConformePagamento;
   }
 
-  if (tipo == 'percent') {
+  if (tipo == 'percent' || tipo == 'percentual') {
     final d = base * (valor / 100);
     return d.clamp(0.0, base);
   }
-  if (tipo == 'valor') {
+  if (tipo == 'valor' || tipo == 'fixo') {
     return valor.clamp(0.0, base);
   }
   return 0.0;
 }
 
+double _descontoCupomSobreFrete({
+  required Map<String, dynamic>? cupomFrete,
+  required double valorFreteOriginal,
+  required bool freteGratis,
+}) {
+  if (cupomFrete == null || freteGratis || valorFreteOriginal <= 0) {
+    return 0.0;
+  }
+  final ae = (cupomFrete['aplicarEm'] ?? '').toString().toLowerCase().trim();
+  if (ae != 'frete') return 0.0;
+
+  final tipo = (cupomFrete['tipo'] ?? '').toString();
+  final valor = (cupomFrete['valor'] as num?)?.toDouble() ?? 0.0;
+  if (valor <= 0) return 0.0;
+
+  if (tipo == 'percent' || tipo == 'percentual') {
+    return (valorFreteOriginal * valor / 100).clamp(0.0, valorFreteOriginal);
+  }
+  if (tipo == 'valor' || tipo == 'fixo') {
+    return valor.clamp(0.0, valorFreteOriginal);
+  }
+  return 0.0;
+}
+
 /// Replica a lógica de total do [CarrinhoSheetWeb] para uso no catálogo e pré-pedido.
+///
+/// [cupomDescontoAplicado] — desconto em produtos / total (nunca frete-only).
+/// [cupomFreteAplicado] — frete grátis, ou [aplicarEm] == frete com %/fixo.
 CatalogCheckoutTotals computeCatalogCheckoutTotals({
   required List<Map<String, dynamic>> items,
   required String pagamento,
-  required Map<String, dynamic>? cupomAplicado,
+  Map<String, dynamic>? cupomDescontoAplicado,
+  Map<String, dynamic>? cupomFreteAplicado,
   required List<Map<String, dynamic>> fretesParaCalculo,
   required int freteIndex,
   required bool freteGratisRoleta,
@@ -183,14 +235,24 @@ CatalogCheckoutTotals computeCatalogCheckoutTotals({
 
   final fg = catalogFreteGratisEfetivo(
     freteGratisRoleta: freteGratisRoleta,
-    cupomAplicado: cupomAplicado,
+    cupomDescontoAplicado: cupomDescontoAplicado,
+    cupomFreteAplicado: cupomFreteAplicado,
     fretesParaCalculo: fretesParaCalculo,
     freteIndex: freteIndex,
   );
-  final valorFreteFinal = fg ? 0.0 : valorFreteOriginal;
 
-  final desconto = _descontoCupomProdutos(
-    cupomAplicado: cupomAplicado,
+  final descontoFreteCalc = _descontoCupomSobreFrete(
+    cupomFrete: cupomFreteAplicado,
+    valorFreteOriginal: valorFreteOriginal,
+    freteGratis: fg,
+  );
+
+  final valorFreteFinal = fg
+      ? 0.0
+      : (valorFreteOriginal - descontoFreteCalc).clamp(0.0, double.infinity);
+
+  final descontoProd = _descontoCupomSobreProdutosOuTotal(
+    cupom: cupomDescontoAplicado,
     subtotalConformePagamento: subConf,
     items: items,
     pagamento: pagamento,
@@ -200,13 +262,14 @@ CatalogCheckoutTotals computeCatalogCheckoutTotals({
   );
 
   final total =
-      ((subConf + valorFreteFinal) - desconto).clamp(0.0, double.infinity);
+      ((subConf + valorFreteFinal) - descontoProd).clamp(0.0, double.infinity);
 
   return CatalogCheckoutTotals(
     subtotalBruto: bruto,
     subtotalPix: subPix,
     subtotalConformePagamento: subConf,
-    descontoCupom: desconto,
+    descontoCupomProdutos: descontoProd,
+    descontoCupomFrete: descontoFreteCalc,
     valorFreteOriginal: valorFreteOriginal,
     valorFreteFinal: valorFreteFinal,
     freteGratis: fg,

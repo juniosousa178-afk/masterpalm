@@ -315,6 +315,7 @@ class PrePedidoService {
     required String pagamento,
     String observacao = '',
     String? cupomCodigo,
+    String? cupomFreteCodigo,
     double desconto = 0.0,
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
@@ -405,6 +406,9 @@ class PrePedidoService {
                 'codigo': cupomCodigo,
                 'desconto': desconto,
               }
+            : null,
+        'cupomFrete': cupomFreteCodigo != null && cupomFreteCodigo.isNotEmpty
+            ? {'codigo': cupomFreteCodigo}
             : null,
         'total': total,
 

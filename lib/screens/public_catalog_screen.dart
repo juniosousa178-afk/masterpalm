@@ -1051,6 +1051,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required String pagamento,
     required String observacao,
     required String? cupomCodigo,
+    String? cupomFreteCodigo,
     required double descontoCupom,
     required double valorTotalCheckout,
     required String canal,
@@ -1075,11 +1076,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final tipo = (entrega['tipo'] ?? '').toString();
     final nom = (entrega['nome'] ?? '').toString();
     final cc = cupomCodigo ?? '';
+    final cff = cupomFreteCodigo ?? '';
     final obs = observacao.trim();
     final cr = cupomRoletaCodigo ?? '';
     final crd = cupomRoletaDesconto ?? 0.0;
     final pr = premioRoletaDescricao ?? '';
-    return '${valorTotalCheckout.toStringAsFixed(2)}|${descontoCupom.toStringAsFixed(4)}|$cc|$pagamento|$fv|$fg|$tipo|$nom|$obs|$canal|$cartPart|$em|$tel|$nomeCliente|$addrKey|$cr|$crd|$pr';
+    return '${valorTotalCheckout.toStringAsFixed(2)}|${descontoCupom.toStringAsFixed(4)}|$cc|$cff|$pagamento|$fv|$fg|$tipo|$nom|$obs|$canal|$cartPart|$em|$tel|$nomeCliente|$addrKey|$cr|$crd|$pr';
   }
 
   Future<void> _loadFavoritos() async {
@@ -2023,6 +2025,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         required double valorTotal,
                         String observacao = '',
                         String? cupomCodigo,
+                        String? cupomFreteCodigo,
                         double desconto = 0.0,
                         String? cupomRoletaCodigo,
                         double? cupomRoletaDesconto,
@@ -2050,6 +2053,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             pagamento: 'PIX',
                             observacao: observacao,
                             cupomCodigo: cupomCodigo,
+                            cupomFreteCodigo: cupomFreteCodigo,
                             desconto: desconto,
                             cupomRoletaCodigo: cupomRoletaCodigo,
                             cupomRoletaDesconto: cupomRoletaDesconto,
@@ -2113,6 +2117,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               double? cupomRoletaDesconto,
               String? premioRoletaDescricao,
               String? cupomCodigo,
+              String? cupomFreteCodigo,
               required double descontoCupom,
               required double valorTotalCheckout,
               Future<void> Function(String? pedidoId)? onSuccess,
@@ -2133,6 +2138,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   pagamento: pagamento,
                   observacao: observacao,
                   cupomCodigo: cupomCodigo,
+                  cupomFreteCodigo: cupomFreteCodigo,
                   descontoCupom: descontoCupom,
                   valorTotalCheckout: valorTotalCheckout,
                   canal: 'whatsapp',
@@ -2167,6 +2173,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       pagamento: pagamento,
                       observacao: observacao,
                       cupomCodigo: cupomCodigo,
+                      cupomFreteCodigo: cupomFreteCodigo,
                       desconto: descontoCupom,
                       cupomRoletaCodigo: cupomRoletaCodigo,
                       cupomRoletaDesconto: cupomRoletaDesconto,
@@ -2359,6 +2366,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               double? cupomRoletaDesconto,
               String? premioRoletaDescricao,
               String? cupomCodigo,
+              String? cupomFreteCodigo,
               required double descontoCupom,
               required double valorTotalCheckout,
               void Function(String message)? showErrorInCart,
@@ -2379,6 +2387,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 pagamento: pagamento,
                 observacao: observacao,
                 cupomCodigo: cupomCodigo,
+                cupomFreteCodigo: cupomFreteCodigo,
                 descontoCupom: descontoCupom,
                 valorTotalCheckout: valorTotalCheckout,
                 canal: 'mercadopago',
@@ -2409,6 +2418,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     pagamento: pagamento,
                     observacao: observacao,
                     cupomCodigo: cupomCodigo,
+                    cupomFreteCodigo: cupomFreteCodigo,
                     desconto: descontoCupom,
                     cupomRoletaCodigo: cupomRoletaCodigo,
                     cupomRoletaDesconto: cupomRoletaDesconto,

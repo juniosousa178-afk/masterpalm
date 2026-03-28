@@ -26,6 +26,7 @@ import '../services/catalog_cache_service.dart';
 import '../services/limits_guard.dart';
 import '../services/sync_firestore_script.dart';
 import '../core/logger.dart';
+import '../widgets/catalog_color_field_editor.dart';
 
 enum _LayoutPreset { masterPadrao, masterLuxo, darkClean }
 enum _MediaTab { desktop, mobile }
@@ -41,6 +42,46 @@ enum _Pane {
   financeiro,
   publicar,
 }
+
+/// Agrupamento só de UX no mobile. Não altera [_Pane] nem persistência.
+class _LojaConfigUiSection {
+  const _LojaConfigUiSection({
+    required this.title,
+    required this.hint,
+    required this.panes,
+  });
+  final String title;
+  final String hint;
+  final List<_Pane> panes;
+}
+
+const List<_LojaConfigUiSection> _kLojaConfigUiSections = [
+  _LojaConfigUiSection(
+    title: 'Informações gerais',
+    hint: 'Nome da loja, contato e identidade na web',
+    panes: [_Pane.identidade],
+  ),
+  _LojaConfigUiSection(
+    title: 'Mídia e aparência',
+    hint: 'Logos, banners, cores e layout dos cards',
+    panes: [_Pane.midias, _Pane.tema, _Pane.layout],
+  ),
+  _LojaConfigUiSection(
+    title: 'Conteúdo do catálogo',
+    hint: 'Menu, páginas institucionais e rodapé',
+    panes: [_Pane.menu, _Pane.dicas, _Pane.rodape],
+  ),
+  _LojaConfigUiSection(
+    title: 'Financeiro',
+    hint: 'Taxas e metas em relatórios',
+    panes: [_Pane.financeiro],
+  ),
+  _LojaConfigUiSection(
+    title: 'Campanhas e publicação',
+    hint: 'Sorteios, roleta e colocar o catálogo no ar',
+    panes: [_Pane.publicar],
+  ),
+];
 
 class LojaConfigScreen extends StatefulWidget {
   const LojaConfigScreen({super.key});
@@ -3044,252 +3085,658 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
   }
 
-  Widget _buildMenuDashboard(bool isWide) {
-    final items = <Map<String, dynamic>>[
+  /// Metadados de navegação por painel (mesma ordem do enum de fluxo atual).
+  List<Map<String, dynamic>> _lojaConfigNavItems() {
+    return <Map<String, dynamic>>[
       {
         'pane': _Pane.identidade,
         'label': 'Identidade & Contato',
+        'railLabel': 'Identidade',
         'subtitle': 'Nome da loja, WhatsApp, configurações básicas',
         'icon': Icons.storefront_outlined,
       },
       {
         'pane': _Pane.midias,
         'label': 'Mídias & Banners',
+        'railLabel': 'Mídias',
         'subtitle': 'Logo e banners para desktop e mobile',
         'icon': Icons.photo_library_outlined,
       },
       {
         'pane': _Pane.tema,
         'label': 'Tema & Cores',
+        'railLabel': 'Tema',
         'subtitle': 'Cores do catálogo e checkout',
         'icon': Icons.palette_outlined,
       },
       {
         'pane': _Pane.layout,
         'label': 'Layout dos cards',
+        'railLabel': 'Layout',
         'subtitle': 'Colunas, sombras, bordas',
         'icon': Icons.dashboard_customize_outlined,
       },
       {
         'pane': _Pane.menu,
         'label': 'Menu & Páginas',
+        'railLabel': 'Menu',
         'subtitle': 'Configurar navegação do catálogo',
         'icon': Icons.menu_open_outlined,
       },
       {
         'pane': _Pane.dicas,
         'label': 'Dicas e informações',
+        'railLabel': 'Dicas',
         'subtitle': 'Cuidados, garantias, qualidade – link no menu do catálogo',
         'icon': Icons.lightbulb_outline,
       },
       {
         'pane': _Pane.rodape,
         'label': 'Rodapé & Links',
+        'railLabel': 'Rodapé',
         'subtitle': 'Redes sociais, políticas, sobre',
         'icon': Icons.view_day_outlined,
       },
       {
         'pane': _Pane.financeiro,
         'label': 'Taxas Financeiras',
+        'railLabel': 'Taxas',
         'subtitle': 'Relatórios Financeiros e Financeiro & Metas',
         'icon': Icons.percent_outlined,
       },
       {
         'pane': _Pane.publicar,
         'label': 'Publicar catálogo',
+        'railLabel': 'Publicar',
         'subtitle': 'Publicar alterações no site',
         'icon': Icons.cloud_upload_outlined,
       },
     ];
+  }
 
+  InputDecorationTheme _lojaConfigInputDecorationTheme(ColorScheme cs) {
+    final r = BorderRadius.circular(10);
+    return InputDecorationTheme(
+      filled: true,
+      fillColor: cs.surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      isDense: false,
+      labelStyle: TextStyle(
+        color: cs.onSurfaceVariant.withValues(alpha: 0.95),
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        height: 1.2,
+      ),
+      floatingLabelStyle: TextStyle(
+        color: cs.primary,
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+      ),
+      hintStyle: TextStyle(
+        color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+      ),
+      helperStyle: TextStyle(
+        color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+        fontSize: 12,
+        height: 1.35,
+      ),
+      errorStyle: TextStyle(color: cs.error, fontSize: 12, height: 1.3),
+      prefixIconColor: cs.onSurfaceVariant,
+      border: OutlineInputBorder(borderRadius: r),
+      enabledBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.85)),
+        borderRadius: r,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: cs.primary, width: 1.5),
+        borderRadius: r,
+      ),
+      errorBorder: OutlineInputBorder(
+        borderSide: BorderSide(color: cs.error, width: 1.5),
+        borderRadius: r,
+      ),
+    );
+  }
+
+  /// Mesmo Theme dos campos que estava dentro de cada ExpansionTile.
+  Widget _wrapLojaConfigFieldTheme(BuildContext context, Widget child) {
     final cs = Theme.of(context).colorScheme;
+    return Theme(
+      data: Theme.of(context).copyWith(
+        inputDecorationTheme: _lojaConfigInputDecorationTheme(cs),
+      ),
+      child: child,
+    );
+  }
+
+  /// Apenas o switch de painéis — mesma árvore de widgets de antes.
+  Widget _buildPaneEditorFor(_Pane pane) {
+    return switch (pane) {
+      _Pane.identidade => _paneIdentidade(),
+      _Pane.midias => _paneMidias(),
+      _Pane.tema => _paneTema(),
+      _Pane.layout => _paneLayout(),
+      _Pane.menu => _paneMenu(),
+      _Pane.dicas => _paneDicas(),
+      _Pane.rodape => _paneRodape(),
+      _Pane.financeiro => _paneFinanceiro(),
+      _Pane.publicar => _panePublicar(),
+    };
+  }
+
+  /// Cores atuais da loja (draft) para sugestões de reutilização — só UX, não altera schema.
+  List<CatalogColorSuggestion> _catalogColorPaletteSuggestions() {
+    final bucket = <int, Set<String>>{};
+    void put(Color c, String label) {
+      bucket.putIfAbsent(c.toARGB32(), () => <String>{}).add(label);
+    }
+
+    put(_cFundo, 'Fundo da página');
+    put(_cCard, 'Fundo dos cards');
+    put(_cTexto, 'Texto principal');
+    put(_cPrimaria, 'Botão Comprar – fundo');
+    put(_cBotaoTexto, 'Botão Comprar – texto');
+    put(_cCabecalho, 'Fundo cabeçalho catálogo');
+    put(_cCarrinhoCard, 'Carrinho – fundo do card');
+    put(_cCarrinhoCampo, 'Carrinho – campos');
+    put(_cCarrinhoTexto, 'Carrinho – texto dos campos');
+    put(_cCarrinhoLabel, 'Carrinho – rótulos');
+    put(_cCarrinhoTotal, 'Carrinho – total a pagar');
+    put(_cTextSecondary, 'Texto secundário');
+    put(_cCardTextPrimary, 'Nome do produto');
+    put(_cCardTextSecondary, 'Texto card secundário');
+    put(_cPriceHighlight, 'Preço (valor)');
+    put(_cDanger, 'Cor de perigo');
+    put(_cFieldHint, 'Campo hint');
+    put(_cFieldBorder, 'Campo borda');
+    put(_cDivider, 'Divisórias');
+    put(_cButtonSecondaryBg, 'Botão Ver – fundo');
+    put(_cButtonSecondaryText, 'Botão Ver – texto');
+    put(_cButtonSecondaryBorder, 'Botão Ver – borda');
+    put(_cBadgeBackground, 'Badge – fundo');
+    put(_cBadgeText, 'Badge – texto');
+    put(_cIcon, 'Ícones');
+    put(_cShadow, 'Sombras');
+    put(_cHeaderText, 'Texto cabeçalho');
+    put(_cHeaderIcon, 'Ícones cabeçalho');
+    put(_cHeaderSearchBg, 'Busca – fundo');
+    put(_cHeaderSearchText, 'Busca – texto');
+    put(_cHeaderSearchHint, 'Busca – hint');
+    put(_cFooterBackground, 'Rodapé – fundo');
+    put(_cFooterText, 'Rodapé – texto');
+    put(_cFooterTextSecondary, 'Rodapé – texto secundário');
+    put(_cFooterIcon, 'Rodapé – ícones');
+    put(_cFooterLink, 'Rodapé – links');
+    put(_cFooterDivider, 'Rodapé – divisórias');
+    put(_cDicasBackground, 'Dicas – fundo');
+    put(_cDicasFooterBg, 'Dicas – rodapé fundo');
+    put(_cDicasFooterText, 'Dicas – rodapé texto');
+    put(_cDicasButtonBg, 'Dicas – botões');
+    put(_cDicasButtonText, 'Dicas – texto botões');
+    put(_cDicasTopicPrimary, 'Dicas – tópicos');
+    put(_promoBarBg, 'Barra promo – fundo');
+    put(_promoBarText, 'Barra promo – texto');
+    put(_heroCardBg, 'Banner hero – card');
+    put(_heroTitleColor, 'Banner hero – título');
+    put(_heroSubtitleColor, 'Banner hero – subtítulo');
+    put(_heroButtonBg, 'Banner hero – botão fundo');
+    put(_heroButtonTextColor, 'Banner hero – botão texto');
+
+    final list = bucket.entries
+        .map((e) {
+          final origins = e.value.toList()..sort();
+          return CatalogColorSuggestion(
+            color: Color(e.key),
+            originLabel: origins.join(' · '),
+          );
+        })
+        .toList();
+    list.sort((a, b) => a.originLabel.compareTo(b.originLabel));
+    return list;
+  }
+
+  Widget _catalogColorField({
+    required String label,
+    String? description,
+    required Color color,
+    required ValueChanged<Color> onChanged,
+  }) {
+    return CatalogColorFieldEditor(
+      label: label,
+      description: description,
+      color: color,
+      suggestions: _catalogColorPaletteSuggestions(),
+      onColorChanged: (c) {
+        onChanged(c);
+        _salvarRascunho(validar: false);
+      },
+    );
+  }
+
+  Widget _buildFretesCuponsShortcutCard(ColorScheme cs) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 4),
+      elevation: 0,
+      color: cs.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(
+          color: _warningColor.withValues(alpha: 0.35),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        leading: Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: _warningColor.withValues(alpha: 0.12),
+          ),
+          child: const Icon(Icons.local_shipping_outlined, color: _warningColor, size: 22),
+        ),
+        title: Text(
+          'Fretes & Cupons',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            color: cs.onSurface,
+            letterSpacing: -0.1,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            'Fretes e cupons em tela dedicada',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.35,
+              color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ),
+        trailing: Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const FretesCuponsScreen(),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMenuDashboard(bool isWide) {
+    final items = _lojaConfigNavItems();
+    final cs = Theme.of(context).colorScheme;
+    final mq = MediaQuery.of(context);
+
+    Map<String, dynamic> itemForPane(_Pane p) => items.firstWhere(
+          (e) => e['pane'] == p,
+          orElse: () => items.first,
+        );
+
+    Widget dashboardHeader() {
+      final tt = Theme.of(context).textTheme;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _primaryColor.withValues(alpha: 0.07),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _primaryColor.withValues(alpha: 0.14),
+                ),
+              ),
+              child: const Icon(Icons.admin_panel_settings_outlined, color: _primaryColor, size: 22),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Configurações da Loja',
+                    style: tt.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.25,
+                      height: 1.15,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    isWide
+                        ? 'Escolha a área no menu à esquerda. Opções e salvamento permanecem os mesmos.'
+                        : 'Opções agrupadas por tema. Toque no bloco para expandir e editar.',
+                    style: tt.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                      height: 1.45,
+                      fontWeight: FontWeight.w400,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isWide) {
+      final panelH = (mq.size.height - mq.padding.vertical - 248).clamp(448.0, 880.0);
+      final railExtended = mq.size.width >= 1180;
+      var idx = items.indexWhere((e) => e['pane'] == _pane);
+      if (idx < 0) idx = 0;
+      final current = items[idx];
+
+      return Card(
+        elevation: 0,
+        color: cs.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              dashboardHeader(),
+              Divider(height: 28, thickness: 1, color: cs.outlineVariant.withValues(alpha: 0.35)),
+              _buildFretesCuponsShortcutCard(cs),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: panelH,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Material(
+                    color: cs.surface,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.4)),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(6, 14, 4, 14),
+                          child: NavigationRail(
+                            selectedIndex: idx,
+                            extended: railExtended,
+                            groupAlignment: -1,
+                            minWidth: railExtended ? 92 : 76,
+                            minExtendedWidth: 216,
+                            labelType: railExtended
+                                ? NavigationRailLabelType.all
+                                : NavigationRailLabelType.selected,
+                            backgroundColor: Colors.transparent,
+                            indicatorColor: _primaryColor.withValues(alpha: 0.14),
+                            selectedIconTheme: const IconThemeData(color: _primaryColor, size: 22),
+                            unselectedIconTheme: IconThemeData(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.85),
+                              size: 22,
+                            ),
+                            selectedLabelTextStyle: const TextStyle(
+                              color: _primaryColor,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                              height: 1.2,
+                            ),
+                            unselectedLabelTextStyle: TextStyle(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
+                            onDestinationSelected: (i) {
+                              setState(() {
+                                _pane = items[i]['pane'] as _Pane;
+                              });
+                            },
+                            destinations: [
+                              for (final item in items)
+                                NavigationRailDestination(
+                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                  icon: Icon(item['icon'] as IconData, size: 22),
+                                  selectedIcon: Icon(item['icon'] as IconData, size: 22),
+                                  label: Text(
+                                    railExtended
+                                        ? item['label'] as String
+                                        : item['railLabel'] as String,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: cs.outlineVariant.withValues(alpha: 0.45),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      current['label'] as String,
+                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            letterSpacing: -0.15,
+                                            color: cs.onSurface,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      current['subtitle'] as String,
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: cs.onSurfaceVariant.withValues(alpha: 0.9),
+                                            height: 1.4,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+                                  child: Align(
+                                    alignment: Alignment.topCenter,
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 720),
+                                      child: _wrapLojaConfigFieldTheme(
+                                        context,
+                                        _buildPaneEditorFor(_pane),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Mobile / estreito: mesmos ExpansionTiles, agrupados por seção.
     return Card(
       elevation: 0,
       color: cs.surfaceContainerHighest,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.4)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.settings_outlined, color: _primaryColor, size: 24),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Configurações da Loja',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: cs.onSurface,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Clique em cada item para expandir e configurar',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Link para Fretes & Cupons (tela dedicada)
-            Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              elevation: 0,
-              color: cs.surfaceContainerHighest,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: _warningColor.withValues(alpha:0.5)),
-              ),
-              child: ListTile(
-                leading: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: _warningColor.withValues(alpha:0.15),
-                  ),
-                  child: const Icon(Icons.local_shipping_outlined, color: _warningColor, size: 22),
-                ),
-                title: Text(
-                  'Fretes & Cupons',
-                  style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface),
-                ),
-                subtitle: Text(
-                  'Configurar fretes e cupons de desconto',
-                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
-                ),
-                trailing: Icon(Icons.arrow_forward_ios, size: 14, color: cs.onSurfaceVariant),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const FretesCuponsScreen(),
-                    ),
-                  );
-                },
-              ),
-            ),
-            // Lista expansível
-            ...items.map((item) {
-              final pane = item['pane'] as _Pane;
-              final isExpanded = _pane == pane;
-
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                elevation: isExpanded ? 2 : 0,
-                color: cs.surfaceContainerHighest,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: isExpanded
-                        ? _primaryColor
-                        : cs.outlineVariant,
-                    width: isExpanded ? 2 : 1,
-                  ),
-                ),
-                child: ExpansionTile(
-                  key: ValueKey('config_pane_$pane'),
-                  initiallyExpanded: isExpanded,
-                  onExpansionChanged: (expanded) {
-                    if (expanded) {
-                      setState(() {
-                        _pane = pane;
-                      });
-                    }
-                  },
-                  leading: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: isExpanded
-                          ? _primaryColor
-                          : cs.surfaceContainerHigh,
-                    ),
-                    child: Icon(
-                      item['icon'] as IconData,
-                      color: isExpanded ? Colors.white : cs.onSurfaceVariant,
-                    ),
-                  ),
-                  title: Text(
-                    item['label'] as String,
-                    style: TextStyle(
-                      fontWeight: isExpanded ? FontWeight.w700 : FontWeight.w600,
-                      color: isExpanded ? _primaryColor : cs.onSurface,
-                    ),
-                  ),
-                  subtitle: Text(
-                    item['subtitle'] as String,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
+            dashboardHeader(),
+            Divider(height: 24, thickness: 1, color: cs.outlineVariant.withValues(alpha: 0.35)),
+            _buildFretesCuponsShortcutCard(cs),
+            for (var si = 0; si < _kLojaConfigUiSections.length; si++) ...[
+              Padding(
+                padding: EdgeInsets.only(top: si == 0 ? 14 : 22, bottom: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Conteúdo do painel – Theme garante campos legíveis no modo escuro
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Theme(
-                        data: Theme.of(context).copyWith(
-                          inputDecorationTheme: InputDecorationTheme(
-                            filled: true,
-                            fillColor: cs.surface,
-                            labelStyle: TextStyle(color: cs.onSurfaceVariant),
-                            hintStyle: TextStyle(color: cs.onSurfaceVariant),
-                            helperStyle: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-                            errorStyle: TextStyle(color: cs.error),
-                            prefixIconColor: cs.onSurfaceVariant,
-                            border: const OutlineInputBorder(),
-                            enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: cs.outlineVariant),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: cs.primary, width: 2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            errorBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: cs.error, width: 2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
+                    Text(
+                      _kLojaConfigUiSections[si].title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.1,
+                            color: cs.onSurface,
                           ),
-                        ),
-                        child: switch (pane) {
-                          _Pane.identidade => _paneIdentidade(),
-                          _Pane.midias => _paneMidias(),
-                          _Pane.tema => _paneTema(),
-                          _Pane.layout => _paneLayout(),
-                          // fretes, cupons -> removidos (use FretesCuponsScreen)
-                          _Pane.menu => _paneMenu(),
-                          _Pane.dicas => _paneDicas(),
-                          _Pane.rodape => _paneRodape(),
-                          _Pane.financeiro => _paneFinanceiro(),
-                          _Pane.publicar => _panePublicar(),
-                        },
-                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _kLojaConfigUiSections[si].hint,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.9),
+                            height: 1.4,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                          ),
                     ),
                   ],
                 ),
-              );
-            }),
+              ),
+              ..._kLojaConfigUiSections[si].panes.map((pane) {
+                final item = itemForPane(pane);
+                final isExpanded = _pane == pane;
+                final tileShape = RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(
+                    color: isExpanded
+                        ? _primaryColor.withValues(alpha: 0.55)
+                        : cs.outlineVariant.withValues(alpha: 0.75),
+                    width: isExpanded ? 1.5 : 1,
+                  ),
+                );
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Material(
+                    color: isExpanded ? cs.surface : cs.surfaceContainerLow,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: isExpanded ? 1 : 0,
+                    shadowColor: Colors.black.withValues(alpha: 0.06),
+                    shape: tileShape,
+                    clipBehavior: Clip.antiAlias,
+                    child: Theme(
+                      data: Theme.of(context).copyWith(
+                        dividerColor: Colors.transparent,
+                        listTileTheme: ListTileThemeData(
+                          iconColor: cs.onSurfaceVariant,
+                          textColor: cs.onSurface,
+                        ),
+                      ),
+                      child: ExpansionTile(
+                        key: ValueKey('config_pane_$pane'),
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                        childrenPadding: EdgeInsets.zero,
+                        shape: tileShape,
+                        collapsedShape: tileShape,
+                        initiallyExpanded: isExpanded,
+                        onExpansionChanged: (expanded) {
+                          if (expanded) {
+                            setState(() {
+                              _pane = pane;
+                            });
+                          }
+                        },
+                        leading: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: isExpanded
+                                ? _primaryColor.withValues(alpha: 0.12)
+                                : cs.surfaceContainerHigh,
+                            border: Border.all(
+                              color: isExpanded
+                                  ? _primaryColor.withValues(alpha: 0.25)
+                                  : cs.outlineVariant.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Icon(
+                            item['icon'] as IconData,
+                            color: isExpanded ? _primaryColor : cs.onSurfaceVariant,
+                            size: 22,
+                          ),
+                        ),
+                        title: Text(
+                          item['label'] as String,
+                          style: TextStyle(
+                            fontWeight: isExpanded ? FontWeight.w600 : FontWeight.w500,
+                            fontSize: 15,
+                            letterSpacing: -0.1,
+                            color: isExpanded ? cs.onSurface : cs.onSurface,
+                          ),
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            item['subtitle'] as String,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.35,
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        iconColor: cs.onSurfaceVariant.withValues(alpha: 0.65),
+                        collapsedIconColor: cs.onSurfaceVariant.withValues(alpha: 0.65),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                            child: _wrapLojaConfigFieldTheme(
+                              context,
+                              _buildPaneEditorFor(pane),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
           ],
         ),
       ),
@@ -4064,22 +4511,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             spacing: 12,
             runSpacing: 12,
             children: [
-              _ColorPickerChip(
+              _catalogColorField(
                 label: 'Fundo da página',
                 color: _cFundo,
-                onPick: (c) {
-                  setState(() => _cFundo = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cFundo = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Fundo dos cards',
                 color: _cCard,
-                onPick: (c) {
-                  setState(() => _cCard = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cCard = c),
               ),
+
             ],
           ),
         ),
@@ -4093,22 +4536,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             spacing: 12,
             runSpacing: 12,
             children: [
-              _ColorPickerChip(
+              _catalogColorField(
                 label: 'Nome do produto',
                 color: _cCardTextPrimary,
-                onPick: (c) {
-                  setState(() => _cCardTextPrimary = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cCardTextPrimary = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Preço (valor)',
                 color: _cPriceHighlight,
-                onPick: (c) {
-                  setState(() => _cPriceHighlight = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cPriceHighlight = c),
               ),
+
             ],
           ),
         ),
@@ -4122,40 +4561,31 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             spacing: 12,
             runSpacing: 12,
             children: [
-              _ColorPickerChip(
+              _catalogColorField(
                 label: 'Botão Comprar – fundo',
                 color: _cPrimaria,
-                onPick: (c) {
-                  setState(() => _cPrimaria = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cPrimaria = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Botão Comprar – texto',
                 color: _cBotaoTexto,
-                onPick: (c) {
-                  setState(() => _cBotaoTexto = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cBotaoTexto = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Botão Ver – fundo',
                 color: _cButtonSecondaryBg,
-                onPick: (c) {
-                  setState(() => _cButtonSecondaryBg = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cButtonSecondaryBg = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Botão Ver – texto e borda',
                 color: _cButtonSecondaryText,
-                onPick: (c) {
-                  setState(() {
+                onChanged: (c) => setState(() {
                     _cButtonSecondaryText = c;
                     _cButtonSecondaryBorder = c;
-                  });
-                  _salvarRascunho(validar: false);
-                },
+                  }),
               ),
             ],
           ),
@@ -4170,62 +4600,48 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             spacing: 12,
             runSpacing: 12,
             children: [
-              _ColorPickerChip(
+              _catalogColorField(
                 label: 'Texto principal',
                 color: _cTexto,
-                onPick: (c) {
-                  setState(() => _cTexto = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cTexto = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Texto secundário',
                 color: _cTextSecondary,
-                onPick: (c) {
-                  setState(() => _cTextSecondary = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cTextSecondary = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Texto card secundário',
                 color: _cCardTextSecondary,
-                onPick: (c) {
-                  setState(() => _cCardTextSecondary = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cCardTextSecondary = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Ícones',
                 color: _cIcon,
-                onPick: (c) {
-                  setState(() => _cIcon = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cIcon = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Divisórias',
                 color: _cDivider,
-                onPick: (c) {
-                  setState(() => _cDivider = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cDivider = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Sombras',
                 color: _cShadow,
-                onPick: (c) {
-                  setState(() => _cShadow = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cShadow = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Cor de perigo',
                 color: _cDanger,
-                onPick: (c) {
-                  setState(() => _cDanger = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cDanger = c),
               ),
+
             ],
           ),
         ),
@@ -4239,22 +4655,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             spacing: 12,
             runSpacing: 12,
             children: [
-              _ColorPickerChip(
+              _catalogColorField(
                 label: 'Badge – fundo',
                 color: _cBadgeBackground,
-                onPick: (c) {
-                  setState(() => _cBadgeBackground = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cBadgeBackground = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Badge – texto',
                 color: _cBadgeText,
-                onPick: (c) {
-                  setState(() => _cBadgeText = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cBadgeText = c),
               ),
+
             ],
           ),
         ),
@@ -4271,54 +4683,42 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _ColorPickerChip(
+                  _catalogColorField(
                     label: 'Fundo Cabeçalho',
                     color: _cCabecalho,
-                    onPick: (c) {
-                      setState(() => _cCabecalho = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cCabecalho = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Texto Cabeçalho',
                     color: _cHeaderText,
-                    onPick: (c) {
-                      setState(() => _cHeaderText = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cHeaderText = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Ícones Cabeçalho',
                     color: _cHeaderIcon,
-                    onPick: (c) {
-                      setState(() => _cHeaderIcon = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cHeaderIcon = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Busca Fundo',
                     color: _cHeaderSearchBg,
-                    onPick: (c) {
-                      setState(() => _cHeaderSearchBg = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cHeaderSearchBg = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Busca Texto',
                     color: _cHeaderSearchText,
-                    onPick: (c) {
-                      setState(() => _cHeaderSearchText = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cHeaderSearchText = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Busca Hint',
                     color: _cHeaderSearchHint,
-                    onPick: (c) {
-                      setState(() => _cHeaderSearchHint = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cHeaderSearchHint = c),
                   ),
+
                 ],
               ),
               const SizedBox(height: 16),
@@ -4446,62 +4846,48 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _ColorPickerChip(
+                  _catalogColorField(
                     label: 'Fundo do card',
                     color: _cCarrinhoCard,
-                    onPick: (c) {
-                      setState(() => _cCarrinhoCard = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cCarrinhoCard = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Campos (dropdown / input)',
                     color: _cCarrinhoCampo,
-                    onPick: (c) {
-                      setState(() => _cCarrinhoCampo = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cCarrinhoCampo = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Texto dos campos',
                     color: _cCarrinhoTexto,
-                    onPick: (c) {
-                      setState(() => _cCarrinhoTexto = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cCarrinhoTexto = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Rótulos (Entrega, Pagamento...)',
                     color: _cCarrinhoLabel,
-                    onPick: (c) {
-                      setState(() => _cCarrinhoLabel = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cCarrinhoLabel = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Total a pagar',
                     color: _cCarrinhoTotal,
-                    onPick: (c) {
-                      setState(() => _cCarrinhoTotal = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cCarrinhoTotal = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Campo Hint',
                     color: _cFieldHint,
-                    onPick: (c) {
-                      setState(() => _cFieldHint = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cFieldHint = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Campo Borda',
                     color: _cFieldBorder,
-                    onPick: (c) {
-                      setState(() => _cFieldBorder = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cFieldBorder = c),
                   ),
+
                 ],
               ),
               const SizedBox(height: 16),
@@ -4797,54 +5183,42 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  _ColorPickerChip(
+                  _catalogColorField(
                     label: 'Fundo Rodapé',
                     color: _cFooterBackground,
-                    onPick: (c) {
-                      setState(() => _cFooterBackground = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cFooterBackground = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Texto Rodapé',
                     color: _cFooterText,
-                    onPick: (c) {
-                      setState(() => _cFooterText = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cFooterText = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Texto Secundário',
                     color: _cFooterTextSecondary,
-                    onPick: (c) {
-                      setState(() => _cFooterTextSecondary = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cFooterTextSecondary = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Ícones Rodapé',
                     color: _cFooterIcon,
-                    onPick: (c) {
-                      setState(() => _cFooterIcon = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cFooterIcon = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Links Rodapé',
                     color: _cFooterLink,
-                    onPick: (c) {
-                      setState(() => _cFooterLink = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cFooterLink = c),
                   ),
-                  _ColorPickerChip(
+
+                  _catalogColorField(
                     label: 'Divisórias Rodapé',
                     color: _cFooterDivider,
-                    onPick: (c) {
-                      setState(() => _cFooterDivider = c);
-                      _salvarRascunho(validar: false);
-                    },
+                    onChanged: (c) => setState(() => _cFooterDivider = c),
                   ),
+
                 ],
               ),
               const SizedBox(height: 16),
@@ -4917,54 +5291,42 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             spacing: 12,
             runSpacing: 12,
             children: [
-              _ColorPickerChip(
+              _catalogColorField(
                 label: 'Fundo',
                 color: _cDicasBackground,
-                onPick: (c) {
-                  setState(() => _cDicasBackground = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cDicasBackground = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Rodapé – fundo',
                 color: _cDicasFooterBg,
-                onPick: (c) {
-                  setState(() => _cDicasFooterBg = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cDicasFooterBg = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Rodapé – texto',
                 color: _cDicasFooterText,
-                onPick: (c) {
-                  setState(() => _cDicasFooterText = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cDicasFooterText = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Botões',
                 color: _cDicasButtonBg,
-                onPick: (c) {
-                  setState(() => _cDicasButtonBg = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cDicasButtonBg = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Texto dos botões',
                 color: _cDicasButtonText,
-                onPick: (c) {
-                  setState(() => _cDicasButtonText = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cDicasButtonText = c),
               ),
-              _ColorPickerChip(
+
+              _catalogColorField(
                 label: 'Por tópico (Garantias, Cuidados...)',
                 color: _cDicasTopicPrimary,
-                onPick: (c) {
-                  setState(() => _cDicasTopicPrimary = c);
-                  _salvarRascunho(validar: false);
-                },
+                onChanged: (c) => setState(() => _cDicasTopicPrimary = c),
               ),
+
             ],
           ),
         ),
@@ -5060,25 +5422,21 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               Row(
                 children: [
                   Expanded(
-                    child: _ColorPickerChip(
-                      label: 'Cor fundo promo',
-                      color: _promoBarBg,
-                      onPick: (c) {
-                        setState(() => _promoBarBg = c);
-                        _salvarRascunho(validar: false);
-                      },
-                    ),
+                    child: _catalogColorField(
+                label: 'Cor fundo promo',
+                color: _promoBarBg,
+                onChanged: (c) => setState(() => _promoBarBg = c),
+              ),
+
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: _ColorPickerChip(
-                      label: 'Cor texto promo',
-                      color: _promoBarText,
-                      onPick: (c) {
-                        setState(() => _promoBarText = c);
-                        _salvarRascunho(validar: false);
-                      },
-                    ),
+                    child: _catalogColorField(
+                label: 'Cor texto promo',
+                color: _promoBarText,
+                onChanged: (c) => setState(() => _promoBarText = c),
+              ),
+
                   ),
                 ],
               ),
@@ -5186,14 +5544,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _ColorPickerChip(
-                        label: 'Fundo do card',
-                        color: _heroCardBg,
-                        onPick: (c) {
-                          setState(() => _heroCardBg = c);
-                          _salvarRascunho(validar: false);
-                        },
-                      ),
+                      _catalogColorField(
+                label: 'Fundo do card',
+                color: _heroCardBg,
+                onChanged: (c) => setState(() => _heroCardBg = c),
+              ),
+
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -5253,14 +5609,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _ColorPickerChip(
-                        label: 'Cor do título',
-                        color: _heroTitleColor,
-                        onPick: (c) {
-                          setState(() => _heroTitleColor = c);
-                          _salvarRascunho(validar: false);
-                        },
-                      ),
+                      _catalogColorField(
+                label: 'Cor do título',
+                color: _heroTitleColor,
+                onChanged: (c) => setState(() => _heroTitleColor = c),
+              ),
+
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -5330,14 +5684,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _ColorPickerChip(
-                        label: 'Cor do subtítulo',
-                        color: _heroSubtitleColor,
-                        onPick: (c) {
-                          setState(() => _heroSubtitleColor = c);
-                          _salvarRascunho(validar: false);
-                        },
-                      ),
+                      _catalogColorField(
+                label: 'Cor do subtítulo',
+                color: _heroSubtitleColor,
+                onChanged: (c) => setState(() => _heroSubtitleColor = c),
+              ),
+
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -5406,22 +5758,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      _ColorPickerChip(
-                        label: 'Fundo do botão',
-                        color: _heroButtonBg,
-                        onPick: (c) {
-                          setState(() => _heroButtonBg = c);
-                          _salvarRascunho(validar: false);
-                        },
-                      ),
-                      _ColorPickerChip(
-                        label: 'Texto do botão',
-                        color: _heroButtonTextColor,
-                        onPick: (c) {
-                          setState(() => _heroButtonTextColor = c);
-                          _salvarRascunho(validar: false);
-                        },
-                      ),
+                      _catalogColorField(
+                label: 'Fundo do botão',
+                color: _heroButtonBg,
+                onChanged: (c) => setState(() => _heroButtonBg = c),
+              ),
+
+                      _catalogColorField(
+                label: 'Texto do botão',
+                color: _heroButtonTextColor,
+                onChanged: (c) => setState(() => _heroButtonTextColor = c),
+              ),
+
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -7428,18 +7776,23 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     return Card(
       elevation: 0,
-      color: cs.surfaceContainerLow,
+      clipBehavior: Clip.antiAlias,
+      color: cs.surface,
+      surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
@@ -7448,18 +7801,20 @@ class _Section extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        style: tt.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.2,
                           color: cs.onSurface,
                         ),
                       ),
                       if (subtitle != null) ...[
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
                           subtitle!,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant,
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                            height: 1.4,
+                            fontSize: 13,
                           ),
                         ),
                       ],
@@ -7472,7 +7827,7 @@ class _Section extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             SizedBox(width: double.infinity, child: child),
           ],
         ),
@@ -7545,130 +7900,6 @@ class _PresetChip extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _ColorPickerChip extends StatelessWidget {
-  final String label;
-  final Color color;
-  final ValueChanged<Color> onPick;
-
-  const _ColorPickerChip({
-    required this.label,
-    required this.color,
-    required this.onPick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => _showColorPicker(context),
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(10),
-          color: Colors.white,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: color,
-                border: Border.all(
-                  color: Colors.grey.shade400,
-                  width: 1.5,
-                ),
-                borderRadius: BorderRadius.circular(6),
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha:0.3),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    _colorToHex(color),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
-                      fontFamily: 'monospace',
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.edit_outlined,
-              size: 16,
-              color: Colors.grey.shade600,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _colorToHex(Color color) {
-    final hex = color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2);
-    return '#${hex.toUpperCase()}';
-  }
-
-  void _showColorPicker(BuildContext context) {
-    Color tempColor = color;
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Escolher $label'),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: color,
-            onColorChanged: (c) => tempColor = c,
-            labelTypes: const [],
-            pickerAreaHeightPercent: 0.8,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              onPick(tempColor);
-              Navigator.of(context).pop();
-            },
-            child: const Text('Aplicar'),
-          ),
-        ],
       ),
     );
   }

@@ -72,6 +72,7 @@ class CatalogoVendaService {
     required String pagamento,
     String observacao = '',
     String? cupomCodigo,
+    String? cupomFreteCodigo,
     double desconto = 0.0,
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
@@ -321,6 +322,9 @@ class CatalogoVendaService {
                 'desconto': desconto,
               }
             : null,
+        'cupomFrete': cupomFreteCodigo != null && cupomFreteCodigo.isNotEmpty
+            ? {'codigo': cupomFreteCodigo}
+            : null,
         'cupomRoleta': cupomRoletaCodigo != null
             ? {
                 'codigo': cupomRoletaCodigo,
@@ -402,6 +406,7 @@ class CatalogoVendaService {
     required String pagamento,
     String observacao = '',
     String? cupomCodigo,
+    String? cupomFreteCodigo,
     double desconto = 0.0,
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
@@ -667,6 +672,9 @@ class CatalogoVendaService {
                   'codigo': cupomCodigo,
                   'desconto': desconto,
                 }
+              : null,
+          'cupomFrete': cupomFreteCodigo != null && cupomFreteCodigo.isNotEmpty
+              ? {'codigo': cupomFreteCodigo}
               : null,
           'cupomRoleta': cupomRoletaCodigo != null
               ? {

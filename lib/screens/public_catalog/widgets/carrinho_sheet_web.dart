@@ -84,6 +84,7 @@ class CarrinhoSheetWeb extends StatefulWidget {
     double? cupomRoletaDesconto,
     String? premioRoletaDescricao,
     String? cupomCodigo,
+    String? cupomFreteCodigo,
     required double descontoCupom,
     required double valorTotalCheckout,
     Future<void> Function(String? pedidoId)? onSuccess,
@@ -99,6 +100,7 @@ class CarrinhoSheetWeb extends StatefulWidget {
     double? cupomRoletaDesconto,
     String? premioRoletaDescricao,
     String? cupomCodigo,
+    String? cupomFreteCodigo,
     required double descontoCupom,
     required double valorTotalCheckout,
     void Function(String message)? showErrorInCart,
@@ -112,6 +114,7 @@ class CarrinhoSheetWeb extends StatefulWidget {
     required double valorTotal,
     String observacao,
     String? cupomCodigo,
+    String? cupomFreteCodigo,
     double desconto,
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
@@ -214,9 +217,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   final _complemento = TextEditingController();
   final _obs = TextEditingController();
 
-  // cupom
+  // cupom — até 1 de desconto (produto/total) + 1 só de frete
   final _cupomCtrl = TextEditingController();
-  Map<String, dynamic>? _cupomAplicado;
+  Map<String, dynamic>? _cupomDescontoAplicado;
+  Map<String, dynamic>? _cupomFreteAplicado;
+
+  /// Avisos que precisam ficar visíveis dentro do carrinho (não só SnackBar na loja).
+  String? _avisoCheckoutPeso;
+  String? _avisoCheckoutFrete;
 
   // ✨ ROLETA
   String? _campanhaAtivaId; // Campanha (sorteio com número da sorte) — independente da roleta
@@ -334,7 +342,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     return computeCatalogCheckoutTotals(
       items: widget.items,
       pagamento: _pagamento,
-      cupomAplicado: _cupomAplicado,
+      cupomDescontoAplicado: _cupomDescontoAplicado,
+      cupomFreteAplicado: _cupomFreteAplicado,
       fretesParaCalculo: fretes,
       freteIndex: idx,
       freteGratisRoleta: _freteGratisRoleta,
@@ -349,8 +358,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   /// Subtotal conforme forma de pagamento (PIX aplica desconto quando disponível)
   double get _subtotalConformePagamento =>
       _totals.subtotalConformePagamento;
-
-  double get _descontoCupomProdutos => _totals.descontoCupom;
 
   bool get _freteGratis => _totals.freteGratis;
 
@@ -829,9 +836,23 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       'complemento': _complemento.text,
       'obs': _obs.text,
       'cupomCodigo': _cupomCtrl.text,
+      'cupomFreteCodigo': _codigoCupomMap(_cupomFreteAplicado),
       'freteIndex': _freteIndex,
       'pagamento': _pagamento,
     };
+  }
+
+  String _codigoCupomMap(Map<String, dynamic>? m) =>
+      (m == null) ? '' : (m['codigo'] ?? m['code'] ?? '').toString().trim();
+
+  Map<String, dynamic>? _cupomPorOrigem(String origem) {
+    if (_cupomDescontoAplicado?['origem'] == origem) {
+      return _cupomDescontoAplicado;
+    }
+    if (_cupomFreteAplicado?['origem'] == origem) {
+      return _cupomFreteAplicado;
+    }
+    return null;
   }
 
   @override
@@ -854,12 +875,33 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     super.dispose();
   }
 
-  /// Código do cupom da loja/cliente para persistir no pré-pedido (null se vazio).
+  /// Código do cupom de desconto (produto/total) para o pré-pedido.
   String? _cupomCodigoParaPedido() {
-    if (_cupomAplicado == null) return null;
-    final c =
-        (_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '').toString().trim();
+    final c = _codigoCupomMap(_cupomDescontoAplicado);
     return c.isEmpty ? null : c;
+  }
+
+  String? _cupomFreteCodigoParaPedido() {
+    final c = _codigoCupomMap(_cupomFreteAplicado);
+    return c.isEmpty ? null : c;
+  }
+
+  String? _cupomFreteIdFirestore() {
+    final id = _cupomFreteAplicado?['id']?.toString().trim();
+    if (id == null || id.isEmpty) return null;
+    if (_cupomFreteAplicado?['origem'] == 'roleta_sorte' ||
+        _cupomFreteAplicado?['origem'] == 'cupom_cliente') {
+      return null;
+    }
+    return id;
+  }
+
+  String? _cupomDescontoIdFirestore() {
+    final id = _cupomDescontoAplicado?['id']?.toString().trim();
+    if (id == null || id.isEmpty) return null;
+    final o = _cupomDescontoAplicado?['origem']?.toString();
+    if (o == 'roleta_sorte' || o == 'cupom_cliente') return null;
+    return id;
   }
 
   Map<String, dynamic> _customerPayload() {
@@ -1039,7 +1081,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     return true;
   }
 
-  /// Converte modelo Cupom para o mapa usado em _cupomAplicado (inclui id para registrarUso).
+  /// Converte modelo Cupom para o mapa usado nos slots de cupom (inclui id para registrarUso).
   Map<String, dynamic> _cupomMapFromCupom(Cupom c) {
     return {
       'id': c.id,
@@ -1201,7 +1243,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     if (valorMinimo != null && valorMinimo > 0) {
       final aplicarEm = (found['aplicarEm'] ?? 'produtos').toString();
       double baseValor = _subtotalConformePagamento;
-      if (aplicarEm == 'total' && _fretesLocal.isNotEmpty) {
+      if ((aplicarEm == 'total' || aplicarEm == 'frete') &&
+          _fretesLocal.isNotEmpty) {
         final frete = _fretesLocal[_freteIndex.clamp(0, _fretesLocal.length - 1)];
         baseValor += _freteGratis ? 0.0 : ((frete['valor'] as num?)?.toDouble() ?? 0.0);
       }
@@ -1212,9 +1255,30 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       }
     }
 
-    setState(() {
-      _cupomAplicado = asMapDeep(merged);
-    });
+    final somenteFrete = catalogCupomSomenteFrete(merged);
+    if (somenteFrete) {
+      if (_cupomFreteAplicado != null &&
+          _codigoCupomMap(_cupomFreteAplicado).toUpperCase() != code) {
+        widget.showSnack(
+          'Você já tem um cupom de frete aplicado. Remova-o antes de usar outro.',
+        );
+        return;
+      }
+      setState(() {
+        _cupomFreteAplicado = asMapDeep(merged);
+      });
+    } else {
+      if (_cupomDescontoAplicado != null &&
+          _codigoCupomMap(_cupomDescontoAplicado).toUpperCase() != code) {
+        widget.showSnack(
+          'Você já tem um cupom de desconto aplicado. Remova-o antes de usar outro.',
+        );
+        return;
+      }
+      setState(() {
+        _cupomDescontoAplicado = asMapDeep(merged);
+      });
+    }
 
     widget.showSnack('Cupom aplicado: $code');
   }
@@ -1258,22 +1322,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
     final double valorFreteOriginal =
         (frete['valor'] as num?)?.toDouble() ?? 0.0;
-    final double valorFreteFinal = _freteGratis ? 0.0 : valorFreteOriginal;
+
+    final tSnap = _totals;
+    final double descontoProdutos = tSnap.descontoCupomProdutos;
+    final double total = tSnap.total;
 
     if (kDebugMode) {
       logD('💰 [TOTAL] Valor frete original: R\$ $valorFreteOriginal');
       logD(
-          '💰 [TOTAL] Valor frete final: R\$ $valorFreteFinal (frete grátis: $_freteGratis)');
+          '💰 [TOTAL] Valor frete final: R\$ ${tSnap.valorFreteFinal} (frete grátis: $_freteGratis)');
       logD('💰 [TOTAL] Subtotal: R\$ $_subtotal (PIX: R\$ $_subtotalPix)');
-    }
-
-    final tSnap = _totals;
-    final double descontoProdutos = tSnap.descontoCupom;
-    final double total = tSnap.total;
-
-    if (kDebugMode) {
       logD(
-          '💰 [TOTAL] Total calculado: R\$ $_subtotalConformePagamento + R\$ $valorFreteFinal - R\$ $descontoProdutos = R\$ $total');
+          '💰 [TOTAL] Total calculado: R\$ $_subtotalConformePagamento + R\$ ${tSnap.valorFreteFinal} - desconto prod R\$ $descontoProdutos = R\$ $total');
     }
 
     final sheetBg = _cartUi.sheetBackground;
@@ -1292,6 +1352,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
               children: [
                 _left(context),
                 SizedBox(height: gapStack),
+                _cartCheckoutAvisosBanner(context),
                 _centerForm(context),
                 SizedBox(height: gapStack),
                 _checkoutFulfillmentAndPayment(context),
@@ -1313,10 +1374,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 width: summaryW,
                                 child: _right(
                                   context,
-                                  total,
+                                  tSnap,
                                   frete,
-                                  valorFreteOriginal,
-                                  descontoProdutos,
                                 ),
                               ),
                             ],
@@ -1328,10 +1387,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               SizedBox(height: gapStack),
                               _right(
                                 context,
-                                total,
+                                tSnap,
                                 frete,
-                                valorFreteOriginal,
-                                descontoProdutos,
                               ),
                             ],
                           ),
@@ -1891,10 +1948,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       final pesoCalc = await _calcularPesoComEmbalagem(widget.items);
       final erroPeso = pesoCalc['erro'] as String?;
       if (erroPeso != null && erroPeso.isNotEmpty) {
-        widget.showSnack(erroPeso);
         if (!mounted) return;
-        setState(() {});
+        setState(() {
+          _avisoCheckoutPeso = erroPeso;
+        });
         return;
+      }
+      if (mounted) {
+        setState(() => _avisoCheckoutPeso = null);
       }
       double pesoTotal = (pesoCalc['pesoTotal'] as num?)?.toDouble() ?? 300.0;
 
@@ -2060,10 +2121,17 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       }
 
       if (!mounted) return;
-      setState(() {});
+      setState(() {
+        _avisoCheckoutFrete = null;
+      });
     } catch (e, st) {
       logE('❌ [CATALOGO] Erro ao calcular frete (type=${e.runtimeType})', error: e, st: st);
-      widget.showSnack('Erro ao calcular frete. Mantendo opções atuais.');
+      if (mounted) {
+        setState(() {
+          _avisoCheckoutFrete =
+              'Não foi possível atualizar o frete automaticamente. Verifique o CEP ou escolha retirada / combinar com a loja.';
+        });
+      }
       // Preservar lista existente; se estava vazia, restaurar de widget.fretes
       if (_fretesLocal.isEmpty && widget.fretes.isNotEmpty && mounted) {
         setState(() {
@@ -3081,6 +3149,86 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     );
   }
 
+  /// Avisos de checkout visíveis no próprio carrinho (peso, frete, etc.).
+  Widget _cartCheckoutAvisosBanner(BuildContext context) {
+    final cu = _cartUi;
+    final mq = MediaQuery.sizeOf(context).width;
+    final pad = mq < 420 ? 12.0 : 14.0;
+
+    Widget tile({
+      required IconData icon,
+      required Color accent,
+      required String text,
+      VoidCallback? onDismiss,
+    }) {
+      return Material(
+        color: Color.alphaBlend(accent.withValues(alpha: 0.12), cu.cartCardBackground),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(pad, pad * 0.85, pad * 0.5, pad * 0.85),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: accent, size: 22),
+              SizedBox(width: pad * 0.75),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: cu.primaryTextColor.withValues(alpha: 0.94),
+                    fontSize: 13.5,
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (onDismiss != null)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.close_rounded,
+                      size: 20, color: cu.mutedTextColor),
+                  onPressed: onDismiss,
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final children = <Widget>[];
+    final peso = _avisoCheckoutPeso;
+    if (peso != null && peso.isNotEmpty) {
+      children.add(
+        tile(
+          icon: Icons.scale_outlined,
+          accent: Colors.orange.shade800,
+          text: peso,
+          onDismiss: () => setState(() => _avisoCheckoutPeso = null),
+        ),
+      );
+    }
+    final freteA = _avisoCheckoutFrete;
+    if (freteA != null && freteA.isNotEmpty) {
+      if (children.isNotEmpty) children.add(const SizedBox(height: 10));
+      children.add(
+        tile(
+          icon: Icons.local_shipping_outlined,
+          accent: Colors.blue.shade800,
+          text: freteA,
+          onDismiss: () => setState(() => _avisoCheckoutFrete = null),
+        ),
+      );
+    }
+    if (children.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+
   /// Frete, pagamento, cupom e roleta — coluna principal (antes do resumo / CTAs).
   Widget _checkoutFulfillmentAndPayment(BuildContext context) {
     final theme = Theme.of(context);
@@ -3384,11 +3532,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   if (!mounted) return;
                   if (cupomEscolhido != null) {
                     setState(() {
+                      final Map<String, dynamic> m;
                       if (cupomEscolhido is Cupom) {
-                        _cupomAplicado = _cupomMapFromCupom(cupomEscolhido);
+                        m = _cupomMapFromCupom(cupomEscolhido);
                       } else if (cupomEscolhido is Map) {
-                        _cupomAplicado =
-                            Map<String, dynamic>.from(cupomEscolhido);
+                        m = Map<String, dynamic>.from(cupomEscolhido);
+                      } else {
+                        m = {};
+                      }
+                      if (catalogCupomSomenteFrete(m)) {
+                        _cupomFreteAplicado = m;
+                      } else {
+                        _cupomDescontoAplicado = m;
                       }
                     });
                     final codigo = cupomEscolhido is Cupom
@@ -3425,7 +3580,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   ),
                 ),
               ),
-              if (_cupomAplicado != null) ...[
+              if (_cupomDescontoAplicado != null) ...[
                 const SizedBox(height: 6),
                 Row(
                   children: [
@@ -3437,8 +3592,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Cupom aplicado: '
-                                '${(_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '')}'
+                        'Desconto: '
+                                '${(_cupomDescontoAplicado!['codigo'] ?? _cupomDescontoAplicado!['code'] ?? '')}'
                             .toString()
                             .toUpperCase(),
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -3446,12 +3601,53 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                         ),
                       ),
                     ),
+                    IconButton(
+                      tooltip: 'Remover cupom de desconto',
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(Icons.close_rounded,
+                          size: 20, color: textoMutado),
+                      onPressed: () =>
+                          setState(() => _cupomDescontoAplicado = null),
+                    ),
+                  ],
+                ),
+              ],
+              if (_cupomFreteAplicado != null) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.local_shipping_outlined,
+                      size: 18,
+                      color: Colors.teal.shade700,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Frete: '
+                                '${(_cupomFreteAplicado!['codigo'] ?? _cupomFreteAplicado!['code'] ?? '')}'
+                            .toString()
+                            .toUpperCase(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: textoCampo,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remover cupom de frete',
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(Icons.close_rounded,
+                          size: 20, color: textoMutado),
+                      onPressed: () =>
+                          setState(() => _cupomFreteAplicado = null),
+                    ),
                   ],
                 ),
               ],
               if (_cupomRoletaCodigo != null &&
                   _cupomRoletaCodigo!.isNotEmpty &&
-                  _cupomAplicado == null) ...[
+                  _cupomDescontoAplicado == null &&
+                  _cupomFreteAplicado == null) ...[
                 const SizedBox(height: 6),
                 Row(
                   children: [
@@ -3652,18 +3848,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 // ---------------------------------------------------------------------
   Widget _right(
     BuildContext context,
-    double total,
+    CatalogCheckoutTotals tSnap,
     Map<String, dynamic> frete,
-    double valorFreteOriginal,
-    double descontoProdutos,
   ) {
     final theme = Theme.of(context);
+    final total = tSnap.total;
+    final descontoProdutos = tSnap.descontoCupomProdutos;
+    final descontoFreteCupom = tSnap.descontoCupomFrete;
     final freteLabel = _freteGratis
         ? 'Cupom de frete grátis'
         : (frete['nome'] ?? frete['label'] ?? 'Entrega').toString();
 
-    // ✅ sempre usa o valor final (0 se grátis)
-    final double valorFreteFinal = _freteGratis ? 0.0 : valorFreteOriginal;
+    final double valorFreteFinal = tSnap.valorFreteFinal;
 
     final s = _summaryTokens;
     final cu = _cartUi;
@@ -3776,6 +3972,16 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     _resumeRow(
                       'Descontos',
                       -descontoProdutos,
+                      highlight: true,
+                      labelColor: cu.summaryLabelColor,
+                      valueColor: cu.summaryDiscountColor,
+                      sum: s,
+                    ),
+
+                  if (descontoFreteCupom > 0)
+                    _resumeRow(
+                      'Desconto no frete (cupom)',
+                      -descontoFreteCupom,
                       highlight: true,
                       labelColor: cu.summaryLabelColor,
                       valueColor: cu.summaryDiscountColor,
@@ -3927,7 +4133,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                         });
                         await Future.delayed(Duration.zero);
 
-                        final cupomId = _cupomAplicado?['id'] as String?;
+                        final cupomIdDesc = _cupomDescontoIdFirestore();
+                        final cupomIdFrete = _cupomFreteIdFirestore();
                           final clienteLogado = await ClienteAuthService.getClienteLogado();
                           final clienteId = clienteLogado?['clienteId']?.toString();
 
@@ -3950,7 +4157,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 : (freteSelecionado['nome'] ?? freteSelecionado['label'] ?? 'Entrega').toString();
                             final entrega = {
                               'nome': nomeFretePedido,
-                              'valor': _freteGratis ? 0.0 : valorFreteOriginal,
+                              'valor': _totals.valorFreteFinal,
                               'freteGratis': _freteGratis,
                               'tipo': freteSelecionado['tipo'] ?? 'padrao',
                               if (freteSelecionado['plataforma'] != null)
@@ -3968,25 +4175,33 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               cupomRoletaDesconto: _cupomRoletaDesconto,
                               premioRoletaDescricao: _premioRoletaDescricao,
                               cupomCodigo: _cupomCodigoParaPedido(),
+                              cupomFreteCodigo: _cupomFreteCodigoParaPedido(),
                               descontoCupom: _totals.descontoCupom,
                               valorTotalCheckout: _totals.total,
                               onSuccess: (String? pedidoId) async {
                                 if (mounted) Navigator.pop(context);
-                                if (cupomId != null &&
-                                    clienteId != null &&
-                                    cupomId.isNotEmpty &&
-                                    clienteId.isNotEmpty) {
-                                  CupomDescontoService().registrarUso(
-                                    lojaId: widget.lojaId,
-                                    cupomId: cupomId,
-                                    clienteId: clienteId,
-                                  );
+                                if (clienteId != null && clienteId.isNotEmpty) {
+                                  if (cupomIdDesc != null &&
+                                      cupomIdDesc.isNotEmpty) {
+                                    CupomDescontoService().registrarUso(
+                                      lojaId: widget.lojaId,
+                                      cupomId: cupomIdDesc,
+                                      clienteId: clienteId,
+                                    );
+                                  }
+                                  if (cupomIdFrete != null &&
+                                      cupomIdFrete.isNotEmpty) {
+                                    CupomDescontoService().registrarUso(
+                                      lojaId: widget.lojaId,
+                                      cupomId: cupomIdFrete,
+                                      clienteId: clienteId,
+                                    );
+                                  }
                                 }
-                                // Cupom da roleta (perfil): marcar como usado para não poder usar de novo
-                                if (_cupomAplicado != null &&
-                                    _cupomAplicado!['origem'] == 'roleta_sorte') {
+                                final cRoleta = _cupomPorOrigem('roleta_sorte');
+                                if (cRoleta != null) {
                                   final email = (clienteLogado?['email'] ?? '').toString().trim();
-                                  final codigo = (_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '').toString();
+                                  final codigo = _codigoCupomMap(cRoleta);
                                   if (email.isNotEmpty && codigo.isNotEmpty) {
                                     await ClienteAuthService.marcarCupomRoletaComoUsado(
                                       lojaId: widget.lojaId,
@@ -3995,11 +4210,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                     );
                                   }
                                 }
-                                // Cupom de indicação (cupons_clientes): marcar como usado e ativar cupom do indicador
-                                if (_cupomAplicado != null &&
-                                    _cupomAplicado!['origem'] == 'cupom_cliente') {
-                                  final cupomClienteId = (_cupomAplicado!['id'] ?? '').toString();
-                                  if (cupomClienteId.isNotEmpty && (pedidoId ?? '').isNotEmpty) {
+                                final cIndic = _cupomPorOrigem('cupom_cliente');
+                                if (cIndic != null && (pedidoId ?? '').isNotEmpty) {
+                                  final cupomClienteId = (cIndic['id'] ?? '').toString();
+                                  if (cupomClienteId.isNotEmpty) {
                                     await CuponsService.usarCupom(
                                       lojaId: widget.lojaId,
                                       cupomId: cupomClienteId,
@@ -4131,7 +4345,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 : (freteSelecionado['nome'] ?? freteSelecionado['label'] ?? 'Entrega').toString();
                             final entrega = {
                               'nome': nomeFretePedidoPix,
-                              'valor': _freteGratis ? 0.0 : valorFreteOriginal,
+                              'valor': _totals.valorFreteFinal,
                               'freteGratis': _freteGratis,
                               'tipo': freteSelecionado['tipo'] ?? 'padrao',
                               if (freteSelecionado['plataforma'] != null)
@@ -4139,10 +4353,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               if (freteSelecionado['service_id'] != null)
                                 'service_id': freteSelecionado['service_id'],
                             };
-                            final cupomCod = _cupomAplicado != null
-                                ? ((_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '').toString().trim())
-                                : '';
-                            final cupomId = _cupomAplicado?['id'] as String?;
+                            final cupomCod = _cupomCodigoParaPedido() ?? '';
+                            final cupomIdDesc = _cupomDescontoIdFirestore();
+                            final cupomIdFrete = _cupomFreteIdFirestore();
                             final clienteLogadoPix = await ClienteAuthService.getClienteLogado();
                             final clienteIdPix = clienteLogadoPix?['clienteId']?.toString();
                             await widget.onCheckoutPix!(
@@ -4151,7 +4364,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               valorTotal: total,
                               observacao: _obs.text.trim(),
                               cupomCodigo: cupomCod.isEmpty ? null : cupomCod,
-                              desconto: _descontoCupomProdutos,
+                              cupomFreteCodigo: _cupomFreteCodigoParaPedido(),
+                              desconto: _totals.descontoCupom,
                               cupomRoletaCodigo: _cupomRoletaCodigo,
                               cupomRoletaDesconto: _cupomRoletaDesconto,
                               premioRoletaDescricao: _premioRoletaDescricao,
@@ -4161,23 +4375,26 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 }
                               },
                               onPedidoCriado: (pedidoId) async {
-                                final origem = _cupomAplicado?['origem']?.toString();
-                                if (origem != 'roleta_sorte' &&
-                                    origem != 'cupom_cliente' &&
-                                    cupomId != null &&
-                                    clienteIdPix != null &&
-                                    cupomId.isNotEmpty &&
-                                    clienteIdPix.isNotEmpty) {
-                                  await CupomDescontoService().registrarUso(
-                                    lojaId: widget.lojaId,
-                                    cupomId: cupomId,
-                                    clienteId: clienteIdPix,
-                                  );
+                                if (clienteIdPix != null && clienteIdPix.isNotEmpty) {
+                                  if (cupomIdDesc != null && cupomIdDesc.isNotEmpty) {
+                                    await CupomDescontoService().registrarUso(
+                                      lojaId: widget.lojaId,
+                                      cupomId: cupomIdDesc,
+                                      clienteId: clienteIdPix,
+                                    );
+                                  }
+                                  if (cupomIdFrete != null && cupomIdFrete.isNotEmpty) {
+                                    await CupomDescontoService().registrarUso(
+                                      lojaId: widget.lojaId,
+                                      cupomId: cupomIdFrete,
+                                      clienteId: clienteIdPix,
+                                    );
+                                  }
                                 }
-                                if (_cupomAplicado != null &&
-                                    _cupomAplicado!['origem'] == 'roleta_sorte') {
+                                final cRoleta = _cupomPorOrigem('roleta_sorte');
+                                if (cRoleta != null) {
                                   final email = (clienteLogadoPix?['email'] ?? '').toString().trim();
-                                  final cod = cupomCod;
+                                  final cod = _codigoCupomMap(cRoleta);
                                   if (email.isNotEmpty && cod.isNotEmpty) {
                                     await ClienteAuthService.marcarCupomRoletaComoUsado(
                                       lojaId: widget.lojaId,
@@ -4186,10 +4403,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                     );
                                   }
                                 }
-                                if (_cupomAplicado != null &&
-                                    _cupomAplicado!['origem'] == 'cupom_cliente' &&
-                                    pedidoId != null && pedidoId.isNotEmpty) {
-                                  final cupomClienteId = (_cupomAplicado!['id'] ?? '').toString();
+                                final cIndic = _cupomPorOrigem('cupom_cliente');
+                                if (cIndic != null &&
+                                    pedidoId != null &&
+                                    pedidoId.isNotEmpty) {
+                                  final cupomClienteId = (cIndic['id'] ?? '').toString();
                                   if (cupomClienteId.isNotEmpty) {
                                     await CuponsService.usarCupom(
                                       lojaId: widget.lojaId,
@@ -4335,7 +4553,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 : (freteSelecionado['nome'] ?? freteSelecionado['label'] ?? 'Entrega').toString();
                             final entrega = {
                               'nome': nomeFretePedidoMp,
-                              'valor': _freteGratis ? 0.0 : valorFreteOriginal,
+                              'valor': _totals.valorFreteFinal,
                               'freteGratis': _freteGratis,
                               'tipo': freteSelecionado['tipo'] ?? 'padrao',
                               if (freteSelecionado['plataforma'] != null)
@@ -4353,6 +4571,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               cupomRoletaDesconto: _cupomRoletaDesconto,
                               premioRoletaDescricao: _premioRoletaDescricao,
                               cupomCodigo: _cupomCodigoParaPedido(),
+                              cupomFreteCodigo: _cupomFreteCodigoParaPedido(),
                               descontoCupom: _totals.descontoCupom,
                               valorTotalCheckout: _totals.total,
                               showErrorInCart: (msg) {
@@ -4361,11 +4580,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 }
                               },
                             );
-                            // Cupom da roleta (perfil): marcar como usado
-                            if (_cupomAplicado != null &&
-                                _cupomAplicado!['origem'] == 'roleta_sorte') {
+                            final cRoletaMp = _cupomPorOrigem('roleta_sorte');
+                            if (cRoletaMp != null) {
                               final emailMp = (cliente['email'] ?? '').toString().trim();
-                              final codigoMp = (_cupomAplicado!['codigo'] ?? _cupomAplicado!['code'] ?? '').toString();
+                              final codigoMp = _codigoCupomMap(cRoletaMp);
                               if (emailMp.isNotEmpty && codigoMp.isNotEmpty) {
                                 await ClienteAuthService.marcarCupomRoletaComoUsado(
                                   lojaId: widget.lojaId,
