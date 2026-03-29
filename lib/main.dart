@@ -1115,14 +1115,18 @@ String? _indicacaoRefFromUrl() {
   return null;
 }
 
-/// ✅ Lê ID/slug de produto para deep link no catálogo público
-/// URL: /loja/{id}?produto={produtoIdOuSlug}
+/// ✅ Lê ID/slug de produto para deep link no catálogo público (`prod`, depois `produto` legado).
 String? _produtoRefFromUrl() {
   if (!kIsWeb) return null;
   final uri = _initialWebUri ?? Uri.base;
+  final p = (uri.queryParameters['prod'] ?? '').trim();
+  if (p.isNotEmpty) {
+    logD('📍 [URL] Produto deep link (prod) detectado: $p');
+    return p;
+  }
   final v = (uri.queryParameters['produto'] ?? '').trim();
   if (v.isNotEmpty) {
-    logD('📍 [URL] Produto deep link detectado: $v');
+    logD('📍 [URL] Produto deep link (produto legado) detectado: $v');
     return v;
   }
   return null;

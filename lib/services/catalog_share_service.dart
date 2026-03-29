@@ -8,11 +8,15 @@ class CatalogShareService {
 
   /// Monta a URL final do catálogo com ref e indicacao quando informados.
   /// [baseUrl] ex.: https://app.mastepalm.com.br/loja/loja_123
+  ///
+  /// Produto em foco: query canônica `prod` (slug ou id). Ao definir [prod],
+  /// remove `produto` da query mesclada para evitar duplicidade; links antigos
+  /// com só `produto=` na base permanecem até nova escrita com [prod].
   static String buildUrlWithParams(
     String baseUrl, {
     String? ref,
     String? indicacao,
-    String? produto,
+    String? prod,
   }) {
     String url = baseUrl.trim();
     if (url.isEmpty) return url;
@@ -28,8 +32,9 @@ class CatalogShareService {
     if (indicacao != null && indicacao.trim().isNotEmpty) {
       query['indicacao'] = indicacao.trim();
     }
-    if (produto != null && produto.trim().isNotEmpty) {
-      query['produto'] = produto.trim();
+    if (prod != null && prod.trim().isNotEmpty) {
+      query['prod'] = prod.trim();
+      query.remove('produto');
     }
     if (query.isEmpty) return url;
     final newUri = uri.replace(queryParameters: query);

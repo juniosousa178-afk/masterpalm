@@ -89,7 +89,7 @@ class PublicCatalogScreen extends StatefulWidget {
   /// ✅ ID do carrinho para recuperação (ex: ?cart=ID no link)
   final String? initialCartId;
 
-  /// ✅ ID ou slug do produto para abrir direto (ex: link campanha ?produto=ID)
+  /// ✅ ID ou slug do produto para abrir direto (ex.: `?prod=` ou legado `?produto=`)
   final String? initialProdutoId;
 
   /// ✅ Mesmo propósito que [initialProdutoId], via query `prod` (rotas nomeadas / deep link).
@@ -1434,7 +1434,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 '$_baseUrlCatalogo/$lojaId',
                 ref: widget.vendedorRef,
                 indicacao: widget.indicacaoClienteRef,
-                produto: safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : productId,
+                prod: safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : productId,
               ),
               lojaId: lojaId,
               onAdd: (it) => _addToCart(it, produtos),
@@ -1469,7 +1469,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               '$_baseUrlCatalogo/$lojaId',
               ref: widget.vendedorRef,
               indicacao: widget.indicacaoClienteRef,
-              produto: safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : productId,
+              prod: safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : productId,
             ),
             prazoEntrega: null,
             percentualDescontoPix: safeDouble(p['percentualDescontoPix']),

@@ -88,7 +88,7 @@ class PublicCatalogProductCard extends StatelessWidget {
     final deepLinkProduto = safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : safeStr(p['id']);
     final catalogUrl = CatalogShareService.buildUrlWithParams(
       baseCatalogUrl,
-      produto: deepLinkProduto,
+      prod: deepLinkProduto,
     );
 
     final estoqueTam = _mapToMapStringInt(asMap(p['estoquePorTamanho']));

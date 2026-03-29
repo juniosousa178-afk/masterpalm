@@ -119,7 +119,7 @@ class MotorCrescimentoExecutorService {
   }
 
   /// Gera link da campanha. Se [produtoId] for informado (produto da oportunidade),
-  /// o link inclui ?produto= para o catálogo abrir direto no produto.
+  /// o link inclui `&prod=` para o catálogo abrir direto no produto (canônico).
   static String _gerarLinkPromocao({
     required String lojaId,
     required String codigoCupom,
@@ -129,7 +129,7 @@ class MotorCrescimentoExecutorService {
     final base = '$_baseUrlCatalogo/$lojaId';
     var link = '$base?cupom=${Uri.encodeComponent(codigoCupom)}';
     if (produtoId != null && produtoId.trim().isNotEmpty) {
-      link = '$link&produto=${Uri.encodeComponent(produtoId.trim())}';
+      link = '$link&prod=${Uri.encodeComponent(produtoId.trim())}';
     }
     return link;
   }
