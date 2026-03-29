@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
@@ -110,6 +111,7 @@ class EstoqueTransactionService {
     String? nome,
     String tamanho = '',
     String cor = '',
+    String variacaoExtra = '',
   }) async {
     if (quantidade <= 0) {
       throw Exception('Quantidade deve ser maior que zero');
@@ -117,6 +119,7 @@ class EstoqueTransactionService {
 
     final tam = tamanho.trim();
     final corTrim = cor.trim();
+    final extraTrim = variacaoExtra.trim();
 
     final produtoRef = await _resolverProdutoRef(lojaId: lojaId, produtoId: produtoId, slug: slug, nome: nome);
     if (produtoRef == null) {
@@ -188,54 +191,34 @@ class EstoqueTransactionService {
           );
         }
 
-        int disponivel;
-      Map<String, dynamic>? novasVariacoes;
+        int disponivel = 0;
+        Map<String, dynamic>? novasVariacoes;
       Map<String, int>? novoEstoquePorTamanho;
       int novaQuantidadeTotal;
 
       if (temVariacaoSoloCor && corTrim.isNotEmpty) {
-        final mapaCor = variacoes['sem-tamanho'];
-        if (mapaCor == null || mapaCor is! Map) {
-          throw Exception(
-            'Estoque insuficiente para "$produtoNome" na cor $corTrim. Disponível: 0, solicitado: $quantidade.',
-          );
-        }
-        final mapa = Map<String, dynamic>.from(mapaCor);
-        disponivel = (mapa[corTrim] as num?)?.toInt() ?? 0;
-        if (disponivel < quantidade) {
-          throw Exception(
-            'Estoque insuficiente para "$produtoNome" na cor $corTrim. '
-            'Disponível: $disponivel, solicitado: $quantidade.',
-          );
-        }
-        mapa[corTrim] = disponivel - quantidade;
-        if (mapa[corTrim] <= 0) mapa.remove(corTrim);
-        novasVariacoes = Map<String, dynamic>.from(variacoes);
-        novasVariacoes['sem-tamanho'] = mapa;
-        if (mapa.isEmpty) novasVariacoes.remove('sem-tamanho');
+        novasVariacoes = _mapaAposDebitoVariacao(
+          variacoes: variacoes,
+          chaveTamanho: 'sem-tamanho',
+          corKey: corTrim,
+          extraTrim: extraTrim,
+          quantidade: quantidade,
+          produtoNome: produtoNome,
+          erroCtx: 'na cor $corTrim',
+        );
         novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
       } else if (usaVariacoes && tam.isNotEmpty) {
         final chaveCor = corTrim.isEmpty ? 'sem-cor' : corTrim;
-        final mapaTamanho = variacoes[tam];
-        if (mapaTamanho == null || mapaTamanho is! Map) {
-          throw Exception(
-            'Estoque insuficiente para "$produtoNome" no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}. '
-            'Disponível: 0, solicitado: $quantidade.',
-          );
-        }
-        final mapaCor = Map<String, dynamic>.from(mapaTamanho);
-        disponivel = (mapaCor[chaveCor] as num?)?.toInt() ?? 0;
-        if (disponivel < quantidade) {
-          throw Exception(
-            'Estoque insuficiente para "$produtoNome" no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}. '
-            'Disponível: $disponivel, solicitado: $quantidade.',
-          );
-        }
-        mapaCor[chaveCor] = disponivel - quantidade;
-        if (mapaCor[chaveCor] <= 0) mapaCor.remove(chaveCor);
-        novasVariacoes = Map<String, dynamic>.from(variacoes);
-        novasVariacoes[tam] = mapaCor;
-        if (mapaCor.isEmpty) novasVariacoes.remove(tam);
+        novasVariacoes = _mapaAposDebitoVariacao(
+          variacoes: variacoes,
+          chaveTamanho: tam,
+          corKey: chaveCor,
+          extraTrim: extraTrim,
+          quantidade: quantidade,
+          produtoNome: produtoNome,
+          erroCtx:
+              'no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}',
+        );
         novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
       } else if (temEstoquePorTamanho && tam.isNotEmpty) {
         disponivel = estoquePorTamanho[tam] ?? 0;
@@ -443,12 +426,77 @@ class EstoqueTransactionService {
     return false;
   }
 
+  static Map<String, dynamic> _mapaAposDebitoVariacao({
+    required Map<String, dynamic> variacoes,
+    required String chaveTamanho,
+    required String corKey,
+    required String extraTrim,
+    required int quantidade,
+    required String produtoNome,
+    required String erroCtx,
+  }) {
+    final mapaCor = variacoes[chaveTamanho];
+    if (mapaCor == null || mapaCor is! Map) {
+      throw Exception(
+        'Estoque insuficiente para "$produtoNome" $erroCtx. Disponível: 0, solicitado: $quantidade.',
+      );
+    }
+    final mapa = Map<String, dynamic>.from(mapaCor);
+    final cell = mapa[corKey];
+    if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell) &&
+        extraTrim.isEmpty) {
+      throw Exception(
+        'O produto "$produtoNome" possui estoque por personalização (opções extras). '
+        'Informe a opção selecionada na venda.',
+      );
+    }
+    final r = ProdutoVariacaoExtra.debitarCelula(cell, extraTrim, quantidade);
+    if (!r.ok) {
+      final disp = ProdutoVariacaoExtra.quantidadeNaCelula(cell, extraTrim);
+      throw Exception(
+        'Estoque insuficiente para "$produtoNome" $erroCtx. '
+        'Disponível: $disp, solicitado: $quantidade.',
+      );
+    }
+    if (r.newCell == ProdutoVariacaoExtra.removeCorCell) {
+      mapa.remove(corKey);
+    } else {
+      mapa[corKey] = r.newCell;
+    }
+    final novasVariacoes = Map<String, dynamic>.from(variacoes);
+    if (mapa.isEmpty) {
+      novasVariacoes.remove(chaveTamanho);
+    } else {
+      novasVariacoes[chaveTamanho] = mapa;
+    }
+    return novasVariacoes;
+  }
+
+  static Map<String, dynamic> _mapaAposDevolverVariacao({
+    required Map<String, dynamic> variacoes,
+    required String chaveTamanho,
+    required String corKey,
+    required String extraTrim,
+    required int quantidade,
+  }) {
+    final mapaCor = variacoes[chaveTamanho];
+    final mapa = mapaCor != null && mapaCor is Map
+        ? Map<String, dynamic>.from(mapaCor)
+        : <String, dynamic>{};
+    final cell = mapa[corKey];
+    mapa[corKey] =
+        ProdutoVariacaoExtra.devolverCelula(cell, extraTrim, quantidade);
+    final novasVariacoes = Map<String, dynamic>.from(variacoes);
+    novasVariacoes[chaveTamanho] = mapa;
+    return novasVariacoes;
+  }
+
   static int _somarVariacoes(Map<String, dynamic> variacoes) {
     int total = 0;
     for (final mapaTamanho in variacoes.values) {
       if (mapaTamanho is Map) {
         for (final qtd in mapaTamanho.values) {
-          total += (qtd as num?)?.toInt() ?? 0;
+          total += ProdutoVariacaoExtra.somarCelula(qtd);
         }
       }
     }
@@ -470,7 +518,13 @@ class EstoqueTransactionService {
       );
     }
 
-    final resolvedItems = <({DocumentReference<Map<String, dynamic>> ref, int quantidade, String tamanho, String cor})>[];
+    final resolvedItems = <({
+      DocumentReference<Map<String, dynamic>> ref,
+      int quantidade,
+      String tamanho,
+      String cor,
+      String variacaoExtra
+    })>[];
 
     for (final item in itens) {
       final quantidade = (item['quantidade'] as num?)?.toInt() ??
@@ -483,6 +537,8 @@ class EstoqueTransactionService {
       final nome = (item['nome'] ?? item['name'] ?? '').toString();
       final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
       final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+      final variacaoExtra =
+          (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
 
       if (quantidade <= 0) continue;
 
@@ -499,7 +555,13 @@ class EstoqueTransactionService {
           nome: nome,
         );
       }
-      resolvedItems.add((ref: ref, quantidade: quantidade, tamanho: tamanho, cor: cor));
+      resolvedItems.add((
+        ref: ref,
+        quantidade: quantidade,
+        tamanho: tamanho,
+        cor: cor,
+        variacaoExtra: variacaoExtra,
+      ));
     }
 
     Future<List<EstoqueTransactionResult>> executarTransacao() {
@@ -523,6 +585,7 @@ class EstoqueTransactionService {
         final quantidade = resolved.quantidade;
         final tamanho = resolved.tamanho;
         final cor = resolved.cor;
+        final extraTrim = resolved.variacaoExtra;
 
         final variacoesRaw = data['variacoes'] as Map<String, dynamic>?;
         final estoquePorTamanhoRaw = data['estoquePorTamanho'];
@@ -573,48 +636,28 @@ class EstoqueTransactionService {
         int novaQuantidadeTotal;
 
         if (temVariacaoSoloCor && cor.isNotEmpty) {
-          final mapaCor = variacoes['sem-tamanho'];
-          if (mapaCor == null || mapaCor is! Map) {
-            throw Exception(
-              'Estoque insuficiente para "$produtoNome" na cor $cor. Disponível: 0, solicitado: $quantidade.',
-            );
-          }
-          final mapa = Map<String, dynamic>.from(mapaCor);
-          final disponivel = (mapa[cor] as num?)?.toInt() ?? 0;
-          if (disponivel < quantidade) {
-            throw Exception(
-              'Estoque insuficiente para "$produtoNome" na cor $cor. '
-              'Disponível: $disponivel, solicitado: $quantidade.',
-            );
-          }
-          mapa[cor] = disponivel - quantidade;
-          if (mapa[cor] <= 0) mapa.remove(cor);
-          novasVariacoes = Map<String, dynamic>.from(variacoes);
-          novasVariacoes['sem-tamanho'] = mapa;
-          if (mapa.isEmpty) novasVariacoes.remove('sem-tamanho');
+          novasVariacoes = _mapaAposDebitoVariacao(
+            variacoes: variacoes,
+            chaveTamanho: 'sem-tamanho',
+            corKey: cor,
+            extraTrim: extraTrim,
+            quantidade: quantidade,
+            produtoNome: produtoNome,
+            erroCtx: 'na cor $cor',
+          );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (usaVariacoes && tamanho.isNotEmpty) {
           final chaveCor = cor.isEmpty ? 'sem-cor' : cor;
-          final mapaTamanho = variacoes[tamanho];
-          if (mapaTamanho == null || mapaTamanho is! Map) {
-            throw Exception(
-              'Estoque insuficiente para "$produtoNome" no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}. '
-              'Disponível: 0, solicitado: $quantidade.',
-            );
-          }
-          final mapaCor = Map<String, dynamic>.from(mapaTamanho);
-          final disponivel = (mapaCor[chaveCor] as num?)?.toInt() ?? 0;
-          if (disponivel < quantidade) {
-            throw Exception(
-              'Estoque insuficiente para "$produtoNome" no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}. '
-              'Disponível: $disponivel, solicitado: $quantidade.',
-            );
-          }
-          mapaCor[chaveCor] = disponivel - quantidade;
-          if (mapaCor[chaveCor] <= 0) mapaCor.remove(chaveCor);
-          novasVariacoes = Map<String, dynamic>.from(variacoes);
-          novasVariacoes[tamanho] = mapaCor;
-          if (mapaCor.isEmpty) novasVariacoes.remove(tamanho);
+          novasVariacoes = _mapaAposDebitoVariacao(
+            variacoes: variacoes,
+            chaveTamanho: tamanho,
+            corKey: chaveCor,
+            extraTrim: extraTrim,
+            quantidade: quantidade,
+            produtoNome: produtoNome,
+            erroCtx:
+                'no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}',
+          );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
           final disponivel = estoquePorTamanho[tamanho] ?? 0;
@@ -755,7 +798,13 @@ class EstoqueTransactionService {
       );
     }
 
-    final resolvedItems = <({DocumentReference<Map<String, dynamic>> ref, int quantidade, String tamanho, String cor})>[];
+    final resolvedItems = <({
+      DocumentReference<Map<String, dynamic>> ref,
+      int quantidade,
+      String tamanho,
+      String cor,
+      String variacaoExtra
+    })>[];
 
     for (final item in itens) {
       final quantidade = (item['quantidade'] as num?)?.toInt() ??
@@ -768,6 +817,8 @@ class EstoqueTransactionService {
       final nome = (item['nome'] ?? item['name'] ?? '').toString();
       final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
       final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+      final variacaoExtra =
+          (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
 
       if (quantidade <= 0) continue;
 
@@ -781,7 +832,13 @@ class EstoqueTransactionService {
         debugPrint('[ESTOQUE-TX] Produto não encontrado para devolução: ${produtoId ?? slug ?? nome}');
         continue;
       }
-      resolvedItems.add((ref: ref, quantidade: quantidade, tamanho: tamanho, cor: cor));
+      resolvedItems.add((
+        ref: ref,
+        quantidade: quantidade,
+        tamanho: tamanho,
+        cor: cor,
+        variacaoExtra: variacaoExtra,
+      ));
     }
 
     if (resolvedItems.isEmpty) return [];
@@ -817,6 +874,7 @@ class EstoqueTransactionService {
         final quantidade = resolved.quantidade;
         final tamanho = resolved.tamanho;
         final cor = resolved.cor;
+        final extraTrim = resolved.variacaoExtra;
 
         final variacoesRaw = data['variacoes'] as Map<String, dynamic>?;
         final estoquePorTamanhoRaw = data['estoquePorTamanho'];
@@ -832,23 +890,23 @@ class EstoqueTransactionService {
         int novaQuantidadeTotal;
 
         if (temVariacaoSoloCor && cor.isNotEmpty) {
-          final mapaCor = variacoes['sem-tamanho'];
-          final mapa = mapaCor != null && mapaCor is Map
-              ? Map<String, dynamic>.from(mapaCor)
-              : <String, dynamic>{};
-          mapa[cor] = ((mapa[cor] as num?)?.toInt() ?? 0) + quantidade;
-          novasVariacoes = Map<String, dynamic>.from(variacoes);
-          novasVariacoes['sem-tamanho'] = mapa;
+          novasVariacoes = _mapaAposDevolverVariacao(
+            variacoes: variacoes,
+            chaveTamanho: 'sem-tamanho',
+            corKey: cor,
+            extraTrim: extraTrim,
+            quantidade: quantidade,
+          );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (usaVariacoes && tamanho.isNotEmpty) {
           final chaveCor = cor.isEmpty ? 'sem-cor' : cor;
-          final mapaTamanho = variacoes[tamanho];
-          final mapaCor = mapaTamanho != null && mapaTamanho is Map
-              ? Map<String, dynamic>.from(mapaTamanho)
-              : <String, dynamic>{};
-          mapaCor[chaveCor] = ((mapaCor[chaveCor] as num?)?.toInt() ?? 0) + quantidade;
-          novasVariacoes = Map<String, dynamic>.from(variacoes);
-          novasVariacoes[tamanho] = mapaCor;
+          novasVariacoes = _mapaAposDevolverVariacao(
+            variacoes: variacoes,
+            chaveTamanho: tamanho,
+            corKey: chaveCor,
+            extraTrim: extraTrim,
+            quantidade: quantidade,
+          );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
           novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);

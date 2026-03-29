@@ -459,9 +459,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   String _cartItemVariantSubtitle(Map<String, dynamic> item) {
     final tam = (item['tamanho'] ?? '').toString().trim();
     final cor = (item['cor'] ?? '').toString().trim();
+    final resumoExtra = (item['variacaoExtraResumo'] ?? '').toString().trim();
     final parts = <String>[];
     if (tam.isNotEmpty) parts.add(tam);
     if (cor.isNotEmpty) parts.add(cor);
+    if (resumoExtra.isNotEmpty) parts.add(resumoExtra);
     final combo = item['itensComboComSelecao'];
     if (combo is List && combo.isNotEmpty && parts.length < 2) {
       parts.add('${combo.length} itens');
@@ -2182,6 +2184,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       p,
       (item['tamanho'] ?? '').toString().trim(),
       (item['cor'] ?? '').toString().trim(),
+      (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim(),
     );
     final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
     var other = 0;

@@ -5,6 +5,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/produto_variacao_extra.dart';
+
 import '../../../utils/platform_adaptive.dart';
 
 /// Barra de pesquisa do catálogo (TextField).
@@ -479,8 +481,12 @@ class CatalogSortFiltersSection extends StatelessWidget {
   final List<String> variacaoCores;
   final String? filtroVariacaoTamanho;
   final String? filtroVariacaoCor;
+  /// Opções de eixo extra (estampa, letra, etc.) — só quando existir no contexto.
+  final List<String> variacaoExtras;
+  final String? filtroVariacaoExtra;
   final ValueChanged<String?> onVariacaoTamanhoChanged;
   final ValueChanged<String?> onVariacaoCorChanged;
+  final ValueChanged<String?> onVariacaoExtraChanged;
   final VoidCallback onVariacaoClear;
 
   const CatalogSortFiltersSection({
@@ -500,10 +506,13 @@ class CatalogSortFiltersSection extends StatelessWidget {
     required this.onPageChanged,
     this.variacaoTamanhos = const [],
     this.variacaoCores = const [],
+    this.variacaoExtras = const [],
     this.filtroVariacaoTamanho,
     this.filtroVariacaoCor,
+    this.filtroVariacaoExtra,
     required this.onVariacaoTamanhoChanged,
     required this.onVariacaoCorChanged,
+    required this.onVariacaoExtraChanged,
     required this.onVariacaoClear,
   });
 
@@ -511,7 +520,9 @@ class CatalogSortFiltersSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasVariacao = (filtroVariacaoTamanho != null &&
             filtroVariacaoTamanho!.trim().isNotEmpty) ||
-        (filtroVariacaoCor != null && filtroVariacaoCor!.trim().isNotEmpty);
+        (filtroVariacaoCor != null && filtroVariacaoCor!.trim().isNotEmpty) ||
+        (filtroVariacaoExtra != null &&
+            filtroVariacaoExtra!.trim().isNotEmpty);
     final hasFilterAtivo = apenasEmEstoque ||
         precoMin != null ||
         precoMax != null ||
@@ -609,6 +620,10 @@ class CatalogSortFiltersSection extends StatelessWidget {
     if (filtroVariacaoCor != null && filtroVariacaoCor!.trim().isNotEmpty) {
       parts.add('Cor: ${filtroVariacaoCor!.trim()}');
     }
+    if (filtroVariacaoExtra != null &&
+        filtroVariacaoExtra!.trim().isNotEmpty) {
+      parts.add('Extra: ${filtroVariacaoExtra!.trim()}');
+    }
     return parts.join(' · ');
   }
 
@@ -619,7 +634,9 @@ class CatalogSortFiltersSection extends StatelessWidget {
     Widget filterMenuBody(BuildContext sheetContext) {
       final sheetHasVariacao = (filtroVariacaoTamanho != null &&
               filtroVariacaoTamanho!.trim().isNotEmpty) ||
-          (filtroVariacaoCor != null && filtroVariacaoCor!.trim().isNotEmpty);
+          (filtroVariacaoCor != null && filtroVariacaoCor!.trim().isNotEmpty) ||
+          (filtroVariacaoExtra != null &&
+              filtroVariacaoExtra!.trim().isNotEmpty);
       return SafeArea(
         top: false,
         child: Padding(
@@ -648,7 +665,9 @@ class CatalogSortFiltersSection extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              if (variacaoTamanhos.isNotEmpty || variacaoCores.isNotEmpty) ...[
+              if (variacaoTamanhos.isNotEmpty ||
+                  variacaoCores.isNotEmpty ||
+                  variacaoExtras.isNotEmpty) ...[
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -729,6 +748,41 @@ class CatalogSortFiltersSection extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (variacaoExtras.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText:
+                            ProdutoVariacaoExtra.labelExtraFiltroCatalogoGlobal(),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        isDense: true,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          isExpanded: true,
+                          value: filtroVariacaoExtra,
+                          hint: const Text('Todas'),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Todas'),
+                            ),
+                            ...variacaoExtras.map(
+                              (x) => DropdownMenuItem<String?>(
+                                value: x,
+                                child:
+                                    Text(x, overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                          ],
+                          onChanged: onVariacaoExtraChanged,
+                        ),
+                      ),
+                    ),
+                  ),
                 if (sheetHasVariacao)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -736,7 +790,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
                       onPressed: onVariacaoClear,
                       icon: Icon(Icons.clear_all, size: 18, color: primaryColor),
                       label: Text(
-                        'Limpar tamanho e cor',
+                        'Limpar filtros de variação',
                         style: TextStyle(color: primaryColor),
                       ),
                     ),

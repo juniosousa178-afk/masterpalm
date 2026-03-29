@@ -196,6 +196,9 @@ class ProdutosFirestoreService {
         // Variações (tamanho + cor)
         'cores': produto.cores,
         'variacoes': produto.variacoes,
+        if (produto.variacoesExtraTipo != null &&
+            produto.variacoesExtraTipo!.isNotEmpty)
+          'variacoesExtraTipo': produto.variacoesExtraTipo,
         if (produto.precoPorTamanho != null && produto.precoPorTamanho!.isNotEmpty)
           'precoPorTamanho': produto.precoPorTamanho,
         'tipoProduto': produto.tipoProduto,
@@ -252,6 +255,9 @@ class ProdutosFirestoreService {
             'imagens': imagensFinais,
             'slug': produto.slug,
             'variacoes': produto.variacoes,
+            if (produto.variacoesExtraTipo != null &&
+                produto.variacoesExtraTipo!.isNotEmpty)
+              'variacoesExtraTipo': produto.variacoesExtraTipo,
             'estoquePorTamanho': produto.estoquePorTamanho,
             'cores': produto.cores,
             if (produto.precoPorTamanho != null &&
@@ -385,37 +391,6 @@ class ProdutosFirestoreService {
     }
   }
 
-  /// Aplica apenas campos de **estoque** do snapshot remoto (vendas catálogo, Nova Venda,
-  /// transações em outro aparelho). Não altera nome, preço, descrição, imagens, etc.
-  static void _aplicarSomenteEstoqueDoRemoto(Produto p, Map<String, dynamic> data) {
-    p.estoquePorTamanho = Map<String, int>.from(
-      data['estoquePorTamanho'] ?? p.estoquePorTamanho,
-    );
-    final varData = data['variacoes'];
-    if (varData != null && varData is Map) {
-      p.variacoes = _parseVariacoesFromFirestore(varData);
-    }
-    p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
-  }
-
-  /// Hive com [updatedAt] claramente mais recente que o documento remoto (evita
-  /// sobrescrever edição local antes do upload terminar).
-  ///
-  /// Importante: usar `local.isAfter(remote - margem)` estava incorreto — para
-  /// quase qualquer par de instantes próximos isso dava `true` e o app **ignorava**
-  /// peso/custo/preço vindos da nuvem mesmo quando o servidor era mais novo
-  /// (divergência entre celulares e frete com peso zerado no catálogo).
-  static bool _localUpdatedAtNewerThanRemote(Produto p, Map<String, dynamic> data) {
-    final local = p.updatedAt;
-    final raw = data['updatedAt'];
-    if (local == null) return false;
-    if (raw == null || raw is! Timestamp) return false;
-    final remote = raw.toDate();
-    // Só preserva cadastro local se o [updatedAt] local for claramente posterior ao servidor.
-    const skewTolerance = Duration(seconds: 2);
-    return local.isAfter(remote.add(skewTolerance));
-  }
-
   /// Sincroniza produtos do Firestore para o Hive (Firestore → Hive)
   /// Usa paginação para buscar TODOS os produtos (evita limit 1000 cortar a lista).
   static Future<int> syncFirestoreToHive({
@@ -478,37 +453,13 @@ class ProdutosFirestoreService {
 
           if (produtoExistente != null) {
             // Atualizar produto existente com dados do Firestore.
+            //
+            // Sempre aplicar o snapshot de `estoque_produtos` no Hive ao puxar da nuvem.
+            // A regra antiga "local mais recente → só estoque" fazia o segundo aparelho
+            // manter custo/peso velhos com frequência (relógio adiantado, qualquer save
+            // local com [updatedAt] alto, ou importação). A nuvem é a fonte de verdade
+            // neste fluxo; edição não enviada volta pela fila de sync / próximo salvamento.
             final p = produtoExistente;
-            final localMaisRecente = _localUpdatedAtNewerThanRemote(p, data);
-            // Regra "última alteração vence": quando o local é mais recente,
-            // preserva cadastro local e aplica somente estoque da nuvem.
-            // Caso contrário, aplica snapshot remoto completo (inclui custo/peso).
-            final skipRemoteMerge = localMaisRecente;
-
-            if (skipRemoteMerge) {
-              if ((data['custoReal'] is num) || (data['peso'] is num)) {
-                final custoRemoto = (data['custoReal'] as num?)?.toDouble();
-                final pesoRemoto = (data['peso'] as num?)?.toDouble();
-                logD(
-                  '[AUDIT_SYNC] Produto $produtoId preservou LOCAL (mais recente). '
-                  'custo local=${p.custoReal.toStringAsFixed(2)} remoto=${(custoRemoto ?? p.custoReal).toStringAsFixed(2)} | '
-                  'peso local=${p.peso.toStringAsFixed(2)} remoto=${(pesoRemoto ?? p.peso).toStringAsFixed(2)}',
-                );
-              }
-              if (p.idFirebase.isEmpty) {
-                p.idFirebase = produtoId;
-              }
-              if (p.slug.isEmpty && slug.isNotEmpty) {
-                p.slug = slug.toString();
-              }
-              _aplicarSomenteEstoqueDoRemoto(p, data);
-              await p.save();
-              atualizados++;
-              logD(
-                '🔄 Produto $produtoId: cadastro local preservado; estoque aplicado da nuvem',
-              );
-              continue;
-            }
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
@@ -547,6 +498,12 @@ class ProdutosFirestoreService {
             final varData = data['variacoes'];
             if (varData != null && varData is Map) {
               p.variacoes = _parseVariacoesFromFirestore(varData);
+            }
+            if (data.containsKey('variacoesExtraTipo')) {
+              final vet = data['variacoesExtraTipo'];
+              p.variacoesExtraTipo = vet != null && vet is Map
+                  ? _parseVariacoesExtraTipoFromFirestore(vet)
+                  : null;
             }
             final ppt = data['precoPorTamanho'];
             if (ppt != null && ppt is Map) {
@@ -648,6 +605,8 @@ class ProdutosFirestoreService {
               estoquePorTamanho: Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
               cores: (data['cores'] as List?)?.cast<String>() ?? [],
               variacoes: _parseVariacoesFromFirestore(data['variacoes']),
+              variacoesExtraTipo:
+                  _parseVariacoesExtraTipoFromFirestore(data['variacoesExtraTipo']),
               precoPorTamanho: _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
               tipoProduto: (data['tipoProduto'] ?? 'simples').toString(),
               itensCombo: _parseItensComboFromFirestore(data['itensCombo']),
@@ -741,7 +700,7 @@ class ProdutosFirestoreService {
     return result.isEmpty ? null : result;
   }
 
-  /// Converte mapa de variações vindo do Firestore para Map<String, dynamic> (tamanho -> { cor -> qtd }).
+  /// Converte mapa de variações: cor -> int (legado) ou cor -> { extraValor -> qtd }.
   static Map<String, dynamic>? _parseVariacoesFromFirestore(dynamic varData) {
     if (varData == null || varData is! Map) return null;
     final result = <String, dynamic>{};
@@ -750,15 +709,66 @@ class ProdutosFirestoreService {
       if (tamanho.isEmpty) continue;
       final inner = entry.value;
       if (inner is! Map) continue;
-      final mapaCorQtd = <String, int>{};
+      final mapaCor = <String, dynamic>{};
       for (final e in inner.entries) {
         final cor = e.key?.toString() ?? '';
-        final qtd = e.value is num ? (e.value as num).toInt() : int.tryParse(e.value?.toString() ?? '') ?? 0;
-        if (cor.isNotEmpty) mapaCorQtd[cor] = qtd;
+        if (cor.isEmpty) continue;
+        final v = e.value;
+        if (v is Map) {
+          final m = <String, int>{};
+          for (final ie in v.entries) {
+            final k = ie.key?.toString() ?? '';
+            final q = ie.value is num
+                ? (ie.value as num).toInt()
+                : int.tryParse(ie.value?.toString() ?? '') ?? 0;
+            m[k] = q;
+          }
+          if (m.isNotEmpty) {
+            if (m.length == 1 && m.containsKey('')) {
+              mapaCor[cor] = m[''] ?? 0;
+            } else {
+              mapaCor[cor] = m;
+            }
+          }
+        } else {
+          final qtd = v is num
+              ? v.toInt()
+              : int.tryParse(v?.toString() ?? '') ?? 0;
+          mapaCor[cor] = qtd;
+        }
       }
-      if (mapaCorQtd.isNotEmpty) result[tamanho] = mapaCorQtd;
+      if (mapaCor.isNotEmpty) result[tamanho] = mapaCor;
     }
     return result.isEmpty ? null : result;
+  }
+
+  /// { tamanho: { cor: { extraValor: extraTipo } } }
+  static Map<String, dynamic>? _parseVariacoesExtraTipoFromFirestore(dynamic d) {
+    if (d == null || d is! Map) return null;
+    final out = <String, dynamic>{};
+    for (final te in d.entries) {
+      final t = te.key?.toString() ?? '';
+      if (t.isEmpty) continue;
+      final inner = te.value;
+      if (inner is! Map) continue;
+      final mapCor = <String, dynamic>{};
+      for (final ce in inner.entries) {
+        final c = ce.key?.toString() ?? '';
+        if (c.isEmpty) continue;
+        final ev = ce.value;
+        if (ev is! Map) continue;
+        final mapEx = <String, dynamic>{};
+        for (final ee in ev.entries) {
+          final k = ee.key?.toString() ?? '';
+          final tipo = (ee.value ?? '').toString();
+          if (k.isEmpty) continue;
+          mapEx[k] = tipo;
+        }
+        if (mapEx.isNotEmpty) mapCor[c] = mapEx;
+      }
+      if (mapCor.isNotEmpty) out[t] = mapCor;
+    }
+    return out.isEmpty ? null : out;
   }
 
   /// Atualiza apenas a quantidade de um produto no Firestore

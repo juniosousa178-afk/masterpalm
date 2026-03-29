@@ -28,6 +28,7 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
           uri.queryParameters['seller'];
       final tam = uri.queryParameters['tam']?.trim();
       final cor = uri.queryParameters['cor']?.trim();
+      final xv = catalogSanitizeXvQuery(uri.queryParameters['xv']);
       final cat = uri.queryParameters['cat']?.trim();
       final sub = uri.queryParameters['sub']?.trim();
       final ord = uri.queryParameters['ord']?.trim();
@@ -49,6 +50,7 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
           vendedorRef: vendedorRef,
           initialTam: (tam != null && tam.isNotEmpty) ? tam : null,
           initialCor: (cor != null && cor.isNotEmpty) ? cor : null,
+          initialXv: xv,
           initialCat: (cat != null && cat.isNotEmpty) ? cat : null,
           initialSub: (sub != null && sub.isNotEmpty) ? sub : null,
           initialOrd: (ord != null && ord.isNotEmpty) ? ord : null,

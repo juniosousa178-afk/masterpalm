@@ -7,6 +7,7 @@ void catalogSyncPublicCatalogQueryUri({
   String? pmax,
   String? tam,
   String? cor,
+  String? xv,
   String? q,
   String? page,
   String? prod,

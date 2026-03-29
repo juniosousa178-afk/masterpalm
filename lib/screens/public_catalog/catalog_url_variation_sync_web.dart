@@ -26,6 +26,7 @@ void catalogSyncPublicCatalogQueryUri({
   String? pmax,
   String? tam,
   String? cor,
+  String? xv,
   String? q,
   String? page,
   String? prod,
@@ -45,6 +46,7 @@ void catalogSyncPublicCatalogQueryUri({
   final wantPmax = _nonEmpty(pmax);
   final wantTam = _nonEmpty(tam);
   final wantCor = _nonEmpty(cor);
+  final wantXv = _nonEmpty(xv);
   final wantQ = _nonEmpty(q);
   final wantPage = _nonEmpty(page);
   final wantProd = _nonEmpty(prod);
@@ -73,6 +75,7 @@ void catalogSyncPublicCatalogQueryUri({
       qp['pmax'] == wantPmax &&
       qp['tam'] == wantTam &&
       qp['cor'] == wantCor &&
+      qp['xv'] == wantXv &&
       qp['q'] == wantQ &&
       qp['prod'] == wantProd &&
       pageQueryMatches()) {
@@ -98,6 +101,7 @@ void catalogSyncPublicCatalogQueryUri({
   setOrRemove('pmax', wantPmax);
   setOrRemove('tam', wantTam);
   setOrRemove('cor', wantCor);
+  setOrRemove('xv', wantXv);
   setOrRemove('q', wantQ);
   setOrRemove('prod', wantProd);
 

@@ -4,8 +4,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/catalog_color_from_name.dart';
-import '../../../core/safe_cast.dart';
+import '../../../core/produto_variacao_extra.dart';
 import '../../../widgets/smart_image.dart';
+import '../catalog_variation_filter.dart';
 
 class CatalogProductSelectionSheet extends StatefulWidget {
   final String name;
@@ -16,11 +17,23 @@ class CatalogProductSelectionSheet extends StatefulWidget {
   final Map<String, int> estoquePorTamanho;
   final Map<String, int> estoquePorCor;
   final Map<String, dynamic>? variacoes;
+  /// { tamanho: { cor: { extraValor: extraTipo } } } — opcional, só para rótulo do eixo extra.
+  final Map<String, dynamic>? variacoesExtraTipo;
   final Map<String, double>? precoPorTamanho;
-  final void Function(String? tamanho, String? cor, double preco) onAddToCart;
+  final void Function(
+    String? tamanho,
+    String? cor,
+    double preco,
+    String extraValor,
+    String extraTipo,
+  ) onAddToCart;
   final double percentualDescontoPix;
   /// Se true, exibe "X un."; se false, exibe "Disponível" (como no botão Ver).
   final bool mostrarQuantidadeNoCatalogo;
+  /// Pré-seleção alinhada ao filtro/`xv` do catálogo (quando compatível com tam/cor).
+  final String? initialExtraValor;
+  /// Sincroniza filtro global e query `xv` na Web ao mudar a personalização.
+  final void Function(String? value)? onCatalogVariacaoExtraChanged;
 
   const CatalogProductSelectionSheet({
     super.key,
@@ -32,10 +45,13 @@ class CatalogProductSelectionSheet extends StatefulWidget {
     required this.estoquePorTamanho,
     required this.estoquePorCor,
     this.variacoes,
+    this.variacoesExtraTipo,
     this.precoPorTamanho,
     required this.onAddToCart,
     this.percentualDescontoPix = 0.0,
     this.mostrarQuantidadeNoCatalogo = false,
+    this.initialExtraValor,
+    this.onCatalogVariacaoExtraChanged,
   });
 
   @override
@@ -47,8 +63,54 @@ class _CatalogProductSelectionSheetState
     extends State<CatalogProductSelectionSheet> {
   String? _tamanhoSelecionado;
   String? _corSelecionada;
+  String? _extraSelecionado;
+  String? _pendingSeedExtra;
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  @override
+  void initState() {
+    super.initState();
+    final s = widget.initialExtraValor?.trim();
+    _pendingSeedExtra = (s != null && s.isNotEmpty) ? s : null;
+    _scheduleTryConsumeSeedExtra();
+  }
+
+  @override
+  void didUpdateWidget(covariant CatalogProductSelectionSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialExtraValor != oldWidget.initialExtraValor) {
+      final s = widget.initialExtraValor?.trim();
+      _pendingSeedExtra = (s != null && s.isNotEmpty) ? s : null;
+      _scheduleTryConsumeSeedExtra();
+    }
+  }
+
+  void _scheduleTryConsumeSeedExtra() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _tryConsumeSeedExtra();
+    });
+  }
+
+  void _tryConsumeSeedExtra() {
+    final seed = _pendingSeedExtra;
+    if (seed == null) return;
+    if (!_temEixoExtraNaCor) return;
+    if (_opcoesExtra.isEmpty) return;
+    String? matched;
+    for (final op in _opcoesExtra) {
+      if (CatalogVariationFilter.keysMatch(op, seed)) {
+        matched = op;
+        break;
+      }
+    }
+    _pendingSeedExtra = null;
+    if (matched != null && _extraSelecionado != matched) {
+      setState(() => _extraSelecionado = matched);
+      widget.onCatalogVariacaoExtraChanged?.call(matched);
+    }
+  }
 
   /// Preço para o tamanho selecionado (ou preço base se não houver precoPorTamanho).
   double get _precoAtual {
@@ -74,7 +136,7 @@ class _CatalogProductSelectionSheetState
         if (cores is Map) {
           int total = 0;
           cores.forEach((_, qtd) {
-            total += asNum(qtd)?.toInt() ?? 0;
+            total += ProdutoVariacaoExtra.somarCelula(qtd);
           });
           if (total > 0) {
             result[tamanho.toString()] = total;
@@ -90,23 +152,57 @@ class _CatalogProductSelectionSheetState
     if (widget.variacoes != null && widget.variacoes!.containsKey('sem-tamanho')) {
       final semTam = widget.variacoes!['sem-tamanho'];
       if (semTam is Map && semTam.isNotEmpty) {
-        return Map<String, int>.from(semTam.map((key, value) =>
-            MapEntry(key.toString(), asNum(value)?.toInt() ?? 0)));
+        return Map<String, int>.from(semTam.map((key, value) => MapEntry(
+            key.toString(), ProdutoVariacaoExtra.somarCelula(value))));
       }
     }
     if (widget.variacoes != null && _tamanhoSelecionado != null) {
       final mapaTamanho = widget.variacoes![_tamanhoSelecionado];
       if (mapaTamanho is Map) {
         return Map<String, int>.from(mapaTamanho.map((key, value) =>
-            MapEntry(key.toString(), asNum(value)?.toInt() ?? 0)));
+            MapEntry(key.toString(), ProdutoVariacaoExtra.somarCelula(value))));
       }
     }
     return widget.estoquePorCor;
   }
 
+  bool get _temEixoExtraNaCor {
+    if (widget.variacoes == null || _corSelecionada == null) return false;
+    final tamKey = _tamanhoSelecionado ?? '';
+    Map? mapaTam;
+    if (tamKey.isEmpty || tamKey == 'sem-tamanho') {
+      mapaTam = widget.variacoes!['sem-tamanho'] as Map?;
+    } else {
+      mapaTam = widget.variacoes![tamKey] as Map?;
+    }
+    if (mapaTam == null) return false;
+    final cell = mapaTam[_corSelecionada!];
+    return ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell);
+  }
+
+  List<String> get _opcoesExtra {
+    if (widget.variacoes == null || _corSelecionada == null) {
+      return const [];
+    }
+    final tam = (_tamanhoSelecionado ?? '').trim();
+    return ProdutoVariacaoExtra.opcoesExtraPara(
+      widget.variacoes,
+      tam,
+      _corSelecionada!,
+    );
+  }
+
+  String get _labelEixoExtra => ProdutoVariacaoExtra.labelExtraParaProduto(
+        widget.variacoes,
+        widget.variacoesExtraTipo,
+      );
+
   bool get _podeAdicionar {
     if (_hasTamanhos && _tamanhoSelecionado == null) return false;
     if (_hasCores && _corSelecionada == null) return false;
+    if (_temEixoExtraNaCor && (_extraSelecionado == null || _extraSelecionado!.trim().isEmpty)) {
+      return false;
+    }
     return true;
   }
 
@@ -117,7 +213,21 @@ class _CatalogProductSelectionSheetState
     if (_hasCores && _corSelecionada == null) {
       return 'Selecione a cor';
     }
+    if (_temEixoExtraNaCor &&
+        (_extraSelecionado == null || _extraSelecionado!.trim().isEmpty)) {
+      return 'Selecione $_labelEixoExtra';
+    }
     return 'Adicionar ao carrinho';
+  }
+
+  String _extraTipoParaOpcao(String valor) {
+    final v = widget.variacoesExtraTipo;
+    if (v == null) return '';
+    final tam = (_tamanhoSelecionado ?? '').trim();
+    final chaveT = tam.isEmpty ? 'sem-tamanho' : tam;
+    final cor = _corSelecionada ?? '';
+    final corKey = cor.trim().isEmpty ? 'sem-cor' : cor;
+    return ProdutoVariacaoExtra.tipoParaCelula(v, chaveT, corKey, valor);
   }
 
   @override
@@ -336,12 +446,23 @@ class _CatalogProductSelectionSheetState
 
                         return InkWell(
                           onTap: hasStock
-                              ? () => setState(() {
+                              ? () {
+                                  setState(() {
                                     _tamanhoSelecionado = tamanho;
                                     if (widget.variacoes != null) {
                                       _corSelecionada = null;
+                                      _extraSelecionado = null;
                                     }
-                                  })
+                                  });
+                                  if (widget.variacoes != null) {
+                                    widget.onCatalogVariacaoExtraChanged
+                                        ?.call(null);
+                                    final s = widget.initialExtraValor?.trim();
+                                    _pendingSeedExtra =
+                                        (s != null && s.isNotEmpty) ? s : null;
+                                    _scheduleTryConsumeSeedExtra();
+                                  }
+                                }
                               : null,
                           borderRadius: BorderRadius.circular(10),
                           child: AnimatedContainer(
@@ -533,7 +654,18 @@ class _CatalogProductSelectionSheetState
 
                           return InkWell(
                             onTap: hasStock
-                                ? () => setState(() => _corSelecionada = cor)
+                                ? () {
+                                    setState(() {
+                                      _corSelecionada = cor;
+                                      _extraSelecionado = null;
+                                    });
+                                    widget.onCatalogVariacaoExtraChanged
+                                        ?.call(null);
+                                    final s = widget.initialExtraValor?.trim();
+                                    _pendingSeedExtra =
+                                        (s != null && s.isNotEmpty) ? s : null;
+                                    _scheduleTryConsumeSeedExtra();
+                                  }
                                 : null,
                             borderRadius: BorderRadius.circular(10),
                             child: AnimatedContainer(
@@ -668,6 +800,92 @@ class _CatalogProductSelectionSheetState
                         }).toList(),
                       ),
                   ],
+                  if (_opcoesExtra.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.category_outlined,
+                          size: 20,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _labelEixoExtra,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (_extraSelecionado != null &&
+                            _extraSelecionado!.trim().isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary
+                                  .withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _extraSelecionado!,
+                              style: TextStyle(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: _opcoesExtra.map((op) {
+                        final isSelected = _extraSelecionado == op;
+                        return InkWell(
+                          onTap: () {
+                            setState(() => _extraSelecionado = op);
+                            widget.onCatalogVariacaoExtraChanged?.call(op);
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? theme.colorScheme.primary
+                                  : Colors.white.withValues(alpha: 0.05),
+                              border: Border.all(
+                                color: isSelected
+                                    ? theme.colorScheme.primary
+                                    : Colors.white.withValues(alpha: 0.2),
+                                width: isSelected ? 2 : 1,
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              op,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: isSelected
+                                    ? Colors.white
+                                    : theme.textTheme.bodyLarge?.color,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
                   const SizedBox(height: 28),
                   if (_tamanhoSelecionado != null ||
                       _corSelecionada != null)
@@ -698,7 +916,14 @@ class _CatalogProductSelectionSheetState
                                   'Tamanho: $_tamanhoSelecionado',
                                 if (_corSelecionada != null)
                                   'Cor: $_corSelecionada',
-                              ].join(' | '),
+                                if (_extraSelecionado != null &&
+                                    _extraSelecionado!.trim().isNotEmpty)
+                                  ProdutoVariacaoExtra.textoResumoExtra(
+                                    extraTipo: _extraTipoParaOpcao(
+                                        _extraSelecionado!),
+                                    extraValor: _extraSelecionado!,
+                                  ),
+                              ].where((s) => s.isNotEmpty).join(' | '),
                               style: TextStyle(
                                 color: theme.colorScheme.primary,
                                 fontWeight: FontWeight.w600,
@@ -726,8 +951,19 @@ class _CatalogProductSelectionSheetState
                             .withValues(alpha:0.4),
                       ),
                       onPressed: _podeAdicionar
-                          ? () => widget.onAddToCart(
-                              _tamanhoSelecionado, _corSelecionada, _precoAtual)
+                          ? () {
+                              final ex = (_extraSelecionado ?? '').trim();
+                              final tipo = ex.isNotEmpty
+                                  ? _extraTipoParaOpcao(ex)
+                                  : '';
+                              widget.onAddToCart(
+                                _tamanhoSelecionado,
+                                _corSelecionada,
+                                _precoAtual,
+                                ex,
+                                tipo,
+                              );
+                            }
                           : null,
                       icon: Icon(
                         _podeAdicionar

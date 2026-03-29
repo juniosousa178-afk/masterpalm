@@ -51,6 +51,8 @@ class PublicCatalogProductCard extends StatelessWidget {
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
   final bool minimalLayout;
   final String productCardSize;
+  final String? catalogInitialExtraValor;
+  final void Function(String? value)? onCatalogVariacaoExtraChanged;
 
   const PublicCatalogProductCard({
     super.key,
@@ -79,6 +81,8 @@ class PublicCatalogProductCard extends StatelessWidget {
     this.catalogShareUrl,
     this.minimalLayout = false,
     this.productCardSize = CatalogProductCardSize.medium,
+    this.catalogInitialExtraValor,
+    this.onCatalogVariacaoExtraChanged,
   });
 
   @override
@@ -144,6 +148,10 @@ class PublicCatalogProductCard extends StatelessWidget {
               asMapDeep(p['variacoes']).isNotEmpty)
           ? asMapDeep(p['variacoes'])
           : null,
+      variacoesExtraTipo: (p['variacoesExtraTipo'] != null &&
+              asMapDeep(p['variacoesExtraTipo']).isNotEmpty)
+          ? asMapDeep(p['variacoesExtraTipo'])
+          : null,
       onAdd: onAdd,
       onMinimalSilentAddFeedback: onMinimalSilentAddFeedback,
       borderRadius: cardBorderRadius,
@@ -174,6 +182,8 @@ class PublicCatalogProductCard extends StatelessWidget {
       todosProdutosForCombo: ehCombo ? (todosProdutos ?? []) : null,
       minimalLayout: minimalLayout,
       productCardSize: productCardSize,
+      initialCatalogExtraValor: catalogInitialExtraValor,
+      onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
     );
   }
 }

@@ -28,6 +28,8 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
   final void Function(String prodUrlValue)? onProductUrlFocus;
   final VoidCallback? onProductUrlBlur;
   final String productCardSize;
+  final String? catalogInitialExtraValor;
+  final void Function(String? value)? onCatalogVariacaoExtraChanged;
 
   const CatalogMinimalBestSellersSection({
     super.key,
@@ -49,6 +51,8 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
     this.onProductUrlFocus,
     this.onProductUrlBlur,
     this.productCardSize = CatalogProductCardSize.medium,
+    this.catalogInitialExtraValor,
+    this.onCatalogVariacaoExtraChanged,
   });
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
@@ -82,6 +86,8 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
           politicaFrete: politicaFrete,
           prazoEntregaTexto: prazoEntregaTexto,
           todosProdutos: todosProdutos,
+          initialCatalogExtraValor: catalogInitialExtraValor,
+          onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
         ),
       ),
     )

@@ -250,6 +250,8 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       'estoquePorCor': pdt.temVariacaoSoloCor ? pdt.estoquePorCor : null,
       'cores': pdt.cores,
       'variacoes': pdt.variacoes,
+      if (pdt.variacoesExtraTipo != null && pdt.variacoesExtraTipo!.isNotEmpty)
+        'variacoesExtraTipo': pdt.variacoesExtraTipo,
       if (pdt.precoPorTamanho != null && pdt.precoPorTamanho!.isNotEmpty)
         'precoPorTamanho': pdt.precoPorTamanho,
       'tipoProduto': pdt.tipoProduto,

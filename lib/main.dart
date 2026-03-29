@@ -2141,6 +2141,7 @@ class MyApp extends StatelessWidget {
                         catalogSanitizeProdQuery(Uri.base.queryParameters['prod']);
                     final tam = Uri.base.queryParameters['tam']?.trim();
                     final cor = Uri.base.queryParameters['cor']?.trim();
+                    final xv = catalogSanitizeXvQuery(Uri.base.queryParameters['xv']);
                     final cat = Uri.base.queryParameters['cat']?.trim();
                     final sub = Uri.base.queryParameters['sub']?.trim();
                     final ord = Uri.base.queryParameters['ord']?.trim();
@@ -2159,6 +2160,7 @@ class MyApp extends StatelessWidget {
                         initialProd: prodParam,
                         initialTam: tam?.isNotEmpty == true ? tam : null,
                         initialCor: cor?.isNotEmpty == true ? cor : null,
+                        initialXv: xv,
                         initialCat: cat?.isNotEmpty == true ? cat : null,
                         initialSub: sub?.isNotEmpty == true ? sub : null,
                         initialOrd: ord?.isNotEmpty == true ? ord : null,
@@ -2185,6 +2187,9 @@ class MyApp extends StatelessWidget {
                         : null;
                     final tam = kIsWeb ? (Uri.base.queryParameters['tam']?.trim()) : null;
                     final cor = kIsWeb ? (Uri.base.queryParameters['cor']?.trim()) : null;
+                    final xv = kIsWeb
+                        ? catalogSanitizeXvQuery(Uri.base.queryParameters['xv'])
+                        : null;
                     final cat = kIsWeb ? (Uri.base.queryParameters['cat']?.trim()) : null;
                     final sub = kIsWeb ? (Uri.base.queryParameters['sub']?.trim()) : null;
                     final ord = kIsWeb ? (Uri.base.queryParameters['ord']?.trim()) : null;
@@ -2205,6 +2210,7 @@ class MyApp extends StatelessWidget {
                         initialProd: prodParam,
                         initialTam: tam?.isNotEmpty == true ? tam : null,
                         initialCor: cor?.isNotEmpty == true ? cor : null,
+                        initialXv: xv,
                         initialCat: cat?.isNotEmpty == true ? cat : null,
                         initialSub: sub?.isNotEmpty == true ? sub : null,
                         initialOrd: ord?.isNotEmpty == true ? ord : null,

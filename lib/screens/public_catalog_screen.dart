@@ -101,6 +101,9 @@ class PublicCatalogScreen extends StatefulWidget {
   /// ✅ Filtro de variação na URL (?cor=)
   final String? initialCor;
 
+  /// ✅ Filtro de variação extra na URL (`xv` = [extraValor])
+  final String? initialXv;
+
   /// ✅ Categoria / subcategoria / ordenação / preço na URL (?cat= & ?sub= & ?ord= & ?pmin= & ?pmax=)
   final String? initialCat;
   final String? initialSub;
@@ -126,6 +129,7 @@ class PublicCatalogScreen extends StatefulWidget {
     this.initialProd,
     this.initialTam,
     this.initialCor,
+    this.initialXv,
     this.initialCat,
     this.initialSub,
     this.initialOrd,
@@ -354,6 +358,10 @@ List<Map<String, dynamic>> _processDocsToProducts(
         'estoquePorTamanho': estoquePorTamanho,
         'estoquePorCor': estoquePorCor,
         'variacoes': variacoes,
+        if (m['variacoesExtraTipo'] != null &&
+            m['variacoesExtraTipo'] is Map &&
+            (m['variacoesExtraTipo'] as Map).isNotEmpty)
+          'variacoesExtraTipo': asMapDeep(m['variacoesExtraTipo']),
         'isNovo': isNovo,
         'dataCriacao': dataCriacao,
         'divideSemJuros': m['divideSemJuros'] == true,
@@ -492,6 +500,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _apenasEmEstoque = false;
   String? _filtroVariacaoTamanho;
   String? _filtroVariacaoCor;
+  /// Filtro opcional por valor de personalização (ex.: estampa, letra).
+  String? _filtroVariacaoExtra;
 
   /// Valores vindos da URL aguardando produtos/opções para validação.
   String? _pendingUrlCat;
@@ -501,6 +511,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   String? _pendingUrlPmax;
   String? _pendingUrlTam;
   String? _pendingUrlCor;
+  String? _pendingUrlXv;
   /// Página 1-based vinda da URL, aplicada após conhecer [totalPaginas].
   int? _pendingUrlCatalogPage;
   int _catalogTotalPaginasForUrl = 1;
@@ -663,6 +674,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     String? pmax;
     String? t;
     String? c;
+    String? xv;
     String? qFromUri;
     int? pageFromUri;
     String? prodFromUri;
@@ -677,6 +689,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final qc = qp['cor']?.trim();
       if (qt != null && qt.isNotEmpty) t = qt;
       if (qc != null && qc.isNotEmpty) c = qc;
+      final qxv = catalogSanitizeXvQuery(qp['xv']);
+      if (qxv != null && qxv.isNotEmpty) xv = qxv;
       qFromUri = catalogSanitizeSearchQuery(qp['q']);
       final pageParam = qp['page']?.trim();
       if (pageParam != null && pageParam.isNotEmpty) {
@@ -707,11 +721,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
     final wt = widget.initialTam?.trim();
     final wc = widget.initialCor?.trim();
+    final wxv = catalogSanitizeXvQuery(widget.initialXv);
     if (t == null || t.isEmpty) {
       if (wt != null && wt.isNotEmpty) t = wt;
     }
     if (c == null || c.isEmpty) {
       if (wc != null && wc.isNotEmpty) c = wc;
+    }
+    if (xv == null || xv.isEmpty) {
+      if (wxv != null && wxv.isNotEmpty) xv = wxv;
     }
     void nz(String? s, void Function(String) set) {
       if (s != null && s.isNotEmpty) set(s);
@@ -728,6 +746,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     nz(pmax, (v) => _pendingUrlPmax = v);
     _pendingUrlTam = (t != null && t.isNotEmpty) ? t : null;
     _pendingUrlCor = (c != null && c.isNotEmpty) ? c : null;
+    _pendingUrlXv = (xv != null && xv.isNotEmpty) ? xv : null;
     _pendingUrlCatalogPage = pageFromUri;
     if (_pendingUrlCatalogPage == null &&
         widget.initialCatalogPage != null &&
@@ -828,6 +847,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       pmax: catalogFormatPrecoQuery(_precoMax),
       tam: _filtroVariacaoTamanho,
       cor: _filtroVariacaoCor,
+      xv: catalogSanitizeXvQuery(_filtroVariacaoExtra),
       q: catalogSanitizeSearchQuery(_searchController.text),
       page: catalogFormatPaginationPageQuery(
         zeroBasedPage: _currentPageNotifier.value,
@@ -855,6 +875,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required List<Map<String, dynamic>> produtos,
     required List<String> tamanhos,
     required List<String> cores,
+    required List<String> extras,
     required int totalPaginas,
   }) {
     if (!mounted) {
@@ -868,6 +889,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     var pmax = _precoMax;
     var tam = _filtroVariacaoTamanho;
     var cor = _filtroVariacaoCor;
+    var xv = _filtroVariacaoExtra;
 
     var changed = false;
     var mustSyncUri = false;
@@ -1077,6 +1099,59 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       }
     }
 
+    final pXv = _pendingUrlXv;
+    _pendingUrlXv = null;
+    if (pXv != null) {
+      final cx = _canonicalVariationInOptions(pXv, extras);
+      if (cx != null) {
+        if (xv != cx) {
+          xv = cx;
+          changed = true;
+        }
+      } else {
+        mustSyncUri = true;
+        if (xv != null) {
+          xv = null;
+          changed = true;
+        }
+      }
+    }
+
+    if (xv != null) {
+      final cx = _canonicalVariationInOptions(xv, extras);
+      if (cx == null) {
+        xv = null;
+        changed = true;
+        mustSyncUri = true;
+      } else if (cx != xv) {
+        xv = cx;
+        changed = true;
+        mustSyncUri = true;
+      }
+    }
+
+    if (xv != null && kIsWeb && _catalogUrlProd != null) {
+      Map<String, dynamic>? focused;
+      final pu = _catalogUrlProd!.trim();
+      if (pu.isNotEmpty) {
+        for (final p in produtos) {
+          if (_matchesProdutoDeepLink(p, pu)) {
+            focused = p;
+            break;
+          }
+        }
+      }
+      if (focused != null &&
+          !CatalogVariationFilter.produtoMatches(
+            focused,
+            variacaoExtra: xv,
+          )) {
+        xv = null;
+        changed = true;
+        mustSyncUri = true;
+      }
+    }
+
     final tp = totalPaginas < 1 ? 1 : totalPaginas;
     final maxIdx = tp - 1;
     var pageIdx = _currentPageNotifier.value;
@@ -1122,6 +1197,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _precoMax = pmax;
         _filtroVariacaoTamanho = tam;
         _filtroVariacaoCor = cor;
+        _filtroVariacaoExtra = xv;
       });
     }
     if (changed || mustSyncUri || pageAdjusted) {
@@ -1132,8 +1208,19 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   void _clearFiltrosVariacao() {
     _filtroVariacaoTamanho = null;
     _filtroVariacaoCor = null;
+    _filtroVariacaoExtra = null;
     _pendingUrlTam = null;
     _pendingUrlCor = null;
+    _pendingUrlXv = null;
+  }
+
+  void _onCatalogVariacaoExtraFromProductUi(String? v) {
+    if (!mounted) return;
+    setState(() {
+      _filtroVariacaoExtra = v;
+      _currentPageNotifier.value = 0;
+    });
+    _syncCatalogQueryToBrowserUri();
   }
 
   /// Faixa de preço vs [priceMin]/[priceMax] do produto (variações) ou preço único.
@@ -1426,6 +1513,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               variacoes: (p['variacoes'] != null && asMapDeep(p['variacoes']).isNotEmpty)
                   ? asMapDeep(p['variacoes'])
                   : null,
+              variacoesExtraTipo: (p['variacoesExtraTipo'] != null &&
+                      asMapDeep(p['variacoesExtraTipo']).isNotEmpty)
+                  ? asMapDeep(p['variacoesExtraTipo'])
+                  : null,
               prazoEntrega: null,
               percentualDescontoPix: safeDouble(p['percentualDescontoPix']),
               divideSemJuros: safeBool(p['divideSemJuros']),
@@ -1437,6 +1528,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 prod: safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : productId,
               ),
               lojaId: lojaId,
+              initialCatalogExtraValor: _filtroVariacaoExtra,
+              onCatalogVariacaoExtraChanged: _onCatalogVariacaoExtraFromProductUi,
               onAdd: (it) => _addToCart(it, produtos),
               onAbrirCarrinho: null,
             ),
@@ -2080,12 +2173,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final id = '${item['id'] ?? item['produtosId'] ?? ''}';
     final tam = (item['tamanho'] ?? '').toString().trim();
     final cor = (item['cor'] ?? '').toString().trim();
+    final ex =
+        (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
 
     if (!isComboLine && id.isNotEmpty) {
       final p = CatalogEstoqueHelper.findProductInList(catalogProducts, id);
       if (p != null) {
         final avail =
-            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor);
+            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, ex);
         final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
         var other = 0;
         for (var i = 0; i < _cart.length; i++) {
@@ -2124,6 +2219,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final id = '${item['id'] ?? item['produtosId'] ?? ''}';
     final tam = (item['tamanho'] ?? '').toString().trim();
     final cor = (item['cor'] ?? '').toString().trim();
+    final ex =
+        (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
     final addQty = CatalogEstoqueHelper.parseCartItemQuantidade(item['quantidade']);
     final comboRaw = item['itensComboComSelecao'];
     final isComboLine =
@@ -2133,7 +2230,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final p = CatalogEstoqueHelper.findProductInList(catalogProducts, id);
       if (p != null) {
         final avail =
-            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor);
+            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, ex);
         final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
         var already = 0;
         for (final e in _cart) {
@@ -5390,6 +5487,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       final variacaoCoresOpcoes =
                                           CatalogVariationFilter.coletarCores(
                                               produtosParaOpcoesVariacao);
+                                      final variacaoExtrasOpcoes =
+                                          CatalogVariationFilter.coletarExtras(
+                                              produtosParaOpcoesVariacao);
 
                                       // 👉 aplica filtro da busca + categoria + subcategoria
                                       final listaFiltrada = produtos.where((p) {
@@ -5417,6 +5517,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           p,
                                           tamanho: _filtroVariacaoTamanho,
                                           cor: _filtroVariacaoCor,
+                                          variacaoExtra: _filtroVariacaoExtra,
                                         );
                                         return matchText &&
                                             matchCatSub &&
@@ -5519,7 +5620,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             _categoryAliasesSignature(
                                                 categoryAliasesByName);
                                         final sig =
-                                            '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$_selectedCategory|$_selectedSubcategory|$_ordenacaoProdutos|${_precoMin}_${_precoMax}|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$totalPaginas';
+                                            '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$_selectedCategory|$_selectedSubcategory|$_ordenacaoProdutos|${_precoMin}_${_precoMax}|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|${variacaoExtrasOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$_filtroVariacaoExtra|$totalPaginas';
                                         if (sig != _lastCatalogSanitizeSig) {
                                           _lastCatalogSanitizeSig = sig;
                                           final gen = ++_catalogSanitizeGen;
@@ -5527,6 +5628,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               variacaoTamanhosOpcoes);
                                           final cList = List<String>.from(
                                               variacaoCoresOpcoes);
+                                          final xList = List<String>.from(
+                                              variacaoExtrasOpcoes);
                                           final catList =
                                               List<String>.from(categoriasMenu);
                                           final aliasCopy =
@@ -5555,6 +5658,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               produtos: prodCopy,
                                               tamanhos: tList,
                                               cores: cList,
+                                              extras: xList,
                                               totalPaginas: tpSan,
                                             );
                                           });
@@ -5845,10 +5949,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     variacaoTamanhosOpcoes,
                                                 variacaoCores:
                                                     variacaoCoresOpcoes,
+                                                variacaoExtras:
+                                                    variacaoExtrasOpcoes,
                                                 filtroVariacaoTamanho:
                                                     _filtroVariacaoTamanho,
                                                 filtroVariacaoCor:
                                                     _filtroVariacaoCor,
+                                                filtroVariacaoExtra:
+                                                    _filtroVariacaoExtra,
                                                 onVariacaoTamanhoChanged: (v) {
                                                   setState(() {
                                                     _filtroVariacaoTamanho = v;
@@ -5860,6 +5968,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 onVariacaoCorChanged: (v) {
                                                   setState(() {
                                                     _filtroVariacaoCor = v;
+                                                    _currentPageNotifier.value =
+                                                        0;
+                                                  });
+                                                  _syncCatalogQueryToBrowserUri();
+                                                },
+                                                onVariacaoExtraChanged: (v) {
+                                                  setState(() {
+                                                    _filtroVariacaoExtra = v;
                                                     _currentPageNotifier.value =
                                                         0;
                                                   });
@@ -5981,11 +6097,19 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 nomeLoja: lojaNome,
                                                 contatoWhatsapp: whatsappVendedor,
                                                 politicaFrete: null,
+                                                catalogInitialExtraValor:
+                                                    _filtroVariacaoExtra,
+                                                onCatalogVariacaoExtraChanged:
+                                                    _onCatalogVariacaoExtraFromProductUi,
                                               ),
                                             buildCatalogProductsGridSliver(
                                               products: listaPaginated,
                                               todosProdutosParaCombo: produtos,
                                               lojaId: lojaId,
+                                              catalogInitialExtraValor:
+                                                  _filtroVariacaoExtra,
+                                              onCatalogVariacaoExtraChanged:
+                                                  _onCatalogVariacaoExtraFromProductUi,
                                               isDesktop: isDesktopBody,
                                               desktopCols: gridDesktopCols,
                                               mobileCols: gridMobileCols,

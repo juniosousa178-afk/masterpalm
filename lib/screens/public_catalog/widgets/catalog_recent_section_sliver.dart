@@ -39,6 +39,8 @@ Widget buildCatalogRecentSectionSliver({
   String? contatoWhatsapp,
   String? politicaFrete,
   String productCardSize = CatalogProductCardSize.medium,
+  String? catalogInitialExtraValor,
+  void Function(String? value)? onCatalogVariacaoExtraChanged,
 }) {
   if (recentProducts.isEmpty) {
     return const SliverToBoxAdapter(child: SizedBox.shrink());
@@ -64,6 +66,8 @@ Widget buildCatalogRecentSectionSliver({
       onProductViewed: onProductViewed,
       onProductUrlFocus: onProductUrlFocus,
       onProductUrlBlur: onProductUrlBlur,
+      catalogInitialExtraValor: catalogInitialExtraValor,
+      onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
     ),
   );
 }

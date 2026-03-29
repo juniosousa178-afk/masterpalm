@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:vector_math/vector_math_64.dart' show Vector3;
 
+import '../../../core/produto_variacao_extra.dart';
 import '../../../services/catalog_share_service.dart';
 import '../../../utils/platform_adaptive.dart';
 import '../catalog_product_card_size.dart';
@@ -40,6 +41,7 @@ class CatalogProductCard extends StatefulWidget {
   final Map<String, int>? estoquePorTamanho;
   final Map<String, int>? estoquePorCor;
   final Map<String, dynamic>? variacoes;
+  final Map<String, dynamic>? variacoesExtraTipo;
   final bool Function(Map<String, dynamic>) onAdd;
   final double borderRadius;
   final bool showShadow;
@@ -82,6 +84,8 @@ class CatalogProductCard extends StatefulWidget {
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
   final bool minimalLayout;
   final String productCardSize;
+  final String? initialCatalogExtraValor;
+  final void Function(String? value)? onCatalogVariacaoExtraChanged;
 
   /// Construtor não-const para conversão defensiva num→double/int (evita TypeError em release).
   CatalogProductCard({
@@ -107,6 +111,7 @@ class CatalogProductCard extends StatefulWidget {
     this.estoquePorTamanho,
     this.estoquePorCor,
     this.variacoes,
+    this.variacoesExtraTipo,
     num borderRadius = 18.0,
     this.showShadow = true,
     this.catalogShareUrl,
@@ -135,6 +140,8 @@ class CatalogProductCard extends StatefulWidget {
     required this.lojaId,
     this.minimalLayout = false,
     this.productCardSize = CatalogProductCardSize.medium,
+    this.initialCatalogExtraValor,
+    this.onCatalogVariacaoExtraChanged,
   })  : price = price.toDouble(),
         peso = peso.toDouble(),
         precoOriginal = precoOriginal?.toDouble(),
@@ -315,6 +322,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             estoquePorTamanho: widget.estoquePorTamanho,
             estoquePorCor: widget.estoquePorCor,
             variacoes: widget.variacoes,
+            variacoesExtraTipo: widget.variacoesExtraTipo,
             prazoEntrega: widget.prazoEntrega,
             percentualDescontoPix: widget.percentualDescontoPix,
             divideSemJuros: widget.divideSemJuros,
@@ -327,6 +335,9 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             todosProdutosForCombo: widget.todosProdutosForCombo,
             onAdd: widget.onAdd,
             onAbrirCarrinho: widget.onAbrirCarrinho,
+            initialCatalogExtraValor: widget.initialCatalogExtraValor,
+            onCatalogVariacaoExtraChanged:
+                widget.onCatalogVariacaoExtraChanged,
           ),
         ),
       )
@@ -438,12 +449,22 @@ insetPadding:
         estoquePorTamanho: widget.estoquePorTamanho ?? {},
         estoquePorCor: widget.estoquePorCor ?? {},
         variacoes: widget.variacoes,
+        variacoesExtraTipo: widget.variacoesExtraTipo,
+        initialExtraValor: widget.initialCatalogExtraValor,
+        onCatalogVariacaoExtraChanged: widget.onCatalogVariacaoExtraChanged,
         percentualDescontoPix: widget.percentualDescontoPix,
         mostrarQuantidadeNoCatalogo: widget.mostrarQuantidadeNoCatalogo,
-        onAddToCart: (tamanho, cor, preco) {
+        onAddToCart: (tamanho, cor, preco, extraValor, extraTipo) {
           final img = widget.imagens.isNotEmpty
               ? widget.imagens.first
               : widget.imageUrl;
+          final ex = extraValor.trim();
+          final resumoExtra = ex.isNotEmpty
+              ? ProdutoVariacaoExtra.textoResumoExtra(
+                  extraTipo: extraTipo,
+                  extraValor: ex,
+                )
+              : '';
 
           final itemParaCarrinho = {
             'produtosId': widget.id,
@@ -461,6 +482,9 @@ insetPadding:
             'tipoEmbalagem': widget.tipoEmbalagem,
             'tamanho': tamanho ?? '',
             'cor': cor ?? '',
+            if (ex.isNotEmpty) 'extraValor': ex,
+            if (extraTipo.trim().isNotEmpty) 'extraTipo': extraTipo.trim(),
+            if (resumoExtra.isNotEmpty) 'variacaoExtraResumo': resumoExtra,
           };
 
           final added = widget.onAdd(itemParaCarrinho);

@@ -156,12 +156,20 @@ class FullSyncService {
             final existente = candidatos.isEmpty ? null : candidatos.first;
 
             if (existente != null) {
-              // Atualizar existente
+              // Atualizar existente (inclui custo/peso — antes ficavam presos no Hive)
               existente
                 ..nome = produto.nome
                 ..descricao = produto.descricao
+                ..custoReal = produto.custoReal
                 ..precoFinal = produto.precoFinal
+                ..precoUnitario = produto.precoUnitario
+                ..precoSugerido = produto.precoSugerido
+                ..frete = produto.frete
+                ..gastosFixos = produto.gastosFixos
+                ..gastosVariaveis = produto.gastosVariaveis
                 ..quantidade = produto.quantidade
+                ..peso = produto.peso
+                ..tipoEmbalagem = produto.tipoEmbalagem
                 ..categoria = produto.categoria
                 ..subcategoria = produto.subcategoria
                 ..imagens = produto.imagens
@@ -170,6 +178,12 @@ class FullSyncService {
                 ..cores = produto.cores
                 ..variacoes = produto.variacoes
                 ..publicadoNoCatalogo = produto.publicadoNoCatalogo
+                ..divideSemJuros = produto.divideSemJuros
+                ..percentualDescontoPix = produto.percentualDescontoPix
+                ..maxParcelasSemJuros = produto.maxParcelasSemJuros
+                ..slug = produto.slug.isNotEmpty ? produto.slug : existente.slug
+                ..custoEditadoNoCadastro = produto.custoEditadoNoCadastro
+                ..updatedAt = produto.updatedAt
                 ..idFirebase = doc.id;
               await existente.save();
             } else {
@@ -286,6 +300,7 @@ class FullSyncService {
   static Produto _produtoFromFirestore(Map<String, dynamic> data, String docId) {
     final preco = (data['precoFinal'] as num?)?.toDouble() ??
                   (data['preco'] as num?)?.toDouble() ?? 0.0;
+    final uAt = data['updatedAt'];
     return Produto(
       nome: data['nome']?.toString() ?? '',
       descricao: data['descricao']?.toString() ?? '',
@@ -317,7 +332,12 @@ class FullSyncService {
       slug: data['slug']?.toString() ?? docId,
       lojaId: data['lojaId']?.toString() ?? '',
       idFirebase: docId,
-      dataEntrada: DateTime.now(),
+      dataEntrada: data['dataEntrada'] is Timestamp
+          ? (data['dataEntrada'] as Timestamp).toDate()
+          : DateTime.now(),
+      peso: (data['peso'] as num?)?.toDouble() ?? 0.0,
+      tipoEmbalagem: (data['tipoEmbalagem'] ?? 'padrao').toString(),
+      updatedAt: uAt is Timestamp ? uAt.toDate() : null,
       custoEditadoNoCadastro:
           (data['custoEditadoNoCadastro'] as bool?) ?? false,
     );

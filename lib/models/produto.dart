@@ -1,6 +1,8 @@
 // lib/models/produto.dart
 import 'package:hive/hive.dart';
 
+import '../core/produto_variacao_extra.dart';
+
 part 'produto.g.dart';
 
 @HiveType(typeId: 2)
@@ -108,7 +110,11 @@ class Produto extends HiveObject {
   // VARIAÇÕES (TAMANHO + COR)
   // ==============================
   @HiveField(30)
-  Map<String, dynamic>? variacoes; // Estrutura: {tamanho: {cor: quantidade}}
+  Map<String, dynamic>? variacoes; // {tamanho: {cor: qtd | {extraValor: qtd}}}
+
+  /// Rótulos do eixo extra: {tamanho: {cor: {extraValor: extraTipo}}}.
+  @HiveField(43)
+  Map<String, dynamic>? variacoesExtraTipo;
 
   // ==============================
   // PARCELAMENTO
@@ -192,6 +198,7 @@ class Produto extends HiveObject {
     this.tipoEmbalagem = 'padrao',
     this.marketplaces = const [],
     this.variacoes,
+    this.variacoesExtraTipo,
     this.divideSemJuros = false,
     this.percentualDescontoPix = 0.0,
     this.maxParcelasSemJuros = 12,
@@ -414,30 +421,36 @@ class Produto extends HiveObject {
     if (!usaVariacoes) return {};
     final semTamanho = variacoes!['sem-tamanho'];
     if (semTamanho == null || semTamanho is! Map) return {};
-    return semTamanho.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0));
+    return semTamanho.map(
+      (k, v) => MapEntry(k.toString(), ProdutoVariacaoExtra.somarCelula(v)),
+    );
   }
 
   /// Obtém o estoque de uma variação específica (tamanho + cor)
   /// Para só cor: tamanho vazio, cor preenchida -> variacoes['sem-tamanho'][cor]
   /// Para só tamanho: tamanho preenchido, cor vazia/sem-cor -> variacoes[tamanho]['sem-cor']
   /// Para ambos: variacoes[tamanho][cor]
-  int obterEstoqueVariacao(String tamanho, String cor) {
+  /// [variacaoExtra]: quando a célula é mapa de extras, filtra pela chave; vazio = legado ou chave ''.
+  int obterEstoqueVariacao(String tamanho, String cor, [String variacaoExtra = '']) {
     if (!usaVariacoes) return 0;
 
     final tam = tamanho.trim();
     final corTrim = cor.trim();
+    final ex = variacaoExtra.trim();
 
     if (tam.isEmpty && corTrim.isNotEmpty) {
       final mapaCor = variacoes!['sem-tamanho'];
       if (mapaCor == null || mapaCor is! Map) return 0;
-      return (mapaCor[corTrim] as num?)?.toInt() ?? 0;
+      final cell = mapaCor[corTrim];
+      return ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
     }
 
     if (tam.isNotEmpty) {
       final mapaTamanho = variacoes![tam];
       if (mapaTamanho == null || mapaTamanho is! Map) return 0;
       final corKey = corTrim.isEmpty ? 'sem-cor' : corTrim;
-      return (mapaTamanho[corKey] as num?)?.toInt() ?? 0;
+      final cell = mapaTamanho[corKey];
+      return ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
     }
 
     return 0;
@@ -453,7 +466,7 @@ class Produto extends HiveObject {
       final semTam = variacoes!['sem-tamanho'];
       if (semTam is! Map) return [];
       return semTam.keys
-          .where((c) => ((semTam[c] as num?)?.toInt() ?? 0) > 0)
+          .where((c) => ProdutoVariacaoExtra.somarCelula(semTam[c]) > 0)
           .cast<String>()
           .toList();
     }
@@ -462,33 +475,37 @@ class Produto extends HiveObject {
     if (mapaTamanho == null || mapaTamanho is! Map) return [];
 
     return mapaTamanho.keys
-        .where((c) => ((mapaTamanho[c] as num?)?.toInt() ?? 0) > 0)
+        .where((c) => ProdutoVariacaoExtra.somarCelula(mapaTamanho[c]) > 0)
         .cast<String>()
         .toList();
   }
 
   /// Debita estoque de uma variação específica
-  void debitarEstoqueVariacao(String tamanho, String cor, int qtd) {
+  void debitarEstoqueVariacao(String tamanho, String cor, int qtd,
+      [String variacaoExtra = '']) {
     if (qtd <= 0) return;
     if (!usaVariacoes) return;
 
     final tam = tamanho.trim();
     final corKey = cor.trim().isEmpty ? 'sem-cor' : cor.trim();
     final chaveTamanho = tam.isEmpty ? 'sem-tamanho' : tam;
+    final ex = variacaoExtra.trim();
 
     final mapa = Map<String, dynamic>.from(variacoes!);
     final mapaInterno = Map<String, dynamic>.from(mapa[chaveTamanho] ?? {});
 
-    final atual = (mapaInterno[corKey] as num?)?.toInt() ?? 0;
-    if (atual < qtd) {
+    final cell = mapaInterno[corKey];
+    final r = ProdutoVariacaoExtra.debitarCelula(cell, ex, qtd);
+    if (!r.ok) {
+      final disp = ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
       throw Exception(
-        'Estoque insuficiente para ${tam.isEmpty ? "cor" : tam}${cor.isEmpty ? "" : " - $cor"}. Em estoque: $atual, venda: $qtd',
+        'Estoque insuficiente para ${tam.isEmpty ? "cor" : tam}${cor.isEmpty ? "" : " - $cor"}. Em estoque: $disp, venda: $qtd',
       );
     }
-
-    mapaInterno[corKey] = atual - qtd;
-    if (mapaInterno[corKey] <= 0) {
+    if (r.newCell == ProdutoVariacaoExtra.removeCorCell) {
       mapaInterno.remove(corKey);
+    } else {
+      mapaInterno[corKey] = r.newCell;
     }
 
     mapa[chaveTamanho] = mapaInterno;
@@ -501,19 +518,21 @@ class Produto extends HiveObject {
   }
 
   /// Devolve estoque de uma variação
-  void devolverEstoqueVariacao(String tamanho, String cor, int qtd) {
+  void devolverEstoqueVariacao(String tamanho, String cor, int qtd,
+      [String variacaoExtra = '']) {
     if (qtd <= 0) return;
     if (!usaVariacoes) return;
 
     final tam = tamanho.trim();
     final corKey = cor.trim().isEmpty ? 'sem-cor' : cor.trim();
     final chaveTamanho = tam.isEmpty ? 'sem-tamanho' : tam;
+    final ex = variacaoExtra.trim();
 
     final mapa = Map<String, dynamic>.from(variacoes!);
     final mapaInterno = Map<String, dynamic>.from(mapa[chaveTamanho] ?? {});
 
-    final atual = (mapaInterno[corKey] as num?)?.toInt() ?? 0;
-    mapaInterno[corKey] = atual + qtd;
+    final cell = mapaInterno[corKey];
+    mapaInterno[corKey] = ProdutoVariacaoExtra.devolverCelula(cell, ex, qtd);
 
     mapa[chaveTamanho] = mapaInterno;
     variacoes = mapa;
@@ -528,7 +547,7 @@ class Produto extends HiveObject {
     for (final mapaTamanho in variacoes!.values) {
       if (mapaTamanho is! Map) continue;
       for (final qtd in mapaTamanho.values) {
-        total += (qtd as num?)?.toInt() ?? 0;
+        total += ProdutoVariacaoExtra.somarCelula(qtd);
       }
     }
     quantidade = total;

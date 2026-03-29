@@ -296,7 +296,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
         final tam = (_selecoes[i]['tamanho'] ?? '').trim();
         final cor = (_selecoes[i]['cor'] ?? '').trim();
         final avail =
-            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor);
+            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, '');
         if (avail < need) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(

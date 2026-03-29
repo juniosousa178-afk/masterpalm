@@ -1,5 +1,6 @@
 // Filtro do catálogo público por tamanho/medida e cor das variações (Firestore → mapa variacoes).
 
+import '../../core/produto_variacao_extra.dart';
 import 'catalog_estoque_helper.dart';
 
 /// Utilitários para filtrar produtos por variação (ex.: anel 16, colar 45 cm, blusa M + cor rosa).
@@ -22,22 +23,49 @@ class CatalogVariationFilter {
     return ca.isNotEmpty && ca == cb;
   }
 
-  static bool _positive(dynamic q) => CatalogEstoqueHelper.parseQtd(q) > 0;
+  static bool _positive(dynamic q) =>
+      ProdutoVariacaoExtra.somarCelula(q) > 0;
+
+  static bool _extraMatchPositive(dynamic cell, String exW) {
+    if (cell is! Map) return false;
+    for (final e in cell.entries) {
+      if (!keysMatch(e.key.toString(), exW)) continue;
+      if (CatalogEstoqueHelper.parseQtd(e.value) > 0) return true;
+    }
+    return false;
+  }
 
   /// Inclui o produto se não houver filtro de variação ou se existir estoque na combinação pedida.
   static bool produtoMatches(
     Map<String, dynamic> p, {
     String? tamanho,
     String? cor,
+    String? variacaoExtra,
   }) {
     final tamW = tamanho?.trim();
     final corW = cor?.trim();
-    if ((tamW == null || tamW.isEmpty) && (corW == null || corW.isEmpty)) {
+    final exW = variacaoExtra?.trim();
+    if ((tamW == null || tamW.isEmpty) &&
+        (corW == null || corW.isEmpty) &&
+        (exW == null || exW.isEmpty)) {
       return true;
     }
 
     final variacoes = p['variacoes'];
     if (variacoes is Map && variacoes.isNotEmpty) {
+      if (exW != null &&
+          exW.isNotEmpty &&
+          (tamW == null || tamW.isEmpty) &&
+          (corW == null || corW.isEmpty)) {
+        for (final cores in variacoes.values) {
+          if (cores is! Map) continue;
+          for (final cell in cores.values) {
+            if (_extraMatchPositive(cell, exW)) return true;
+          }
+        }
+        return false;
+      }
+
       if (tamW != null &&
           tamW.isNotEmpty &&
           corW != null &&
@@ -47,7 +75,13 @@ class CatalogVariationFilter {
           final mapa = e.value;
           if (mapa is! Map) continue;
           for (final ck in mapa.keys) {
-            if (keysMatch(ck.toString(), corW) && _positive(mapa[ck])) {
+            if (!keysMatch(ck.toString(), corW)) continue;
+            final cell = mapa[ck];
+            if (exW != null && exW.isNotEmpty) {
+              if (ProdutoVariacaoExtra.quantidadeNaCelula(cell, exW) > 0) {
+                return true;
+              }
+            } else if (_positive(cell)) {
               return true;
             }
           }
@@ -59,8 +93,12 @@ class CatalogVariationFilter {
           if (!keysMatch(e.key.toString(), tamW)) continue;
           final mapa = e.value;
           if (mapa is Map) {
-            for (final q in mapa.values) {
-              if (_positive(q)) return true;
+            for (final cell in mapa.values) {
+              if (exW != null && exW.isNotEmpty) {
+                if (_extraMatchPositive(cell, exW)) return true;
+              } else if (_positive(cell)) {
+                return true;
+              }
             }
           }
         }
@@ -70,7 +108,11 @@ class CatalogVariationFilter {
         for (final e in variacoes.values) {
           if (e is! Map) continue;
           for (final ck in e.keys) {
-            if (keysMatch(ck.toString(), corW) && _positive(e[ck])) {
+            if (!keysMatch(ck.toString(), corW)) continue;
+            final cell = e[ck];
+            if (exW != null && exW.isNotEmpty) {
+              if (_extraMatchPositive(cell, exW)) return true;
+            } else if (_positive(cell)) {
               return true;
             }
           }
@@ -174,5 +216,10 @@ class CatalogVariationFilter {
     final list = set.toList();
     list.sort((a, b) => norm(a).compareTo(norm(b)));
     return list;
+  }
+
+  /// Valores de personalização (extraValor) entre produtos já filtrados no contexto.
+  static List<String> coletarExtras(List<Map<String, dynamic>> produtos) {
+    return ProdutoVariacaoExtra.coletarExtrasGlobais(produtos);
   }
 }

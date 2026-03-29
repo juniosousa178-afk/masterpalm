@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/produto_variacao_extra.dart';
 import '../../../services/catalog_share_service.dart';
 import '../../../services/ai_loja_service.dart';
 import '../../../services/ia_uso_limite_service.dart';
@@ -46,6 +47,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
   final Map<String, int>? estoquePorTamanho;
   final Map<String, int>? estoquePorCor;
   final Map<String, dynamic>? variacoes;
+  final Map<String, dynamic>? variacoesExtraTipo;
   final String? prazoEntrega;
   final double percentualDescontoPix;
   final bool divideSemJuros;
@@ -61,6 +63,8 @@ class CatalogProductDetailScreen extends StatelessWidget {
   final String? politicaFrete;
   final bool Function(Map<String, dynamic>) onAdd;
   final VoidCallback? onAbrirCarrinho;
+  final String? initialCatalogExtraValor;
+  final void Function(String? value)? onCatalogVariacaoExtraChanged;
 
   const CatalogProductDetailScreen({
     super.key,
@@ -83,6 +87,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
     this.estoquePorTamanho,
     this.estoquePorCor,
     this.variacoes,
+    this.variacoesExtraTipo,
     this.prazoEntrega,
     this.percentualDescontoPix = 0.0,
     this.divideSemJuros = false,
@@ -98,6 +103,8 @@ class CatalogProductDetailScreen extends StatelessWidget {
     this.politicaFrete,
     required this.onAdd,
     this.onAbrirCarrinho,
+    this.initialCatalogExtraValor,
+    this.onCatalogVariacaoExtraChanged,
   });
 
   /// Abre a mesma tela a partir do mapa de produto do catálogo (mesma origem do [PublicCatalogProductCard]).
@@ -112,6 +119,8 @@ class CatalogProductDetailScreen extends StatelessWidget {
     String? politicaFrete,
     String? prazoEntregaTexto,
     List<Map<String, dynamic>>? todosProdutos,
+    String? initialCatalogExtraValor,
+    void Function(String? value)? onCatalogVariacaoExtraChanged,
   }) {
     final estoqueTam = _estoqueMapForDetail(asMap(p['estoquePorTamanho']));
     final estoqueCor = _estoqueMapForDetail(asMap(p['estoquePorCor']));
@@ -169,6 +178,10 @@ class CatalogProductDetailScreen extends StatelessWidget {
       variacoes: (p['variacoes'] != null && asMapDeep(p['variacoes']).isNotEmpty)
           ? asMapDeep(p['variacoes'])
           : null,
+      variacoesExtraTipo: (p['variacoesExtraTipo'] != null &&
+              asMapDeep(p['variacoesExtraTipo']).isNotEmpty)
+          ? asMapDeep(p['variacoesExtraTipo'])
+          : null,
       prazoEntrega: prazoEntregaTexto,
       percentualDescontoPix: safeDouble(p['percentualDescontoPix']),
       divideSemJuros: safeBool(p['divideSemJuros']),
@@ -184,6 +197,8 @@ class CatalogProductDetailScreen extends StatelessWidget {
       politicaFrete: politicaFrete,
       onAdd: onAdd,
       onAbrirCarrinho: onAbrirCarrinho,
+      initialCatalogExtraValor: initialCatalogExtraValor,
+      onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
     );
   }
 
@@ -240,10 +255,20 @@ class CatalogProductDetailScreen extends StatelessWidget {
           estoquePorTamanho: estoquePorTamanho ?? {},
           estoquePorCor: estoquePorCor ?? {},
           variacoes: variacoes,
+          variacoesExtraTipo: variacoesExtraTipo,
+          initialExtraValor: initialCatalogExtraValor,
+          onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
           percentualDescontoPix: percentualDescontoPix,
           mostrarQuantidadeNoCatalogo: false,
-          onAddToCart: (tamanho, cor, preco) {
+          onAddToCart: (tamanho, cor, preco, extraValor, extraTipo) {
             final img = imagens.isNotEmpty ? imagens.first : '';
+            final ex = extraValor.trim();
+            final resumoExtra = ex.isNotEmpty
+                ? ProdutoVariacaoExtra.textoResumoExtra(
+                    extraTipo: extraTipo,
+                    extraValor: ex,
+                  )
+                : '';
             onAdd({
               'produtosId': id,
               'id': id,
@@ -260,6 +285,9 @@ class CatalogProductDetailScreen extends StatelessWidget {
               'tipoEmbalagem': tipoEmbalagem,
               'tamanho': tamanho ?? '',
               'cor': cor ?? '',
+              if (ex.isNotEmpty) 'extraValor': ex,
+              if (extraTipo.trim().isNotEmpty) 'extraTipo': extraTipo.trim(),
+              if (resumoExtra.isNotEmpty) 'variacaoExtraResumo': resumoExtra,
             });
             Navigator.of(context).pop();
             Navigator.of(context).pop();

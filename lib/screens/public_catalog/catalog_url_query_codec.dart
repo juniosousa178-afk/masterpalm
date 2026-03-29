@@ -86,6 +86,15 @@ String? catalogSanitizeProdQuery(String? raw) {
   return t;
 }
 
+/// Variação extra na URL (`xv` = [extraValor]): mesmo critério defensivo que [catalogSanitizeProdQuery].
+String? catalogSanitizeXvQuery(String? raw) {
+  if (raw == null) return null;
+  final t = raw.trim();
+  if (t.isEmpty) return null;
+  if (t.length > 160) return null;
+  return t;
+}
+
 /// Paginação na URL (`page`): inteiro >= 1; inválido => null.
 int? catalogParsePaginationPageQuery(String? raw) {
   if (raw == null) return null;

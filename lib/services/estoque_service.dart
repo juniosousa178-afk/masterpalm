@@ -15,6 +15,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
 import 'produtos_firestore_service.dart';
@@ -86,6 +87,7 @@ class EstoqueService {
     String? produtoSlug,
     required String tamanho,
     required String cor,
+    String variacaoExtra = '',
     required int quantidade,
     required String operacao, // 'baixa' ou 'devolucao'
   }) async {
@@ -146,6 +148,7 @@ class EstoqueService {
     // 3) Validar se produto usa variações
     final tam = tamanho.trim();
     final corTrim = cor.trim();
+    final extraTrim = variacaoExtra.trim();
 
     // REGRA: Exigir conforme o tipo de variação do produto
     if (produto.temVariacaoSoloCor && corTrim.isEmpty) {
@@ -186,6 +189,7 @@ class EstoqueService {
           nome: produto.nome,
           tamanho: tam,
           cor: corTrim,
+          variacaoExtra: extraTrim,
         );
 
         estoqueAntes = result.quantidadeTotalAtualizada + result.quantidadeDebitada;
@@ -216,12 +220,12 @@ class EstoqueService {
       if (produto.usaVariacoes && (tam.isNotEmpty || corTrim.isNotEmpty)) {
         final tamKey = tam.isEmpty ? '' : tam;
         final corKey = corTrim.isEmpty ? 'sem-cor' : corTrim;
-        estoqueAntes = produto.obterEstoqueVariacao(tamKey, corKey);
+        estoqueAntes = produto.obterEstoqueVariacao(tamKey, corKey, extraTrim);
         debugPrint('$tag Tipo: VARIAÇÃO');
         debugPrint('$tag Estoque ANTES: $estoqueAntes (${tam.isEmpty ? "cor" : tam}${corTrim.isEmpty ? "" : " - $corTrim"})');
 
-        produto.devolverEstoqueVariacao(tamKey, corKey, quantidade);
-        estoqueDepois = produto.obterEstoqueVariacao(tamKey, corKey);
+        produto.devolverEstoqueVariacao(tamKey, corKey, quantidade, extraTrim);
+        estoqueDepois = produto.obterEstoqueVariacao(tamKey, corKey, extraTrim);
         debugPrint('$tag Estoque DEPOIS: $estoqueDepois');
       } else if (produto.estoquePorTamanho.isNotEmpty && tam.isNotEmpty) {
         estoqueAntes = produto.estoquePorTamanho[tam] ?? 0;
@@ -291,6 +295,7 @@ class EstoqueService {
     String? produtoSlug,
     required String tamanho,
     required String cor,
+    String variacaoExtra = '',
     required int quantidadeVendida,
   }) {
     return atualizarEstoque(
@@ -300,6 +305,7 @@ class EstoqueService {
       produtoSlug: produtoSlug,
       tamanho: tamanho,
       cor: cor,
+      variacaoExtra: variacaoExtra,
       quantidade: quantidadeVendida,
       operacao: 'baixa',
     );
@@ -317,6 +323,7 @@ class EstoqueService {
     String? produtoSlug,
     required String tamanho,
     required String cor,
+    String variacaoExtra = '',
     required int quantidadeDevolvida,
   }) {
     return atualizarEstoque(
@@ -326,6 +333,7 @@ class EstoqueService {
       produtoSlug: produtoSlug,
       tamanho: tamanho,
       cor: cor,
+      variacaoExtra: variacaoExtra,
       quantidade: quantidadeDevolvida,
       operacao: 'devolucao',
     );
@@ -345,6 +353,7 @@ class EstoqueService {
     String? produtoSlug,
     required String tamanho,
     required String cor,
+    String variacaoExtra = '',
     required int quantidadeSolicitada,
   }) async {
     const tag = '[ESTOQUE-VALIDAR]';
@@ -385,6 +394,7 @@ class EstoqueService {
 
     final tam = tamanho.trim();
     final corTrim = cor.trim();
+    final extraTrim = variacaoExtra.trim();
 
     // Validar variações obrigatórias
     if (produto.usaVariacoes && (tam.isEmpty || corTrim.isEmpty)) {
@@ -400,7 +410,7 @@ class EstoqueService {
     int disponivel;
 
     if (produto.usaVariacoes && tam.isNotEmpty && corTrim.isNotEmpty) {
-      disponivel = produto.obterEstoqueVariacao(tam, corTrim);
+      disponivel = produto.obterEstoqueVariacao(tam, corTrim, extraTrim);
     } else if (produto.estoquePorTamanho.isNotEmpty && tam.isNotEmpty) {
       disponivel = produto.estoquePorTamanho[tam] ?? 0;
     } else {
@@ -436,7 +446,7 @@ class EstoqueService {
       for (final mapaTamanho in produto.variacoes!.values) {
         if (mapaTamanho is Map) {
           for (final qtd in mapaTamanho.values) {
-            total += (qtd as num?)?.toInt() ?? 0;
+            total += ProdutoVariacaoExtra.somarCelula(qtd);
           }
         }
       }

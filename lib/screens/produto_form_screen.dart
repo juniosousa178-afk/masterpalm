@@ -10,6 +10,7 @@ import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import '../utils/moeda_input_formatter.dart';
 import '../utils/text_utils.dart';
@@ -36,6 +37,71 @@ String gerarSlug(String texto) {
       .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
       .replaceAll(RegExp(r'-+'), '-')
       .replaceAll(RegExp(r'^-|-$'), '');
+}
+
+/// Agrega linhas da grade em [variacoes] / [variacoesExtraTipo] (retrocompatível).
+({Map<String, dynamic> variacoes, Map<String, dynamic>? variacoesExtraTipo})
+    produtoFormMergeVariacoesGrade(
+        List<Map<String, TextEditingController>> rows) {
+  final acc = <String, Map<String, Map<String, int>>>{};
+  final tiposAcc = <String, Map<String, Map<String, String>>>{};
+
+  for (final c in rows) {
+    final tamanho = (c['tamanho']?.text ?? '').trim();
+    final cor = (c['cor']?.text ?? '').trim();
+    final extraTipo = (c['extraTipo']?.text ?? '').trim();
+    final extraValor = (c['extraValor']?.text ?? '').trim();
+    final qStr = (c['qtd']?.text ?? '').trim();
+    if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
+    final qtd = int.tryParse(qStr) ?? 0;
+    if (qtd <= 0) continue;
+    final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
+    final corFinal = cor.isEmpty ? 'sem-cor' : cor;
+    final ek = extraValor.isEmpty ? '' : extraValor;
+
+    acc.putIfAbsent(chaveTamanho, () => {});
+    acc[chaveTamanho]!.putIfAbsent(corFinal, () => {});
+    acc[chaveTamanho]![corFinal]![ek] = qtd;
+
+    if (ek.isNotEmpty) {
+      tiposAcc.putIfAbsent(chaveTamanho, () => {});
+      tiposAcc[chaveTamanho]!.putIfAbsent(corFinal, () => {});
+      final label =
+          extraTipo.isEmpty ? kVariacaoExtraTipoFallback : extraTipo;
+      tiposAcc[chaveTamanho]![corFinal]![ek] = label;
+    }
+  }
+
+  final variacoesMap = <String, dynamic>{};
+  for (final te in acc.entries) {
+    final innerOut = <String, dynamic>{};
+    for (final ce in te.value.entries) {
+      final m = ce.value;
+      if (m.isEmpty) continue;
+      if (m.length == 1 && m.containsKey('')) {
+        innerOut[ce.key] = m[''] ?? 0;
+      } else {
+        innerOut[ce.key] = Map<String, dynamic>.from(m);
+      }
+    }
+    if (innerOut.isNotEmpty) variacoesMap[te.key] = innerOut;
+  }
+
+  Map<String, dynamic>? tiposOut;
+  for (final te in tiposAcc.entries) {
+    final inner = <String, dynamic>{};
+    for (final ce in te.value.entries) {
+      if (ce.value.isNotEmpty) {
+        inner[ce.key] = Map<String, dynamic>.from(ce.value);
+      }
+    }
+    if (inner.isNotEmpty) {
+      tiposOut ??= {};
+      tiposOut[te.key] = inner;
+    }
+  }
+
+  return (variacoes: variacoesMap, variacoesExtraTipo: tiposOut);
 }
 
 class ProdutoFormScreen extends StatefulWidget {
@@ -69,9 +135,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   final _codigoBarras = TextEditingController();
   String _tipoEmbalagem = 'padrao';
 
-  /// Grade de variações: cada item tem {'tamanho': '18', 'cor': 'Rosa', 'qtd': '2'}
+  /// Grade: tamanho, cor, extraTipo, extraValor, qtd
   List<Map<String, String>> _gradeVariacoes = [
-    {'tamanho': '', 'cor': '', 'qtd': ''},
+    {
+      'tamanho': '',
+      'cor': '',
+      'extraTipo': '',
+      'extraValor': '',
+      'qtd': '',
+    },
   ];
 
   /// Controllers das linhas de variação para garantir leitura correta ao salvar (tamanho, cor, qtd).
@@ -145,19 +217,54 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         debugPrint('  p.variacoes = ${p.variacoes}');
 
         _gradeVariacoes = [];
+        final vet = p.variacoesExtraTipo;
         for (final tamanhoEntry in p.variacoes!.entries) {
           final tamanho = tamanhoEntry.key;
           final mapaCores = tamanhoEntry.value;
           if (mapaCores is Map) {
             for (final corEntry in mapaCores.entries) {
               final cor = corEntry.key;
-              final qtd = corEntry.value;
-              debugPrint('  ➜ Adicionando linha: $tamanho + $cor = $qtd');
-              _gradeVariacoes.add({
-                'tamanho': tamanho == 'sem-tamanho' ? '' : tamanho,
-                'cor': cor == 'sem-cor' ? '' : cor,
-                'qtd': qtd.toString(),
-              });
+              final raw = corEntry.value;
+              String tipoPara(String ev) {
+                if (vet == null) return '';
+                final tm = vet[tamanho];
+                if (tm is! Map) return '';
+                final cm = tm[cor];
+                if (cm is! Map) return '';
+                for (final e in cm.entries) {
+                  if (ProdutoVariacaoExtra.keysMatch(e.key.toString(), ev)) {
+                    return e.value?.toString() ?? '';
+                  }
+                }
+                return '';
+              }
+
+              if (raw is num) {
+                debugPrint('  ➜ Linha: $tamanho + $cor = $raw');
+                _gradeVariacoes.add({
+                  'tamanho': tamanho == 'sem-tamanho' ? '' : tamanho,
+                  'cor': cor == 'sem-cor' ? '' : cor,
+                  'extraTipo': '',
+                  'extraValor': '',
+                  'qtd': raw.toInt().toString(),
+                });
+              } else if (raw is Map) {
+                for (final ie in raw.entries) {
+                  final ev = ie.key.toString();
+                  final q = ie.value is num
+                      ? (ie.value as num).toInt()
+                      : int.tryParse(ie.value?.toString() ?? '') ?? 0;
+                  final evDisp = ev.trim().isEmpty ? '' : ev;
+                  debugPrint('  ➜ Linha: $tamanho + $cor + extra=$evDisp = $q');
+                  _gradeVariacoes.add({
+                    'tamanho': tamanho == 'sem-tamanho' ? '' : tamanho,
+                    'cor': cor == 'sem-cor' ? '' : cor,
+                    'extraTipo': tipoPara(evDisp),
+                    'extraValor': evDisp,
+                    'qtd': q.toString(),
+                  });
+                }
+              }
             }
           }
         }
@@ -238,6 +345,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     for (final c in _variacaoControllers) {
       c['tamanho']?.dispose();
       c['cor']?.dispose();
+      c['extraTipo']?.dispose();
+      c['extraValor']?.dispose();
       c['qtd']?.dispose();
     }
     _variacaoControllers.clear();
@@ -245,6 +354,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _variacaoControllers.add({
         'tamanho': TextEditingController(text: row['tamanho'] ?? ''),
         'cor': TextEditingController(text: row['cor'] ?? ''),
+        'extraTipo': TextEditingController(text: row['extraTipo'] ?? ''),
+        'extraValor': TextEditingController(text: row['extraValor'] ?? ''),
         'qtd': TextEditingController(text: row['qtd'] ?? ''),
       });
     }
@@ -397,6 +508,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     for (final c in _variacaoControllers) {
       c['tamanho']?.dispose();
       c['cor']?.dispose();
+      c['extraTipo']?.dispose();
+      c['extraValor']?.dispose();
       c['qtd']?.dispose();
     }
     _variacaoControllers.clear();
@@ -649,12 +762,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
       final custo = MoedaInputFormatter.parse(_custo.text);
       final preco = MoedaInputFormatter.parse(_preco.text);
-      final Map<String, dynamic> variacoesMap = {};
+      final merged = produtoFormMergeVariacoesGrade(_variacaoControllers);
+      final variacoesMap = merged.variacoes;
       final Set<String> tamanhosSet = {};
       final Set<String> coresSet = {};
       int quantidadeTotalVariacoes = 0;
-      for (int i = 0; i < _variacaoControllers.length; i++) {
-        final c = _variacaoControllers[i];
+      for (final c in _variacaoControllers) {
         final tamanho = (c['tamanho']?.text ?? '').trim();
         final cor = (c['cor']?.text ?? '').trim();
         final qStr = (c['qtd']?.text ?? '').trim();
@@ -663,10 +776,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         if (qtd <= 0) continue;
         if (tamanho.isNotEmpty) tamanhosSet.add(tamanho);
         if (cor.isNotEmpty) coresSet.add(cor);
-        final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
-        final corFinal = cor.isEmpty ? 'sem-cor' : cor;
-        if (!variacoesMap.containsKey(chaveTamanho)) variacoesMap[chaveTamanho] = <String, int>{};
-        (variacoesMap[chaveTamanho] as Map<String, int>)[corFinal] = qtd;
         quantidadeTotalVariacoes += qtd;
       }
       final int quantidadeFinal = variacoesMap.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
@@ -675,8 +784,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       final Map<String, int> estoqueMapa = {};
       for (final t in variacoesMap.keys) {
         if (t == 'sem-tamanho') continue;
-        final m = variacoesMap[t] as Map<String, int>;
-        estoqueMapa[t] = m.values.fold<int>(0, (a, b) => a + b);
+        final m = variacoesMap[t] as Map<String, dynamic>;
+        var sum = 0;
+        for (final v in m.values) {
+          sum += ProdutoVariacaoExtra.somarCelula(v);
+        }
+        estoqueMapa[t] = sum;
       }
       final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
       final maxParcelasSemJuros = (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
@@ -718,6 +831,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..cores = coresList
         ..marketplaces = _marketplacesSelecionados.toList()
         ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
+        ..variacoesExtraTipo = merged.variacoesExtraTipo
         ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
         ..fornecedor = _fornecedor.text.trim()
         ..custoEditadoNoCadastro = true;
@@ -1032,7 +1146,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
       // 🔹 Processa variações a partir dos controllers (garante valores salvos)
       debugPrint('\n🔍 [DEBUG SALVAR] Processando ${_variacaoControllers.length} linhas da grade:');
-      final Map<String, dynamic> variacoesMap = {};
+      final mergedSalvar = produtoFormMergeVariacoesGrade(_variacaoControllers);
+      final variacoesMap = mergedSalvar.variacoes;
       final Set<String> tamanhosSet = {};
       final Set<String> coresSet = {};
       int quantidadeTotalVariacoes = 0;
@@ -1053,14 +1168,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
         if (tamanho.isNotEmpty) tamanhosSet.add(tamanho);
         if (cor.isNotEmpty) coresSet.add(cor);
-
-        final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
-        final corFinal = cor.isEmpty ? 'sem-cor' : cor;
-        if (!variacoesMap.containsKey(chaveTamanho)) {
-          variacoesMap[chaveTamanho] = <String, int>{};
-        }
-        final mapaInterno = variacoesMap[chaveTamanho] as Map<String, int>;
-        mapaInterno[corFinal] = qtd;
         quantidadeTotalVariacoes += qtd;
       }
 
@@ -1076,8 +1183,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       final Map<String, int> estoqueMapa = {};
       for (final tamanho in variacoesMap.keys) {
         if (tamanho == 'sem-tamanho') continue;
-        final mapaInterno = variacoesMap[tamanho] as Map<String, int>;
-        final total = mapaInterno.values.fold<int>(0, (s, v) => s + v);
+        final mapaInterno = variacoesMap[tamanho] as Map<String, dynamic>;
+        var total = 0;
+        for (final v in mapaInterno.values) {
+          total += ProdutoVariacaoExtra.somarCelula(v);
+        }
         estoqueMapa[tamanho] = total;
       }
 
@@ -1142,6 +1252,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..cores = coresList
             ..marketplaces = _marketplacesSelecionados.toList()
             ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
+            ..variacoesExtraTipo = mergedSalvar.variacoesExtraTipo
             ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
             ..fornecedor = _fornecedor.text.trim()
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
@@ -1213,6 +1324,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             cores: coresList,
             marketplaces: _marketplacesSelecionados.toList(),
             variacoes: variacoesMap.isNotEmpty ? variacoesMap : null,
+            variacoesExtraTipo: mergedSalvar.variacoesExtraTipo,
             videoUrl: '',
             estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?? 0,
             fornecedor: _fornecedor.text.trim(),
@@ -1264,6 +1376,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..cores = coresList
           ..marketplaces = _marketplacesSelecionados.toList()
           ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
+          ..variacoesExtraTipo = mergedSalvar.variacoesExtraTipo
           ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
           ..fornecedor = _fornecedor.text.trim()
           ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null

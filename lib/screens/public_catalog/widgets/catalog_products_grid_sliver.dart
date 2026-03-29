@@ -45,6 +45,10 @@ Widget buildCatalogProductsGridSliver({
   int mobileCols = 2,
   /// URL do catálogo para compartilhar (pode incluir ref/indicacao). Se null, o card usa padrão por lojaId.
   String? catalogShareUrl,
+  /// Valor de `xv` / filtro de variação extra alinhado ao estado do catálogo (pré-seleção no sheet).
+  String? catalogInitialExtraValor,
+  /// Ao escolher limpar extra no modal/detalhe, sincroniza filtro + URL (Web).
+  void Function(String? value)? onCatalogVariacaoExtraChanged,
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida.
   bool useMinimalLayout = false,
   String productCardSize = CatalogProductCardSize.medium,
@@ -90,6 +94,8 @@ Widget buildCatalogProductsGridSliver({
               imageCacheWidth: imageCacheWidth,
               imageCacheHeight: imageCacheHeight,
               catalogShareUrl: catalogShareUrl,
+              catalogInitialExtraValor: catalogInitialExtraValor,
+              onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
               minimalLayout: useMinimalLayout,
               productCardSize: productCardSize,
             ),

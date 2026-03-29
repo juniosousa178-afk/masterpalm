@@ -2,6 +2,7 @@
 // Leitura centralizada de estoque no catálogo público (Firestore → UI/carrinho).
 // Retrocompatível: não altera nomes de campos do banco.
 
+import '../../core/produto_variacao_extra.dart';
 import '../../core/safe_cast.dart';
 
 /// Helpers de estoque para catálogo público (produtos processados ou raw Firestore).
@@ -51,22 +52,13 @@ class CatalogEstoqueHelper {
     return parseQtd(m['quantidade']);
   }
 
-  static int _sumMapValues(Map<dynamic, dynamic>? map) {
-    if (map == null || map.isEmpty) return 0;
-    var s = 0;
-    for (final v in map.values) {
-      s += parseQtd(v);
-    }
-    return s;
-  }
-
   static int _sumVariacoesTotal(Map<String, dynamic>? variacoes) {
     if (variacoes == null || variacoes.isEmpty) return 0;
     var s = 0;
     variacoes.forEach((_, cores) {
       if (cores is Map) {
         for (final v in cores.values) {
-          s += parseQtd(v);
+          s += ProdutoVariacaoExtra.somarCelula(v);
         }
       }
     });
@@ -86,14 +78,27 @@ class CatalogEstoqueHelper {
     return set;
   }
 
-  static int _qtdCorNoMapa(Map<dynamic, dynamic> mapa, String cor) {
-    if (cor.isEmpty) return 0;
-    if (mapa.containsKey(cor)) return parseQtd(mapa[cor]);
+  static dynamic _rawCellNoMapa(Map<dynamic, dynamic> mapa, String cor) {
+    if (cor.isEmpty) return null;
+    if (mapa.containsKey(cor)) return mapa[cor];
     final lower = cor.toLowerCase();
     for (final e in mapa.entries) {
-      if (e.key.toString().toLowerCase() == lower) return parseQtd(e.value);
+      if (e.key.toString().toLowerCase() == lower) return e.value;
     }
-    return 0;
+    return null;
+  }
+
+  static int _qtdCorNoMapa(Map<dynamic, dynamic> mapa, String cor) {
+    return ProdutoVariacaoExtra.somarCelula(_rawCellNoMapa(mapa, cor));
+  }
+
+  static int _sumMapValuesNested(Map<dynamic, dynamic>? map) {
+    if (map == null || map.isEmpty) return 0;
+    var s = 0;
+    for (final v in map.values) {
+      s += ProdutoVariacaoExtra.somarCelula(v);
+    }
+    return s;
   }
 
   /// Resultado do processamento de estoque a partir do mapa Firestore (ou já normalizado).
@@ -161,7 +166,7 @@ class CatalogEstoqueHelper {
         (variacoes['sem-tamanho'] as Map).isNotEmpty) {
       final sem = variacoes['sem-tamanho'] as Map;
       sem.forEach((key, value) {
-        final q = parseQtd(value);
+        final q = ProdutoVariacaoExtra.somarCelula(value);
         if (q > 0) mapCorMerged[key.toString()] = q;
       });
     }
@@ -221,7 +226,7 @@ class CatalogEstoqueHelper {
       for (final cores in v.values) {
         if (cores is Map) {
           for (final q in cores.values) {
-            if (parseQtd(q) > 0) return true;
+            if (ProdutoVariacaoExtra.somarCelula(q) > 0) return true;
           }
         }
       }
@@ -257,28 +262,44 @@ class CatalogEstoqueHelper {
   static int estoqueDisponivelVariacao(
     Map<String, dynamic> p,
     String tamanho,
-    String cor,
-  ) {
+    String cor, [
+    String variacaoExtra = '',
+  ]) {
     final tam = tamanho.trim();
     final c = cor.trim();
+    final ex = variacaoExtra.trim();
     final variacoes = p['variacoes'];
     if (variacoes is Map && variacoes.isNotEmpty) {
       if (tam.isNotEmpty && variacoes[tam] is Map) {
         final mapa = variacoes[tam] as Map;
         if (c.isNotEmpty) {
-          final q = _qtdCorNoMapa(mapa, c);
-          if (q > 0) return q;
+          final cell = _rawCellNoMapa(mapa, c);
+          if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
+            if (ex.isEmpty) return 0;
+            final q = ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
+            if (q > 0) return q;
+          } else {
+            final q = _qtdCorNoMapa(mapa, c);
+            if (q > 0) return q;
+          }
         }
-        return _sumMapValues(mapa);
+        return _sumMapValuesNested(mapa);
       }
       if ((tam.isEmpty || tam == 'sem-tamanho') &&
           variacoes['sem-tamanho'] is Map) {
         final mapa = variacoes['sem-tamanho'] as Map;
         if (c.isNotEmpty) {
-          final q = _qtdCorNoMapa(mapa, c);
-          if (q > 0) return q;
+          final cell = _rawCellNoMapa(mapa, c);
+          if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
+            if (ex.isEmpty) return 0;
+            final q = ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
+            if (q > 0) return q;
+          } else {
+            final q = _qtdCorNoMapa(mapa, c);
+            if (q > 0) return q;
+          }
         }
-        return _sumMapValues(mapa);
+        return _sumMapValuesNested(mapa);
       }
     }
     final ept = p['estoquePorTamanho'];
@@ -305,6 +326,10 @@ class CatalogEstoqueHelper {
     final id = '${item['id'] ?? item['produtosId'] ?? ''}';
     final tam = (item['tamanho'] ?? '').toString().trim().toLowerCase();
     final cr = (item['cor'] ?? '').toString().trim().toLowerCase();
+    final ex = (item['extraValor'] ?? item['variacaoExtra'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
     final combo = item['itensComboComSelecao'];
     if (combo is List && combo.isNotEmpty) {
       final buf = StringBuffer(id);
@@ -316,7 +341,7 @@ class CatalogEstoqueHelper {
       }
       return buf.toString();
     }
-    return '$id|$tam|$cr';
+    return '$id|$tam|$cr|$ex';
   }
 
   static Map<String, dynamic>? findProductInList(
