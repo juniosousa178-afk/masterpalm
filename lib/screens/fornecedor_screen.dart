@@ -945,6 +945,30 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                 onPressed: () => Navigator.pop(context),
               ),
               actions: [
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, color: Colors.white),
+                  tooltip: 'Mais opções',
+                  onSelected: (v) {
+                    if (v == 'modelo_import') {
+                      Navigator.pushNamed(
+                        context,
+                        '/modelos_importacao',
+                        arguments: const {'tab': 2},
+                      );
+                    }
+                  },
+                  itemBuilder: (ctx) => const [
+                    PopupMenuItem(
+                      value: 'modelo_import',
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.table_chart_outlined, size: 22),
+                        title: Text('Modelo de importação (planilha)'),
+                        dense: true,
+                      ),
+                    ),
+                  ],
+                ),
                 IconButton(
                   icon: _enviandoFornecedores
                       ? const SizedBox(

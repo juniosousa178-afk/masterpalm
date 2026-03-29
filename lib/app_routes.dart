@@ -25,6 +25,13 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
       final vendedorRef = uri.queryParameters['ref'] ??
           uri.queryParameters['vendedor'] ??
           uri.queryParameters['seller'];
+      final tam = uri.queryParameters['tam']?.trim();
+      final cor = uri.queryParameters['cor']?.trim();
+      final cat = uri.queryParameters['cat']?.trim();
+      final sub = uri.queryParameters['sub']?.trim();
+      final ord = uri.queryParameters['ord']?.trim();
+      final pmin = uri.queryParameters['pmin']?.trim();
+      final pmax = uri.queryParameters['pmax']?.trim();
 
       logD('🛒 [ROUTE /loja/{id}] rota resolvida');
 
@@ -33,6 +40,13 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
         builder: (_) => PublicCatalogScreen(
           lojaId: lojaId,
           vendedorRef: vendedorRef,
+          initialTam: (tam != null && tam.isNotEmpty) ? tam : null,
+          initialCor: (cor != null && cor.isNotEmpty) ? cor : null,
+          initialCat: (cat != null && cat.isNotEmpty) ? cat : null,
+          initialSub: (sub != null && sub.isNotEmpty) ? sub : null,
+          initialOrd: (ord != null && ord.isNotEmpty) ? ord : null,
+          initialPmin: (pmin != null && pmin.isNotEmpty) ? pmin : null,
+          initialPmax: (pmax != null && pmax.isNotEmpty) ? pmax : null,
         ),
       );
     }

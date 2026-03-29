@@ -10,7 +10,7 @@ import 'firestore_paths.dart';
 import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
-import 'produto_auto_sync_service.dart';
+import 'produto_remote_sync_guard.dart';
 import 'importar_vendas_firestore_service.dart';
 import 'store_resolver_facade.dart';
 
@@ -110,7 +110,7 @@ class FullSyncService {
 
   /// Sincroniza TODOS os produtos do Firestore para o Hive (com paginação)
   static Future<int> _syncProdutos(String lojaId) async {
-    ProdutoAutoSyncService.setApplyingRemoteSync(true);
+    ProdutoRemoteSyncGuard.applyingRemoteToHive = true;
     try {
       logD('📦 [FULL-SYNC] Sincronizando produtos...');
 
@@ -197,7 +197,7 @@ class FullSyncService {
       logE('❌ [FULL-SYNC] Erro ao sincronizar produtos (type=${e.runtimeType})', error: e, st: st);
       return 0;
     } finally {
-      ProdutoAutoSyncService.setApplyingRemoteSync(false);
+      ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
     }
   }
 

@@ -3264,9 +3264,25 @@ class _ClientesScreenState extends State<ClientesScreen>
                     builder: (_) => const RedefinirSenhaClienteLojaScreen(),
                   ),
                 );
+              } else if (value == 'modelo_import') {
+                Navigator.pushNamed(
+                  context,
+                  '/modelos_importacao',
+                  arguments: const {'tab': 1},
+                );
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'modelo_import',
+                child: Row(
+                  children: [
+                    Icon(Icons.table_chart_outlined, size: 22),
+                    SizedBox(width: 12),
+                    Text('Modelo de importação (planilha)'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'redefinir_senha_catalogo',
                 child: Row(

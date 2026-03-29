@@ -53,6 +53,9 @@ import 'public_catalog/widgets/catalog_footer.dart';
 import 'public_catalog/widgets/catalog_creator_credit_bar.dart';
 import 'public_catalog/widgets/catalog_loading_state.dart';
 import 'public_catalog/widgets/catalog_search_filters_bar.dart';
+import 'public_catalog/catalog_variation_filter.dart';
+import 'public_catalog/catalog_url_query_codec.dart';
+import 'public_catalog/catalog_url_variation_sync.dart';
 import 'public_catalog/widgets/catalog_products_grid_sliver.dart';
 import 'public_catalog/widgets/catalog_recent_section_sliver.dart';
 import 'public_catalog/widgets/catalog_skeleton_grid.dart';
@@ -89,6 +92,19 @@ class PublicCatalogScreen extends StatefulWidget {
   /// ✅ ID ou slug do produto para abrir direto (ex: link campanha ?produto=ID)
   final String? initialProdutoId;
 
+  /// ✅ Filtro de variação na URL (?tam=) — na Web costuma vir de [Uri.base]; no app, da rota.
+  final String? initialTam;
+
+  /// ✅ Filtro de variação na URL (?cor=)
+  final String? initialCor;
+
+  /// ✅ Categoria / subcategoria / ordenação / preço na URL (?cat= & ?sub= & ?ord= & ?pmin= & ?pmax=)
+  final String? initialCat;
+  final String? initialSub;
+  final String? initialOrd;
+  final String? initialPmin;
+  final String? initialPmax;
+
   const PublicCatalogScreen({
     super.key,
     required this.lojaId,
@@ -98,6 +114,13 @@ class PublicCatalogScreen extends StatefulWidget {
     this.initialPage,
     this.initialCartId,
     this.initialProdutoId,
+    this.initialTam,
+    this.initialCor,
+    this.initialCat,
+    this.initialSub,
+    this.initialOrd,
+    this.initialPmin,
+    this.initialPmax,
   });
 
   @override
@@ -455,6 +478,19 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   double? _precoMin;
   double? _precoMax;
   bool _apenasEmEstoque = false;
+  String? _filtroVariacaoTamanho;
+  String? _filtroVariacaoCor;
+
+  /// Valores vindos da URL aguardando produtos/opções para validação.
+  String? _pendingUrlCat;
+  String? _pendingUrlSub;
+  String? _pendingUrlOrd;
+  String? _pendingUrlPmin;
+  String? _pendingUrlPmax;
+  String? _pendingUrlTam;
+  String? _pendingUrlCor;
+  String _lastCatalogSanitizeSig = '';
+  int _catalogSanitizeGen = 0;
 
   // ✅ FONTE ÚNICA: lojaId resolvido de forma assíncrona
   String? _resolvedLojaId;
@@ -566,6 +602,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   void initState() {
     super.initState();
     _pendingInitialProdutoId = widget.initialProdutoId?.trim();
+    _initPendingCatalogFiltersFromUrl();
     _currentPageNotifier.addListener(_scrollToTopOnPageChange);
     _catalogScrollController.addListener(_onCatalogScroll);
     _resolveLojaId().catchError((e, st) {
@@ -599,6 +636,439 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _currentPageNotifier.value = 0;
       }
     });
+  }
+
+  void _initPendingCatalogFiltersFromUrl() {
+    String? cat;
+    String? sub;
+    String? ord;
+    String? pmin;
+    String? pmax;
+    String? t;
+    String? c;
+    if (kIsWeb) {
+      final q = Uri.base.queryParameters;
+      cat = q['cat']?.trim();
+      sub = q['sub']?.trim();
+      ord = q['ord']?.trim();
+      pmin = q['pmin']?.trim();
+      pmax = q['pmax']?.trim();
+      final qt = q['tam']?.trim();
+      final qc = q['cor']?.trim();
+      if (qt != null && qt.isNotEmpty) t = qt;
+      if (qc != null && qc.isNotEmpty) c = qc;
+    }
+    final ic = widget.initialCat?.trim();
+    final iSub = widget.initialSub?.trim();
+    final io = widget.initialOrd?.trim();
+    final ipmin = widget.initialPmin?.trim();
+    final ipmax = widget.initialPmax?.trim();
+    if (cat == null || cat.isEmpty) {
+      if (ic != null && ic.isNotEmpty) cat = ic;
+    }
+    if (sub == null || sub.isEmpty) {
+      if (iSub != null && iSub.isNotEmpty) sub = iSub;
+    }
+    if (ord == null || ord.isEmpty) {
+      if (io != null && io.isNotEmpty) ord = io;
+    }
+    if (pmin == null || pmin.isEmpty) {
+      if (ipmin != null && ipmin.isNotEmpty) pmin = ipmin;
+    }
+    if (pmax == null || pmax.isEmpty) {
+      if (ipmax != null && ipmax.isNotEmpty) pmax = ipmax;
+    }
+    final wt = widget.initialTam?.trim();
+    final wc = widget.initialCor?.trim();
+    if (t == null || t.isEmpty) {
+      if (wt != null && wt.isNotEmpty) t = wt;
+    }
+    if (c == null || c.isEmpty) {
+      if (wc != null && wc.isNotEmpty) c = wc;
+    }
+    void nz(String? s, void Function(String) set) {
+      if (s != null && s.isNotEmpty) set(s);
+    }
+    _pendingUrlCat = null;
+    _pendingUrlSub = null;
+    _pendingUrlOrd = null;
+    _pendingUrlPmin = null;
+    _pendingUrlPmax = null;
+    nz(cat, (v) => _pendingUrlCat = v);
+    nz(sub, (v) => _pendingUrlSub = v);
+    nz(ord, (v) => _pendingUrlOrd = v);
+    nz(pmin, (v) => _pendingUrlPmin = v);
+    nz(pmax, (v) => _pendingUrlPmax = v);
+    _pendingUrlTam = (t != null && t.isNotEmpty) ? t : null;
+    _pendingUrlCor = (c != null && c.isNotEmpty) ? c : null;
+  }
+
+  String _categoryAliasesSignature(Map<String, Set<String>> m) {
+    if (m.isEmpty) return '';
+    final keys = m.keys.toList()..sort();
+    final parts = <String>[];
+    for (final k in keys) {
+      final vals = (m[k] ?? {}).toList()..sort();
+      parts.add('$k:${vals.join(',')}');
+    }
+    return parts.join('|');
+  }
+
+  String? _canonicalCategoriaMenuDeUrl(
+    String raw,
+    List<String> categoriasMenu,
+    Map<String, Set<String>> aliasesByName,
+  ) {
+    final r = raw.trim();
+    if (r.isEmpty) return null;
+    for (final c in categoriasMenu) {
+      if (c == r) return c;
+    }
+    for (final c in categoriasMenu) {
+      if (c.toLowerCase() == r.toLowerCase()) return c;
+    }
+    final lr = r.toLowerCase();
+    for (final c in categoriasMenu) {
+      final al = aliasesByName[c];
+      if (al == null) continue;
+      for (final a in al) {
+        if (a.toLowerCase() == lr) return c;
+      }
+    }
+    return null;
+  }
+
+  List<String> _subcategoriasDisponiveisParaCategoria(
+    String? cat,
+    List<Map<String, dynamic>> produtos,
+  ) {
+    if (cat == null || cat.isEmpty) return const [];
+    final set = <String>{};
+    for (final p in produtos) {
+      final c = (p['categoria'] ?? p['categoriaId'] ?? '').toString().trim();
+      if (c != cat) continue;
+      final s =
+          (p['subcategoria'] ?? p['subcategoriaId'] ?? '').toString().trim();
+      if (s.isNotEmpty) set.add(s);
+    }
+    final list = set.toList()..sort();
+    return list;
+  }
+
+  String? _canonicalSubcategoriaNaLista(String raw, List<String> subs) {
+    final r = raw.trim();
+    if (r.isEmpty) return null;
+    for (final s in subs) {
+      if (s == r) return s;
+    }
+    for (final s in subs) {
+      if (s.toLowerCase() == r.toLowerCase()) return s;
+    }
+    return null;
+  }
+
+  void _syncCatalogQueryToBrowserUri() {
+    if (!kIsWeb) return;
+    final ord = catalogOrdInternalIsValid(_ordenacaoProdutos)
+        ? _ordenacaoProdutos
+        : 'nome';
+    catalogSyncPublicCatalogQueryUri(
+      cat: _selectedCategory,
+      sub: _selectedSubcategory,
+      ord: ord,
+      pmin: catalogFormatPrecoQuery(_precoMin),
+      pmax: catalogFormatPrecoQuery(_precoMax),
+      tam: _filtroVariacaoTamanho,
+      cor: _filtroVariacaoCor,
+    );
+  }
+
+  /// Retorna o rótulo canônico da lista de opções se [raw] casar (normalização).
+  String? _canonicalVariationInOptions(String raw, List<String> options) {
+    final r = raw.trim();
+    if (r.isEmpty) return null;
+    for (final o in options) {
+      if (CatalogVariationFilter.keysMatch(o, r)) {
+        return o;
+      }
+    }
+    return null;
+  }
+
+  void _sanitizeCatalogUrlDerivedFilters({
+    required List<String> categoriasMenu,
+    required Map<String, Set<String>> categoryAliasesByName,
+    required List<Map<String, dynamic>> produtos,
+    required List<String> tamanhos,
+    required List<String> cores,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    var cat = _selectedCategory;
+    var sub = _selectedSubcategory;
+    var ord = _ordenacaoProdutos;
+    var pmin = _precoMin;
+    var pmax = _precoMax;
+    var tam = _filtroVariacaoTamanho;
+    var cor = _filtroVariacaoCor;
+
+    var changed = false;
+    var mustSyncUri = false;
+
+    final pCat = _pendingUrlCat;
+    _pendingUrlCat = null;
+    if (pCat != null) {
+      final c =
+          _canonicalCategoriaMenuDeUrl(pCat, categoriasMenu, categoryAliasesByName);
+      if (c != null) {
+        if (cat != c) {
+          cat = c;
+          changed = true;
+        }
+      } else {
+        mustSyncUri = true;
+        if (cat != null) {
+          cat = null;
+          changed = true;
+        }
+      }
+    }
+
+    final pSub = _pendingUrlSub;
+    _pendingUrlSub = null;
+    if (pSub != null) {
+      if (cat == null || cat.isEmpty) {
+        mustSyncUri = true;
+        if (sub != null) {
+          sub = null;
+          changed = true;
+        }
+      } else {
+        final subs = _subcategoriasDisponiveisParaCategoria(cat, produtos);
+        final sc = _canonicalSubcategoriaNaLista(pSub, subs);
+        if (sc != null) {
+          if (sub != sc) {
+            sub = sc;
+            changed = true;
+          }
+        } else {
+          mustSyncUri = true;
+          if (sub != null) {
+            sub = null;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    if (cat != null) {
+      final c =
+          _canonicalCategoriaMenuDeUrl(cat, categoriasMenu, categoryAliasesByName);
+      if (c == null) {
+        cat = null;
+        sub = null;
+        changed = true;
+        mustSyncUri = true;
+      } else if (c != cat) {
+        cat = c;
+        changed = true;
+        mustSyncUri = true;
+      }
+    }
+
+    if (sub != null) {
+      if (cat == null || cat.isEmpty) {
+        sub = null;
+        changed = true;
+        mustSyncUri = true;
+      } else {
+        final subs = _subcategoriasDisponiveisParaCategoria(cat, produtos);
+        final sc = _canonicalSubcategoriaNaLista(sub, subs);
+        if (sc == null) {
+          sub = null;
+          changed = true;
+          mustSyncUri = true;
+        } else if (sc != sub) {
+          sub = sc;
+          changed = true;
+          mustSyncUri = true;
+        }
+      }
+    }
+
+    final pOrd = _pendingUrlOrd;
+    _pendingUrlOrd = null;
+    if (pOrd != null) {
+      final o = catalogOrdQueryToInternal(pOrd);
+      if (o != null) {
+        if (ord != o) {
+          ord = o;
+          changed = true;
+        }
+      } else {
+        mustSyncUri = true;
+      }
+    }
+
+    if (!catalogOrdInternalIsValid(ord)) {
+      ord = 'nome';
+      changed = true;
+      mustSyncUri = true;
+    }
+
+    final pm0 = _pendingUrlPmin;
+    final pm1 = _pendingUrlPmax;
+    _pendingUrlPmin = null;
+    _pendingUrlPmax = null;
+    if (pm0 != null && pm0.trim().isNotEmpty) {
+      final v = catalogParsePrecoQuery(pm0);
+      if (v != null) {
+        if (pmin != v) {
+          pmin = v;
+          changed = true;
+        }
+      } else {
+        if (pmin != null) {
+          pmin = null;
+          changed = true;
+        }
+        mustSyncUri = true;
+      }
+    }
+    if (pm1 != null && pm1.trim().isNotEmpty) {
+      final v = catalogParsePrecoQuery(pm1);
+      if (v != null) {
+        if (pmax != v) {
+          pmax = v;
+          changed = true;
+        }
+      } else {
+        if (pmax != null) {
+          pmax = null;
+          changed = true;
+        }
+        mustSyncUri = true;
+      }
+    }
+    if (pmin != null && pmax != null && pmin > pmax) {
+      pmin = null;
+      pmax = null;
+      changed = true;
+      mustSyncUri = true;
+    }
+
+    final pTam = _pendingUrlTam;
+    final pCor = _pendingUrlCor;
+    _pendingUrlTam = null;
+    _pendingUrlCor = null;
+
+    if (pTam != null) {
+      final c = _canonicalVariationInOptions(pTam, tamanhos);
+      if (c != null) {
+        if (tam != c) {
+          tam = c;
+          changed = true;
+        }
+      } else {
+        mustSyncUri = true;
+        if (tam != null) {
+          tam = null;
+          changed = true;
+        }
+      }
+    }
+
+    if (pCor != null) {
+      final c = _canonicalVariationInOptions(pCor, cores);
+      if (c != null) {
+        if (cor != c) {
+          cor = c;
+          changed = true;
+        }
+      } else {
+        mustSyncUri = true;
+        if (cor != null) {
+          cor = null;
+          changed = true;
+        }
+      }
+    }
+
+    if (tam != null) {
+      final c = _canonicalVariationInOptions(tam, tamanhos);
+      if (c == null) {
+        tam = null;
+        changed = true;
+        mustSyncUri = true;
+      } else if (c != tam) {
+        tam = c;
+        changed = true;
+        mustSyncUri = true;
+      }
+    }
+
+    if (cor != null) {
+      final c = _canonicalVariationInOptions(cor, cores);
+      if (c == null) {
+        cor = null;
+        changed = true;
+        mustSyncUri = true;
+      } else if (c != cor) {
+        cor = c;
+        changed = true;
+        mustSyncUri = true;
+      }
+    }
+
+    if (changed) {
+      setState(() {
+        _selectedCategory = cat;
+        _selectedSubcategory = sub;
+        _ordenacaoProdutos = ord;
+        _precoMin = pmin;
+        _precoMax = pmax;
+        _filtroVariacaoTamanho = tam;
+        _filtroVariacaoCor = cor;
+      });
+    }
+    if (changed || mustSyncUri) {
+      _syncCatalogQueryToBrowserUri();
+    }
+  }
+
+  void _clearFiltrosVariacao() {
+    _filtroVariacaoTamanho = null;
+    _filtroVariacaoCor = null;
+    _pendingUrlTam = null;
+    _pendingUrlCor = null;
+  }
+
+  /// Faixa de preço vs [priceMin]/[priceMax] do produto (variações) ou preço único.
+  bool _produtoIntersectsPrecoRange(Map<String, dynamic> p) {
+    if (_precoMin == null && _precoMax == null) return true;
+    double lo;
+    double hi;
+    final rawMin = p['priceMin'];
+    final rawMax = p['priceMax'];
+    if (rawMin is num || rawMax is num) {
+      lo = rawMin is num ? rawMin.toDouble() : (rawMax as num).toDouble();
+      hi = rawMax is num ? rawMax.toDouble() : lo;
+      if (lo > hi) {
+        final t = lo;
+        lo = hi;
+        hi = t;
+      }
+    } else {
+      final preco = (p['preco'] ?? p['valor'] ?? 0.0) is num
+          ? (p['preco'] ?? p['valor'] ?? 0.0) as num
+          : (double.tryParse('${p['preco'] ?? p['valor'] ?? 0}') ?? 0.0);
+      lo = hi = preco.toDouble();
+    }
+    final fLo = _precoMin ?? double.negativeInfinity;
+    final fHi = _precoMax ?? double.infinity;
+    return lo <= fHi && hi >= fLo;
   }
 
   void _onCatalogScroll() {
@@ -1806,6 +2276,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   _precoMax = null;
                   _currentPageNotifier.value = 0;
                 });
+                _syncCatalogQueryToBrowserUri();
               },
               child: const Text('Limpar'),
             ),
@@ -1817,10 +2288,17 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     double.tryParse(maxCtrl.text.replaceAll(',', '.').trim());
                 Navigator.pop(context);
                 setState(() {
-                  _precoMin = min;
-                  _precoMax = max;
+                  var a = min;
+                  var b = max;
+                  if (a != null && b != null && a > b) {
+                    a = null;
+                    b = null;
+                  }
+                  _precoMin = a;
+                  _precoMax = b;
                   _currentPageNotifier.value = 0;
                 });
+                _syncCatalogQueryToBrowserUri();
               },
               child: const Text('Aplicar'),
             ),
@@ -3911,8 +4389,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                     setState(() {
                                       _selectedCategory = null;
                                       _selectedSubcategory = null;
+                                      _clearFiltrosVariacao();
                                       _currentPageNotifier.value = 0;
                                     });
+                                    _syncCatalogQueryToBrowserUri();
                                   },
                                 ),
 
@@ -3925,8 +4405,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                     setState(() {
                                       _selectedCategory = null;
                                       _selectedSubcategory = null;
+                                      _clearFiltrosVariacao();
                                       _currentPageNotifier.value = 0;
                                     });
+                                    _syncCatalogQueryToBrowserUri();
                                   },
                                 ),
 
@@ -3973,8 +4455,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           setState(() {
                                             _selectedCategory = cat;
                                             _selectedSubcategory = null;
+                                            _clearFiltrosVariacao();
                                             _currentPageNotifier.value = 0;
                                           });
+                                          _syncCatalogQueryToBrowserUri();
                                         },
                                       ),
                                       ...subcategorias.map((sub) {
@@ -4003,8 +4487,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             setState(() {
                                               _selectedCategory = cat;
                                               _selectedSubcategory = sub;
+                                              _clearFiltrosVariacao();
                                               _currentPageNotifier.value = 0;
                                             });
+                                            _syncCatalogQueryToBrowserUri();
                                           },
                                         );
                                       }),
@@ -4591,27 +5077,35 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               setState(() {
                                 _selectedCategory = null;
                                 _selectedSubcategory = null;
+                                _clearFiltrosVariacao();
                                 _currentPageNotifier.value = 0;
                               });
+                              _syncCatalogQueryToBrowserUri();
                             },
                             onCategorySelected: (cat) {
                               setState(() {
                                 _selectedCategory = cat;
                                 _selectedSubcategory = null;
+                                _clearFiltrosVariacao();
                                 _currentPageNotifier.value = 0;
                               });
+                              _syncCatalogQueryToBrowserUri();
                             },
                             onSubcategorySelectedNull: () {
                               setState(() {
                                 _selectedSubcategory = null;
+                                _clearFiltrosVariacao();
                                 _currentPageNotifier.value = 0;
                               });
+                              _syncCatalogQueryToBrowserUri();
                             },
                             onSubcategorySelected: (subcat) {
                               setState(() {
                                 _selectedSubcategory = subcat;
+                                _clearFiltrosVariacao();
                                 _currentPageNotifier.value = 0;
                               });
+                              _syncCatalogQueryToBrowserUri();
                             },
                           ),
                       ],
@@ -4734,18 +5228,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       LayoutBuilder(
                                     builder: (context, c) {
                                       final isDesktopBody = c.maxWidth >= 1024;
-                                      // 👉 aplica filtro da busca + categoria + subcategoria
-                                      final listaFiltrada = produtos.where((p) {
-                                        final n = (p['nome'] ?? '')
-                                            .toString()
-                                            .toLowerCase();
-                                        final d = (p['descricao'] ?? '')
-                                            .toString()
-                                            .toLowerCase();
-                                        final matchText = search.trim().isEmpty
-                                            ? true
-                                            : n.contains(search) ||
-                                                d.contains(search);
+                                      bool matchCategoriaSub(
+                                          Map<String, dynamic> p) {
                                         final cat = (p['categoria'] ??
                                                 p['categoriaId'] ??
                                                 '')
@@ -4756,7 +5240,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     _selectedCategory!.isEmpty
                                                 ? true
                                                 : cat == _selectedCategory;
-                                        // Filtro por subcategoria (compatível com subcategoriaId)
                                         final subcat = (p['subcategoria'] ??
                                                 p['subcategoriaId'] ??
                                                 '')
@@ -4769,31 +5252,96 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 ? true
                                                 : subcat ==
                                                     _selectedSubcategory;
-                                        final preco = (p['preco'] ??
-                                                p['valor'] ??
-                                                0.0) is num
-                                            ? (p['preco'] ?? p['valor'] ?? 0.0)
-                                                as num
-                                            : (double.tryParse(
-                                                    '${p['preco'] ?? p['valor'] ?? 0}') ??
-                                                0.0);
-                                        final matchPrecoMin =
-                                            _precoMin == null ||
-                                                preco >= _precoMin!;
-                                        final matchPrecoMax =
-                                            _precoMax == null ||
-                                                preco <= _precoMax!;
+                                        return matchCat && matchSubcat;
+                                      }
+
+                                      final produtosParaOpcoesVariacao = produtos
+                                          .where(matchCategoriaSub)
+                                          .toList();
+                                      final variacaoTamanhosOpcoes =
+                                          CatalogVariationFilter.coletarTamanhos(
+                                              produtosParaOpcoesVariacao);
+                                      final variacaoCoresOpcoes =
+                                          CatalogVariationFilter.coletarCores(
+                                              produtosParaOpcoesVariacao);
+
+                                      if (prodSnap.hasData) {
+                                        final categoryAliasesSig =
+                                            _categoryAliasesSignature(
+                                                categoryAliasesByName);
+                                        final sig =
+                                            '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$_selectedCategory|$_selectedSubcategory|$_ordenacaoProdutos|${_precoMin}_${_precoMax}|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}';
+                                        if (sig != _lastCatalogSanitizeSig) {
+                                          _lastCatalogSanitizeSig = sig;
+                                          final gen = ++_catalogSanitizeGen;
+                                          final tList = List<String>.from(
+                                              variacaoTamanhosOpcoes);
+                                          final cList = List<String>.from(
+                                              variacaoCoresOpcoes);
+                                          final catList =
+                                              List<String>.from(categoriasMenu);
+                                          final aliasCopy =
+                                              Map<String, Set<String>>.from(
+                                            categoryAliasesByName.map(
+                                              (k, v) => MapEntry(
+                                                k,
+                                                Set<String>.from(v),
+                                              ),
+                                            ),
+                                          );
+                                          final prodCopy =
+                                              List<Map<String, dynamic>>.from(
+                                                  produtos);
+                                          WidgetsBinding.instance
+                                              .addPostFrameCallback((_) {
+                                            if (!mounted ||
+                                                gen != _catalogSanitizeGen) {
+                                              return;
+                                            }
+                                            _sanitizeCatalogUrlDerivedFilters(
+                                              categoriasMenu: catList,
+                                              categoryAliasesByName:
+                                                  aliasCopy,
+                                              produtos: prodCopy,
+                                              tamanhos: tList,
+                                              cores: cList,
+                                            );
+                                          });
+                                        }
+                                      }
+
+                                      // 👉 aplica filtro da busca + categoria + subcategoria
+                                      final listaFiltrada = produtos.where((p) {
+                                        final n = (p['nome'] ?? '')
+                                            .toString()
+                                            .toLowerCase();
+                                        final d = (p['descricao'] ?? '')
+                                            .toString()
+                                            .toLowerCase();
+                                        final matchText = search.trim().isEmpty
+                                            ? true
+                                            : n.contains(search) ||
+                                                d.contains(search);
+                                        final matchCatSub =
+                                            matchCategoriaSub(p);
+                                        final matchPreco =
+                                            _produtoIntersectsPrecoRange(p);
                                         final matchEstoque =
                                             !_apenasEmEstoque ||
                                                 CatalogEstoqueHelper
                                                     .produtoPassaFiltroApenasEmEstoque(
                                                         p);
+                                        final matchVariacao =
+                                            CatalogVariationFilter.produtoMatches(
+                                          p,
+                                          tamanho: _filtroVariacaoTamanho,
+                                          cor: _filtroVariacaoCor,
+                                        );
                                         return matchText &&
-                                            matchCat &&
-                                            matchSubcat &&
-                                            matchPrecoMin &&
-                                            matchPrecoMax &&
-                                            matchEstoque;
+                                            matchCatSub &&
+                                            matchPreco &&
+                                            matchEstoque &&
+                                            matchVariacao;
                                       }).toList();
 
                                       // Ordenação
@@ -4853,10 +5401,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               asDateTime(a['dataCriacao']);
                                           final dtB =
                                               asDateTime(b['dataCriacao']);
-                                          if (dtA == null && dtB == null)
+                                          if (dtA == null && dtB == null) {
                                             return 0;
-                                          if (dtA == null) return 1;
-                                          if (dtB == null) return -1;
+                                          }
+                                          if (dtA == null) {
+                                            return 1;
+                                          }
+                                          if (dtB == null) {
+                                            return -1;
+                                          }
                                           return dtB.compareTo(dtA);
                                         });
                                       } else {
@@ -4916,18 +5469,22 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                         _selectedCategory = cat;
                                                         _selectedSubcategory =
                                                             null;
+                                                        _clearFiltrosVariacao();
                                                         _currentPageNotifier
                                                             .value = 0;
                                                       });
+                                                      _syncCatalogQueryToBrowserUri();
                                                     },
                                                     onClear: () {
                                                       setState(() {
                                                         _selectedCategory = null;
                                                         _selectedSubcategory =
                                                             null;
+                                                        _clearFiltrosVariacao();
                                                         _currentPageNotifier
                                                             .value = 0;
                                                       });
+                                                      _syncCatalogQueryToBrowserUri();
                                                     },
                                                     textColor: textColor,
                                                     fallbackBg: cardColor,
@@ -5131,6 +5688,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     _currentPageNotifier.value =
                                                         0;
                                                   });
+                                                  _syncCatalogQueryToBrowserUri();
                                                 },
                                                 onFilterEmEstoqueToggled: () {
                                                   setState(() {
@@ -5148,6 +5706,38 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 onPageChanged: (p) {
                                                   _currentPageNotifier.value =
                                                       p;
+                                                },
+                                                variacaoTamanhos:
+                                                    variacaoTamanhosOpcoes,
+                                                variacaoCores:
+                                                    variacaoCoresOpcoes,
+                                                filtroVariacaoTamanho:
+                                                    _filtroVariacaoTamanho,
+                                                filtroVariacaoCor:
+                                                    _filtroVariacaoCor,
+                                                onVariacaoTamanhoChanged: (v) {
+                                                  setState(() {
+                                                    _filtroVariacaoTamanho = v;
+                                                    _currentPageNotifier.value =
+                                                        0;
+                                                  });
+                                                  _syncCatalogQueryToBrowserUri();
+                                                },
+                                                onVariacaoCorChanged: (v) {
+                                                  setState(() {
+                                                    _filtroVariacaoCor = v;
+                                                    _currentPageNotifier.value =
+                                                        0;
+                                                  });
+                                                  _syncCatalogQueryToBrowserUri();
+                                                },
+                                                onVariacaoClear: () {
+                                                  setState(() {
+                                                    _clearFiltrosVariacao();
+                                                    _currentPageNotifier.value =
+                                                        0;
+                                                  });
+                                                  _syncCatalogQueryToBrowserUri();
                                                 },
                                               ),
                                             ),
@@ -5556,9 +6146,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                               null;
                                                           _selectedSubcategory =
                                                               null;
+                                                          _clearFiltrosVariacao();
                                                           _currentPageNotifier
                                                               .value = 0;
                                                         });
+                                                        _syncCatalogQueryToBrowserUri();
                                                       },
                                                       onCategorySelected:
                                                           (cat) {
@@ -5567,27 +6159,33 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                               cat;
                                                           _selectedSubcategory =
                                                               null;
+                                                          _clearFiltrosVariacao();
                                                           _currentPageNotifier
                                                               .value = 0;
                                                         });
+                                                        _syncCatalogQueryToBrowserUri();
                                                       },
                                                       onSubcategorySelectedNull:
                                                           () {
                                                         setState(() {
                                                           _selectedSubcategory =
                                                               null;
+                                                          _clearFiltrosVariacao();
                                                           _currentPageNotifier
                                                               .value = 0;
                                                         });
+                                                        _syncCatalogQueryToBrowserUri();
                                                       },
                                                       onSubcategorySelected:
                                                           (subcat) {
                                                         setState(() {
                                                           _selectedSubcategory =
                                                               subcat;
+                                                          _clearFiltrosVariacao();
                                                           _currentPageNotifier
                                                               .value = 0;
                                                         });
+                                                        _syncCatalogQueryToBrowserUri();
                                                       },
                                                     ),
                                                   ),

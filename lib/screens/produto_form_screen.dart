@@ -1676,6 +1676,33 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                         );
                       }),
 
+                      const SizedBox(height: 8),
+                      // Botão logo abaixo da lista de variações (antes de preço por tamanho)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.add_circle_outline),
+                          label: const Text('Adicionar Variação'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.deepPurple,
+                          ),
+                          onPressed: () async {
+                            setState(() {
+                              _gradeVariacoes.add({'tamanho': '', 'cor': '', 'qtd': ''});
+                              _variacaoControllers.add({
+                                'tamanho': TextEditingController(),
+                                'cor': TextEditingController(),
+                                'qtd': TextEditingController(),
+                              });
+                              _initPrecoPorTamanhoControllers();
+                            });
+                            if (widget.produto != null) {
+                              await _persistirProdutoAtual(widget.produto!);
+                            }
+                          },
+                        ),
+                      ),
+
                       // Preço por tamanho (quando há variações com tamanhos)
                       if (_tamanhosUnicos.isNotEmpty) ...[
                         const SizedBox(height: 16),
@@ -1716,32 +1743,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                           ],
                         ),
                       ],
-
-                      // Botão adicionar variação
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.add_circle_outline),
-                          label: const Text('Adicionar Variação'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.deepPurple,
-                          ),
-                          onPressed: () async {
-                            setState(() {
-                              _gradeVariacoes.add({'tamanho': '', 'cor': '', 'qtd': ''});
-                              _variacaoControllers.add({
-                                'tamanho': TextEditingController(),
-                                'cor': TextEditingController(),
-                                'qtd': TextEditingController(),
-                              });
-                              _initPrecoPorTamanhoControllers();
-                            });
-                            if (widget.produto != null) {
-                              await _persistirProdutoAtual(widget.produto!);
-                            }
-                          },
-                        ),
-                      ),
                     ],
                   ),
 

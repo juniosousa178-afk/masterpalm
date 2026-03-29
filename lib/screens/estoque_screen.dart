@@ -3714,6 +3714,19 @@ String _formatGradeTexto(Produto p) {
             },
           ),
           _drawerTile(
+            icon: Icons.table_chart_outlined,
+            iconColor: const Color(0xFFF59E0B),
+            label: 'Modelo de planilha (editar e baixar)',
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(
+                context,
+                '/modelos_importacao',
+                arguments: const {'tab': 0},
+              );
+            },
+          ),
+          _drawerTile(
             icon: Icons.cloud_upload,
             iconColor: Colors.green,
             label: _sincronizandoEstoque ? 'Sincronizando…' : 'Enviar para Nuvem',

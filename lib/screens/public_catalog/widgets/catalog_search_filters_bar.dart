@@ -473,6 +473,16 @@ class CatalogSortFiltersSection extends StatelessWidget {
   final int totalPaginas;
   final void Function(int) onPageChanged;
 
+  /// Tamanhos/medidas vindos dos produtos (categoria atual).
+  final List<String> variacaoTamanhos;
+  /// Cores vindas das variações (categoria atual).
+  final List<String> variacaoCores;
+  final String? filtroVariacaoTamanho;
+  final String? filtroVariacaoCor;
+  final ValueChanged<String?> onVariacaoTamanhoChanged;
+  final ValueChanged<String?> onVariacaoCorChanged;
+  final VoidCallback onVariacaoClear;
+
   const CatalogSortFiltersSection({
     super.key,
     required this.ordenacaoProdutos,
@@ -488,11 +498,24 @@ class CatalogSortFiltersSection extends StatelessWidget {
     required this.paginaAtual,
     required this.totalPaginas,
     required this.onPageChanged,
+    this.variacaoTamanhos = const [],
+    this.variacaoCores = const [],
+    this.filtroVariacaoTamanho,
+    this.filtroVariacaoCor,
+    required this.onVariacaoTamanhoChanged,
+    required this.onVariacaoCorChanged,
+    required this.onVariacaoClear,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hasFilterAtivo = apenasEmEstoque || precoMin != null || precoMax != null;
+    final hasVariacao = (filtroVariacaoTamanho != null &&
+            filtroVariacaoTamanho!.trim().isNotEmpty) ||
+        (filtroVariacaoCor != null && filtroVariacaoCor!.trim().isNotEmpty);
+    final hasFilterAtivo = apenasEmEstoque ||
+        precoMin != null ||
+        precoMax != null ||
+        hasVariacao;
     final isSortPadrao = ordenacaoProdutos == 'nome';
     final hasAlgoAtivo = hasFilterAtivo || !isSortPadrao;
 
@@ -579,7 +602,14 @@ class CatalogSortFiltersSection extends StatelessWidget {
     if (precoMin != null || precoMax != null) {
       parts.add('Preço');
     }
-    return parts.join(' ? ');
+    if (filtroVariacaoTamanho != null &&
+        filtroVariacaoTamanho!.trim().isNotEmpty) {
+      parts.add('Tam.: ${filtroVariacaoTamanho!.trim()}');
+    }
+    if (filtroVariacaoCor != null && filtroVariacaoCor!.trim().isNotEmpty) {
+      parts.add('Cor: ${filtroVariacaoCor!.trim()}');
+    }
+    return parts.join(' · ');
   }
 
   Future<void> _showFilterMenu(BuildContext context) async {
@@ -587,6 +617,9 @@ class CatalogSortFiltersSection extends StatelessWidget {
     final wideChrome = usePointerFirstChrome(context);
 
     Widget filterMenuBody(BuildContext sheetContext) {
+      final sheetHasVariacao = (filtroVariacaoTamanho != null &&
+              filtroVariacaoTamanho!.trim().isNotEmpty) ||
+          (filtroVariacaoCor != null && filtroVariacaoCor!.trim().isNotEmpty);
       return SafeArea(
         top: false,
         child: Padding(
@@ -615,6 +648,101 @@ class CatalogSortFiltersSection extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
+              if (variacaoTamanhos.isNotEmpty || variacaoCores.isNotEmpty) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Variação (tamanho / medida e cor)',
+                    style: TextStyle(
+                      color: textColor.withValues(alpha: 0.85),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                if (variacaoTamanhos.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Tamanho ou medida',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        isDense: true,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          isExpanded: true,
+                          value: filtroVariacaoTamanho,
+                          hint: const Text('Todos'),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Todos'),
+                            ),
+                            ...variacaoTamanhos.map(
+                              (t) => DropdownMenuItem<String?>(
+                                value: t,
+                                child:
+                                    Text(t, overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                          ],
+                          onChanged: onVariacaoTamanhoChanged,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (variacaoCores.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Cor',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        isDense: true,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          isExpanded: true,
+                          value: filtroVariacaoCor,
+                          hint: const Text('Todas'),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Todas'),
+                            ),
+                            ...variacaoCores.map(
+                              (c) => DropdownMenuItem<String?>(
+                                value: c,
+                                child:
+                                    Text(c, overflow: TextOverflow.ellipsis),
+                              ),
+                            ),
+                          ],
+                          onChanged: onVariacaoCorChanged,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (sheetHasVariacao)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: onVariacaoClear,
+                      icon: Icon(Icons.clear_all, size: 18, color: primaryColor),
+                      label: Text(
+                        'Limpar tamanho e cor',
+                        style: TextStyle(color: primaryColor),
+                      ),
+                    ),
+                  ),
+                const Divider(height: 22),
+              ],
               _FilterActionTile(
                 label: 'Nome',
                 selected: ordenacaoProdutos == 'nome',

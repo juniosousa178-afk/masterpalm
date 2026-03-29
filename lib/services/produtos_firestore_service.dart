@@ -13,7 +13,7 @@ import '../core/logger.dart';
 import 'package:hive/hive.dart';
 import '../models/produto.dart';
 import 'catalogo_sync_service.dart';
-import 'produto_auto_sync_service.dart';
+import 'produto_remote_sync_guard.dart';
 import 'store_resolver_facade.dart';
 import 'catalog_thumbnail_service.dart';
 import 'image_upload_service.dart';
@@ -44,7 +44,14 @@ class ProdutosFirestoreService {
   ///
   /// Chamado após salvar no cadastro (produto/combo/catálogo), import e fluxos que alteram
   /// o registro manualmente — mantém a nuvem alinhada à edição local.
-  static Future<void> syncProduto(Produto produto, {String? lojaId}) async {
+  static Future<void> syncProduto(
+    Produto produto, {
+    String? lojaId,
+    /// Quando false, não grava Hive só para atualizar [Produto.updatedAt] após a nuvem
+    /// (evita re-disparar [ProdutoAutoSyncService] em loop). Upload de imagem / novo
+    /// [Produto.idFirebase] continuam persistindo no Hive.
+    bool bumpHiveTimestamp = true,
+  }) async {
     try {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) {
@@ -137,8 +144,10 @@ class ProdutosFirestoreService {
         logD('✅ [PRODUTOS-SYNC] Imagens atualizadas no Hive com URLs do Firebase');
       }
 
-      produto.updatedAt = DateTime.now();
-      await produto.save();
+      if (bumpHiveTimestamp) {
+        produto.updatedAt = DateTime.now();
+        await produto.save();
+      }
 
       final docRef = _db
           .collection('lojas')
@@ -389,16 +398,22 @@ class ProdutosFirestoreService {
     p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
   }
 
-  /// Hive com [updatedAt] mais recente que o documento remoto (evita sobrescrever
-  /// qualquer campo editado localmente antes do upload terminar).
+  /// Hive com [updatedAt] claramente mais recente que o documento remoto (evita
+  /// sobrescrever edição local antes do upload terminar).
+  ///
+  /// Importante: usar `local.isAfter(remote - margem)` estava incorreto — para
+  /// quase qualquer par de instantes próximos isso dava `true` e o app **ignorava**
+  /// peso/custo/preço vindos da nuvem mesmo quando o servidor era mais novo
+  /// (divergência entre celulares e frete com peso zerado no catálogo).
   static bool _localUpdatedAtNewerThanRemote(Produto p, Map<String, dynamic> data) {
     final local = p.updatedAt;
     final raw = data['updatedAt'];
     if (local == null) return false;
     if (raw == null || raw is! Timestamp) return false;
     final remote = raw.toDate();
-    // Margem para diferença relógio aparelho vs servidor
-    return local.isAfter(remote.subtract(const Duration(seconds: 15)));
+    // Só preserva cadastro local se o [updatedAt] local for claramente posterior ao servidor.
+    const skewTolerance = Duration(seconds: 2);
+    return local.isAfter(remote.add(skewTolerance));
   }
 
   /// Sincroniza produtos do Firestore para o Hive (Firestore → Hive)
@@ -407,7 +422,7 @@ class ProdutosFirestoreService {
     required String lojaId,
     required Box<Produto> produtosBox,
   }) async {
-    ProdutoAutoSyncService.setApplyingRemoteSync(true);
+    ProdutoRemoteSyncGuard.applyingRemoteToHive = true;
     try {
       logD('🔄 [PRODUTOS-SYNC] Sincronizando produtos do Firestore → Hive...');
 
@@ -697,7 +712,7 @@ class ProdutosFirestoreService {
       logE('❌ [PRODUTOS-SYNC] Erro ao sincronizar do Firestore (type=${e.runtimeType})', error: e, st: st);
       return 0;
     } finally {
-      ProdutoAutoSyncService.setApplyingRemoteSync(false);
+      ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
     }
   }
 

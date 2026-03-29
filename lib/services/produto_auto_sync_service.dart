@@ -7,6 +7,8 @@ import '../core/hive_box_names.dart';
 import '../models/produto.dart';
 import 'catalogo_sync_service.dart';
 import 'catalog_cache_service.dart';
+import 'produto_remote_sync_guard.dart';
+import 'produtos_firestore_service.dart';
 import 'store_resolver_facade.dart';
 
 /// Serviço que monitora mudanças no box de produtos e sincroniza automaticamente
@@ -20,8 +22,7 @@ class ProdutoAutoSyncService {
   Timer? _debounceTimer;
   final Set<String> _pendingProductKeys = {};
   bool _isRunning = false;
-  /// Quando true, eventos do box são ignorados (evita loop: sync Firestore→Hive dispara AUTO-SYNC).
-  bool _applyingRemoteSync = false;
+  /// Usa [ProdutoRemoteSyncGuard] (evita loop: sync Firestore→Hive dispara AUTO-SYNC).
 
   /// Inicia o monitoramento automático de mudanças no box de produtos
   Future<void> start() async {
@@ -64,13 +65,16 @@ class ProdutoAutoSyncService {
   }
 
   /// Chamar antes/depois de syncFirestoreToHive para evitar loop ( Firestore→Hive dispara box.watch).
+  @Deprecated('Use ProdutoRemoteSyncGuard.applyingRemoteToHive')
   static void setApplyingRemoteSync(bool value) {
-    ProdutoAutoSyncService()._applyingRemoteSync = value;
+    ProdutoRemoteSyncGuard.applyingRemoteToHive = value;
   }
 
   /// Trata eventos do Hive box
   void _handleBoxEvent(BoxEvent event) {
-    if (_applyingRemoteSync) return; // Ignora eventos vindos de sync Firestore→Hive
+    if (ProdutoRemoteSyncGuard.applyingRemoteToHive) {
+      return;
+    }
 
     final key = event.key.toString();
 
@@ -151,6 +155,19 @@ class ProdutoAutoSyncService {
   Future<void> _syncProduto(Produto produto, String lojaId) async {
     try {
       debugPrint('📤 [AUTO-SYNC] Sincronizando: ${produto.nome}');
+
+      // Sempre refletir Hive em estoque_produtos (peso, custo, etc.). Antes só o catálogo era atualizado.
+      try {
+        await ProdutosFirestoreService.syncProduto(
+          produto,
+          lojaId: lojaId,
+          bumpHiveTimestamp: false,
+        );
+      } catch (e) {
+        debugPrint(
+          '❌ [AUTO-SYNC] Falha em estoque_produtos (type=${e.runtimeType})',
+        );
+      }
 
       // Determina o target baseado no estado do produto
       final target = produto.ativoNoRascunho ? SyncTarget.draft : SyncTarget.live;

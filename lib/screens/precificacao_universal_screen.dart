@@ -673,6 +673,30 @@ class _PrecificacaoUniversalScreenState
         elevation: 0,
         title: const Text('Precificação Universal'),
         actions: [
+          PopupMenuButton<String>(
+            icon: Icon(Icons.more_vert, color: Colors.white.withValues(alpha: 0.9)),
+            tooltip: 'Mais opções',
+            onSelected: (v) {
+              if (v == 'modelo_import') {
+                Navigator.pushNamed(
+                  context,
+                  '/modelos_importacao',
+                  arguments: const {'tab': 3},
+                );
+              }
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
+                value: 'modelo_import',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.table_chart_outlined, size: 22),
+                  title: Text('Modelo de importação (planilha)'),
+                  dense: true,
+                ),
+              ),
+            ],
+          ),
           IconButton(
             icon: Icon(Icons.refresh, color: Colors.white.withValues(alpha:0.9)),
             onPressed: _restaurarPadrao,

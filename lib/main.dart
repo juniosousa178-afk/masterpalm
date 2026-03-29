@@ -108,6 +108,7 @@ import 'screens/loja_preconfig_screen.dart';
 import 'screens/config_pagamentos_screen.dart';
 import 'screens/config_pagamentos_simples_screen.dart';
 import 'screens/ajuda_screen.dart';
+import 'screens/modelos_importacao_screen.dart';
 
 // Widgets
 import 'widgets/notificacao_pedido_listener.dart';
@@ -2012,6 +2013,24 @@ class MyApp extends StatelessWidget {
               '/backup': (_) => const BackupScreen(),
               '/relatorios': (_) => const RelatoriosScreen(),
               '/precificacao': (_) => const PrecificacaoUniversalScreen(),
+              '/modelos_importacao': (ctx) {
+                final raw = ModalRoute.of(ctx)?.settings.arguments;
+                final map = raw is Map
+                    ? Map<String, dynamic>.from(
+                        raw.map((k, v) => MapEntry(k.toString(), v)),
+                      )
+                    : null;
+                final t = map?['tab'];
+                int idx = 0;
+                if (t is int) {
+                  idx = t;
+                } else if (t is num) {
+                  idx = t.toInt();
+                } else if (t != null) {
+                  idx = int.tryParse(t.toString()) ?? 0;
+                }
+                return ModelosImportacaoScreen(initialTabIndex: idx);
+              },
               '/relatorio_vendedor': (_) => const RelatorioVendedorScreen(),
               '/cadastro': (_) => const CadastroScreen(),
               '/permissao': (_) => const PermissoesScreen(),
@@ -2096,6 +2115,13 @@ class MyApp extends StatelessWidget {
                     final page = Uri.base.queryParameters['page']?.trim();
                     final cartId = Uri.base.queryParameters['cart']?.trim();
                     final produtoId = Uri.base.queryParameters['produto']?.trim();
+                    final tam = Uri.base.queryParameters['tam']?.trim();
+                    final cor = Uri.base.queryParameters['cor']?.trim();
+                    final cat = Uri.base.queryParameters['cat']?.trim();
+                    final sub = Uri.base.queryParameters['sub']?.trim();
+                    final ord = Uri.base.queryParameters['ord']?.trim();
+                    final pmin = Uri.base.queryParameters['pmin']?.trim();
+                    final pmax = Uri.base.queryParameters['pmax']?.trim();
                     logD('🛒 [ROUTE /loja] Web: lojaId da URL → $fromUrl, page=$page, cart=$cartId, produto=$produtoId');
                     return PublicCatalogScreen(
                         lojaId: fromUrl,
@@ -2103,7 +2129,14 @@ class MyApp extends StatelessWidget {
                         indicacaoClienteRef: _indicacaoRefFromUrl(),
                         initialPage: page?.isNotEmpty == true ? page : null,
                         initialCartId: cartId?.isNotEmpty == true ? cartId : null,
-                        initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null);
+                        initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null,
+                        initialTam: tam?.isNotEmpty == true ? tam : null,
+                        initialCor: cor?.isNotEmpty == true ? cor : null,
+                        initialCat: cat?.isNotEmpty == true ? cat : null,
+                        initialSub: sub?.isNotEmpty == true ? sub : null,
+                        initialOrd: ord?.isNotEmpty == true ? ord : null,
+                        initialPmin: pmin?.isNotEmpty == true ? pmin : null,
+                        initialPmax: pmax?.isNotEmpty == true ? pmax : null);
                   }
                 }
                 return FutureBuilder<String?>(
@@ -2119,12 +2152,26 @@ class MyApp extends StatelessWidget {
                     final indicacaoRef = _indicacaoRefFromUrl();
                     final cartId = kIsWeb ? (Uri.base.queryParameters['cart']?.trim()) : null;
                     final produtoId = kIsWeb ? (Uri.base.queryParameters['produto']?.trim()) : null;
+                    final tam = kIsWeb ? (Uri.base.queryParameters['tam']?.trim()) : null;
+                    final cor = kIsWeb ? (Uri.base.queryParameters['cor']?.trim()) : null;
+                    final cat = kIsWeb ? (Uri.base.queryParameters['cat']?.trim()) : null;
+                    final sub = kIsWeb ? (Uri.base.queryParameters['sub']?.trim()) : null;
+                    final ord = kIsWeb ? (Uri.base.queryParameters['ord']?.trim()) : null;
+                    final pmin = kIsWeb ? (Uri.base.queryParameters['pmin']?.trim()) : null;
+                    final pmax = kIsWeb ? (Uri.base.queryParameters['pmax']?.trim()) : null;
                     return PublicCatalogScreen(
                         lojaId: lojaId,
                         vendedorRef: vendedorRef,
                         indicacaoClienteRef: indicacaoRef,
                         initialCartId: cartId?.isNotEmpty == true ? cartId : null,
-                        initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null);
+                        initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null,
+                        initialTam: tam?.isNotEmpty == true ? tam : null,
+                        initialCor: cor?.isNotEmpty == true ? cor : null,
+                        initialCat: cat?.isNotEmpty == true ? cat : null,
+                        initialSub: sub?.isNotEmpty == true ? sub : null,
+                        initialOrd: ord?.isNotEmpty == true ? ord : null,
+                        initialPmin: pmin?.isNotEmpty == true ? pmin : null,
+                        initialPmax: pmax?.isNotEmpty == true ? pmax : null);
                   },
                 );
               },

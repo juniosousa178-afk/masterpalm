@@ -4523,24 +4523,6 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     return out;
   }
 
-  Widget _catalogColorField({
-    required String label,
-    String? description,
-    required Color color,
-    required ValueChanged<Color> onChanged,
-  }) {
-    return CatalogColorFieldEditor(
-      label: label,
-      description: description,
-      color: color,
-      suggestions: _catalogColorPaletteSuggestions(),
-      onColorChanged: (c) {
-        onChanged(c);
-        _salvarRascunho(validar: false);
-      },
-    );
-  }
-
   /// Temas e Cores: lista de sugestões calculada uma vez; chips só no bottom sheet (tela mais leve).
   Widget _catalogColorFieldTema({
     required String label,
@@ -6380,48 +6362,37 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _catalogColorField(
-                        label: 'Fundo do card',
-                        color: _heroCardBg,
-                        onChanged: (c) => setState(() => _heroCardBg = c),
-                      ),
-                    ],
+                  _catalogColorFieldTema(
+                    suggestions: paletteSuggestions,
+                    label: 'Fundo do card',
+                    color: _heroCardBg,
+                    onChanged: (c) => setState(() => _heroCardBg = c),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _heroBannerHeightCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Altura do banner (px)',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (_) => _scheduleAutoSave(),
-                        ),
+                  _layoutResponsivePair(
+                    breakpoint: 480,
+                    first: TextField(
+                      controller: _heroBannerHeightCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _heroBannerCardRadiusCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Raio dos cantos do card',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (_) => _scheduleAutoSave(),
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'Altura do banner (px)',
+                        border: OutlineInputBorder(),
                       ),
-                    ],
+                      onChanged: (_) => _scheduleAutoSave(),
+                    ),
+                    second: TextField(
+                      controller: _heroBannerCardRadiusCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Raio dos cantos do card',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => _scheduleAutoSave(),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -6444,16 +6415,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _catalogColorField(
-                        label: 'Cor do título',
-                        color: _heroTitleColor,
-                        onChanged: (c) => setState(() => _heroTitleColor = c),
-                      ),
-                    ],
+                  _catalogColorFieldTema(
+                    suggestions: paletteSuggestions,
+                    label: 'Cor do título',
+                    color: _heroTitleColor,
+                    onChanged: (c) => setState(() => _heroTitleColor = c),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -6518,16 +6484,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _catalogColorField(
-                        label: 'Cor do subtítulo',
-                        color: _heroSubtitleColor,
-                        onChanged: (c) => setState(() => _heroSubtitleColor = c),
-                      ),
-                    ],
+                  _catalogColorFieldTema(
+                    suggestions: paletteSuggestions,
+                    label: 'Cor do subtítulo',
+                    color: _heroSubtitleColor,
+                    onChanged: (c) =>
+                        setState(() => _heroSubtitleColor = c),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -6591,53 +6553,47 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _catalogColorField(
-                        label: 'Fundo do botão',
-                        color: _heroButtonBg,
-                        onChanged: (c) => setState(() => _heroButtonBg = c),
-                      ),
-                      _catalogColorField(
-                        label: 'Texto do botão',
-                        color: _heroButtonTextColor,
-                        onChanged: (c) => setState(() => _heroButtonTextColor = c),
-                      ),
-                    ],
+                  _layoutResponsivePair(
+                    breakpoint: 560,
+                    first: _catalogColorFieldTema(
+                      suggestions: paletteSuggestions,
+                      label: 'Fundo do botão',
+                      color: _heroButtonBg,
+                      onChanged: (c) => setState(() => _heroButtonBg = c),
+                    ),
+                    second: _catalogColorFieldTema(
+                      suggestions: paletteSuggestions,
+                      label: 'Texto do botão',
+                      color: _heroButtonTextColor,
+                      onChanged: (c) =>
+                          setState(() => _heroButtonTextColor = c),
+                    ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _heroBannerButtonSizeCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Tamanho da fonte (botão)',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (_) => _scheduleAutoSave(),
-                        ),
+                  _layoutResponsivePair(
+                    breakpoint: 480,
+                    first: TextField(
+                      controller: _heroBannerButtonSizeCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _heroBannerButtonRadiusCtrl,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Raio dos cantos do botão',
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (_) => _scheduleAutoSave(),
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'Tamanho da fonte (botão)',
+                        border: OutlineInputBorder(),
                       ),
-                    ],
+                      onChanged: (_) => _scheduleAutoSave(),
+                    ),
+                    second: TextField(
+                      controller: _heroBannerButtonRadiusCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Raio dos cantos do botão',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => _scheduleAutoSave(),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int>(

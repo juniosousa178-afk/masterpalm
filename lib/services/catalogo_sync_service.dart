@@ -42,6 +42,18 @@ class CatalogoSyncService {
         .replaceAll(RegExp(r'^-|-$'), '');
   }
 
+  /// Id do documento em `draft_produtos` / `produtos`: alinhado a
+  /// [ProdutosFirestoreService.syncProduto] (`estoque_produtos`):
+  /// `idFirebase` → `slug` → slug do nome. Não altera o conteúdo de [Produto.slug]
+  /// nem injeta `lojaId` — só define qual chave de documento usar.
+  static String catalogFirestoreDocId(Produto pdt) {
+    final idFb = pdt.idFirebase.trim();
+    if (idFb.isNotEmpty) return idFb;
+    final sl = pdt.slug.trim();
+    if (sl.isNotEmpty) return sl;
+    return slugify(pdt.nome).trim();
+  }
+
   static String _collectionName(SyncTarget t) =>
       t == SyncTarget.draft ? 'draft_produtos' : 'produtos';
 
@@ -310,6 +322,41 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
         .delete();
   }
 
+  /// Remove documento legado do catálogo quando o id canônico passou a ser
+  /// [Produto.idFirebase] e existia cópia antiga indexada só pelo [Produto.slug].
+  static Future<void> _removeLegacySlugCatalogDocIfSameProduto({
+    required String lojaId,
+    required SyncTarget target,
+    required Produto pdt,
+    required String canonicalDocId,
+  }) async {
+    final leg = pdt.slug.trim();
+    if (leg.isEmpty || leg == canonicalDocId) return;
+    if (pdt.idFirebase.trim().isEmpty) return;
+    try {
+      final ref = _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(_collectionName(target))
+          .doc(leg);
+      final snap = await ref.get();
+      if (!snap.exists) return;
+      final data = snap.data();
+      if (data == null) return;
+      final innerId = (data['id'] ?? '').toString().trim();
+      final nome = (data['nome'] ?? '').toString().trim();
+      if (innerId == leg &&
+          nome.toLowerCase() == pdt.nome.trim().toLowerCase()) {
+        await ref.delete();
+        if (kDebugMode) {
+          debugPrint(
+            '🗑️ [PRODUTO SYNC] Removida duplicata legada $leg → canônico $canonicalDocId (${_collectionName(target)})',
+          );
+        }
+      }
+    } catch (_) {}
+  }
+
   // ===============================================================
   // Sync de 1 produto
   // ===============================================================
@@ -323,8 +370,7 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
 
-    final docId =
-        (pdt.slug.trim().isNotEmpty ? pdt.slug : slugify(pdt.nome)).trim();
+    final docId = catalogFirestoreDocId(pdt);
 
     final publicado = pdt.publicadoNoCatalogo == true;
     // Combo: quantidade = quantos combos disponíveis; produto simples: quantidade em estoque
@@ -343,6 +389,12 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     if (!deveExistir) {
       if (kDebugMode) debugPrint('⚠️ [PRODUTO SYNC] Removendo: $docId');
       await _remove(lojaId, target, docId);
+      await _removeLegacySlugCatalogDocIfSameProduto(
+        lojaId: lojaId,
+        target: target,
+        pdt: pdt,
+        canonicalDocId: docId,
+      );
       return;
     }
 
@@ -353,6 +405,12 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     );
 
     await _upsert(lojaId, target, docId, data);
+    await _removeLegacySlugCatalogDocIfSameProduto(
+      lojaId: lojaId,
+      target: target,
+      pdt: pdt,
+      canonicalDocId: docId,
+    );
   }
 
   // ===============================================================
@@ -379,8 +437,7 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     final allowed = <String>{};
 
     for (final pdt in box.values) {
-      final docId =
-          (pdt.slug.trim().isNotEmpty ? pdt.slug : slugify(pdt.nome)).trim();
+      final docId = catalogFirestoreDocId(pdt);
 
       final publicado = pdt.publicadoNoCatalogo == true;
       final estoqueOk = !removerSeSemEstoque ||
@@ -487,8 +544,7 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   // MÉTODOS AUXILIARES PARA AUTO-SYNC
   // ===============================================================
 
-  /// Remove um produto específico do Firestore
-  /// DocId deve ser igual ao usado em syncProduto (apenas slug, sem lojaId)
+  /// Remove um produto específico do Firestore (id canônico + duplicata legada por slug).
   static Future<void> removeProdutoFromFirestore(
     Produto pdt, {
     required SyncTarget target,
@@ -497,11 +553,17 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     try {
       final lojaId = await _resolveLojaId(lojaIdOverride);
       final colName = _collectionName(target);
+      final base = _db.collection('lojas').doc(lojaId).collection(colName);
 
-      final docId =
-          (pdt.slug.trim().isNotEmpty ? pdt.slug : slugify(pdt.nome)).trim();
+      final docId = catalogFirestoreDocId(pdt);
+      await base.doc(docId).delete();
 
-      await _db.collection('lojas').doc(lojaId).collection(colName).doc(docId).delete();
+      final leg = pdt.slug.trim();
+      if (leg.isNotEmpty && leg != docId) {
+        try {
+          await base.doc(leg).delete();
+        } catch (_) {}
+      }
 
       debugPrint('🗑️ [PRODUTO SYNC] Removido do Firestore: lojas/$lojaId/$colName/$docId');
     } catch (e) {
@@ -518,8 +580,7 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   }) async {
     final validDocIds = <String>{};
     for (final p in produtosBox.values) {
-      final docId =
-          (p.slug.trim().isNotEmpty ? p.slug.trim() : slugify(p.nome)).trim();
+      final docId = catalogFirestoreDocId(p);
       if (docId.isNotEmpty) validDocIds.add(docId);
     }
 
