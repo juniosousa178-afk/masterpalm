@@ -2942,7 +2942,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           msg =
                               'Não foi possível carregar os dados. Tente novamente ou preencha manualmente.';
                       }
-                      // Sempre usar showSnack do catálogo para a mensagem aparecer no contexto correto (sheet em overlay)
+                      // SnackBar no messenger do overlay do carrinho (parent injeta showCartSnack).
                       widget.showSnack(msg);
                     },
                     icon: const Icon(Icons.history, size: 18),

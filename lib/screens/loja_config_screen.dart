@@ -841,6 +841,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   String _layoutCatalogo = 'padrao';
   String _productCardSize = 'medium';
 
+  /// Acordeão aberto no painel Layout dos cards (mesmo padrão de Temas e Cores).
+  String? _layoutPaneAccordionOpenId = 'layout_geral';
+
   bool _promoBarEnabled = false;
   final TextEditingController _promoBarTextCtrl = TextEditingController();
   final TextEditingController _promoBarLinkCtrl = TextEditingController();
@@ -6029,13 +6032,140 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   // ============== PANE: LAYOUT & CARDS ==============
+  /// Acordeão no painel Layout (visual alinhado a [loja_config_tema_pane]).
+  Widget _buildLayoutAccordionSection({
+    required String id,
+    required String title,
+    String? subtitle,
+    required Widget child,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final open = _layoutPaneAccordionOpenId == id;
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      color: cs.surface,
+      surfaceTintColor: Colors.transparent,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () {
+              setState(() {
+                if (open) {
+                  _layoutPaneAccordionOpenId = null;
+                } else {
+                  _layoutPaneAccordionOpenId = id;
+                }
+              });
+            },
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: tt.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.2,
+                            color: cs.onSurface,
+                          ),
+                        ),
+                        if (subtitle != null && subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            subtitle,
+                            style: tt.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                              height: 1.4,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    open ? Icons.expand_less : Icons.expand_more,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: open
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                    child: RepaintBoundary(child: child),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Dois blocos lado a lado só com largura suficiente; senão empilha (evita overflow no mobile).
+  Widget _layoutResponsivePair({
+    required double breakpoint,
+    required Widget first,
+    required Widget second,
+    double gap = 12,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < breakpoint;
+        if (narrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              first,
+              SizedBox(height: gap),
+              second,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: first),
+            SizedBox(width: gap),
+            Expanded(child: second),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _paneLayout() {
+    final paletteSuggestions = _catalogColorPaletteSuggestions();
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Section(
-          title: 'Layout do catálogo público',
-          subtitle: 'O padrão atual continua igual; o novo layout entra apenas quando selecionado.',
+        _buildLayoutAccordionSection(
+          id: 'layout_geral',
+          title: 'Layout geral',
+          subtitle:
+              'Estilo de página no catálogo público e tamanho do card de produto.',
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DropdownButtonFormField<String>(
                 initialValue: _layoutCatalogo,
@@ -6082,14 +6212,24 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 14),
+            ],
+          ),
+        ),
+        _buildLayoutAccordionSection(
+          id: 'layout_promo',
+          title: 'Barra promocional superior',
+          subtitle:
+              'Letreiro no layout minimalista — texto, link, cores e rolagem.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               SwitchListTile(
                 value: _promoBarEnabled,
                 onChanged: (v) {
                   setState(() => _promoBarEnabled = v);
                   _salvarRascunho(validar: false);
                 },
-                title: const Text('Barra promocional superior'),
+                title: const Text('Ativar barra promocional'),
                 contentPadding: EdgeInsets.zero,
               ),
               const SizedBox(height: 8),
@@ -6110,25 +6250,25 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 ),
                 onChanged: (_) => _scheduleAutoSave(),
               ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _catalogColorField(
-                      label: 'Cor fundo promo',
-                      color: _promoBarBg,
-                      onChanged: (c) => setState(() => _promoBarBg = c),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _catalogColorField(
-                      label: 'Cor texto promo',
-                      color: _promoBarText,
-                      onChanged: (c) => setState(() => _promoBarText = c),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 12),
+              _layoutResponsivePair(
+                breakpoint: 560,
+                first: _catalogColorFieldTema(
+                  suggestions: paletteSuggestions,
+                  label: 'Cor fundo da barra',
+                  description: 'Fundo do letreiro promocional.',
+                  color: _promoBarBg,
+                  onChanged: (c) =>
+                      setState(() => _promoBarBg = c),
+                ),
+                second: _catalogColorFieldTema(
+                  suggestions: paletteSuggestions,
+                  label: 'Cor do texto da barra',
+                  description: 'Cor das letras do letreiro.',
+                  color: _promoBarText,
+                  onChanged: (c) =>
+                      setState(() => _promoBarText = c),
+                ),
               ),
               SwitchListTile(
                 value: _promoBarMarquee,
@@ -6151,14 +6291,24 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 ),
                 onChanged: (_) => _scheduleAutoSave(),
               ),
-              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+        _buildLayoutAccordionSection(
+          id: 'layout_hero',
+          title: 'Banner / letreiro (minimalista)',
+          subtitle:
+              'Card abaixo das categorias — imagens, textos, botão e aparência.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               SwitchListTile(
                 value: _heroBannerEnabled,
                 onChanged: (v) {
                   setState(() => _heroBannerEnabled = v);
                   _salvarRascunho(validar: false);
                 },
-                title: const Text('Banner/letreiro superior'),
+                title: const Text('Ativar banner promocional'),
                 contentPadding: EdgeInsets.zero,
               ),
               const SizedBox(height: 8),
@@ -6533,21 +6683,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   const SizedBox(height: 12),
                 ],
               ),
-              const SizedBox(height: 12),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Imagens por categoria (1 foto por categoria):',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Você pode selecionar uma categoria já existente da loja ou digitar o nome. '
-                'A imagem fica vinculada direto à categoria e mantém compatibilidade com configurações antigas.',
-                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-              ),
-              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+        _buildLayoutAccordionSection(
+          id: 'layout_categorias',
+          title: 'Imagens por categoria',
+          subtitle:
+              'Uma foto por categoria no minimalista; compatível com configs antigas.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               DropdownButtonFormField<String>(
                 isExpanded: true,
                 initialValue: (_catSelectedFromStore != null &&
@@ -6692,20 +6838,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   label: const Text('Atualizar categorias da loja'),
                 ),
               ),
-              const SizedBox(height: 16),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Seção Mais vendidos (layout minimalista)',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Usa métricas de venda no produto quando existirem; senão, destaque e novidades.',
-                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-              ),
-              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+        _buildLayoutAccordionSection(
+          id: 'layout_mais_vendidos',
+          title: 'Seção Mais vendidos',
+          subtitle:
+              'Carrossel no minimalista — métricas de venda, destaque e novidades.',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               SwitchListTile(
                 value: _minimalBestSellersEnabled,
                 onChanged: (v) {
@@ -6736,18 +6879,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Grade de produtos (desktop x mobile)',
+        _buildLayoutAccordionSection(
+          id: 'layout_grid',
+          title: 'Grade de produtos (desktop × mobile)',
+          subtitle:
+              'Quantos cards de produto aparecem por linha em cada tipo de tela.',
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Defina quantos cards de produto aparecem por linha em cada dispositivo.',
-                style: TextStyle(color: Colors.black54),
-              ),
-              const SizedBox(height: 16),
-
               Text(
                 'Desktop (navegador no PC)',
                 style: Theme.of(context)
@@ -6812,13 +6951,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ],
           ),
         ),
-
-        const SizedBox(height: 16),
-
-        _Section(
+        _buildLayoutAccordionSection(
+          id: 'layout_cards_style',
           title: 'Estilo visual dos cards',
+          subtitle: 'Sombra, cantos arredondados e pré-visualização rápida.',
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SwitchListTile(
                 title: const Text('Aplicar sombra nos cards'),
