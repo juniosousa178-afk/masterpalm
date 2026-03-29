@@ -20,6 +20,8 @@ Widget buildCatalogProductsGridSliver({
   /// Só layout minimalista: feedback após ícone carrinho quando o item entra no carrinho (não abre sheet).
   VoidCallback? onMinimalSilentAddFeedback,
   void Function(String productId)? onProductViewed,
+  void Function(String prodUrlValue)? onProductUrlFocus,
+  VoidCallback? onProductUrlBlur,
   void Function(String productId)? onToggleFavorito,
   VoidCallback? onAbrirLoginParaFavorito,
   VoidCallback? onAbrirCarrinho,
@@ -69,6 +71,8 @@ Widget buildCatalogProductsGridSliver({
               onAdd: onAdd,
               onMinimalSilentAddFeedback: onMinimalSilentAddFeedback,
               onProductViewed: onProductViewed,
+              onProductUrlFocus: onProductUrlFocus,
+              onProductUrlBlur: onProductUrlBlur,
               onToggleFavorito: clienteId != null
                   ? () => onToggleFavorito?.call(safeStr(p['id']))
                   : onAbrirLoginParaFavorito,

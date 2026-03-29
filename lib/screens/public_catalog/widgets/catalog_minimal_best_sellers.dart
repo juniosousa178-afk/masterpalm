@@ -25,6 +25,8 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
   final String? contatoWhatsapp;
   final String? politicaFrete;
   final void Function(String productId)? onProductViewed;
+  final void Function(String prodUrlValue)? onProductUrlFocus;
+  final VoidCallback? onProductUrlBlur;
   final String productCardSize;
 
   const CatalogMinimalBestSellersSection({
@@ -44,6 +46,8 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
     this.contatoWhatsapp,
     this.politicaFrete,
     this.onProductViewed,
+    this.onProductUrlFocus,
+    this.onProductUrlBlur,
     this.productCardSize = CatalogProductCardSize.medium,
   });
 
@@ -58,7 +62,14 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
 
   void _openDetail(BuildContext context, Map<String, dynamic> p) {
     onProductViewed?.call(safeStr(p['id']));
-    Navigator.of(context).push(
+    final slug = safeStr(p['slug']).trim();
+    final id = safeStr(p['id']).trim();
+    final urlVal = slug.isNotEmpty ? slug : id;
+    if (urlVal.isNotEmpty) {
+      onProductUrlFocus?.call(urlVal);
+    }
+    Navigator.of(context)
+        .push(
       MaterialPageRoute(
         builder: (_) => CatalogProductDetailScreen.fromProdutoMap(
           p: p,
@@ -73,7 +84,8 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
           todosProdutos: todosProdutos,
         ),
       ),
-    );
+    )
+        .then((_) => onProductUrlBlur?.call());
   }
 
   @override

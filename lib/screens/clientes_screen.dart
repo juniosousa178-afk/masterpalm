@@ -3273,23 +3273,37 @@ class _ClientesScreenState extends State<ClientesScreen>
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'modelo_import',
                 child: Row(
                   children: [
-                    Icon(Icons.table_chart_outlined, size: 22),
-                    SizedBox(width: 12),
-                    Text('Modelo de importação (planilha)'),
+                    const Icon(Icons.table_chart_outlined, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Modelo de importação (planilha)',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'redefinir_senha_catalogo',
                 child: Row(
                   children: [
-                    Icon(Icons.lock_reset, size: 22),
-                    SizedBox(width: 12),
-                    Text('Redefinir senha do cliente (catálogo)'),
+                    const Icon(Icons.lock_reset, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Redefinir senha do cliente (catálogo)',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    ),
                   ],
                 ),
               ),

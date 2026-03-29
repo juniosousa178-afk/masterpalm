@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'core/logger.dart';
 import 'screens/public_catalog_screen.dart';
+import 'screens/public_catalog/catalog_url_query_codec.dart';
 import 'screens/pagamento_resultado_screen.dart';
 import 'screens/pedido_publico_screen.dart';
 import 'screens/order_review_screen.dart';
@@ -32,6 +33,12 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
       final ord = uri.queryParameters['ord']?.trim();
       final pmin = uri.queryParameters['pmin']?.trim();
       final pmax = uri.queryParameters['pmax']?.trim();
+      final searchQ = uri.queryParameters['q']?.trim();
+      final pageSplit =
+          catalogInterpretPageQueryParam(uri.queryParameters['page']?.trim());
+      final produtoDeep = uri.queryParameters['produto']?.trim();
+      final prodDeep =
+          catalogSanitizeProdQuery(uri.queryParameters['prod']);
 
       logD('🛒 [ROUTE /loja/{id}] rota resolvida');
 
@@ -47,6 +54,12 @@ Route<dynamic>? onGenerateRoute(RouteSettings settings) {
           initialOrd: (ord != null && ord.isNotEmpty) ? ord : null,
           initialPmin: (pmin != null && pmin.isNotEmpty) ? pmin : null,
           initialPmax: (pmax != null && pmax.isNotEmpty) ? pmax : null,
+          initialQ: (searchQ != null && searchQ.isNotEmpty) ? searchQ : null,
+          initialPage: pageSplit.namedInitialPage,
+          initialCatalogPage: pageSplit.catalogPage1Based,
+          initialProdutoId:
+              (produtoDeep != null && produtoDeep.isNotEmpty) ? produtoDeep : null,
+          initialProd: prodDeep,
         ),
       );
     }

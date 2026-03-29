@@ -957,14 +957,22 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                       );
                     }
                   },
-                  itemBuilder: (ctx) => const [
+                  itemBuilder: (ctx) => [
                     PopupMenuItem(
                       value: 'modelo_import',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.table_chart_outlined, size: 22),
-                        title: Text('Modelo de importação (planilha)'),
-                        dense: true,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.table_chart_outlined, size: 22),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Modelo de importação (planilha)',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(ctx).textTheme.bodyLarge,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

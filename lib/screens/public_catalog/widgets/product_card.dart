@@ -27,6 +27,8 @@ class PublicCatalogProductCard extends StatelessWidget {
   final bool Function(Map<String, dynamic>) onAdd;
   final VoidCallback? onMinimalSilentAddFeedback;
   final void Function(String productId)? onProductViewed;
+  final void Function(String prodUrlValue)? onProductUrlFocus;
+  final VoidCallback? onProductUrlBlur;
   final void Function()? onToggleFavorito;
   final void Function()? onAbrirCarrinho;
   final String? clienteId;
@@ -57,6 +59,8 @@ class PublicCatalogProductCard extends StatelessWidget {
     required this.onAdd,
     this.onMinimalSilentAddFeedback,
     this.onProductViewed,
+    this.onProductUrlFocus,
+    this.onProductUrlBlur,
     this.onToggleFavorito,
     this.onAbrirCarrinho,
     this.clienteId,
@@ -147,6 +151,8 @@ class PublicCatalogProductCard extends StatelessWidget {
       catalogShareUrl: catalogUrl,
       isNovo: safeBool(p['isNovo']),
       onProductViewed: onProductViewed,
+      onProductUrlFocus: onProductUrlFocus,
+      onProductUrlBlur: onProductUrlBlur,
       isFavorito: clienteId != null && favoritosIds.contains(p['id']),
       onToggleFavorito: onToggleFavorito,
       prazoEntrega: prazoEntregaTexto,

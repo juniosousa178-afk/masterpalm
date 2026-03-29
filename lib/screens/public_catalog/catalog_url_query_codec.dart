@@ -1,4 +1,4 @@
-// Codificação estável de query params do catálogo público (ord, preço).
+// Codificação estável de query params do catálogo público (ord, preço, busca).
 
 /// Converte valor de `ord` na URL para chave interna [_ordenacaoProdutos].
 /// Aceita aliases amigáveis (`menor_preco`) e técnicos (`preco_asc`).
@@ -68,4 +68,59 @@ String? catalogFormatPrecoQuery(double? v) {
     s = s.replaceFirst(RegExp(r'\.$'), '');
   }
   return s.isEmpty ? null : s;
+}
+
+/// Texto de busca na URL (`q`): apenas trim; vazio ou só espaços => null.
+String? catalogSanitizeSearchQuery(String? raw) {
+  if (raw == null) return null;
+  final t = raw.trim();
+  return t.isEmpty ? null : t;
+}
+
+/// Produto em foco na URL (`prod`): trim, vazio => null; limite leve contra abuse.
+String? catalogSanitizeProdQuery(String? raw) {
+  if (raw == null) return null;
+  final t = raw.trim();
+  if (t.isEmpty) return null;
+  if (t.length > 160) return null;
+  return t;
+}
+
+/// Paginação na URL (`page`): inteiro >= 1; inválido => null.
+int? catalogParsePaginationPageQuery(String? raw) {
+  if (raw == null) return null;
+  final t = raw.trim();
+  if (t.isEmpty) return null;
+  final n = int.tryParse(t);
+  if (n == null || n < 1) return null;
+  return n;
+}
+
+/// Valor para `page` na query: 1-based; página 1 => omitir (null).
+/// [zeroBasedPage] e [totalPaginas] alinhados ao catálogo (20 itens/página).
+String? catalogFormatPaginationPageQuery({
+  required int zeroBasedPage,
+  required int totalPaginas,
+}) {
+  if (totalPaginas < 1) return null;
+  final maxIdx = totalPaginas - 1;
+  final idx = zeroBasedPage.clamp(0, maxIdx);
+  final oneBased = idx + 1;
+  if (oneBased <= 1) return null;
+  return oneBased.toString();
+}
+
+/// Interpreta `?page=` para rotas: número → grid; `dicas` → [namedInitialPage];
+/// demais valores não numéricos → ignorar (o catálogo sanitiza na URL).
+({int? catalogPage1Based, String? namedInitialPage})
+    catalogInterpretPageQueryParam(String? raw) {
+  if (raw == null) return (catalogPage1Based: null, namedInitialPage: null);
+  final t = raw.trim();
+  if (t.isEmpty) return (catalogPage1Based: null, namedInitialPage: null);
+  final n = catalogParsePaginationPageQuery(t);
+  if (n != null) return (catalogPage1Based: n, namedInitialPage: null);
+  if (t.toLowerCase() == 'dicas') {
+    return (catalogPage1Based: null, namedInitialPage: 'dicas');
+  }
+  return (catalogPage1Based: null, namedInitialPage: null);
 }

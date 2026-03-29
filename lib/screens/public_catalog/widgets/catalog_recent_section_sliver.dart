@@ -16,6 +16,8 @@ Widget buildCatalogRecentSectionSliver({
   required String lojaId,
   required bool Function(Map<String, dynamic>) onAdd,
   void Function(String productId)? onProductViewed,
+  void Function(String prodUrlValue)? onProductUrlFocus,
+  VoidCallback? onProductUrlBlur,
   void Function(String productId)? onToggleFavorito,
   VoidCallback? onAbrirLoginParaFavorito,
   VoidCallback? onAbrirCarrinho,
@@ -60,6 +62,8 @@ Widget buildCatalogRecentSectionSliver({
       contatoWhatsapp: contatoWhatsapp,
       politicaFrete: politicaFrete,
       onProductViewed: onProductViewed,
+      onProductUrlFocus: onProductUrlFocus,
+      onProductUrlBlur: onProductUrlBlur,
     ),
   );
 }

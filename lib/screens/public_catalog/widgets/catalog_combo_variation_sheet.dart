@@ -12,7 +12,7 @@ import '../../../core/safe_cast.dart' show asMap, asMapDeep;
 import '../catalog_estoque_helper.dart';
 
 /// Abre o sheet de seleção de variações do combo e, ao confirmar, chama [onAdd] com o item do carrinho (inclui [itensComboComSelecao]).
-void showCatalogComboVariationSheet({
+Future<void> showCatalogComboVariationSheet({
   required BuildContext context,
   required Map<String, dynamic> comboProduct,
   required List<Map<String, dynamic>> todosProdutos,
@@ -20,7 +20,7 @@ void showCatalogComboVariationSheet({
   VoidCallback? onAbrirCarrinho,
   VoidCallback? onAfterSilentAddWhenAdded,
 }) {
-  if (!context.mounted) return;
+  if (!context.mounted) return Future.value();
   final wideChrome = usePointerFirstChrome(context);
 
   Widget sheetBody() {
@@ -34,7 +34,7 @@ void showCatalogComboVariationSheet({
   }
 
   if (wideChrome) {
-    showDialog<void>(
+    return showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (sheetContext) {
@@ -61,14 +61,13 @@ void showCatalogComboVariationSheet({
         );
       },
     );
-  } else {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => sheetBody(),
-    );
   }
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => sheetBody(),
+  );
 }
 
 class CatalogComboVariationSheet extends StatefulWidget {

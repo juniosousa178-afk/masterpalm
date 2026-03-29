@@ -24,7 +24,13 @@ void showPixQrDialog({
         children: [
           Icon(Icons.pix, color: Colors.teal.shade700),
           const SizedBox(width: 8),
-          const Text('Pagar com PIX'),
+          const Expanded(
+            child: Text(
+              'Pagar com PIX',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
       content: SingleChildScrollView(

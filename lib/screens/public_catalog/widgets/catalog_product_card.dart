@@ -46,6 +46,9 @@ class CatalogProductCard extends StatefulWidget {
   final String? catalogShareUrl;
   final bool isNovo;
   final void Function(String productId)? onProductViewed;
+  /// Web: sincroniza query `prod` (slug preferencial, senão id); [onProductUrlBlur] ao fechar.
+  final void Function(String prodUrlValue)? onProductUrlFocus;
+  final VoidCallback? onProductUrlBlur;
   final bool isFavorito;
   final void Function()? onToggleFavorito;
   final String? prazoEntrega;
@@ -109,6 +112,8 @@ class CatalogProductCard extends StatefulWidget {
     this.catalogShareUrl,
     this.isNovo = false,
     this.onProductViewed,
+    this.onProductUrlFocus,
+    this.onProductUrlBlur,
     this.isFavorito = false,
     this.onToggleFavorito,
     this.prazoEntrega,
@@ -147,6 +152,12 @@ class CatalogProductCard extends StatefulWidget {
 
 class _CatalogProductCardState extends State<CatalogProductCard> {
   bool _hovered = false;
+
+  String get _prodUrlValue {
+    final s = widget.slug.trim();
+    if (s.isNotEmpty) return s;
+    return widget.id.trim();
+  }
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
@@ -274,8 +285,15 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
 
   void _openDetails() {
     widget.onProductViewed?.call(widget.id);
+    final urlVal = _prodUrlValue;
+    if (urlVal.isNotEmpty) {
+      widget.onProductUrlFocus?.call(urlVal);
+    }
+    void onClosed() => widget.onProductUrlBlur?.call();
+
     if (widget.minimalLayout) {
-      Navigator.of(context).push(
+      Navigator.of(context)
+          .push(
         MaterialPageRoute(
           builder: (_) => CatalogProductDetailScreen(
             id: widget.id,
@@ -311,7 +329,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             onAbrirCarrinho: widget.onAbrirCarrinho,
           ),
         ),
-      );
+      )
+          .then((_) => onClosed());
     } else {
       final wideChrome = usePointerFirstChrome(context);
 
@@ -348,7 +367,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             final theme = Theme.of(sheetContext);
             final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
             return Dialog(
-              insetPadding:
+insetPadding:
                   const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               backgroundColor: Colors.transparent,
               elevation: 0,
@@ -366,14 +385,14 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
               ),
             );
           },
-        );
+        ).then((_) => onClosed());
       } else {
-        showModalBottomSheet(
+        showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
           builder: (_) => detailsContent(),
-        );
+        ).then((_) => onClosed());
       }
     }
   }
@@ -381,6 +400,10 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
   void _openComboVariationSheet({bool abrirCarrinhoDepois = false}) {
     if (widget.comboProductMap == null || widget.todosProdutosForCombo == null) return;
     widget.onProductViewed?.call(widget.id);
+    final urlVal = _prodUrlValue;
+    if (urlVal.isNotEmpty) {
+      widget.onProductUrlFocus?.call(urlVal);
+    }
     showCatalogComboVariationSheet(
       context: context,
       comboProduct: widget.comboProductMap!,
@@ -392,11 +415,16 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
               widget.onMinimalSilentAddFeedback != null)
           ? widget.onMinimalSilentAddFeedback
           : null,
-    );
+    ).then((_) => widget.onProductUrlBlur?.call());
   }
 
   void _openSelectionModal({bool comprarDirecto = false}) {
     widget.onProductViewed?.call(widget.id);
+    final urlVal = _prodUrlValue;
+    if (urlVal.isNotEmpty) {
+      widget.onProductUrlFocus?.call(urlVal);
+    }
+    void onClosed() => widget.onProductUrlBlur?.call();
     final wideChrome = usePointerFirstChrome(context);
 
     Widget selectionContent() {
@@ -479,14 +507,14 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             ),
           );
         },
-      );
+      ).then((_) => onClosed());
     } else {
-      showModalBottomSheet(
+      showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (_) => selectionContent(),
-      );
+      ).then((_) => onClosed());
     }
   }
 

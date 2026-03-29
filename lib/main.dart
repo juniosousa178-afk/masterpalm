@@ -70,6 +70,7 @@ import 'screens/cadastro_catalogo_screen.dart';
 import 'screens/relatorio_financeiro_screen.dart';
 import 'screens/relatorios_financeiros_screen.dart';
 import 'screens/public_catalog_screen.dart';
+import 'screens/public_catalog/catalog_url_query_codec.dart';
 import 'screens/loja_config_screen.dart';
 import 'screens/configure_loja_placeholder_screen.dart';
 import 'screens/onboarding_loja_screen.dart';
@@ -451,6 +452,17 @@ void _appCheckSelfCheck() {
 // ✅ Crashlytics + Analytics
 // Crashlytics não é suportado no Flutter Web (MissingPluginException); só ativa em mobile.
 // ===========================================================================
+
+/// Overflow visual de [RenderFlex] não é falha de runtime: evita ruído como fatal no Crashlytics.
+bool _isRenderFlexLayoutOverflowDetails(FlutterErrorDetails details) {
+  final s = details.exceptionAsString();
+  return s.contains('A RenderFlex overflowed');
+}
+
+bool _isRenderFlexLayoutOverflowMessage(Object error) {
+  return error.toString().contains('A RenderFlex overflowed');
+}
+
 Future<void> initFirebaseMonitoring() async {
   // Se Firebase não estiver inicializado (ex.: modo OFFLINE / timeout), não tentar
   // acessar Crashlytics para evitar core/no-app durante o próprio handler.
@@ -475,9 +487,13 @@ Future<void> initFirebaseMonitoring() async {
         final c = crash;
         if (c != null) {
           try {
-            c.recordFlutterFatalError(details);
+            if (_isRenderFlexLayoutOverflowDetails(details)) {
+              c.recordFlutterError(details);
+            } else {
+              c.recordFlutterFatalError(details);
+            }
           } catch (e, st) {
-            logE('⚠️ Crashlytics.recordFlutterFatalError falhou (ignorado).',
+            logE('⚠️ Crashlytics recordFlutter* falhou (ignorado).',
                 error: e, st: st);
           }
         }
@@ -494,7 +510,8 @@ Future<void> initFirebaseMonitoring() async {
         final c = crash;
         if (c != null) {
           try {
-            c.recordError(unwrapped, unwrappedStack, fatal: true);
+            final fatal = !_isRenderFlexLayoutOverflowMessage(unwrapped);
+            c.recordError(unwrapped, unwrappedStack, fatal: fatal);
           } catch (e, st) {
             logE('⚠️ Crashlytics.recordError falhou (ignorado).',
                 error: e, st: st);
@@ -2112,9 +2129,12 @@ class MyApp extends StatelessWidget {
                 if (kIsWeb) {
                   final fromUrl = _lojaSlugOrIdFromUrl();
                   if (fromUrl.isNotEmpty && fromUrl != 'minha-loja') {
-                    final page = Uri.base.queryParameters['page']?.trim();
+                    final pageRaw = Uri.base.queryParameters['page']?.trim();
+                    final pageSplit = catalogInterpretPageQueryParam(pageRaw);
                     final cartId = Uri.base.queryParameters['cart']?.trim();
                     final produtoId = Uri.base.queryParameters['produto']?.trim();
+                    final prodParam =
+                        catalogSanitizeProdQuery(Uri.base.queryParameters['prod']);
                     final tam = Uri.base.queryParameters['tam']?.trim();
                     final cor = Uri.base.queryParameters['cor']?.trim();
                     final cat = Uri.base.queryParameters['cat']?.trim();
@@ -2122,21 +2142,25 @@ class MyApp extends StatelessWidget {
                     final ord = Uri.base.queryParameters['ord']?.trim();
                     final pmin = Uri.base.queryParameters['pmin']?.trim();
                     final pmax = Uri.base.queryParameters['pmax']?.trim();
-                    logD('🛒 [ROUTE /loja] Web: lojaId da URL → $fromUrl, page=$page, cart=$cartId, produto=$produtoId');
+                    final searchQ = Uri.base.queryParameters['q']?.trim();
+                    logD('🛒 [ROUTE /loja] Web: lojaId da URL → $fromUrl, page=$pageRaw, cart=$cartId, produto=$produtoId');
                     return PublicCatalogScreen(
                         lojaId: fromUrl,
                         vendedorRef: _vendedorRefFromUrl(),
                         indicacaoClienteRef: _indicacaoRefFromUrl(),
-                        initialPage: page?.isNotEmpty == true ? page : null,
+                        initialPage: pageSplit.namedInitialPage,
+                        initialCatalogPage: pageSplit.catalogPage1Based,
                         initialCartId: cartId?.isNotEmpty == true ? cartId : null,
                         initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null,
+                        initialProd: prodParam,
                         initialTam: tam?.isNotEmpty == true ? tam : null,
                         initialCor: cor?.isNotEmpty == true ? cor : null,
                         initialCat: cat?.isNotEmpty == true ? cat : null,
                         initialSub: sub?.isNotEmpty == true ? sub : null,
                         initialOrd: ord?.isNotEmpty == true ? ord : null,
                         initialPmin: pmin?.isNotEmpty == true ? pmin : null,
-                        initialPmax: pmax?.isNotEmpty == true ? pmax : null);
+                        initialPmax: pmax?.isNotEmpty == true ? pmax : null,
+                        initialQ: searchQ?.isNotEmpty == true ? searchQ : null);
                   }
                 }
                 return FutureBuilder<String?>(
@@ -2152,6 +2176,9 @@ class MyApp extends StatelessWidget {
                     final indicacaoRef = _indicacaoRefFromUrl();
                     final cartId = kIsWeb ? (Uri.base.queryParameters['cart']?.trim()) : null;
                     final produtoId = kIsWeb ? (Uri.base.queryParameters['produto']?.trim()) : null;
+                    final prodParam = kIsWeb
+                        ? catalogSanitizeProdQuery(Uri.base.queryParameters['prod'])
+                        : null;
                     final tam = kIsWeb ? (Uri.base.queryParameters['tam']?.trim()) : null;
                     final cor = kIsWeb ? (Uri.base.queryParameters['cor']?.trim()) : null;
                     final cat = kIsWeb ? (Uri.base.queryParameters['cat']?.trim()) : null;
@@ -2159,19 +2186,27 @@ class MyApp extends StatelessWidget {
                     final ord = kIsWeb ? (Uri.base.queryParameters['ord']?.trim()) : null;
                     final pmin = kIsWeb ? (Uri.base.queryParameters['pmin']?.trim()) : null;
                     final pmax = kIsWeb ? (Uri.base.queryParameters['pmax']?.trim()) : null;
+                    final searchQ = kIsWeb ? (Uri.base.queryParameters['q']?.trim()) : null;
+                    final pageSplit = catalogInterpretPageQueryParam(
+                      kIsWeb ? Uri.base.queryParameters['page']?.trim() : null,
+                    );
                     return PublicCatalogScreen(
                         lojaId: lojaId,
                         vendedorRef: vendedorRef,
                         indicacaoClienteRef: indicacaoRef,
+                        initialPage: pageSplit.namedInitialPage,
+                        initialCatalogPage: pageSplit.catalogPage1Based,
                         initialCartId: cartId?.isNotEmpty == true ? cartId : null,
                         initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null,
+                        initialProd: prodParam,
                         initialTam: tam?.isNotEmpty == true ? tam : null,
                         initialCor: cor?.isNotEmpty == true ? cor : null,
                         initialCat: cat?.isNotEmpty == true ? cat : null,
                         initialSub: sub?.isNotEmpty == true ? sub : null,
                         initialOrd: ord?.isNotEmpty == true ? ord : null,
                         initialPmin: pmin?.isNotEmpty == true ? pmin : null,
-                        initialPmax: pmax?.isNotEmpty == true ? pmax : null);
+                        initialPmax: pmax?.isNotEmpty == true ? pmax : null,
+                        initialQ: searchQ?.isNotEmpty == true ? searchQ : null);
                   },
                 );
               },

@@ -70,7 +70,13 @@ class UpdateAppDialog extends StatelessWidget {
         children: [
           Icon(Icons.system_update, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 12),
-          const Text('Atualização disponível'),
+          const Expanded(
+            child: Text(
+              'Atualização disponível',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
       content: SingleChildScrollView(

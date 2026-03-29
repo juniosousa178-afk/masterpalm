@@ -2458,7 +2458,13 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 child: const Icon(Icons.local_offer, color: _primaryColor),
               ),
               const SizedBox(width: 12),
-              const Text('Criar Cupom de Desconto'),
+              const Expanded(
+                child: Text(
+                  'Criar Cupom de Desconto',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           content: SingleChildScrollView(

@@ -92,6 +92,9 @@ class PublicCatalogScreen extends StatefulWidget {
   /// ✅ ID ou slug do produto para abrir direto (ex: link campanha ?produto=ID)
   final String? initialProdutoId;
 
+  /// ✅ Mesmo propósito que [initialProdutoId], via query `prod` (rotas nomeadas / deep link).
+  final String? initialProd;
+
   /// ✅ Filtro de variação na URL (?tam=) — na Web costuma vir de [Uri.base]; no app, da rota.
   final String? initialTam;
 
@@ -105,6 +108,12 @@ class PublicCatalogScreen extends StatefulWidget {
   final String? initialPmin;
   final String? initialPmax;
 
+  /// ✅ Busca textual na URL (?q=)
+  final String? initialQ;
+
+  /// ✅ Página do grid (1-based), quando `page` na URL é numérico — não confundir com [initialPage] (`page=dicas`).
+  final int? initialCatalogPage;
+
   const PublicCatalogScreen({
     super.key,
     required this.lojaId,
@@ -114,6 +123,7 @@ class PublicCatalogScreen extends StatefulWidget {
     this.initialPage,
     this.initialCartId,
     this.initialProdutoId,
+    this.initialProd,
     this.initialTam,
     this.initialCor,
     this.initialCat,
@@ -121,6 +131,8 @@ class PublicCatalogScreen extends StatefulWidget {
     this.initialOrd,
     this.initialPmin,
     this.initialPmax,
+    this.initialQ,
+    this.initialCatalogPage,
   });
 
   @override
@@ -489,6 +501,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   String? _pendingUrlPmax;
   String? _pendingUrlTam;
   String? _pendingUrlCor;
+  /// Página 1-based vinda da URL, aplicada após conhecer [totalPaginas].
+  int? _pendingUrlCatalogPage;
+  int _catalogTotalPaginasForUrl = 1;
+  /// Web: valor de `prod=` na URL (slug preferencial, senão id).
+  String? _catalogUrlProd;
   String _lastCatalogSanitizeSig = '';
   int _catalogSanitizeGen = 0;
 
@@ -601,9 +618,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   @override
   void initState() {
     super.initState();
-    _pendingInitialProdutoId = widget.initialProdutoId?.trim();
     _initPendingCatalogFiltersFromUrl();
-    _currentPageNotifier.addListener(_scrollToTopOnPageChange);
+    _currentPageNotifier.addListener(_onCatalogPageNotifierChanged);
     _catalogScrollController.addListener(_onCatalogScroll);
     _resolveLojaId().catchError((e, st) {
       logD(
@@ -635,6 +651,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _searchNotifier.value = normalized;
         _currentPageNotifier.value = 0;
       }
+      _syncCatalogQueryToBrowserUri();
     });
   }
 
@@ -646,17 +663,27 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     String? pmax;
     String? t;
     String? c;
+    String? qFromUri;
+    int? pageFromUri;
+    String? prodFromUri;
     if (kIsWeb) {
-      final q = Uri.base.queryParameters;
-      cat = q['cat']?.trim();
-      sub = q['sub']?.trim();
-      ord = q['ord']?.trim();
-      pmin = q['pmin']?.trim();
-      pmax = q['pmax']?.trim();
-      final qt = q['tam']?.trim();
-      final qc = q['cor']?.trim();
+      final qp = Uri.base.queryParameters;
+      cat = qp['cat']?.trim();
+      sub = qp['sub']?.trim();
+      ord = qp['ord']?.trim();
+      pmin = qp['pmin']?.trim();
+      pmax = qp['pmax']?.trim();
+      final qt = qp['tam']?.trim();
+      final qc = qp['cor']?.trim();
       if (qt != null && qt.isNotEmpty) t = qt;
       if (qc != null && qc.isNotEmpty) c = qc;
+      qFromUri = catalogSanitizeSearchQuery(qp['q']);
+      final pageParam = qp['page']?.trim();
+      if (pageParam != null && pageParam.isNotEmpty) {
+        pageFromUri = catalogParsePaginationPageQuery(pageParam);
+      }
+      prodFromUri = catalogSanitizeProdQuery(qp['prod']) ??
+          catalogSanitizeProdQuery(qp['produto']);
     }
     final ic = widget.initialCat?.trim();
     final iSub = widget.initialSub?.trim();
@@ -701,6 +728,27 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     nz(pmax, (v) => _pendingUrlPmax = v);
     _pendingUrlTam = (t != null && t.isNotEmpty) ? t : null;
     _pendingUrlCor = (c != null && c.isNotEmpty) ? c : null;
+    _pendingUrlCatalogPage = pageFromUri;
+    if (_pendingUrlCatalogPage == null &&
+        widget.initialCatalogPage != null &&
+        widget.initialCatalogPage! >= 1) {
+      _pendingUrlCatalogPage = widget.initialCatalogPage;
+    }
+
+    var qInit = qFromUri;
+    if (qInit == null || qInit.isEmpty) {
+      qInit = catalogSanitizeSearchQuery(widget.initialQ);
+    }
+    if (qInit != null && qInit.isNotEmpty) {
+      _searchController.text = qInit;
+      _searchNotifier.value = qInit.toLowerCase();
+    }
+
+    final ip = widget.initialProdutoId?.trim();
+    final iprod = widget.initialProd?.trim();
+    _pendingInitialProdutoId = prodFromUri ??
+        (ip != null && ip.isNotEmpty ? ip : null) ??
+        (iprod != null && iprod.isNotEmpty ? iprod : null);
   }
 
   String _categoryAliasesSignature(Map<String, Set<String>> m) {
@@ -780,6 +828,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       pmax: catalogFormatPrecoQuery(_precoMax),
       tam: _filtroVariacaoTamanho,
       cor: _filtroVariacaoCor,
+      q: catalogSanitizeSearchQuery(_searchController.text),
+      page: catalogFormatPaginationPageQuery(
+        zeroBasedPage: _currentPageNotifier.value,
+        totalPaginas: _catalogTotalPaginasForUrl,
+      ),
+      prod: catalogSanitizeProdQuery(_catalogUrlProd),
     );
   }
 
@@ -801,6 +855,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required List<Map<String, dynamic>> produtos,
     required List<String> tamanhos,
     required List<String> cores,
+    required int totalPaginas,
   }) {
     if (!mounted) {
       return;
@@ -1022,6 +1077,42 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       }
     }
 
+    final tp = totalPaginas < 1 ? 1 : totalPaginas;
+    final maxIdx = tp - 1;
+    var pageIdx = _currentPageNotifier.value;
+    var pageAdjusted = false;
+
+    final pPage = _pendingUrlCatalogPage;
+    _pendingUrlCatalogPage = null;
+    if (pPage != null) {
+      final idx0 = pPage - 1;
+      if (idx0 >= 0 && idx0 <= maxIdx) {
+        if (pageIdx != idx0) {
+          pageIdx = idx0;
+          pageAdjusted = true;
+        }
+      } else {
+        final c = idx0.clamp(0, maxIdx);
+        if (pageIdx != c) {
+          pageIdx = c;
+          pageAdjusted = true;
+        }
+        mustSyncUri = true;
+      }
+    }
+
+    final safeIdx = pageIdx.clamp(0, maxIdx);
+    if (safeIdx != pageIdx) {
+      pageIdx = safeIdx;
+      pageAdjusted = true;
+      mustSyncUri = true;
+    }
+
+    if (_currentPageNotifier.value != pageIdx) {
+      _currentPageNotifier.value = pageIdx;
+      pageAdjusted = true;
+    }
+
     if (changed) {
       setState(() {
         _selectedCategory = cat;
@@ -1033,7 +1124,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _filtroVariacaoCor = cor;
       });
     }
-    if (changed || mustSyncUri) {
+    if (changed || mustSyncUri || pageAdjusted) {
       _syncCatalogQueryToBrowserUri();
     }
   }
@@ -1077,7 +1168,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
   }
 
-  void _scrollToTopOnPageChange() {
+  void _onCatalogPageNotifierChanged() {
+    if (kIsWeb) {
+      _syncCatalogQueryToBrowserUri();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _catalogScrollController.hasClients) {
         _catalogScrollController.animateTo(
@@ -1093,7 +1187,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   void dispose() {
     _catalogScrollController.removeListener(_onCatalogScroll);
     _scrollOffsetNotifier.dispose();
-    _currentPageNotifier.removeListener(_scrollToTopOnPageChange);
+    _currentPageNotifier.removeListener(_onCatalogPageNotifierChanged);
     _searchDebounce?.cancel();
     _searchController.dispose();
     _searchNotifier.dispose();
@@ -1204,6 +1298,28 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         .then((_) => _loadRecentIds());
   }
 
+  String? _catalogProdUrlFromMap(Map<String, dynamic> p) {
+    final slug = safeStr(p['slug']).trim();
+    if (slug.isNotEmpty) return slug;
+    final id = safeStr(p['id']).trim();
+    return id.isEmpty ? null : id;
+  }
+
+  void _onProductUrlFocus(String prodUrlValue) {
+    if (!kIsWeb) return;
+    final s = catalogSanitizeProdQuery(prodUrlValue);
+    if (s == null) return;
+    _catalogUrlProd = s;
+    _syncCatalogQueryToBrowserUri();
+  }
+
+  void _onProductUrlBlur() {
+    if (!kIsWeb) return;
+    if (_catalogUrlProd == null) return;
+    _catalogUrlProd = null;
+    _syncCatalogQueryToBrowserUri();
+  }
+
   String _normalizeProdutoKey(String raw) {
     return raw
         .trim()
@@ -1241,12 +1357,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (product == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Produto do link não foi encontrado.'),
-            duration: Duration(seconds: 3),
-          ),
-        );
+        _catalogUrlProd = null;
+        _syncCatalogQueryToBrowserUri();
       });
       return;
     }
@@ -1255,6 +1367,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       if (!mounted) return;
       final p = product;
       final productId = safeStr(p['id']);
+      final urlProd = catalogSanitizeProdQuery(_catalogProdUrlFromMap(p));
+      if (kIsWeb && urlProd != null) {
+        _catalogUrlProd = urlProd;
+        _syncCatalogQueryToBrowserUri();
+      }
       if (productId.isNotEmpty) _onProductViewed(productId);
       Map<String, int>? mapEstoque(dynamic raw) {
         if (raw is! Map) return null;
@@ -1268,8 +1385,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final estoqueTam = mapEstoque(p['estoquePorTamanho']);
       final estoqueCor = mapEstoque(p['estoquePorCor']);
 
+      void onDetailClosed() {
+        if (!kIsWeb) return;
+        _catalogUrlProd = null;
+        _syncCatalogQueryToBrowserUri();
+      }
+
       if (useMinimalLayout) {
-        Navigator.of(context).push(
+        Navigator.of(context)
+            .push(
           MaterialPageRoute(
             builder: (_) => CatalogProductDetailScreen(
               id: productId,
@@ -1317,9 +1441,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               onAbrirCarrinho: null,
             ),
           ),
-        );
+        )
+            .then((_) => onDetailClosed());
       } else {
-        showModalBottomSheet(
+        showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
@@ -1351,7 +1476,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             itensCombo: null,
             lojaId: lojaId,
           ),
-        );
+        ).then((_) => onDetailClosed());
       }
     });
   }
@@ -5062,6 +5187,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             _searchController.clear();
                             _searchNotifier.value = '';
                             _currentPageNotifier.value = 0;
+                            _syncCatalogQueryToBrowserUri();
                           },
                         ),
                         if (!isDesktop && !useMinimalLayout)
@@ -5265,51 +5391,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           CatalogVariationFilter.coletarCores(
                                               produtosParaOpcoesVariacao);
 
-                                      if (prodSnap.hasData) {
-                                        final categoryAliasesSig =
-                                            _categoryAliasesSignature(
-                                                categoryAliasesByName);
-                                        final sig =
-                                            '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$_selectedCategory|$_selectedSubcategory|$_ordenacaoProdutos|${_precoMin}_${_precoMax}|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}';
-                                        if (sig != _lastCatalogSanitizeSig) {
-                                          _lastCatalogSanitizeSig = sig;
-                                          final gen = ++_catalogSanitizeGen;
-                                          final tList = List<String>.from(
-                                              variacaoTamanhosOpcoes);
-                                          final cList = List<String>.from(
-                                              variacaoCoresOpcoes);
-                                          final catList =
-                                              List<String>.from(categoriasMenu);
-                                          final aliasCopy =
-                                              Map<String, Set<String>>.from(
-                                            categoryAliasesByName.map(
-                                              (k, v) => MapEntry(
-                                                k,
-                                                Set<String>.from(v),
-                                              ),
-                                            ),
-                                          );
-                                          final prodCopy =
-                                              List<Map<String, dynamic>>.from(
-                                                  produtos);
-                                          WidgetsBinding.instance
-                                              .addPostFrameCallback((_) {
-                                            if (!mounted ||
-                                                gen != _catalogSanitizeGen) {
-                                              return;
-                                            }
-                                            _sanitizeCatalogUrlDerivedFilters(
-                                              categoriasMenu: catList,
-                                              categoryAliasesByName:
-                                                  aliasCopy,
-                                              produtos: prodCopy,
-                                              tamanhos: tList,
-                                              cores: cList,
-                                            );
-                                          });
-                                        }
-                                      }
-
                                       // 👉 aplica filtro da busca + categoria + subcategoria
                                       final listaFiltrada = produtos.where((p) {
                                         final n = (p['nome'] ?? '')
@@ -5431,6 +5512,55 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   _produtosPorPagina)
                                               .ceil()
                                               .clamp(1, 999999);
+                                      _catalogTotalPaginasForUrl = totalPaginas;
+
+                                      if (prodSnap.hasData) {
+                                        final categoryAliasesSig =
+                                            _categoryAliasesSignature(
+                                                categoryAliasesByName);
+                                        final sig =
+                                            '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$_selectedCategory|$_selectedSubcategory|$_ordenacaoProdutos|${_precoMin}_${_precoMax}|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$totalPaginas';
+                                        if (sig != _lastCatalogSanitizeSig) {
+                                          _lastCatalogSanitizeSig = sig;
+                                          final gen = ++_catalogSanitizeGen;
+                                          final tList = List<String>.from(
+                                              variacaoTamanhosOpcoes);
+                                          final cList = List<String>.from(
+                                              variacaoCoresOpcoes);
+                                          final catList =
+                                              List<String>.from(categoriasMenu);
+                                          final aliasCopy =
+                                              Map<String, Set<String>>.from(
+                                            categoryAliasesByName.map(
+                                              (k, v) => MapEntry(
+                                                k,
+                                                Set<String>.from(v),
+                                              ),
+                                            ),
+                                          );
+                                          final prodCopy =
+                                              List<Map<String, dynamic>>.from(
+                                                  produtos);
+                                          final tpSan = totalPaginas;
+                                          WidgetsBinding.instance
+                                              .addPostFrameCallback((_) {
+                                            if (!mounted ||
+                                                gen != _catalogSanitizeGen) {
+                                              return;
+                                            }
+                                            _sanitizeCatalogUrlDerivedFilters(
+                                              categoriasMenu: catList,
+                                              categoryAliasesByName:
+                                                  aliasCopy,
+                                              produtos: prodCopy,
+                                              tamanhos: tList,
+                                              cores: cList,
+                                              totalPaginas: tpSan,
+                                            );
+                                          });
+                                        }
+                                      }
+
                                       final paginaAtual = currentPage.clamp(
                                           0, totalPaginas - 1);
                                       final start =
@@ -5652,6 +5782,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     politicaFrete: null,
                                                     onProductViewed:
                                                         _onProductViewed,
+                                                    onProductUrlFocus:
+                                                        _onProductUrlFocus,
+                                                    onProductUrlBlur:
+                                                        _onProductUrlBlur,
                                                   ),
                                                 const SizedBox(height: 16),
 
@@ -5761,6 +5895,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     _addToCart(it, produtos),
                                                 onProductViewed:
                                                     _onProductViewed,
+                                                onProductUrlFocus:
+                                                    _onProductUrlFocus,
+                                                onProductUrlBlur:
+                                                    _onProductUrlBlur,
                                                 onToggleFavorito:
                                                     _toggleFavorito,
                                                 onAbrirLoginParaFavorito:
@@ -5854,6 +5992,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               onAdd: (it) =>
                                                   _addToCart(it, produtos),
                                               onProductViewed: _onProductViewed,
+                                              onProductUrlFocus:
+                                                  _onProductUrlFocus,
+                                              onProductUrlBlur:
+                                                  _onProductUrlBlur,
                                               onToggleFavorito: _toggleFavorito,
                                               onAbrirLoginParaFavorito:
                                                   _abrirLoginParaFavorito,

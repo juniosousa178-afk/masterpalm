@@ -120,19 +120,41 @@ class _AdminPublishFABState extends State<AdminPublishFAB> {
               if (v == 'publicar') _publicarTudo();
               if (v == 'sync') _forcarSync();
             },
-            itemBuilder: (_) => const [
+            itemBuilder: (ctx) => [
               PopupMenuItem(
-                  value: 'publicar',
-                  child: ListTile(
-                    leading: Icon(Icons.cloud_upload),
-                    title: Text('Publicar no site'),
-                  )),
+                value: 'publicar',
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_upload),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Publicar no site',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(ctx).textTheme.bodyLarge,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               PopupMenuItem(
-                  value: 'sync',
-                  child: ListTile(
-                    leading: Icon(Icons.sync),
-                    title: Text('Forçar sync'),
-                  )),
+                value: 'sync',
+                child: Row(
+                  children: [
+                    const Icon(Icons.sync),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Forçar sync',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(ctx).textTheme.bodyLarge,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
             child: const FloatingActionButton.extended(
               onPressed: null,
