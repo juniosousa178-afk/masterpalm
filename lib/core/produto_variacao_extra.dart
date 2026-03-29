@@ -278,4 +278,27 @@ abstract final class ProdutoVariacaoExtra {
     final label = t.isEmpty ? kVariacaoExtraLabelNeutra : t;
     return '$label: $v';
   }
+
+  /// Usa [variacaoExtraResumo] quando existir; senão monta com [textoResumoExtra].
+  static String resumoExtraLinhaDeItemMap(Map<String, dynamic> item) {
+    final resumo = (item['variacaoExtraResumo'] ?? '').toString().trim();
+    if (resumo.isNotEmpty) return resumo;
+    final ex =
+        (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
+    if (ex.isEmpty) return '';
+    final tipo = (item['extraTipo'] ?? '').toString().trim();
+    return textoResumoExtra(extraTipo: tipo, extraValor: ex);
+  }
+
+  /// Tam, cor e variação extra numa linha (pré-pedido, WhatsApp, separação).
+  static String linhaVariacoesParaSeparacao(Map<String, dynamic> item) {
+    final parts = <String>[];
+    final t = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
+    final c = (item['cor'] ?? item['color'] ?? '').toString().trim();
+    if (t.isNotEmpty) parts.add('Tam: $t');
+    if (c.isNotEmpty) parts.add('Cor: $c');
+    final e = resumoExtraLinhaDeItemMap(item);
+    if (e.isNotEmpty) parts.add(e);
+    return parts.join(', ');
+  }
 }

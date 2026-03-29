@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/logger.dart';
+import '../core/produto_variacao_extra.dart';
 import '../services/pre_pedido_service.dart';
 import '../services/catalogo_venda_service.dart';
 import '../services/pos_pagamento_service.dart';
@@ -1352,7 +1353,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                   final qty = item['quantidade'] ?? 1;
                   final preco =
                       (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
-                  final tamanho = (item['tamanho'] ?? '').toString();
+                  final linhaVar = ProdutoVariacaoExtra.linhaVariacoesParaSeparacao(
+                      Map<String, dynamic>.from(item));
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1391,9 +1393,11 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w500),
                               ),
-                              if (tamanho.isNotEmpty)
+                              if (linhaVar.isNotEmpty)
                                 Text(
-                                  tamanho,
+                                  linhaVar,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                       fontSize: 12, color: Colors.grey[600]),
                                 ),
@@ -1948,7 +1952,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         final qty = item['quantidade'] ?? 1;
         final preco = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
         final total = (item['total'] as num?)?.toDouble() ?? 0.0;
-        final tamanho = (item['tamanho'] ?? '').toString();
+        final linhaVar = ProdutoVariacaoExtra.linhaVariacoesParaSeparacao(
+            Map<String, dynamic>.from(item));
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
@@ -1979,8 +1984,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                   children: [
                     Text(nome,
                         style: const TextStyle(fontWeight: FontWeight.w500)),
-                    if (tamanho.isNotEmpty)
-                      Text(tamanho,
+                    if (linhaVar.isNotEmpty)
+                      Text(linhaVar,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                           style:
                               TextStyle(fontSize: 12, color: Colors.grey[600])),
                     Text(
@@ -2345,6 +2352,13 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           'slug': item['slug'] ?? '',
           'imageUrl': item['imagem'] ?? item['imageUrl'] ?? '',
           'percentualDescontoPix': 0.0, // já aplicado em precoUnitario
+          if ((item['variacaoExtraResumo'] ?? '').toString().trim().isNotEmpty)
+            'variacaoExtraResumo':
+                (item['variacaoExtraResumo'] ?? '').toString().trim(),
+          if ((item['extraValor'] ?? '').toString().trim().isNotEmpty)
+            'extraValor': (item['extraValor'] ?? '').toString().trim(),
+          if ((item['extraTipo'] ?? '').toString().trim().isNotEmpty)
+            'extraTipo': (item['extraTipo'] ?? '').toString().trim(),
         };
       }).toList();
 

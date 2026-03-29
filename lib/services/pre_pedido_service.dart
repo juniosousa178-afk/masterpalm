@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/logger.dart';
+import '../core/produto_variacao_extra.dart';
 import '../repositories/cliente_portal_repository.dart';
 import '../repositories/pedido_repository.dart';
 import '../repositories/pedido_status_publico_repository.dart';
@@ -360,6 +361,21 @@ class PrePedidoService {
           'slug': item['slug'] ?? '',
           'total': itemTotal,
         };
+        final resumoExtra =
+            (item['variacaoExtraResumo'] ?? '').toString().trim();
+        if (resumoExtra.isNotEmpty) {
+          storedItem['variacaoExtraResumo'] = resumoExtra;
+        }
+        final exVal = (item['extraValor'] ?? item['variacaoExtra'] ?? '')
+            .toString()
+            .trim();
+        if (exVal.isNotEmpty) {
+          storedItem['extraValor'] = exVal;
+        }
+        final exTipo = (item['extraTipo'] ?? '').toString().trim();
+        if (exTipo.isNotEmpty) {
+          storedItem['extraTipo'] = exTipo;
+        }
         if (item['itensComboComSelecao'] is List) {
           storedItem['itensComboComSelecao'] = item['itensComboComSelecao'];
         }
@@ -1249,16 +1265,12 @@ class PrePedidoService {
       final nome = item['nome'] ?? '';
       final qty = item['quantidade'] ?? 1;
       final preco = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
-      final tamanho = (item['tamanho'] ?? '').toString().trim();
-      final cor = (item['cor'] ?? '').toString().trim(); // ✅ ADICIONADO: cor
+      final itemMap = Map<String, dynamic>.from(item as Map);
+      final linhaVar =
+          ProdutoVariacaoExtra.linhaVariacoesParaSeparacao(itemMap);
 
-      // Montar descrição com variações
-      final variacoes = <String>[];
-      if (tamanho.isNotEmpty) variacoes.add('Tam: $tamanho');
-      if (cor.isNotEmpty) variacoes.add('Cor: $cor');
-
-      if (variacoes.isNotEmpty) {
-        buffer.write('${qty}x $nome (${variacoes.join(', ')})');
+      if (linhaVar.isNotEmpty) {
+        buffer.write('${qty}x $nome ($linhaVar)');
       } else {
         buffer.write('${qty}x $nome');
       }

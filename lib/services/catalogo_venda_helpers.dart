@@ -2,6 +2,8 @@
 /// Não fazem I/O nem acessam Firestore/Hive.
 library;
 
+import '../core/produto_variacao_extra.dart';
+
 /// Gera descrição dos produtos para o campo `produtosDescricao`
 /// a partir da lista de itens do catálogo.
 String gerarDescricaoProdutos(List<Map<String, dynamic>> items) {
@@ -12,14 +14,17 @@ String gerarDescricaoProdutos(List<Map<String, dynamic>> items) {
     final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
     final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
     final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+    final extra =
+        ProdutoVariacaoExtra.resumoExtraLinhaDeItemMap(item);
 
     buffer.write('$name x$qty');
 
     // Adicionar variações se existirem
-    if (tamanho.isNotEmpty || cor.isNotEmpty) {
+    if (tamanho.isNotEmpty || cor.isNotEmpty || extra.isNotEmpty) {
       final variacoes = <String>[];
       if (tamanho.isNotEmpty) variacoes.add('Tam: $tamanho');
       if (cor.isNotEmpty) variacoes.add('Cor: $cor');
+      if (extra.isNotEmpty) variacoes.add(extra);
       buffer.write(' (${variacoes.join(', ')})');
     }
 
@@ -72,14 +77,17 @@ String gerarDescricaoProdutosFromItens(List<Map<String, dynamic>> itens) {
     final qty = (item['quantidade'] as num?)?.toInt() ?? 1;
     final tamanho = (item['tamanho'] ?? '').toString().trim();
     final cor = (item['cor'] ?? '').toString().trim();
+    final extra =
+        ProdutoVariacaoExtra.resumoExtraLinhaDeItemMap(item);
 
     buffer.write('$name x$qty');
 
     // Adicionar variações se existirem
-    if (tamanho.isNotEmpty || cor.isNotEmpty) {
+    if (tamanho.isNotEmpty || cor.isNotEmpty || extra.isNotEmpty) {
       final variacoes = <String>[];
       if (tamanho.isNotEmpty) variacoes.add('Tam: $tamanho');
       if (cor.isNotEmpty) variacoes.add('Cor: $cor');
+      if (extra.isNotEmpty) variacoes.add(extra);
       buffer.write(' (${variacoes.join(', ')})');
     }
 

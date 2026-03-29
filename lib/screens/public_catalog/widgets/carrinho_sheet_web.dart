@@ -18,6 +18,7 @@ import 'package:hive/hive.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/logger.dart';
+import '../../../core/produto_variacao_extra.dart';
 import '../../../core/safe_cast.dart';
 import '../../../utils/http_client_helper.dart';
 import '../../../utils/platform_adaptive.dart';
@@ -455,20 +456,17 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     });
   }
 
-  /// Linha secundária: variação (tamanho/cor) ou combo.
+  /// Linha secundária: tam/cor/extra (helper central) ou combo.
   String _cartItemVariantSubtitle(Map<String, dynamic> item) {
-    final tam = (item['tamanho'] ?? '').toString().trim();
-    final cor = (item['cor'] ?? '').toString().trim();
-    final resumoExtra = (item['variacaoExtraResumo'] ?? '').toString().trim();
-    final parts = <String>[];
-    if (tam.isNotEmpty) parts.add(tam);
-    if (cor.isNotEmpty) parts.add(cor);
-    if (resumoExtra.isNotEmpty) parts.add(resumoExtra);
-    final combo = item['itensComboComSelecao'];
-    if (combo is List && combo.isNotEmpty && parts.length < 2) {
-      parts.add('${combo.length} itens');
+    final linha = ProdutoVariacaoExtra.linhaVariacoesParaSeparacao(item);
+    if (linha.isNotEmpty) {
+      return linha.replaceAll(', ', ' · ');
     }
-    return parts.join(' · ');
+    final combo = item['itensComboComSelecao'];
+    if (combo is List && combo.isNotEmpty) {
+      return '${combo.length} itens';
+    }
+    return '';
   }
 
   Future<void> _maybeShowFirstPurchaseCoupon() async {

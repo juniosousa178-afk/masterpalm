@@ -27,6 +27,10 @@ class VendaItem {
   @HiveField(6)
   String? productId;
 
+  /// Ex.: "Letra: A" ou "Estampa: Floral" (catálogo web / pré-pedido).
+  @HiveField(7, defaultValue: '')
+  String variacaoExtraResumo;
+
   VendaItem({
     required this.produtoNome,
     required this.quantidade,
@@ -35,5 +39,6 @@ class VendaItem {
     this.lojaId = '',
     this.cor = '',
     this.productId,
+    this.variacaoExtraResumo = '',
   });
 }

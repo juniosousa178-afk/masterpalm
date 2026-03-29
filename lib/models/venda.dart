@@ -182,6 +182,8 @@ class Venda extends HiveObject {
       final tam = (item['tamanho'] ?? '').toString();
       final cor = (item['cor'] ?? '').toString();
       final pid = (item['productId'] ?? '').toString().trim();
+      final resumoExtra =
+          (item['variacaoExtraResumo'] ?? '').toString().trim();
 
       return VendaItem(
         produtoNome: nome,
@@ -190,6 +192,7 @@ class Venda extends HiveObject {
         tamanho: tam,
         cor: cor,
         productId: pid.isNotEmpty ? pid : null,
+        variacaoExtraResumo: resumoExtra,
       );
     }).toList();
 
@@ -208,6 +211,9 @@ class Venda extends HiveObject {
       final variacoes = <String>[];
       if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
       if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
+      if (it.variacaoExtraResumo.isNotEmpty) {
+        variacoes.add(it.variacaoExtraResumo);
+      }
       final variacoesStr = variacoes.isNotEmpty ? ' (${variacoes.join(', ')})' : '';
       return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${fmt2(it.precoUnitario)}";
     }).join('\n');

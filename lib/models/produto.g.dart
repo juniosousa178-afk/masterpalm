@@ -49,6 +49,7 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       marketplaces:
           fields[29] == null ? [] : (fields[29] as List).cast<String>(),
       variacoes: (fields[30] as Map?)?.cast<String, dynamic>(),
+      variacoesExtraTipo: (fields[43] as Map?)?.cast<String, dynamic>(),
       divideSemJuros: fields[31] == null ? false : fields[31] as bool,
       percentualDescontoPix: fields[32] == null ? 0.0 : fields[32] as double,
       maxParcelasSemJuros: fields[33] == null ? 12 : fields[33] as int,
@@ -59,11 +60,10 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       tipoProduto: fields[38] == null ? 'simples' : fields[38] as String,
       itensCombo: (fields[39] as List?)
           ?.map((dynamic e) => (e as Map).cast<String, dynamic>())
-          .toList(),
+          ?.toList(),
       updatedAt: fields[40] as DateTime?,
       custoEditadoNoCadastro: fields[41] == null ? false : fields[41] as bool,
       fornecedor: fields[42] == null ? '' : fields[42] as String,
-      variacoesExtraTipo: (fields[43] as Map?)?.cast<String, dynamic>(),
     );
   }
 
@@ -133,6 +133,8 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       ..write(obj.marketplaces)
       ..writeByte(30)
       ..write(obj.variacoes)
+      ..writeByte(43)
+      ..write(obj.variacoesExtraTipo)
       ..writeByte(31)
       ..write(obj.divideSemJuros)
       ..writeByte(32)
@@ -156,9 +158,7 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       ..writeByte(41)
       ..write(obj.custoEditadoNoCadastro)
       ..writeByte(42)
-      ..write(obj.fornecedor)
-      ..writeByte(43)
-      ..write(obj.variacoesExtraTipo);
+      ..write(obj.fornecedor);
   }
 
   @override

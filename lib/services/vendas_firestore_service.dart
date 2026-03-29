@@ -36,6 +36,7 @@ class VendasFirestoreService {
         tamanho: m['tamanho'] as String? ?? '',
         cor: m['cor'] as String? ?? '',
         productId: pid != null && pid.trim().isNotEmpty ? pid : null,
+        variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString().trim(),
       );
     }).toList();
 
@@ -214,6 +215,8 @@ class VendasFirestoreService {
           'precoUnitario': item.precoUnitario,
           'precoTotal': item.precoUnitario * item.quantidade,
           if (item.productId != null && item.productId!.trim().isNotEmpty) 'productId': item.productId,
+          if (item.variacaoExtraResumo.trim().isNotEmpty)
+            'variacaoExtraResumo': item.variacaoExtraResumo.trim(),
         }).toList(),
 
         // Cliente estável (para consultas)

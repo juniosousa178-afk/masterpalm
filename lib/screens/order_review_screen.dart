@@ -427,18 +427,14 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
         ..writeln('Endereço: $endereco')
         ..writeln('Itens:');
       for (final it in vendaItens) {
-        String variacoes = '';
-        if (it.tamanho.isNotEmpty || it.cor.isNotEmpty) {
-          variacoes = ' (';
-          if (it.tamanho.isNotEmpty) {
-            variacoes += 'Tam: ${it.tamanho}';
-          }
-          if (it.cor.isNotEmpty) {
-            if (it.tamanho.isNotEmpty) variacoes += ', ';
-            variacoes += 'Cor: ${it.cor}';
-          }
-          variacoes += ')';
+        final partes = <String>[];
+        if (it.tamanho.isNotEmpty) partes.add('Tam: ${it.tamanho}');
+        if (it.cor.isNotEmpty) partes.add('Cor: ${it.cor}');
+        if (it.variacaoExtraResumo.isNotEmpty) {
+          partes.add(it.variacaoExtraResumo);
         }
+        final variacoes =
+            partes.isNotEmpty ? ' (${partes.join(', ')})' : '';
         resumo.writeln('? ${it.quantidade}x ${it.produtoNome}$variacoes - '
             'R\$ ${it.precoUnitario.toStringAsFixed(2)}');
       }

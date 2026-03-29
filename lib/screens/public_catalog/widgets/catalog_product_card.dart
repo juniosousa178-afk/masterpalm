@@ -654,6 +654,11 @@ insetPadding:
       imageFlex = (imageFlex - minimalFooterShift).clamp(1, 999);
       contentFlex = contentFlex + minimalFooterShift;
     }
+    // Minimalista + card GRANDE: fração um pouco maior para a imagem (small/medium intocados).
+    if (widget.minimalLayout && !widget.compact && isLargeCard) {
+      imageFlex = (imageFlex + 2).clamp(1, 999);
+      contentFlex = (contentFlex - 2).clamp(1, 999);
+    }
     // Minimalista: nome mais discreto; preço principal maior e em negrito (hierarquia da referência).
     final titleSizeBase = widget.minimalLayout
         ? (isLargeCard ? 13.5 : (isSmallCard ? 11.5 : 12.5))

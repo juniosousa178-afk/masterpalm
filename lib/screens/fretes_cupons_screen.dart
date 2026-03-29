@@ -198,24 +198,11 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
     final rawEmbalagens = _config.get('embalagens');
     if (rawEmbalagens is List && rawEmbalagens.isNotEmpty) {
-      _embalagens = rawEmbalagens.map<Map<String, dynamic>>((e) {
-        if (e is Map) {
-          final m = e.map((k, v) => MapEntry(k.toString(), v));
-          return {
-            'id': m['id']?.toString() ?? '',
-            'nome': m['nome']?.toString() ?? '',
-            'peso': (m['peso'] is num) ? (m['peso'] as num).toDouble() : double.tryParse('${m['peso']}') ?? 0.0,
-            'tamanho': (m['tamanho'] is num) ? (m['tamanho'] as num).toInt() : int.tryParse('${m['tamanho']}') ?? 0,
-            'altura': (m['altura'] is num) ? (m['altura'] as num).toDouble() : double.tryParse('${m['altura']}') ?? 0.0,
-            'largura': (m['largura'] is num) ? (m['largura'] as num).toDouble() : double.tryParse('${m['largura']}') ?? 0.0,
-            'comprimento': (m['comprimento'] is num) ? (m['comprimento'] as num).toDouble() : double.tryParse('${m['comprimento']}') ?? 0.0,
-          };
-        }
-        return {'id': '', 'nome': '', 'peso': 0.0, 'tamanho': 0, 'altura': 0.0, 'largura': 0.0, 'comprimento': 0.0};
-      }).toList();
+      _embalagens = _parseEmbalagensList(rawEmbalagens);
     }
 
     if (_slug != null) {
+      await _loadEmbalagensFromFirestorePreferRemote(_slug!);
       await _loadFreteConfigFromFirestore(_slug!);
       await _loadIndicacaoConfig(_slug!);
       await _loadCarrinhoAbandonadoConfig(_slug!);
@@ -291,6 +278,68 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       if (mounted) _snack('❌ Erro ao salvar: $e');
     } finally {
       if (mounted) setState(() => _carrinhoAbandonadoSalvando = false);
+    }
+  }
+
+  /// Mesmo formato usado ao ler `embalagens` do Hive.
+  static List<Map<String, dynamic>> _parseEmbalagensList(dynamic rawEmbalagens) {
+    if (rawEmbalagens is! List || rawEmbalagens.isEmpty) {
+      return [];
+    }
+    return rawEmbalagens.map<Map<String, dynamic>>((e) {
+      if (e is Map) {
+        final m = e.map((k, v) => MapEntry(k.toString(), v));
+        return {
+          'id': m['id']?.toString() ?? '',
+          'nome': m['nome']?.toString() ?? '',
+          'peso': (m['peso'] is num) ? (m['peso'] as num).toDouble() : double.tryParse('${m['peso']}') ?? 0.0,
+          'tamanho': (m['tamanho'] is num) ? (m['tamanho'] as num).toInt() : int.tryParse('${m['tamanho']}') ?? 0,
+          'altura': (m['altura'] is num) ? (m['altura'] as num).toDouble() : double.tryParse('${m['altura']}') ?? 0.0,
+          'largura': (m['largura'] is num) ? (m['largura'] as num).toDouble() : double.tryParse('${m['largura']}') ?? 0.0,
+          'comprimento': (m['comprimento'] is num) ? (m['comprimento'] as num).toDouble() : double.tryParse('${m['comprimento']}') ?? 0.0,
+        };
+      }
+      return {'id': '', 'nome': '', 'peso': 0.0, 'tamanho': 0, 'altura': 0.0, 'largura': 0.0, 'comprimento': 0.0};
+    }).toList();
+  }
+
+  /// Embalagens: prioridade Firestore (mesmo doc em que o save grava) — evita outro aparelho ficar só com Hive antigo.
+  Future<void> _loadEmbalagensFromFirestorePreferRemote(String lojaId) async {
+    try {
+      final base = FirebaseFirestore.instance.collection('lojas').doc(lojaId);
+
+      final liveSnap = await base.collection('config').doc('fretes').get();
+      if (liveSnap.exists) {
+        final emb = liveSnap.data()?['embalagens'];
+        final parsed = _parseEmbalagensList(emb);
+        if (parsed.isNotEmpty) {
+          if (mounted) {
+            setState(() => _embalagens = parsed);
+          } else {
+            _embalagens = parsed;
+          }
+          await _putConfig('embalagens', _embalagens);
+          debugPrint('[FRETES/CUPONS] Embalagens carregadas de config/fretes (${_embalagens.length})');
+          return;
+        }
+      }
+
+      final draftSnap = await base.collection('draft_config').doc('config').get();
+      if (draftSnap.exists) {
+        final emb = draftSnap.data()?['embalagens'];
+        final parsed = _parseEmbalagensList(emb);
+        if (parsed.isNotEmpty) {
+          if (mounted) {
+            setState(() => _embalagens = parsed);
+          } else {
+            _embalagens = parsed;
+          }
+          await _putConfig('embalagens', _embalagens);
+          debugPrint('[FRETES/CUPONS] Embalagens carregadas de draft_config/config (${_embalagens.length})');
+        }
+      }
+    } catch (e) {
+      debugPrint('[FRETES/CUPONS] Erro ao carregar embalagens remotas (type=${e.runtimeType})');
     }
   }
 

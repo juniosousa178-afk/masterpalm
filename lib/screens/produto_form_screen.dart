@@ -271,7 +271,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         debugPrint('  Total de linhas carregadas: ${_gradeVariacoes.length}');
 
         if (_gradeVariacoes.isEmpty) {
-          _gradeVariacoes.add({'tamanho': '', 'cor': '', 'qtd': ''});
+          _gradeVariacoes.add({
+            'tamanho': '',
+            'cor': '',
+            'extraTipo': '',
+            'extraValor': '',
+            'qtd': '',
+          });
         }
       } else if (p.estoquePorTamanho.isNotEmpty) {
         // fallback: migra do sistema antigo
@@ -279,13 +285,21 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             .map((e) => {
                   'tamanho': e.key,
                   'cor': '',
+                  'extraTipo': '',
+                  'extraValor': '',
                   'qtd': e.value.toString(),
                 })
             .toList();
       } else if (p.tamanhos.isNotEmpty) {
         // fallback mais antigo: só lista tamanhos sem quantidade
         _gradeVariacoes = p.tamanhos
-            .map((t) => {'tamanho': t, 'cor': '', 'qtd': ''})
+            .map((t) => {
+                  'tamanho': t,
+                  'cor': '',
+                  'extraTipo': '',
+                  'extraValor': '',
+                  'qtd': '',
+                })
             .toList();
       }
 
@@ -1687,13 +1701,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                   // 🎯 CARD: VARIAÇÕES (TAMANHO + COR)
                   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                   _buildSectionCard(
-                    title: 'Variações (Tamanho + Cor)',
+                    title: 'Variações (Tamanho + Cor + Extra)',
                     icon: Icons.tune,
                     iconColor: Colors.deepPurple,
                     children: [
                       const Text(
-                        'Adicione as variações do produto com tamanho, cor e quantidade em estoque.\n'
-                        'Exemplo: Blusa P Rosa: 1 unidade, Blusa M Preta: 3 unidades',
+                        'Adicione tamanho, cor, quantidade e, se quiser, tipo/valor da variação extra (estampa, letra, etc.).\n'
+                        'Deixe tipo/valor vazios se não usar personalização extra.',
                         style: TextStyle(fontSize: 13, color: Colors.black54),
                       ),
                       const SizedBox(height: 12),
@@ -1705,85 +1719,135 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                         return Padding(
                           key: ValueKey('var_$i'),
                           padding: const EdgeInsets.only(bottom: 10.0),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Expanded(
-                                flex: 2,
-                                child: TextFormField(
-                                  controller: c['tamanho'],
-                                  decoration: InputDecoration(
-                                    labelText: 'Tamanho',
-                                    hintText: 'P, M, 36',
-                                    filled: true,
-                                    fillColor: Colors.grey.shade50,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 14,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                flex: 2,
-                                child: TextFormField(
-                                  controller: c['cor'],
-                                  decoration: InputDecoration(
-                                    labelText: 'Cor',
-                                    hintText: 'Rosa, Azul',
-                                    filled: true,
-                                    fillColor: Colors.grey.shade50,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 14,
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    flex: 2,
+                                    child: TextFormField(
+                                      controller: c['tamanho'],
+                                      decoration: InputDecoration(
+                                        labelText: 'Tamanho',
+                                        hintText: 'P, M, 36',
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 14,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                flex: 1,
-                                child: TextFormField(
-                                  controller: c['qtd'],
-                                  decoration: InputDecoration(
-                                    labelText: 'Qtd',
-                                    hintText: '0',
-                                    filled: true,
-                                    fillColor: Colors.grey.shade50,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 14,
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    flex: 2,
+                                    child: TextFormField(
+                                      controller: c['cor'],
+                                      decoration: InputDecoration(
+                                        labelText: 'Cor',
+                                        hintText: 'Rosa, Azul',
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 14,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                  keyboardType: TextInputType.number,
-                                ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    flex: 1,
+                                    child: TextFormField(
+                                      controller: c['qtd'],
+                                      decoration: InputDecoration(
+                                        labelText: 'Qtd',
+                                        hintText: '0',
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 14,
+                                        ),
+                                      ),
+                                      keyboardType: TextInputType.number,
+                                    ),
+                                  ),
+                                  if (_variacaoControllers.length > 1)
+                                    IconButton(
+                                      icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                      onPressed: () async {
+                                        setState(() {
+                                          c['tamanho']?.dispose();
+                                          c['cor']?.dispose();
+                                          c['extraTipo']?.dispose();
+                                          c['extraValor']?.dispose();
+                                          c['qtd']?.dispose();
+                                          _variacaoControllers.removeAt(i);
+                                          _gradeVariacoes.removeAt(i);
+                                          _initPrecoPorTamanhoControllers();
+                                        });
+                                        if (widget.produto != null) {
+                                          await _persistirProdutoAtual(widget.produto!);
+                                        }
+                                      },
+                                    ),
+                                ],
                               ),
-                              if (_variacaoControllers.length > 1)
-                                IconButton(
-                                  icon: const Icon(Icons.remove_circle, color: Colors.red),
-                                    onPressed: () async {
-                                    setState(() {
-                                      c['tamanho']?.dispose();
-                                      c['cor']?.dispose();
-                                      c['qtd']?.dispose();
-                                      _variacaoControllers.removeAt(i);
-                                      _gradeVariacoes.removeAt(i);
-                                      _initPrecoPorTamanhoControllers();
-                                    });
-                                    if (widget.produto != null) {
-                                      await _persistirProdutoAtual(widget.produto!);
-                                    }
-                                  },
-                                ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: c['extraTipo'],
+                                      decoration: InputDecoration(
+                                        labelText: 'Tipo extra (opcional)',
+                                        hintText: 'Estampa, Letra, Desenho…',
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: c['extraValor'],
+                                      decoration: InputDecoration(
+                                        labelText: 'Valor extra (opcional)',
+                                        hintText: 'Floral, A, Borboleta…',
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         );
@@ -1801,10 +1865,18 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                           ),
                           onPressed: () async {
                             setState(() {
-                              _gradeVariacoes.add({'tamanho': '', 'cor': '', 'qtd': ''});
+                              _gradeVariacoes.add({
+                                'tamanho': '',
+                                'cor': '',
+                                'extraTipo': '',
+                                'extraValor': '',
+                                'qtd': '',
+                              });
                               _variacaoControllers.add({
                                 'tamanho': TextEditingController(),
                                 'cor': TextEditingController(),
+                                'extraTipo': TextEditingController(),
+                                'extraValor': TextEditingController(),
                                 'qtd': TextEditingController(),
                               });
                               _initPrecoPorTamanhoControllers();

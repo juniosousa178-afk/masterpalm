@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/produto_variacao_extra.dart';
 import '../../../utils/platform_adaptive.dart';
 import '../../../services/catalog_share_service.dart';
 import '../../../services/ai_loja_service.dart';
@@ -499,6 +500,11 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                             final extras = <String>[];
                             if (tam.isNotEmpty) extras.add('Tamanho: $tam');
                             if (cor.isNotEmpty) extras.add('Cor: $cor');
+                            final extraLinha = ProdutoVariacaoExtra
+                                .resumoExtraLinhaDeItemMap(
+                              Map<String, dynamic>.from(item),
+                            );
+                            if (extraLinha.isNotEmpty) extras.add(extraLinha);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Row(

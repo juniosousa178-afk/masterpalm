@@ -523,6 +523,8 @@ class CatalogoVendaService {
         final qtd = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
         final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
         final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+        final resumoExtra =
+            (item['variacaoExtraResumo'] ?? '').toString().trim();
         final price = (item['preco'] as num?)?.toDouble() ?? (item['price'] as num?)?.toDouble() ?? 0.0;
         final pctPix = (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
         final precoUnitario = (isPix && pctPix > 0) ? price * (1 - pctPix / 100) : price;
@@ -536,6 +538,7 @@ class CatalogoVendaService {
           cor: cor,
           lojaId: lojaId,
           productId: pid.isNotEmpty ? pid : null,
+          variacaoExtraResumo: resumoExtra,
         ));
       }
 
@@ -1115,6 +1118,8 @@ class CatalogoVendaService {
         final qtd = (item['quantidade'] as num).toInt();
         final tamanho = (item['tamanho'] ?? '').toString().trim();
         final cor = (item['cor'] ?? '').toString().trim();
+        final resumoExtra =
+            (item['variacaoExtraResumo'] ?? '').toString().trim();
         final pid = (item['productId'] ?? item['id'] ?? '').toString().trim();
 
         vendaItens.add(VendaItem(
@@ -1125,6 +1130,7 @@ class CatalogoVendaService {
           cor: cor,
           lojaId: lojaId,
           productId: pid.isNotEmpty ? pid : null,
+          variacaoExtraResumo: resumoExtra,
         ));
       }
 

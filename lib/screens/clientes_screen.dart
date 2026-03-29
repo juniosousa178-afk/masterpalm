@@ -1920,6 +1920,13 @@ class _ClientesScreenState extends State<ClientesScreen>
                         pw.Padding(
                           padding: const pw.EdgeInsets.all(4),
                           child: pw.Text(
+                            'Variação',
+                            style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                          ),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(4),
+                          child: pw.Text(
                             'Qtd',
                             style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
                           ),
@@ -1959,6 +1966,14 @@ class _ClientesScreenState extends State<ClientesScreen>
                             ),
                             pw.Padding(
                               padding: const pw.EdgeInsets.all(4),
+                              child: pw.Text(
+                                item.variacaoExtraResumo.isNotEmpty
+                                    ? item.variacaoExtraResumo
+                                    : '-',
+                              ),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(4),
                               child: pw.Text(item.quantidade.toString()),
                             ),
                             pw.Padding(
@@ -1978,6 +1993,10 @@ class _ClientesScreenState extends State<ClientesScreen>
                           pw.Padding(
                             padding: const pw.EdgeInsets.all(4),
                             child: pw.Text(venda.produtosDescricao),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text('-'),
                           ),
                           pw.Padding(
                             padding: const pw.EdgeInsets.all(4),

@@ -33,7 +33,8 @@ class CatalogProductCardSize {
       case small:
         return 0.46;
       case large:
-        return 0.32;
+        // Um pouco mais alto que antes (ratio menor) = mais área vertical para a foto no grid.
+        return 0.31;
       case medium:
       default:
         return 0.36;
@@ -103,8 +104,8 @@ class CatalogProductCardSize {
           );
         case large:
           return (
-            width: isWeb ? 1120 : 980,
-            height: isWeb ? 1500 : 1320,
+            width: isWeb ? 1140 : 1000,
+            height: isWeb ? 1520 : 1340,
           );
         case medium:
         default:
