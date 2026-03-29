@@ -136,7 +136,9 @@ class SyncFirestoreScript {
             'nome': produto.nome,
             'slug': produto.slug,
             'descricao': produto.descricao,
-            'custoReal': produto.custoReal,
+            // Catálogo público: nunca persistir custo em `produtos`
+            'custoReal': FieldValue.delete(),
+            'custo': FieldValue.delete(),
             'frete': produto.frete,
             'gastosFixos': produto.gastosFixos,
             'gastosVariaveis': produto.gastosVariaveis,

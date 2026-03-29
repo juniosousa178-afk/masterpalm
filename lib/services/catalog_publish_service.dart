@@ -30,6 +30,27 @@ class CatalogPublishService {
     return box.get(_keyCatalogoPrecisaAtualizar, defaultValue: false) as bool;
   }
 
+  /// Campos de custo / margem nunca podem permanecer em `produtos` (catálogo público).
+  /// Com `merge: true`, omitir a chave não apaga valor antigo — usa [FieldValue.delete].
+  static Map<String, dynamic> _payloadCatalogoLiveSemCusto(
+    Map<String, dynamic> draftData,
+  ) {
+    final m = Map<String, dynamic>.from(draftData);
+    for (final k in const [
+      'custoReal',
+      'custo',
+      'precoCusto',
+      'margemLucro',
+      'margem',
+    ]) {
+      m.remove(k);
+    }
+    m['custoReal'] = FieldValue.delete();
+    m['custo'] = FieldValue.delete();
+    m['precoCusto'] = FieldValue.delete();
+    return m;
+  }
+
   /// Normaliza se o produto deve aparecer no catálogo web
   static bool _isAtivoForWeb(Map<String, dynamic> data) {
     final publicar  = data['publicar'] == true || data['catalogo'] == true;
@@ -69,14 +90,15 @@ class CatalogPublishService {
       return;
     }
 
-    final data = Map<String, dynamic>.from(snap.data()!);
+    final draftData = Map<String, dynamic>.from(snap.data()!);
 
-    final ativoWeb = _isAtivoForWeb(data);
-    data['ativo']     = ativoWeb;
-    data['publicado'] = ativoWeb;
-    data['updatedAt'] = FieldValue.serverTimestamp();
+    final ativoWeb = _isAtivoForWeb(draftData);
 
     if (ativoWeb) {
+      final data = _payloadCatalogoLiveSemCusto(draftData);
+      data['ativo'] = ativoWeb;
+      data['publicado'] = ativoWeb;
+      data['updatedAt'] = FieldValue.serverTimestamp();
       await liveRef.set(data, SetOptions(merge: true));
     } else {
       // não atende as regras => some do catálogo web
@@ -117,14 +139,14 @@ class CatalogPublishService {
     }
 
     for (final d in draft.docs) {
-      final data = Map<String, dynamic>.from(d.data());
-      final ativoWeb = _isAtivoForWeb(data);
-
-      data['ativo'] = ativoWeb;
-      data['publicado'] = ativoWeb;
-      data['updatedAt'] = FieldValue.serverTimestamp();
+      final draftData = Map<String, dynamic>.from(d.data());
+      final ativoWeb = _isAtivoForWeb(draftData);
 
       if (ativoWeb) {
+        final data = _payloadCatalogoLiveSemCusto(draftData);
+        data['ativo'] = ativoWeb;
+        data['publicado'] = ativoWeb;
+        data['updatedAt'] = FieldValue.serverTimestamp();
         batch.set(liveCol.doc(d.id), data, SetOptions(merge: true));
       } else {
         batch.delete(liveCol.doc(d.id));

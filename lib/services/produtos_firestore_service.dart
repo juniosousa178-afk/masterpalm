@@ -272,7 +272,10 @@ class ProdutosFirestoreService {
                 ? produto.codigoBarras
                 : null,
             'estoqueMinimo': produto.estoqueMinimo,
-            // Campos internos/admin nunca no documento público
+            // Custo e campos internos nunca no documento público (merge não apaga se omitir)
+            'custoReal': FieldValue.delete(),
+            'custo': FieldValue.delete(),
+            'precoCusto': FieldValue.delete(),
             'fornecedor': FieldValue.delete(),
             'frete': FieldValue.delete(),
             'gastosFixos': FieldValue.delete(),

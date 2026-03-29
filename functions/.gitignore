@@ -4,6 +4,9 @@ node_modules/
 
 # Firebase / credenciais
 masterpalm-service-account.json
+serviceAccount.json
+serviceAccount*.json
+*-service-account*.json
 .firebase/
 .firebaserc
 

@@ -38,7 +38,9 @@
     "migrar:participantes": "node ./scripts/migrar_participantes_schema.js",
     "migrar:participantes:dry": "node ./scripts/migrar_participantes_schema.js --dry-run",
     "backfill:catalogo-estoque": "node ./scripts/backfill_catalogo_from_estoque.js",
-    "backfill:catalogo-estoque:dry": "node ./scripts/backfill_catalogo_from_estoque.js --dry-run"
+    "backfill:catalogo-estoque:dry": "node ./scripts/backfill_catalogo_from_estoque.js --dry-run",
+    "backfill:custo-peso-all": "node ./scripts/backfill_catalogo_from_estoque.js --all-lojas --only-custo-peso",
+    "backfill:custo-peso-all:dry": "node ./scripts/backfill_catalogo_from_estoque.js --all-lojas --only-custo-peso --dry-run"
   },
   "dependencies": {
     "cors": "^2.8.5",
