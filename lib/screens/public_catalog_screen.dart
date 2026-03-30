@@ -58,6 +58,7 @@ import 'public_catalog/catalog_url_query_codec.dart';
 import 'public_catalog/catalog_url_variation_sync.dart';
 import 'public_catalog/widgets/catalog_products_grid_sliver.dart';
 import 'public_catalog/widgets/catalog_recent_section_sliver.dart';
+import 'public_catalog/widgets/catalog_avaliacoes_section.dart';
 import 'public_catalog/widgets/catalog_skeleton_grid.dart';
 import 'public_catalog/widgets/catalog_minimalist_widgets.dart';
 import 'public_catalog/widgets/catalog_minimal_best_sellers.dart';
@@ -4458,6 +4459,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final menuShowSac = safeBool(menuMap['sac'], true);
                 final menuShowQuemSomos = safeBool(menuMap['quemSomos'], true);
                 final menuShowDicas = safeBool(menuMap['dicas'], true);
+                final exibirAvaliacoesCatalogo = safeBool(
+                  cfg['exibirAvaliacoesCatalogo'] ??
+                      cfg['exibir_depoimentos_catalogo'],
+                  false,
+                );
                 final indicacaoRaw = cfg['indicacao'];
                 final indicacaoAtivo =
                     indicacaoRaw is Map && (indicacaoRaw['ativo'] == true);
@@ -6286,6 +6292,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                                   .value =
                                                               paginaAtual + 1
                                                       : null,
+                                                ),
+                                              ),
+                                            if (exibirAvaliacoesCatalogo)
+                                              SliverToBoxAdapter(
+                                                child: CatalogAvaliacoesSection(
+                                                  lojaId: lojaId,
+                                                  cardColor: cardColor,
+                                                  textColor: textColor,
+                                                  accentColor: primaryColor,
                                                 ),
                                               ),
                                           ],

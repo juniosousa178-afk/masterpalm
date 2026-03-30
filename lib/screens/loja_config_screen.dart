@@ -935,6 +935,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   bool _menuShowSac = true;
   bool _menuShowQuemSomos = true;
   bool _menuShowDicas = true;
+  bool _exibirAvaliacoesCatalogo = false;
   bool _showMobileMenuGrid = true;
 
   /// Dicas e informações (cuidados, garantias, qualidade) – lista de mapas para o catálogo.
@@ -1985,6 +1986,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _menuShowQuemSomos =
           (menu['quemSomos'] as bool?) ?? _menuShowQuemSomos;
       _menuShowDicas = (menu['dicas'] as bool?) ?? _menuShowDicas;
+      _exibirAvaliacoesCatalogo = (data['exibirAvaliacoesCatalogo'] as bool?) ??
+          _exibirAvaliacoesCatalogo;
       _showMobileMenuGrid =
           (menu['mobileMenuGrid'] as bool?) ?? _showMobileMenuGrid;
 
@@ -2418,6 +2421,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'dicas': _menuShowDicas,
         'mobileMenuGrid': _showMobileMenuGrid,
       },
+      'exibirAvaliacoesCatalogo': _exibirAvaliacoesCatalogo,
       'dicas': _dicas,
       'quemSomos': {
         'titulo': _quemSomosTituloCtrl.text.trim(),
@@ -7133,6 +7137,19 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   value: _menuShowDicas,
                   onChanged: (v) {
                     setState(() => _menuShowDicas = v);
+                    _salvarRascunho(validar: false);
+                  },
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  title:
+                      const Text('Exibir "Avaliações de clientes" no catálogo'),
+                  subtitle: const Text(
+                    'Mostra seção de depoimentos por loja no catálogo web.',
+                  ),
+                  value: _exibirAvaliacoesCatalogo,
+                  onChanged: (v) {
+                    setState(() => _exibirAvaliacoesCatalogo = v);
                     _salvarRascunho(validar: false);
                   },
                 ),

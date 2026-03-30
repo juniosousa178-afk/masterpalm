@@ -97,6 +97,7 @@ import 'screens/relatorio_mais_vendidos_screen.dart';
 import 'screens/relatorio_ranking_clientes_screen.dart';
 import 'screens/relatorio_lucratividade_produto_screen.dart';
 import 'screens/carrinhos_abandonados_screen.dart';
+import 'screens/catalog_avaliacoes_moderacao_screen.dart';
 
 // Motor de Crescimento IA
 import 'motor_crescimento/screens/motor_crescimento_screen.dart';
@@ -2087,6 +2088,13 @@ class MyApp extends StatelessWidget {
               ),
               '/carrinhos_abandonados': (ctx) => _lojaIdRoute(
                 (lojaId) => CarrinhosAbandonadosScreen(lojaId: lojaId),
+              ),
+              '/catalog_avaliacoes_moderacao': (ctx) => _lojaIdRoute(
+                (lojaId) => kIsWeb
+                    ? AdminWebRouteShell(
+                        child: CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
+                      )
+                    : CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
               ),
               '/config/pagamentos': (_) =>
                   const ConfigPagamentosSimplesScreen(),

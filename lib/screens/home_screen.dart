@@ -1356,6 +1356,16 @@ class _HomeScreenState extends State<HomeScreen>
           sidebarMode: sidebarMode,
         ),
       );
+      currentChildren.add(
+        _buildMenuTile(
+          'Moderar avaliações',
+          Icons.rate_review_outlined,
+          '/catalog_avaliacoes_moderacao',
+          iconBgColor: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+          color: const Color(0xFF8B5CF6),
+          sidebarMode: sidebarMode,
+        ),
+      );
     }
 
     // ✅ Abrir catálogo online (link direto da loja ativa; sem placeholder)

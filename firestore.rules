@@ -233,6 +233,45 @@ service cloud.firestore {
         && newV <= oldV + 1000;
     }
 
+    // Avaliações do catálogo (lojas/{lojaId}/catalog_avaliacoes/{id}):
+    // - Leitura pública (anônima): só docs da loja do path com status aprovado (ou legado sem status = aprovado via get default).
+    // - Leitura lojista: belongsToStore vê pendentes/rejeitados para moderação.
+    // - Create público: pendente + lojaId coerente com path; sem update pelo cliente anônimo.
+    // - Update: só equipe da loja; apenas status e aprovadoEm (moderação).
+    function isCatalogAvaliacaoPublicRead(lojaId) {
+      return resource.data.lojaId == lojaId
+        && resource.data.get('ativo', true) == true
+        && resource.data.get('status', 'aprovado') == 'aprovado';
+    }
+
+    function isCatalogAvaliacaoPublicCreate(lojaId) {
+      return request.resource.data.lojaId == lojaId
+        && request.resource.data.lojaId is string
+        && request.resource.data.get('status', '') == 'pendente'
+        && request.resource.data.get('ativo', true) == true
+        && request.resource.data.nomeCliente is string
+        && request.resource.data.nomeCliente.size() >= 1
+        && request.resource.data.nomeCliente.size() <= 120
+        && request.resource.data.comentario is string
+        && request.resource.data.comentario.size() >= 1
+        && request.resource.data.comentario.size() <= 2000
+        && request.resource.data.estrelas is int
+        && request.resource.data.estrelas >= 1
+        && request.resource.data.estrelas <= 5
+        && request.resource.data.data is timestamp
+        && request.resource.data.criadoEm is timestamp
+        && (!request.resource.data.keys().hasAny(['fotos'])
+            || (request.resource.data.fotos is list && request.resource.data.fotos.size() <= 8))
+        && request.resource.data.size() <= 24;
+    }
+
+    function isCatalogAvaliacaoModerationUpdate(lojaId) {
+      return resource.data.lojaId == lojaId
+        && request.resource.data.lojaId == resource.data.lojaId
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'aprovadoEm']);
+    }
+
     // Pedidos: permite itens com itensComboComSelecao (combo + selecao de variacoes)
     function isValidPedidoCreate() {
       return request.resource.data.size() <= 55
@@ -691,6 +730,29 @@ service cloud.firestore {
         allow update: if isValidCarrinhoAbandonadoWrite(lojaId)
           || (resource != null && isValidCarrinhoAbandonadoUpdateOnly(lojaId));
         allow delete: if belongsToStore(lojaId);
+      }
+
+      // Depoimentos/avaliações do catálogo web — path fixo multi-tenant: lojas/{lojaId}/catalog_avaliacoes/{id}
+      match /catalog_avaliacoes/{avaliacaoId} {
+        allow read: if resource != null
+          && resource.data.lojaId == lojaId
+          && (
+            belongsToStore(lojaId)
+            || isCatalogAvaliacaoPublicRead(lojaId)
+          );
+
+        allow create: if (request.resource.data.lojaId == lojaId
+            && isCatalogAvaliacaoPublicCreate(lojaId))
+          || (belongsToStore(lojaId)
+            && request.resource.data.lojaId == lojaId
+            && request.resource.data.size() <= 30);
+
+        allow update: if belongsToStore(lojaId)
+          && resource.data.lojaId == lojaId
+          && isCatalogAvaliacaoModerationUpdate(lojaId);
+
+        allow delete: if belongsToStore(lojaId)
+          && resource.data.lojaId == lojaId;
       }
     }
 
