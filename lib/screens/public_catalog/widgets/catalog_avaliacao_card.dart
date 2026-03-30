@@ -7,6 +7,8 @@ class CatalogAvaliacaoCard extends StatelessWidget {
   final Color cardColor;
   final Color textColor;
   final Color accentColor;
+  /// Largura fixa (lista horizontal). Se null, usa 320. No carrossel, passe a largura da página.
+  final double? cardWidth;
 
   const CatalogAvaliacaoCard({
     super.key,
@@ -14,6 +16,7 @@ class CatalogAvaliacaoCard extends StatelessWidget {
     required this.cardColor,
     required this.textColor,
     required this.accentColor,
+    this.cardWidth,
   });
 
   @override
@@ -22,9 +25,9 @@ class CatalogAvaliacaoCard extends StatelessWidget {
     final textSecondary = textColor.withValues(alpha: 0.72);
 
     return Container(
-      width: 320,
+      width: cardWidth ?? 320,
       padding: const EdgeInsets.all(14),
-      margin: const EdgeInsets.only(right: 12),
+      margin: EdgeInsets.only(right: cardWidth != null ? 0 : 12),
       decoration: BoxDecoration(
         color: cardColor.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(16),

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/catalog_avaliacao.dart';
+import '../models/catalog_avaliacoes_ordem.dart';
 
 class CatalogAvaliacoesService {
   CatalogAvaliacoesService._();
@@ -20,6 +21,49 @@ class CatalogAvaliacoesService {
     return _ref(lojaId.trim())
         .orderBy('data', descending: true)
         .limit(_limiteLeitura);
+  }
+
+  static String _normNome(String s) => s.toLowerCase().trim();
+
+  /// Reordena cópia da lista para exibição no catálogo (não altera a lista original).
+  static List<CatalogAvaliacao> aplicarOrdem(
+    List<CatalogAvaliacao> lista,
+    CatalogAvaliacoesOrdem ordem,
+  ) {
+    final copy = List<CatalogAvaliacao>.from(lista);
+    switch (ordem) {
+      case CatalogAvaliacoesOrdem.maisRecentes:
+        copy.sort((a, b) => b.data.compareTo(a.data));
+        break;
+      case CatalogAvaliacoesOrdem.maisAntigas:
+        copy.sort((a, b) => a.data.compareTo(b.data));
+        break;
+      case CatalogAvaliacoesOrdem.melhorAvaliadas:
+        copy.sort((a, b) {
+          final c = b.estrelas.compareTo(a.estrelas);
+          if (c != 0) return c;
+          return b.data.compareTo(a.data);
+        });
+        break;
+      case CatalogAvaliacoesOrdem.pioresAvaliadas:
+        copy.sort((a, b) {
+          final c = a.estrelas.compareTo(b.estrelas);
+          if (c != 0) return c;
+          return b.data.compareTo(a.data);
+        });
+        break;
+      case CatalogAvaliacoesOrdem.nomeAz:
+        copy.sort(
+          (a, b) => _normNome(a.nomeCliente).compareTo(_normNome(b.nomeCliente)),
+        );
+        break;
+      case CatalogAvaliacoesOrdem.nomeZa:
+        copy.sort(
+          (a, b) => _normNome(b.nomeCliente).compareTo(_normNome(a.nomeCliente)),
+        );
+        break;
+    }
+    return copy;
   }
 
   static bool _docPassaFiltroLoja(

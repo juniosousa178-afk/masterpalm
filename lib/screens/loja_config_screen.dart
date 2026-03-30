@@ -16,6 +16,7 @@ import 'package:hive/hive.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../models/catalog_avaliacoes_ordem.dart';
 import '../core/hive_box_names.dart';
 import '../screens/public_catalog_screen.dart';
 import 'fretes_cupons_screen.dart';
@@ -936,6 +937,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   bool _menuShowQuemSomos = true;
   bool _menuShowDicas = true;
   bool _exibirAvaliacoesCatalogo = false;
+  CatalogAvaliacoesOrdem _catalogAvaliacoesOrdem =
+      CatalogAvaliacoesOrdem.maisRecentes;
   bool _showMobileMenuGrid = true;
 
   /// Dicas e informações (cuidados, garantias, qualidade) – lista de mapas para o catálogo.
@@ -1988,6 +1991,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _menuShowDicas = (menu['dicas'] as bool?) ?? _menuShowDicas;
       _exibirAvaliacoesCatalogo = (data['exibirAvaliacoesCatalogo'] as bool?) ??
           _exibirAvaliacoesCatalogo;
+      _catalogAvaliacoesOrdem = CatalogAvaliacoesOrdem.fromFirestore(
+        data['catalogAvaliacoesOrdem'],
+      );
       _showMobileMenuGrid =
           (menu['mobileMenuGrid'] as bool?) ?? _showMobileMenuGrid;
 
@@ -2422,6 +2428,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'mobileMenuGrid': _showMobileMenuGrid,
       },
       'exibirAvaliacoesCatalogo': _exibirAvaliacoesCatalogo,
+      'catalogAvaliacoesOrdem': _catalogAvaliacoesOrdem.firestoreValue,
       'dicas': _dicas,
       'quemSomos': {
         'titulo': _quemSomosTituloCtrl.text.trim(),
@@ -7152,6 +7159,30 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     setState(() => _exibirAvaliacoesCatalogo = v);
                     _salvarRascunho(validar: false);
                   },
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: DropdownButtonFormField<CatalogAvaliacoesOrdem>(
+                    value: _catalogAvaliacoesOrdem,
+                    decoration: const InputDecoration(
+                      labelText: 'Ordem dos depoimentos (carrossel)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: CatalogAvaliacoesOrdem.values
+                        .map(
+                          (e) => DropdownMenuItem(
+                            value: e,
+                            child: Text(e.labelConfig),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _catalogAvaliacoesOrdem = v);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
                 ),
                 const Divider(height: 1),
                 SwitchListTile(

@@ -4,17 +4,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/catalog_avaliacao.dart';
+import '../../../models/catalog_avaliacoes_ordem.dart';
 import '../../../services/catalog_avaliacao_fotos_input.dart';
 import '../../../services/catalog_avaliacoes_service.dart';
 import '../../../services/subscription_service.dart';
 import '../../../services/user_profile_resolver.dart';
-import 'catalog_avaliacao_card.dart';
+import 'catalog_avaliacoes_carousel.dart';
 
 class CatalogAvaliacoesSection extends StatefulWidget {
   final String lojaId;
   final Color cardColor;
   final Color textColor;
   final Color accentColor;
+  /// Ordem de exibição (configuração da loja no Firestore).
+  final CatalogAvaliacoesOrdem ordem;
 
   const CatalogAvaliacoesSection({
     super.key,
@@ -22,6 +25,7 @@ class CatalogAvaliacoesSection extends StatefulWidget {
     required this.cardColor,
     required this.textColor,
     required this.accentColor,
+    this.ordem = CatalogAvaliacoesOrdem.maisRecentes,
   });
 
   @override
@@ -198,24 +202,19 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
           StreamBuilder<List<CatalogAvaliacao>>(
             stream: CatalogAvaliacoesService.watchByLoja(widget.lojaId),
             builder: (context, snap) {
-              final avaliacoes = snap.data ?? const <CatalogAvaliacao>[];
-              if (avaliacoes.isEmpty) {
+              final bruto = snap.data ?? const <CatalogAvaliacao>[];
+              if (bruto.isEmpty) {
                 return const SizedBox.shrink();
               }
-              return SizedBox(
-                height: 220,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: avaliacoes.length,
-                  itemBuilder: (context, index) {
-                    return CatalogAvaliacaoCard(
-                      avaliacao: avaliacoes[index],
-                      cardColor: widget.cardColor,
-                      textColor: widget.textColor,
-                      accentColor: widget.accentColor,
-                    );
-                  },
-                ),
+              final avaliacoes = CatalogAvaliacoesService.aplicarOrdem(
+                bruto,
+                widget.ordem,
+              );
+              return CatalogAvaliacoesCarousel(
+                items: avaliacoes,
+                cardColor: widget.cardColor,
+                textColor: widget.textColor,
+                accentColor: widget.accentColor,
               );
             },
           ),

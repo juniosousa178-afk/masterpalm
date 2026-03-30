@@ -67,6 +67,7 @@ import 'public_catalog/widgets/catalog_product_details_sheet.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import '../core/logger.dart';
+import '../models/catalog_avaliacoes_ordem.dart';
 
 // ===================================================================
 // CACHE CATÁLOGO – Reduz leituras Firestore (TTL 3–5 min)
@@ -4464,6 +4465,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       cfg['exibir_depoimentos_catalogo'],
                   false,
                 );
+                final catalogAvaliacoesOrdem =
+                    CatalogAvaliacoesOrdem.fromFirestore(
+                  cfg['catalogAvaliacoesOrdem'],
+                );
                 final indicacaoRaw = cfg['indicacao'];
                 final indicacaoAtivo =
                     indicacaoRaw is Map && (indicacaoRaw['ativo'] == true);
@@ -6301,6 +6306,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   cardColor: cardColor,
                                                   textColor: textColor,
                                                   accentColor: primaryColor,
+                                                  ordem: catalogAvaliacoesOrdem,
                                                 ),
                                               ),
                                           ],
