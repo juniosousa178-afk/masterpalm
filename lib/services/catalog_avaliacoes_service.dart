@@ -7,12 +7,34 @@ class CatalogAvaliacoesService {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// Limite de leitura antes de filtrar por status no cliente (evita índice composto
-  /// e mantém compat com docs antigos sem `status`).
+  /// Limite de leitura antes de filtrar no cliente (evita índice composto:
+  /// `where` + `orderBy` em campos diferentes exige composite index no Firestore).
   static const int _limiteLeitura = 150;
 
   static CollectionReference<Map<String, dynamic>> _ref(String lojaId) {
     return _db.collection('lojas').doc(lojaId).collection('catalog_avaliacoes');
+  }
+
+  /// Query mínima: só [orderBy data] na subcoleção da loja (índice simples automático).
+  static Query<Map<String, dynamic>> _queryOrdenadoPorData(String lojaId) {
+    return _ref(lojaId.trim())
+        .orderBy('data', descending: true)
+        .limit(_limiteLeitura);
+  }
+
+  static bool _docPassaFiltroLoja(
+    Map<String, dynamic> m,
+    String lojaId, {
+    String? produtoId,
+  }) {
+    if (m['ativo'] == false) return false;
+    if ((m['lojaId'] ?? '').toString().trim() != lojaId.trim()) return false;
+    final p = produtoId?.trim();
+    if (p != null && p.isNotEmpty) {
+      final docPid = (m['produtoId'] ?? '').toString().trim();
+      if (docPid != p) return false;
+    }
+    return true;
   }
 
   static Stream<List<CatalogAvaliacao>> watchByLoja(
@@ -23,28 +45,20 @@ class CatalogAvaliacoesService {
       return Stream.value(const <CatalogAvaliacao>[]);
     }
 
-    Query<Map<String, dynamic>> query = _ref(lojaId)
-        .where('ativo', isEqualTo: true)
-        .where('lojaId', isEqualTo: lojaId)
-        .orderBy('data', descending: true)
-        .limit(_limiteLeitura);
-
-    if (produtoId != null && produtoId.trim().isNotEmpty) {
-      query = query.where('produtoId', isEqualTo: produtoId.trim());
-    }
-
-    return query.snapshots().map((snap) {
+    final lid = lojaId.trim();
+    return _queryOrdenadoPorData(lid).snapshots().map((snap) {
       final docs = snap.docs
+          .where((d) => _docPassaFiltroLoja(d.data(), lid, produtoId: produtoId))
           .map((d) => CatalogAvaliacao.fromFirestore(d.id, d.data()))
-          .where((a) => a.lojaId == lojaId && a.visivelNoCatalogoPublico)
+          .where((a) => a.visivelNoCatalogoPublico)
           .toList()
         ..sort((a, b) => b.data.compareTo(a.data));
 
       final top = docs.take(30).toList();
       if (top.isNotEmpty) return top;
-      return _mockAvaliacoes(lojaId);
+      return _mockAvaliacoes(lid);
     }).handleError((_) {
-      return _mockAvaliacoes(lojaId);
+      return _mockAvaliacoes(lid);
     });
   }
 
@@ -81,23 +95,17 @@ class CatalogAvaliacoesService {
   }
 
   /// Avaliações aguardando moderação — apenas da [lojaId] informada.
-  /// Filtra `pendente` no app (mesmo padrão do catálogo: evita índice composto extra).
+  /// Filtra `ativo`, `lojaId` e `pendente` no app (evita índice composto no Firestore).
   static Stream<List<CatalogAvaliacao>> watchPendentesPorLoja(String lojaId) {
     if (lojaId.trim().isEmpty) {
       return Stream.value(const <CatalogAvaliacao>[]);
     }
     final id = lojaId.trim();
-    return _ref(id)
-        .where('ativo', isEqualTo: true)
-        .where('lojaId', isEqualTo: id)
-        .orderBy('data', descending: true)
-        .limit(_limiteLeitura)
-        .snapshots()
-        .map((snap) {
+    return _queryOrdenadoPorData(id).snapshots().map((snap) {
       return snap.docs
+          .where((d) => _docPassaFiltroLoja(d.data(), id))
           .map((d) => CatalogAvaliacao.fromFirestore(d.id, d.data()))
-          .where((a) =>
-              a.lojaId == id && a.status == CatalogAvaliacaoStatus.pendente)
+          .where((a) => a.status == CatalogAvaliacaoStatus.pendente)
           .toList();
     });
   }

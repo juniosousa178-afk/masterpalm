@@ -51,6 +51,15 @@ service firebase.storage {
       allow write: if belongsToStore(lojaId);
     }
 
+    // Fotos em avaliacoes do catalogo publico (visitante pode estar sem auth).
+    // Leitura publica para exibir nos cards; escrita restrita a imagem pequena.
+    match /lojas/{lojaId}/catalog_avaliacoes_fotos/{fileName} {
+      allow read: if true;
+      allow write: if request.resource != null
+        && request.resource.size < 4 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // 🔒 Demais arquivos: somente usuários logados (ex: _healthcheck)
     match /{allPaths=**} {
       allow read, write: if request.auth != null;

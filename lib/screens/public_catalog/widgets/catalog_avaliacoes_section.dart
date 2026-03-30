@@ -1,8 +1,13 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/catalog_avaliacao.dart';
 import '../../../services/catalog_avaliacao_fotos_input.dart';
 import '../../../services/catalog_avaliacoes_service.dart';
+import '../../../services/subscription_service.dart';
+import '../../../services/user_profile_resolver.dart';
 import 'catalog_avaliacao_card.dart';
 
 class CatalogAvaliacoesSection extends StatefulWidget {
@@ -27,15 +32,93 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
   final _nomeCtrl = TextEditingController();
   final _comentarioCtrl = TextEditingController();
   final _fotosCtrl = TextEditingController();
+  final List<String> _fotosUrlsGaleria = [];
   int _estrelas = 5;
   bool _enviando = false;
+  bool _uploadandoGaleria = false;
+  StreamSubscription<User?>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSub =
+        FirebaseAuth.instance.authStateChanges().listen((_) => _preencherNomeSeVazio());
+    _preencherNomeSeVazio();
+  }
+
+  /// Preenche "Seu nome" com perfil Firestore (nome/name) ou displayName do Auth.
+  /// Só aplica se o campo ainda estiver vazio quando a resolução terminar.
+  Future<void> _preencherNomeSeVazio() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || !mounted) return;
+
+    String nome = '';
+    try {
+      final isRoot = SubscriptionService.isRoot;
+      final profile =
+          await UserProfileResolver.resolveCurrentUserProfile(isRoot: isRoot);
+      if (profile != null) {
+        nome = (profile.raw['nome'] ?? profile.raw['name'] ?? '')
+            .toString()
+            .trim();
+      }
+    } catch (_) {
+      // fallback abaixo
+    }
+    if (nome.isEmpty) {
+      nome = (user.displayName ?? '').trim();
+    }
+    if (!mounted || _nomeCtrl.text.trim().isNotEmpty || nome.isEmpty) return;
+    setState(() => _nomeCtrl.text = nome);
+  }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _nomeCtrl.dispose();
     _comentarioCtrl.dispose();
     _fotosCtrl.dispose();
     super.dispose();
+  }
+
+  int _fotosCountAtual() {
+    final texto =
+        CatalogAvaliacaoFotosInput.parseUrlsFromFormText(_fotosCtrl.text);
+    return _fotosUrlsGaleria.length + texto.length;
+  }
+
+  Future<void> _importarGaleria() async {
+    const maxF = CatalogAvaliacaoFotosInput.maxFotosPorAvaliacao;
+    final restante = maxF - _fotosCountAtual();
+    if (restante <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No maximo $maxF fotos por avaliacao.')),
+      );
+      return;
+    }
+    setState(() => _uploadandoGaleria = true);
+    try {
+      final r = await CatalogAvaliacaoFotosInput.pickGalleryAndUploadUrls(
+        lojaId: widget.lojaId,
+        remainingSlots: restante,
+      );
+      if (!mounted) return;
+      if (r.pickedCount == 0) return;
+      if (r.urls.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Nenhuma foto foi enviada. Verifique tamanho (ate 4 MB) e conexao.',
+            ),
+          ),
+        );
+        return;
+      }
+      setState(() => _fotosUrlsGaleria.addAll(r.urls));
+    } finally {
+      if (mounted) setState(() => _uploadandoGaleria = false);
+    }
   }
 
   Future<void> _enviar() async {
@@ -43,10 +126,21 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
     final comentario = _comentarioCtrl.text.trim();
     if (nome.isEmpty || comentario.isEmpty || _enviando) return;
 
+    const maxF = CatalogAvaliacaoFotosInput.maxFotosPorAvaliacao;
+    final fotos = [
+      ..._fotosUrlsGaleria,
+      ...CatalogAvaliacaoFotosInput.parseUrlsFromFormText(_fotosCtrl.text),
+    ];
+    if (fotos.length > maxF) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No maximo $maxF fotos por avaliacao.')),
+      );
+      return;
+    }
+
     setState(() => _enviando = true);
     try {
-      final fotos =
-          CatalogAvaliacaoFotosInput.parseUrlsFromFormText(_fotosCtrl.text);
       await CatalogAvaliacoesService.enviarAvaliacao(
         lojaId: widget.lojaId,
         nomeCliente: nome,
@@ -57,6 +151,7 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
       if (!mounted) return;
       _comentarioCtrl.clear();
       _fotosCtrl.clear();
+      _fotosUrlsGaleria.clear();
       _estrelas = 5;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -161,10 +256,63 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
                 TextField(
                   controller: _fotosCtrl,
                   style: TextStyle(color: widget.textColor),
+                  onChanged: (_) => setState(() {}),
                   decoration: _inputDecoration(
-                    'Fotos (opcional): URLs separadas por virgula — em breve upload direto',
+                    'Fotos (opcional): URLs separadas por virgula',
                   ),
                 ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: (_uploadandoGaleria || _enviando)
+                        ? null
+                        : _importarGaleria,
+                    icon: _uploadandoGaleria
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: widget.accentColor,
+                            ),
+                          )
+                        : Icon(
+                            Icons.photo_library_outlined,
+                            color: widget.accentColor,
+                          ),
+                    label: Text(
+                      _uploadandoGaleria
+                          ? 'Enviando fotos...'
+                          : 'Importar da galeria',
+                      style: TextStyle(color: widget.textColor),
+                    ),
+                  ),
+                ),
+                if (_fotosUrlsGaleria.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Fotos da galeria (${_fotosUrlsGaleria.length}/${CatalogAvaliacaoFotosInput.maxFotosPorAvaliacao})',
+                    style: TextStyle(
+                      color: widget.textColor.withValues(alpha: 0.75),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (var i = 0; i < _fotosUrlsGaleria.length; i++)
+                        _GaleriaThumb(
+                          url: _fotosUrlsGaleria[i],
+                          borderColor: widget.textColor.withValues(alpha: 0.2),
+                          onRemove: () =>
+                              setState(() => _fotosUrlsGaleria.removeAt(i)),
+                        ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -222,6 +370,63 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(color: widget.accentColor.withValues(alpha: 0.9)),
       ),
+    );
+  }
+}
+
+class _GaleriaThumb extends StatelessWidget {
+  final String url;
+  final Color borderColor;
+  final VoidCallback onRemove;
+
+  const _GaleriaThumb({
+    required this.url,
+    required this.borderColor,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: borderColor),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Image.network(
+            url,
+            width: 56,
+            height: 56,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              color: Colors.black12,
+              alignment: Alignment.center,
+              child: const Icon(Icons.broken_image_outlined, size: 28),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: Material(
+            color: Colors.black87,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onRemove,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
