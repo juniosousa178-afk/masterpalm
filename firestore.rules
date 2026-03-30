@@ -79,8 +79,19 @@ service cloud.firestore {
     }
 
     // ✅ NOVO: Verifica se pertence à loja (admin ou vendedor)
+    // Dono/admin cadastrado em lojas/{lojaId}/members (retrocompat com ownerUid ausente/errado).
+    function isLojaMemberElevated(lojaId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/lojas/$(lojaId)/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/lojas/$(lojaId)/members/$(request.auth.uid)).data.get('role', '') in ['owner', 'admin'];
+    }
+
     function belongsToStore(lojaId) {
-      return isAdminOrSystem() || isOwnerOfStore(lojaId) || isSellerOfStore(lojaId) || userResolvedStoreMatches(lojaId);
+      return isAdminOrSystem()
+        || isOwnerOfStore(lojaId)
+        || isSellerOfStore(lojaId)
+        || userResolvedStoreMatches(lojaId)
+        || isLojaMemberElevated(lojaId);
     }
 
     // =========================
@@ -239,7 +250,7 @@ service cloud.firestore {
     // - Create público: pendente + lojaId coerente com path; sem update pelo cliente anônimo.
     // - Update: só equipe da loja; apenas status e aprovadoEm (moderação).
     function isCatalogAvaliacaoPublicRead(lojaId) {
-      return resource.data.lojaId == lojaId
+      return resource.data.get('lojaId', lojaId) == lojaId
         && resource.data.get('ativo', true) == true
         && resource.data.get('status', 'aprovado') == 'aprovado';
     }
@@ -266,8 +277,8 @@ service cloud.firestore {
     }
 
     function isCatalogAvaliacaoModerationUpdate(lojaId) {
-      return resource.data.lojaId == lojaId
-        && request.resource.data.lojaId == resource.data.lojaId
+      return resource.data.get('lojaId', lojaId) == lojaId
+        && request.resource.data.get('lojaId', lojaId) == resource.data.get('lojaId', lojaId)
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['status', 'aprovadoEm']);
     }
@@ -363,8 +374,11 @@ service cloud.firestore {
     function userResolvedStoreMatches(lojaId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.store_id == lojaId
         && exists(/databases/$(database)/documents/lojas/$(lojaId))
+        && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('store_id', '') == lojaId
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('storeId', '') == lojaId
+        )
         && (
           !get(/databases/$(database)/documents/lojas/$(lojaId)).data.keys().hasAny(['ownerUid'])
           || get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid
@@ -734,8 +748,9 @@ service cloud.firestore {
 
       // Depoimentos/avaliações do catálogo web — path fixo multi-tenant: lojas/{lojaId}/catalog_avaliacoes/{id}
       match /catalog_avaliacoes/{avaliacaoId} {
+        // lojaId no doc: fallback ao path (docs antigos sem campo).
         allow read: if resource != null
-          && resource.data.lojaId == lojaId
+          && resource.data.get('lojaId', lojaId) == lojaId
           && (
             belongsToStore(lojaId)
             || isCatalogAvaliacaoPublicRead(lojaId)
@@ -744,15 +759,15 @@ service cloud.firestore {
         allow create: if (request.resource.data.lojaId == lojaId
             && isCatalogAvaliacaoPublicCreate(lojaId))
           || (belongsToStore(lojaId)
-            && request.resource.data.lojaId == lojaId
+            && request.resource.data.get('lojaId', lojaId) == lojaId
             && request.resource.data.size() <= 30);
 
         allow update: if belongsToStore(lojaId)
-          && resource.data.lojaId == lojaId
+          && resource.data.get('lojaId', lojaId) == lojaId
           && isCatalogAvaliacaoModerationUpdate(lojaId);
 
         allow delete: if belongsToStore(lojaId)
-          && resource.data.lojaId == lojaId;
+          && resource.data.get('lojaId', lojaId) == lojaId;
       }
     }
 

@@ -8,17 +8,37 @@ class CatalogAvaliacoesService {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  /// Limite de leitura antes de filtrar no cliente (evita índice composto:
-  /// `where` + `orderBy` em campos diferentes exige composite index no Firestore).
+  /// Limite de leitura antes de filtrar no cliente.
   static const int _limiteLeitura = 150;
 
   static CollectionReference<Map<String, dynamic>> _ref(String lojaId) {
     return _db.collection('lojas').doc(lojaId).collection('catalog_avaliacoes');
   }
 
-  /// Query mínima: só [orderBy data] na subcoleção da loja (índice simples automático).
-  static Query<Map<String, dynamic>> _queryOrdenadoPorData(String lojaId) {
+  /// Catálogo público: só [aprovado] — evita `permission-denied` na query quando
+  /// existem pendentes (regras mistas: anônimo não pode ler pendente).
+  /// Docs antigos sem campo `status`: definir `status: aprovado` no Firestore.
+  static Query<Map<String, dynamic>> _queryAprovadosOrdenadoPorData(
+    String lojaId,
+  ) {
     return _ref(lojaId.trim())
+        .where(
+          'status',
+          isEqualTo: CatalogAvaliacaoStatus.aprovado.firestoreValue,
+        )
+        .orderBy('data', descending: true)
+        .limit(_limiteLeitura);
+  }
+
+  /// Moderação: só pendentes (mesmo motivo de segurança de query acima).
+  static Query<Map<String, dynamic>> _queryPendentesOrdenadoPorData(
+    String lojaId,
+  ) {
+    return _ref(lojaId.trim())
+        .where(
+          'status',
+          isEqualTo: CatalogAvaliacaoStatus.pendente.firestoreValue,
+        )
         .orderBy('data', descending: true)
         .limit(_limiteLeitura);
   }
@@ -72,7 +92,8 @@ class CatalogAvaliacoesService {
     String? produtoId,
   }) {
     if (m['ativo'] == false) return false;
-    if ((m['lojaId'] ?? '').toString().trim() != lojaId.trim()) return false;
+    final docLid = (m['lojaId'] ?? '').toString().trim();
+    if (docLid.isNotEmpty && docLid != lojaId.trim()) return false;
     final p = produtoId?.trim();
     if (p != null && p.isNotEmpty) {
       final docPid = (m['produtoId'] ?? '').toString().trim();
@@ -90,7 +111,7 @@ class CatalogAvaliacoesService {
     }
 
     final lid = lojaId.trim();
-    return _queryOrdenadoPorData(lid).snapshots().map((snap) {
+    return _queryAprovadosOrdenadoPorData(lid).snapshots().map((snap) {
       final docs = snap.docs
           .where((d) => _docPassaFiltroLoja(d.data(), lid, produtoId: produtoId))
           .map((d) => CatalogAvaliacao.fromFirestore(d.id, d.data()))
@@ -145,7 +166,7 @@ class CatalogAvaliacoesService {
       return Stream.value(const <CatalogAvaliacao>[]);
     }
     final id = lojaId.trim();
-    return _queryOrdenadoPorData(id).snapshots().map((snap) {
+    return _queryPendentesOrdenadoPorData(id).snapshots().map((snap) {
       return snap.docs
           .where((d) => _docPassaFiltroLoja(d.data(), id))
           .map((d) => CatalogAvaliacao.fromFirestore(d.id, d.data()))
@@ -178,6 +199,10 @@ class CatalogAvaliacoesService {
       'status': CatalogAvaliacaoStatus.rejeitado.firestoreValue,
     });
   }
+
+  /// Exemplos no carrossel quando não há aprovados, ainda está carregando ou houve erro de leitura.
+  static List<CatalogAvaliacao> exemplosParaCarrossel(String lojaId) =>
+      _mockAvaliacoes(lojaId.trim());
 
   static List<CatalogAvaliacao> _mockAvaliacoes(String lojaId) {
     final now = DateTime.now();

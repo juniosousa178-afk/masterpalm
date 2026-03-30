@@ -190,24 +190,22 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Depoimentos reais para trazer mais confianca na compra.',
-            style: TextStyle(
-              color: widget.textColor.withValues(alpha: 0.72),
-              fontSize: 13,
-            ),
-          ),
           const SizedBox(height: 12),
           StreamBuilder<List<CatalogAvaliacao>>(
             stream: CatalogAvaliacoesService.watchByLoja(widget.lojaId),
             builder: (context, snap) {
-              final bruto = snap.data ?? const <CatalogAvaliacao>[];
-              if (bruto.isEmpty) {
-                return const SizedBox.shrink();
-              }
+              final lid = widget.lojaId;
+              final bruto = snap.hasError
+                  ? const <CatalogAvaliacao>[]
+                  : (snap.data ?? const <CatalogAvaliacao>[]);
+              // Com ao menos uma avaliacao real (Firestore), nunca mistura com exemplos.
+              final reais =
+                  bruto.where((a) => !a.isMock).toList(growable: false);
+              final paraCarrossel = reais.isNotEmpty
+                  ? reais
+                  : CatalogAvaliacoesService.exemplosParaCarrossel(lid);
               final avaliacoes = CatalogAvaliacoesService.aplicarOrdem(
-                bruto,
+                paraCarrossel,
                 widget.ordem,
               );
               return CatalogAvaliacoesCarousel(
