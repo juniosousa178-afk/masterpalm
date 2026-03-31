@@ -537,7 +537,12 @@ class EstoqueService {
     if (data == null) return {};
     if (data is Map<String, int>) return data;
     if (data is Map) {
-      return data.map((key, value) => MapEntry(key.toString(), (value as num?)?.toInt() ?? 0));
+      return data.map(
+        (key, value) => MapEntry(
+          key.toString(),
+          ProdutoVariacaoExtra.valorFirestoreComoInt(value),
+        ),
+      );
     }
     return {};
   }

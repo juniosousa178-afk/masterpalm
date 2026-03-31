@@ -48,6 +48,28 @@ abstract final class ProdutoVariacaoExtra {
     return _asInt(cell);
   }
 
+  /// Valores em mapas vindos do Firestore (ex.: `estoquePorTamanho`) devem ser `num`;
+  /// se vier `Map` por dado anômalo, soma como célula de variação.
+  static int valorFirestoreComoInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toInt();
+    if (v is Map) return somarCelula(v);
+    return int.tryParse(v.toString().trim()) ?? 0;
+  }
+
+  /// Estoque disponível numa célula de [variacoes] (número, mapa de letras, etc.).
+  /// [extraTrim] vazio com célula só de personalização ⇒ 0 (obrigatório escolher letra).
+  static int estoqueDisponivelParaCelula(dynamic cell, [String extraTrim = '']) {
+    final ex = extraTrim.trim();
+    if (cell == null) return 0;
+    if (cell is num) return cell.toInt();
+    if (cell is Map) {
+      if (celulaTemExtrasNaoVazios(cell) && ex.isEmpty) return 0;
+      return ex.isNotEmpty ? quantidadeNaCelula(cell, ex) : somarCelula(cell);
+    }
+    return int.tryParse(cell.toString().trim()) ?? 0;
+  }
+
   /// Há pelo menos um extraValor não vazio em alguma célula do produto?
   static bool produtoTemEixoExtraVisivel(Map<String, dynamic>? variacoes) {
     if (variacoes == null || variacoes.isEmpty) return false;

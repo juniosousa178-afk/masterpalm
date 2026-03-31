@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/produto_variacao_extra.dart';
 import 'firestore_paths.dart';
 import '../models/produto.dart';
 import '../models/cliente.dart';
@@ -354,7 +355,12 @@ class FullSyncService {
   static Map<String, int> _parseMapStringInt(dynamic value) {
     if (value == null) return {};
     if (value is Map) {
-      return value.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0));
+      return value.map(
+        (k, v) => MapEntry(
+          k.toString(),
+          ProdutoVariacaoExtra.valorFirestoreComoInt(v),
+        ),
+      );
     }
     return {};
   }

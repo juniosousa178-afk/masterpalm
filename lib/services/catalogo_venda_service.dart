@@ -10,6 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/produto_variacao_extra.dart';
 import '../core/mp_venda_identity.dart';
 import '../core/strict_product_resolution.dart';
 import '../models/venda.dart';
@@ -206,16 +207,22 @@ class CatalogoVendaService {
 
           int qtdDisponivel;
           if (variacoesData != null && variacoesData.isNotEmpty && tamanho.isNotEmpty && cor.isNotEmpty) {
-            // Produto com variações (tamanho + cor)
+            // Produto com variações (tamanho + cor); célula pode ser int ou mapa (letras).
             final mapaTamanho = variacoesData[tamanho] as Map<String, dynamic>?;
-            qtdDisponivel = (mapaTamanho?[cor] as num?)?.toInt() ?? 0;
+            final cell = mapaTamanho?[cor];
+            final extraTrim =
+                (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
+            qtdDisponivel =
+                ProdutoVariacaoExtra.estoqueDisponivelParaCelula(cell, extraTrim);
 
             if (qtdDisponivel < qtd) {
               throw Exception('Estoque insuficiente para "$nome" no tamanho $tamanho - cor $cor (solicitado: $qtd, disponível: $qtdDisponivel)');
             }
           } else if (estoquePorTamanhoData != null && estoquePorTamanhoData.isNotEmpty && tamanho.isNotEmpty) {
             // Produto apenas com tamanhos
-            qtdDisponivel = (estoquePorTamanhoData[tamanho] as num?)?.toInt() ?? 0;
+            qtdDisponivel = ProdutoVariacaoExtra.valorFirestoreComoInt(
+              estoquePorTamanhoData[tamanho],
+            );
 
             if (qtdDisponivel < qtd) {
               throw Exception('Estoque insuficiente para "$nome" no tamanho $tamanho (solicitado: $qtd, disponível: $qtdDisponivel)');
@@ -245,8 +252,10 @@ class CatalogoVendaService {
           }
 
           if (produto.usaVariacoes && tamanho.isNotEmpty && cor.isNotEmpty) {
-            // Produto com variações (tamanho + cor)
-            qtdDisponivel = produto.obterEstoqueVariacao(tamanho, cor);
+            // Produto com variações (tamanho + cor); personalização opcional em extraValor.
+            final extraTrim =
+                (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
+            qtdDisponivel = produto.obterEstoqueVariacao(tamanho, cor, extraTrim);
 
             if (qtdDisponivel < qtd) {
               throw Exception('Estoque insuficiente para "$nome" no tamanho $tamanho - cor $cor (solicitado: $qtd, disponível: $qtdDisponivel)');

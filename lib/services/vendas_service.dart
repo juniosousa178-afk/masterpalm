@@ -12,6 +12,7 @@ import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../models/conta_receber.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
@@ -316,6 +317,23 @@ class VendasService {
           if (pComp == null) {
             throw Exception('Produto do combo não encontrado: $nomeComp (productId=$idComp, slug=$slugComp)');
           }
+          final extraTrim =
+              (comboItem['extraValor'] ?? '').toString().trim();
+          final corKey = cor.trim().isEmpty ? 'sem-cor' : cor.trim();
+          final tamKey = tam.trim().isEmpty ? 'sem-tamanho' : tam.trim();
+          final tipoExtra = ProdutoVariacaoExtra.tipoParaCelula(
+            pComp.variacoesExtraTipo,
+            tamKey,
+            corKey,
+            extraTrim,
+          );
+          final resumoExtra = extraTrim.isNotEmpty
+              ? ProdutoVariacaoExtra.textoResumoExtra(
+                  extraTipo: tipoExtra,
+                  extraValor: extraTrim,
+                )
+              : '';
+
           itensExpandidos.add(VendaItem(
             produtoNome: pComp.nome,
             quantidade: qtdTotal,
@@ -323,6 +341,8 @@ class VendasService {
             tamanho: tam,
             cor: cor,
             productId: pComp.idFirebase.trim().isNotEmpty ? pComp.idFirebase : null,
+            variacaoExtraResumo: resumoExtra,
+            extraValor: extraTrim,
           ));
           produtosExpandidos.add(pComp);
         }
@@ -406,6 +426,17 @@ class VendasService {
           'Clique em "Selecionar" e escolha o tamanho (ex.: P, M, G).',
         );
       }
+      final opcoesExtra = ProdutoVariacaoExtra.opcoesExtraPara(
+        p.variacoes,
+        it.tamanho.trim(),
+        it.cor.trim(),
+      );
+      if (opcoesExtra.isNotEmpty && it.extraValor.trim().isEmpty) {
+        throw Exception(
+          'O produto "${it.produtoNome}" exige personalização (ex.: letra). '
+          'Abra o combo na venda e selecione a opção, ou refaça a linha do kit.',
+        );
+      }
     }
 
     final txItems = <Map<String, dynamic>>[];
@@ -419,6 +450,7 @@ class VendasService {
         'quantidade': it.quantidade,
         'tamanho': it.tamanho.trim(),
         'cor': it.cor.trim(),
+        if (it.extraValor.trim().isNotEmpty) 'extraValor': it.extraValor.trim(),
       });
     }
 
@@ -642,19 +674,34 @@ class VendasService {
         lojaId: lojaId,
         itensComboSelecaoPorIndice: null,
       );
-      final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, int qtd})> agrupado = {};
+      final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, String extra, int qtd})> agrupado = {};
       for (final it in itensDevolucao) {
         final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
         final nomeLower = it.produtoNome.trim().toLowerCase();
         final nomeOriginal = it.produtoNome.trim();
         final tam = it.tamanho.trim();
         final cor = it.cor.trim();
-        final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor';
+        final extra = it.extraValor.trim();
+        final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor\x00$extra';
         final existing = agrupado[key];
         if (existing != null) {
-          agrupado[key] = (productId: existing.productId, nomeOriginal: existing.nomeOriginal, tam: existing.tam, cor: existing.cor, qtd: existing.qtd + it.quantidade);
+          agrupado[key] = (
+            productId: existing.productId,
+            nomeOriginal: existing.nomeOriginal,
+            tam: existing.tam,
+            cor: existing.cor,
+            extra: existing.extra,
+            qtd: existing.qtd + it.quantidade,
+          );
         } else {
-          agrupado[key] = (productId: pid, nomeOriginal: nomeOriginal, tam: tam, cor: cor, qtd: it.quantidade);
+          agrupado[key] = (
+            productId: pid,
+            nomeOriginal: nomeOriginal,
+            tam: tam,
+            cor: cor,
+            extra: extra,
+            qtd: it.quantidade,
+          );
         }
       }
       final itens = agrupado.entries
@@ -665,6 +712,7 @@ class VendasService {
                 'quantidade': e.value.qtd,
                 'tamanho': e.value.tam,
                 'cor': e.value.cor,
+                if (e.value.extra.isNotEmpty) 'extraValor': e.value.extra,
               })
           .toList();
       if (itens.isNotEmpty) {
@@ -788,19 +836,34 @@ class VendasService {
         lojaId: lojaId,
         itensComboSelecaoPorIndice: null,
       );
-      final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, int qtd})> agrupado = {};
+      final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, String extra, int qtd})> agrupado = {};
       for (final it in itensDevolucao) {
         final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
         final nomeLower = it.produtoNome.trim().toLowerCase();
         final nomeOriginal = it.produtoNome.trim();
         final tam = it.tamanho.trim();
         final cor = it.cor.trim();
-        final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor';
+        final extra = it.extraValor.trim();
+        final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor\x00$extra';
         final existing = agrupado[key];
         if (existing != null) {
-          agrupado[key] = (productId: existing.productId, nomeOriginal: existing.nomeOriginal, tam: existing.tam, cor: existing.cor, qtd: existing.qtd + it.quantidade);
+          agrupado[key] = (
+            productId: existing.productId,
+            nomeOriginal: existing.nomeOriginal,
+            tam: existing.tam,
+            cor: existing.cor,
+            extra: existing.extra,
+            qtd: existing.qtd + it.quantidade,
+          );
         } else {
-          agrupado[key] = (productId: pid, nomeOriginal: nomeOriginal, tam: tam, cor: cor, qtd: it.quantidade);
+          agrupado[key] = (
+            productId: pid,
+            nomeOriginal: nomeOriginal,
+            tam: tam,
+            cor: cor,
+            extra: extra,
+            qtd: it.quantidade,
+          );
         }
       }
       final itens = agrupado.entries
@@ -811,6 +874,7 @@ class VendasService {
                 'quantidade': e.value.qtd,
                 'tamanho': e.value.tam,
                 'cor': e.value.cor,
+                if (e.value.extra.isNotEmpty) 'extraValor': e.value.extra,
               })
           .toList();
       if (itens.isNotEmpty) {

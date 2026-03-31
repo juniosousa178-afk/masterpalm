@@ -31,6 +31,10 @@ class VendaItem {
   @HiveField(7, defaultValue: '')
   String variacaoExtraResumo;
 
+  /// Personalização (ex.: letra) quando a grade usa mapa extra→qtd na célula. Usado na baixa Firestore.
+  @HiveField(8, defaultValue: '')
+  String extraValor;
+
   VendaItem({
     required this.produtoNome,
     required this.quantidade,
@@ -40,5 +44,6 @@ class VendaItem {
     this.cor = '',
     this.productId,
     this.variacaoExtraResumo = '',
+    this.extraValor = '',
   });
 }

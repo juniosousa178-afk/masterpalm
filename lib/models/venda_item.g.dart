@@ -25,13 +25,14 @@ class VendaItemAdapter extends TypeAdapter<VendaItem> {
       cor: fields[5] as String,
       productId: fields[6] as String?,
       variacaoExtraResumo: fields[7] == null ? '' : fields[7] as String,
+      extraValor: fields[8] == null ? '' : fields[8] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, VendaItem obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.produtoNome)
       ..writeByte(1)
@@ -47,7 +48,9 @@ class VendaItemAdapter extends TypeAdapter<VendaItem> {
       ..writeByte(6)
       ..write(obj.productId)
       ..writeByte(7)
-      ..write(obj.variacaoExtraResumo);
+      ..write(obj.variacaoExtraResumo)
+      ..writeByte(8)
+      ..write(obj.extraValor);
   }
 
   @override

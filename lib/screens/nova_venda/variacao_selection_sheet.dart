@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/catalog_color_from_name.dart';
+import '../../core/produto_variacao_extra.dart';
 import '../../models/produto.dart';
 
 /// Sheet para selecionar variação (tamanho/cor) ao adicionar produto na Nova Venda.
@@ -70,7 +71,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
         if (cores is Map) {
           int total = 0;
           for (final qtd in cores.values) {
-            total += (qtd as num?)?.toInt() ?? 0;
+            total += ProdutoVariacaoExtra.somarCelula(qtd);
           }
           if (total > 0) result[tamanho.toString()] = total;
         }
@@ -90,7 +91,9 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       final mapaTamanho = widget.produto.variacoes![_tamanhoSelecionado];
       if (mapaTamanho is Map) {
         return Map<String, int>.from(
-          mapaTamanho.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0)),
+          mapaTamanho.map(
+            (k, v) => MapEntry(k.toString(), ProdutoVariacaoExtra.somarCelula(v)),
+          ),
         );
       }
     }

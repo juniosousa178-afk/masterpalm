@@ -1,5 +1,7 @@
 import 'package:hive/hive.dart';
 
+import '../core/produto_variacao_extra.dart';
+
 part 'produto_catalogo.g.dart';
 
 @HiveType(typeId: 5)
@@ -93,7 +95,7 @@ class ProdutoCatalogo extends HiveObject {
     final mapaTamanho = variacoes![tamanho];
     if (mapaTamanho == null || mapaTamanho is! Map) return 0;
 
-    return (mapaTamanho[cor] as num?)?.toInt() ?? 0;
+    return ProdutoVariacaoExtra.somarCelula(mapaTamanho[cor]);
   }
 
   /// Obtém todas as cores disponíveis para um tamanho específico
@@ -104,7 +106,7 @@ class ProdutoCatalogo extends HiveObject {
     if (mapaTamanho == null || mapaTamanho is! Map) return [];
 
     return mapaTamanho.keys
-        .where((cor) => ((mapaTamanho[cor] as num?)?.toInt() ?? 0) > 0)
+        .where((cor) => ProdutoVariacaoExtra.somarCelula(mapaTamanho[cor]) > 0)
         .cast<String>()
         .toList();
   }
