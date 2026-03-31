@@ -66,8 +66,10 @@ import 'public_catalog/widgets/catalog_product_detail_screen.dart';
 import 'public_catalog/widgets/catalog_product_details_sheet.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
+import 'public_catalog/catalog_sobre_loja_screen.dart';
 import '../core/logger.dart';
 import '../models/catalog_avaliacoes_ordem.dart';
+import '../models/catalog_sobre_loja_config.dart';
 
 // ===================================================================
 // CACHE CATÁLOGO – Reduz leituras Firestore (TTL 3–5 min)
@@ -3934,8 +3936,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           final linkedinUrl = (rodapeLinks['linkedin'] ?? '').toString();
           final emailUrl = (rodapeLinks['email'] ?? '').toString();
           final whatsappUrl = (rodapeLinks['whatsapp'] ?? '').toString();
-          final sobreUrl =
-              (rodapeLinks['sobre'] ?? links['sobre'] ?? '').toString();
           final trocasUrl =
               (rodapeLinks['trocas'] ?? links['trocas'] ?? '').toString();
           final loginUrl =
@@ -4252,9 +4252,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 const badgeSSL = 'assets/badges/ssl.png';
                 const badgeGoogle = 'assets/badges/google-safe-browsing.png';
 
+                final sobreLojaConfig = CatalogSobreLojaConfig.fromCfg(cfg);
+
                 final footerLinks = <Map<String, String>>[
-                  if (sobreUrl.isNotEmpty)
-                    {'label': 'Sobre a loja', 'url': sobreUrl},
                   if (trocasUrl.isNotEmpty)
                     {'label': 'Trocas e devoluções', 'url': trocasUrl},
                   if (loginUrl.isNotEmpty)
@@ -6346,6 +6346,51 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               empresaRazao: empresaRazao,
                                               empresaCnpj: empresaCnpj,
                                               onOpenUrl: _openUrl,
+                                              onSobreLojaTap: () {
+                                                final w =
+                                                    MediaQuery.sizeOf(context)
+                                                        .width;
+                                                final wide = w >= 900;
+                                                Navigator.of(context).push(
+                                                  MaterialPageRoute<void>(
+                                                    builder: (ctx) =>
+                                                        CatalogSobreLojaScreen(
+                                                      lojaNome: lojaNome,
+                                                      config: sobreLojaConfig,
+                                                      primaryColor: primaryColor,
+                                                      dicasColors:
+                                                          catalogDicasColors,
+                                                      logoUrl: logoUrl
+                                                              .isNotEmpty
+                                                          ? logoUrl
+                                                          : null,
+                                                      logoHeight:
+                                                          wide ? 90 : 80,
+                                                      bannerHeightHero:
+                                                          mediaConfig.bannerH *
+                                                              0.52,
+                                                      contactInfo:
+                                                          DicasContactInfo(
+                                                        whatsappNumber:
+                                                            atendimentoWhatsapp,
+                                                        instagramUrl:
+                                                            instagramUrl
+                                                                    .isNotEmpty
+                                                                ? instagramUrl
+                                                                : null,
+                                                        facebookUrl:
+                                                            facebookUrl
+                                                                    .isNotEmpty
+                                                                ? facebookUrl
+                                                                : null,
+                                                      ),
+                                                      empresaRazao: empresaRazao,
+                                                      empresaCnpj: empresaCnpj,
+                                                      onOpenUrl: _openUrl,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                               onOpenWhatsapp: () =>
                                                   _openWhatsappSimple(
                                                 atendimentoWhatsapp,

@@ -28,6 +28,8 @@ class CatalogFooter extends StatelessWidget {
   final String empresaCnpj;
   final VoidCallback onOpenWhatsapp;
   final void Function(String url) onOpenUrl;
+  /// Abre a página interna "Sobre a loja" (catálogo). Se null, o link não aparece.
+  final VoidCallback? onSobreLojaTap;
   final List<Map<String, String>> faqItems;
   final String politicaPrivacidadeUrl;
   final String termosUsoUrl;
@@ -59,6 +61,7 @@ class CatalogFooter extends StatelessWidget {
     required this.empresaCnpj,
     required this.onOpenWhatsapp,
     required this.onOpenUrl,
+    this.onSobreLojaTap,
     this.faqItems = const [],
     this.politicaPrivacidadeUrl = '',
     this.termosUsoUrl = '',
@@ -100,12 +103,27 @@ class CatalogFooter extends StatelessWidget {
           Divider(color: divider, height: 24),
           CatalogSectionTitle('Links', color: muted),
           const SizedBox(height: 8),
-          if (safeLinks.isEmpty)
+          if (onSobreLojaTap != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: InkWell(
+                onTap: onSobreLojaTap,
+                child: Text(
+                  'Sobre a loja',
+                  style: TextStyle(
+                    color: linksColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          if (safeLinks.isEmpty && onSobreLojaTap == null)
             Text(
               'Nenhum link configurado.',
               style: TextStyle(color: muted, fontSize: 13),
             )
-          else
+          else if (safeLinks.isNotEmpty)
             Column(
               children: safeLinks
                   .map(

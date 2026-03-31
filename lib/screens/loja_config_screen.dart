@@ -948,6 +948,20 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       TextEditingController(text: 'Quem somos');
   final TextEditingController _quemSomosTextoCtrl = TextEditingController();
 
+  /// Página "Sobre a loja" no catálogo público (rodapé → Sobre a loja).
+  final TextEditingController _sobreLojaTituloCtrl = TextEditingController();
+  final TextEditingController _sobreLojaSubtituloCtrl = TextEditingController();
+  final TextEditingController _sobreLojaBannerUrlCtrl = TextEditingController();
+  final TextEditingController _sobreLojaIntroCtrl = TextEditingController();
+  final TextEditingController _sobreLojaMissaoCtrl = TextEditingController();
+  final TextEditingController _sobreLojaVisaoCtrl = TextEditingController();
+  final TextEditingController _sobreLojaValoresCtrl = TextEditingController();
+  final TextEditingController _sobreLojaDestaquesCtrl = TextEditingController();
+  final TextEditingController _sobreLojaEnderecoCtrl = TextEditingController();
+  final TextEditingController _sobreLojaHorarioCtrl = TextEditingController();
+  final TextEditingController _sobreLojaEmailCtrl = TextEditingController();
+  bool _sobreLojaMostrarLegais = true;
+
   // ---------------------------------
   // TAXAS FINANCEIRAS (Relatórios Financeiros e Financeiro & Metas)
   // Valores padrão; usuário pode alterar em Loja Config > Taxas Financeiras
@@ -1061,6 +1075,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     // Menu e Páginas
     _quemSomosTituloCtrl.addListener(_scheduleAutoSave);
     _quemSomosTextoCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaTituloCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaSubtituloCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaBannerUrlCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaIntroCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaMissaoCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaVisaoCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaValoresCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaDestaquesCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaEnderecoCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaHorarioCtrl.addListener(_scheduleAutoSave);
+    _sobreLojaEmailCtrl.addListener(_scheduleAutoSave);
     _sacWhatsappCtrl.addListener(_scheduleAutoSave);
     _sacEmailCtrl.addListener(_scheduleAutoSave);
 
@@ -1089,6 +1114,205 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         _salvarRascunho(validar: false);
       }
     });
+  }
+
+  bool _isHttpUrlLeve(String raw) {
+    final s = raw.trim().toLowerCase();
+    return s.startsWith('http://') || s.startsWith('https://');
+  }
+
+  Widget _buildSobreLojaPreview(BuildContext context) {
+    final theme = Theme.of(context);
+    final previewListenables = Listenable.merge([
+      _sobreLojaTituloCtrl,
+      _sobreLojaSubtituloCtrl,
+      _sobreLojaBannerUrlCtrl,
+      _sobreLojaIntroCtrl,
+      _sobreLojaDestaquesCtrl,
+    ]);
+
+    return AnimatedBuilder(
+      animation: previewListenables,
+      builder: (context, _) {
+        final titulo = _sobreLojaTituloCtrl.text.trim().isEmpty
+            ? 'Sobre a loja'
+            : _sobreLojaTituloCtrl.text.trim();
+        final subtitulo = _sobreLojaSubtituloCtrl.text.trim();
+        final intro = _sobreLojaIntroCtrl.text.trim();
+        final resumoIntro = intro.isEmpty
+            ? 'Escreva um texto de apresentação para mostrar história, diferenciais e propósito da sua marca.'
+            : intro;
+        final chips = _sobreLojaDestaquesCtrl.text
+            .split('\n')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .take(4)
+            .toList();
+        final bannerUrl = _sobreLojaBannerUrlCtrl.text.trim();
+        final hasBanner = _isHttpUrlLeve(bannerUrl);
+
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
+            ),
+            color: theme.colorScheme.surfaceContainerLowest,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 128,
+                width: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (hasBanner)
+                      Image(
+                        image: mpImageProvider(bannerUrl),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            _buildSobreLojaPreviewPlaceholder(theme),
+                      )
+                    else
+                      _buildSobreLojaPreviewPlaceholder(theme),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.10),
+                            Colors.black.withValues(alpha: 0.52),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 12,
+                      right: 12,
+                      bottom: 12,
+                      child: Text(
+                        titulo,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          shadows: [
+                            Shadow(color: Colors.black45, blurRadius: 8),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (subtitulo.isNotEmpty)
+                      Text(
+                        subtitulo,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    if (subtitulo.isNotEmpty) const SizedBox(height: 8),
+                    Text(
+                      resumoIntro,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                    if (chips.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: chips
+                            .map(
+                              (c) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  color: theme.colorScheme.primary
+                                      .withValues(alpha: 0.1),
+                                ),
+                                child: Text(
+                                  c,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSobreLojaPreviewPlaceholder(ThemeData theme) {
+    final primary = theme.colorScheme.primary;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            primary.withValues(alpha: 0.18),
+            primary.withValues(alpha: 0.07),
+            theme.colorScheme.secondary.withValues(alpha: 0.08),
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          Positioned(
+            top: -16,
+            right: -12,
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              size: 74,
+              color: primary.withValues(alpha: 0.16),
+            ),
+          ),
+          Positioned(
+            left: 12,
+            bottom: 10,
+            child: Text(
+              'Banner da loja',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: Colors.white.withValues(alpha: 0.94),
+                fontWeight: FontWeight.w700,
+                shadows: const [
+                  Shadow(color: Colors.black45, blurRadius: 8),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _initConfig() async {
@@ -2053,6 +2277,46 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final rodapeWa = _stringFromDynamic(rodape['whatsapp']);
       _whatsappRodapeCtrl.text = rodapeWa == null ? _whatsappRodapeCtrl.text : (rodapeWa.trim().isEmpty ? '' : _extrairApenasDigitos(rodapeWa));
       _sobreCtrl.text = (rodape['sobre'] as String?) ?? (links['sobre'] as String?) ?? _sobreCtrl.text;
+      final slRaw = data['sobreLojaCatalogo'];
+      if (slRaw is Map) {
+        final sl = Map<String, dynamic>.from(
+            slRaw.map((k, v) => MapEntry(k.toString(), v)));
+        _sobreLojaTituloCtrl.text =
+            (sl['titulo'] as String?) ?? _sobreLojaTituloCtrl.text;
+        _sobreLojaSubtituloCtrl.text =
+            (sl['subtitulo'] as String?) ?? _sobreLojaSubtituloCtrl.text;
+        _sobreLojaBannerUrlCtrl.text = (sl['bannerUrl'] as String?) ??
+            (sl['banner_url'] as String?) ??
+            _sobreLojaBannerUrlCtrl.text;
+        _sobreLojaIntroCtrl.text =
+            (sl['introducao'] as String?) ?? _sobreLojaIntroCtrl.text;
+        _sobreLojaMissaoCtrl.text =
+            (sl['missao'] as String?) ?? _sobreLojaMissaoCtrl.text;
+        _sobreLojaVisaoCtrl.text =
+            (sl['visao'] as String?) ?? _sobreLojaVisaoCtrl.text;
+        _sobreLojaValoresCtrl.text =
+            (sl['valores'] as String?) ?? _sobreLojaValoresCtrl.text;
+        final destRaw = sl['destaques'];
+        if (destRaw is List) {
+          _sobreLojaDestaquesCtrl.text = destRaw
+              .map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty)
+              .join('\n');
+        }
+        _sobreLojaEnderecoCtrl.text =
+            (sl['endereco'] as String?) ?? _sobreLojaEnderecoCtrl.text;
+        _sobreLojaHorarioCtrl.text = (sl['horarioAtendimento'] as String?) ??
+            (sl['horario'] as String?) ??
+            _sobreLojaHorarioCtrl.text;
+        _sobreLojaEmailCtrl.text = (sl['emailContato'] as String?) ??
+            (sl['email'] as String?) ??
+            _sobreLojaEmailCtrl.text;
+        _sobreLojaMostrarLegais = sl['mostrarDadosLegais'] != false;
+        final ext = (sl['linkExternoUrl'] ?? sl['linkExterno'] ?? '')
+            .toString()
+            .trim();
+        if (ext.isNotEmpty) _sobreCtrl.text = ext;
+      }
       _trocasCtrl.text = (rodape['trocas'] as String?) ?? (links['trocas'] as String?) ?? _trocasCtrl.text;
       _loginCtrl.text = (rodape['login'] as String?) ?? (links['login'] as String?) ?? _loginCtrl.text;
       _razaoCtrl.text = (rodape['razao'] as String?) ?? _razaoCtrl.text;
@@ -2433,6 +2697,25 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       'quemSomos': {
         'titulo': _quemSomosTituloCtrl.text.trim(),
         'texto': _quemSomosTextoCtrl.text.trim(),
+      },
+      'sobreLojaCatalogo': {
+        'titulo': _sobreLojaTituloCtrl.text.trim(),
+        'subtitulo': _sobreLojaSubtituloCtrl.text.trim(),
+        'bannerUrl': _sobreLojaBannerUrlCtrl.text.trim(),
+        'introducao': _sobreLojaIntroCtrl.text.trim(),
+        'missao': _sobreLojaMissaoCtrl.text.trim(),
+        'visao': _sobreLojaVisaoCtrl.text.trim(),
+        'valores': _sobreLojaValoresCtrl.text.trim(),
+        'destaques': _sobreLojaDestaquesCtrl.text
+            .split('\n')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList(),
+        'endereco': _sobreLojaEnderecoCtrl.text.trim(),
+        'horarioAtendimento': _sobreLojaHorarioCtrl.text.trim(),
+        'emailContato': _sobreLojaEmailCtrl.text.trim(),
+        'mostrarDadosLegais': _sobreLojaMostrarLegais,
+        'linkExternoUrl': _sobreCtrl.text.trim(),
       },
       'sac': {
         'whatsapp': _sacWhatsappCtrl.text.trim(),
@@ -7259,6 +7542,185 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
+                    'Página "Sobre a loja" no catálogo',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'O botão "Sobre a loja" no rodapé do catálogo abre esta página. '
+                    'Use URL completa (https://...) para o banner — ex.: imagem no Firebase Storage.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildSobreLojaPreview(context),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _sobreLojaTituloCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'Título da página',
+                      hintText: 'Ex.: Nossa história',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaSubtituloCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'Subtítulo / slogan',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaBannerUrlCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'Banner (URL da imagem)',
+                      prefixIcon: Icon(Icons.image_outlined),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaIntroCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    minLines: 4,
+                    maxLines: 10,
+                    decoration: const InputDecoration(
+                      labelText: 'História e apresentação',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                      helperText:
+                          'Parágrafos separados por linha em branco ficam bem na página.',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaMissaoCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Missão',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaVisaoCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Visão',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaValoresCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Valores',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaDestaquesCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    minLines: 2,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'Destaques (um por linha)',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                      helperText: 'Ex.: Entrega para todo o Brasil',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaEnderecoCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Endereço (opcional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaHorarioCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'Horário de atendimento',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sobreLojaEmailCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'E-mail de exibição (opcional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Mostrar razão social e CNPJ na página'),
+                    subtitle: Text(
+                      'Usa os dados do bloco Rodapé (razão e CNPJ).',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    value: _sobreLojaMostrarLegais,
+                    onChanged: (v) {
+                      setState(() => _sobreLojaMostrarLegais = v);
+                      _salvarRascunho(validar: false);
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  TextField(
+                    controller: _sobreCtrl,
+                    onChanged: (_) => _scheduleAutoSave(),
+                    decoration: const InputDecoration(
+                      labelText: 'Site ou página externa (opcional)',
+                      prefixIcon: Icon(Icons.link),
+                      border: OutlineInputBorder(),
+                      helperText:
+                          'Se preenchido, aparece o botão "Visitar site" na página Sobre.',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
                     'SAC – Elogios, sugestões e críticas',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
@@ -7875,53 +8337,16 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     ],
                   );
 
-            final secondRow = narrow
-                ? Column(
-                    children: [
-                      TextField(
-                        controller: _sobreCtrl,
-                        onChanged: (_) => _scheduleAutoSave(),
-                        decoration: const InputDecoration(
-                          labelText: 'Página "Sobre"',
-                          prefixIcon: Icon(Icons.info_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _trocasCtrl,
-                        onChanged: (_) => _scheduleAutoSave(),
-                        decoration: const InputDecoration(
-                          labelText: 'Trocas & devoluções',
-                          prefixIcon: Icon(Icons.receipt_long_outlined),
-                        ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _sobreCtrl,
-                          onChanged: (_) => _scheduleAutoSave(),
-                          decoration: const InputDecoration(
-                            labelText: 'Página "Sobre"',
-                            prefixIcon: Icon(Icons.info_outline),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _trocasCtrl,
-                          onChanged: (_) => _scheduleAutoSave(),
-                          decoration: const InputDecoration(
-                            labelText: 'Trocas & devoluções',
-                            prefixIcon: Icon(Icons.receipt_long_outlined),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
+            final secondRow = TextField(
+              controller: _trocasCtrl,
+              onChanged: (_) => _scheduleAutoSave(),
+              decoration: const InputDecoration(
+                labelText: 'Trocas & devoluções (URL)',
+                prefixIcon: Icon(Icons.receipt_long_outlined),
+                helperText:
+                    'A página "Sobre a loja" é configurada em Menu e páginas, acima.',
+              ),
+            );
 
             // Email row
             final emailRow = TextField(
@@ -8453,6 +8878,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _cupomValorCtrl.dispose();
     _quemSomosTituloCtrl.dispose();
     _quemSomosTextoCtrl.dispose();
+    _sobreLojaTituloCtrl.dispose();
+    _sobreLojaSubtituloCtrl.dispose();
+    _sobreLojaBannerUrlCtrl.dispose();
+    _sobreLojaIntroCtrl.dispose();
+    _sobreLojaMissaoCtrl.dispose();
+    _sobreLojaVisaoCtrl.dispose();
+    _sobreLojaValoresCtrl.dispose();
+    _sobreLojaDestaquesCtrl.dispose();
+    _sobreLojaEnderecoCtrl.dispose();
+    _sobreLojaHorarioCtrl.dispose();
+    _sobreLojaEmailCtrl.dispose();
     _sacWhatsappCtrl.dispose();
     _sacEmailCtrl.dispose();
     _taxaCartaoCtrl.dispose();
