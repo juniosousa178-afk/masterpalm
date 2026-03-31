@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/catalog_color_from_name.dart';
+import '../../core/produto_variacao_extra.dart';
 import '../../models/produto.dart';
 
 class ComboVariacaoSelectionSheet extends StatefulWidget {
@@ -197,7 +198,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                         if (e.value is Map) {
                           int total = 0;
                           for (final v in (e.value as Map).values) {
-                            total += (v as num?)?.toInt() ?? 0;
+                            total += ProdutoVariacaoExtra.somarCelula(v);
                           }
                           if (total > 0) tamanhosDisponiveis[e.key.toString()] = total;
                         }
@@ -207,7 +208,12 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                         final mapa = p.variacoes![tamSel];
                         if (mapa is Map) {
                           coresDisponiveis = Map<String, int>.from(
-                            mapa.map((k, v) => MapEntry(k.toString(), (v as num?)?.toInt() ?? 0)),
+                            mapa.map(
+                              (k, v) => MapEntry(
+                                k.toString(),
+                                ProdutoVariacaoExtra.somarCelula(v),
+                              ),
+                            ),
                           );
                         }
                       }

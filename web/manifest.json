@@ -1,7 +1,7 @@
 {
   "name": "MasterPalm",
   "short_name": "MasterPalm",
-  "version": "1.0.69",
+  "version": "1.0.70",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#6366F1",

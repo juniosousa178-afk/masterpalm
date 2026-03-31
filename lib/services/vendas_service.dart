@@ -261,6 +261,10 @@ class VendasService {
 
       final listaCombo = itensComboSelecaoPorIndice?[idx] ?? p.itensCombo;
       if (p.ehCombo && listaCombo != null && listaCombo.isNotEmpty) {
+        // Baixa a quantidade do kit no estoque (linha do combo) e de cada componente.
+        itensExpandidos.add(it);
+        produtosExpandidos.add(p);
+
         for (final comboItem in listaCombo) {
           final idComp = (comboItem['id'] ?? comboItem['productId'] ?? '').toString().trim();
           final slugComp = (comboItem['slug'] ?? '').toString().trim();
@@ -632,8 +636,14 @@ class VendasService {
         ? venda.idFirebase!.trim()
         : 'hive_${venda.key}';
     if (venda.itens != null && venda.itens!.isNotEmpty) {
+      final (itensDevolucao, _) = _expandirCombos(
+        itens: venda.itens!,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+        itensComboSelecaoPorIndice: null,
+      );
       final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, int qtd})> agrupado = {};
-      for (final it in venda.itens!) {
+      for (final it in itensDevolucao) {
         final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
         final nomeLower = it.produtoNome.trim().toLowerCase();
         final nomeOriginal = it.produtoNome.trim();
@@ -772,8 +782,14 @@ class VendasService {
         ? venda.idFirebase!.trim()
         : 'hive_${venda.key}';
     if (venda.itens != null && venda.itens!.isNotEmpty) {
+      final (itensDevolucao, _) = _expandirCombos(
+        itens: venda.itens!,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+        itensComboSelecaoPorIndice: null,
+      );
       final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, int qtd})> agrupado = {};
-      for (final it in venda.itens!) {
+      for (final it in itensDevolucao) {
         final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
         final nomeLower = it.produtoNome.trim().toLowerCase();
         final nomeOriginal = it.produtoNome.trim();

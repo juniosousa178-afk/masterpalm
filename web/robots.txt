@@ -1,0 +1,5 @@
+# MasterPalm — SEO estático (ajuste o host do Sitemap se o deploy usar outro domínio canônico, ex.: mastepalm.com.br)
+User-agent: *
+Allow: /
+
+Sitemap: https://app.mastepalm.com.br/sitemap.xml
