@@ -24,6 +24,7 @@ import 'firestore_paths.dart';
 import 'pedido_collection_resolver.dart';
 import 'vendas_service.dart';
 import 'campaign_engine_service.dart'; // 🎯 Integração com campanhas de sorteio
+import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
 import 'notificacao_vendas_service.dart';
 import 'catalogo_venda_helpers.dart';
@@ -525,6 +526,11 @@ class CatalogoVendaService {
             cor: '',
           );
         }
+
+        await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+          lojaId: lojaId,
+          produtosBox: produtosBox,
+        );
       }
 
       for (final item in items) {
@@ -1121,6 +1127,11 @@ class CatalogoVendaService {
           result: result,
         );
       }
+
+      await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+      );
 
       for (final item in itens) {
         final nome = (item['nome'] ?? '').toString();

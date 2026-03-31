@@ -18,6 +18,7 @@ import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
 import '../services/clientes_firestore_service.dart'; // 🔹 sincronização de clientes
 import '../services/vendas_firestore_service.dart'; // 🔹 sincronização com Firestore
+import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
 import 'movimentacao_estoque_service.dart';
 
@@ -469,6 +470,12 @@ class VendasService {
       );
     }
 
+    final txResultsComboCap =
+        await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+      lojaId: lojaEfetiva,
+      produtosBox: produtosBox,
+    );
+
     // 3.1) Histórico de movimentação – registra saída por item (não bloqueia)
     for (final result in txResults) {
       MovimentacaoEstoqueService.registrar(
@@ -478,6 +485,17 @@ class VendasService {
         tipo: 'saida',
         quantidade: result.quantidadeDebitada,
         motivo: 'Venda',
+        usuario: vendedor,
+      ).catchError((_) {});
+    }
+    for (final result in txResultsComboCap) {
+      MovimentacaoEstoqueService.registrar(
+        lojaId: lojaEfetiva,
+        produtoId: result.produtoId,
+        produtoNome: result.produtoNome,
+        tipo: 'saida',
+        quantidade: result.quantidadeDebitada,
+        motivo: 'Venda (ajuste kit combo)',
         usuario: vendedor,
       ).catchError((_) {});
     }
@@ -780,6 +798,32 @@ class VendasService {
       }
     }
 
+    try {
+      final pisoResults =
+          await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+      );
+      for (final r in pisoResults) {
+        final q = r.quantidadeDebitada.abs();
+        if (q <= 0) continue;
+        MovimentacaoEstoqueService.registrar(
+          lojaId: lojaId,
+          produtoId: r.produtoId,
+          produtoNome: r.produtoNome,
+          tipo: 'entrada',
+          quantidade: q,
+          motivo: 'Devolução (ajuste kit combo)',
+          usuario: 'App',
+          vendaId: vendaId,
+        ).catchError((_) {});
+      }
+    } catch (e) {
+      debugPrint(
+        '⚠️ [COMBO_PISO] Falha ao sincronizar estoque do combo após devolução: $e',
+      );
+    }
+
     // remove do histórico (apenas se cliente existir na box - evita erro em vendas catálogo sem cliente)
     final Cliente? cliente = clientesBox.values.firstWhereOrNull(
       (c) =>
@@ -925,6 +969,28 @@ class VendasService {
         }
       } catch (_) {}
     }
+
+    try {
+      final pisoResults =
+          await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+      );
+      for (final r in pisoResults) {
+        final q = r.quantidadeDebitada.abs();
+        if (q <= 0) continue;
+        MovimentacaoEstoqueService.registrar(
+          lojaId: lojaId,
+          produtoId: r.produtoId,
+          produtoNome: r.produtoNome,
+          tipo: 'entrada',
+          quantidade: q,
+          motivo: 'Devolução (ajuste kit combo)',
+          usuario: 'App',
+          vendaId: vendaId,
+        ).catchError((_) {});
+      }
+    } catch (_) {}
     // 2. Deletar do Firestore
     if (venda.idFirebase != null && venda.idFirebase!.isNotEmpty) {
       await VendasFirestoreService.deleteVenda(venda.idFirebase!, lojaId: lojaId);

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/logger.dart';
+import '../core/produto_variacao_extra.dart';
 import '../core/venda_metrics_filter.dart';
 import 'package:hive/hive.dart';
 
@@ -99,9 +100,17 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   bool _pendenteFiado = false;
   int _pendenteDiasVencimento = 30;
 
-  /// produtos: {'produto': String, 'preco': double, 'quantidade': int, 'tamanho': String, 'cor': String}
+  /// produtos: produto, preço, qtd, tamanho, cor, extraValor (técnico), variacaoExtraResumo (exibição)
   List<Map<String, dynamic>> produtosSelecionados = [
-    {'produto': '', 'preco': 0.0, 'quantidade': 1, 'tamanho': '', 'cor': ''},
+    {
+      'produto': '',
+      'preco': 0.0,
+      'quantidade': 1,
+      'tamanho': '',
+      'cor': '',
+      'extraValor': '',
+      'variacaoExtraResumo': '',
+    },
   ];
 
   late String lojaId;
@@ -144,6 +153,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                 'quantidade': i.quantidade,
                 'tamanho': i.tamanho,
                 'cor': i.cor,
+                'extraValor': i.extraValor,
+                'variacaoExtraResumo': i.variacaoExtraResumo,
                 if (i.productId != null && i.productId!.trim().isNotEmpty) 'productId': i.productId,
               })
           .toList();
@@ -178,6 +189,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           'quantidade': qtdLegado < 1 ? 1 : qtdLegado,
           'tamanho': v.tamanho,
           'cor': '',
+          'extraValor': '',
+          'variacaoExtraResumo': '',
         },
       ];
     }
@@ -440,9 +453,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         (prod.usaVariacoes || prod.estoquePorTamanho.isNotEmpty || prod.temVariacaoSoloCor);
     final tam = (item['tamanho'] ?? '').toString();
     final cor = (item['cor'] ?? '').toString();
+    final extraResumo = (item['variacaoExtraResumo'] ?? '').toString().trim();
     final sel = item['itensComboComSelecao'];
     final temComboSelecao = sel is List && sel.isNotEmpty;
-    final temSelecao = tam.isNotEmpty || cor.isNotEmpty || temComboSelecao;
+    final temSelecao =
+        tam.isNotEmpty || cor.isNotEmpty || extraResumo.isNotEmpty || temComboSelecao;
 
     if (!ehCombo && !temVariacao) {
       return const SizedBox.shrink();
@@ -455,7 +470,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       icon = Icons.card_giftcard;
     } else {
       if (temSelecao) {
-        label = [if (tam.isNotEmpty) tam, if (cor.isNotEmpty) cor].join(' / ');
+        label = [
+          if (tam.isNotEmpty) tam,
+          if (cor.isNotEmpty) cor,
+          if (extraResumo.isNotEmpty) extraResumo,
+        ].join(' / ');
       } else {
         if (prod.temVariacaoTamanhoECor) {
           label = 'Selecionar tamanho e cor';
@@ -488,6 +507,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                   produtosSelecionados[index]['quantidade'] = qtd;
                   produtosSelecionados[index]['tamanho'] = '';
                   produtosSelecionados[index]['cor'] = '';
+                  produtosSelecionados[index]['extraValor'] = '';
+                  produtosSelecionados[index]['variacaoExtraResumo'] = '';
                   produtosSelecionados[index]['itensComboComSelecao'] = selecao;
                 });
               },
@@ -497,11 +518,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               context,
               produto: prod,
               preco: _precoDoProduto(prod),
-              onConfirmar: (t, c, qtd) {
+              onConfirmar: (t, c, qtd, extraEv, extraResumo) {
                 setState(() {
                   produtosSelecionados[index]['tamanho'] = t;
                   produtosSelecionados[index]['cor'] = c;
                   produtosSelecionados[index]['quantidade'] = qtd;
+                  produtosSelecionados[index]['extraValor'] = extraEv;
+                  produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
                   produtosSelecionados[index].remove('itensComboComSelecao');
                 });
               },
@@ -533,9 +556,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
   }
 
-  int _obterEstoqueProduto(Produto p, String tamanho, String cor) {
-    if (p.usaVariacoes && tamanho.isNotEmpty && cor.isNotEmpty) {
-      return p.obterEstoqueVariacao(tamanho, cor);
+  int _obterEstoqueProduto(Produto p, String tamanho, String cor, [String extra = '']) {
+    final ex = extra.trim();
+    if (p.temVariacaoSoloCor && cor.isNotEmpty) {
+      return p.obterEstoqueVariacao('', cor, ex);
+    }
+    if (p.usaVariacoes && (tamanho.isNotEmpty || cor.isNotEmpty)) {
+      final tamKey = tamanho.isEmpty ? '' : tamanho;
+      final corKey = cor.isEmpty ? 'sem-cor' : cor;
+      return p.obterEstoqueVariacao(tamKey, corKey, ex);
     }
     if (p.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
       return p.estoquePorTamanho[tamanho] ?? 0;
@@ -554,6 +583,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                   'quantidade': i.quantidade,
                   'tamanho': i.tamanho,
                   'cor': i.cor,
+                  'extraValor': i.extraValor,
+                  'variacaoExtraResumo': i.variacaoExtraResumo,
                   if (i.productId != null && i.productId!.trim().isNotEmpty) 'productId': i.productId,
                 })
             .toList();
@@ -588,6 +619,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             'quantidade': venda.quantidade,
             'tamanho': venda.tamanho,
             'cor': '',
+            'extraValor': '',
+            'variacaoExtraResumo': '',
           },
         ];
         frete = venda.frete;
@@ -1092,6 +1125,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final qtd = (item['quantidade'] ?? 1) as int;
       final tamanho = (item['tamanho'] ?? '').toString().trim();
       final cor = (item['cor'] ?? '').toString().trim();
+      final extraValor = (item['extraValor'] ?? '').toString().trim();
 
       if (nome.isEmpty || qtd <= 0) {
         await _mostrarErro('Preencha os produtos corretamente.');
@@ -1174,17 +1208,25 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         return;
       }
 
+      final opcoesExtra = ProdutoVariacaoExtra.opcoesExtraPara(prod.variacoes, tamanho, cor);
+      if (opcoesExtra.isNotEmpty && extraValor.isEmpty) {
+        await _mostrarErro(
+          'Selecione a personalização (letra, estampa, etc.) para o produto "$nome".',
+        );
+        return;
+      }
+
       // 🔹 Calcula estoque disponível: variações, por tamanho, ou total
       int disponivel;
       String msgEstoque = '';
 
       if (prod.temVariacaoSoloCor && cor.isNotEmpty) {
-        disponivel = prod.obterEstoqueVariacao('', cor);
+        disponivel = prod.obterEstoqueVariacao('', cor, extraValor);
         msgEstoque = 'cor $cor';
       } else if (prod.usaVariacoes && (tamanho.isNotEmpty || cor.isNotEmpty)) {
         final tamKey = tamanho.isEmpty ? '' : tamanho;
         final corKey = cor.isEmpty ? 'sem-cor' : cor;
-        disponivel = prod.obterEstoqueVariacao(tamKey, corKey);
+        disponivel = prod.obterEstoqueVariacao(tamKey, corKey, extraValor);
         msgEstoque = tamanho.isNotEmpty ? 'tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}' : 'cor $cor';
       } else if (prod.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
         disponivel = prod.estoquePorTamanho[tamanho] ?? 0;
@@ -1229,6 +1271,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               'quantidade': 1,
               'tamanho': '',
               'cor': '',
+              'extraValor': '',
+              'variacaoExtraResumo': '',
             });
           }
           setState(() {});
@@ -1283,6 +1327,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           cor: (m['cor'] ?? '').toString(),
           lojaId: lojaId,
           productId: productId != null && productId.isNotEmpty ? productId : null,
+          variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString(),
+          extraValor: (m['extraValor'] ?? '').toString(),
         ));
       }
       if (itens.isEmpty) {
@@ -1649,6 +1695,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         produtosSelecionados[index]['preco'] = preco;
                                         produtosSelecionados[index]['tamanho'] = '';
                                         produtosSelecionados[index]['cor'] = '';
+                                        produtosSelecionados[index]['extraValor'] = '';
+                                        produtosSelecionados[index]['variacaoExtraResumo'] = '';
                                         produtosSelecionados[index].remove('itensComboComSelecao');
                                         produtosSelecionados[index]['quantidade'] = 1;
                                       });
@@ -1669,6 +1717,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             produtosSelecionados[index]['quantidade'] = qtd;
                                             produtosSelecionados[index]['tamanho'] = '';
                                             produtosSelecionados[index]['cor'] = '';
+                                            produtosSelecionados[index]['extraValor'] = '';
+                                            produtosSelecionados[index]['variacaoExtraResumo'] = '';
                                             produtosSelecionados[index]['itensComboComSelecao'] = selecao;
                                           });
                                         },
@@ -1679,7 +1729,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         context,
                                         produto: produto,
                                         preco: _precoDoProduto(produto),
-                                        onConfirmar: (tam, cor, qtd) {
+                                        onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
                                           setState(() {
                                             produtosSelecionados[index]['produto'] = produto.nome;
                                             produtosSelecionados[index]['productId'] = produto.idFirebase.trim().isNotEmpty ? produto.idFirebase : null;
@@ -1687,6 +1737,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             produtosSelecionados[index]['tamanho'] = tam;
                                             produtosSelecionados[index]['cor'] = cor;
                                             produtosSelecionados[index]['quantidade'] = qtd;
+                                            produtosSelecionados[index]['extraValor'] = extraEv;
+                                            produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
                                             produtosSelecionados[index].remove('itensComboComSelecao');
                                           });
                                         },
@@ -1748,6 +1800,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                                 produtosSelecionados[index]['quantidade'] = qtd;
                                                 produtosSelecionados[index]['tamanho'] = '';
                                                 produtosSelecionados[index]['cor'] = '';
+                                                produtosSelecionados[index]['extraValor'] = '';
+                                                produtosSelecionados[index]['variacaoExtraResumo'] = '';
                                                 produtosSelecionados[index]['itensComboComSelecao'] = selecao;
                                               });
                                             },
@@ -1757,7 +1811,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             navigator.context,
                                             produto: prod,
                                             preco: _precoDoProduto(prod),
-                                            onConfirmar: (tam, cor, qtd) {
+                                            onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
                                               if (!mounted) return;
                                               setState(() {
                                                 produtosSelecionados[index]['produto'] = prod.nome;
@@ -1766,6 +1820,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                                 produtosSelecionados[index]['tamanho'] = tam;
                                                 produtosSelecionados[index]['cor'] = cor;
                                                 produtosSelecionados[index]['quantidade'] = qtd;
+                                                produtosSelecionados[index]['extraValor'] = extraEv;
+                                                produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
                                               });
                                             },
                                           );
@@ -1776,6 +1832,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             produtosSelecionados[index]['preco'] = _precoDoProduto(prod);
                                             produtosSelecionados[index]['tamanho'] = '';
                                             produtosSelecionados[index]['cor'] = '';
+                                            produtosSelecionados[index]['extraValor'] = '';
+                                            produtosSelecionados[index]['variacaoExtraResumo'] = '';
                                           });
                                         }
                                       },
@@ -1790,6 +1848,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             'quantidade': 1,
                                             'tamanho': '',
                                             'cor': '',
+                                            'extraValor': '',
+                                            'variacaoExtraResumo': '',
                                           });
                                           _quantityControllers.add(TextEditingController(text: '1'));
                                         });
@@ -1879,7 +1939,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     if (prod == null) return const SizedBox.shrink();
                                     final tam = (item['tamanho'] ?? '').toString();
                                     final cor = (item['cor'] ?? '').toString();
-                                    final disp = _obterEstoqueProduto(prod, tam, cor);
+                                    final ex = (item['extraValor'] ?? '').toString();
+                                    final disp = _obterEstoqueProduto(prod, tam, cor, ex);
                                     final isBaixo = disp < 3 && disp > 0;
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

@@ -510,25 +510,24 @@ class EstoqueTransactionService {
   /// Limite do Firestore: 500 operações por transação (~2 ops/item = 250 itens seguros)
   static const int _maxItensPorTransacao = 150;
 
-  /// Baixa estoque de múltiplos itens em uma única transação (evita rollback parcial)
-  static Future<List<EstoqueTransactionResult>> baixarEstoqueTransactionBatch({
-    required String lojaId,
-    required List<Map<String, dynamic>> itens,
-  }) async {
-    if (itens.length > _maxItensPorTransacao) {
-      throw Exception(
-        'Venda com muitos itens (${itens.length}). '
-        'Divida em vendas menores (máx. $_maxItensPorTransacao itens por venda).',
-      );
-    }
-
-    final resolvedItems = <({
+  /// Mescla linhas que debitam o mesmo documento + mesma variação (evita leitura/escrita duplicada na mesma TX).
+  static Future<List<({
+    DocumentReference<Map<String, dynamic>> ref,
+    int quantidade,
+    String tamanho,
+    String cor,
+    String variacaoExtra,
+  })>> _resolverItensMescladosBaixa(
+    String lojaId,
+    List<Map<String, dynamic>> itens,
+  ) async {
+    final acc = <String, int>{};
+    final meta = <String, ({
       DocumentReference<Map<String, dynamic>> ref,
-      int quantidade,
       String tamanho,
       String cor,
-      String variacaoExtra
-    })>[];
+      String variacaoExtra,
+    })>{};
 
     for (final item in itens) {
       final quantidade = (item['quantidade'] as num?)?.toInt() ??
@@ -559,13 +558,120 @@ class EstoqueTransactionService {
           nome: nome,
         );
       }
-      resolvedItems.add((
-        ref: ref,
-        quantidade: quantidade,
-        tamanho: tamanho,
-        cor: cor,
-        variacaoExtra: variacaoExtra,
-      ));
+      final key = [ref.path, tamanho, cor, variacaoExtra].join('|');
+      acc[key] = (acc[key] ?? 0) + quantidade;
+      meta.putIfAbsent(
+        key,
+        () => (
+          ref: ref,
+          tamanho: tamanho,
+          cor: cor,
+          variacaoExtra: variacaoExtra,
+        ),
+      );
+    }
+
+    return acc.entries.map((e) {
+      final m = meta[e.key]!;
+      return (
+        ref: m.ref,
+        quantidade: e.value,
+        tamanho: m.tamanho,
+        cor: m.cor,
+        variacaoExtra: m.variacaoExtra,
+      );
+    }).toList();
+  }
+
+  static Future<List<({
+    DocumentReference<Map<String, dynamic>> ref,
+    int quantidade,
+    String tamanho,
+    String cor,
+    String variacaoExtra,
+  })>> _resolverItensMescladosDevolucao(
+    String lojaId,
+    List<Map<String, dynamic>> itens,
+  ) async {
+    final acc = <String, int>{};
+    final meta = <String, ({
+      DocumentReference<Map<String, dynamic>> ref,
+      String tamanho,
+      String cor,
+      String variacaoExtra,
+    })>{};
+
+    for (final item in itens) {
+      final quantidade = (item['quantidade'] as num?)?.toInt() ??
+          (item['qty'] as num?)?.toInt() ??
+          1;
+      final produtoId = item['productId']?.toString() ??
+          item['produtosId']?.toString() ??
+          item['id']?.toString();
+      final slug = item['slug']?.toString();
+      final nome = (item['nome'] ?? item['name'] ?? '').toString();
+      final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
+      final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+      final variacaoExtra =
+          (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
+
+      if (quantidade <= 0) continue;
+
+      final ref = await _resolverProdutoRef(
+        lojaId: lojaId,
+        produtoId: produtoId,
+        slug: slug,
+        nome: nome,
+      );
+      if (ref == null) {
+        debugPrint(
+          '[ESTOQUE-TX] Produto não encontrado para devolução: ${produtoId ?? slug ?? nome}',
+        );
+        continue;
+      }
+      final key = [ref.path, tamanho, cor, variacaoExtra].join('|');
+      acc[key] = (acc[key] ?? 0) + quantidade;
+      meta.putIfAbsent(
+        key,
+        () => (
+          ref: ref,
+          tamanho: tamanho,
+          cor: cor,
+          variacaoExtra: variacaoExtra,
+        ),
+      );
+    }
+
+    return acc.entries.map((e) {
+      final m = meta[e.key]!;
+      return (
+        ref: m.ref,
+        quantidade: e.value,
+        tamanho: m.tamanho,
+        cor: m.cor,
+        variacaoExtra: m.variacaoExtra,
+      );
+    }).toList();
+  }
+
+  /// Baixa estoque de múltiplos itens em uma única transação (evita rollback parcial)
+  static Future<List<EstoqueTransactionResult>> baixarEstoqueTransactionBatch({
+    required String lojaId,
+    required List<Map<String, dynamic>> itens,
+  }) async {
+    if (itens.length > _maxItensPorTransacao) {
+      throw Exception(
+        'Venda com muitos itens (${itens.length}). '
+        'Divida em vendas menores (máx. $_maxItensPorTransacao itens por venda).',
+      );
+    }
+
+    final resolvedItems = await _resolverItensMescladosBaixa(lojaId, itens);
+
+    if (resolvedItems.isEmpty) {
+      throw Exception(
+        'Nenhum item válido para baixa de estoque (quantidade ou produto inválido).',
+      );
     }
 
     Future<List<EstoqueTransactionResult>> executarTransacao() {
@@ -802,48 +908,7 @@ class EstoqueTransactionService {
       );
     }
 
-    final resolvedItems = <({
-      DocumentReference<Map<String, dynamic>> ref,
-      int quantidade,
-      String tamanho,
-      String cor,
-      String variacaoExtra
-    })>[];
-
-    for (final item in itens) {
-      final quantidade = (item['quantidade'] as num?)?.toInt() ??
-          (item['qty'] as num?)?.toInt() ??
-          1;
-      final produtoId = item['productId']?.toString() ??
-          item['produtosId']?.toString() ??
-          item['id']?.toString();
-      final slug = item['slug']?.toString();
-      final nome = (item['nome'] ?? item['name'] ?? '').toString();
-      final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
-      final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
-      final variacaoExtra =
-          (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
-
-      if (quantidade <= 0) continue;
-
-      final ref = await _resolverProdutoRef(
-        lojaId: lojaId,
-        produtoId: produtoId,
-        slug: slug,
-        nome: nome,
-      );
-      if (ref == null) {
-        debugPrint('[ESTOQUE-TX] Produto não encontrado para devolução: ${produtoId ?? slug ?? nome}');
-        continue;
-      }
-      resolvedItems.add((
-        ref: ref,
-        quantidade: quantidade,
-        tamanho: tamanho,
-        cor: cor,
-        variacaoExtra: variacaoExtra,
-      ));
-    }
+    final resolvedItems = await _resolverItensMescladosDevolucao(lojaId, itens);
 
     if (resolvedItems.isEmpty) return [];
 

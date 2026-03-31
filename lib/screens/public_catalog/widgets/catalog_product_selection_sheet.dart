@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../core/catalog_color_from_name.dart';
 import '../../../core/produto_variacao_extra.dart';
 import '../../../widgets/smart_image.dart';
+import '../../../widgets/variacao_extras_collapsible.dart';
 import '../catalog_variation_filter.dart';
 
 class CatalogProductSelectionSheet extends StatefulWidget {
@@ -842,10 +843,14 @@ class _CatalogProductSelectionSheetState
                       ],
                     ),
                     const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: _opcoesExtra.map((op) {
+                    VariacaoExtrasCollapsible(
+                      options: _opcoesExtra,
+                      selectedValue: _extraSelecionado,
+                      onOptionChosen: (op) {
+                        setState(() => _extraSelecionado = op);
+                        widget.onCatalogVariacaoExtraChanged?.call(op);
+                      },
+                      itemBuilder: (context, op, _) {
                         final isSelected = _extraSelecionado == op;
                         return InkWell(
                           onTap: () {
@@ -883,7 +888,7 @@ class _CatalogProductSelectionSheetState
                             ),
                           ),
                         );
-                      }).toList(),
+                      },
                     ),
                   ],
                   const SizedBox(height: 28),

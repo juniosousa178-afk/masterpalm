@@ -12,6 +12,7 @@ import '../core/hive_box_names.dart';
 import '../models/venda.dart';
 import '../models/produto.dart';
 import 'catalogo_venda_service.dart';
+import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
 import 'firestore_paths.dart';
 import 'pedido_collection_resolver.dart';
@@ -271,6 +272,10 @@ class PosPagamentoService {
           result: result,
         );
       }
+      await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint(

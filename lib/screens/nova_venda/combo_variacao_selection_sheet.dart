@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 import '../../core/catalog_color_from_name.dart';
 import '../../core/produto_variacao_extra.dart';
 import '../../models/produto.dart';
+import '../../widgets/variacao_extras_collapsible.dart';
 
 class ComboVariacaoSelectionSheet extends StatefulWidget {
   final Produto combo;
@@ -427,10 +428,19 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                               ),
                               const SizedBox(height: 6),
-                              Wrap(
+                              VariacaoExtrasCollapsible(
+                                key: ValueKey('combo_extra_$i'),
+                                options: extras,
+                                selectedValue: (_selecoes[i]['extra'] ?? '') as String?,
                                 spacing: 8,
                                 runSpacing: 8,
-                                children: extras.map((ex) {
+                                onOptionChosen: (ex) {
+                                  setState(() {
+                                    _selecoes[i] = Map.from(_selecoes[i]);
+                                    _selecoes[i]['extra'] = ex;
+                                  });
+                                },
+                                itemBuilder: (context, ex, _) {
                                   final sel = (_selecoes[i]['extra'] ?? '') == ex;
                                   return ChoiceChip(
                                     label: Text(ex),
@@ -442,7 +452,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                                       });
                                     },
                                   );
-                                }).toList(),
+                                },
                               ),
                             ],
                           ],
