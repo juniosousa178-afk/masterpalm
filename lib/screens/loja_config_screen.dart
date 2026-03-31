@@ -7579,14 +7579,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
+                  _ImageFieldWithGallery(
+                    label: 'Banner',
                     controller: _sobreLojaBannerUrlCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'Banner (URL da imagem)',
-                      prefixIcon: Icon(Icons.image_outlined),
-                      border: OutlineInputBorder(),
-                    ),
+                    onChanged: _scheduleAutoSave,
+                    onPickImage: _pickAndUploadSobreLojaBanner,
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -8793,6 +8790,56 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       return up.downloadUrl;
     } catch (e) {
       _snack('Erro ao importar banner: $e', isError: true);
+      return null;
+    }
+  }
+
+  /// Importa imagem da galeria para o banner da página "Sobre a loja".
+  Future<String?> _pickAndUploadSobreLojaBanner() async {
+    String loja;
+    try {
+      loja = _activeStoreId();
+    } catch (_) {
+      _snack('Nenhuma loja ativa definida.', isError: true);
+      return null;
+    }
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: kIsWeb,
+    );
+    if (result == null || result.files.isEmpty) return null;
+    final f = result.files.first;
+    try {
+      final fileName = f.name.isNotEmpty ? f.name : 'sobre-banner.png';
+      final ext = _extFromName(fileName);
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final storagePath = 'lojas/$loja/midias/sobre_loja/$ts-$safeName';
+      UploadResult up;
+      if (kIsWeb) {
+        final bytes = f.bytes;
+        if (bytes == null) return null;
+        up = await _uploader.enqueueBytes(
+          UploadBytesRequest(
+            bytes: bytes,
+            storagePath: storagePath,
+            metadata: SettableMetadata(contentType: 'image/$ext'),
+          ),
+        );
+      } else {
+        up = await _uploader.enqueue(
+          UploadRequest(
+            platformFile: f,
+            storagePath: storagePath,
+            metadata: SettableMetadata(contentType: 'image/$ext'),
+          ),
+        );
+      }
+      _snack('Banner da página Sobre importado.');
+      return up.downloadUrl;
+    } catch (e) {
+      _snack('Erro ao importar banner da página Sobre: $e', isError: true);
       return null;
     }
   }
