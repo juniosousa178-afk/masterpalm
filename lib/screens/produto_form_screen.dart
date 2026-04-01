@@ -29,6 +29,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/image_upload_service.dart';
 import '../services/catalog_thumbnail_service.dart';
+import '../widgets/compra_pipeline_origem_cancelada_notice.dart';
 import 'barcode_scanner_screen.dart';
 
 // ------------------------------
@@ -170,6 +171,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   bool _sugerindoDescricao = false;
 
   CompraItemPipeline? _bootstrapPipeline;
+
+  /// Só para aviso visual: concluído + compra cancelada depois (não altera fluxo de salvamento).
+  CompraItemPipeline? _pipelineOrigemCancelada;
 
   /// Evita várias gravações em paralelo ao reordenar imagens (corrida na nuvem).
   Timer? _debouncePersistImagens;
@@ -474,18 +478,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         final pBox = await CompraItemPipelineStore.openBox(id);
         final pip = pBox?.get(pipeId);
         if (pip != null) {
-          if (pip.estado != CompraItemPipelineEstado.precificadoPendenteEstoque) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Item não está pendente de estoque (${CompraItemPipelineEstado.legivel(pip.estado)}).',
-                  ),
-                  backgroundColor: Colors.orange.shade800,
-                ),
-              );
-            }
-          } else {
+          final origemCanceladaAudit =
+              compraPipelineDeveExibirOrigemCancelada(pip);
+          if (pip.estado == CompraItemPipelineEstado.precificadoPendenteEstoque) {
             _bootstrapPipeline = pip;
             if (widget.produto == null) {
               _nome.text = pip.nomeProdutoProvisorio;
@@ -499,6 +494,40 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               if (pip.observacaoItem.isNotEmpty) {
                 _descricao.text = pip.observacaoItem;
               }
+            }
+          } else if (origemCanceladaAudit) {
+            _pipelineOrigemCancelada = pip;
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Item não está pendente de estoque (${CompraItemPipelineEstado.legivel(pip.estado)}).',
+                  ),
+                  backgroundColor: Colors.orange.shade800,
+                ),
+              );
+            }
+          }
+        }
+      }
+
+      if (_pipelineOrigemCancelada == null && widget.produto != null) {
+        final auditBox = await CompraItemPipelineStore.openBox(id);
+        if (auditBox != null) {
+          final prod = widget.produto!;
+          final fid = prod.idFirebase.trim();
+          final dynamic k = prod.key;
+          final hk = k is int ? k : null;
+          for (final row in auditBox.values) {
+            if (row.lojaId.trim() != id.trim()) continue;
+            if (!compraPipelineDeveExibirOrigemCancelada(row)) continue;
+            final matchFb =
+                fid.isNotEmpty && row.produtoIdFirebaseGravado.trim() == fid;
+            final matchHive = hk != null && row.produtoHiveKey == hk;
+            if (matchFb || matchHive) {
+              _pipelineOrigemCancelada = row;
+              break;
             }
           }
         }
@@ -1569,6 +1598,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  CompraPipelineOrigemCanceladaNotice(
+                    pipeline: _pipelineOrigemCancelada,
+                  ),
+                  if (_pipelineOrigemCancelada != null)
+                    const SizedBox(height: 12),
                   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                   // 📝 CARD: INFORMAÇÕES BÁSICAS
                   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
