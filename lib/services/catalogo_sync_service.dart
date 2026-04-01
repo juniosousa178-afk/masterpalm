@@ -2,6 +2,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
+import 'package:collection/collection.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:hive/hive.dart';
@@ -183,6 +184,88 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   }
 
   // ===============================================================
+  // Combo: embute variações/preço/estoque do produto vinculado (Hive)
+  // para o catálogo público, mesmo quando o item não está publicado só.
+  // ===============================================================
+  static Future<List<Map<String, dynamic>>> _enrichItensComboComProdutoVinculado(
+    List<Map<String, dynamic>> itens, {
+    required String lojaId,
+  }) async {
+    final boxName = HiveBoxNames.produtos(lojaId);
+    if (!Hive.isBoxOpen(boxName)) {
+      await Hive.openBox<Produto>(boxName);
+    }
+    final box = Hive.box<Produto>(boxName);
+
+    final out = <Map<String, dynamic>>[];
+    for (final raw in itens) {
+      final m = Map<String, dynamic>.from(raw);
+      final idComp =
+          (m['id'] ?? m['produtoId'] ?? m['productId'] ?? '').toString().trim();
+      final slugComp = (m['slug'] ?? '').toString().trim();
+      final nomeComp = (m['nome'] ?? m['name'] ?? '').toString().trim();
+
+      Produto? linked;
+      if (idComp.isNotEmpty) {
+        linked = box.values.firstWhereOrNull(
+          (x) => x.lojaId == lojaId && x.idFirebase.trim() == idComp,
+        );
+      }
+      if (linked == null && slugComp.isNotEmpty) {
+        linked = box.values.firstWhereOrNull(
+          (x) => x.lojaId == lojaId && x.slug.trim() == slugComp,
+        );
+      }
+      if (linked == null && nomeComp.isNotEmpty) {
+        final n = nomeComp.toLowerCase();
+        linked = box.values.firstWhereOrNull(
+          (x) =>
+              x.lojaId == lojaId &&
+              x.nome.trim().toLowerCase() == n,
+        );
+      }
+
+      if (linked != null) {
+        final idFb = linked.idFirebase.trim();
+        if (idFb.isNotEmpty) {
+          m['id'] = idFb;
+          m['productId'] = idFb;
+        }
+        if (linked.variacoes != null && linked.variacoes!.isNotEmpty) {
+          m['variacoes'] = Map<String, dynamic>.from(linked.variacoes!);
+        }
+        if (linked.estoquePorTamanho.isNotEmpty) {
+          m['estoquePorTamanho'] =
+              Map<String, int>.from(linked.estoquePorTamanho);
+        }
+        if (linked.temVariacaoSoloCor && linked.estoquePorCor.isNotEmpty) {
+          m['estoquePorCor'] = Map<String, int>.from(linked.estoquePorCor);
+        }
+        if (linked.precoPorTamanho != null &&
+            linked.precoPorTamanho!.isNotEmpty) {
+          m['precoPorTamanho'] =
+              Map<String, double>.from(linked.precoPorTamanho!);
+        }
+        m['preco'] = linked.precoFinal;
+        m['precoFinal'] = linked.precoFinal;
+        if (linked.tamanhos.isNotEmpty) {
+          m['tamanhos'] = List<String>.from(linked.tamanhos);
+        }
+        if (linked.cores.isNotEmpty) {
+          m['cores'] = List<String>.from(linked.cores);
+        }
+        if (linked.variacoesExtraTipo != null &&
+            linked.variacoesExtraTipo!.isNotEmpty) {
+          m['variacoesExtraTipo'] =
+              Map<String, dynamic>.from(linked.variacoesExtraTipo!);
+        }
+      }
+      out.add(m);
+    }
+    return out;
+  }
+
+  // ===============================================================
   // Payload Firestore (catálogo)
   // ===============================================================
   static Future<Map<String, dynamic>> _buildCatalogData(
@@ -221,6 +304,14 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       }
     }
 
+    List<Map<String, dynamic>>? itensComboEnriquecido;
+    if (pdt.itensCombo != null && pdt.itensCombo!.isNotEmpty) {
+      itensComboEnriquecido = await _enrichItensComboComProdutoVinculado(
+        pdt.itensCombo!.map((e) => Map<String, dynamic>.from(e)).toList(),
+        lojaId: lojaId,
+      );
+    }
+
     return {
       'ativo': true,
       'publicar': pdt.publicadoNoCatalogo == true,
@@ -255,8 +346,8 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       if (pdt.precoPorTamanho != null && pdt.precoPorTamanho!.isNotEmpty)
         'precoPorTamanho': pdt.precoPorTamanho,
       'tipoProduto': pdt.tipoProduto,
-      if (pdt.itensCombo != null && pdt.itensCombo!.isNotEmpty)
-        'itensCombo': pdt.itensCombo,
+      if (itensComboEnriquecido != null && itensComboEnriquecido.isNotEmpty)
+        'itensCombo': itensComboEnriquecido,
 
       // Campos de promoção
       'emPromocao': pdt.emPromocao,

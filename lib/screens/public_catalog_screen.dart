@@ -315,19 +315,37 @@ List<Map<String, dynamic>> _processDocsToProducts(
           final nomeItem = (e['nome'] ?? e['name'] ?? '').toString().trim();
           if (nomeItem.isEmpty) continue;
           final slugItem = (e['slug'] ?? '').toString().trim();
-          final idItem = (e['id'] ?? e['produtoId'] ?? '').toString().trim();
-          itensCombo.add({
+          final idItem = (e['id'] ?? e['produtoId'] ?? e['productId'] ?? '')
+              .toString()
+              .trim();
+          final row = <String, dynamic>{
             'nome': nomeItem,
             'slug': slugItem,
             'quantidade': (e['quantidade'] is num)
                 ? (e['quantidade'] as num).toInt()
                 : int.tryParse('${e['quantidade']}') ?? 1,
             if (idItem.isNotEmpty) 'id': idItem,
+            if (idItem.isNotEmpty) 'productId': idItem,
             if ((e['tamanho'] ?? '').toString().trim().isNotEmpty)
               'tamanho': (e['tamanho'] ?? '').toString().trim(),
             if ((e['cor'] ?? '').toString().trim().isNotEmpty)
               'cor': (e['cor'] ?? '').toString().trim(),
-          });
+          };
+          for (final k in [
+            'variacoes',
+            'estoquePorTamanho',
+            'estoquePorCor',
+            'precoPorTamanho',
+            'preco',
+            'precoFinal',
+            'tamanhos',
+            'cores',
+            'variacoesExtraTipo',
+          ]) {
+            final v = e[k];
+            if (v != null) row[k] = v;
+          }
+          itensCombo.add(row);
         }
         if (itensCombo.isEmpty) itensCombo = null;
       }

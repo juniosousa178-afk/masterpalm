@@ -336,7 +336,12 @@ class CatalogEstoqueHelper {
       buf.write('|combo');
       for (final e in combo) {
         if (e is Map) {
-          buf.write('|${e['productId'] ?? e['id'] ?? ''}|${e['tamanho']}|${e['cor']}|${e['quantidade']}');
+          final ex = (e['extraValor'] ?? e['variacaoExtra'] ?? '')
+              .toString()
+              .trim();
+          buf.write(
+            '|${e['productId'] ?? e['id'] ?? ''}|${e['tamanho']}|${e['cor']}|$ex|${e['quantidade']}',
+          );
         }
       }
       return buf.toString();

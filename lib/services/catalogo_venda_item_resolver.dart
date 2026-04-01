@@ -124,6 +124,12 @@ List<Map<String, dynamic>> expandirItemsParaEstoque({
         }
         if (pComp == null) continue;
 
+        final extraTrim = (comboItem['extraValor'] ?? comboItem['variacaoExtra'] ?? '')
+            .toString()
+            .trim();
+        final extraTipo = (comboItem['extraTipo'] ?? '').toString().trim();
+        final resumoExtra = (comboItem['variacaoExtraResumo'] ?? '').toString().trim();
+
         result.add({
           'nome': pComp.nome,
           'slug': pComp.slug,
@@ -131,6 +137,9 @@ List<Map<String, dynamic>> expandirItemsParaEstoque({
           'quantidade': qtdTotal,
           'tamanho': tam,
           'cor': corComp,
+          if (extraTrim.isNotEmpty) 'extraValor': extraTrim,
+          if (extraTipo.isNotEmpty) 'extraTipo': extraTipo,
+          if (resumoExtra.isNotEmpty) 'variacaoExtraResumo': resumoExtra,
         });
       }
     } else {

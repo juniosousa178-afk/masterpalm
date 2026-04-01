@@ -13,7 +13,9 @@ import 'package:intl/intl.dart';
 import '../core/hive_box_names.dart';
 import '../models/venda.dart';
 import '../models/meta.dart';
+import '../models/fechamento_mensal.dart';
 import '../models/lancamento_financeiro.dart';
+import '../services/fechamento_service.dart';
 import '../services/financeiro_hive_store.dart';
 import '../services/financeiro_service.dart';
 import '../services/store_resolver_facade.dart';
@@ -60,6 +62,7 @@ class _RelatoriosFinanceirosScreenState
   Meta? _metaAtual;
 
   Box<LancamentoFinanceiro>? _lancamentosFinanceirosBox;
+  Box<FechamentoMensal>? _fechamentosBox;
   ResumoFinanceiroModulo? _resumoModuloFinanceiro;
 
   /// Taxas de relatório (Loja Config) — mesmo critério que Relatório Financeiro e fechamento.
@@ -112,6 +115,17 @@ class _RelatoriosFinanceirosScreenState
 
       final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(_lojaId));
       _todasVendas = vendasBox.values.toList();
+
+      try {
+        if (Hive.isBoxOpen('fechamentos_mensais')) {
+          _fechamentosBox = Hive.box<FechamentoMensal>('fechamentos_mensais');
+        } else {
+          _fechamentosBox =
+              await Hive.openBox<FechamentoMensal>('fechamentos_mensais');
+        }
+      } catch (_) {
+        _fechamentosBox = null;
+      }
 
       _vendedoresDisponiveis = _todasVendas
           .map((v) => v.vendedor.trim().toLowerCase())
@@ -447,8 +461,11 @@ class _RelatoriosFinanceirosScreenState
             const SizedBox(height: 12),
             if (_vendasFiltradas.isEmpty)
               _buildEmptyState()
-            else
+            else ...[
               _buildCardsFinanceiros(),
+              const SizedBox(height: 8),
+              _buildLegendaBaseLucroVendas(),
+            ],
             if (_resumoModuloFinanceiro?.temAlgumDado == true) ...[
               const SizedBox(height: 16),
               _buildSecaoModuloFinanceiro(),
@@ -1036,7 +1053,8 @@ class _RelatoriosFinanceirosScreenState
           const SizedBox(height: 8),
           Text(
             'Lançamentos pagos no período filtrado. Não substitui o lucro de vendas acima; '
-            'é uma camada adicional para gestão.',
+            'é uma camada adicional para gestão. Se as taxas % já estimam parte desses gastos, '
+            'não some mentalmente as duas como independentes.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 12),
           ),
           const SizedBox(height: 12),
@@ -1071,6 +1089,17 @@ class _RelatoriosFinanceirosScreenState
     );
   }
 
+  /// Microfase C/D: deixa explícita a base (taxas/config) sem alterar o motor numérico.
+  Widget _buildLegendaBaseLucroVendas() {
+    final temReal = _resumoModuloFinanceiro?.temAlgumDado == true;
+    return Text(
+      'Base do lucro de vendas: taxas da Loja Config (ou valor gravado na venda). '
+      '${temReal ? 'Há lançamentos reais no período — a linha “Com módulo” soma o impacto deles; '
+          'evite tratar taxas % e lançamentos como despesas totalmente distintas se forem o mesmo custo.' : ''}',
+      style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.55)),
+    );
+  }
+
   // =================== CARDS FINANCEIROS ===================
 
   Widget _buildCardsFinanceiros() {
@@ -1102,7 +1131,7 @@ class _RelatoriosFinanceirosScreenState
             const SizedBox(width: 12),
             Expanded(
                 child: _buildCardMetrica(
-                    'Lucro Est.',
+                    'Lucro (vendas−taxas)',
                     'R\$ ${_fmt(_lucroEstimado)}',
                     Icons.trending_up,
                     _lucroEstimado >= 0 ? _successColor : _dangerColor)),

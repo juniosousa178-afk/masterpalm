@@ -150,8 +150,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
       }
     }
 
-    // Fechamento automático: ao abrir a tela, garantir que o mês anterior está fechado
-    // (útil no início do mês) e que o mês atual está atualizado para consulta.
+    // Fechamento automático: mês anterior só é calculado se ainda não existir registro.
+    // Meses passados já salvos ficam congelados em [FechamentoService.fecharMes] (não sobrescreve).
+    // Mês atual continua sendo atualizado aqui (vendas + taxas da config).
     try {
       final now = DateTime.now();
       final mesAnterior = now.month == 1
@@ -258,6 +259,28 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
 
     final lucro = venda - (custo + taxas);
     return (venda: venda, custo: custo, taxas: taxas, lucro: lucro);
+  }
+
+  /// Mês civil. Se for passado e existir [FechamentoMensal] salvo, usa o snapshot (igual ao card).
+  ({double venda, double custo, double taxas, double lucro})
+      _resumoMesCalendarioPreferSnapshot(int ano, int mes) {
+    if (FechamentoService.mesEhAnteriorAoCorrente(ano, mes)) {
+      final f = FechamentoService.obterFechamentoSalvoParaMes(
+        fechamentosBox,
+        lojaId,
+        ano,
+        mes,
+      );
+      if (f != null && f.isInBox) {
+        return (
+          venda: f.vendaTotal,
+          custo: f.custoTotal,
+          taxas: f.taxasTotal,
+          lucro: f.lucroTotal,
+        );
+      }
+    }
+    return _agregarPeriodo((v) => v.data.year == ano && v.data.month == mes);
   }
 
   ({double dinheiro, double pix, double cartao}) _pagamentosDoMesAtual() {
@@ -786,10 +809,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     final dia = _agregarPeriodo((v) => _isSameDay(v.data, hoje));
     final mes = _agregarPeriodo((v) => _isSameMonth(v.data, hoje));
     final ano = _agregarPeriodo((v) => _isSameYear(v.data, hoje));
-    final mesAnterior = _agregarPeriodo((v) {
-      final m = DateTime(hoje.year, hoje.month - 1);
-      return v.data.year == m.year && v.data.month == m.month;
-    });
+    final mesAntCal = DateTime(hoje.year, hoje.month - 1);
+    final mesAnterior =
+        _resumoMesCalendarioPreferSnapshot(mesAntCal.year, mesAntCal.month);
     final mesPorForma = _pagamentosDoMesAtual();
     final temVendasDia = dia.venda > 0 || dia.custo > 0 || dia.taxas > 0;
     final temVendasMes = mes.venda > 0 || mes.custo > 0 || mes.taxas > 0;
@@ -1574,6 +1596,24 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                           color: Colors.grey.shade600,
                         ),
                       ),
+                      if (FechamentoService.mesEhAnteriorAoCorrente(f.ano, f.mes))
+                        Text(
+                          'Snapshot congelado — não recalculado automaticamente.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.teal.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        )
+                      else
+                        Text(
+                          'Mês em aberto — atualizado ao abrir este relatório (vendas + taxas).',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blueGrey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -1600,6 +1640,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                     const SizedBox(width: 12),
                     Expanded(child: _buildValueTile('Lucro', f.lucroTotal, _successColor, isHighlight: true)),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  FechamentoService.mesEhAnteriorAoCorrente(f.ano, f.mes)
+                      ? 'Base: último snapshot salvo (lucro = vendas − custo − taxas na gravação).'
+                      : 'Base: vendas do mês − custo − taxas (Loja Config ou campo na venda).',
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                 ),
               ],
             ),
@@ -1702,6 +1749,12 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                 fontWeight: FontWeight.w600,
                 color: Colors.indigo.shade800,
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Atenção: as taxas % da loja podem estimar custos que você também lançou aqui — '
+              'não interprete as duas camadas como independentes se cobrirem o mesmo gasto.',
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
             ),
           ],
         ),

@@ -3,6 +3,12 @@
 //
 // Regra: % de cartão (Loja Config) incide só sobre o valor pago em cartão; MEI e custos fixos
 // continuam sobre o total da venda; embalagem por quantidade de itens no ramo estimado.
+//
+// Papel em relação ao módulo financeiro (lançamentos reais): estas taxas permanecem o fallback
+// principal sobre vendas quando não há substituição por motor alternativo; lançamentos reais
+// entram como camada complementar na UI — evitar dupla contagem semântica (mesmo gasto em % e
+// em lançamento). Meses passados com [FechamentoMensal] salvo não são recalculados em
+// [FechamentoService.fecharMes] (snapshot congelado).
 
 import 'package:hive/hive.dart';
 

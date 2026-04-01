@@ -1,10 +1,11 @@
 // lib/services/financeiro_firestore_service.dart
-// Escrita remota complementar ao Hive (Fase 2A/2B). Sem pull; falhas não bloqueiam o app.
+// Escrita remota complementar ao Hive (Fase 2A/2B) + pull conservador Fase 2D.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../financeiro/financeiro_constants.dart';
 import '../models/gasto_fixo_mensal.dart';
 import '../models/lancamento_financeiro.dart';
 import 'financeiro_hive_store.dart';
@@ -32,6 +33,31 @@ class FinanceiroMigracaoF2cResultado {
   int get totalErros => lancamentosErros + gastosErros;
 }
 
+/// Resultado do pull Fase 2D (Firestore → Hive: só `put` se chave ausente).
+class FinanceiroPullF2dResultado {
+  final int lancamentosImportados;
+  final int lancamentosPulados;
+  final int lancamentosErros;
+  final int gastosImportados;
+  final int gastosPulados;
+  final int gastosErros;
+  final bool ignoradoJaEmExecucao;
+
+  const FinanceiroPullF2dResultado({
+    this.lancamentosImportados = 0,
+    this.lancamentosPulados = 0,
+    this.lancamentosErros = 0,
+    this.gastosImportados = 0,
+    this.gastosPulados = 0,
+    this.gastosErros = 0,
+    this.ignoradoJaEmExecucao = false,
+  });
+
+  int get totalImportados => lancamentosImportados + gastosImportados;
+  int get totalPulados => lancamentosPulados + gastosPulados;
+  int get totalErros => lancamentosErros + gastosErros;
+}
+
 /// Serviço de escrita Firestore para o módulo financeiro.
 /// Todos os métodos são defensivos: erros são logados e não propagados.
 class FinanceiroFirestoreService {
@@ -39,9 +65,16 @@ class FinanceiroFirestoreService {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Evita dois pulls simultâneos (mesmo isolado).
+  static bool _pullF2dEmExecucao = false;
+
   /// Chave na box `config` — informativa, não bloqueia reexecução.
   static String chaveRegistroMigracaoF2c(String lojaId) =>
       'financeiro_migr_f2c_${lojaId.trim()}';
+
+  /// Último pull Firestore → Hive por loja (informativo).
+  static String chaveRegistroPullF2d(String lojaId) =>
+      'financeiro_pull_f2d_${lojaId.trim()}';
 
   static DocumentReference<Map<String, dynamic>> _refLancamento(
     String lojaId,
@@ -108,6 +141,128 @@ class FinanceiroFirestoreService {
     };
   }
 
+  static DateTime? _fsDateTime(dynamic v) {
+    if (v is Timestamp) return v.toDate();
+    if (v is DateTime) return v;
+    return null;
+  }
+
+  static double? _fsDouble(dynamic v) {
+    if (v is num) return v.toDouble();
+    return null;
+  }
+
+  static int _fsInt(dynamic v, int fallback) {
+    if (v is num) return v.toInt();
+    return fallback;
+  }
+
+  static bool _fsBool(dynamic v, bool fallback) {
+    if (v is bool) return v;
+    return fallback;
+  }
+
+  static String _fsString(dynamic v, [String fallback = '']) {
+    if (v == null) return fallback;
+    return v.toString();
+  }
+
+  static String _fsStatusLancamento(dynamic v) {
+    final s = v?.toString();
+    if (s == FinanceiroStatusLancamento.pendente) {
+      return FinanceiroStatusLancamento.pendente;
+    }
+    return FinanceiroStatusLancamento.pago;
+  }
+
+  /// Monta modelo a partir do mapa Firestore; `docId` é a fonte do id local.
+  static LancamentoFinanceiro? _lancamentoFromFirestore(
+    String docId,
+    Map<String, dynamic> data,
+    String lojaIdEsperada,
+  ) {
+    try {
+      final valor = _fsDouble(data['valor']);
+      if (valor == null) return null;
+      final dataLancamento = _fsDateTime(data['dataLancamento']);
+      if (dataLancamento == null) return null;
+      final lojaDoc = _fsString(data['lojaId']).trim();
+      if (lojaDoc.isNotEmpty && lojaDoc != lojaIdEsperada) {
+        return null;
+      }
+      final dpRaw = data['dataPagamento'];
+      DateTime? dataPagamento;
+      if (dpRaw != null) {
+        dataPagamento = _fsDateTime(dpRaw);
+      }
+      final cm = _fsInt(data['competenciaMes'], dataLancamento.month);
+      final ca = _fsInt(data['competenciaAno'], dataLancamento.year);
+      return LancamentoFinanceiro(
+        id: docId,
+        lojaId: lojaIdEsperada,
+        descricao: _fsString(data['descricao']),
+        valor: valor,
+        tipo: FinanceiroTipoLancamento.tipoOuPadrao(
+          _fsString(data['tipo'], FinanceiroTipoLancamento.despesaOperacional),
+        ),
+        categoria: financeiroCategoriaOuPadrao(_fsString(data['categoria'])),
+        subcategoria: _fsString(data['subcategoria']),
+        status: _fsStatusLancamento(data['status']),
+        formaPagamento: _fsString(data['formaPagamento']),
+        fornecedor: _fsString(data['fornecedor']),
+        observacao: _fsString(data['observacao']),
+        dataLancamento: dataLancamento,
+        dataPagamento: dataPagamento,
+        competenciaMes: cm,
+        competenciaAno: ca,
+        recorrente: _fsBool(data['recorrente'], false),
+        origem: _fsString(data['origem'], FinanceiroOrigemLancamento.manual),
+        usuarioId: _fsString(data['usuarioId']),
+        usuarioNome: _fsString(data['usuarioNome']),
+        centroCusto: _fsString(data['centroCusto']),
+        anexoComprovante: _fsString(data['anexoComprovante']),
+      );
+    } catch (e) {
+      debugPrint(
+        '[FINANCEIRO-FS] Parse lancamento remoto $docId (type=${e.runtimeType})',
+      );
+      return null;
+    }
+  }
+
+  static GastoFixoMensal? _gastoFixoFromFirestore(
+    String docId,
+    Map<String, dynamic> data,
+    String lojaIdEsperada,
+  ) {
+    try {
+      final lojaDoc = _fsString(data['lojaId']).trim();
+      if (lojaDoc.isNotEmpty && lojaDoc != lojaIdEsperada) {
+        return null;
+      }
+      final dia = _fsInt(data['diaVencimento'], 1).clamp(1, 31);
+      return GastoFixoMensal(
+        id: docId,
+        lojaId: lojaIdEsperada,
+        descricao: _fsString(data['descricao']),
+        valorPadrao: _fsDouble(data['valorPadrao']) ?? 0,
+        categoria: financeiroCategoriaOuPadrao(_fsString(data['categoria'])),
+        subcategoria: _fsString(data['subcategoria']),
+        diaVencimento: dia,
+        ativo: _fsBool(data['ativo'], true),
+        formaPagamentoPadrao: _fsString(data['formaPagamentoPadrao']),
+        fornecedor: _fsString(data['fornecedor']),
+        observacao: _fsString(data['observacao']),
+        centroCusto: _fsString(data['centroCusto']),
+      );
+    } catch (e) {
+      debugPrint(
+        '[FINANCEIRO-FS] Parse gasto fixo remoto $docId (type=${e.runtimeType})',
+      );
+      return null;
+    }
+  }
+
   /// Grava ou atualiza lançamento (merge). Hive já deve estar persistido.
   static Future<void> upsertLancamento(LancamentoFinanceiro l) async {
     try {
@@ -171,6 +326,161 @@ class FinanceiroFirestoreService {
       debugPrint(
         '[FINANCEIRO-FS] Erro delete gasto fixo (type=${e.runtimeType})',
       );
+    }
+  }
+
+  /// Pull Firestore → Hive (Fase 2D): só `box.put` se `!containsKey(docId)`.
+  /// Não apaga nem substitui chaves existentes. Uma execução por vez.
+  static Future<FinanceiroPullF2dResultado> pullLojaFirestoreParaHiveFase2d(
+    String lojaId,
+  ) async {
+    final id = lojaId.trim();
+    if (id.isEmpty) {
+      return const FinanceiroPullF2dResultado();
+    }
+    if (_pullF2dEmExecucao) {
+      return const FinanceiroPullF2dResultado(ignoradoJaEmExecucao: true);
+    }
+    _pullF2dEmExecucao = true;
+
+    var li = 0, lp = 0, lx = 0;
+    var gi = 0, gp = 0, gx = 0;
+
+    try {
+      final lBox = await FinanceiroHiveStore.openLancamentosBox(id);
+      if (lBox != null) {
+        try {
+          final qs = await _db
+              .collection('lojas')
+              .doc(id)
+              .collection('lancamentos_financeiros')
+              .where('lojaId', isEqualTo: id)
+              .get();
+          for (final doc in qs.docs) {
+            try {
+              if (lBox.containsKey(doc.id)) {
+                lp++;
+                continue;
+              }
+              final data = doc.data();
+              final model = _lancamentoFromFirestore(doc.id, data, id);
+              if (model == null) {
+                lx++;
+                continue;
+              }
+              await lBox.put(doc.id, model);
+              li++;
+            } catch (e) {
+              lx++;
+              debugPrint(
+                '[FINANCEIRO-FS] Pull lancamento ${doc.id} (type=${e.runtimeType})',
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint(
+            '[FINANCEIRO-FS] Pull query lancamentos (type=${e.runtimeType})',
+          );
+        }
+      }
+
+      final gBox = await FinanceiroHiveStore.openGastosFixosBox(id);
+      if (gBox != null) {
+        try {
+          final qs = await _db
+              .collection('lojas')
+              .doc(id)
+              .collection('gastos_fixos_mensais')
+              .where('lojaId', isEqualTo: id)
+              .get();
+          for (final doc in qs.docs) {
+            try {
+              if (gBox.containsKey(doc.id)) {
+                gp++;
+                continue;
+              }
+              final data = doc.data();
+              final model = _gastoFixoFromFirestore(doc.id, data, id);
+              if (model == null) {
+                gx++;
+                continue;
+              }
+              await gBox.put(doc.id, model);
+              gi++;
+            } catch (e) {
+              gx++;
+              debugPrint(
+                '[FINANCEIRO-FS] Pull gasto fixo ${doc.id} (type=${e.runtimeType})',
+              );
+            }
+          }
+        } catch (e) {
+          debugPrint(
+            '[FINANCEIRO-FS] Pull query gastos_fixos (type=${e.runtimeType})',
+          );
+        }
+      }
+    } finally {
+      _pullF2dEmExecucao = false;
+    }
+
+    final resultado = FinanceiroPullF2dResultado(
+      lancamentosImportados: li,
+      lancamentosPulados: lp,
+      lancamentosErros: lx,
+      gastosImportados: gi,
+      gastosPulados: gp,
+      gastosErros: gx,
+    );
+    if (!resultado.ignoradoJaEmExecucao) {
+      await registrarUltimaPullF2d(lojaId: id, resultado: resultado);
+    }
+    return resultado;
+  }
+
+  static Future<void> registrarUltimaPullF2d({
+    required String lojaId,
+    required FinanceiroPullF2dResultado resultado,
+  }) async {
+    if (resultado.ignoradoJaEmExecucao) return;
+    try {
+      final box = Hive.isBoxOpen('config')
+          ? Hive.box('config')
+          : await Hive.openBox('config');
+      await box.put(chaveRegistroPullF2d(lojaId), {
+        'executadoEm': DateTime.now().toIso8601String(),
+        'lancamentosImportados': resultado.lancamentosImportados,
+        'lancamentosPulados': resultado.lancamentosPulados,
+        'lancamentosErros': resultado.lancamentosErros,
+        'gastosImportados': resultado.gastosImportados,
+        'gastosPulados': resultado.gastosPulados,
+        'gastosErros': resultado.gastosErros,
+      });
+    } catch (e) {
+      debugPrint(
+        '[FINANCEIRO-FS] Erro registrar pull F2d (type=${e.runtimeType})',
+      );
+    }
+  }
+
+  static Future<FinanceiroPullF2dRegistroLeitura?> lerUltimaPullF2d(
+    String lojaId,
+  ) async {
+    try {
+      final box = Hive.isBoxOpen('config')
+          ? Hive.box('config')
+          : await Hive.openBox('config');
+      final raw = box.get(chaveRegistroPullF2d(lojaId));
+      if (raw is! Map) return null;
+      final m = Map<String, dynamic>.from(
+        raw.map((k, v) => MapEntry(k.toString(), v)),
+      );
+      return FinanceiroPullF2dRegistroLeitura.fromMap(m);
+    } catch (e) {
+      debugPrint(
+        '[FINANCEIRO-FS] Erro ler pull F2d (type=${e.runtimeType})',
+      );
+      return null;
     }
   }
 
@@ -321,6 +631,40 @@ class FinanceiroMigracaoF2cRegistroLeitura {
       lancamentosPulados: n('lancamentosPulados'),
       lancamentosErros: n('lancamentosErros'),
       gastosEnviados: n('gastosEnviados'),
+      gastosPulados: n('gastosPulados'),
+      gastosErros: n('gastosErros'),
+    );
+  }
+}
+
+/// Leitura do registro de último pull (box `config`).
+class FinanceiroPullF2dRegistroLeitura {
+  final String? executadoEmIso;
+  final int lancamentosImportados;
+  final int lancamentosPulados;
+  final int lancamentosErros;
+  final int gastosImportados;
+  final int gastosPulados;
+  final int gastosErros;
+
+  FinanceiroPullF2dRegistroLeitura({
+    this.executadoEmIso,
+    this.lancamentosImportados = 0,
+    this.lancamentosPulados = 0,
+    this.lancamentosErros = 0,
+    this.gastosImportados = 0,
+    this.gastosPulados = 0,
+    this.gastosErros = 0,
+  });
+
+  factory FinanceiroPullF2dRegistroLeitura.fromMap(Map<String, dynamic> m) {
+    int n(String k) => (m[k] as num?)?.toInt() ?? 0;
+    return FinanceiroPullF2dRegistroLeitura(
+      executadoEmIso: m['executadoEm']?.toString(),
+      lancamentosImportados: n('lancamentosImportados'),
+      lancamentosPulados: n('lancamentosPulados'),
+      lancamentosErros: n('lancamentosErros'),
+      gastosImportados: n('gastosImportados'),
       gastosPulados: n('gastosPulados'),
       gastosErros: n('gastosErros'),
     );

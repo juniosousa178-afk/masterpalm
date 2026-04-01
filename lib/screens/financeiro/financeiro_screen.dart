@@ -51,7 +51,10 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
 
   /// Última migração F2C (Hive→Firestore) — informativo; não bloqueia reexecução.
   FinanceiroMigracaoF2cRegistroLeitura? _ultimaMigrF2c;
+  /// Último pull F2D (Firestore→Hive) — informativo.
+  FinanceiroPullF2dRegistroLeitura? _ultimaPullF2d;
   bool _migrando = false;
+  bool _pullando = false;
 
   final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: r'R$');
 
@@ -124,9 +127,17 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         regMigr = null;
       }
 
+      FinanceiroPullF2dRegistroLeitura? regPull;
+      try {
+        regPull = await FinanceiroFirestoreService.lerUltimaPullF2d(id);
+      } catch (_) {
+        regPull = null;
+      }
+
       if (mounted) {
         setState(() {
           _ultimaMigrF2c = regMigr;
+          _ultimaPullF2d = regPull;
           _loading = false;
         });
       }
@@ -155,6 +166,110 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     final pul = r.lancamentosPulados + r.gastosPulados;
     final err = r.lancamentosErros + r.gastosErros;
     return 'Última migração nuvem: $quando · enviados $env · já existiam $pul · erros $err';
+  }
+
+  String _textoUltimaPull(FinanceiroPullF2dRegistroLeitura r) {
+    final iso = r.executadoEmIso;
+    String quando = '—';
+    if (iso != null && iso.isNotEmpty) {
+      try {
+        final dt = DateTime.tryParse(iso);
+        if (dt != null) {
+          quando = DateFormat('dd/MM/yyyy HH:mm').format(dt.toLocal());
+        }
+      } catch (_) {}
+    }
+    final imp = r.lancamentosImportados + r.gastosImportados;
+    final pul = r.lancamentosPulados + r.gastosPulados;
+    final err = r.lancamentosErros + r.gastosErros;
+    return 'Última importação nuvem: $quando · novos $imp · já no aparelho $pul · erros $err';
+  }
+
+  Future<void> _confirmarEPullDaNuvem() async {
+    if (!mounted || _lojaId.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Importar da nuvem'),
+        content: const Text(
+          'Importar da nuvem apenas os registros que ainda não existem no aparelho. '
+          'Nada local será apagado ou substituído.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Importar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _pullando = true);
+    FinanceiroPullF2dResultado? resultado;
+    try {
+      resultado =
+          await FinanceiroFirestoreService.pullLojaFirestoreParaHiveFase2d(
+        _lojaId,
+      );
+    } catch (e) {
+      resultado = null;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Importação falhou: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _pullando = false);
+    }
+
+    if (!mounted) return;
+    if (resultado != null && resultado.ignoradoJaEmExecucao) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Importação já em andamento. Aguarde concluir.'),
+        ),
+      );
+      return;
+    }
+    if (resultado == null) return;
+    final r = resultado;
+
+    await _load();
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Importação concluída'),
+        content: SingleChildScrollView(
+          child: Text(
+            'Lançamentos: ${r.lancamentosImportados} importados, '
+            '${r.lancamentosPulados} ignorados (já no aparelho), '
+            '${r.lancamentosErros} erros.\n\n'
+            'Gastos fixos: ${r.gastosImportados} importados, '
+            '${r.gastosPulados} ignorados (já no aparelho), '
+            '${r.gastosErros} erros.\n\n'
+            'Total importado: ${r.totalImportados} · '
+            'ignorados: ${r.totalPulados} · '
+            'erros: ${r.totalErros}.',
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _confirmarEMigrarParaFirestore() async {
@@ -275,9 +390,22 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            icon: const Icon(Icons.cloud_download_outlined),
+            onPressed: (_loading ||
+                    _migrando ||
+                    _pullando ||
+                    _lojaId.isEmpty ||
+                    _acessoNegado ||
+                    _erro != null)
+                ? null
+                : _confirmarEPullDaNuvem,
+            tooltip: 'Importar da nuvem (só registros ausentes)',
+          ),
+          IconButton(
             icon: const Icon(Icons.cloud_upload_outlined),
             onPressed: (_loading ||
                     _migrando ||
+                    _pullando ||
                     _lojaId.isEmpty ||
                     _acessoNegado ||
                     _erro != null)
@@ -367,6 +495,16 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                         const SizedBox(height: 8),
                         Text(
                           _textoUltimaMigracao(_ultimaMigrF2c!),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                      if (_ultimaPullF2d != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _textoUltimaPull(_ultimaPullF2d!),
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey.shade600,

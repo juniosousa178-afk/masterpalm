@@ -1000,7 +1000,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                       'compras ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalCompraMercadoria)}, '
                       'investimentos ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalInvestimentos)}, '
                       'equipe ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalPagamentosEquipe)}. '
-                      'Metas e comissões acima seguem apenas vendas.',
+                      'Metas e comissões acima seguem apenas vendas. '
+                      'Taxas de relatório (Loja Config) são fallback sobre vendas — não duplique interpretação com os mesmos gastos lançados aqui.',
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
                     ),
                   ],

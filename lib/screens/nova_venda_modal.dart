@@ -1194,26 +1194,50 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         return;
       }
 
-      // 🔹 Validação de variações conforme tipo
-      if (prod.temVariacaoSoloCor && cor.isEmpty) {
-        await _mostrarErro('Informe a cor para o produto "$nome".');
-        return;
-      }
-      if (prod.temVariacaoTamanhoECor && (tamanho.isEmpty || cor.isEmpty)) {
-        await _mostrarErro('Informe tamanho e cor para o produto "$nome".');
-        return;
-      }
-      if ((prod.temVariacaoSoloTamanho || prod.estoquePorTamanho.isNotEmpty) && tamanho.isEmpty) {
-        await _mostrarErro('Informe o tamanho para o produto "$nome".');
-        return;
-      }
+      if (prod.ehCombo) {
+        final sel = item['itensComboComSelecao'];
+        if (sel is! List || sel.isEmpty) {
+          await _mostrarErro(
+            'Configure o combo "$nome" antes de finalizar. '
+            'Toque em "Configurar combo" e confirme tamanho, cor e personalização de cada item do kit.',
+          );
+          return;
+        }
+        var selecaoValida = true;
+        for (final e in sel) {
+          if (e is! Map || e.isEmpty) {
+            selecaoValida = false;
+            break;
+          }
+        }
+        if (!selecaoValida) {
+          await _mostrarErro(
+            'A configuração do combo "$nome" está incompleta. Abra "Configurar combo" e confirme novamente.',
+          );
+          return;
+        }
+      } else {
+        // 🔹 Validação de variações conforme tipo (linha avulsa — não é SKU combo)
+        if (prod.temVariacaoSoloCor && cor.isEmpty) {
+          await _mostrarErro('Informe a cor para o produto "$nome".');
+          return;
+        }
+        if (prod.temVariacaoTamanhoECor && (tamanho.isEmpty || cor.isEmpty)) {
+          await _mostrarErro('Informe tamanho e cor para o produto "$nome".');
+          return;
+        }
+        if ((prod.temVariacaoSoloTamanho || prod.estoquePorTamanho.isNotEmpty) && tamanho.isEmpty) {
+          await _mostrarErro('Informe o tamanho para o produto "$nome".');
+          return;
+        }
 
-      final opcoesExtra = ProdutoVariacaoExtra.opcoesExtraPara(prod.variacoes, tamanho, cor);
-      if (opcoesExtra.isNotEmpty && extraValor.isEmpty) {
-        await _mostrarErro(
-          'Selecione a personalização (letra, estampa, etc.) para o produto "$nome".',
-        );
-        return;
+        final opcoesExtra = ProdutoVariacaoExtra.opcoesExtraPara(prod.variacoes, tamanho, cor);
+        if (opcoesExtra.isNotEmpty && extraValor.isEmpty) {
+          await _mostrarErro(
+            'Selecione a personalização (letra, estampa, etc.) para o produto "$nome".',
+          );
+          return;
+        }
       }
 
       // 🔹 Calcula estoque disponível: variações, por tamanho, ou total

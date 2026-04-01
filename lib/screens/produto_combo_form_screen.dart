@@ -49,6 +49,9 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   /// Controllers do campo de pesquisa de produto por linha (para Autocomplete).
   final Map<int, TextEditingController> _productControllers = {};
 
+  /// Obrigatório junto com [textEditingController] em [RawAutocomplete].
+  final Map<int, FocusNode> _productFocusNodes = {};
+
   final _nome = TextEditingController();
   final _preco = TextEditingController();
   final _quantidadeDisponivel = TextEditingController(text: '1');
@@ -86,6 +89,10 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       c.dispose();
     }
     _productControllers.clear();
+    for (final f in _productFocusNodes.values) {
+      f.dispose();
+    }
+    _productFocusNodes.clear();
     super.dispose();
   }
 
@@ -183,10 +190,14 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     if (_itensCombo.length <= 1) return;
     setState(() {
       _itensCombo.removeAt(i);
-      for (var j = _itensCombo.length; _productControllers.containsKey(j); j++) {
-        _productControllers[j]?.dispose();
-        _productControllers.remove(j);
+      for (final c in _productControllers.values) {
+        c.dispose();
       }
+      _productControllers.clear();
+      for (final f in _productFocusNodes.values) {
+        f.dispose();
+      }
+      _productFocusNodes.clear();
       _atualizarPrecoAutomatico();
     });
   }
@@ -843,6 +854,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                           _productControllers[i]!.text = nomeAtual;
                         }
                         final ctrl = _productControllers[i]!;
+                        _productFocusNodes.putIfAbsent(i, FocusNode.new);
+                        final focusNode = _productFocusNodes[i]!;
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: Row(
@@ -854,6 +867,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                                   builder: (context, constraints) {
                                     return RawAutocomplete<Produto>(
                                       textEditingController: ctrl,
+                                      focusNode: focusNode,
                                       displayStringForOption: (p) => p.nome,
                                       optionsBuilder: (value) {
                                         final q = value.text.trim().toLowerCase();

@@ -13,6 +13,38 @@ class FechamentoService {
   static bool _sameMonth(DateTime d, int ano, int mes) =>
       d.year == ano && d.month == mes;
 
+  /// `true` se o par (ano, mes) é estritamente anterior ao mês civil corrente (horário local).
+  /// Usado para congelar snapshots já persistidos (ex.: fev/mar fechados).
+  static bool mesEhAnteriorAoCorrente(int ano, int mes) {
+    final now = DateTime.now();
+    final alvo = DateTime(ano, mes);
+    final inicioMesAtual = DateTime(now.year, now.month);
+    return alvo.isBefore(inicioMesAtual);
+  }
+
+  static FechamentoMensal? _obterFechamentoSalvo(
+    Box<FechamentoMensal> fechamentosBox,
+    String lojaId,
+    int ano,
+    int mes,
+  ) {
+    final id = lojaId.trim();
+    for (final f in fechamentosBox.values) {
+      if ((f.lojaId).trim() == id && f.ano == ano && f.mes == mes) return f;
+    }
+    return null;
+  }
+
+  /// Snapshot já persistido para (loja, ano, mês), se existir.
+  static FechamentoMensal? obterFechamentoSalvoParaMes(
+    Box<FechamentoMensal> fechamentosBox,
+    String lojaId,
+    int ano,
+    int mes,
+  ) {
+    return _obterFechamentoSalvo(fechamentosBox, lojaId, ano, mes);
+  }
+
   // ----------------- Parsing de valores -----------------
   static double _parseValor(String s) {
     // Extrai números, aceita vírgula como decimal (pt-BR)
@@ -74,15 +106,26 @@ class FechamentoService {
     required Box<Venda> vendasBox,
     required Box<FechamentoMensal> fechamentosBox,
   }) async {
+    final idLoja = lojaId.trim();
+
+    // Microfase A: mês passado com snapshot já na caixa = congelado (sem recálculo nem sync).
+    final salv = _obterFechamentoSalvo(fechamentosBox, idLoja, ano, mes);
+    if (mesEhAnteriorAoCorrente(ano, mes) && salv != null && salv.isInBox) {
+      debugPrint(
+        '[FECHAMENTO] Congelado $mes/$ano (loja=$idLoja) — mantém snapshot Hive.',
+      );
+      return salv;
+    }
+
     // 🔥 só vendas da loja + mês informado
     final vendasMes = vendasBox.values.where(
       (v) =>
-          v.lojaId == lojaId &&
+          (v.lojaId ?? '').trim() == idLoja &&
           incluirVendaEmMetricas(v) &&
           _sameMonth(v.data, ano, mes),
     );
 
-    final cfg = await RelatorioTaxasConfig.loadForLoja(lojaId);
+    final cfg = await RelatorioTaxasConfig.loadForLoja(idLoja);
     double vendaTotal = 0, custoTotal = 0, taxasTotal = 0;
     for (final v in vendasMes) {
       vendaTotal += v.total;
@@ -94,9 +137,9 @@ class FechamentoService {
 
     // procura existente para o (loja, ano, mes) e reaproveita o mesmo registro
     final existente = fechamentosBox.values.firstWhere(
-      (f) => f.lojaId == lojaId && f.ano == ano && f.mes == mes,
+      (f) => f.lojaId.trim() == idLoja && f.ano == ano && f.mes == mes,
       orElse: () => FechamentoMensal(
-        lojaId: lojaId,
+        lojaId: idLoja,
         ano: ano,
         mes: mes,
         totalDinheiro: 0,
@@ -130,7 +173,7 @@ class FechamentoService {
     try {
       await FechamentoFirestoreService.syncFechamento(
         existente,
-        lojaId: lojaId,
+        lojaId: idLoja,
       );
     } catch (e) {
       debugPrint('⚠️ Erro ao sincronizar fechamento com Firestore (type=${e.runtimeType})');
@@ -185,6 +228,9 @@ class FechamentoService {
   }
 
   /// Retorna um resumo simples (sem salvar) para um mês de uma loja.
+  ///
+  /// Se [fechamentosSnapshotBox] for informado e o mês for **anterior** ao corrente
+  /// e existir fechamento salvo, devolve os totais do **snapshot** (alinhado aos cards).
   static Future<({
     double venda,
     double custo,
@@ -198,15 +244,39 @@ class FechamentoService {
     required int mes,
     required String lojaId,
     required Box<Venda> vendasBox,
+    Box<FechamentoMensal>? fechamentosSnapshotBox,
   }) async {
+    final idLojaResumo = lojaId.trim();
+
+    if (fechamentosSnapshotBox != null &&
+        mesEhAnteriorAoCorrente(ano, mes)) {
+      final snap = _obterFechamentoSalvo(
+        fechamentosSnapshotBox,
+        idLojaResumo,
+        ano,
+        mes,
+      );
+      if (snap != null && snap.isInBox) {
+        return (
+          venda: snap.vendaTotal,
+          custo: snap.custoTotal,
+          taxas: snap.taxasTotal,
+          lucro: snap.lucroTotal,
+          dinheiro: snap.totalDinheiro,
+          pix: snap.totalPix,
+          cartao: snap.totalCartao,
+        );
+      }
+    }
+
     final vendasMes = vendasBox.values.where(
       (v) =>
-          v.lojaId == lojaId &&
+          (v.lojaId ?? '').trim() == idLojaResumo &&
           incluirVendaEmMetricas(v) &&
           _sameMonth(v.data, ano, mes),
     );
 
-    final cfg = await RelatorioTaxasConfig.loadForLoja(lojaId);
+    final cfg = await RelatorioTaxasConfig.loadForLoja(idLojaResumo);
     double venda = 0, custo = 0, taxas = 0;
     for (final v in vendasMes) {
       venda += v.total;
