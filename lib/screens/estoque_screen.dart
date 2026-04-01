@@ -2000,28 +2000,31 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     }
     String tam = '';
     String cor = '';
+    String extraValor = '';
     int qtdFinal = 1;
+    var variacaoConfirmada = false;
 
     final temVariacao = produtoAlvo.usaVariacoes || produtoAlvo.estoquePorTamanho.isNotEmpty;
 
     if (temVariacao) {
-      // Produto com variação: exige seleção de tamanho (e cor se tiver)
-      final result = await showModalBottomSheet<({String tam, String cor, int qtd})>(
+      // Produto com variação: tamanho, cor, quantidade e personalização (letra/estampa) quando houver
+      await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (_) => NovaVendaVariacaoSheet(
           produto: produtoAlvo,
           preco: produtoAlvo.precoFinal,
-          onConfirmar: (t, c, q) {
-            // Sheet faz pop com resultado; callback mantido por compatibilidade
+          onConfirmar: (t, c, q, ex, _) {
+            tam = t;
+            cor = c;
+            qtdFinal = q;
+            extraValor = ex;
+            variacaoConfirmada = true;
           },
         ),
       );
-      if (result == null || !mounted) return;
-      tam = result.tam;
-      cor = result.cor;
-      qtdFinal = result.qtd;
+      if (!variacaoConfirmada || !mounted) return;
     } else {
       final confirmar = await showDialog<bool>(
         context: context,
@@ -2085,6 +2088,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         produtoNome: produtoAlvo.nome,
         tamanho: tam,
         cor: cor,
+        variacaoExtra: extraValor,
         quantidade: qtdFinal,
         operacao: 'baixa',
       );
