@@ -10,12 +10,14 @@ import '../../core/compra_item_pipeline_constants.dart';
 import '../../core/hive_box_names.dart';
 import '../../models/compra_fornecedor.dart';
 import '../../models/compra_item_pipeline.dart';
+import '../../models/fornecedor.dart';
 import '../../models/produto.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
 import '../../services/compra_item_pipeline_store.dart';
 import '../../services/store_resolver_facade.dart';
 import '../../widgets/compra_pipeline_origem_cancelada_notice.dart';
 import 'compra_fornecedor_form_screen.dart';
+import 'fornecedor_compras_screen.dart';
 import '../precificacao_universal_screen.dart';
 import '../produto_form_screen.dart';
 
@@ -409,6 +411,117 @@ class _CompraPipelinePendentesEstoqueScreenState
     if (mounted) await _carregar();
   }
 
+  Future<void> _abrirFornecedorOrigem(CompraItemPipeline row) async {
+    final lid = _lojaId?.trim();
+    if (lid == null || lid.isEmpty) return;
+
+    final boxName = HiveBoxNames.fornecedores(lid);
+    late Box<Fornecedor> fBox;
+    try {
+      if (Hive.isBoxOpen(boxName)) {
+        fBox = Hive.box<Fornecedor>(boxName);
+      } else {
+        fBox = await Hive.openBox<Fornecedor>(boxName);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível abrir o cadastro de fornecedores.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    int? hiveKey;
+    final cid = row.compraId.trim();
+    if (cid.isNotEmpty) {
+      final cBox = await CompraFornecedorHiveStore.openBox(lid);
+      final compra = cBox?.get(cid);
+      if (compra != null) {
+        hiveKey = compra.fornecedorHiveKey;
+      }
+    }
+
+    if (hiveKey != null) {
+      final f = fBox.get(hiveKey);
+      if (!mounted) return;
+      if (f != null && f.lojaId.trim() == lid) {
+        await Navigator.push<void>(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => FornecedorComprasScreen(
+              lojaId: lid,
+              fornecedorHiveKey: hiveKey!,
+              fornecedor: f,
+            ),
+          ),
+        );
+        if (mounted) await _carregar();
+        return;
+      }
+    }
+
+    final want = _normalizarTermoBusca(row.fornecedorNome);
+    if (want.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Fornecedor não identificado neste item.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    Fornecedor? unico;
+    int? unicoKey;
+    var n = 0;
+    for (final k in fBox.keys) {
+      final o = fBox.get(k);
+      if (o == null) continue;
+      if (o.lojaId.trim() != lid) continue;
+      if (_normalizarTermoBusca(o.nome) != want) continue;
+      n++;
+      unico = o;
+      unicoKey = k is int ? k : int.tryParse('$k');
+    }
+
+    if (!mounted) return;
+    if (n == 1 && unico != null && unicoKey != null) {
+      final fk = unicoKey;
+      final ff = unico;
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => FornecedorComprasScreen(
+            lojaId: lid,
+            fornecedorHiveKey: fk,
+            fornecedor: ff,
+          ),
+        ),
+      );
+      if (mounted) await _carregar();
+      return;
+    }
+    if (n > 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Vários fornecedores com esse nome. Use Ver compra para identificar.',
+          ),
+        ),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fornecedor não encontrado neste aparelho.'),
+      ),
+    );
+  }
+
   Widget _buildResumoCards(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     Widget mini(String rotulo, int n, Color accent) {
@@ -528,21 +641,42 @@ class _CompraPipelinePendentesEstoqueScreenState
     );
   }
 
-  Widget _acaoSecundariaVerCompra(CompraItemPipeline row) {
-    if (row.compraId.trim().isEmpty) return const SizedBox.shrink();
+  Widget _linhaAcoesSecundarias(CompraItemPipeline row) {
     final cs = Theme.of(context).colorScheme;
-    return Align(
-      alignment: Alignment.centerRight,
-      child: TextButton.icon(
-        onPressed: () => _abrirCompraOrigem(row),
-        icon: const Icon(Icons.receipt_long_outlined, size: 16),
-        label: const Text('Ver compra'),
+    Widget mini(String label, IconData icon, VoidCallback onTap) {
+      return TextButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 15),
+        label: Text(label, style: const TextStyle(fontSize: 12)),
         style: TextButton.styleFrom(
           foregroundColor: cs.onSurfaceVariant,
           visualDensity: VisualDensity.compact,
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          padding: const EdgeInsets.only(left: 8, right: 4, top: 0, bottom: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         ),
+      );
+    }
+
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 2,
+        runSpacing: 4,
+        children: [
+          if (row.compraId.trim().isNotEmpty)
+            mini(
+              'Ver compra',
+              Icons.receipt_long_outlined,
+              () => _abrirCompraOrigem(row),
+            ),
+          mini(
+            'Ver fornecedor',
+            Icons.storefront_outlined,
+            () => _abrirFornecedorOrigem(row),
+          ),
+        ],
       ),
     );
   }
@@ -587,7 +721,7 @@ class _CompraPipelinePendentesEstoqueScreenState
                 icon: Icons.calculate_outlined,
                 onPressed: _abrirPrecificacao,
               ),
-              _acaoSecundariaVerCompra(row),
+              _linhaAcoesSecundarias(row),
             ],
           ),
         ),
@@ -631,7 +765,7 @@ class _CompraPipelinePendentesEstoqueScreenState
                 icon: Icons.inventory_2_outlined,
                 onPressed: () => _abrirFinalizacao(row),
               ),
-              _acaoSecundariaVerCompra(row),
+              _linhaAcoesSecundarias(row),
             ],
           ),
         ),
@@ -690,7 +824,7 @@ class _CompraPipelinePendentesEstoqueScreenState
                         ),
                   ),
                 ),
-              _acaoSecundariaVerCompra(row),
+              _linhaAcoesSecundarias(row),
             ],
           ),
         ),
