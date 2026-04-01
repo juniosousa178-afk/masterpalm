@@ -31,4 +31,7 @@ class HiveBoxNames {
 
   /// Cadastro de gastos fixos mensais (sem geração automática nesta fase).
   static String gastosFixosMensais(String lojaId) => 'gastos_fixos_$lojaId';
+
+  /// Lançamentos de compra por fornecedor (módulo interno; por loja).
+  static String comprasFornecedor(String lojaId) => 'compras_fornecedor_$lojaId';
 }
