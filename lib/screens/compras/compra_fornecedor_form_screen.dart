@@ -13,6 +13,7 @@ import '../../models/compra_fornecedor_constants.dart';
 import '../../models/compra_fornecedor_item.dart';
 import '../../models/produto.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
+import '../../services/compra_para_pipeline_service.dart';
 
 class CompraFornecedorFormScreen extends StatefulWidget {
   const CompraFornecedorFormScreen({
@@ -77,6 +78,13 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
             quantidade: x.quantidade,
             custoUnitario: x.custoUnitario,
             productId: x.productId,
+            itemCompraId: x.itemCompraId.trim().isEmpty
+                ? _uuid.v4()
+                : x.itemCompraId,
+            codigoInterno: x.codigoInterno,
+            codigoBarras: x.codigoBarras,
+            observacaoItem: x.observacaoItem,
+            unidade: x.unidade,
           )));
       _confirmadoEm = e.confirmadoEm;
       _estoqueIntegrado = e.estoqueIntegrado;
@@ -215,6 +223,8 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
                                       productId: p.idFirebase.trim().isEmpty
                                           ? null
                                           : p.idFirebase.trim(),
+                                      itemCompraId: _uuid.v4(),
+                                      codigoBarras: p.codigoBarras.trim(),
                                     );
                                     Navigator.pop(ctx);
                                   },
@@ -241,33 +251,70 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     final base = escolhido!;
     final qtdCtrl = TextEditingController(text: '${base.quantidade}');
     final custoCtrl = TextEditingController(text: _fmtNum(base.custoUnitario));
+    final ciCtrl = TextEditingController(text: base.codigoInterno);
+    final eanCtrl = TextEditingController(text: base.codigoBarras);
+    final obsCtrl = TextEditingController(text: base.observacaoItem);
+    final unidadeCtrl = TextEditingController(text: base.unidade);
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Quantidade e custo'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(base.produtoNome,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: qtdCtrl,
-              decoration: const InputDecoration(labelText: 'Quantidade'),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: custoCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Custo unitário',
-                hintText: '0,00',
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(base.produtoNome,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: qtdCtrl,
+                decoration: const InputDecoration(labelText: 'Quantidade'),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-          ],
+              const SizedBox(height: 8),
+              TextField(
+                controller: custoCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Custo unitário',
+                  hintText: '0,00',
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ciCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Código interno (opcional)',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: eanCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Código de barras (opcional)',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: unidadeCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Unidade (opcional)',
+                  hintText: 'Ex: UN, KG',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: obsCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Observação do item (opcional)',
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -287,6 +334,14 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     final custo = _parseMoney(custoCtrl.text);
     qtdCtrl.dispose();
     custoCtrl.dispose();
+    final codInt = ciCtrl.text.trim();
+    final ean = eanCtrl.text.trim();
+    final obs = obsCtrl.text.trim();
+    final un = unidadeCtrl.text.trim();
+    ciCtrl.dispose();
+    eanCtrl.dispose();
+    obsCtrl.dispose();
+    unidadeCtrl.dispose();
     if (qtd <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Quantidade inválida')),
@@ -299,6 +354,13 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         quantidade: qtd,
         custoUnitario: custo,
         productId: base.productId,
+        itemCompraId: base.itemCompraId.trim().isEmpty
+            ? _uuid.v4()
+            : base.itemCompraId,
+        codigoInterno: codInt,
+        codigoBarras: ean,
+        observacaoItem: obs,
+        unidade: un,
       ));
     });
   }
@@ -307,12 +369,31 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     setState(() => _itens.removeAt(i));
   }
 
+  void _ensureItemCompraIds() {
+    for (var i = 0; i < _itens.length; i++) {
+      if (_itens[i].itemCompraId.trim().isEmpty) {
+        _itens[i] = _itens[i].copyWith(itemCompraId: _uuid.v4());
+      }
+    }
+  }
+
+  Future<void> _sincronizarPipelineSeConfirmada(CompraFornecedor c) async {
+    if (c.statusCompra == CompraFornecedorStatusCompra.confirmada) {
+      await CompraParaPipelineService.sincronizarItensCompraConfirmada(c);
+    }
+  }
+
   CompraFornecedor _montarModelo({
     required String statusCompra,
     required String statusPagamento,
   }) {
+    _ensureItemCompraIds();
     final id = _compraId ?? _uuid.v4();
     final agora = DateTime.now();
+    DateTime? conf = _confirmadoEm;
+    if (statusCompra == CompraFornecedorStatusCompra.confirmada) {
+      conf ??= widget.compraExistente?.confirmadoEm ?? agora;
+    }
     return CompraFornecedor(
       id: id,
       lojaId: widget.lojaId.trim(),
@@ -330,7 +411,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       itens: List<CompraFornecedorItem>.from(_itens),
       estoqueIntegrado: _estoqueIntegrado,
       idLancamentoFinanceiro: _idLancamentoFinanceiro,
-      confirmadoEm: _confirmadoEm,
+      confirmadoEm: conf,
       criadoEm: widget.compraExistente?.criadoEm ?? agora,
       atualizadoEm: agora,
     );
@@ -380,6 +461,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       );
       _compraId = c.id;
       await box.put(c.id, c);
+      await _sincronizarPipelineSeConfirmada(c);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Compra atualizada')),
@@ -408,7 +490,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
 
       final jaConfirmada =
           _statusCompra == CompraFornecedorStatusCompra.confirmada;
-      final novoStatus = CompraFornecedorStatusCompra.confirmada;
+      const novoStatus = CompraFornecedorStatusCompra.confirmada;
       final confEm = jaConfirmada
           ? (_confirmadoEm ?? widget.compraExistente?.confirmadoEm ?? DateTime.now())
           : DateTime.now();
@@ -431,6 +513,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
 
       _compraId = finalModel.id;
       await box.put(finalModel.id, finalModel);
+      await _sincronizarPipelineSeConfirmada(finalModel);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -596,7 +679,8 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
           const SizedBox(height: 20),
           _secao('Status', [
             DropdownButtonFormField<String>(
-              value: _statusCompra,
+              key: ValueKey<String>('stc_$_statusCompra'),
+              initialValue: _statusCompra,
               decoration: const InputDecoration(
                 labelText: 'Status da compra',
                 border: OutlineInputBorder(),
@@ -616,7 +700,8 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _statusPagamento,
+              key: ValueKey<String>('stp_$_statusPagamento'),
+              initialValue: _statusPagamento,
               decoration: const InputDecoration(
                 labelText: 'Status do pagamento',
                 border: OutlineInputBorder(),

@@ -34,4 +34,7 @@ class HiveBoxNames {
 
   /// Lançamentos de compra por fornecedor (módulo interno; por loja).
   static String comprasFornecedor(String lojaId) => 'compras_fornecedor_$lojaId';
+
+  /// Fila compra → precificação → estoque (por loja).
+  static String compraItemPipeline(String lojaId) => 'compra_item_pipeline_$lojaId';
 }

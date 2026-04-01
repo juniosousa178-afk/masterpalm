@@ -34,6 +34,7 @@ import '../services/catalogo_sync_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/sync_queue_service.dart';
 import 'produto_form_screen.dart';
+import 'compras/compra_pipeline_pendentes_estoque_screen.dart';
 import 'produto_combo_form_screen.dart';
 import 'dicas_ia_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -4001,6 +4002,27 @@ String _formatGradeTexto(Produto p) {
               tooltip: 'Cancelar seleção',
             ),
           ] else ...[
+            IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _primaryColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.receipt_long_outlined,
+                    color: _primaryColor, size: 20),
+              ),
+              onPressed: () {
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const CompraPipelinePendentesEstoqueScreen(),
+                  ),
+                );
+              },
+              tooltip: 'Compras — finalizar no estoque',
+            ),
             IconButton(
               icon: Container(
                 padding: const EdgeInsets.all(8),

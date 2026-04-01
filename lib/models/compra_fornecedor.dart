@@ -106,9 +106,6 @@ class CompraFornecedor extends HiveObject {
   double get valorEmAberto =>
       (valorTotal - valorPago).clamp(0.0, 1e15);
 
-  bool get podeEditarValoresPagamento =>
-      statusCompra == CompraFornecedorStatusCompra.confirmada;
-
   CompraFornecedor copyWith({
     String? id,
     String? lojaId,

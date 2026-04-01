@@ -21,13 +21,18 @@ class CompraFornecedorItemAdapter extends TypeAdapter<CompraFornecedorItem> {
       quantidade: fields[1] as int,
       custoUnitario: fields[2] as double,
       productId: fields[3] as String?,
+      itemCompraId: fields[4] == null ? '' : fields[4] as String,
+      codigoInterno: fields[5] == null ? '' : fields[5] as String,
+      codigoBarras: fields[6] == null ? '' : fields[6] as String,
+      observacaoItem: fields[7] == null ? '' : fields[7] as String,
+      unidade: fields[8] == null ? '' : fields[8] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, CompraFornecedorItem obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.produtoNome)
       ..writeByte(1)
@@ -35,7 +40,17 @@ class CompraFornecedorItemAdapter extends TypeAdapter<CompraFornecedorItem> {
       ..writeByte(2)
       ..write(obj.custoUnitario)
       ..writeByte(3)
-      ..write(obj.productId);
+      ..write(obj.productId)
+      ..writeByte(4)
+      ..write(obj.itemCompraId)
+      ..writeByte(5)
+      ..write(obj.codigoInterno)
+      ..writeByte(6)
+      ..write(obj.codigoBarras)
+      ..writeByte(7)
+      ..write(obj.observacaoItem)
+      ..writeByte(8)
+      ..write(obj.unidade);
   }
 
   @override

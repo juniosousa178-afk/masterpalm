@@ -10,8 +10,11 @@ import 'package:collection/collection.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import '../core/compra_item_pipeline_constants.dart';
 import '../core/hive_box_names.dart';
+import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
+import '../services/compra_item_pipeline_store.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/produtos_firestore_service.dart';
 import '../utils/moeda_input_formatter.dart';
@@ -43,6 +46,7 @@ class _PrecificacaoUniversalScreenState
   bool _carregando = true;
   bool _importando = false;
   String _filtroBusca = '';
+  int _qtdPipelineAguardando = 0;
 
   /// Controllers por item para Preço Pretendido (evita perda ao rolar)
   final Map<String, TextEditingController> _pretendidoControllers = {};
@@ -98,6 +102,8 @@ class _PrecificacaoUniversalScreenState
       }
 
       estoqueBox = Hive.box<Produto>(boxName);
+
+      await _atualizarContagemPipeline();
     } catch (e) {
       debugPrint("Erro ao inicializar box de produtos (type=${e.runtimeType})");
     } finally {
@@ -106,6 +112,95 @@ class _PrecificacaoUniversalScreenState
         _animationController.forward();
       }
     }
+  }
+
+  Future<void> _atualizarContagemPipeline() async {
+    if (_lojaId == null) return;
+    final b = await CompraItemPipelineStore.openBox(_lojaId!);
+    if (b == null) return;
+    var n = 0;
+    for (final p in b.values) {
+      if (p.lojaId == _lojaId &&
+          p.estado == CompraItemPipelineEstado.aguardandoPrecificacao) {
+        n++;
+      }
+    }
+    if (mounted) setState(() => _qtdPipelineAguardando = n);
+  }
+
+  Future<void> _incluirPendentesCompraNaFila() async {
+    if (_lojaId == null) return;
+    final b = await CompraItemPipelineStore.openBox(_lojaId!);
+    if (b == null) {
+      _showSnackBar('Fila de compras indisponível', isError: true);
+      return;
+    }
+    final jaNaFila = produtos
+        .where((m) => m['origem'] == PrecificacaoItemOrigem.compraPipeline)
+        .map((m) => m['pipelineDocId'] as String?)
+        .whereType<String>()
+        .toSet();
+    var added = 0;
+    for (final row in b.values) {
+      if (row.lojaId != _lojaId) continue;
+      if (row.estado != CompraItemPipelineEstado.aguardandoPrecificacao) {
+        continue;
+      }
+      if (jaNaFila.contains(row.id)) continue;
+      final cod = row.codigoBarras.trim().isNotEmpty
+          ? row.codigoBarras.trim()
+          : row.codigoInterno.trim();
+      produtos.add({
+        '_uid': row.id,
+        'nome': row.nomeProdutoProvisorio,
+        'custo': row.custoUnitario,
+        'quantidade': row.quantidade,
+        'precoPretendido': row.precoPretendidoUsuario,
+        'codigoProduto': cod,
+        'origem': PrecificacaoItemOrigem.compraPipeline,
+        'pipelineDocId': row.id,
+      });
+      added++;
+    }
+    if (!mounted) return;
+    setState(() {});
+    await _atualizarContagemPipeline();
+    _showSnackBar(
+      added > 0
+          ? '$added item(ns) da compra incluído(s) na fila de precificação.'
+          : 'Nenhum item novo da compra para incluir (ou já estão na lista).',
+      isWarning: added == 0,
+    );
+  }
+
+  Future<bool> _persistirPrecificacaoPipelineItem(
+    Map<String, dynamic> item,
+    String docId,
+  ) async {
+    if (_lojaId == null) return false;
+    final box = await CompraItemPipelineStore.openBox(_lojaId!);
+    if (box == null) return false;
+    final row = box.get(docId);
+    if (row == null) return false;
+    if (row.estado != CompraItemPipelineEstado.aguardandoPrecificacao) {
+      return false;
+    }
+    final custo = item['custo'] as double;
+    final precoPretendido =
+        (item['precoPretendido'] as num?)?.toDouble() ?? 0.0;
+    final precoSugerido = calcularPrecoVenda(custo);
+    final precoFinal = precoPretendido > 0 ? precoPretendido : precoSugerido;
+    await box.put(
+      docId,
+      row.copyWith(
+        precoSugerido: precoSugerido,
+        precoFinal: precoFinal,
+        precoPretendidoUsuario: precoPretendido,
+        estado: CompraItemPipelineEstado.precificadoPendenteEstoque,
+        atualizadoEm: DateTime.now(),
+      ),
+    );
+    return true;
   }
 
   void _showSnackBar(String message,
@@ -150,8 +245,13 @@ class _PrecificacaoUniversalScreenState
     return double.tryParse(valor) ?? 0.0;
   }
 
-  String _chaveItem(Map<String, dynamic> item) =>
-      '${item['_uid'] ?? identityHashCode(item)}_${item['nome']}_${item['custo']}_${item['quantidade']}_${item['codigoProduto'] ?? ''}';
+  String _chaveItem(Map<String, dynamic> item) {
+    if (item['origem'] == PrecificacaoItemOrigem.compraPipeline &&
+        (item['pipelineDocId'] as String?)?.trim().isNotEmpty == true) {
+      return 'pipe_${item['pipelineDocId']}';
+    }
+    return '${item['_uid'] ?? identityHashCode(item)}_${item['nome']}_${item['custo']}_${item['quantidade']}_${item['codigoProduto'] ?? ''}';
+  }
 
   Produto? _produtoExistenteParaItem(String nome, String codigoProduto) {
     final codigo = codigoProduto.trim();
@@ -226,6 +326,7 @@ class _PrecificacaoUniversalScreenState
             'quantidade': quantidade,
             'precoPretendido': 0.0,
             'codigoProduto': codigoProduto,
+            'origem': PrecificacaoItemOrigem.manual,
           });
           importSeq++;
         }
@@ -374,8 +475,19 @@ class _PrecificacaoUniversalScreenState
 
     int atualizados = 0;
     int criados = 0;
+    int pipelinePrecificados = 0;
 
     for (var item in produtos) {
+      final origem =
+          item['origem'] as String? ?? PrecificacaoItemOrigem.manual;
+      if (origem == PrecificacaoItemOrigem.compraPipeline) {
+        final docId = (item['pipelineDocId'] as String?)?.trim() ?? '';
+        if (docId.isEmpty) continue;
+        final ok = await _persistirPrecificacaoPipelineItem(item, docId);
+        if (ok) pipelinePrecificados++;
+        continue;
+      }
+
       final nome = item['nome'] as String;
       final custo = item['custo'] as double;
       final codigoProduto =
@@ -436,10 +548,19 @@ class _PrecificacaoUniversalScreenState
       _disposeControllerPretendido(key);
     }
 
+    await _atualizarContagemPipeline();
+
     if (mounted) {
       setState(() => produtos.clear());
-      _showSnackBar(
-          'Precificação concluída! $atualizados atualizado(s), $criados criado(s).');
+      final msg = StringBuffer('Precificação concluída!');
+      if (pipelinePrecificados > 0) {
+        msg.write(
+            ' $pipelinePrecificados da compra → pendente estoque (sem criar produto).');
+      }
+      if (atualizados > 0 || criados > 0) {
+        msg.write(' $atualizados atualizado(s), $criados criado(s) no estoque.');
+      }
+      _showSnackBar(msg.toString());
     }
   }
 
@@ -509,6 +630,7 @@ class _PrecificacaoUniversalScreenState
               'quantidade': quantidade,
               'precoPretendido': 0.0,
               'codigoProduto': '',
+              'origem': PrecificacaoItemOrigem.manual,
             });
           });
           Navigator.pop(ctx);
@@ -755,6 +877,8 @@ class _PrecificacaoUniversalScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildConfigCard(context),
+                    const SizedBox(height: 16),
+                    _buildCompraPipelineCard(context),
                     const SizedBox(height: 24),
                     _buildProdutosHeader(context),
                     if (produtos.isNotEmpty) ...[
@@ -878,6 +1002,76 @@ class _PrecificacaoUniversalScreenState
                     taxaCartaoController, Icons.credit_card),
               ],
             ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompraPipelineCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = isDark ? cs.primary : _primaryColor;
+    return Card(
+      elevation: 0,
+      color: isDark ? cs.surfaceContainerHighest : _cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: primaryColor.withValues(alpha: 0.3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.shopping_cart_outlined, color: primaryColor),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Compras confirmadas',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                ),
+                if (_qtdPipelineAguardando > 0)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _warningColor.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$_qtdPipelineAguardando pendente(s)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _warningColor,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Itens vindos do lançamento de compra: inclua na lista e use a mesma precificação. '
+              'Não criam produto no estoque até a finalização em Estoque.',
+              style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _incluirPendentesCompraNaFila,
+                icon: const Icon(Icons.playlist_add),
+                label: const Text('Incluir itens da compra na fila'),
+              ),
             ),
           ],
         ),
@@ -1169,6 +1363,18 @@ class _PrecificacaoUniversalScreenState
                         overflow: TextOverflow.ellipsis,
                         maxLines: 2,
                       ),
+                      if (item['origem'] ==
+                          PrecificacaoItemOrigem.compraPipeline) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'Origem: compra (pipeline — sem produto ainda)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: primaryColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                       if (((item['codigoProduto'] as String?) ?? '')
                           .trim()
                           .isNotEmpty) ...[

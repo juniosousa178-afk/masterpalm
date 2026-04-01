@@ -9,9 +9,12 @@ import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../core/compra_item_pipeline_constants.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_variacao_extra.dart';
+import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
+import '../services/compra_item_pipeline_store.dart';
 import '../utils/moeda_input_formatter.dart';
 import '../utils/text_utils.dart';
 import '../services/catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
@@ -106,7 +109,14 @@ String gerarSlug(String texto) {
 
 class ProdutoFormScreen extends StatefulWidget {
   final Produto? produto;
-  const ProdutoFormScreen({super.key, this.produto});
+  /// DocId do pipeline (`compraId_itemCompraId`) — finalização pós-compra.
+  final String? compraPipelineDocId;
+
+  const ProdutoFormScreen({
+    super.key,
+    this.produto,
+    this.compraPipelineDocId,
+  });
 
   @override
   State<ProdutoFormScreen> createState() => _ProdutoFormScreenState();
@@ -158,6 +168,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   bool _salvando = false;
   bool _removendoImagem = false;
   bool _sugerindoDescricao = false;
+
+  CompraItemPipeline? _bootstrapPipeline;
 
   /// Evita várias gravações em paralelo ao reordenar imagens (corrida na nuvem).
   Timer? _debouncePersistImagens;
@@ -455,6 +467,41 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       final idsDisponiveis = _embalagensDisponiveis.map((e) => e['id'].toString()).toSet();
       if (!idsDisponiveis.contains(_tipoEmbalagem)) {
         _tipoEmbalagem = _embalagensDisponiveis.first['id'].toString();
+      }
+
+      final pipeId = widget.compraPipelineDocId?.trim() ?? '';
+      if (pipeId.isNotEmpty) {
+        final pBox = await CompraItemPipelineStore.openBox(id);
+        final pip = pBox?.get(pipeId);
+        if (pip != null) {
+          if (pip.estado != CompraItemPipelineEstado.precificadoPendenteEstoque) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Item não está pendente de estoque (${CompraItemPipelineEstado.legivel(pip.estado)}).',
+                  ),
+                  backgroundColor: Colors.orange.shade800,
+                ),
+              );
+            }
+          } else {
+            _bootstrapPipeline = pip;
+            if (widget.produto == null) {
+              _nome.text = pip.nomeProdutoProvisorio;
+              _quantidade.text = '${pip.quantidade}';
+              _custo.text = MoedaInputFormatter.format(pip.custoUnitario);
+              _preco.text = MoedaInputFormatter.format(pip.precoFinal);
+              _fornecedor.text = pip.fornecedorNome;
+              if (pip.codigoBarras.isNotEmpty) {
+                _codigoBarras.text = pip.codigoBarras;
+              }
+              if (pip.observacaoItem.isNotEmpty) {
+                _descricao.text = pip.observacaoItem;
+              }
+            }
+          }
+        }
       }
 
       // Para novo produto: verificar se já existe ao mudar nome/categoria
@@ -1139,6 +1186,29 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     }
   }
 
+  /// Marca pipeline como concluído após Hive + sync do produto (idempotente).
+  Future<void> _vincularCompraPipelineAposSalvar(Produto salvo) async {
+    final docId = widget.compraPipelineDocId?.trim();
+    if (docId == null || docId.isEmpty || lojaId == null) return;
+    final pBox = await CompraItemPipelineStore.openBox(lojaId!);
+    if (pBox == null) return;
+    final row = pBox.get(docId);
+    if (row == null) return;
+    if (row.estado == CompraItemPipelineEstado.concluidoNoEstoque) return;
+    final k = salvo.key;
+    final hid = salvo.idFirebase.trim();
+    await pBox.put(
+      docId,
+      row.copyWith(
+        estado: CompraItemPipelineEstado.concluidoNoEstoque,
+        produtoHiveKey: k is int ? k : row.produtoHiveKey,
+        produtoIdFirebaseGravado:
+            hid.isNotEmpty ? hid : row.produtoIdFirebaseGravado,
+        atualizadoEm: DateTime.now(),
+      ),
+    );
+  }
+
   // ------------------------------
   // SALVAR PRODUTO (NOVO / EDIT)
   // ------------------------------
@@ -1285,6 +1355,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.live, lojaIdOverride: lojaId)
               .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
           await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+          await _vincularCompraPipelineAposSalvar(existente);
         } else {
           // 🔒 Limite free_limited: verifica antes de inserir
           final guard = LimitsGuard();
@@ -1325,7 +1396,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             frete: 0.0,
             gastosFixos: 0.0,
             gastosVariaveis: 0.0,
-            precoSugerido: 0.0,
+            precoSugerido: _bootstrapPipeline?.precoSugerido ?? 0.0,
             lojaId: lojaId!,
             emPromocao: _emPromocao,
             percentualPromo: percentualPromo,
@@ -1355,6 +1426,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.live, lojaIdOverride: lojaId)
               .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
           await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+          await _vincularCompraPipelineAposSalvar(novo);
         }
       } else {
         // EDITAR PRODUTO
@@ -1410,6 +1482,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live, lojaIdOverride: lojaId)
             .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
         await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        await _vincularCompraPipelineAposSalvar(p);
       }
 
       if (!mounted) return;
