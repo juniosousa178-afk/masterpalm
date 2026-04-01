@@ -1,5 +1,5 @@
 // lib/screens/public_catalog/widgets/catalog_combo_variation_sheet.dart
-// Modal para selecionar tamanho/cor de cada produto do combo no catálogo público.
+// Modal para selecionar tamanho/cor/variação extra de cada item do combo no catálogo público.
 
 import 'dart:math' as math;
 

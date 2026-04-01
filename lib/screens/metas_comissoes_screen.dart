@@ -985,7 +985,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                         Icon(Icons.account_balance, color: _primaryColor, size: 18),
                         SizedBox(width: 8),
                         Text(
-                          'Módulo financeiro (complementar)',
+                          'Módulo financeiro · complemento gerencial',
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
@@ -996,12 +996,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'No período: despesas operacionais ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalDespesasOperacionais)}, '
+                      'Lançamentos reais no período: despesas operacionais ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalDespesasOperacionais)}, '
                       'compras ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalCompraMercadoria)}, '
                       'investimentos ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalInvestimentos)}, '
                       'equipe ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalPagamentosEquipe)}. '
-                      'Metas e comissões acima seguem apenas vendas. '
-                      'Taxas de relatório (Loja Config) são fallback sobre vendas — não duplique interpretação com os mesmos gastos lançados aqui.',
+                      'Metas e comissões acima: só vendas. '
+                      'Não substitui o lucro de vendas; coexiste com taxas da Loja Config — evite somar a mesma despesa duas vezes.',
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
                     ),
                   ],

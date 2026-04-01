@@ -386,8 +386,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           pw.SizedBox(height: 8),
           pw.Text('Vendas: R\$ ${_fmt(d.venda)}'),
           pw.Text('Custo: R\$ ${_fmt(d.custo)}'),
-          pw.Text('Taxas: R\$ ${_fmt(d.taxas)}'),
-          pw.Text('Lucro: R\$ ${_fmt(d.lucro)}'),
+          pw.Text('Taxas (Loja Config): R\$ ${_fmt(d.taxas)}'),
+          pw.Text('Lucro de vendas: R\$ ${_fmt(d.lucro)}'),
         ],
       ),
     );
@@ -705,10 +705,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Acompanhe suas vendas e lucros',
+                              'Lucro de vendas = vendas − custo − taxas (Loja Config). Mês atual: ao vivo.',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha:0.9),
-                                fontSize: 14,
+                                fontSize: 13,
                               ),
                             ),
                           ],
@@ -863,7 +863,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           _buildSectionTitle(
             Icons.date_range,
             'Período Customizado',
-            subtitle: '${DateFormat('dd/MM/yyyy').format(_periodoInicio!)} - ${DateFormat('dd/MM/yyyy').format(_periodoFim!)}',
+            subtitle:
+                '${DateFormat('dd/MM/yyyy').format(_periodoInicio!)} - ${DateFormat('dd/MM/yyyy').format(_periodoFim!)} · cálculo ao vivo',
           ),
           const SizedBox(height: 12),
           periodoCustom != null && (periodoCustom.venda > 0 || periodoCustom.custo > 0)
@@ -885,7 +886,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         _buildSectionTitle(
           Icons.payment,
           'Formas de Pagamento',
-          subtitle: DateFormat('MMMM yyyy', 'pt_BR').format(hoje),
+          subtitle:
+              '${DateFormat('MMMM yyyy', 'pt_BR').format(hoje)} · mês em aberto · ao vivo',
         ),
         const SizedBox(height: 12),
         _buildPaymentCard(mesPorForma),
@@ -893,7 +895,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         const SizedBox(height: 24),
 
         // Card do dia
-        _buildSectionTitle(Icons.today, 'Hoje', subtitle: DateFormat('dd/MM/yyyy').format(hoje)),
+        _buildSectionTitle(
+          Icons.today,
+          'Hoje',
+          subtitle: '${DateFormat('dd/MM/yyyy').format(hoje)} · cálculo ao vivo',
+        ),
         const SizedBox(height: 12),
         temVendasDia
             ? _buildResumoCard(
@@ -910,7 +916,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         const SizedBox(height: 24),
 
         // Card do mês
-        _buildSectionTitle(Icons.calendar_today, 'Este Mês'),
+        _buildSectionTitle(
+          Icons.calendar_today,
+          'Este Mês',
+          subtitle: 'Mês em aberto · valores sujeitos a atualização',
+        ),
         const SizedBox(height: 12),
         temVendasMes
             ? _buildResumoCard(
@@ -927,7 +937,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         const SizedBox(height: 24),
 
         // Card do ano
-        _buildSectionTitle(Icons.calendar_month, 'Este Ano'),
+        _buildSectionTitle(
+          Icons.calendar_month,
+          'Este Ano',
+          subtitle: 'Acumulado no ano · cálculo ao vivo',
+        ),
         const SizedBox(height: 12),
         temVendasAno
             ? _buildResumoCard(
@@ -1279,7 +1293,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
               children: [
                 _buildDetailRow('Custo dos Produtos', custo, Icons.inventory_2, Colors.grey.shade700),
                 const SizedBox(height: 12),
-                _buildDetailRow('Taxas', taxas, Icons.receipt_long, _warningColor),
+                _buildDetailRow('Taxas (Loja Config)', taxas, Icons.receipt_long, _warningColor),
               ],
             ),
           ),
@@ -1307,7 +1321,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Lucro',
+                          'Lucro de vendas',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -1598,7 +1612,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                       ),
                       if (FechamentoService.mesEhAnteriorAoCorrente(f.ano, f.mes))
                         Text(
-                          'Snapshot congelado — não recalculado automaticamente.',
+                          'Snapshot histórico · fechamento salvo · valores preservados.',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.teal.shade700,
@@ -1607,7 +1621,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                         )
                       else
                         Text(
-                          'Mês em aberto — atualizado ao abrir este relatório (vendas + taxas).',
+                          'Mês em aberto · cálculo ao vivo ao abrir (vendas + taxas da loja).',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.blueGrey.shade600,
@@ -1636,16 +1650,19 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: _buildValueTile('Taxas', f.taxasTotal, _warningColor)),
+                    Expanded(child: _buildValueTile('Taxas (loja)', f.taxasTotal, _warningColor)),
                     const SizedBox(width: 12),
-                    Expanded(child: _buildValueTile('Lucro', f.lucroTotal, _successColor, isHighlight: true)),
+                    Expanded(
+                        child: _buildValueTile(
+                            'Lucro de vendas', f.lucroTotal, _successColor,
+                            isHighlight: true)),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
                   FechamentoService.mesEhAnteriorAoCorrente(f.ano, f.mes)
-                      ? 'Base: último snapshot salvo (lucro = vendas − custo − taxas na gravação).'
-                      : 'Base: vendas do mês − custo − taxas (Loja Config ou campo na venda).',
+                      ? 'Lucro de vendas = snapshot do fechamento (vendas − custo − taxas na gravação).'
+                      : 'Lucro de vendas ao vivo: vendas − custo − taxas (Loja Config ou valor na venda).',
                   style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                 ),
               ],
@@ -1714,7 +1731,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Complemento: lançamentos financeiros (pagos no mês)',
+                    'Complemento gerencial · módulo financeiro',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -1742,8 +1759,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ],
             const SizedBox(height: 8),
             Text(
-              'Lucro de vendas (inalterado): R\$ ${_fmt(f.lucroTotal)} → '
-              'Estimativa com módulo: R\$ ${_fmt(estimativa)}',
+              'Lucro de vendas (base): R\$ ${_fmt(f.lucroTotal)} → '
+              'Resultado ajustado (complemento): R\$ ${_fmt(estimativa)}',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -1752,8 +1769,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Atenção: as taxas % da loja podem estimar custos que você também lançou aqui — '
-              'não interprete as duas camadas como independentes se cobrirem o mesmo gasto.',
+              'Não substitui o lucro de vendas acima. Taxas da loja e lançamentos reais podem '
+              'cobrir o mesmo gasto — evite somar os dois como se fossem independentes.',
               style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
             ),
           ],

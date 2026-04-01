@@ -208,16 +208,50 @@ class _RelatoriosFinanceirosScreenState
     _metaAtual = _metasBox!.get(chave);
   }
 
+  /// Início dia 1 e fim último dia do mesmo mês civil.
+  bool _datasCorrespondemMesCivilInteiro(DateTime ini, DateTime fim) {
+    if (ini.year != fim.year || ini.month != fim.month) return false;
+    if (ini.day != 1) return false;
+    final ultimoDia = DateTime(ini.year, ini.month + 1, 0).day;
+    return fim.day == ultimoDia;
+  }
+
+  /// Snapshot da loja (todos vendedores) quando o filtro é exatamente um mês passado completo.
+  FechamentoMensal? get _snapshotMesHistoricoSeAplica {
+    if (_fechamentosBox == null || _lojaId.isEmpty) return null;
+    if (_filtroVendedor != 'GERAL') return null;
+    final ini = _dataInicio;
+    final fim = _dataFim;
+    if (ini == null || fim == null) return null;
+    if (!_datasCorrespondemMesCivilInteiro(ini, fim)) return null;
+    final ano = ini.year;
+    final mes = ini.month;
+    if (!FechamentoService.mesEhAnteriorAoCorrente(ano, mes)) return null;
+    final f = FechamentoService.obterFechamentoSalvoParaMes(
+      _fechamentosBox!,
+      _lojaId,
+      ano,
+      mes,
+    );
+    if (f == null || !f.isInBox) return null;
+    return f;
+  }
+
   // =================== CÁLCULOS FINANCEIROS ===================
 
-  double get _totalVendido =>
-      _vendasFiltradas.fold(0.0, (s, v) => s + (v.total));
+  double get _totalVendido {
+    final s = _snapshotMesHistoricoSeAplica;
+    if (s != null) return s.vendaTotal;
+    return _vendasFiltradas.fold(0.0, (x, v) => x + (v.total));
+  }
 
   double get _qtdVendas => _vendasFiltradas.length.toDouble();
 
   double get _ticketMedio => _qtdVendas > 0 ? _totalVendido / _qtdVendas : 0;
 
   double get _totalTaxas {
+    final s = _snapshotMesHistoricoSeAplica;
+    if (s != null) return s.taxasTotal;
     double taxas = 0;
     for (final v in _vendasFiltradas) {
       taxas += FinanceiroRelatorioTaxas.taxasParaVenda(v, _taxasCfg);
@@ -225,18 +259,36 @@ class _RelatoriosFinanceirosScreenState
     return taxas;
   }
 
-  double get _custoProdutos =>
-      _vendasFiltradas.fold(0.0, (s, v) => s + (v.custoProdutos));
+  double get _custoProdutos {
+    final s = _snapshotMesHistoricoSeAplica;
+    if (s != null) return s.custoTotal;
+    return _vendasFiltradas.fold(0.0, (x, v) => x + (v.custoProdutos));
+  }
 
-  double get _lucroEstimado => _totalVendido - _totalTaxas - _custoProdutos;
+  double get _lucroEstimado {
+    final s = _snapshotMesHistoricoSeAplica;
+    if (s != null) return s.lucroTotal;
+    return _totalVendido - _totalTaxas - _custoProdutos;
+  }
 
   /// Totais por forma de pagamento (Dinheiro, Pix, Cartão) – discriminados
-  double get _totalDinheiro =>
-      _vendasFiltradas.fold(0.0, (s, v) => s + _valorPorForma(v, 'dinheiro'));
-  double get _totalPix =>
-      _vendasFiltradas.fold(0.0, (s, v) => s + _valorPorForma(v, 'pix'));
-  double get _totalCartao =>
-      _vendasFiltradas.fold(0.0, (s, v) => s + _valorPorForma(v, 'cartao'));
+  double get _totalDinheiro {
+    final s = _snapshotMesHistoricoSeAplica;
+    if (s != null) return s.totalDinheiro;
+    return _vendasFiltradas.fold(0.0, (x, v) => x + _valorPorForma(v, 'dinheiro'));
+  }
+
+  double get _totalPix {
+    final s = _snapshotMesHistoricoSeAplica;
+    if (s != null) return s.totalPix;
+    return _vendasFiltradas.fold(0.0, (x, v) => x + _valorPorForma(v, 'pix'));
+  }
+
+  double get _totalCartao {
+    final s = _snapshotMesHistoricoSeAplica;
+    if (s != null) return s.totalCartao;
+    return _vendasFiltradas.fold(0.0, (x, v) => x + _valorPorForma(v, 'cartao'));
+  }
 
   double _valorPorForma(Venda v, String forma) =>
       FinanceiroRelatorioTaxas.valorPorForma(v, forma);
@@ -458,6 +510,14 @@ class _RelatoriosFinanceirosScreenState
 
             // ========== RESUMO FINANCEIRO ==========
             _buildSecaoTitulo('Resumo Financeiro', Icons.attach_money),
+            const SizedBox(height: 4),
+            Text(
+              'Base principal: vendas − custo − taxas (Loja Config).',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white.withValues(alpha: 0.45),
+              ),
+            ),
             const SizedBox(height: 12),
             if (_vendasFiltradas.isEmpty)
               _buildEmptyState()
@@ -1040,7 +1100,7 @@ class _RelatoriosFinanceirosScreenState
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  'Módulo financeiro (complementar)',
+                  'Módulo financeiro · complemento gerencial',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -1052,9 +1112,8 @@ class _RelatoriosFinanceirosScreenState
           ),
           const SizedBox(height: 8),
           Text(
-            'Lançamentos pagos no período filtrado. Não substitui o lucro de vendas acima; '
-            'é uma camada adicional para gestão. Se as taxas % já estimam parte desses gastos, '
-            'não some mentalmente as duas como independentes.',
+            'Lançamentos reais no período. Não substitui o lucro de vendas dos cards acima. '
+            'Coexiste com as taxas da loja — evite dupla contagem se forem a mesma natureza.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 12),
           ),
           const SizedBox(height: 12),
@@ -1076,8 +1135,8 @@ class _RelatoriosFinanceirosScreenState
             ),
           const SizedBox(height: 12),
           Text(
-            'Lucro vendas (período): R\$ ${_fmt(lucroVendas)}  →  '
-            'Com módulo: R\$ ${_fmt(comModulo)}',
+            'Lucro de vendas (base): R\$ ${_fmt(lucroVendas)}  →  '
+            'Resultado ajustado (complemento): R\$ ${_fmt(comModulo)}',
             style: TextStyle(
               color: Colors.teal.shade200,
               fontSize: 13,
@@ -1089,13 +1148,21 @@ class _RelatoriosFinanceirosScreenState
     );
   }
 
-  /// Microfase C/D: deixa explícita a base (taxas/config) sem alterar o motor numérico.
+  /// Base do lucro: ao vivo (taxas/config) ou snapshot de fechamento quando aplicável.
   Widget _buildLegendaBaseLucroVendas() {
+    final snap = _snapshotMesHistoricoSeAplica;
     final temReal = _resumoModuloFinanceiro?.temAlgumDado == true;
+    if (snap != null) {
+      return Text(
+        'Snapshot histórico · fechamento salvo ${snap.mes.toString().padLeft(2, '0')}/${snap.ano} '
+        '(loja, todos os vendedores). Lucro de vendas = valores preservados do fechamento. '
+        '${temReal ? 'Módulo financeiro: complemento no período filtrado — não some com o mesmo gasto duas vezes.' : ''}',
+        style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.55)),
+      );
+    }
     return Text(
-      'Base do lucro de vendas: taxas da Loja Config (ou valor gravado na venda). '
-      '${temReal ? 'Há lançamentos reais no período — a linha “Com módulo” soma o impacto deles; '
-          'evite tratar taxas % e lançamentos como despesas totalmente distintas se forem o mesmo custo.' : ''}',
+      'Mês em aberto · cálculo ao vivo. Lucro de vendas: taxas da Loja Config (ou valor na venda). '
+      '${temReal ? 'Há complemento gerencial — linha “Resultado ajustado” inclui lançamentos; não duplique com taxas-proxy da mesma despesa.' : ''}',
       style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.55)),
     );
   }
@@ -1115,8 +1182,11 @@ class _RelatoriosFinanceirosScreenState
                     _successColor)),
             const SizedBox(width: 12),
             Expanded(
-                child: _buildCardMetrica('Taxas', 'R\$ ${_fmt(_totalTaxas)}',
-                    Icons.receipt_long, _warningColor)),
+                child: _buildCardMetrica(
+                    'Taxas (Loja Config)',
+                    'R\$ ${_fmt(_totalTaxas)}',
+                    Icons.receipt_long,
+                    _warningColor)),
           ],
         ),
         const SizedBox(height: 12),
@@ -1131,7 +1201,7 @@ class _RelatoriosFinanceirosScreenState
             const SizedBox(width: 12),
             Expanded(
                 child: _buildCardMetrica(
-                    'Lucro (vendas−taxas)',
+                    'Lucro de vendas',
                     'R\$ ${_fmt(_lucroEstimado)}',
                     Icons.trending_up,
                     _lucroEstimado >= 0 ? _successColor : _dangerColor)),
@@ -1928,11 +1998,12 @@ class _RelatoriosFinanceirosScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Fórmula do Lucro Estimado:',
+                    const Text('Lucro de vendas (base principal):',
                         style: TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
-                    const Text('Lucro = Total Vendido - Taxas - Custo dos Produtos',
+                    const Text(
+                        'Vendas − custo dos produtos − taxas',
                         style: TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 4),
                     Text(
@@ -1944,7 +2015,14 @@ class _RelatoriosFinanceirosScreenState
                 ),
               ),
               const SizedBox(height: 12),
-              Text('As taxas podem ser configuradas na Loja Config.',
+              Text(
+                'Mês civil já fechado com snapshot: os totais principais seguem o fechamento salvo. '
+                'Mês atual: cálculo ao vivo conforme vendas e config.',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.55), fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Text('Taxas configuráveis na Loja Config.',
                   style: TextStyle(
                       color: Colors.white.withValues(alpha:0.5), fontSize: 12)),
             ],
