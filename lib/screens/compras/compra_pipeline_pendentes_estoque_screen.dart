@@ -8,11 +8,14 @@ import 'package:intl/intl.dart';
 
 import '../../core/compra_item_pipeline_constants.dart';
 import '../../core/hive_box_names.dart';
+import '../../models/compra_fornecedor.dart';
 import '../../models/compra_item_pipeline.dart';
 import '../../models/produto.dart';
+import '../../services/compra_fornecedor_hive_store.dart';
 import '../../services/compra_item_pipeline_store.dart';
 import '../../services/store_resolver_facade.dart';
 import '../../widgets/compra_pipeline_origem_cancelada_notice.dart';
+import 'compra_fornecedor_form_screen.dart';
 import '../precificacao_universal_screen.dart';
 import '../produto_form_screen.dart';
 
@@ -358,6 +361,54 @@ class _CompraPipelinePendentesEstoqueScreenState
     if (mounted) await _carregar();
   }
 
+  Future<void> _abrirCompraOrigem(CompraItemPipeline row) async {
+    final lid = _lojaId?.trim();
+    if (lid == null || lid.isEmpty) return;
+    final cid = row.compraId.trim();
+    if (cid.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Compra de origem não identificada.')),
+        );
+      }
+      return;
+    }
+    final box = await CompraFornecedorHiveStore.openBox(lid);
+    if (!mounted) return;
+    if (box == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível abrir as compras salvas.'),
+        ),
+      );
+      return;
+    }
+    final CompraFornecedor? compra = box.get(cid);
+    if (!mounted) return;
+    if (compra == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Compra não encontrada neste aparelho (pode ter sido removida).',
+          ),
+        ),
+      );
+      return;
+    }
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => CompraFornecedorFormScreen(
+          lojaId: lid,
+          fornecedorHiveKey: compra.fornecedorHiveKey,
+          fornecedorNome: compra.fornecedorNome,
+          compraExistente: compra,
+        ),
+      ),
+    );
+    if (mounted) await _carregar();
+  }
+
   Widget _buildResumoCards(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     Widget mini(String rotulo, int n, Color accent) {
@@ -477,6 +528,25 @@ class _CompraPipelinePendentesEstoqueScreenState
     );
   }
 
+  Widget _acaoSecundariaVerCompra(CompraItemPipeline row) {
+    if (row.compraId.trim().isEmpty) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: TextButton.icon(
+        onPressed: () => _abrirCompraOrigem(row),
+        icon: const Icon(Icons.receipt_long_outlined, size: 16),
+        label: const Text('Ver compra'),
+        style: TextButton.styleFrom(
+          foregroundColor: cs.onSurfaceVariant,
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: const EdgeInsets.only(left: 8, right: 4, top: 0, bottom: 4),
+        ),
+      ),
+    );
+  }
+
   Widget _cardAguardandoPrecificacao(CompraItemPipeline row) {
     final cs = Theme.of(context).colorScheme;
     return Card(
@@ -517,6 +587,7 @@ class _CompraPipelinePendentesEstoqueScreenState
                 icon: Icons.calculate_outlined,
                 onPressed: _abrirPrecificacao,
               ),
+              _acaoSecundariaVerCompra(row),
             ],
           ),
         ),
@@ -560,6 +631,7 @@ class _CompraPipelinePendentesEstoqueScreenState
                 icon: Icons.inventory_2_outlined,
                 onPressed: () => _abrirFinalizacao(row),
               ),
+              _acaoSecundariaVerCompra(row),
             ],
           ),
         ),
@@ -618,6 +690,7 @@ class _CompraPipelinePendentesEstoqueScreenState
                         ),
                   ),
                 ),
+              _acaoSecundariaVerCompra(row),
             ],
           ),
         ),

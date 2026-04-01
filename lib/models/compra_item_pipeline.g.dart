@@ -38,8 +38,7 @@ class CompraItemPipelineAdapter extends TypeAdapter<CompraItemPipeline> {
       produtoHiveKey: fields[18] as int?,
       produtoIdFirebaseGravado: fields[19] as String,
       atualizadoEm: fields[20] as DateTime?,
-      // Registros antigos sem campo 21: compatível com Hive pré-campo.
-      compraCanceladaAposConclusao: (fields[21] as bool?) ?? false,
+      compraCanceladaAposConclusao: fields[21] as bool,
     );
   }
 
