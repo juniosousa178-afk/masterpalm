@@ -57,6 +57,7 @@ import '../utils/theme_notifier.dart';
 // ✅ notas fiscais
 import '../screens/notas_fiscais_screen.dart';
 import '../screens/contas_receber_screen.dart';
+import '../screens/financeiro/financeiro_screen.dart';
 
 // ✅ consolidação de lojas
 import '../screens/consolidate_stores_screen.dart';
@@ -2090,6 +2091,16 @@ class _HomeScreenState extends State<HomeScreen>
           pushWidget: const RelatorioFinanceiroScreen(),
           color: const Color(0xFFEC4899),
           subtitle: 'Financeiro',
+        ),
+      );
+      cards.add(
+        _buildMainCard(
+          Icons.payments_outlined,
+          'Gestão financeira',
+          '/financeiro',
+          pushWidget: const FinanceiroScreen(),
+          color: const Color(0xFF0D9488),
+          subtitle: 'Lançamentos',
         ),
       );
     }

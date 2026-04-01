@@ -13,6 +13,9 @@ import 'package:intl/intl.dart';
 import '../core/hive_box_names.dart';
 import '../models/venda.dart';
 import '../models/meta.dart';
+import '../models/lancamento_financeiro.dart';
+import '../services/financeiro_hive_store.dart';
+import '../services/financeiro_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/meta_firestore_service.dart';
 import '../utils/chart_utils.dart';
@@ -55,6 +58,9 @@ class _RelatoriosFinanceirosScreenState
   List<String> _vendedoresDisponiveis = [];
   Box<Meta>? _metasBox;
   Meta? _metaAtual;
+
+  Box<LancamentoFinanceiro>? _lancamentosFinanceirosBox;
+  ResumoFinanceiroModulo? _resumoModuloFinanceiro;
 
   /// Taxas de relatório (Loja Config) — mesmo critério que Relatório Financeiro e fechamento.
   RelatorioTaxasConfig _taxasCfg = RelatorioTaxasConfig.defaults;
@@ -100,6 +106,9 @@ class _RelatoriosFinanceirosScreenState
       if (_lojaId.isEmpty) {
         throw Exception('Loja não encontrada. Faça login novamente.');
       }
+
+      _lancamentosFinanceirosBox =
+          await FinanceiroHiveStore.openLancamentosBox(_lojaId);
 
       final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(_lojaId));
       _todasVendas = vendasBox.values.toList();
@@ -160,6 +169,21 @@ class _RelatoriosFinanceirosScreenState
       if (_dataFim != null && v.data.isAfter(_dataFim!)) return false;
       return true;
     }).toList();
+    _atualizarResumoModuloFinanceiro();
+  }
+
+  void _atualizarResumoModuloFinanceiro() {
+    final box = _lancamentosFinanceirosBox;
+    if (box == null || _lojaId.isEmpty || _dataInicio == null || _dataFim == null) {
+      _resumoModuloFinanceiro = null;
+      return;
+    }
+    _resumoModuloFinanceiro = FinanceiroService.resumoPeriodo(
+      box: box,
+      lojaId: _lojaId,
+      inicio: _dataInicio!,
+      fim: _dataFim!,
+    );
   }
 
   void _carregarMetaAtual() {
@@ -425,6 +449,10 @@ class _RelatoriosFinanceirosScreenState
               _buildEmptyState()
             else
               _buildCardsFinanceiros(),
+            if (_resumoModuloFinanceiro?.temAlgumDado == true) ...[
+              const SizedBox(height: 16),
+              _buildSecaoModuloFinanceiro(),
+            ],
             const SizedBox(height: 24),
 
             // ========== METAS DO MÊS ==========
@@ -961,6 +989,82 @@ class _RelatoriosFinanceirosScreenState
             textAlign: TextAlign.center,
             style:
                 TextStyle(color: Colors.white.withValues(alpha:0.5), fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Complemento ao resumo de vendas; invisivel se nao houver lancamentos pagos no periodo.
+  Widget _buildSecaoModuloFinanceiro() {
+    final r = _resumoModuloFinanceiro;
+    if (r == null || !r.temAlgumDado) return const SizedBox.shrink();
+
+    final lucroVendas = _lucroEstimado;
+    final comModulo = FinanceiroService.lucroEstimadoComModulo(
+      lucroVendasTaxasCustos: lucroVendas,
+      modulo: r,
+    );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.teal.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.wallet, color: Colors.teal.shade300, size: 22),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Módulo financeiro (complementar)',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Lançamentos pagos no período filtrado. Não substitui o lucro de vendas acima; '
+            'é uma camada adicional para gestão.',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Despesas operacionais: R\$ ${_fmt(r.totalDespesasOperacionais)} · '
+            'Compras: R\$ ${_fmt(r.totalCompraMercadoria)} · '
+            'Investimentos: R\$ ${_fmt(r.totalInvestimentos)} · '
+            'Equipe: R\$ ${_fmt(r.totalPagamentosEquipe)}',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          if (r.totalEntradasExtras.abs() > 1e-9 || r.totalAjustes.abs() > 1e-9)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Entradas extras: R\$ ${_fmt(r.totalEntradasExtras)} · '
+                'Ajustes: R\$ ${_fmt(r.totalAjustes)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+          const SizedBox(height: 12),
+          Text(
+            'Lucro vendas (período): R\$ ${_fmt(lucroVendas)}  →  '
+            'Com módulo: R\$ ${_fmt(comModulo)}',
+            style: TextStyle(
+              color: Colors.teal.shade200,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

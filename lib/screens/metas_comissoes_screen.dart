@@ -24,6 +24,8 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/public_store_link_helper.dart';
 import '../services/loja_id_service.dart';
+import '../services/financeiro_hive_store.dart';
+import '../services/financeiro_service.dart';
 
 class MetasComissoesScreen extends StatefulWidget {
   const MetasComissoesScreen({super.key});
@@ -64,6 +66,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   List<ResumoComissaoVendedor> _resumosVendedores = [];
   ResumoComissaoVendedor? _meuResumo;
   List<ComissaoVenda> _minhasComissoes = [];
+
+  /// Complemento informativo (admin): lancamentos do modulo financeiro no periodo.
+  ResumoFinanceiroModulo? _moduloFinanceiroComplemento;
 
   // UI
   final _formatoMoeda = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
@@ -198,6 +203,19 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
           inicio: _inicioMes,
           fim: _fimMes,
         );
+      }
+
+      _moduloFinanceiroComplemento = null;
+      if (_isAdmin) {
+        final box = await FinanceiroHiveStore.openLancamentosBox(_lojaId!);
+        if (box != null) {
+          _moduloFinanceiroComplemento = FinanceiroService.resumoPeriodo(
+            box: box,
+            lojaId: _lojaId!,
+            inicio: _inicioMes,
+            fim: _fimMes,
+          );
+        }
       }
 
       setState(() => _carregando = false);
@@ -949,6 +967,46 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 Expanded(child: _buildMetricaCard('Vendedores', '${_resumosVendedores.length}', Icons.people, Colors.purple)),
               ],
             ),
+            if (_moduloFinanceiroComplemento?.temAlgumDado == true) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _primaryColor.withValues(alpha: 0.35)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.account_balance, color: _primaryColor, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Módulo financeiro (complementar)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No período: despesas operacionais ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalDespesasOperacionais)}, '
+                      'compras ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalCompraMercadoria)}, '
+                      'investimentos ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalInvestimentos)}, '
+                      'equipe ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalPagamentosEquipe)}. '
+                      'Metas e comissões acima seguem apenas vendas.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

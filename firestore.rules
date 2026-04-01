@@ -567,6 +567,25 @@ service cloud.firestore {
         allow read, write: if isAdminOrSystem();
       }
 
+      // Módulo financeiro: espelho da escrita local (admin/programador); lojaId no doc = path.
+      match /lancamentos_financeiros/{docId} {
+        allow read: if isAdminOrSystem() && resource.data.lojaId == lojaId;
+        allow create: if isAdminOrSystem() && request.resource.data.lojaId == lojaId;
+        allow update: if isAdminOrSystem()
+          && request.resource.data.lojaId == lojaId
+          && resource.data.lojaId == lojaId;
+        allow delete: if isAdminOrSystem() && resource.data.lojaId == lojaId;
+      }
+
+      match /gastos_fixos_mensais/{docId} {
+        allow read: if isAdminOrSystem() && resource.data.lojaId == lojaId;
+        allow create: if isAdminOrSystem() && request.resource.data.lojaId == lojaId;
+        allow update: if isAdminOrSystem()
+          && request.resource.data.lojaId == lojaId
+          && resource.data.lojaId == lojaId;
+        allow delete: if isAdminOrSystem() && resource.data.lojaId == lojaId;
+      }
+
       match /notas_fiscais/{notaId} {
         allow read, write: if belongsToStore(lojaId);
       }

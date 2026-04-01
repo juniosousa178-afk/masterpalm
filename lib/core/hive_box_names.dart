@@ -24,4 +24,11 @@ class HiveBoxNames {
   static String notasFiscais(String lojaId) => 'notas_fiscais_$lojaId';
   static String relatorioFinanceiro(String lojaId) => 'loja_config_$lojaId';
   static String contasReceber(String lojaId) => 'contas_receber_$lojaId';
+
+  /// Lançamentos do módulo financeiro (complementar — por loja).
+  static String lancamentosFinanceiros(String lojaId) =>
+      'lancamentos_financeiros_$lojaId';
+
+  /// Cadastro de gastos fixos mensais (sem geração automática nesta fase).
+  static String gastosFixosMensais(String lojaId) => 'gastos_fixos_$lojaId';
 }

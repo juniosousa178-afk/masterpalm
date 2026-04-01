@@ -93,6 +93,7 @@ import 'screens/site_config_screen.dart';
 import 'screens/metas_comissoes_screen.dart';
 import 'screens/notas_fiscais_screen.dart';
 import 'screens/contas_receber_screen.dart';
+import 'screens/financeiro/financeiro_screen.dart';
 import 'screens/relatorio_mais_vendidos_screen.dart';
 import 'screens/relatorio_ranking_clientes_screen.dart';
 import 'screens/relatorio_lucratividade_produto_screen.dart';
@@ -158,6 +159,8 @@ import 'models/comissao_config.dart';
 import 'models/venda_tracking.dart';
 import 'models/nota_fiscal.dart';
 import 'models/conta_receber.dart';
+import 'models/lancamento_financeiro.dart';
+import 'models/gasto_fixo_mensal.dart';
 import 'models/estoque_item.dart';
 import 'models/categoria.dart';
 
@@ -1565,6 +1568,8 @@ Future<void> _bootstrapSafe() async {
     if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(NotaFiscalAdapter());
     if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(NotaFiscalItemAdapter());
     if (!Hive.isAdapterRegistered(29)) Hive.registerAdapter(ContaReceberAdapter());
+    if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(LancamentoFinanceiroAdapter());
+    if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(GastoFixoMensalAdapter());
     boot.mark('hive.adapters.ok');
     await Hive.openBox('sessao');
     await Hive.openBox('config');
@@ -1689,6 +1694,8 @@ Future<void> _bootstrapSafe() async {
     Hive.registerAdapter(NotaFiscalItemAdapter());
   }
   if (!Hive.isAdapterRegistered(29)) Hive.registerAdapter(ContaReceberAdapter());
+  if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(LancamentoFinanceiroAdapter());
+  if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(GastoFixoMensalAdapter());
   boot.mark('hive.adapters.ok');
   logD('🟢 [BOOT] Adapters Hive registrados');
 
@@ -2133,6 +2140,7 @@ class MyApp extends StatelessWidget {
               ),
               '/notas_fiscais': (_) => const NotasFiscaisScreen(),
               '/contas_receber': (_) => const ContasReceberScreen(),
+              '/financeiro': (_) => const FinanceiroScreen(),
               '/globo_sorteio': (_) => const GloboSorteioScreenWrapper(),
               '/home': (_) => const HomeScreen(),
 

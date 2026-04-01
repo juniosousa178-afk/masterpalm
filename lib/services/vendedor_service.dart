@@ -157,6 +157,7 @@ class VendedorService {
     'confirmar_compra',         // ❌ NUNCA
     'relatorios',               // ❌ NUNCA
     'relatorio_financeiro',     // ❌ NUNCA
+    'financeiro',               // ❌ NUNCA (modulo gestao financeira)
     'valores_globais',          // ❌ NUNCA
     'precificacao',             // ❌ NUNCA
     'fornecedores',             // ❌ NUNCA

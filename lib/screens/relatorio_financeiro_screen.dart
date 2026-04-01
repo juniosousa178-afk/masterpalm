@@ -11,7 +11,10 @@ import 'package:printing/printing.dart';
 import '../core/hive_box_names.dart';
 import '../models/venda.dart';
 import '../models/fechamento_mensal.dart';
+import '../models/lancamento_financeiro.dart';
 import '../services/fechamento_service.dart';
+import '../services/financeiro_hive_store.dart';
+import '../services/financeiro_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/vendas_firestore_service.dart';
 import '../core/venda_metrics_filter.dart';
@@ -42,6 +45,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
   late String lojaId;
   late Box<Venda> vendasBox;
   late Box<FechamentoMensal> fechamentosBox;
+  Box<LancamentoFinanceiro>? _lancamentosFinanceiroBox;
 
   DateTime hoje = DateTime.now();
   final TextEditingController _filtroFechController = TextEditingController();
@@ -124,6 +128,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     } catch (e) {
       fechamentosBox = await Hive.openBox<FechamentoMensal>('fechamentos_mensais');
     }
+
+    _lancamentosFinanceiroBox =
+        await FinanceiroHiveStore.openLancamentosBox(lojaId);
 
     _ultimoErroSync = null;
     final connectivity = await Connectivity().checkConnectivity();
@@ -1598,6 +1605,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ),
           ),
 
+          _buildComplementoModuloFinanceiro(f),
+
           // Formas de pagamento
           Container(
             padding: const EdgeInsets.all(16),
@@ -1618,6 +1627,84 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Complemento opcional: nao altera [FechamentoMensal] persistido; so exibicao.
+  Widget _buildComplementoModuloFinanceiro(FechamentoMensal f) {
+    final box = _lancamentosFinanceiroBox;
+    if (box == null) return const SizedBox.shrink();
+    final r = FinanceiroService.resumoMesCalendario(
+      box: box,
+      lojaId: lojaId,
+      ano: f.ano,
+      mes: f.mes,
+    );
+    if (!r.temAlgumDado) return const SizedBox.shrink();
+
+    final estimativa = FinanceiroService.lucroEstimadoComModulo(
+      lucroVendasTaxasCustos: f.lucroTotal,
+      modulo: r,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.indigo.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.indigo.shade100),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.account_balance_wallet_outlined,
+                    size: 18, color: Colors.indigo.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Complemento: lançamentos financeiros (pagos no mês)',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: Colors.indigo.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Despesas operacionais: R\$ ${_fmt(r.totalDespesasOperacionais)} · '
+              'Compras mercadoria: R\$ ${_fmt(r.totalCompraMercadoria)} · '
+              'Investimentos: R\$ ${_fmt(r.totalInvestimentos)} · '
+              'Equipe/pró-labore: R\$ ${_fmt(r.totalPagamentosEquipe)}',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+            ),
+            if (r.totalEntradasExtras.abs() > 1e-9 || r.totalAjustes.abs() > 1e-9) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Entradas extras: R\$ ${_fmt(r.totalEntradasExtras)} · '
+                'Ajustes: R\$ ${_fmt(r.totalAjustes)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              'Lucro de vendas (inalterado): R\$ ${_fmt(f.lucroTotal)} → '
+              'Estimativa com módulo: R\$ ${_fmt(estimativa)}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.indigo.shade800,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
