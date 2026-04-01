@@ -14,6 +14,7 @@ import '../services/permissao_service.dart';
 import '../services/fornecedores_firestore_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/sync_queue_service.dart';
+import 'compras/fornecedor_compras_screen.dart';
 
 class FornecedoresScreen extends StatefulWidget {
   const FornecedoresScreen({super.key});
@@ -835,6 +836,44 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
     }
   }
 
+  int? _resolverChaveHiveFornecedor(Fornecedor f) {
+    for (final k in _fornecedoresBox.keys) {
+      final o = _fornecedoresBox.get(k);
+      if (o == null) continue;
+      if (identical(o, f)) return k as int;
+      if (o.nome == f.nome &&
+          o.telefone == f.telefone &&
+          o.email == f.email &&
+          o.lojaId == f.lojaId &&
+          o.dataCadastro == f.dataCadastro) {
+        return k as int;
+      }
+    }
+    return null;
+  }
+
+  void _abrirComprasFornecedor(Fornecedor fornecedor) {
+    final key = _resolverChaveHiveFornecedor(fornecedor);
+    if (key == null || lojaId == null) {
+      _mostrarSnackBarModerno(
+        'Não foi possível abrir compras deste fornecedor.',
+        Icons.error_outline,
+        errorColor,
+      );
+      return;
+    }
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FornecedorComprasScreen(
+          lojaId: lojaId!,
+          fornecedorHiveKey: key,
+          fornecedor: fornecedor,
+        ),
+      ),
+    );
+  }
+
   Future<void> _enviarEmail(String email) async {
     final url = 'mailto:$email';
     final uri = Uri.tryParse(url);
@@ -1321,6 +1360,14 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                           ),
                         ],
                       ),
+                    ),
+                    IconButton(
+                      onPressed: () => _abrirComprasFornecedor(fornecedor),
+                      icon: const Icon(
+                        Icons.receipt_long_outlined,
+                        color: Color(0xFF6366F1),
+                      ),
+                      tooltip: 'Lançamento de compra',
                     ),
                     // Botão de remover
                     IconButton(

@@ -161,6 +161,8 @@ import 'models/nota_fiscal.dart';
 import 'models/conta_receber.dart';
 import 'models/lancamento_financeiro.dart';
 import 'models/gasto_fixo_mensal.dart';
+import 'models/compra_fornecedor.dart';
+import 'models/compra_fornecedor_item.dart';
 import 'models/estoque_item.dart';
 import 'models/categoria.dart';
 
@@ -1570,6 +1572,8 @@ Future<void> _bootstrapSafe() async {
     if (!Hive.isAdapterRegistered(29)) Hive.registerAdapter(ContaReceberAdapter());
     if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(LancamentoFinanceiroAdapter());
     if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(GastoFixoMensalAdapter());
+    if (!Hive.isAdapterRegistered(32)) Hive.registerAdapter(CompraFornecedorAdapter());
+    if (!Hive.isAdapterRegistered(33)) Hive.registerAdapter(CompraFornecedorItemAdapter());
     boot.mark('hive.adapters.ok');
     await Hive.openBox('sessao');
     await Hive.openBox('config');
@@ -1696,6 +1700,8 @@ Future<void> _bootstrapSafe() async {
   if (!Hive.isAdapterRegistered(29)) Hive.registerAdapter(ContaReceberAdapter());
   if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(LancamentoFinanceiroAdapter());
   if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(GastoFixoMensalAdapter());
+  if (!Hive.isAdapterRegistered(32)) Hive.registerAdapter(CompraFornecedorAdapter());
+  if (!Hive.isAdapterRegistered(33)) Hive.registerAdapter(CompraFornecedorItemAdapter());
   boot.mark('hive.adapters.ok');
   logD('🟢 [BOOT] Adapters Hive registrados');
 
