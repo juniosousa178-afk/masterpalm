@@ -12,7 +12,6 @@ import 'package:printing/printing.dart';
 
 import '../core/compra_item_pipeline_constants.dart';
 import '../core/hive_box_names.dart';
-import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
 import '../services/compra_item_pipeline_store.dart';
 import '../services/store_resolver_facade.dart';
@@ -1049,7 +1048,7 @@ class _PrecificacaoUniversalScreenState
                     ),
                     child: Text(
                       '$_qtdPipelineAguardando pendente(s)',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: _warningColor,

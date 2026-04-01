@@ -4,7 +4,6 @@
 import '../core/compra_item_pipeline_constants.dart';
 import '../models/compra_fornecedor.dart';
 import '../models/compra_fornecedor_constants.dart';
-import '../models/compra_fornecedor_item.dart';
 import '../models/compra_item_pipeline.dart';
 import 'compra_item_pipeline_store.dart';
 

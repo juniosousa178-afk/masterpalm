@@ -89,6 +89,7 @@ class _CompraPipelinePendentesEstoqueScreenState
     final existente =
         fid.isNotEmpty ? _produtoPorIdFirebase(pBox, fid) : null;
 
+    if (!mounted) return;
     await Navigator.push<bool>(
       context,
       MaterialPageRoute(
