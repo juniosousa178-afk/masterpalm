@@ -67,6 +67,17 @@ class CompraFornecedor extends HiveObject {
   @HiveField(18)
   DateTime atualizadoEm;
 
+  @HiveField(19, defaultValue: 0.0)
+  double outrasDespesas;
+
+  /// Espelho Firestore: true após gravação local até sync bem-sucedido.
+  @HiveField(20, defaultValue: true)
+  bool syncPendente;
+
+  /// Valores típicos: pendente | ok | erro (somente informativo).
+  @HiveField(21, defaultValue: 'pendente')
+  String syncStatus;
+
   CompraFornecedor({
     required this.id,
     required this.lojaId,
@@ -87,6 +98,9 @@ class CompraFornecedor extends HiveObject {
     this.confirmadoEm,
     DateTime? criadoEm,
     DateTime? atualizadoEm,
+    this.outrasDespesas = 0,
+    this.syncPendente = true,
+    this.syncStatus = 'pendente',
   })  : criadoEm = criadoEm ?? DateTime.now(),
         atualizadoEm = atualizadoEm ?? DateTime.now();
 
@@ -101,10 +115,18 @@ class CompraFornecedor extends HiveObject {
     return t;
   }
 
-  double get valorTotal => (subtotalItens + frete - desconto).clamp(0.0, 1e15);
+  /// Soma dos subtotais base (quantidade × custo unitário base).
+  double get subtotalItensBase => subtotalItens;
+
+  /// Total financeiro da compra (origem do evento; uma linha no futuro financeiro).
+  double get valorTotalFinanceiro =>
+      (subtotalItens + frete + outrasDespesas - desconto).clamp(0.0, 1e15);
+
+  /// Alias legado — mesmo que [valorTotalFinanceiro].
+  double get valorTotal => valorTotalFinanceiro;
 
   double get valorEmAberto =>
-      (valorTotal - valorPago).clamp(0.0, 1e15);
+      (valorTotalFinanceiro - valorPago).clamp(0.0, 1e15);
 
   CompraFornecedor copyWith({
     String? id,
@@ -126,6 +148,9 @@ class CompraFornecedor extends HiveObject {
     DateTime? confirmadoEm,
     DateTime? criadoEm,
     DateTime? atualizadoEm,
+    double? outrasDespesas,
+    bool? syncPendente,
+    String? syncStatus,
   }) {
     return CompraFornecedor(
       id: id ?? this.id,
@@ -148,6 +173,9 @@ class CompraFornecedor extends HiveObject {
       confirmadoEm: confirmadoEm ?? this.confirmadoEm,
       criadoEm: criadoEm ?? this.criadoEm,
       atualizadoEm: atualizadoEm ?? this.atualizadoEm,
+      outrasDespesas: outrasDespesas ?? this.outrasDespesas,
+      syncPendente: syncPendente ?? this.syncPendente,
+      syncStatus: syncStatus ?? this.syncStatus,
     );
   }
 }

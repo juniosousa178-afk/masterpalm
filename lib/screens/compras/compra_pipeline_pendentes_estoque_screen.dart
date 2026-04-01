@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../core/compra_item_pipeline_constants.dart';
 import '../../core/hive_box_names.dart';
 import '../../models/compra_fornecedor.dart';
+import '../../models/compra_fornecedor_constants.dart';
 import '../../models/compra_item_pipeline.dart';
 import '../../models/fornecedor.dart';
 import '../../models/produto.dart';
@@ -41,6 +42,10 @@ class CompraPipelinePendentesEstoqueScreen extends StatefulWidget {
 class _CompraPipelinePendentesEstoqueScreenState
     extends State<CompraPipelinePendentesEstoqueScreen> {
   static const Color _primary = Color(0xFF6366F1);
+  /// Acento discreto: etapa precificação (antes do estoque).
+  static const Color _prioridadePrecificacao = Color(0xFFB45309);
+  /// Acento discreto: pronto para cadastro final no estoque.
+  static const Color _prioridadeEstoque = Color(0xFF059669);
   bool _carregando = true;
   String? _lojaId;
   /// precificado_pendente_estoque
@@ -49,6 +54,9 @@ class _CompraPipelinePendentesEstoqueScreenState
   List<CompraItemPipeline> _listaAguardandoPrecificacao = const [];
   /// concluido + compra cancelada depois
   List<CompraItemPipeline> _listaRastreio = const [];
+
+  /// Leitura local por [compraId] — preenchido em [_carregar] (sem persistir).
+  Map<String, CompraFornecedor?> _compraCache = const {};
 
   _FiltroHub _filtro = _FiltroHub.pendentes;
   _OrdenacaoHub _ordenacao = _OrdenacaoHub.recentes;
@@ -234,6 +242,7 @@ class _CompraPipelinePendentesEstoqueScreenState
         _listaProntosEstoque = [];
         _listaAguardandoPrecificacao = [];
         _listaRastreio = [];
+        _compraCache = const {};
         _carregando = false;
       });
       return;
@@ -260,10 +269,35 @@ class _CompraPipelinePendentesEstoqueScreenState
       aguardando.sort((a, b) => b.atualizadoEm.compareTo(a.atualizadoEm));
       rastreio.sort((a, b) => b.atualizadoEm.compareTo(a.atualizadoEm));
     }
+
+    final idsCompra = <String>{};
+    for (final p in prontos) {
+      final id = p.compraId.trim();
+      if (id.isNotEmpty) idsCompra.add(id);
+    }
+    for (final p in aguardando) {
+      final id = p.compraId.trim();
+      if (id.isNotEmpty) idsCompra.add(id);
+    }
+    for (final p in rastreio) {
+      final id = p.compraId.trim();
+      if (id.isNotEmpty) idsCompra.add(id);
+    }
+    final Map<String, CompraFornecedor?> compraCache = {};
+    if (idsCompra.isNotEmpty) {
+      final cBox = await CompraFornecedorHiveStore.openBox(lojaId);
+      if (cBox != null) {
+        for (final id in idsCompra) {
+          compraCache[id] = cBox.get(id);
+        }
+      }
+    }
+
     setState(() {
       _listaProntosEstoque = prontos;
       _listaAguardandoPrecificacao = aguardando;
       _listaRastreio = rastreio;
+      _compraCache = compraCache;
       _carregando = false;
     });
   }
@@ -274,6 +308,85 @@ class _CompraPipelinePendentesEstoqueScreenState
 
   String _fmtMoney(double v) =>
       NumberFormat.currency(locale: 'pt_BR', symbol: r'R$').format(v);
+
+  static final DateFormat _fmtDataCompra = DateFormat('dd/MM/yyyy', 'pt_BR');
+
+  Widget _chipMiniStatus(BuildContext context, String texto) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: 0.45),
+        ),
+      ),
+      child: Text(
+        texto,
+        style: TextStyle(
+          fontSize: 10.5,
+          height: 1.2,
+          fontWeight: FontWeight.w500,
+          color: cs.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  /// Contexto compacto da compra (pipeline + cache Hive em [_carregar]).
+  Widget _miniResumoCompraNoCard(CompraItemPipeline row) {
+    final cid = row.compraId.trim();
+    if (cid.isEmpty) return const SizedBox.shrink();
+
+    final c = _compraCache[cid];
+    final refPipe = row.referenciaCompra.trim();
+    final refCompra = c?.referenciaInterna.trim() ?? '';
+    final ref = refCompra.isNotEmpty ? refCompra : refPipe;
+    final refOu = ref.isNotEmpty ? ref : '—';
+
+    final dataStr =
+        c != null ? _fmtDataCompra.format(c.dataCompra) : '—';
+    final linhaRefData = refPipe.isNotEmpty || refCompra.isNotEmpty
+        ? 'Ref. $refOu · $dataStr'
+        : 'Compra · $dataStr';
+
+    final cs = Theme.of(context).colorScheme;
+    final stC = c != null
+        ? CompraFornecedorStatusCompra.legivel(c.statusCompra)
+        : '—';
+    final stP = c != null
+        ? CompraFornecedorStatusPagamento.legivel(c.statusPagamento)
+        : '—';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            linhaRefData,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11.5,
+              height: 1.25,
+              color: cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              _chipMiniStatus(context, 'Compra: $stC'),
+              _chipMiniStatus(context, 'Pgto: $stP'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Produto? _produtoPorIdFirebase(Box<Produto> box, String fid) {
     final f = fid.trim();
@@ -641,6 +754,68 @@ class _CompraPipelinePendentesEstoqueScreenState
     );
   }
 
+  /// Card com faixa lateral + conteúdo (somente layout; sem lógica de negócio).
+  Widget _shellPipelineCard({
+    required VoidCallback? onTap,
+    required Color barColor,
+    required List<Widget> children,
+    double bottomMargin = 12,
+  }) {
+    return Card(
+      margin: EdgeInsets.only(bottom: bottomMargin),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 3, color: barColor),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 8, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: children,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _linhaEtapaPrioridade({
+    required String titulo,
+    required IconData icon,
+    required Color cor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: cor),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              titulo,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.15,
+                color: cor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _linhaAcoesSecundarias(CompraItemPipeline row) {
     final cs = Theme.of(context).colorScheme;
     Widget mini(String label, IconData icon, VoidCallback onTap) {
@@ -682,153 +857,149 @@ class _CompraPipelinePendentesEstoqueScreenState
   }
 
   Widget _cardAguardandoPrecificacao(CompraItemPipeline row) {
-    final cs = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: _abrirPrecificacao,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                row.nomeProdutoProvisorio,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+    return _shellPipelineCard(
+      onTap: _abrirPrecificacao,
+      barColor: _prioridadePrecificacao.withValues(alpha: 0.85),
+      children: [
+        Text(
+          row.nomeProdutoProvisorio,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 6),
-              Text(
-                row.fornecedorNome,
-                style: const TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Aguardando precificação · Qtd ${row.quantidade} · '
-                'Custo ${_fmtMoney(row.custoUnitario)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: cs.primary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              _acaoRapida(
-                label: 'Precificar',
-                icon: Icons.calculate_outlined,
-                onPressed: _abrirPrecificacao,
-              ),
-              _linhaAcoesSecundarias(row),
-            ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          row.fornecedorNome,
+          style: const TextStyle(fontSize: 13),
+        ),
+        _miniResumoCompraNoCard(row),
+        _linhaEtapaPrioridade(
+          titulo: 'Precificação',
+          icon: Icons.calculate_outlined,
+          cor: _prioridadePrecificacao,
+        ),
+        Text(
+          'Aguardando precificação · Qtd ${row.quantidade} · '
+          'Custo ${_fmtMoney(row.custoUnitario)}',
+          style: TextStyle(
+            fontSize: 12,
+            color: _prioridadePrecificacao.withValues(alpha: 0.92),
+            fontWeight: FontWeight.w500,
           ),
         ),
-      ),
+        _acaoRapida(
+          label: 'Precificar',
+          icon: Icons.calculate_outlined,
+          onPressed: _abrirPrecificacao,
+        ),
+        _linhaAcoesSecundarias(row),
+      ],
     );
   }
 
   Widget _cardProntoEstoque(CompraItemPipeline row) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _abrirFinalizacao(row),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                row.nomeProdutoProvisorio,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+    return _shellPipelineCard(
+      onTap: () => _abrirFinalizacao(row),
+      barColor: _prioridadeEstoque.withValues(alpha: 0.88),
+      children: [
+        Text(
+          row.nomeProdutoProvisorio,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 6),
-              Text(
-                row.fornecedorNome,
-                style: const TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Pronto no estoque · Qtd ${row.quantidade} · '
-                'Custo ${_fmtMoney(row.custoUnitario)} · '
-                'Venda ${_fmtMoney(row.precoFinal)}',
-                style: const TextStyle(fontSize: 12, height: 1.25),
-              ),
-              _acaoRapida(
-                label: 'Finalizar',
-                icon: Icons.inventory_2_outlined,
-                onPressed: () => _abrirFinalizacao(row),
-              ),
-              _linhaAcoesSecundarias(row),
-            ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          row.fornecedorNome,
+          style: const TextStyle(fontSize: 13),
+        ),
+        _miniResumoCompraNoCard(row),
+        _linhaEtapaPrioridade(
+          titulo: 'Estoque',
+          icon: Icons.inventory_2_outlined,
+          cor: _prioridadeEstoque,
+        ),
+        Text(
+          'Pronto no estoque · Qtd ${row.quantidade} · '
+          'Custo ${_fmtMoney(row.custoUnitario)} · '
+          'Venda ${_fmtMoney(row.precoFinal)}',
+          style: TextStyle(
+            fontSize: 12,
+            height: 1.25,
+            color: _prioridadeEstoque.withValues(alpha: 0.92),
+            fontWeight: FontWeight.w500,
           ),
         ),
-      ),
+        _acaoRapida(
+          label: 'Finalizar',
+          icon: Icons.inventory_2_outlined,
+          onPressed: () => _abrirFinalizacao(row),
+        ),
+        _linhaAcoesSecundarias(row),
+      ],
     );
   }
 
   Widget _cardRastreio(CompraItemPipeline row) {
     final temRef = _temReferenciaProdutoRastreio(row);
     final cs = Theme.of(context).colorScheme;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: temRef ? () => _abrirProdutoRastreio(row) : null,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                row.nomeProdutoProvisorio,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+    final barNeutra = cs.outlineVariant.withValues(alpha: 0.75);
+    final rotuloRastreio = cs.onSurfaceVariant.withValues(alpha: 0.9);
+    return _shellPipelineCard(
+      onTap: temRef ? () => _abrirProdutoRastreio(row) : null,
+      barColor: barNeutra,
+      bottomMargin: 10,
+      children: [
+        Text(
+          row.nomeProdutoProvisorio,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    row.fornecedorNome,
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                  const CompraPipelineOrigemCanceladaChip(),
-                ],
-              ),
-              if (temRef)
-                _acaoRapida(
-                  label: 'Ver produto',
-                  icon: Icons.open_in_new_rounded,
-                  onPressed: () => _abrirProdutoRastreio(row),
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.only(top: 6, bottom: 4),
-                  child: Text(
-                    'Sem vínculo de produto neste aparelho.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                          fontStyle: FontStyle.italic,
-                        ),
-                  ),
-                ),
-              _linhaAcoesSecundarias(row),
-            ],
-          ),
         ),
-      ),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              row.fornecedorNome,
+              style: const TextStyle(fontSize: 13),
+            ),
+            const CompraPipelineOrigemCanceladaChip(),
+          ],
+        ),
+        _miniResumoCompraNoCard(row),
+        _linhaEtapaPrioridade(
+          titulo: 'Rastreio',
+          icon: Icons.history_rounded,
+          cor: rotuloRastreio,
+        ),
+        if (temRef)
+          _acaoRapida(
+            label: 'Ver produto',
+            icon: Icons.open_in_new_rounded,
+            onPressed: () => _abrirProdutoRastreio(row),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 4),
+            child: Text(
+              'Sem vínculo de produto neste aparelho.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontStyle: FontStyle.italic,
+                  ),
+            ),
+          ),
+        _linhaAcoesSecundarias(row),
+      ],
     );
   }
 

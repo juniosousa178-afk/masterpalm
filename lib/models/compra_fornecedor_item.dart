@@ -33,6 +33,27 @@ class CompraFornecedorItem {
   @HiveField(8, defaultValue: '')
   String unidade;
 
+  @HiveField(9, defaultValue: 0.0)
+  double subtotalBase;
+
+  @HiveField(10, defaultValue: 0.0)
+  double percentualParticipacao;
+
+  @HiveField(11, defaultValue: 0.0)
+  double freteRateado;
+
+  @HiveField(12, defaultValue: 0.0)
+  double descontoRateado;
+
+  @HiveField(13, defaultValue: 0.0)
+  double outrasDespesasRateadas;
+
+  @HiveField(14, defaultValue: 0.0)
+  double custoUnitarioFinal;
+
+  @HiveField(15, defaultValue: 0.0)
+  double subtotalFinal;
+
   CompraFornecedorItem({
     required this.produtoNome,
     required this.quantidade,
@@ -43,10 +64,27 @@ class CompraFornecedorItem {
     this.codigoBarras = '',
     this.observacaoItem = '',
     this.unidade = '',
+    this.subtotalBase = 0,
+    this.percentualParticipacao = 0,
+    this.freteRateado = 0,
+    this.descontoRateado = 0,
+    this.outrasDespesasRateadas = 0,
+    this.custoUnitarioFinal = 0,
+    this.subtotalFinal = 0,
   });
 
   double get subtotal =>
       quantidade.clamp(0, 1 << 30) * custoUnitario;
+
+  /// Custo unitário após rateio (pipeline, precificação, estoque). Fallback no custo base.
+  double get custoUnitarioParaEstoquePrecificacao {
+    final q = quantidade.clamp(0, 1 << 30);
+    if (q <= 0) return custoUnitario;
+    if (subtotalFinal > 0) {
+      return custoUnitarioFinal > 0 ? custoUnitarioFinal : subtotalFinal / q;
+    }
+    return custoUnitario;
+  }
 
   CompraFornecedorItem copyWith({
     String? produtoNome,
@@ -58,6 +96,13 @@ class CompraFornecedorItem {
     String? codigoBarras,
     String? observacaoItem,
     String? unidade,
+    double? subtotalBase,
+    double? percentualParticipacao,
+    double? freteRateado,
+    double? descontoRateado,
+    double? outrasDespesasRateadas,
+    double? custoUnitarioFinal,
+    double? subtotalFinal,
   }) {
     return CompraFornecedorItem(
       produtoNome: produtoNome ?? this.produtoNome,
@@ -69,6 +114,15 @@ class CompraFornecedorItem {
       codigoBarras: codigoBarras ?? this.codigoBarras,
       observacaoItem: observacaoItem ?? this.observacaoItem,
       unidade: unidade ?? this.unidade,
+      subtotalBase: subtotalBase ?? this.subtotalBase,
+      percentualParticipacao:
+          percentualParticipacao ?? this.percentualParticipacao,
+      freteRateado: freteRateado ?? this.freteRateado,
+      descontoRateado: descontoRateado ?? this.descontoRateado,
+      outrasDespesasRateadas:
+          outrasDespesasRateadas ?? this.outrasDespesasRateadas,
+      custoUnitarioFinal: custoUnitarioFinal ?? this.custoUnitarioFinal,
+      subtotalFinal: subtotalFinal ?? this.subtotalFinal,
     );
   }
 }
