@@ -181,6 +181,7 @@ class _PrecificacaoUniversalScreenState
     if (box == null) return false;
     final row = box.get(docId);
     if (row == null) return false;
+    if (row.estado == CompraItemPipelineEstado.cancelado) return false;
     if (row.estado != CompraItemPipelineEstado.aguardandoPrecificacao) {
       return false;
     }

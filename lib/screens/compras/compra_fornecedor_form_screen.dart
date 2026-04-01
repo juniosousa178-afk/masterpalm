@@ -383,6 +383,12 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     }
   }
 
+  Future<void> _sincronizarPipelineSeCancelada(CompraFornecedor c) async {
+    if (c.statusCompra == CompraFornecedorStatusCompra.cancelada) {
+      await CompraParaPipelineService.sincronizarCancelamentoCompraNoPipeline(c);
+    }
+  }
+
   CompraFornecedor _montarModelo({
     required String statusCompra,
     required String statusPagamento,
@@ -461,7 +467,11 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       );
       _compraId = c.id;
       await box.put(c.id, c);
-      await _sincronizarPipelineSeConfirmada(c);
+      if (c.statusCompra == CompraFornecedorStatusCompra.cancelada) {
+        await _sincronizarPipelineSeCancelada(c);
+      } else {
+        await _sincronizarPipelineSeConfirmada(c);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Compra atualizada')),

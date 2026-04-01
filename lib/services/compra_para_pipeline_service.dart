@@ -79,4 +79,50 @@ class CompraParaPipelineService {
       await box.put(docId, novo);
     }
   }
+
+  /// Compra cancelada → pipeline pendente vira [cancelado]; concluídos só ganham flag informativa.
+  /// Idempotente; não cria linhas novas, não mexe em Produto nem financeiro.
+  static Future<void> sincronizarCancelamentoCompraNoPipeline(
+    CompraFornecedor compra,
+  ) async {
+    if (compra.statusCompra != CompraFornecedorStatusCompra.cancelada) return;
+    final lid = compra.lojaId.trim();
+    final cid = compra.id.trim();
+    if (lid.isEmpty || cid.isEmpty) return;
+
+    final box = await CompraItemPipelineStore.openBox(lid);
+    if (box == null) return;
+
+    final now = DateTime.now();
+    for (final key in box.keys.toList()) {
+      final row = box.get(key);
+      if (row == null) continue;
+      if (row.compraId.trim() != cid) continue;
+
+      if (row.estado == CompraItemPipelineEstado.cancelado) continue;
+
+      if (row.estado == CompraItemPipelineEstado.aguardandoPrecificacao ||
+          row.estado == CompraItemPipelineEstado.precificadoPendenteEstoque) {
+        await box.put(
+          row.id,
+          row.copyWith(
+            estado: CompraItemPipelineEstado.cancelado,
+            atualizadoEm: now,
+          ),
+        );
+        continue;
+      }
+
+      if (row.estado == CompraItemPipelineEstado.concluidoNoEstoque) {
+        if (row.compraCanceladaAposConclusao) continue;
+        await box.put(
+          row.id,
+          row.copyWith(
+            compraCanceladaAposConclusao: true,
+            atualizadoEm: now,
+          ),
+        );
+      }
+    }
+  }
 }

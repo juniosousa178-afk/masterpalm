@@ -1194,6 +1194,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     if (pBox == null) return;
     final row = pBox.get(docId);
     if (row == null) return;
+    if (row.estado == CompraItemPipelineEstado.cancelado) return;
     if (row.estado == CompraItemPipelineEstado.concluidoNoEstoque) return;
     final k = salvo.key;
     final hid = salvo.idFirebase.trim();

@@ -72,6 +72,11 @@ class CompraItemPipeline extends HiveObject {
   @HiveField(20)
   DateTime atualizadoEm;
 
+  /// Compra administrativa cancelada depois que o item já foi finalizado no estoque.
+  /// Não altera [estado] nem o produto real; só rastreio conservador.
+  @HiveField(21)
+  bool compraCanceladaAposConclusao;
+
   CompraItemPipeline({
     required this.id,
     required this.lojaId,
@@ -94,6 +99,7 @@ class CompraItemPipeline extends HiveObject {
     this.produtoHiveKey,
     this.produtoIdFirebaseGravado = '',
     DateTime? atualizadoEm,
+    this.compraCanceladaAposConclusao = false,
   }) : atualizadoEm = atualizadoEm ?? DateTime.now();
 
   static String docId(String compraId, String itemCompraId) {
@@ -124,6 +130,7 @@ class CompraItemPipeline extends HiveObject {
     int? produtoHiveKey,
     String? produtoIdFirebaseGravado,
     DateTime? atualizadoEm,
+    bool? compraCanceladaAposConclusao,
   }) {
     return CompraItemPipeline(
       id: id ?? this.id,
@@ -150,6 +157,8 @@ class CompraItemPipeline extends HiveObject {
       produtoIdFirebaseGravado:
           produtoIdFirebaseGravado ?? this.produtoIdFirebaseGravado,
       atualizadoEm: atualizadoEm ?? this.atualizadoEm,
+      compraCanceladaAposConclusao:
+          compraCanceladaAposConclusao ?? this.compraCanceladaAposConclusao,
     );
   }
 }

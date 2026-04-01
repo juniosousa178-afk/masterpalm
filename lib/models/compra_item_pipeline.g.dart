@@ -38,13 +38,15 @@ class CompraItemPipelineAdapter extends TypeAdapter<CompraItemPipeline> {
       produtoHiveKey: fields[18] as int?,
       produtoIdFirebaseGravado: fields[19] as String,
       atualizadoEm: fields[20] as DateTime?,
+      // Registros antigos sem campo 21: compatível com Hive pré-campo.
+      compraCanceladaAposConclusao: (fields[21] as bool?) ?? false,
     );
   }
 
   @override
   void write(BinaryWriter writer, CompraItemPipeline obj) {
     writer
-      ..writeByte(21)
+      ..writeByte(22)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -86,7 +88,9 @@ class CompraItemPipelineAdapter extends TypeAdapter<CompraItemPipeline> {
       ..writeByte(19)
       ..write(obj.produtoIdFirebaseGravado)
       ..writeByte(20)
-      ..write(obj.atualizadoEm);
+      ..write(obj.atualizadoEm)
+      ..writeByte(21)
+      ..write(obj.compraCanceladaAposConclusao);
   }
 
   @override
