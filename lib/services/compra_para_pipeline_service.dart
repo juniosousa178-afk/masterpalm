@@ -37,7 +37,7 @@ class CompraParaPipelineService {
         final merged = existing.copyWith(
           nomeProdutoProvisorio: it.produtoNome,
           quantidade: it.quantidade,
-          custoUnitario: it.custoUnitario,
+          custoUnitario: it.custoUnitarioParaEstoquePrecificacao,
           codigoInterno: it.codigoInterno,
           codigoBarras: it.codigoBarras.isNotEmpty
               ? it.codigoBarras
@@ -64,7 +64,7 @@ class CompraParaPipelineService {
         referenciaCompra: compra.referenciaInterna,
         nomeProdutoProvisorio: it.produtoNome,
         quantidade: it.quantidade,
-        custoUnitario: it.custoUnitario,
+        custoUnitario: it.custoUnitarioParaEstoquePrecificacao,
         codigoInterno: it.codigoInterno,
         codigoBarras: it.codigoBarras,
         observacaoItem: it.observacaoItem,

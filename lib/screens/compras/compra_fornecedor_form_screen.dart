@@ -13,7 +13,9 @@ import '../../models/compra_fornecedor_constants.dart';
 import '../../models/compra_fornecedor_item.dart';
 import '../../models/produto.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
+import '../../services/compra_fornecedor_sync_service.dart';
 import '../../services/compra_para_pipeline_service.dart';
+import '../../utils/compra_fornecedor_rateio.dart';
 
 class CompraFornecedorFormScreen extends StatefulWidget {
   const CompraFornecedorFormScreen({
@@ -41,6 +43,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
   final _refCtrl = TextEditingController();
   final _obsCtrl = TextEditingController();
   final _freteCtrl = TextEditingController();
+  final _outrasCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _valorPagoCtrl = TextEditingController();
 
@@ -66,6 +69,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       _refCtrl.text = e.referenciaInterna;
       _obsCtrl.text = e.observacao;
       _freteCtrl.text = _fmtNum(e.frete);
+      _outrasCtrl.text = _fmtNum(e.outrasDespesas);
       _descCtrl.text = _fmtNum(e.desconto);
       _valorPagoCtrl.text = _fmtNum(e.valorPago);
       _dataCompra = e.dataCompra;
@@ -85,6 +89,13 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
             codigoBarras: x.codigoBarras,
             observacaoItem: x.observacaoItem,
             unidade: x.unidade,
+            subtotalBase: x.subtotalBase,
+            percentualParticipacao: x.percentualParticipacao,
+            freteRateado: x.freteRateado,
+            descontoRateado: x.descontoRateado,
+            outrasDespesasRateadas: x.outrasDespesasRateadas,
+            custoUnitarioFinal: x.custoUnitarioFinal,
+            subtotalFinal: x.subtotalFinal,
           )));
       _confirmadoEm = e.confirmadoEm;
       _estoqueIntegrado = e.estoqueIntegrado;
@@ -97,6 +108,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     _refCtrl.dispose();
     _obsCtrl.dispose();
     _freteCtrl.dispose();
+    _outrasCtrl.dispose();
     _descCtrl.dispose();
     _valorPagoCtrl.dispose();
     super.dispose();
@@ -116,6 +128,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
   }
 
   double get _frete => _parseMoney(_freteCtrl.text);
+  double get _outrasDespesas => _parseMoney(_outrasCtrl.text);
   double get _desconto => _parseMoney(_descCtrl.text);
   double get _valorPago => _parseMoney(_valorPagoCtrl.text);
 
@@ -127,7 +140,8 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     return t;
   }
 
-  double get _valorTotal => (_subtotalItens + _frete - _desconto).clamp(0.0, 1e15);
+  double get _valorTotal =>
+      (_subtotalItens + _frete + _outrasDespesas - _desconto).clamp(0.0, 1e15);
 
   double get _valorEmAberto => (_valorTotal - _valorPago).clamp(0.0, 1e15);
 
@@ -412,6 +426,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       statusPagamento: statusPagamento,
       observacao: _obsCtrl.text.trim(),
       frete: _frete,
+      outrasDespesas: _outrasDespesas,
       desconto: _desconto,
       valorPago: _valorPago,
       itens: List<CompraFornecedorItem>.from(_itens),
@@ -420,6 +435,30 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       confirmadoEm: conf,
       criadoEm: widget.compraExistente?.criadoEm ?? agora,
       atualizadoEm: agora,
+    );
+  }
+
+  /// Rateio + flags de sync antes de gravar no Hive.
+  CompraFornecedor _prepararParaGravacao({
+    required String statusCompra,
+    required String statusPagamento,
+  }) {
+    final raw = _montarModelo(
+      statusCompra: statusCompra,
+      statusPagamento: statusPagamento,
+    );
+    final r = CompraFornecedorRateio.aplicar(raw);
+    return r.copyWith(syncPendente: true, syncStatus: 'pendente');
+  }
+
+  Future<void> _gravarNoHiveEsyncFirestore(CompraFornecedor c) async {
+    final box = await CompraFornecedorHiveStore.openBox(widget.lojaId);
+    if (box == null) return;
+    await box.put(c.id, c);
+    final ok = await CompraFornecedorSyncService.sincronizar(c);
+    await box.put(
+      c.id,
+      c.copyWith(syncPendente: !ok, syncStatus: ok ? 'ok' : 'erro'),
     );
   }
 
@@ -437,14 +476,13 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     }
     setState(() => _gravando = true);
     try {
-      final box = await CompraFornecedorHiveStore.openBox(widget.lojaId);
-      if (box == null || !mounted) return;
-      final c = _montarModelo(
+      if (!mounted) return;
+      final c = _prepararParaGravacao(
         statusCompra: CompraFornecedorStatusCompra.rascunho,
         statusPagamento: _statusPagamento,
       );
       _compraId = c.id;
-      await box.put(c.id, c);
+      await _gravarNoHiveEsyncFirestore(c);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Rascunho salvo')),
@@ -459,14 +497,13 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     if (_gravando) return;
     setState(() => _gravando = true);
     try {
-      final box = await CompraFornecedorHiveStore.openBox(widget.lojaId);
-      if (box == null || !mounted) return;
-      final c = _montarModelo(
+      if (!mounted) return;
+      final c = _prepararParaGravacao(
         statusCompra: _statusCompra,
         statusPagamento: _statusPagamento,
       );
       _compraId = c.id;
-      await box.put(c.id, c);
+      await _gravarNoHiveEsyncFirestore(c);
       if (c.statusCompra == CompraFornecedorStatusCompra.cancelada) {
         await _sincronizarPipelineSeCancelada(c);
       } else {
@@ -495,8 +532,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
 
     setState(() => _gravando = true);
     try {
-      final box = await CompraFornecedorHiveStore.openBox(widget.lojaId);
-      if (box == null || !mounted) return;
+      if (!mounted) return;
 
       final jaConfirmada =
           _statusCompra == CompraFornecedorStatusCompra.confirmada;
@@ -514,15 +550,18 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         statusCompra: novoStatus,
         statusPagamento: _statusPagamento,
       );
-      final finalModel = cFix.copyWith(
+      final merged = cFix.copyWith(
         confirmadoEm: confEm,
         estoqueIntegrado: _estoqueIntegrado,
         idLancamentoFinanceiro: _idLancamentoFinanceiro,
         criadoEm: widget.compraExistente?.criadoEm ?? cFix.criadoEm,
       );
+      final comRateio = CompraFornecedorRateio.aplicar(merged);
+      final finalModel =
+          comRateio.copyWith(syncPendente: true, syncStatus: 'pendente');
 
       _compraId = finalModel.id;
-      await box.put(finalModel.id, finalModel);
+      await _gravarNoHiveEsyncFirestore(finalModel);
       await _sincronizarPipelineSeConfirmada(finalModel);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -629,7 +668,11 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
                   child: ListTile(
                     title: Text(it.produtoNome),
                     subtitle: Text(
-                      '${it.quantidade} × ${_fmtBrl(it.custoUnitario)} = ${_fmtBrl(it.subtotal)}',
+                      it.subtotalFinal > 0
+                          ? '${it.quantidade} × ${_fmtBrl(it.custoUnitario)} (base) · '
+                              'custo final ${_fmtBrl(it.custoUnitarioParaEstoquePrecificacao)} · '
+                              'subtotal ${_fmtBrl(it.subtotalFinal)}'
+                          : '${it.quantidade} × ${_fmtBrl(it.custoUnitario)} = ${_fmtBrl(it.subtotal)}',
                     ),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline),
@@ -648,6 +691,17 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
               controller: _freteCtrl,
               decoration: const InputDecoration(
                 labelText: 'Frete',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _outrasCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Outras despesas (R\$)',
+                hintText: 'Seguros, taxas, etc.',
                 border: OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),

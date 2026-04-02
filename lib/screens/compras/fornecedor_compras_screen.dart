@@ -8,6 +8,7 @@ import '../../models/compra_fornecedor.dart';
 import '../../models/compra_fornecedor_constants.dart';
 import '../../models/fornecedor.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
+import '../../services/compra_fornecedor_sync_service.dart';
 import 'compra_fornecedor_form_screen.dart';
 
 class FornecedorComprasScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _FornecedorComprasScreenState extends State<FornecedorComprasScreen> {
   static const Color _surface = Color(0xFFF8FAFC);
 
   bool _carregando = true;
+  bool _syncing = false;
   List<CompraFornecedor> _lista = const [];
 
   @override
@@ -65,6 +67,10 @@ class _FornecedorComprasScreenState extends State<FornecedorComprasScreen> {
   String _fmtMoney(double v) =>
       NumberFormat.currency(locale: 'pt_BR', symbol: r'R$').format(v);
 
+  /// Compras deste fornecedor (lista atual) com sync pendente ou erro.
+  int get _pendenciasSyncCount =>
+      _lista.where(CompraFornecedorSyncService.precisaRetry).length;
+
   ({double totalComprado, double emAberto, DateTime? ultima}) _resumo() {
     double total = 0, aberto = 0;
     DateTime? ultima;
@@ -93,6 +99,39 @@ class _FornecedorComprasScreenState extends State<FornecedorComprasScreen> {
     if (mounted) await _recarregar();
   }
 
+  Future<void> _sincronizarPendentes() async {
+    if (_syncing) return;
+    if (_pendenciasSyncCount == 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nenhuma pendência para sincronizar'),
+        ),
+      );
+      return;
+    }
+    setState(() => _syncing = true);
+    try {
+      final r =
+          await CompraFornecedorSyncService.sincronizarTodasPendentesOuErro(
+        widget.lojaId,
+        fornecedorHiveKey: widget.fornecedorHiveKey,
+      );
+      if (!mounted) return;
+      await _recarregar();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Este fornecedor — sincronizadas: ${r.sucesso} · falhas: ${r.falha}',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = _resumo();
@@ -108,6 +147,40 @@ class _FornecedorComprasScreenState extends State<FornecedorComprasScreen> {
         ),
         backgroundColor: _primary,
         foregroundColor: Colors.white,
+        actions: [
+          if (!_carregando)
+            Badge(
+              isLabelVisible: _pendenciasSyncCount > 0,
+              backgroundColor: Colors.deepOrange.shade600,
+              label: Text(
+                '$_pendenciasSyncCount',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              child: IconButton(
+                tooltip: 'Sincronizar pendentes deste fornecedor',
+                onPressed: _syncing ? null : _sincronizarPendentes,
+                icon: _syncing
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        Icons.cloud_upload_outlined,
+                        color: _pendenciasSyncCount > 0
+                            ? Colors.deepOrange
+                            : Colors.white,
+                      ),
+              ),
+            ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _abrirNovaOuEditar(null),
