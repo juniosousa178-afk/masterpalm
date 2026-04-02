@@ -451,15 +451,34 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     return r.copyWith(syncPendente: true, syncStatus: 'pendente');
   }
 
-  Future<void> _gravarNoHiveEsyncFirestore(CompraFornecedor c) async {
+  static const _msgHiveIndisponivel =
+      'Não foi possível salvar. Verifique o armazenamento local.';
+
+  /// Grava no Hive e tenta sync. Retorna `false` se a box não abriu (nada persistido).
+  Future<bool> _gravarNoHiveEsyncFirestore(CompraFornecedor c) async {
     final box = await CompraFornecedorHiveStore.openBox(widget.lojaId);
-    if (box == null) return;
+    if (box == null) return false;
     await box.put(c.id, c);
     final ok = await CompraFornecedorSyncService.sincronizar(c);
     await box.put(
       c.id,
       c.copyWith(syncPendente: !ok, syncStatus: ok ? 'ok' : 'erro'),
     );
+    return true;
+  }
+
+  void _snackHiveIndisponivel() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(_msgHiveIndisponivel)),
+    );
+  }
+
+  /// Confirmar só se não cancelada; primeira confirmação exige pelo menos um item.
+  bool get _podeConfirmarCompra {
+    if (_statusCompra == CompraFornecedorStatusCompra.cancelada) return false;
+    if (_statusCompra == CompraFornecedorStatusCompra.confirmada) return true;
+    return _itens.isNotEmpty;
   }
 
   Future<void> _salvarRascunho() async {
@@ -482,8 +501,12 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         statusPagamento: _statusPagamento,
       );
       _compraId = c.id;
-      await _gravarNoHiveEsyncFirestore(c);
+      final gravou = await _gravarNoHiveEsyncFirestore(c);
       if (!mounted) return;
+      if (!gravou) {
+        _snackHiveIndisponivel();
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Rascunho salvo')),
       );
@@ -503,7 +526,12 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         statusPagamento: _statusPagamento,
       );
       _compraId = c.id;
-      await _gravarNoHiveEsyncFirestore(c);
+      final gravou = await _gravarNoHiveEsyncFirestore(c);
+      if (!mounted) return;
+      if (!gravou) {
+        _snackHiveIndisponivel();
+        return;
+      }
       if (c.statusCompra == CompraFornecedorStatusCompra.cancelada) {
         await _sincronizarPipelineSeCancelada(c);
       } else {
@@ -530,21 +558,25 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       return;
     }
 
+    final jaConfirmada =
+        _statusCompra == CompraFornecedorStatusCompra.confirmada;
+    if (!jaConfirmada && _itens.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Adicione pelo menos um item para confirmar a compra.'),
+        ),
+      );
+      return;
+    }
+
     setState(() => _gravando = true);
     try {
       if (!mounted) return;
 
-      final jaConfirmada =
-          _statusCompra == CompraFornecedorStatusCompra.confirmada;
       const novoStatus = CompraFornecedorStatusCompra.confirmada;
       final confEm = jaConfirmada
           ? (_confirmadoEm ?? widget.compraExistente?.confirmadoEm ?? DateTime.now())
           : DateTime.now();
-
-      if (!jaConfirmada) {
-        _confirmadoEm = confEm;
-        _statusCompra = novoStatus;
-      }
 
       final cFix = _montarModelo(
         statusCompra: novoStatus,
@@ -561,7 +593,18 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
           comRateio.copyWith(syncPendente: true, syncStatus: 'pendente');
 
       _compraId = finalModel.id;
-      await _gravarNoHiveEsyncFirestore(finalModel);
+      final gravou = await _gravarNoHiveEsyncFirestore(finalModel);
+      if (!mounted) return;
+      if (!gravou) {
+        _snackHiveIndisponivel();
+        return;
+      }
+      if (!jaConfirmada) {
+        setState(() {
+          _confirmadoEm = confEm;
+          _statusCompra = novoStatus;
+        });
+      }
       await _sincronizarPipelineSeConfirmada(finalModel);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -816,7 +859,11 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton(
-                  onPressed: _gravando ? null : _salvarRascunho,
+                  onPressed: (_gravando ||
+                          _statusCompra !=
+                              CompraFornecedorStatusCompra.rascunho)
+                      ? null
+                      : _salvarRascunho,
                   style: FilledButton.styleFrom(backgroundColor: Colors.blueGrey),
                   child: const Text('Salvar rascunho'),
                 ),
@@ -827,7 +874,9 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: _gravando ? null : _confirmarCompra,
+              onPressed: (_gravando || !_podeConfirmarCompra)
+                  ? null
+                  : _confirmarCompra,
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.green.shade700,
                 padding: const EdgeInsets.symmetric(vertical: 14),
