@@ -33,6 +33,9 @@ import '../services/catalog_thumbnail_service.dart';
 import '../widgets/compra_pipeline_origem_cancelada_notice.dart';
 import 'barcode_scanner_screen.dart';
 
+/// Escolha ao salvar "novo" produto quando já existe mesmo nome+categoria.
+enum _DuplicataSalvarEscolha { atualizar, criarNovo, cancelar }
+
 // ------------------------------
 // FUNÇÃO PARA GERAR SLUG
 // ------------------------------
@@ -179,8 +182,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   /// Evita várias gravações em paralelo ao reordenar imagens (corrida na nuvem).
   Timer? _debouncePersistImagens;
 
-  /// Produto existente encontrado por chave única (nome+categoria) - para modo "Atualizar"
-  Produto? _produtoExistenteAlvo;
+  /// Aviso: possível duplicata (nome+categoria). O save exige diálogo — não mescla sozinho.
+  Produto? _duplicataDetectada;
+
+  /// Produto só com estoque/tamanhos legados (sem [variacoes] persistidas).
+  bool _legadoEstoqueSemVariacoesCadastradas = false;
 
   // Marketplaces selecionados
   final Set<String> _marketplacesSelecionados = {};
@@ -296,28 +302,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             'qtd': '',
           });
         }
-      } else if (p.estoquePorTamanho.isNotEmpty) {
-        // fallback: migra do sistema antigo
-        _gradeVariacoes = p.estoquePorTamanho.entries
-            .map((e) => {
-                  'tamanho': e.key,
-                  'cor': '',
-                  'extraTipo': '',
-                  'extraValor': '',
-                  'qtd': e.value.toString(),
-                })
-            .toList();
-      } else if (p.tamanhos.isNotEmpty) {
-        // fallback mais antigo: só lista tamanhos sem quantidade
-        _gradeVariacoes = p.tamanhos
-            .map((t) => {
-                  'tamanho': t,
-                  'cor': '',
-                  'extraTipo': '',
-                  'extraValor': '',
-                  'qtd': '',
-                })
-            .toList();
+      } else {
+        // Sem [variacoes] persistidas: não simular grade a partir de estoquePorTamanho/tamanhos
+        // (evita "variação fantasma"). Quantidade total continua em [quantidade].
+        _legadoEstoqueSemVariacoesCadastradas =
+            p.estoquePorTamanho.isNotEmpty || p.tamanhos.isNotEmpty;
+        debugPrint(
+          '[VARIACAO_GUARD] edição: sem variacoes persistidas; legado estoque/tamanhos=$_legadoEstoqueSemVariacoesCadastradas',
+        );
       }
 
       // 🔹 Preenche campos de promoção
@@ -558,13 +550,25 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     return _pesoUnidade == 'kg' ? v * 1000 : v;
   }
 
+  /// Salva [pesoAnterior] se o campo estiver vazio e já havia peso (>0), evitando zero acidental.
+  double _pesoGramasParaSalvar({required double? pesoAnterior}) {
+    final t = _peso.text.trim();
+    if (t.isEmpty && pesoAnterior != null && pesoAnterior > 0) {
+      debugPrint(
+        '[PESO_GUARD] produto_form: campo peso vazio, mantendo ${pesoAnterior.toStringAsFixed(1)} g',
+      );
+      return pesoAnterior;
+    }
+    return _pesoEmGramas;
+  }
+
   void _verificarProdutoExistente() {
     if (lojaId == null || widget.produto != null) return;
     final nome = _nome.text.trim();
     final cat = _categoria.text.trim();
     if (nome.isEmpty) {
-      if (_produtoExistenteAlvo != null && mounted) {
-        setState(() => _produtoExistenteAlvo = null);
+      if (_duplicataDetectada != null && mounted) {
+        setState(() => _duplicataDetectada = null);
       }
       return;
     }
@@ -574,9 +578,38 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       nome: nome,
       categoria: cat,
     );
-    if (mounted && existente != _produtoExistenteAlvo) {
-      setState(() => _produtoExistenteAlvo = existente);
+    if (mounted && existente != _duplicataDetectada) {
+      setState(() => _duplicataDetectada = existente);
     }
+  }
+
+  Future<_DuplicataSalvarEscolha?> _perguntarDuplicataSalvar(Produto duplicata) async {
+    debugPrint('[PRODUTO_MATCH_GUARD] exigindo confirmação para duplicata hiveKey=${duplicata.key}');
+    return showDialog<_DuplicataSalvarEscolha>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Produto já cadastrado'),
+        content: Text(
+          'Já existe um produto com o nome "${duplicata.nome}" nesta categoria. '
+          'Atualizar o cadastro existente ou criar outro registro (pode haver nomes duplicados)?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _DuplicataSalvarEscolha.cancelar),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _DuplicataSalvarEscolha.criarNovo),
+            child: const Text('Criar outro'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, _DuplicataSalvarEscolha.atualizar),
+            child: const Text('Atualizar existente'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -917,13 +950,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..valorPromo = valorPromo
         ..dataInicioPromo = _dataInicioPromo
         ..dataFimPromo = _dataFimPromo
-        ..peso = _pesoEmGramas
+        ..peso = _pesoGramasParaSalvar(pesoAnterior: p.peso)
         ..codigoBarras = _codigoBarras.text.trim()
         ..tipoEmbalagem = _tipoEmbalagem
         ..cores = coresList
         ..marketplaces = _marketplacesSelecionados.toList()
         ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
-        ..variacoesExtraTipo = merged.variacoesExtraTipo
+        ..variacoesExtraTipo =
+            variacoesMap.isNotEmpty ? merged.variacoesExtraTipo : null
         ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
         ..fornecedor = _fornecedor.text.trim()
         ..custoEditadoNoCadastro = true;
@@ -1335,14 +1369,24 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
 
       if (widget.produto == null) {
-        // NOVO PRODUTO - ou ATUALIZAR se já existir (evita duplicação)
-        final existente = _produtoExistenteAlvo ??
-            findProdutoExistente(
-              produtosBox,
-              lojaId!,
-              nome: capitalizeWords(_nome.text.trim()),
-              categoria: canonicalizeCategoria(_categoria.text.trim()),
-            );
+        // NOVO PRODUTO — duplicata nome+categoria exige confirmação (não mescla sozinha)
+        var existente = findProdutoExistente(
+          produtosBox,
+          lojaId!,
+          nome: capitalizeWords(_nome.text.trim()),
+          categoria: canonicalizeCategoria(_categoria.text.trim()),
+        );
+        if (existente != null) {
+          final escolha = await _perguntarDuplicataSalvar(existente);
+          if (!mounted) return;
+          if (escolha == null || escolha == _DuplicataSalvarEscolha.cancelar) {
+            setState(() => _salvando = false);
+            return;
+          }
+          if (escolha == _DuplicataSalvarEscolha.criarNovo) {
+            existente = null;
+          }
+        }
 
         if (existente != null) {
           // ATUALIZAR produto existente (evita duplicação)
@@ -1368,13 +1412,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..valorPromo = valorPromo
             ..dataInicioPromo = _dataInicioPromo
             ..dataFimPromo = _dataFimPromo
-            ..peso = _pesoEmGramas
+            ..peso = _pesoGramasParaSalvar(pesoAnterior: existente.peso)
             ..codigoBarras = _codigoBarras.text.trim()
             ..tipoEmbalagem = _tipoEmbalagem
             ..cores = coresList
             ..marketplaces = _marketplacesSelecionados.toList()
             ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
-            ..variacoesExtraTipo = mergedSalvar.variacoesExtraTipo
+            ..variacoesExtraTipo =
+                variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null
             ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
             ..fornecedor = _fornecedor.text.trim()
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
@@ -1382,6 +1427,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
           if (variacoesMap.isNotEmpty) {
             existente.recalcularQuantidadeTotal();
+          } else {
+            debugPrint('[VARIACAO_CLEAR] save: grade vazia → variacoes/extra limpos no Hive');
           }
 
           existente.updatedAt = DateTime.now();
@@ -1452,7 +1499,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             cores: coresList,
             marketplaces: _marketplacesSelecionados.toList(),
             variacoes: variacoesMap.isNotEmpty ? variacoesMap : null,
-            variacoesExtraTipo: mergedSalvar.variacoesExtraTipo,
+            variacoesExtraTipo:
+                variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null,
             videoUrl: '',
             estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?? 0,
             fornecedor: _fornecedor.text.trim(),
@@ -1500,13 +1548,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..valorPromo = valorPromo
           ..dataInicioPromo = _dataInicioPromo
           ..dataFimPromo = _dataFimPromo
-          ..peso = _pesoEmGramas
+          ..peso = _pesoGramasParaSalvar(pesoAnterior: p.peso)
           ..codigoBarras = _codigoBarras.text.trim()
           ..tipoEmbalagem = _tipoEmbalagem
           ..cores = coresList
           ..marketplaces = _marketplacesSelecionados.toList()
           ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
-          ..variacoesExtraTipo = mergedSalvar.variacoesExtraTipo
+          ..variacoesExtraTipo =
+              variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null
           ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
           ..fornecedor = _fornecedor.text.trim()
           ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
@@ -1515,6 +1564,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         // 🔹 Recalcular quantidade total com base nas variações
         if (variacoesMap.isNotEmpty) {
           p.recalcularQuantidadeTotal();
+        } else {
+          debugPrint('[VARIACAO_CLEAR] save: grade vazia → variacoes/extra limpos no Hive');
         }
 
         p.updatedAt = DateTime.now();
@@ -1586,11 +1637,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          isEdit
-              ? 'Editar Produto'
-              : (_produtoExistenteAlvo != null ? 'Atualizar Produto' : 'Novo Produto'),
-        ),
+        title: Text(isEdit ? 'Editar Produto' : 'Novo Produto'),
         elevation: 0,
         actions: returnToVenda
             ? [
@@ -1622,6 +1669,54 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                   ),
                   if (_pipelineOrigemCancelada != null)
                     const SizedBox(height: 12),
+                  if (widget.produto == null && _duplicataDetectada != null) ...[
+                    Material(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Já existe produto com este nome e categoria. Ao salvar, será pedido se deseja '
+                                'atualizar o existente ou criar outro registro.',
+                                style: TextStyle(color: Colors.orange.shade900, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (isEdit && _legadoEstoqueSemVariacoesCadastradas) ...[
+                    Material(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.inventory_2_outlined, color: Colors.blue.shade800),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Estoque ou tamanhos legados (sem variações cadastradas). '
+                                'A quantidade total do produto continua válida. A grade só mostra variações salvas explicitamente.',
+                                style: TextStyle(color: Colors.blue.shade900, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                   // 📝 CARD: INFORMAÇÕES BÁSICAS
                   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2629,9 +2724,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                           onPressed: _salvar,
                           icon: const Icon(Icons.save_outlined),
                           label: Text(
-                            _produtoExistenteAlvo != null
-                                ? 'Atualizar Produto'
-                                : (_publicar ? 'Salvar e Publicar' : 'Salvar Rascunho'),
+                            _publicar ? 'Salvar e Publicar' : 'Salvar Rascunho',
                             style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           style: ElevatedButton.styleFrom(

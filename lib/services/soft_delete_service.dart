@@ -261,34 +261,84 @@ class SoftDeleteService {
   }
 
   /// Desfaz exclusão. Retorna true se desfeito.
+  ///
+  /// A mesma instância de [HiveObject] não pode estar em duas boxes ao mesmo tempo.
+  /// É obrigatório remover da lixeira antes de [Box.add] na box principal (senão o Hive lança).
   static Future<bool> undo(String id) async {
     await _ensureLoaded();
     final idx = _pending.indexWhere((r) => r.id == id);
     if (idx < 0) return false;
 
-    final r = _pending.removeAt(idx);
-    await _save();
+    final r = _pending[idx];
 
     try {
       if (r.type == 'produto') {
         final trashBox = await _trashProdutosBox();
         final prod = trashBox.get(r.trashKey);
-        if (prod == null) return false;
+        if (prod == null) {
+          logW('⚠️ [SOFT-DELETE] undo: produto ausente na lixeira (trashKey=${r.trashKey})');
+          return false;
+        }
         final mainBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
         prod.lojaId = r.lojaId;
-        await mainBox.add(prod);
         await trashBox.delete(r.trashKey);
+        try {
+          await mainBox.add(prod);
+        } catch (e, st) {
+          logE(
+            '❌ [SOFT-DELETE] Falha ao restaurar produto na box; recolocando na lixeira (type=${e.runtimeType})',
+            error: e,
+            st: st,
+          );
+          final nk = await trashBox.add(prod);
+          _pending[idx] = _PendingRecord(
+            id: r.id,
+            type: r.type,
+            lojaId: r.lojaId,
+            idFirebase: r.idFirebase,
+            hiveKey: r.hiveKey,
+            trashKey: nk,
+            deleteAt: r.deleteAt,
+          );
+          await _save();
+          return false;
+        }
+        _pending.removeAt(idx);
+        await _save();
         return true;
       }
       if (r.type == 'venda') {
         final trashBox = await _trashVendasBox();
         final venda = trashBox.get(r.trashKey);
-        if (venda == null) return false;
+        if (venda == null) {
+          logW('⚠️ [SOFT-DELETE] undo: venda ausente na lixeira (trashKey=${r.trashKey})');
+          return false;
+        }
         final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(r.lojaId));
         final clientesBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(r.lojaId));
         venda.lojaId = r.lojaId;
-        await vendasBox.add(venda);
         await trashBox.delete(r.trashKey);
+        try {
+          await vendasBox.add(venda);
+        } catch (e, st) {
+          logE(
+            '❌ [SOFT-DELETE] Falha ao restaurar venda na box; recolocando na lixeira (type=${e.runtimeType})',
+            error: e,
+            st: st,
+          );
+          final nk = await trashBox.add(venda);
+          _pending[idx] = _PendingRecord(
+            id: r.id,
+            type: r.type,
+            lojaId: r.lojaId,
+            idFirebase: r.idFirebase,
+            hiveKey: r.hiveKey,
+            trashKey: nk,
+            deleteAt: r.deleteAt,
+          );
+          await _save();
+          return false;
+        }
         Cliente? cliente;
         try {
           cliente = clientesBox.values.firstWhere(
@@ -303,22 +353,47 @@ class SoftDeleteService {
             await ClientesFirestoreService.syncCliente(cliente, lojaId: r.lojaId);
           } catch (_) {}
         }
+        _pending.removeAt(idx);
+        await _save();
         return true;
       }
       if (r.type == 'cliente') {
         final trashBox = await _trashClientesBox();
         final cliente = trashBox.get(r.trashKey);
-        if (cliente == null) return false;
+        if (cliente == null) {
+          logW('⚠️ [SOFT-DELETE] undo: cliente ausente na lixeira (trashKey=${r.trashKey})');
+          return false;
+        }
         final mainBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(r.lojaId));
         cliente.lojaId = r.lojaId;
-        await mainBox.add(cliente);
         await trashBox.delete(r.trashKey);
+        try {
+          await mainBox.add(cliente);
+        } catch (e, st) {
+          logE(
+            '❌ [SOFT-DELETE] Falha ao restaurar cliente na box; recolocando na lixeira (type=${e.runtimeType})',
+            error: e,
+            st: st,
+          );
+          final nk = await trashBox.add(cliente);
+          _pending[idx] = _PendingRecord(
+            id: r.id,
+            type: r.type,
+            lojaId: r.lojaId,
+            idFirebase: r.idFirebase,
+            hiveKey: r.hiveKey,
+            trashKey: nk,
+            deleteAt: r.deleteAt,
+          );
+          await _save();
+          return false;
+        }
+        _pending.removeAt(idx);
+        await _save();
         return true;
       }
     } catch (e, st) {
       logE('❌ [SOFT-DELETE] Erro ao desfazer (type=${e.runtimeType})', error: e, st: st);
-      _pending.add(r);
-      await _save();
       return false;
     }
     return false;

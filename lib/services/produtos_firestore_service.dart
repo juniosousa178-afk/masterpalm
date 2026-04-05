@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/produto_variacao_extra.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
 import 'package:hive/hive.dart';
@@ -39,6 +40,28 @@ class ProdutosFirestoreService {
       // ignore: avoid_print
       print(msg);
     }
+  }
+
+  /// Mapas sempre serializados (vazios = limpar no remoto com `merge: true`).
+  static Map<String, dynamic> _variacoesParaFirestorePush(Produto p) {
+    if (p.variacoes != null && p.variacoes!.isNotEmpty) {
+      return Map<String, dynamic>.from(p.variacoes!);
+    }
+    return <String, dynamic>{};
+  }
+
+  static Map<String, dynamic> _variacoesExtraTipoParaFirestorePush(Produto p) {
+    if (p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty) {
+      return Map<String, dynamic>.from(p.variacoesExtraTipo!);
+    }
+    return <String, dynamic>{};
+  }
+
+  static Map<String, int> _estoquePorTamanhoParaFirestorePush(Produto p) {
+    if (p.estoquePorTamanho.isNotEmpty) {
+      return Map<String, int>.from(p.estoquePorTamanho);
+    }
+    return <String, int>{};
   }
 
   /// Sincroniza um produto para o Firestore (Hive → Firestore).
@@ -159,6 +182,16 @@ class ProdutosFirestoreService {
       final existingData = docSnap.data();
       final dynamic createdAtPersistido = existingData?['createdAt'];
 
+      // Sempre enviar mapas explícitos (vazios = limpar com merge:true).
+      final variacoesPush = _variacoesParaFirestorePush(produto);
+      final variacoesExtraPush = _variacoesExtraTipoParaFirestorePush(produto);
+      final estoquePorTamPush = _estoquePorTamanhoParaFirestorePush(produto);
+      logD(
+        '[VARIACAO_CLEAR] push estoque_produtos/$produtoId '
+        'variacoesKeys=${variacoesPush.length} extraKeys=${variacoesExtraPush.length} '
+        'estoquePorTamKeys=${estoquePorTamPush.length}',
+      );
+
       final produtoData = {
         'id': produtoId,
         'lojaId': storeId,
@@ -171,7 +204,7 @@ class ProdutosFirestoreService {
         'imagens': imagensFinais, // ✅ Usa URLs do Firebase
         'slug': produto.slug,
         'tamanhos': produto.tamanhos,
-        'estoquePorTamanho': produto.estoquePorTamanho,
+        'estoquePorTamanho': estoquePorTamPush,
         'publicadoNoCatalogo': produto.publicadoNoCatalogo,
         'custoReal': produto.custoReal,
         'precoUnitario': produto.precoUnitario,
@@ -194,12 +227,10 @@ class ProdutosFirestoreService {
             ? Timestamp.fromDate(produto.dataFimPromo!)
             : null,
 
-        // Variações (tamanho + cor)
+        // Variações (tamanho + cor) — chaves sempre presentes para não preservar lixo com merge
         'cores': produto.cores,
-        'variacoes': produto.variacoes,
-        if (produto.variacoesExtraTipo != null &&
-            produto.variacoesExtraTipo!.isNotEmpty)
-          'variacoesExtraTipo': produto.variacoesExtraTipo,
+        'variacoes': variacoesPush,
+        'variacoesExtraTipo': variacoesExtraPush,
         if (produto.precoPorTamanho != null && produto.precoPorTamanho!.isNotEmpty)
           'precoPorTamanho': produto.precoPorTamanho,
         'tipoProduto': produto.tipoProduto,
@@ -255,11 +286,9 @@ class ProdutosFirestoreService {
             'estoque': produto.quantidade,
             'imagens': imagensFinais,
             'slug': produto.slug,
-            'variacoes': produto.variacoes,
-            if (produto.variacoesExtraTipo != null &&
-                produto.variacoesExtraTipo!.isNotEmpty)
-              'variacoesExtraTipo': produto.variacoesExtraTipo,
-            'estoquePorTamanho': produto.estoquePorTamanho,
+            'variacoes': variacoesPush,
+            'variacoesExtraTipo': variacoesExtraPush,
+            'estoquePorTamanho': estoquePorTamPush,
             'cores': produto.cores,
             if (produto.precoPorTamanho != null &&
                 produto.precoPorTamanho!.isNotEmpty)
@@ -445,11 +474,16 @@ class ProdutosFirestoreService {
               (p) => p.idFirebase == produtoId && p.lojaId == lojaId,
             );
           } catch (_) {
-            // Se não encontrou por idFirebase, tenta por slug
+            // Se não encontrou por idFirebase, tenta por slug (último recurso)
             if (slug.isNotEmpty) {
               try {
                 produtoExistente = produtosBox.values.firstWhere(
                   (p) => p.slug == slug && p.lojaId == lojaId,
+                );
+                logW(
+                  '[PRODUTO_MATCH_GUARD] Hive resolvido por slug (idFirebase local ≠ docId). '
+                  'docId=$produtoId slug=$slug',
+                  tag: 'PRODUTO_MATCH_GUARD',
                 );
               } catch (_) {}
             }
@@ -467,17 +501,39 @@ class ProdutosFirestoreService {
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
+            final custoManualLocal = p.custoEditadoNoCadastro == true;
             p.nome = data['nome'] ?? p.nome;
             p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
             p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
-            p.custoReal = (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
+            if (custoManualLocal) {
+              logW(
+                '[CUSTO_GUARD] sync pull: mantendo custoReal local '
+                '${custoAntes.toStringAsFixed(2)} (cadastro manual)',
+                tag: 'CUSTO_GUARD',
+              );
+              p.custoEditadoNoCadastro = true;
+            } else {
+              p.custoReal = (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
+              final ce = data['custoEditadoNoCadastro'];
+              p.custoEditadoNoCadastro = ce is bool ? ce : false;
+            }
             p.frete = (data['frete'] as num?)?.toDouble() ?? p.frete;
             p.gastosFixos = (data['gastosFixos'] as num?)?.toDouble() ?? p.gastosFixos;
             p.gastosVariaveis = (data['gastosVariaveis'] as num?)?.toDouble() ?? p.gastosVariaveis;
             p.precoSugerido = (data['precoSugerido'] as num?)?.toDouble() ?? p.precoSugerido;
-            final ce = data['custoEditadoNoCadastro'];
-            p.custoEditadoNoCadastro = ce is bool ? ce : false;
-            p.peso = (data['peso'] as num?)?.toDouble() ?? p.peso;
+            final pesoDados = data['peso'];
+            if (pesoDados is num) {
+              final pr = pesoDados.toDouble();
+              if (pr == 0.0 && pesoAntes > 0.0) {
+                logW(
+                  '[PESO_GUARD] sync pull: ignorando peso remoto 0 (local '
+                  '${pesoAntes.toStringAsFixed(1)} g)',
+                  tag: 'PESO_GUARD',
+                );
+              } else {
+                p.peso = pr;
+              }
+            }
             p.tipoEmbalagem = (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
             p.categoria = data['categoria'] ?? p.categoria;
             p.subcategoria = data['subcategoria'] ?? p.subcategoria;
@@ -497,17 +553,72 @@ class ProdutosFirestoreService {
             }
             p.publicadoNoCatalogo = data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
             p.tamanhos = (data['tamanhos'] as List?)?.cast<String>() ?? p.tamanhos;
-            p.estoquePorTamanho = Map<String, int>.from(data['estoquePorTamanho'] ?? p.estoquePorTamanho);
             p.cores = (data['cores'] as List?)?.cast<String>() ?? p.cores;
-            final varData = data['variacoes'];
-            if (varData != null && varData is Map) {
-              p.variacoes = _parseVariacoesFromFirestore(varData);
+
+            // estoquePorTamanho / variações: semântica explícita (ausência = doc legado)
+            if (data.containsKey('estoquePorTamanho')) {
+              final rawE = data['estoquePorTamanho'];
+              if (rawE == null) {
+                p.estoquePorTamanho = {};
+                logD('[VARIACAO_PULL] estoquePorTamanho remoto null → limpo');
+              } else if (rawE is Map) {
+                if (rawE.isEmpty) {
+                  p.estoquePorTamanho = {};
+                  logD('[VARIACAO_PULL] estoquePorTamanho remoto {} → limpo');
+                } else {
+                  p.estoquePorTamanho = rawE.map(
+                    (k, v) => MapEntry(
+                      k.toString(),
+                      ProdutoVariacaoExtra.valorFirestoreComoInt(v),
+                    ),
+                  );
+                }
+              }
+            } else {
+              logW(
+                '[VARIACAO_PULL] estoquePorTamanho ausente no doc — mantendo local (legado)',
+                tag: 'VARIACAO_GUARD',
+              );
             }
+
+            if (data.containsKey('variacoes')) {
+              final varData = data['variacoes'];
+              if (varData == null) {
+                p.variacoes = null;
+                logD('[VARIACAO_PULL] variacoes remotas null → limpo local');
+              } else if (varData is Map) {
+                if (varData.isEmpty) {
+                  p.variacoes = null;
+                  logD('[VARIACAO_PULL] variacoes remotas {} → limpo local');
+                } else {
+                  p.variacoes = _parseVariacoesFromFirestore(varData);
+                }
+              }
+            } else {
+              logW(
+                '[VARIACAO_PULL] variacoes ausente no doc — mantendo local (legado)',
+                tag: 'VARIACAO_GUARD',
+              );
+            }
+
             if (data.containsKey('variacoesExtraTipo')) {
               final vet = data['variacoesExtraTipo'];
-              p.variacoesExtraTipo = vet != null && vet is Map
-                  ? _parseVariacoesExtraTipoFromFirestore(vet)
-                  : null;
+              if (vet == null) {
+                p.variacoesExtraTipo = null;
+                logD('[VARIACAO_PULL] variacoesExtraTipo remoto null → limpo');
+              } else if (vet is Map) {
+                if (vet.isEmpty) {
+                  p.variacoesExtraTipo = null;
+                  logD('[VARIACAO_PULL] variacoesExtraTipo remoto {} → limpo');
+                } else {
+                  p.variacoesExtraTipo = _parseVariacoesExtraTipoFromFirestore(vet);
+                }
+              }
+            } else {
+              logW(
+                '[VARIACAO_PULL] variacoesExtraTipo ausente — mantendo local (legado)',
+                tag: 'VARIACAO_GUARD',
+              );
             }
             final ppt = data['precoPorTamanho'];
             if (ppt != null && ppt is Map) {

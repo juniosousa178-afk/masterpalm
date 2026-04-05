@@ -4,6 +4,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import '../core/logger.dart';
 import '../models/produto.dart';
 import 'combo_receita_normalizacao.dart';
 
@@ -119,14 +120,28 @@ bool _mapaComDados(Map<dynamic, dynamic>? v) => v != null && v.isNotEmpty;
 void _mergeProdutoExistente(Produto existente, Produto novo) {
   // Campos numéricos principais (importação traz valores concretos)
   existente.quantidade = novo.quantidade;
-  existente.custoReal = novo.custoReal;
+  if (existente.custoEditadoNoCadastro) {
+    logW(
+      '[CUSTO_GUARD] import merge: mantendo custoReal ${existente.custoReal} (cadastro manual)',
+      tag: 'CUSTO_GUARD',
+    );
+  } else {
+    existente.custoReal = novo.custoReal;
+  }
   existente.precoFinal = novo.precoFinal;
   existente.precoUnitario = novo.precoUnitario;
   existente.precoSugerido = novo.precoSugerido;
   if (novo.frete > 0) existente.frete = novo.frete;
   if (novo.gastosFixos > 0) existente.gastosFixos = novo.gastosFixos;
   if (novo.gastosVariaveis > 0) existente.gastosVariaveis = novo.gastosVariaveis;
-  if (novo.peso > 0) existente.peso = novo.peso;
+  if (novo.peso > 0) {
+    existente.peso = novo.peso;
+  } else if (novo.peso == 0 && existente.peso > 0) {
+    logW(
+      '[PESO_GUARD] import merge: mantendo peso ${existente.peso} g (import veio 0)',
+      tag: 'PESO_GUARD',
+    );
+  }
   if (novo.estoqueMinimo > 0) existente.estoqueMinimo = novo.estoqueMinimo;
 
   // Texto/listas/mapas: só sobrescreve quando o novo trouxer dado válido.
@@ -237,24 +252,38 @@ Future<UpsertResultWithProduct> upsertProduto(
           ComboReceitaNormalizacao.normalizeLista(raw, lojaProds);
     }
 
-    if (novo.variacoes != null && novo.variacoes!.isNotEmpty) {
-      // Substitui totalmente as variações anteriores pelo mapa novo (cópia profunda),
-      // evitando "misturar" tamanhos/cores de produtos diferentes.
-      final Map<String, dynamic> deepCopy = {};
-      for (final entry in novo.variacoes!.entries) {
-        final key = entry.key;
-        final value = entry.value;
-        if (value is Map) {
-          deepCopy[key] =
-              Map<String, dynamic>.from(value.map((k, v) => MapEntry(k.toString(), v)));
-        } else {
-          deepCopy[key] = value;
+    if (novo.variacoes != null) {
+      if (novo.variacoes!.isEmpty) {
+        // Mapa vazio explícito = intenção de limpar (import/upsert futuro).
+        logW(
+          '[VARIACAO_CLEAR] import merge: variacoes mapa vazio → limpando variações e extras',
+          tag: 'VARIACAO_CLEAR',
+        );
+        existente.variacoes = null;
+        existente.variacoesExtraTipo = null;
+        existente.estoquePorTamanho = _mapaComDados(novo.estoquePorTamanho)
+            ? Map<String, int>.from(novo.estoquePorTamanho)
+            : <String, int>{};
+        existente.quantidade = novo.quantidade;
+      } else {
+        // Substitui totalmente as variações anteriores pelo mapa novo (cópia profunda),
+        // evitando "misturar" tamanhos/cores de produtos diferentes.
+        final Map<String, dynamic> deepCopy = {};
+        for (final entry in novo.variacoes!.entries) {
+          final key = entry.key;
+          final value = entry.value;
+          if (value is Map) {
+            deepCopy[key] =
+                Map<String, dynamic>.from(value.map((k, v) => MapEntry(k.toString(), v)));
+          } else {
+            deepCopy[key] = value;
+          }
         }
+        existente.variacoes = deepCopy;
+        existente.recalcularQuantidadeTotal();
       }
-      existente.variacoes = deepCopy;
-      existente.recalcularQuantidadeTotal();
     } else if (novo.estoquePorTamanho.isNotEmpty) {
-      // Sem variacoes explícitas, usa grade por tamanho quando veio no import.
+      // Sem variacoes no payload (null = não informado), usa grade por tamanho quando veio no import.
       existente.quantidade =
           existente.estoquePorTamanho.values.fold(0, (a, b) => a + b);
     }

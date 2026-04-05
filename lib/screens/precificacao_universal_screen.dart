@@ -12,6 +12,7 @@ import 'package:printing/printing.dart';
 
 import '../core/compra_item_pipeline_constants.dart';
 import '../core/hive_box_names.dart';
+import '../core/logger.dart';
 import '../models/produto.dart';
 import '../services/compra_item_pipeline_store.dart';
 import '../services/store_resolver_facade.dart';
@@ -494,26 +495,41 @@ class _PrecificacaoUniversalScreenState
           (item['codigoProduto'] as String?)?.trim() ?? '';
       final precoPretendido =
           (item['precoPretendido'] as num?)?.toDouble() ?? 0.0;
-      final precoSugerido = calcularPrecoVenda(custo);
-      final precoFinal = precoPretendido > 0 ? precoPretendido : precoSugerido;
 
       final produtoExistente =
           _produtoExistenteParaItem(nome, codigoProduto);
 
       if (produtoExistente != null) {
+        final bloquearCustoManual =
+            produtoExistente.custoEditadoNoCadastro == true;
+        final custoParaCalculo =
+            bloquearCustoManual ? produtoExistente.custoReal : custo;
+        if (bloquearCustoManual &&
+            (custo - produtoExistente.custoReal).abs() > 0.0001) {
+          logW(
+            '[CUSTO_GUARD] precificação: mantendo custo manual ${produtoExistente.custoReal} '
+            '(fila tinha $custo); preços usam custo local para o cálculo.',
+            tag: 'CUSTO_GUARD',
+          );
+        }
+        final precoSugerido = calcularPrecoVenda(custoParaCalculo);
+        final precoFinal = precoPretendido > 0 ? precoPretendido : precoSugerido;
+
         if (codigoProduto.isNotEmpty &&
             (produtoExistente.codigoBarras.isEmpty ||
                 produtoExistente.codigoBarras == codigoProduto)) {
           produtoExistente.codigoBarras = codigoProduto;
         }
         produtoExistente
-          ..custoReal = custo
           // precoUnitario = preço de venda (igual ao cadastro; vendas usam precoFinal)
           ..precoUnitario = precoFinal
           ..precoSugerido = precoSugerido
           ..precoFinal = precoFinal
-          ..custoEditadoNoCadastro = false
           ..updatedAt = DateTime.now();
+        if (!bloquearCustoManual) {
+          produtoExistente.custoReal = custo;
+          produtoExistente.custoEditadoNoCadastro = false;
+        }
         await produtoExistente.save();
         await ProdutosFirestoreService.syncProduto(
           produtoExistente,
@@ -521,16 +537,19 @@ class _PrecificacaoUniversalScreenState
         );
         atualizados++;
       } else {
+        final precoSugeridoNovo = calcularPrecoVenda(custo);
+        final precoFinalNovo =
+            precoPretendido > 0 ? precoPretendido : precoSugeridoNovo;
         final novo = Produto(
           nome: nome,
           custoReal: custo,
           frete: 0,
           gastosFixos: 0,
           gastosVariaveis: 0,
-          precoSugerido: precoSugerido,
-          precoFinal: precoFinal,
+          precoSugerido: precoSugeridoNovo,
+          precoFinal: precoFinalNovo,
           quantidade: 0,
-          precoUnitario: precoFinal,
+          precoUnitario: precoFinalNovo,
           categoria: '',
           dataEntrada: DateTime.now(),
           lojaId: _lojaId!,

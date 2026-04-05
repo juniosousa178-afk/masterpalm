@@ -196,9 +196,23 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
 
     Produto? existente;
     for (final p in estoqueBox.values) {
-      if (p.nome.toLowerCase() == nome.toLowerCase()) {
+      if (p.lojaId != lojaId) continue;
+      if (p.slug == slug) {
         existente = p;
         break;
+      }
+    }
+    if (existente == null) {
+      for (final p in estoqueBox.values) {
+        if (p.lojaId != lojaId) continue;
+        if (p.nome.toLowerCase() == nome.toLowerCase()) {
+          debugPrint(
+            '[PRODUTO_MATCH_GUARD] cadastro_catalogo: match por nome (slug diferente). '
+            'nome="$nome" slugEsperado=$slug',
+          );
+          existente = p;
+          break;
+        }
       }
     }
 
@@ -216,7 +230,6 @@ class _CadastroCatalogoScreenState extends State<CadastroCatalogoScreen> {
         ..slug = slug
         ..lojaId = lojaId
         ..publicadoNoCatalogo = true
-        ..custoEditadoNoCadastro = true
         ..updatedAt = DateTime.now();
       await existente.save();
       produtoParaSync = existente;
