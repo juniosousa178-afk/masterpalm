@@ -1,7 +1,5 @@
 // lib/screens/financeiro/financeiro_lancamentos_screen.dart
 
-import 'dart:async' show unawaited;
-
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
@@ -80,10 +78,11 @@ class _FinanceiroLancamentosScreenState
       backgroundColor: Colors.transparent,
       builder: (ctx) => _LancamentoFormSheet(
         lojaId: widget.lojaId,
+        box: box,
         existente: existente,
         onSalvar: (l) async {
           await box.put(l.id, l);
-          unawaited(FinanceiroFirestoreService.upsertLancamento(l));
+          return FinanceiroFirestoreService.upsertLancamento(l);
         },
       ),
     );
@@ -112,10 +111,39 @@ class _FinanceiroLancamentosScreenState
       final id = l.id;
       final lojaId = widget.lojaId;
       await _box!.delete(id);
-      unawaited(
-        FinanceiroFirestoreService.deleteLancamento(lojaId: lojaId, id: id),
-      );
-      if (mounted) setState(() {});
+      final remotoOk =
+          await FinanceiroFirestoreService.deleteLancamento(lojaId: lojaId, id: id);
+      if (mounted) {
+        if (!remotoOk) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Removido neste aparelho. A exclusão na nuvem pode não ter concluído.',
+              ),
+              action: SnackBarAction(
+                label: 'Tentar de novo',
+                onPressed: () async {
+                  final ok2 = await FinanceiroFirestoreService.deleteLancamento(
+                    lojaId: lojaId,
+                    id: id,
+                  );
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          ok2
+                              ? 'Exclusão na nuvem concluída.'
+                              : 'Ainda sem confirmação da nuvem. Verifique a conexão.',
+                        ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        }
+        setState(() {});
+      }
     }
   }
 
@@ -174,7 +202,8 @@ class _FinanceiroLancamentosScreenState
                                 ),
                                 subtitle: Text(
                                   '${FinanceiroTipoLancamento.legivel(l.tipo)} · ${l.status}\n'
-                                  '${df.format(l.dataEfetivaPagamentoOuLancamento)}',
+                                  '${df.format(l.dataEfetivaPagamentoOuLancamento)}'
+                                  '${l.referenciaExterna.trim().isNotEmpty ? '\nRef: ${l.referenciaExterna.trim()}' : ''}',
                                   style: const TextStyle(fontSize: 12),
                                 ),
                                 isThreeLine: true,
@@ -198,13 +227,16 @@ class _FinanceiroLancamentosScreenState
 class _LancamentoFormSheet extends StatefulWidget {
   const _LancamentoFormSheet({
     required this.lojaId,
+    required this.box,
     required this.onSalvar,
     this.existente,
   });
 
   final String lojaId;
+  final Box<LancamentoFinanceiro> box;
   final LancamentoFinanceiro? existente;
-  final Future<void> Function(LancamentoFinanceiro l) onSalvar;
+  /// Hive já gravado; retorna se o upsert remoto teve sucesso.
+  final Future<bool> Function(LancamentoFinanceiro l) onSalvar;
 
   @override
   State<_LancamentoFormSheet> createState() => _LancamentoFormSheetState();
@@ -219,6 +251,7 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
   late TextEditingController _centroCtrl;
   late TextEditingController _formaCtrl;
   late TextEditingController _subCtrl;
+  late TextEditingController _refExternaCtrl;
 
   late String _tipo;
   late String _categoria;
@@ -242,6 +275,8 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
     _centroCtrl = TextEditingController(text: e?.centroCusto ?? '');
     _formaCtrl = TextEditingController(text: e?.formaPagamento ?? '');
     _subCtrl = TextEditingController(text: e?.subcategoria ?? '');
+    _refExternaCtrl =
+        TextEditingController(text: e?.referenciaExterna ?? '');
     _tipo = FinanceiroTipoLancamento.tipoOuPadrao(
         e?.tipo ?? FinanceiroTipoLancamento.despesaOperacional);
     _categoria = financeiroCategoriaOuPadrao(
@@ -261,6 +296,7 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
     _centroCtrl.dispose();
     _formaCtrl.dispose();
     _subCtrl.dispose();
+    _refExternaCtrl.dispose();
     super.dispose();
   }
 
@@ -293,6 +329,7 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
     _centroCtrl.clear();
     _formaCtrl.clear();
     _subCtrl.clear();
+    _refExternaCtrl.clear();
     setState(() {
       _tipo = FinanceiroTipoLancamento.despesaOperacional;
       _categoria = kFinanceiroCategoriasPadrao.first.categoria;
@@ -346,22 +383,117 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
         usuarioNome: usuarioNome,
         centroCusto: _centroCtrl.text.trim(),
         anexoComprovante: comp?.anexoComprovante ?? '',
+        referenciaExterna: _refExternaCtrl.text.trim(),
         origem: FinanceiroOrigemLancamento.manual,
       );
 
-      await widget.onSalvar(l);
+      final prosseguir =
+          await _confirmarDuplicidadeCompraMercadoriaSeNecessario(l);
+      if (!prosseguir || !mounted) return;
+
+      final remotoOk = await widget.onSalvar(l);
       if (!mounted) return;
+
+      final messenger = ScaffoldMessenger.of(context);
+      if (!remotoOk) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Salvo neste aparelho, mas a sincronização com a nuvem falhou.',
+            ),
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(
+              label: 'Tentar na nuvem',
+              onPressed: () async {
+                final ok = await FinanceiroFirestoreService.upsertLancamento(l);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      ok
+                          ? 'Sincronizado com a nuvem.'
+                          : 'Ainda sem sucesso. Verifique a conexão.',
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
+
       if (fecharAoConcluir) {
         Navigator.pop(context, true);
       } else {
         _resetParaNovo();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lançamento salvo. Novo formulário.')),
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              remotoOk
+                  ? 'Lançamento salvo. Novo formulário.'
+                  : 'Lançamento salvo localmente. Novo formulário.',
+            ),
+          ),
         );
       }
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
+  }
+
+  /// Retorna false se o usuário cancelar diante de suspeita de duplicidade.
+  Future<bool> _confirmarDuplicidadeCompraMercadoriaSeNecessario(
+    LancamentoFinanceiro l,
+  ) async {
+    final suspeitos = _encontrarSuspeitosCompraMercadoria(
+      box: widget.box,
+      lojaId: widget.lojaId,
+      candidato: l,
+      excluirId: widget.existente?.id,
+    );
+    if (suspeitos.isEmpty) return true;
+    final df = DateFormat('dd/MM/yy');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Possível duplicidade'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Já existe lançamento parecido (compra de mercadoria, mesmo valor, '
+                'mesma data e mesma descrição). Deseja salvar mesmo assim?',
+              ),
+              const SizedBox(height: 12),
+              ...suspeitos.map(
+                (s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    '· ${s.descricao.isEmpty ? '(sem descrição)' : s.descricao} · '
+                    'R\$ ${s.valor.toStringAsFixed(2)} · '
+                    '${df.format(s.dataEfetivaPagamentoOuLancamento)}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Salvar assim mesmo'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   @override
@@ -416,6 +548,15 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
+                  controller: _refExternaCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Referência (opcional)',
+                    hintText: 'NF, código interno, nota…',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
                   controller: _valorCtrl,
                   decoration: const InputDecoration(
                     labelText: 'Valor *',
@@ -441,6 +582,36 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
                       .toList(),
                   onChanged: (v) => setState(() => _tipo = v ?? _tipo),
                 ),
+                if (_tipo == FinanceiroTipoLancamento.compraMercadoria) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber.shade700),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.warning_amber_rounded,
+                            color: Colors.amber.shade900),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Atenção: use este tipo apenas quando esta despesa não estiver '
+                            'sendo controlada no módulo de compras. Lançar aqui e também '
+                            'registrar o mesmo gasto na compra pode duplicar o valor nos relatórios.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: _categoria,
@@ -592,4 +763,40 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
       ),
     );
   }
+}
+
+String _normalizarDescricaoDuplicidade(String s) =>
+    s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+bool _mesmoDiaCivilLancamento(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+/// Comparação estrita (compra_mercadoria, valor, dia e descrição).
+List<LancamentoFinanceiro> _encontrarSuspeitosCompraMercadoria({
+  required Box<LancamentoFinanceiro> box,
+  required String lojaId,
+  required LancamentoFinanceiro candidato,
+  String? excluirId,
+}) {
+  if (candidato.tipo != FinanceiroTipoLancamento.compraMercadoria) {
+    return const [];
+  }
+  final alvo = _normalizarDescricaoDuplicidade(candidato.descricao);
+  if (alvo.isEmpty) return const [];
+  final d = candidato.dataEfetivaPagamentoOuLancamento;
+  final lid = lojaId.trim();
+  final out = <LancamentoFinanceiro>[];
+  for (final x in box.values) {
+    if (x.lojaId.trim() != lid) continue;
+    if (excluirId != null && x.id == excluirId) continue;
+    if (x.tipo != FinanceiroTipoLancamento.compraMercadoria) continue;
+    if ((x.valor - candidato.valor).abs() >= 0.009) continue;
+    if (!_mesmoDiaCivilLancamento(x.dataEfetivaPagamentoOuLancamento, d)) {
+      continue;
+    }
+    if (_normalizarDescricaoDuplicidade(x.descricao) != alvo) continue;
+    out.add(x);
+    if (out.length >= 5) break;
+  }
+  return out;
 }

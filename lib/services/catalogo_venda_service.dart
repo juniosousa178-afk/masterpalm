@@ -27,6 +27,7 @@ import 'campaign_engine_service.dart'; // 🎯 Integração com campanhas de sor
 import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
 import 'notificacao_vendas_service.dart';
+import 'catalogo_web_apos_estoque_service.dart';
 import 'catalogo_venda_helpers.dart';
 import 'catalogo_venda_item_resolver.dart';
 import 'produto_vendas_catalogo_denorm_service.dart';
@@ -527,9 +528,19 @@ class CatalogoVendaService {
           );
         }
 
-        await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+        final txResultsComboCap =
+            await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
           lojaId: lojaId,
           produtosBox: produtosBox,
+          produtoIdsDebitadosNaVenda:
+              ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
+        );
+
+        await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+          lojaId: lojaId,
+          produtosBox: produtosBox,
+          resultadosPrincipais: txResults,
+          resultadosComboExtra: txResultsComboCap,
         );
       }
 
@@ -1128,9 +1139,19 @@ class CatalogoVendaService {
         );
       }
 
-      await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+      final txResultsComboCapFinal =
+          await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
         lojaId: lojaId,
         produtosBox: produtosBox,
+        produtoIdsDebitadosNaVenda:
+            ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
+      );
+
+      await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        resultadosPrincipais: txResults,
+        resultadosComboExtra: txResultsComboCapFinal,
       );
 
       for (final item in itens) {

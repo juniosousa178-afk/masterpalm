@@ -25,6 +25,7 @@ import '../services/store_resolver_facade.dart';
 import '../services/planos_service.dart';
 import '../services/license_manager.dart';
 import '../services/venda_item_migration_service.dart';
+import 'auditoria_combos_debug_screen.dart';
 
 class DiagnosticoAppScreen extends StatefulWidget {
   const DiagnosticoAppScreen({super.key});
@@ -388,6 +389,27 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
                     ],
                   ),
                 )),
+                const SizedBox(height: 24),
+                const Text('Receitas de combo (somente leitura)', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: Icon(Icons.inventory_2_outlined, color: Colors.teal.shade700),
+                    title: const Text('Auditar receitas de combo'),
+                    subtitle: const Text(
+                      'Analisa Hive local: pendências, ambiguidades e IDs inválidos. Não altera dados.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AuditoriaCombosDebugScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
                 const SizedBox(height: 24),
                 const Text('Migração (somente programador)', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),

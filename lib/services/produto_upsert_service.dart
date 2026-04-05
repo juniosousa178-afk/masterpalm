@@ -5,6 +5,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../models/produto.dart';
+import 'combo_receita_normalizacao.dart';
 
 /// Normaliza string para comparação: remove acentos, lowercase, trim, colapsa espaços.
 String normalizeKey(String s) {
@@ -230,7 +231,10 @@ Future<UpsertResultWithProduct> upsertProduto(
       existente.tipoProduto = novo.tipoProduto;
     }
     if (novo.itensCombo != null && novo.itensCombo!.isNotEmpty) {
-      existente.itensCombo = novo.itensCombo!.map((m) => Map<String, dynamic>.from(m)).toList();
+      final raw = novo.itensCombo!.map((m) => Map<String, dynamic>.from(m)).toList();
+      final lojaProds = box.values.where((p) => p.lojaId == lojaId);
+      existente.itensCombo =
+          ComboReceitaNormalizacao.normalizeLista(raw, lojaProds);
     }
 
     if (novo.variacoes != null && novo.variacoes!.isNotEmpty) {

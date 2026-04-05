@@ -16,6 +16,7 @@ import 'catalogo_sync_service.dart';
 import 'produto_remote_sync_guard.dart';
 import 'store_resolver_facade.dart';
 import 'catalog_thumbnail_service.dart';
+import 'combo_receita_normalizacao.dart';
 import 'image_upload_service.dart';
 import 'sync_queue_service.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
@@ -520,12 +521,11 @@ class ProdutosFirestoreService {
             p.tipoProduto = (data['tipoProduto'] ?? p.tipoProduto).toString();
             final itc = data['itensCombo'];
             if (itc != null && itc is List && itc.isNotEmpty) {
-              p.itensCombo = itc.map((e) {
-                if (e is Map) {
-                  return Map<String, dynamic>.from(Map.from(e));
-                }
-                return <String, dynamic>{};
-              }).where((m) => (m['nome'] ?? '').toString().isNotEmpty).toList();
+              p.itensCombo = _parseItensComboFromFirestore(
+                itc,
+                lojaId: lojaId,
+                produtosBox: produtosBox,
+              );
             } else if (itc == null) {
               p.itensCombo = null;
             }
@@ -612,7 +612,11 @@ class ProdutosFirestoreService {
                   _parseVariacoesExtraTipoFromFirestore(data['variacoesExtraTipo']),
               precoPorTamanho: _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
               tipoProduto: (data['tipoProduto'] ?? 'simples').toString(),
-              itensCombo: _parseItensComboFromFirestore(data['itensCombo']),
+              itensCombo: _parseItensComboFromFirestore(
+                data['itensCombo'],
+                lojaId: lojaId,
+                produtosBox: produtosBox,
+              ),
               divideSemJuros: data['divideSemJuros'] == true,
               percentualDescontoPix: (data['percentualDescontoPix'] is num)
                   ? (data['percentualDescontoPix'] as num).toDouble()
@@ -678,16 +682,24 @@ class ProdutosFirestoreService {
     }
   }
 
-  static List<Map<String, dynamic>>? _parseItensComboFromFirestore(dynamic data) {
+  static List<Map<String, dynamic>>? _parseItensComboFromFirestore(
+    dynamic data, {
+    required String lojaId,
+    required Box<Produto> produtosBox,
+  }) {
     if (data == null || data is! List || data.isEmpty) return null;
     final result = <Map<String, dynamic>>[];
     for (final e in data) {
       if (e is! Map) continue;
       final m = Map<String, dynamic>.from(Map.from(e));
-      if ((m['nome'] ?? '').toString().trim().isEmpty) continue;
+      final nome = (m['nome'] ?? '').toString().trim();
+      final pid = ComboReceitaNormalizacao.pidFrom(m);
+      if (nome.isEmpty && pid.isEmpty) continue;
       result.add(m);
     }
-    return result.isEmpty ? null : result;
+    if (result.isEmpty) return null;
+    final loja = produtosBox.values.where((p) => p.lojaId == lojaId);
+    return ComboReceitaNormalizacao.normalizeLista(result, loja);
   }
 
   /// Converte mapa precoPorTamanho vindo do Firestore para Map<String, double>.

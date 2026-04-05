@@ -149,7 +149,8 @@ class Produto extends HiveObject {
   String tipoProduto;
 
   /// Itens do combo. Cada mapa: {nome, slug, quantidade, tamanho?, cor?, productId?}.
-  /// productId (opcional) = idFirebase do produto; quando presente, expansão/baixa preferem ID. Só usado quando tipoProduto == 'combo'.
+  /// productId = idFirebase do componente; cadastro novo exige preenchimento (normalização preenche legado quando seguro).
+  /// Só usado quando tipoProduto == 'combo'.
   @HiveField(39)
   List<Map<String, dynamic>>? itensCombo;
 

@@ -2359,6 +2359,22 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             'extraValor': (item['extraValor'] ?? '').toString().trim(),
           if ((item['extraTipo'] ?? '').toString().trim().isNotEmpty)
             'extraTipo': (item['extraTipo'] ?? '').toString().trim(),
+          ...(() {
+            final raw = item['itensComboComSelecao'];
+            if (raw is! List || raw.isEmpty) return <String, dynamic>{};
+            final copies = <Map<String, dynamic>>[];
+            for (final e in raw) {
+              if (e is Map) {
+                copies.add(
+                  Map<String, dynamic>.from(
+                    e.map((k, v) => MapEntry(k.toString(), v)),
+                  ),
+                );
+              }
+            }
+            if (copies.isEmpty) return <String, dynamic>{};
+            return <String, dynamic>{'itensComboComSelecao': copies};
+          })(),
         };
       }).toList();
 

@@ -260,6 +260,9 @@ class CatalogCacheService {
 
   /// Stream de produtos com cache. Mesmo padrão: cache primeiro, Firestore depois.
   /// Atualização automática: refetch após TTL.
+  ///
+  /// **Catálogo público:** a tela do catálogo web usa snapshots diretos na coleção
+  /// de produtos, não este método — estoque em tempo real.
   static Stream<QuerySnapshot<Map<String, dynamic>>> getProdutosStream({
     required String lojaId,
     required bool preview,

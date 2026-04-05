@@ -17,9 +17,8 @@ import '../core/logger.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
-import 'catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
+import 'produto_exclusao_remota_service.dart';
 import 'clientes_firestore_service.dart';
-import 'produtos_firestore_service.dart';
 import 'vendas_service.dart';
 
 const _undoWindow = Duration(seconds: 30);
@@ -157,11 +156,10 @@ class SoftDeleteService {
 
     if (removeFromCatalogo) {
       try {
-        final slug = produto.slug.isNotEmpty
-            ? produto.slug
-            : CatalogoSyncService.slugify(produto.nome);
-        await CatalogoSyncService.removeBySlug(slug, target: SyncTarget.draft);
-        await CatalogoSyncService.removeBySlug(slug, target: SyncTarget.live);
+        await ProdutoExclusaoRemotaService.removerCatalogoParaProdutoRemovidoDoHive(
+          produto: produto,
+          lojaId: lojaId,
+        );
       } catch (e) {
         logW('⚠️ [SOFT-DELETE] Erro ao remover do catálogo (type=${e.runtimeType})');
       }
@@ -360,7 +358,7 @@ class SoftDeleteService {
         final trashBox = await _trashProdutosBox();
         final prod = trashBox.get(r.trashKey);
         if (prod != null) {
-          await ProdutosFirestoreService.deleteProdutoRobusto(
+          await ProdutoExclusaoRemotaService.apagarImagensEEstoqueRemoto(
             produto: prod,
             lojaId: r.lojaId,
           );

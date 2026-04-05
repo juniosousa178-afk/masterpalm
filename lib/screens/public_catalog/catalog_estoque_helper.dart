@@ -37,6 +37,7 @@ class CatalogEstoqueHelper {
   /// Fallback numérico: prioridade explícita; [quantidade] só se nenhum campo “de estoque” existir.
   static int readFallbackNumericStock(Map<String, dynamic> m) {
     const keys = <String>[
+      'estoque_atual',
       'estoque',
       'estoqueAtual',
       'qtdEstoque',
@@ -353,9 +354,19 @@ class CatalogEstoqueHelper {
     List<Map<String, dynamic>> lista,
     String productId,
   ) {
-    if (productId.isEmpty) return null;
+    final key = productId.trim();
+    if (key.isEmpty) return null;
     for (final p in lista) {
-      if ('${p['id'] ?? ''}' == productId) return p;
+      final id = '${p['id'] ?? ''}'.trim();
+      if (id.isNotEmpty && id == key) return p;
+    }
+    for (final p in lista) {
+      final pid = '${p['produtosId'] ?? ''}'.trim();
+      if (pid.isNotEmpty && pid == key) return p;
+    }
+    for (final p in lista) {
+      final slug = '${p['slug'] ?? ''}'.trim();
+      if (slug.isNotEmpty && slug == key) return p;
     }
     return null;
   }

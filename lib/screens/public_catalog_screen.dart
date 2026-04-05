@@ -638,13 +638,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       return _cachedProdutosStream!;
     }
     _cachedProdutosStreamKey = key;
-    _cachedProdutosStream = _useCatalogCache && !widget.preview
-        ? CatalogCacheService.getProdutosStream(
-            lojaId: lojaId,
-            preview: widget.preview,
-            forceRefresh: _refreshCounter > 0,
-          )
-        : _produtosStream(lojaId);
+    // Estoque/disponibilidade: snapshots em tempo real (sem TTL do cache de produtos).
+    // Config continua podendo usar CatalogCacheService em [_getConfigStream].
+    _cachedProdutosStream = _produtosStream(lojaId);
     return _cachedProdutosStream!;
   }
 
@@ -2198,26 +2194,37 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final ex =
         (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
 
-    if (!isComboLine && id.isNotEmpty) {
-      final p = CatalogEstoqueHelper.findProductInList(catalogProducts, id);
-      if (p != null) {
-        final avail =
-            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, ex);
-        final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
-        var other = 0;
-        for (var i = 0; i < _cart.length; i++) {
-          if (i == index) continue;
-          if (CatalogEstoqueHelper.cartLineIdentity(_cart[i]) == lineKey) {
-            other += CatalogEstoqueHelper.parseCartItemQuantidade(
-                _cart[i]['quantidade']);
-          }
+    if (!isComboLine) {
+      final idTrim = id.trim();
+      if (idTrim.isEmpty) {
+        _snack(
+          'Não foi possível identificar o produto. Atualize o catálogo e tente novamente.',
+        );
+        return false;
+      }
+      final p = CatalogEstoqueHelper.findProductInList(catalogProducts, idTrim);
+      if (p == null) {
+        _snack(
+          'Produto indisponível ou dados desatualizados. Atualize a página e tente novamente.',
+        );
+        return false;
+      }
+      final avail =
+          CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, ex);
+      final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
+      var other = 0;
+      for (var i = 0; i < _cart.length; i++) {
+        if (i == index) continue;
+        if (CatalogEstoqueHelper.cartLineIdentity(_cart[i]) == lineKey) {
+          other += CatalogEstoqueHelper.parseCartItemQuantidade(
+              _cart[i]['quantidade']);
         }
-        if (other + newQty > avail) {
-          _snack(avail <= 0
-              ? 'Produto esgotado nesta variação.'
-              : 'Estoque insuficiente. Disponível: $avail un.');
-          return false;
-        }
+      }
+      if (other + newQty > avail) {
+        _snack(avail <= 0
+            ? 'Produto esgotado nesta variação.'
+            : 'Estoque insuficiente. Disponível: $avail un.');
+        return false;
       }
     }
 
@@ -2248,25 +2255,36 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final isComboLine =
         comboRaw is List && comboRaw.isNotEmpty;
 
-    if (!isComboLine && id.isNotEmpty) {
-      final p = CatalogEstoqueHelper.findProductInList(catalogProducts, id);
-      if (p != null) {
-        final avail =
-            CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, ex);
-        final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
-        var already = 0;
-        for (final e in _cart) {
-          if (CatalogEstoqueHelper.cartLineIdentity(e) == lineKey) {
-            already +=
-                CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
-          }
+    if (!isComboLine) {
+      final idTrim = id.trim();
+      if (idTrim.isEmpty) {
+        _snack(
+          'Não foi possível identificar o produto. Atualize o catálogo e tente novamente.',
+        );
+        return false;
+      }
+      final p = CatalogEstoqueHelper.findProductInList(catalogProducts, idTrim);
+      if (p == null) {
+        _snack(
+          'Produto indisponível ou dados desatualizados. Atualize a página e tente novamente.',
+        );
+        return false;
+      }
+      final avail =
+          CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, ex);
+      final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
+      var already = 0;
+      for (final e in _cart) {
+        if (CatalogEstoqueHelper.cartLineIdentity(e) == lineKey) {
+          already +=
+              CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
         }
-        if (already + addQty > avail) {
-          _snack(avail <= 0
-              ? 'Produto esgotado nesta variação.'
-              : 'Estoque insuficiente. Disponível: $avail un.');
-          return false;
-        }
+      }
+      if (already + addQty > avail) {
+        _snack(avail <= 0
+            ? 'Produto esgotado nesta variação.'
+            : 'Estoque insuficiente. Disponível: $avail un.');
+        return false;
       }
     }
 

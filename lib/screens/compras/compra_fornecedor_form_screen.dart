@@ -1,5 +1,5 @@
 // lib/screens/compras/compra_fornecedor_form_screen.dart
-// Fase 1: cadastro/edição local; sem estoque e sem financeiro automático.
+// Cadastro/edição local; política compra↔financeiro: CompraFinanceiroIntegracaoService.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +12,7 @@ import '../../models/compra_fornecedor.dart';
 import '../../models/compra_fornecedor_constants.dart';
 import '../../models/compra_fornecedor_item.dart';
 import '../../models/produto.dart';
+import '../../services/compra_financeiro_integracao_service.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
 import '../../services/compra_fornecedor_sync_service.dart';
 import '../../services/compra_para_pipeline_service.dart';
@@ -507,6 +508,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         _snackHiveIndisponivel();
         return;
       }
+      CompraFinanceiroIntegracaoService.aplicarAposPersistenciaLocal(c);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Rascunho salvo')),
       );
@@ -532,8 +534,10 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         _snackHiveIndisponivel();
         return;
       }
+      CompraFinanceiroIntegracaoService.aplicarAposPersistenciaLocal(c);
       if (c.statusCompra == CompraFornecedorStatusCompra.cancelada) {
         await _sincronizarPipelineSeCancelada(c);
+        CompraFinanceiroIntegracaoService.aplicarEfeitosCancelamento(c);
       } else {
         await _sincronizarPipelineSeConfirmada(c);
       }
@@ -599,6 +603,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         _snackHiveIndisponivel();
         return;
       }
+      CompraFinanceiroIntegracaoService.aplicarAposPersistenciaLocal(finalModel);
       if (!jaConfirmada) {
         setState(() {
           _confirmadoEm = confEm;

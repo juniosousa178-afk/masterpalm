@@ -72,6 +72,10 @@ class LancamentoFinanceiro extends HiveObject {
   @HiveField(20)
   String anexoComprovante;
 
+  /// Nota, NF, código interno — rastreio manual; não vincula compra automaticamente.
+  @HiveField(21, defaultValue: '')
+  String referenciaExterna;
+
   LancamentoFinanceiro({
     required this.id,
     required this.lojaId,
@@ -94,6 +98,7 @@ class LancamentoFinanceiro extends HiveObject {
     this.usuarioNome = '',
     this.centroCusto = '',
     this.anexoComprovante = '',
+    this.referenciaExterna = '',
   })  : competenciaMes = competenciaMes ?? dataLancamento.month,
         competenciaAno = competenciaAno ?? dataLancamento.year;
 
@@ -122,6 +127,7 @@ class LancamentoFinanceiro extends HiveObject {
     String? usuarioNome,
     String? centroCusto,
     String? anexoComprovante,
+    String? referenciaExterna,
   }) {
     return LancamentoFinanceiro(
       id: id ?? this.id,
@@ -145,6 +151,7 @@ class LancamentoFinanceiro extends HiveObject {
       usuarioNome: usuarioNome ?? this.usuarioNome,
       centroCusto: centroCusto ?? this.centroCusto,
       anexoComprovante: anexoComprovante ?? this.anexoComprovante,
+      referenciaExterna: referenciaExterna ?? this.referenciaExterna,
     );
   }
 }

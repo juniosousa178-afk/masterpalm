@@ -130,6 +130,32 @@ class ImageUploadService {
     }
   }
 
+  /// Apaga no Storage somente se a URL for do Firebase **e** o objeto estiver em `lojas/{lojaId}/...`.
+  /// URLs externas ou de outra loja não são removidas.
+  static Future<bool> deleteImageIfManagedForLoja(String imageUrl, String lojaId) async {
+    if (imageUrl.isEmpty || lojaId.isEmpty) return false;
+    if (imageUrl.startsWith('data:') || imageUrl.startsWith('blob:')) return false;
+    if (!isFirebaseUrl(imageUrl)) {
+      debugPrint('⚠️ [IMAGE-UPLOAD] skip delete (não é URL Firebase gerenciada): ${imageUrl.length > 80 ? "${imageUrl.substring(0, 80)}..." : imageUrl}');
+      return false;
+    }
+    try {
+      final ref = _storage.refFromURL(imageUrl);
+      final full = ref.fullPath;
+      final prefix = 'lojas/$lojaId/';
+      if (!full.startsWith(prefix)) {
+        debugPrint('⚠️ [IMAGE-UPLOAD] skip delete (path fora da loja): $full');
+        return false;
+      }
+      await ref.delete();
+      debugPrint('🗑️ [IMAGE-UPLOAD] Removido objeto gerenciado: $full');
+      return true;
+    } catch (e) {
+      debugPrint('❌ [IMAGE-UPLOAD] Falha delete seguro (type=${e.runtimeType}) url=${imageUrl.length > 60 ? "${imageUrl.substring(0, 60)}..." : imageUrl}');
+      return false;
+    }
+  }
+
   /// Deleta múltiplas imagens
   static Future<void> deleteMultipleImages(List<String> imageUrls) async {
     for (final url in imageUrls) {

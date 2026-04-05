@@ -17,9 +17,11 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
+import 'combo_kit_stock_service.dart';
 import 'firestore_paths.dart';
 import 'produtos_firestore_service.dart';
 import 'vendas_service.dart';
+import 'catalogo_web_apos_estoque_service.dart';
 import 'estoque_transaction_service.dart';
 
 /// Resultado de uma operação de estoque
@@ -68,6 +70,40 @@ enum ResultadoAjusteEstoque {
 /// Serviço centralizado para controle de estoque
 class EstoqueService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  /// Após ajuste manual no filho, recalibra só combos que referenciam esse [productId] (teto ou piso).
+  static Future<void> _recalcularCombosDepoisAjusteManual({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    required Produto produtoAlterado,
+    required bool foiBaixa,
+  }) async {
+    final pid = produtoAlterado.idFirebase.trim();
+    if (pid.isEmpty) {
+      debugPrint('[ESTOQUE] [COMBO_SYNC] Sem idFirebase no produto ajustado; pulando recálculo de combo.');
+      return;
+    }
+    try {
+      if (foiBaixa) {
+        await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+          lojaId: lojaId,
+          produtosBox: produtosBox,
+          produtoIdsDebitadosNaVenda: {pid},
+        );
+      } else {
+        await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
+          lojaId: lojaId,
+          produtosBox: produtosBox,
+          produtoIdsQueAfetamCombo: {pid},
+        );
+      }
+    } catch (e, st) {
+      debugPrint(
+        '[ESTOQUE] [COMBO_SYNC] Falha ao recalibrar combos após ajuste manual (type=${e.runtimeType}): $e',
+      );
+      debugPrint('$st');
+    }
+  }
 
   // ============================================================
   // FUNÇÃO PRINCIPAL: ATUALIZAR ESTOQUE
@@ -203,6 +239,21 @@ class EstoqueService {
           cor: corTrim,
         );
 
+        if (result.quantidadeDebitada > 0) {
+          await _recalcularCombosDepoisAjusteManual(
+            lojaId: lojaId,
+            produtosBox: produtosBox,
+            produtoAlterado: produto,
+            foiBaixa: true,
+          );
+        }
+
+        await CatalogoWebAposEstoqueService.sincronizarCatalogoWebAposMudancaEstoque(
+          lojaId: lojaId,
+          productIdsAfetados: {result.produtoId.trim()},
+          produtosBox: produtosBox,
+        );
+
         final mensagemSucesso =
             'Estoque baixado com sucesso: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois';
         debugPrint('$tag $mensagemSucesso');
@@ -256,6 +307,24 @@ class EstoqueService {
       }
 
       await _sincronizarComFirestore(produto, lojaId);
+
+      if (estoqueDepois != estoqueAntes) {
+        await _recalcularCombosDepoisAjusteManual(
+          lojaId: lojaId,
+          produtosBox: produtosBox,
+          produtoAlterado: produto,
+          foiBaixa: false,
+        );
+      }
+
+      final pidDev = produto.idFirebase.trim();
+      if (pidDev.isNotEmpty) {
+        await CatalogoWebAposEstoqueService.sincronizarCatalogoWebAposMudancaEstoque(
+          lojaId: lojaId,
+          productIdsAfetados: {pidDev},
+          produtosBox: produtosBox,
+        );
+      }
 
       final mensagemSucesso =
           'Estoque devolvido com sucesso: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois';

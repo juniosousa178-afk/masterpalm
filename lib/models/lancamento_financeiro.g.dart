@@ -38,13 +38,14 @@ class LancamentoFinanceiroAdapter extends TypeAdapter<LancamentoFinanceiro> {
       usuarioNome: fields[18] as String,
       centroCusto: fields[19] as String,
       anexoComprovante: fields[20] as String,
+      referenciaExterna: fields[21] == null ? '' : fields[21] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, LancamentoFinanceiro obj) {
     writer
-      ..writeByte(21)
+      ..writeByte(22)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -86,7 +87,9 @@ class LancamentoFinanceiroAdapter extends TypeAdapter<LancamentoFinanceiro> {
       ..writeByte(19)
       ..write(obj.centroCusto)
       ..writeByte(20)
-      ..write(obj.anexoComprovante);
+      ..write(obj.anexoComprovante)
+      ..writeByte(21)
+      ..write(obj.referenciaExterna);
   }
 
   @override

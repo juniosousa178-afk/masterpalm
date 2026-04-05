@@ -11,6 +11,7 @@ import '../models/produto.dart';
 import '../services/permissao_service.dart';
 import '../services/catalogo_sync_service.dart';
 import '../services/produtos_firestore_service.dart';
+import '../services/produto_exclusao_remota_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/sync_queue_service.dart';
 import '../services/marketplace_service.dart';
@@ -174,32 +175,22 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
       int sucesso = 0;
       int erro = 0;
 
+      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      if (lojaId == null || lojaId.isEmpty) {
+        _showError('Nenhuma loja ativa');
+        return;
+      }
+
       for (var key in _produtosSelecionados) {
         try {
           final produto = _box.get(key);
           if (produto == null) continue;
 
-          // Remover do Hive
+          await ProdutoExclusaoRemotaService.exclusaoRemotaCompletaImediata(
+            produto: produto,
+            lojaId: lojaId,
+          );
           await _box.delete(key);
-
-          // Remover do Firestore
-          final lojaId = await StoreResolverFacade.resolveForAdminApp();
-          if (lojaId != null && produto.idFirebase.isNotEmpty) {
-            await ProdutosFirestoreService.deleteProduto(
-              produto.idFirebase,
-              lojaId: lojaId,
-            );
-          }
-
-          // Remover do catálogo
-          final slug = produto.slug.isNotEmpty
-              ? produto.slug
-              : CatalogoSyncService.slugify(produto.nome);
-
-          try {
-            await CatalogoSyncService.removeBySlug(slug, target: SyncTarget.draft);
-            await CatalogoSyncService.removeBySlug(slug, target: SyncTarget.live);
-          } catch (_) {}
 
           sucesso++;
         } catch (e, st) {
@@ -368,16 +359,22 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
       int sucesso = 0;
       int erro = 0;
 
+      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      if (lojaId == null || lojaId.isEmpty) {
+        _showError('Nenhuma loja ativa');
+        return;
+      }
+
       for (var key in _produtosSelecionados) {
         try {
           final produto = _box.get(key);
           if (produto == null) continue;
 
-          final slug = produto.slug.isNotEmpty
-              ? produto.slug
-              : CatalogoSyncService.slugify(produto.nome);
-
-          await CatalogoSyncService.removeBySlug(slug, target: SyncTarget.live);
+          await CatalogoSyncService.removeProdutoFromFirestore(
+            produto,
+            target: SyncTarget.live,
+            lojaIdOverride: lojaId,
+          );
 
           sucesso++;
         } catch (e, st) {

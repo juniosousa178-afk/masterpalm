@@ -12,8 +12,10 @@ import '../core/hive_box_names.dart';
 import '../models/venda.dart';
 import '../models/produto.dart';
 import 'catalogo_venda_service.dart';
+import 'catalogo_web_apos_estoque_service.dart';
 import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
+import 'venda_combo_estoque_expansion.dart';
 import 'firestore_paths.dart';
 import 'pedido_collection_resolver.dart';
 import 'sorteio_numero_service.dart';
@@ -221,37 +223,48 @@ class PosPagamentoService {
     }
   }
 
-  /// Baixa o estoque dos produtos vendidos via transação Firestore (atômico)
+  /// Baixa o estoque dos produtos vendidos via transação Firestore (atômico).
+  /// Usa a mesma expansão de combo que a nova venda ([VendaComboEstoqueExpansion]), incluindo
+  /// [itensComboComSelecao] e [extraValor] por componente.
   static Future<void> _baixarEstoque(String lojaId, List<Map<String, dynamic>> items) async {
-    final txItems = <Map<String, dynamic>>[];
-    for (final item in items) {
-      // Alinhado com EstoqueTransactionService: productId | produtosId | id
-      final productId = (item['productId'] ?? item['produtosId'] ?? item['id'])?.toString().trim();
-      final qty = (item['qty'] as int?) ?? (item['quantidade'] as int?) ?? 1;
+    final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
 
-      if (productId == null || productId.isEmpty) {
-        debugPrint(
-          '⚠️ [ESTOQUE_BAIXA] Item sem productId, pulando baixa de estoque. lojaId=$lojaId, nome=${item['name'] ?? item['nome']}',
-        );
-        continue;
-      }
-      if (qty <= 0) continue;
+    final (vendaItens, comboPorIndice) =
+        VendaComboEstoqueExpansion.carrinhoMapsParaVendaItensComComboSelecao(items);
 
-      txItems.add({
-        'productId': productId,
-        'nome': item['name'] ?? item['nome'] ?? '',
-        'quantidade': qty,
-        'tamanho': (item['tamanho'] ?? item['size'] ?? '').toString().trim(),
-        'cor': (item['cor'] ?? item['color'] ?? '').toString().trim(),
-      });
+    if (vendaItens.isEmpty) {
+      debugPrint(
+        '⚠️ [ESTOQUE_BAIXA] Nenhum item válido após mapear carrinho. lojaId=$lojaId',
+      );
+      throw Exception(
+        'Nenhum item válido para baixa de estoque. '
+        'Não é possível confirmar o pagamento sem baixar o estoque.',
+      );
     }
+
+    final (itensParaEstoque, produtosEncontrados) = VendaComboEstoqueExpansion.expandirCombos(
+      itens: vendaItens,
+      produtosBox: produtosBox,
+      lojaId: lojaId,
+      itensComboSelecaoPorIndice: comboPorIndice,
+    );
+
+    VendaComboEstoqueExpansion.validarExpansaoParaBaixaFirestore(
+      itensParaEstoque: itensParaEstoque,
+      produtosEncontrados: produtosEncontrados,
+    );
+
+    final txItems = VendaComboEstoqueExpansion.montarTxItemsParaBaixaEstoque(
+      itensParaEstoque: itensParaEstoque,
+      produtosEncontrados: produtosEncontrados,
+    );
 
     if (txItems.isEmpty) {
       debugPrint(
-        '⚠️ [ESTOQUE_BAIXA] Nenhum item válido para baixa de estoque. lojaId=$lojaId',
+        '⚠️ [ESTOQUE_BAIXA] Lista de transação vazia após expansão. lojaId=$lojaId',
       );
       throw Exception(
-        'Nenhum item válido para baixa de estoque (productId ausente ou quantidade inválida). '
+        'Nenhum item válido para baixa de estoque. '
         'Não é possível confirmar o pagamento sem baixar o estoque.',
       );
     }
@@ -263,8 +276,8 @@ class PosPagamentoService {
 
     await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaId, txResults);
 
+    List<EstoqueTransactionResult> txResultsComboCap = const [];
     try {
-      final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
       for (final result in txResults) {
         await EstoqueTransactionService.atualizarHiveAposTransacao(
           produtosBox: produtosBox,
@@ -272,9 +285,11 @@ class PosPagamentoService {
           result: result,
         );
       }
-      await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+      txResultsComboCap = await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
         lojaId: lojaId,
         produtosBox: produtosBox,
+        produtoIdsDebitadosNaVenda:
+            ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
       );
     } catch (e) {
       if (kDebugMode) {
@@ -283,6 +298,13 @@ class PosPagamentoService {
         );
       }
     }
+
+    await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+      lojaId: lojaId,
+      produtosBox: produtosBox,
+      resultadosPrincipais: txResults,
+      resultadosComboExtra: txResultsComboCap,
+    );
 
     debugPrint(
       '✅ [ESTOQUE_BAIXA] Estoque baixado com sucesso para todos os produtos. lojaId=$lojaId, itens=${txResults.length}',

@@ -119,6 +119,7 @@ class FinanceiroFirestoreService {
       'usuarioNome': l.usuarioNome,
       'centroCusto': l.centroCusto,
       'anexoComprovante': l.anexoComprovante,
+      'referenciaExterna': l.referenciaExterna,
       'dataPagamento': l.dataPagamento != null
           ? Timestamp.fromDate(l.dataPagamento!)
           : FieldValue.delete(),
@@ -221,6 +222,7 @@ class FinanceiroFirestoreService {
         usuarioNome: _fsString(data['usuarioNome']),
         centroCusto: _fsString(data['centroCusto']),
         anexoComprovante: _fsString(data['anexoComprovante']),
+        referenciaExterna: _fsString(data['referenciaExterna']),
       );
     } catch (e) {
       debugPrint(
@@ -264,7 +266,8 @@ class FinanceiroFirestoreService {
   }
 
   /// Grava ou atualiza lançamento (merge). Hive já deve estar persistido.
-  static Future<void> upsertLancamento(LancamentoFinanceiro l) async {
+  /// Retorna `true` se o remoto foi gravado com sucesso.
+  static Future<bool> upsertLancamento(LancamentoFinanceiro l) async {
     try {
       final data = _mapLancamento(l);
       data['updatedAt'] = FieldValue.serverTimestamp();
@@ -275,25 +278,30 @@ class FinanceiroFirestoreService {
       debugPrint(
         '[FINANCEIRO-FS] Lancamento ${l.id} upsert ok (loja=${l.lojaId})',
       );
+      return true;
     } catch (e) {
       debugPrint(
         '[FINANCEIRO-FS] Erro upsert lancamento (type=${e.runtimeType})',
       );
+      return false;
     }
   }
 
   /// Remove documento remoto (espelha exclusão local). Hard delete — sem soft delete no Firestore.
-  static Future<void> deleteLancamento({
+  /// Retorna `true` se o remoto foi removido com sucesso.
+  static Future<bool> deleteLancamento({
     required String lojaId,
     required String id,
   }) async {
     try {
       await _refLancamento(lojaId, id).delete();
       debugPrint('[FINANCEIRO-FS] Lancamento $id delete ok (loja=$lojaId)');
+      return true;
     } catch (e) {
       debugPrint(
         '[FINANCEIRO-FS] Erro delete lancamento (type=${e.runtimeType})',
       );
+      return false;
     }
   }
 

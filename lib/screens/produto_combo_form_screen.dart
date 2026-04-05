@@ -17,6 +17,7 @@ import '../utils/text_utils.dart';
 import '../services/catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
 import '../services/catalog_publish_service.dart';
 import '../services/limits_guard.dart';
+import '../services/combo_receita_normalizacao.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/ai_loja_service.dart';
@@ -67,7 +68,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   bool _sugerindoDescricao = false;
   bool _sugerindoPreco = false;
 
-  /// Itens do combo: {nome, slug, quantidade, tamanho, cor, productId?}. productId opcional para hardening ID-first.
+  /// Itens do combo: {nome, slug, quantidade, tamanho, cor, productId}. productId obrigatório ao salvar.
   final List<Map<String, dynamic>> _itensCombo = [];
 
   void _dlog(String msg) {
@@ -121,7 +122,9 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
 
       if (c.itensCombo != null && c.itensCombo!.isNotEmpty) {
         _itensCombo.clear();
+        final antesMigracao = <Map<String, dynamic>>[];
         for (final m in c.itensCombo!) {
+          antesMigracao.add(Map<String, dynamic>.from(m));
           final pid = (m['productId'] ?? m['id'] ?? '').toString().trim();
           _itensCombo.add({
             'nome': (m['nome'] ?? '').toString(),
@@ -131,6 +134,19 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
             'cor': (m['cor'] ?? '').toString(),
             if (pid.isNotEmpty) 'productId': pid,
           });
+        }
+        final lojaProds = produtosBox.values.where((p) => p.lojaId == lojaId);
+        for (var i = 0; i < _itensCombo.length; i++) {
+          _itensCombo[i] = ComboReceitaNormalizacao.normalizeItem(
+            _itensCombo[i],
+            lojaProds,
+            onLog: _dlog,
+          );
+        }
+        if (ComboReceitaNormalizacao.receitaGanhouProductIdsSeguros(antesMigracao, _itensCombo)) {
+          c.itensCombo = _itensCombo.map((e) => Map<String, dynamic>.from(e)).toList();
+          await c.save();
+          _dlog('[ProdutoCombo] receita migrada: productIds preenchidos com resolução segura no Hive');
         }
       }
     }
@@ -170,19 +186,14 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     });
   }
 
-  /// Retorna o produto da loja que corresponde ao item do combo (productId primeiro, depois nome). Para preço e validação.
+  /// Resolve o produto do item via [ComboReceitaNormalizacao] (productId canônico; sem match ambíguo por nome).
   Produto? _produtoParaItemCombo(Map<String, dynamic> item, String loja) {
-    final pid = (item['productId'] ?? item['id'] ?? '').toString().trim();
-    if (pid.isNotEmpty) {
-      final p = produtosBox.values.firstWhereOrNull(
-        (x) => x.lojaId == loja && x.idFirebase.trim() == pid,
-      );
-      if (p != null) return p;
-    }
-    final nome = (item['nome'] ?? '').trim();
-    if (nome.isEmpty) return null;
+    final lojaProds = produtosBox.values.where((p) => p.lojaId == loja);
+    final norm = ComboReceitaNormalizacao.normalizeItem(item, lojaProds, onLog: _dlog);
+    final pid = ComboReceitaNormalizacao.pidFrom(norm);
+    if (pid.isEmpty) return null;
     return produtosBox.values.firstWhereOrNull(
-      (x) => x.lojaId == loja && x.nome.trim().toLowerCase() == nome.toLowerCase(),
+      (x) => x.lojaId == loja && x.idFirebase.trim() == pid,
     );
   }
 
@@ -500,7 +511,25 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       if (p == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Produto "$nome" não encontrado no estoque')),
+            SnackBar(
+              content: Text(
+                ComboReceitaNormalizacao.itemPendente(item)
+                    ? 'Item "$nome": selecione o produto na lista (é necessário vínculo por ID; nome ambíguo ou sem correspondência).'
+                    : 'Produto "$nome" não encontrado no estoque',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      if (p.idFirebase.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'O produto "${p.nome}" ainda não tem ID sincronizado. Abra o cadastro do produto ou sincronize o estoque antes de salvar o combo.',
+              ),
+            ),
           );
         }
         return;
@@ -512,7 +541,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         'quantidade': qtd,
         'tamanho': (item['tamanho'] ?? '').toString().trim(),
         'cor': (item['cor'] ?? '').toString().trim(),
-        if (p.idFirebase.trim().isNotEmpty) 'productId': p.idFirebase,
+        'productId': p.idFirebase,
       });
     }
 
@@ -904,8 +933,24 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                                           onChanged: (v) {
                                             setState(() {
                                               item['nome'] = v;
-                                              // Ao editar nome manualmente, remover productId para evitar inconsistência
-                                              item.remove('productId');
+                                              final pid = (item['productId'] ?? '')
+                                                  .toString()
+                                                  .trim();
+                                              if (pid.isNotEmpty) {
+                                                final sel = produtosDaLoja
+                                                    .firstWhereOrNull(
+                                                  (x) =>
+                                                      x.idFirebase.trim() ==
+                                                      pid,
+                                                );
+                                                if (sel != null &&
+                                                    sel.nome
+                                                            .trim()
+                                                            .toLowerCase() !=
+                                                        v.trim().toLowerCase()) {
+                                                  item.remove('productId');
+                                                }
+                                              }
                                               _atualizarPrecoAutomatico();
                                             });
                                           },

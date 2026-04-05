@@ -21,6 +21,7 @@ import '../services/catalogo_sync_service.dart' show CatalogoSyncService, SyncTa
 import '../services/catalog_publish_service.dart';
 import '../services/limits_guard.dart';
 import '../services/produtos_firestore_service.dart';
+import '../services/produto_imagens_storage_cleanup.dart';
 import '../services/produto_upsert_service.dart';
 import '../utils/ean13_generator.dart';
 import '../services/loja_id_service.dart';
@@ -848,6 +849,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   /// [mostrarSnackSucesso]: false em auto-save frequente (reordenação) para não spammar.
   Future<void> _persistirProdutoAtual(Produto p, {bool mostrarSnackSucesso = true}) async {
     if (lojaId == null) return;
+    final imagensAntesPersist = List<String>.from(p.imagens);
     try {
       final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
       final custo = MoedaInputFormatter.parse(_custo.text);
@@ -942,6 +944,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live)
           .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Catálogo demorou muito'));
       await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+      await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
+        anteriores: imagensAntesPersist,
+        atuais: List<String>.from(p.imagens),
+        lojaId: lojaId!,
+      );
       if (mounted && mostrarSnackSucesso) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Alterações salvas localmente e na nuvem.')),
@@ -1339,6 +1346,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
         if (existente != null) {
           // ATUALIZAR produto existente (evita duplicação)
+          final imagensAntesExistente = List<String>.from(existente.imagens);
           existente
             ..nome = capitalizeWords(_nome.text.trim())
             ..quantidade = quantidadeFinal
@@ -1385,6 +1393,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.live, lojaIdOverride: lojaId)
               .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
           await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+          await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
+            anteriores: imagensAntesExistente,
+            atuais: List<String>.from(existente.imagens),
+            lojaId: lojaId!,
+          );
           await _vincularCompraPipelineAposSalvar(existente);
         } else {
           // 🔒 Limite free_limited: verifica antes de inserir
@@ -1461,6 +1474,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       } else {
         // EDITAR PRODUTO
         final p = widget.produto!;
+        final imagensAntesEdit = List<String>.from(p.imagens);
         p
           ..nome = capitalizeWords(_nome.text.trim())
           ..quantidade = quantidadeFinal
@@ -1512,6 +1526,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live, lojaIdOverride: lojaId)
             .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
         await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
+          anteriores: imagensAntesEdit,
+          atuais: List<String>.from(p.imagens),
+          lojaId: lojaId!,
+        );
         await _vincularCompraPipelineAposSalvar(p);
       }
 

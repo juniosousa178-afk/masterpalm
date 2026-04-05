@@ -1,4 +1,4 @@
-// Espelho de compra de fornecedor no Firestore — sem lançamento financeiro automático.
+// Espelho de compra de fornecedor no Firestore — política em CompraFinanceiroIntegracaoService.
 // Caminho: lojas/{lojaId}/compras_fornecedor/{compraId}
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/compra_fornecedor.dart';
 import '../models/compra_fornecedor_item.dart';
+import 'compra_financeiro_integracao_service.dart';
 
 class CompraFornecedorFirestoreService {
   CompraFornecedorFirestoreService._();
@@ -57,6 +58,11 @@ class CompraFornecedorFirestoreService {
       'valorPago': c.valorPago,
       'valorEmAberto': c.valorEmAberto,
       'estoqueIntegrado': c.estoqueIntegrado,
+      'idLancamentoFinanceiro': c.idLancamentoFinanceiro.trim(),
+      'lancamentoFinanceiroDocIdCanonica':
+          CompraFinanceiroIntegracaoService.docIdLancamentoCanonica(c.id),
+      'financeiroSemDespesaAutomaticaPorTotalCompra':
+          !CompraFinanceiroIntegracaoService.permiteLancamentoAutomaticoPeloTotalDaCompra,
       'confirmadoEm': c.confirmadoEm != null
           ? Timestamp.fromDate(c.confirmadoEm!.toUtc())
           : null,

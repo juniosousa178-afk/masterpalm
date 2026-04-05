@@ -12,15 +12,16 @@ import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../models/conta_receber.dart';
 import '../core/hive_box_names.dart';
-import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
 import '../services/clientes_firestore_service.dart'; // 🔹 sincronização de clientes
 import '../services/vendas_firestore_service.dart'; // 🔹 sincronização com Firestore
+import 'catalogo_web_apos_estoque_service.dart';
 import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
 import 'movimentacao_estoque_service.dart';
+import 'venda_combo_estoque_expansion.dart';
 
 class VendasService {
   // ---------------------------
@@ -216,145 +217,6 @@ class VendasService {
   // Registrar venda multi-itens
   // ---------------------------
 
-  /// Expande itens de combo em itens individuais para baixa de estoque.
-  /// Para itens do combo: tenta productId (id/productId no mapa) primeiro, depois nome. Loga [COMBO_MATCH] em fallback por nome.
-  /// Retorna (itens expandidos, produtos correspondentes).
-  static (List<VendaItem>, List<Produto>) _expandirCombos({
-    required List<VendaItem> itens,
-    required Box<Produto> produtosBox,
-    required String lojaId,
-    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
-  }) {
-    final itensExpandidos = <VendaItem>[];
-    final produtosExpandidos = <Produto>[];
-
-    for (var idx = 0; idx < itens.length; idx++) {
-      final it = itens[idx];
-      Produto? p;
-      final pid = (it.productId ?? '').trim();
-      if (pid.isNotEmpty) {
-        p = produtosBox.values.firstWhereOrNull(
-          (prod) => prod.lojaId == lojaId && prod.idFirebase.trim() == pid,
-        );
-        if (p != null) {
-          debugPrint('[VENDA_ITEM_ID] [DUPLICAR_VENDA] Produto principal por productId | lojaId=$lojaId | productId=$pid');
-        }
-      }
-      if (p == null) {
-        p = produtosBox.values.firstWhereOrNull(
-          (prod) =>
-              prod.lojaId == lojaId &&
-              prod.nome.trim().toLowerCase() == it.produtoNome.trim().toLowerCase(),
-        );
-        if (p != null) {
-          debugPrint('[VENDA_ITEM_FALLBACK] [COMBO_MATCH] Produto principal por nome | lojaId=$lojaId | nome=${it.produtoNome}');
-          reportProductResolvedByName(
-            lojaId: lojaId,
-            fluxo: '_expandirCombos_principal',
-            nome: it.produtoNome,
-            slug: null,
-            productIdRecebido: pid.isEmpty ? null : pid,
-          );
-        }
-      }
-      if (p == null) {
-        throw Exception('Produto não encontrado no estoque: ${it.produtoNome}');
-      }
-
-      final listaCombo = itensComboSelecaoPorIndice?[idx] ?? p.itensCombo;
-      if (p.ehCombo && listaCombo != null && listaCombo.isNotEmpty) {
-        // Baixa a quantidade do kit no estoque (linha do combo) e de cada componente.
-        itensExpandidos.add(it);
-        produtosExpandidos.add(p);
-
-        for (final comboItem in listaCombo) {
-          final idComp = (comboItem['id'] ?? comboItem['productId'] ?? '').toString().trim();
-          final slugComp = (comboItem['slug'] ?? '').toString().trim();
-          final nomeComp = (comboItem['nome'] ?? '').toString();
-          final qtdComp = ((comboItem['quantidade']) is num
-                  ? (comboItem['quantidade'] as num).toInt()
-                  : int.tryParse('${comboItem['quantidade']}') ?? 1)
-              .clamp(1, 9999);
-          final tam = (comboItem['tamanho'] ?? '').toString();
-          final cor = (comboItem['cor'] ?? '').toString();
-          final qtdTotal = it.quantidade * qtdComp;
-          if (nomeComp.isEmpty || qtdTotal <= 0) continue;
-
-          // Ordem explícita: productId → slug → nome. Logs [COMBO_ID] / [COMBO_FALLBACK] / [COMBO_ITEM].
-          Produto? pComp;
-          if (idComp.isNotEmpty) {
-            pComp = produtosBox.values.firstWhereOrNull(
-              (prod) => prod.lojaId == lojaId && prod.idFirebase.trim() == idComp,
-            );
-            if (pComp != null) {
-              debugPrint('[COMBO_ID] [COMBO_ITEM] Item combo por productId | lojaId=$lojaId | productId=$idComp | nome=${pComp.nome}');
-            }
-          }
-          if (pComp == null && slugComp.isNotEmpty) {
-            pComp = produtosBox.values.firstWhereOrNull(
-              (prod) => prod.lojaId == lojaId && prod.slug.trim() == slugComp,
-            );
-            if (pComp != null) {
-              debugPrint('[COMBO_FALLBACK] [COMBO_ITEM] Item combo por slug | lojaId=$lojaId | slug=$slugComp | nome=$nomeComp');
-            }
-          }
-          if (pComp == null && nomeComp.isNotEmpty) {
-            pComp = produtosBox.values.firstWhereOrNull(
-              (prod) =>
-                  prod.lojaId == lojaId &&
-                  prod.nome.trim().toLowerCase() == nomeComp.trim().toLowerCase(),
-            );
-            if (pComp != null) {
-              debugPrint('[COMBO_FALLBACK] [COMBO_ITEM] Item combo por nome | lojaId=$lojaId | nome=$nomeComp');
-              reportProductResolvedByName(
-                lojaId: lojaId,
-                fluxo: '_expandirCombos_item',
-                nome: nomeComp,
-                slug: slugComp.isEmpty ? null : slugComp,
-                productIdRecebido: idComp.isEmpty ? null : idComp,
-              );
-            }
-          }
-          if (pComp == null) {
-            throw Exception('Produto do combo não encontrado: $nomeComp (productId=$idComp, slug=$slugComp)');
-          }
-          final extraTrim =
-              (comboItem['extraValor'] ?? '').toString().trim();
-          final corKey = cor.trim().isEmpty ? 'sem-cor' : cor.trim();
-          final tamKey = tam.trim().isEmpty ? 'sem-tamanho' : tam.trim();
-          final tipoExtra = ProdutoVariacaoExtra.tipoParaCelula(
-            pComp.variacoesExtraTipo,
-            tamKey,
-            corKey,
-            extraTrim,
-          );
-          final resumoExtra = extraTrim.isNotEmpty
-              ? ProdutoVariacaoExtra.textoResumoExtra(
-                  extraTipo: tipoExtra,
-                  extraValor: extraTrim,
-                )
-              : '';
-
-          itensExpandidos.add(VendaItem(
-            produtoNome: pComp.nome,
-            quantidade: qtdTotal,
-            precoUnitario: 0,
-            tamanho: tam,
-            cor: cor,
-            productId: pComp.idFirebase.trim().isNotEmpty ? pComp.idFirebase : null,
-            variacaoExtraResumo: resumoExtra,
-            extraValor: extraTrim,
-          ));
-          produtosExpandidos.add(pComp);
-        }
-      } else {
-        itensExpandidos.add(it);
-        produtosExpandidos.add(p);
-      }
-    }
-    return (itensExpandidos, produtosExpandidos);
-  }
-
   static Future<Venda> registrarVendaMulti({
     required Box<Produto> produtosBox,
     required Box<Cliente> clientesBox,
@@ -387,7 +249,7 @@ class VendasService {
     final String lojaEfetiva = lojaId.trim();
 
     // 1) expande combos e encontra produtos (para baixa de estoque)
-    final (itensParaEstoque, produtosEncontrados) = _expandirCombos(
+    final (itensParaEstoque, produtosEncontrados) = VendaComboEstoqueExpansion.expandirCombos(
       itens: itens,
       produtosBox: produtosBox,
       lojaId: lojaEfetiva,
@@ -406,54 +268,15 @@ class VendasService {
     // 3) baixa estoque via transação Firestore (OBRIGATÓRIO - sem fallback Hive)
     // Usa itensParaEstoque (combos já expandidos) para dar baixa em cada produto individual
     // Exige tamanho/cor quando o produto tem estoque por variação para baixa correta no Firestore
-    for (var i = 0; i < itensParaEstoque.length; i++) {
-      final it = itensParaEstoque[i];
-      final p = produtosEncontrados[i];
-      if (p.temVariacaoSoloCor && it.cor.trim().isEmpty) {
-        throw Exception(
-          'O produto "${it.produtoNome}" possui variação de cor. '
-          'Clique em "Selecionar" e escolha a cor.',
-        );
-      }
-      if (p.temVariacaoTamanhoECor && (it.tamanho.trim().isEmpty || it.cor.trim().isEmpty)) {
-        throw Exception(
-          'O produto "${it.produtoNome}" possui variações (tamanho + cor). '
-          'Clique em "Selecionar" e escolha tamanho e cor.',
-        );
-      }
-      if ((p.temVariacaoSoloTamanho || p.estoquePorTamanho.isNotEmpty) && it.tamanho.trim().isEmpty) {
-        throw Exception(
-          'O produto "${it.produtoNome}" possui variação de tamanho. '
-          'Clique em "Selecionar" e escolha o tamanho (ex.: P, M, G).',
-        );
-      }
-      final opcoesExtra = ProdutoVariacaoExtra.opcoesExtraPara(
-        p.variacoes,
-        it.tamanho.trim(),
-        it.cor.trim(),
-      );
-      if (opcoesExtra.isNotEmpty && it.extraValor.trim().isEmpty) {
-        throw Exception(
-          'O produto "${it.produtoNome}" exige personalização (ex.: letra). '
-          'Abra o combo na venda e selecione a opção, ou refaça a linha do kit.',
-        );
-      }
-    }
+    VendaComboEstoqueExpansion.validarExpansaoParaBaixaFirestore(
+      itensParaEstoque: itensParaEstoque,
+      produtosEncontrados: produtosEncontrados,
+    );
 
-    final txItems = <Map<String, dynamic>>[];
-    for (var i = 0; i < itensParaEstoque.length; i++) {
-      final it = itensParaEstoque[i];
-      final p = produtosEncontrados[i];
-      txItems.add({
-        'nome': it.produtoNome,
-        'slug': p.slug,
-        'productId': p.idFirebase.isNotEmpty ? p.idFirebase : null,
-        'quantidade': it.quantidade,
-        'tamanho': it.tamanho.trim(),
-        'cor': it.cor.trim(),
-        if (it.extraValor.trim().isNotEmpty) 'extraValor': it.extraValor.trim(),
-      });
-    }
+    final txItems = VendaComboEstoqueExpansion.montarTxItemsParaBaixaEstoque(
+      itensParaEstoque: itensParaEstoque,
+      produtosEncontrados: produtosEncontrados,
+    );
 
     final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
       lojaId: lojaEfetiva,
@@ -474,6 +297,15 @@ class VendasService {
         await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
       lojaId: lojaEfetiva,
       produtosBox: produtosBox,
+      produtoIdsDebitadosNaVenda:
+          ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
+    );
+
+    await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+      lojaId: lojaEfetiva,
+      produtosBox: produtosBox,
+      resultadosPrincipais: txResults,
+      resultadosComboExtra: txResultsComboCap,
     );
 
     // 3.1) Histórico de movimentação – registra saída por item (não bloqueia)
@@ -685,8 +517,9 @@ class VendasService {
     final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
         ? venda.idFirebase!.trim()
         : 'hive_${venda.key}';
+    var devolucaoResults = <EstoqueTransactionResult>[];
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      final (itensDevolucao, _) = _expandirCombos(
+      final (itensDevolucao, _) = VendaComboEstoqueExpansion.expandirCombos(
         itens: venda.itens!,
         produtosBox: produtosBox,
         lojaId: lojaId,
@@ -740,6 +573,7 @@ class VendasService {
             itens: itens,
             vendaIdParaIdempotencia: vendaId,
           );
+          devolucaoResults = results;
           for (final r in results) {
             await EstoqueTransactionService.atualizarHiveAposTransacao(
               produtosBox: produtosBox,
@@ -781,6 +615,7 @@ class VendasService {
             itens: itensFallback,
             vendaIdParaIdempotencia: vendaId,
           );
+          devolucaoResults = results;
           for (final r in results) {
             await EstoqueTransactionService.atualizarHiveAposTransacao(
               produtosBox: produtosBox,
@@ -798,8 +633,9 @@ class VendasService {
       }
     }
 
+    var pisoResults = <EstoqueTransactionResult>[];
     try {
-      final pisoResults =
+      pisoResults =
           await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
         lojaId: lojaId,
         produtosBox: produtosBox,
@@ -823,6 +659,13 @@ class VendasService {
         '⚠️ [COMBO_PISO] Falha ao sincronizar estoque do combo após devolução: $e',
       );
     }
+
+    await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+      lojaId: lojaId,
+      produtosBox: produtosBox,
+      resultadosPrincipais: devolucaoResults,
+      resultadosComboExtra: pisoResults,
+    );
 
     // remove do histórico (apenas se cliente existir na box - evita erro em vendas catálogo sem cliente)
     final Cliente? cliente = clientesBox.values.firstWhereOrNull(
@@ -873,8 +716,9 @@ class VendasService {
     final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
         ? venda.idFirebase!.trim()
         : 'hive_${venda.key}';
+    var devolucaoResultsExclusao = <EstoqueTransactionResult>[];
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      final (itensDevolucao, _) = _expandirCombos(
+      final (itensDevolucao, _) = VendaComboEstoqueExpansion.expandirCombos(
         itens: venda.itens!,
         produtosBox: produtosBox,
         lojaId: lojaId,
@@ -928,6 +772,7 @@ class VendasService {
             itens: itens,
             vendaIdParaIdempotencia: vendaId,
           );
+          devolucaoResultsExclusao = results;
           for (final r in results) {
             await EstoqueTransactionService.atualizarHiveAposTransacao(
               produtosBox: produtosBox,
@@ -958,6 +803,7 @@ class VendasService {
               itens: itensFallback,
               vendaIdParaIdempotencia: vendaId,
             );
+            devolucaoResultsExclusao = results;
             for (final r in results) {
               await EstoqueTransactionService.atualizarHiveAposTransacao(
                 produtosBox: produtosBox,
@@ -970,13 +816,14 @@ class VendasService {
       } catch (_) {}
     }
 
+    var pisoResultsExclusao = <EstoqueTransactionResult>[];
     try {
-      final pisoResults =
+      pisoResultsExclusao =
           await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
         lojaId: lojaId,
         produtosBox: produtosBox,
       );
-      for (final r in pisoResults) {
+      for (final r in pisoResultsExclusao) {
         final q = r.quantidadeDebitada.abs();
         if (q <= 0) continue;
         MovimentacaoEstoqueService.registrar(
@@ -991,6 +838,14 @@ class VendasService {
         ).catchError((_) {});
       }
     } catch (_) {}
+
+    await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+      lojaId: lojaId,
+      produtosBox: produtosBox,
+      resultadosPrincipais: devolucaoResultsExclusao,
+      resultadosComboExtra: pisoResultsExclusao,
+    );
+
     // 2. Deletar do Firestore
     if (venda.idFirebase != null && venda.idFirebase!.isNotEmpty) {
       await VendasFirestoreService.deleteVenda(venda.idFirebase!, lojaId: lojaId);

@@ -1,5 +1,7 @@
 // lib/core/compra_financeiro_vinculo.dart
 //
+// Política ativa: `lib/services/compra_financeiro_integracao_service.dart`.
+//
 // Fase 3 (integração financeira): usar SEMPRE este id como documento em
 // `lojas/{lojaId}/lancamentos_financeiros/{id}` com SetOptions(merge: true).
 //
