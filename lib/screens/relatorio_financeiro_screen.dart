@@ -237,8 +237,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
   }
 
   double _custo(Venda v) => v.custoProdutos;
-  double _taxas(Venda v) =>
-      FinanceiroRelatorioTaxas.taxasParaVenda(v, _taxasRelatorio);
 
   Iterable<Venda> _vendasFiltradasPor(bool Function(Venda v) filtro) {
     return vendasBox.values
@@ -249,15 +247,16 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
 
   ({double venda, double custo, double taxas, double lucro}) _agregarPeriodo(
       bool Function(Venda v) filtro) {
-    double venda = 0, custo = 0, taxas = 0;
+    double venda = 0, custo = 0, taxas = 0, lucro = 0;
 
     for (final v in _vendasFiltradasPor(filtro)) {
       venda += v.total;
       custo += _custo(v);
-      taxas += _taxas(v);
+      final tv = FinanceiroRelatorioTaxas.taxasParaVenda(v, _taxasRelatorio);
+      taxas += tv;
+      lucro += v.total - v.custoProdutos - tv;
     }
 
-    final lucro = venda - (custo + taxas);
     return (venda: venda, custo: custo, taxas: taxas, lucro: lucro);
   }
 
@@ -386,8 +385,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           pw.SizedBox(height: 8),
           pw.Text('Vendas: R\$ ${_fmt(d.venda)}'),
           pw.Text('Custo: R\$ ${_fmt(d.custo)}'),
-          pw.Text('Taxas (Loja Config): R\$ ${_fmt(d.taxas)}'),
-          pw.Text('Lucro de vendas: R\$ ${_fmt(d.lucro)}'),
+          pw.Text('Taxas operacionais (config/gravadas): R\$ ${_fmt(d.taxas)}'),
+          pw.Text('Lucro operacional de vendas: R\$ ${_fmt(d.lucro)}'),
         ],
       ),
     );
@@ -705,7 +704,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Lucro de vendas = vendas − custo − taxas (Loja Config). Mês atual: ao vivo.',
+                              'Lucro operacional de vendas = total − custo da mercadoria − taxas operacionais. '
+                              'Taxas: config da loja ou valor já gravado na venda. Totais conforme período selecionado: cálculo ao vivo.',
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha:0.9),
                                 fontSize: 13,
@@ -1291,9 +1291,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                _buildDetailRow('Custo dos Produtos', custo, Icons.inventory_2, Colors.grey.shade700),
+                _buildDetailRow('Custo da mercadoria', custo, Icons.inventory_2, Colors.grey.shade700),
                 const SizedBox(height: 12),
-                _buildDetailRow('Taxas (Loja Config)', taxas, Icons.receipt_long, _warningColor),
+                _buildDetailRow('Taxas operacionais (config/gravadas)', taxas, Icons.receipt_long, _warningColor),
               ],
             ),
           ),
@@ -1321,7 +1321,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Lucro de vendas',
+                          'Lucro operacional de vendas',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -1346,7 +1346,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Margem',
+                        'Margem sobre vendas',
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                       ),
                       Text(
@@ -1621,7 +1621,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                         )
                       else
                         Text(
-                          'Mês em aberto · cálculo ao vivo ao abrir (vendas + taxas da loja).',
+                          'Mês em aberto · cálculo ao vivo ao abrir (vendas + taxas operacionais: config ou gravadas).',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.blueGrey.shade600,
@@ -1650,19 +1650,19 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Expanded(child: _buildValueTile('Taxas (loja)', f.taxasTotal, _warningColor)),
+                    Expanded(child: _buildValueTile('Taxas operacionais', f.taxasTotal, _warningColor)),
                     const SizedBox(width: 12),
                     Expanded(
                         child: _buildValueTile(
-                            'Lucro de vendas', f.lucroTotal, _successColor,
+                            'Lucro operacional de vendas', f.lucroTotal, _successColor,
                             isHighlight: true)),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
                   FechamentoService.mesEhAnteriorAoCorrente(f.ano, f.mes)
-                      ? 'Lucro de vendas = snapshot do fechamento (vendas − custo − taxas na gravação).'
-                      : 'Lucro de vendas ao vivo: vendas − custo − taxas (Loja Config ou valor na venda).',
+                      ? 'Lucro operacional = snapshot do fechamento (totais na gravação do mês).'
+                      : 'Lucro operacional ao vivo: total − custo da mercadoria − taxas (config da loja ou valor gravado na venda).',
                   style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                 ),
               ],
@@ -1759,8 +1759,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ],
             const SizedBox(height: 8),
             Text(
-              'Lucro de vendas (base): R\$ ${_fmt(f.lucroTotal)} → '
-              'Resultado ajustado (complemento): R\$ ${_fmt(estimativa)}',
+              'Lucro operacional (base): R\$ ${_fmt(f.lucroTotal)} → '
+              'Resultado ajustado (vendas + módulo): R\$ ${_fmt(estimativa)}',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -1769,8 +1769,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Não substitui o lucro de vendas acima. Taxas da loja e lançamentos reais podem '
-              'cobrir o mesmo gasto — evite somar os dois como se fossem independentes.',
+              'Não substitui o lucro operacional acima. Lançamentos do módulo são complemento gerencial; '
+              'taxas operacionais e despesas lançadas podem cobrir a mesma natureza — evite somar em duplicidade.',
               style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
             ),
           ],

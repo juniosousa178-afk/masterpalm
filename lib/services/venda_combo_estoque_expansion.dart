@@ -66,7 +66,10 @@ class VendaComboEstoqueExpansion {
 
   /// Expande itens de combo em linhas para baixa de estoque (kit + componentes).
   /// Mesma lógica que a antiga [VendasService._expandirCombos].
-  static (List<VendaItem>, List<Produto>) expandirCombos({
+  ///
+  /// [linhaContaCustoMercadoria] — por linha expandida: `false` no cabeçalho do kit quando há
+  /// filhos (custo só dos componentes); `true` nos componentes e em produto simples / combo sem receita.
+  static (List<VendaItem>, List<Produto>, List<bool>) expandirCombos({
     required List<VendaItem> itens,
     required Box<Produto> produtosBox,
     required String lojaId,
@@ -74,6 +77,7 @@ class VendaComboEstoqueExpansion {
   }) {
     final itensExpandidos = <VendaItem>[];
     final produtosExpandidos = <Produto>[];
+    final linhaContaCustoMercadoria = <bool>[];
 
     for (var idx = 0; idx < itens.length; idx++) {
       final it = itens[idx];
@@ -121,6 +125,7 @@ class VendaComboEstoqueExpansion {
         }
         itensExpandidos.add(it);
         produtosExpandidos.add(p);
+        linhaContaCustoMercadoria.add(false);
 
         for (final comboItem in listaCombo) {
           final idComp = (comboItem['id'] ?? comboItem['productId'] ?? '').toString().trim();
@@ -201,13 +206,15 @@ class VendaComboEstoqueExpansion {
             ),
           );
           produtosExpandidos.add(pComp);
+          linhaContaCustoMercadoria.add(true);
         }
       } else {
         itensExpandidos.add(it);
         produtosExpandidos.add(p);
+        linhaContaCustoMercadoria.add(true);
       }
     }
-    return (itensExpandidos, produtosExpandidos);
+    return (itensExpandidos, produtosExpandidos, linhaContaCustoMercadoria);
   }
 
   /// Mesmas validações que [VendasService.registrarVendaMulti] antes da transação.

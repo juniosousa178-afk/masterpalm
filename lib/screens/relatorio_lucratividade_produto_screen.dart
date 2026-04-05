@@ -1,5 +1,5 @@
 // lib/screens/relatorio_lucratividade_produto_screen.dart
-// Relatório de lucratividade por produto: custo, venda, margem e lucro.
+// Margem bruta por produto (SKU): receita − custo; não é o lucro operacional da loja.
 
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -164,7 +164,7 @@ class _RelatorioLucratividadeProdutoScreenState
       appBar: AppBar(
         backgroundColor: _primaryColor,
         foregroundColor: Colors.white,
-        title: const Text('Lucratividade por Produto', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Margem bruta por produto', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           PopupMenuButton<String>(
             onSelected: (v) {
@@ -174,7 +174,7 @@ class _RelatorioLucratividadeProdutoScreenState
               });
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'lucro', child: Text('Ordenar por lucro')),
+              const PopupMenuItem(value: 'lucro', child: Text('Ordenar por margem bruta (R\$)')),
               const PopupMenuItem(value: 'receita', child: Text('Ordenar por receita')),
               const PopupMenuItem(value: 'margem', child: Text('Ordenar por margem %')),
               const PopupMenuItem(value: 'qtd', child: Text('Ordenar por qtd vendida')),
@@ -184,6 +184,16 @@ class _RelatorioLucratividadeProdutoScreenState
       ),
       body: Column(
         children: [
+          Material(
+            color: const Color(0xFFEFF6FF),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Text(
+                'Por SKU: margem bruta (receita − custo). Não é o lucro operacional total da loja.',
+                style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade800),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -272,6 +282,10 @@ class _RelatorioLucratividadeProdutoScreenState
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
+                                    'Margem bruta',
+                                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                                  ),
+                                  Text(
                                     _currency.format(p.lucro),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
@@ -300,7 +314,7 @@ class _RelatorioLucratividadeProdutoScreenState
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _buildResumo('Lucro total', _lista.fold(0.0, (s, p) => s + p.lucro)),
+                    _buildResumo('Margem bruta total', _lista.fold(0.0, (s, p) => s + p.lucro)),
                     _buildResumo('Receita', _lista.fold(0.0, (s, p) => s + p.receita)),
                     _buildResumo('Custo', _lista.fold(0.0, (s, p) => s + p.custo)),
                   ],
@@ -321,7 +335,7 @@ class _RelatorioLucratividadeProdutoScreenState
           _currency.format(value),
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: label == 'Lucro total' ? (value >= 0 ? _successColor : _errorColor) : Colors.black87,
+            color: label == 'Margem bruta total' ? (value >= 0 ? _successColor : _errorColor) : Colors.black87,
           ),
         ),
       ],

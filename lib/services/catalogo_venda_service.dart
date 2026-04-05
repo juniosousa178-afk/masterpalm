@@ -31,6 +31,7 @@ import 'catalogo_web_apos_estoque_service.dart';
 import 'catalogo_venda_helpers.dart';
 import 'catalogo_venda_item_resolver.dart';
 import 'produto_vendas_catalogo_denorm_service.dart';
+import 'venda_custo_mercadoria.dart';
 
 /// Serviço para registrar vendas vindas do catálogo público
 /// Integra com o sistema de relatórios existente
@@ -611,12 +612,21 @@ class CatalogoVendaService {
         pagamentoDinheiro: pagamentoDinheiro,
       );
 
-      // Custo estimado (já que não temos o custo real dos produtos do catálogo)
-      // Usar 50% do preço como estimativa conservadora
-      venda.custoProdutos = subtotal * 0.5;
-
-      // Taxas: R$ 3,50 por unidade + 15% do custo
-      venda.taxas = (venda.quantidade * 3.5) + (venda.custoProdutos * 0.15);
+      venda.custoProdutos = VendaCustoMercadoria.custoMercadoriaDesdeItensCatalogo(
+        items: items,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+        subtotalParaFallbackHeuristica: subtotal,
+      );
+      final uMerc = VendaCustoMercadoria.unidadesMercadoriaDesdeItensCatalogo(
+        items: items,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+      );
+      venda.taxas = VendaCustoMercadoria.taxasLegadoVendaApk(
+        custoMercadoria: venda.custoProdutos,
+        unidadesMercadoria: uMerc > 0 ? uMerc : venda.quantidade,
+      );
 
       // 6. Salvar venda no Hive
       final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
@@ -1218,8 +1228,21 @@ class CatalogoVendaService {
         pagamentoDinheiro: pagamentoDinheiro,
       );
 
-      venda.custoProdutos = subtotal * 0.5;
-      venda.taxas = (venda.quantidade * 3.5) + (venda.custoProdutos * 0.15);
+      venda.custoProdutos = VendaCustoMercadoria.custoMercadoriaDesdeItensCatalogo(
+        items: itens,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+        subtotalParaFallbackHeuristica: subtotal,
+      );
+      final uMercFin = VendaCustoMercadoria.unidadesMercadoriaDesdeItensCatalogo(
+        items: itens,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+      );
+      venda.taxas = VendaCustoMercadoria.taxasLegadoVendaApk(
+        custoMercadoria: venda.custoProdutos,
+        unidadesMercadoria: uMercFin > 0 ? uMercFin : venda.quantidade,
+      );
       venda.paymentId = paymentIdStr.isNotEmpty ? paymentIdStr : null;
       venda.prePedidoId = pedidoId;
       venda.orderId = pedidoId;

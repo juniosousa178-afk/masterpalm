@@ -268,7 +268,11 @@ class _RelatoriosFinanceirosScreenState
   double get _lucroEstimado {
     final s = _snapshotMesHistoricoSeAplica;
     if (s != null) return s.lucroTotal;
-    return _totalVendido - _totalTaxas - _custoProdutos;
+    return _vendasFiltradas.fold(
+      0.0,
+      (acc, v) =>
+          acc + FinanceiroRelatorioTaxas.lucroOperacionalVenda(v, _taxasCfg),
+    );
   }
 
   /// Totais por forma de pagamento (Dinheiro, Pix, Cartão) – discriminados
@@ -512,7 +516,7 @@ class _RelatoriosFinanceirosScreenState
             _buildSecaoTitulo('Resumo Financeiro', Icons.attach_money),
             const SizedBox(height: 4),
             Text(
-              'Base principal: vendas − custo − taxas (Loja Config).',
+              'Base principal: vendas − custo − taxas operacionais (config ou gravadas na venda).',
               style: TextStyle(
                 fontSize: 11,
                 color: Colors.white.withValues(alpha: 0.45),
@@ -1112,8 +1116,8 @@ class _RelatoriosFinanceirosScreenState
           ),
           const SizedBox(height: 8),
           Text(
-            'Lançamentos reais no período. Não substitui o lucro de vendas dos cards acima. '
-            'Coexiste com as taxas da loja — evite dupla contagem se forem a mesma natureza.',
+            'Lançamentos reais no período. Não substitui o lucro operacional dos cards acima. '
+            'Complemento gerencial — evite dupla contagem com taxas ou despesas da mesma natureza.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 12),
           ),
           const SizedBox(height: 12),
@@ -1135,8 +1139,8 @@ class _RelatoriosFinanceirosScreenState
             ),
           const SizedBox(height: 12),
           Text(
-            'Lucro de vendas (base): R\$ ${_fmt(lucroVendas)}  →  '
-            'Resultado ajustado (complemento): R\$ ${_fmt(comModulo)}',
+            'Lucro operacional (base): R\$ ${_fmt(lucroVendas)}  →  '
+            'Resultado (vendas + módulo): R\$ ${_fmt(comModulo)}',
             style: TextStyle(
               color: Colors.teal.shade200,
               fontSize: 13,
@@ -1155,14 +1159,14 @@ class _RelatoriosFinanceirosScreenState
     if (snap != null) {
       return Text(
         'Snapshot histórico · fechamento salvo ${snap.mes.toString().padLeft(2, '0')}/${snap.ano} '
-        '(loja, todos os vendedores). Lucro de vendas = valores preservados do fechamento. '
-        '${temReal ? 'Módulo financeiro: complemento no período filtrado — não some com o mesmo gasto duas vezes.' : ''}',
+        '(loja, todos os vendedores). Lucro operacional = totais preservados do fechamento. '
+        '${temReal ? 'Módulo financeiro: complemento gerencial no período — não some com o mesmo gasto duas vezes.' : ''}',
         style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.55)),
       );
     }
     return Text(
-      'Mês em aberto · cálculo ao vivo. Lucro de vendas: taxas da Loja Config (ou valor na venda). '
-      '${temReal ? 'Há complemento gerencial — linha “Resultado ajustado” inclui lançamentos; não duplique com taxas-proxy da mesma despesa.' : ''}',
+      'Sem snapshot do mês · cálculo ao vivo. Lucro operacional: taxas operacionais da config ou valor gravado na venda. '
+      '${temReal ? '“Resultado (vendas + módulo)” inclui lançamentos; não duplique com taxas ou despesas da mesma natureza.' : ''}',
       style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.55)),
     );
   }
@@ -1183,7 +1187,7 @@ class _RelatoriosFinanceirosScreenState
             const SizedBox(width: 12),
             Expanded(
                 child: _buildCardMetrica(
-                    'Taxas (Loja Config)',
+                    'Taxas operacionais (config/gravadas)',
                     'R\$ ${_fmt(_totalTaxas)}',
                     Icons.receipt_long,
                     _warningColor)),
@@ -1201,7 +1205,7 @@ class _RelatoriosFinanceirosScreenState
             const SizedBox(width: 12),
             Expanded(
                 child: _buildCardMetrica(
-                    'Lucro de vendas',
+                    'Lucro operacional de vendas',
                     'R\$ ${_fmt(_lucroEstimado)}',
                     Icons.trending_up,
                     _lucroEstimado >= 0 ? _successColor : _dangerColor)),
@@ -1918,8 +1922,8 @@ class _RelatoriosFinanceirosScreenState
     sb.writeln('Receita de vendas: ${fmt.format(_totalVendido)}.');
     sb.writeln('(-) Custos com produtos: ${fmt.format(_custoProdutos)}.');
     sb.writeln(
-        '(-) Taxas (cartão, MEI, custos fixos, embalagem): ${fmt.format(_totalTaxas)}.');
-    sb.writeln('(=) Lucro estimado: ${fmt.format(_lucroEstimado)}.');
+        '(-) Taxas operacionais (config ou gravadas na venda): ${fmt.format(_totalTaxas)}.');
+    sb.writeln('(=) Lucro operacional de vendas: ${fmt.format(_lucroEstimado)}.');
     sb.writeln(
         'Formas de pagamento: Dinheiro ${fmt.format(_totalDinheiro)}, PIX ${fmt.format(_totalPix)}, Cartão ${fmt.format(_totalCartao)}.');
     return sb.toString();
@@ -1998,17 +2002,17 @@ class _RelatoriosFinanceirosScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Lucro de vendas (base principal):',
+                    const Text('Lucro operacional de vendas (base):',
                         style: TextStyle(
                             color: Colors.white, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     const Text(
-                        'Vendas − custo dos produtos − taxas',
+                        'Vendas − custo da mercadoria − taxas operacionais',
                         style: TextStyle(color: Colors.white70, fontSize: 13)),
                     const SizedBox(height: 4),
                     Text(
                       'Taxas = (% cartão só sobre cartão) + MEI + custos fixos + embalagem '
-                      '(vendas com taxas já gravadas usam o valor da venda)',
+                      'quando não há valor gravado na venda; se houver, usa-se o valor da venda',
                       style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
                     ),
                   ],
@@ -2017,12 +2021,13 @@ class _RelatoriosFinanceirosScreenState
               const SizedBox(height: 12),
               Text(
                 'Mês civil já fechado com snapshot: os totais principais seguem o fechamento salvo. '
-                'Mês atual: cálculo ao vivo conforme vendas e config.',
+                'Sem snapshot: cálculo ao vivo conforme vendas, config e valores gravados nas vendas.',
                 style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.55), fontSize: 12),
               ),
               const SizedBox(height: 8),
-              Text('Taxas configuráveis na Loja Config.',
+              Text(
+                  'Percentuais e embalagem vêm da Loja Config quando a venda não traz taxas gravadas.',
                   style: TextStyle(
                       color: Colors.white.withValues(alpha:0.5), fontSize: 12)),
             ],

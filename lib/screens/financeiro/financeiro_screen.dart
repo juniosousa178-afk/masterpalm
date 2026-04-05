@@ -661,7 +661,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                   ),
                   Expanded(
                     child: _miniMetric(
-                      'Lucro vendas*',
+                      'Lucro operacional*',
                       _moeda.format(rv.lucro),
                       _success,
                     ),
@@ -700,7 +700,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                 ),
                 Expanded(
                   child: _miniMetric(
-                    'Lucro líquido estim.**',
+                    'Resultado ajustado**',
                     _moeda.format(
                       lucroComModulo ??
                           _moduloMes.impactoLiquidoModulo,
@@ -714,8 +714,8 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              '* Lucro de vendas: total − custo − taxas (como no fechamento).\n'
-              '** Vendas + impacto dos lançamentos pagos do módulo no período.',
+              '* Lucro operacional de vendas: total − custo − taxas (como no fechamento).\n'
+              '** Vendas + impacto dos lançamentos do módulo no período (não é lucro líquido contábil).',
               style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
             ),
           ],

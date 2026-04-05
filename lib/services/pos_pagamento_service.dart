@@ -242,7 +242,8 @@ class PosPagamentoService {
       );
     }
 
-    final (itensParaEstoque, produtosEncontrados) = VendaComboEstoqueExpansion.expandirCombos(
+    final (itensParaEstoque, produtosEncontrados, _) =
+        VendaComboEstoqueExpansion.expandirCombos(
       itens: vendaItens,
       produtosBox: produtosBox,
       lojaId: lojaId,

@@ -57,6 +57,18 @@ class RelatorioTaxasConfig {
 }
 
 abstract final class FinanceiroRelatorioTaxas {
+  /// Taxa operacional usada em relatório/fechamento (mesmo conceito em todo o app).
+  /// Alias semântico de [taxasParaVenda] — mantido para leitura explícita no código.
+  static double taxaOperacionalParaVenda(Venda v, RelatorioTaxasConfig cfg) =>
+      taxasParaVenda(v, cfg);
+
+  /// Lucro operacional da venda: `total − custoProdutos − taxa operacional`.
+  /// Base: [v.total] (como fechamento/relatório), não `recebidoTotal`.
+  /// Taxa: [taxasParaVenda] — se `v.taxas > 0` usa gravado; se zero, estima pela [cfg].
+  static double lucroOperacionalVenda(Venda v, RelatorioTaxasConfig cfg) {
+    return v.total - v.custoProdutos - taxasParaVenda(v, cfg);
+  }
+
   /// Valor discriminado por forma (campos da venda ou parsing de `formasPagamento`).
   static double valorPorForma(Venda v, String forma) {
     if (forma == 'dinheiro') {
@@ -105,4 +117,10 @@ abstract final class FinanceiroRelatorioTaxas {
     taxas += qtdItens * cfg.custoEmbalagemUnit;
     return taxas;
   }
+}
+
+/// Lucro operacional alinhado a relatório/fechamento (requer [RelatorioTaxasConfig] da loja).
+extension VendaLucroOperacionalFinanceiro on Venda {
+  double lucroOperacional(RelatorioTaxasConfig cfg) =>
+      FinanceiroRelatorioTaxas.lucroOperacionalVenda(this, cfg);
 }

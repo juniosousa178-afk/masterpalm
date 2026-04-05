@@ -150,7 +150,10 @@ class Venda extends HiveObject {
 
   double get recebidoTotal => recebidoInformado > 0 ? recebidoInformado : total;
 
-  double get lucro => recebidoTotal - (custoProdutos + taxas);
+  /// Lucro operacional **igual ao relatório/fechamento**: use
+  /// `FinanceiroRelatorioTaxas.lucroOperacionalVenda(this, cfg)` ou a extensão
+  /// `v.lucroOperacional(cfg)` em `financeiro_relatorio_taxas.dart` com a config da loja.
+  /// Não há getter sem config — evita divergência com `taxas == 0` (estimativa da loja).
 
   /// Descrição discriminada por forma: Dinheiro R$ X, Pix R$ Y, Cartão R$ Z
   String get formasPagamentoDiscriminado {

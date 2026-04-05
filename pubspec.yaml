@@ -2,7 +2,7 @@ name: master_palm
 description: "MasterPalm - Gestão completa para sua loja: vendas, clientes, estoque, catálogo, pedidos e pagamentos. Multi-loja, relatórios e campanhas de sorteio."
 publish_to: 'none'
 
-version: 1.0.73+89 
+version: 1.0.74+90
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

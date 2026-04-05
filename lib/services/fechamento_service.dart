@@ -126,13 +126,14 @@ class FechamentoService {
     );
 
     final cfg = await RelatorioTaxasConfig.loadForLoja(idLoja);
-    double vendaTotal = 0, custoTotal = 0, taxasTotal = 0;
+    double vendaTotal = 0, custoTotal = 0, taxasTotal = 0, lucroTotal = 0;
     for (final v in vendasMes) {
       vendaTotal += v.total;
       custoTotal += v.custoProdutos;
-      taxasTotal += FinanceiroRelatorioTaxas.taxasParaVenda(v, cfg);
+      final tv = FinanceiroRelatorioTaxas.taxasParaVenda(v, cfg);
+      taxasTotal += tv;
+      lucroTotal += FinanceiroRelatorioTaxas.lucroOperacionalVenda(v, cfg);
     }
-    final lucroTotal = vendaTotal - (custoTotal + taxasTotal);
     final porForma = _pagamentosDoMes(vendasMes);
 
     // procura existente para o (loja, ano, mes) e reaproveita o mesmo registro
@@ -277,13 +278,14 @@ class FechamentoService {
     );
 
     final cfg = await RelatorioTaxasConfig.loadForLoja(idLojaResumo);
-    double venda = 0, custo = 0, taxas = 0;
+    double venda = 0, custo = 0, taxas = 0, lucro = 0;
     for (final v in vendasMes) {
       venda += v.total;
       custo += v.custoProdutos;
-      taxas += FinanceiroRelatorioTaxas.taxasParaVenda(v, cfg);
+      final tv = FinanceiroRelatorioTaxas.taxasParaVenda(v, cfg);
+      taxas += tv;
+      lucro += FinanceiroRelatorioTaxas.lucroOperacionalVenda(v, cfg);
     }
-    final lucro = venda - (custo + taxas);
     final p = _pagamentosDoMes(vendasMes);
 
     return (

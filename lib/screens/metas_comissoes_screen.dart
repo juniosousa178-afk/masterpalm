@@ -1001,7 +1001,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                       'investimentos ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalInvestimentos)}, '
                       'equipe ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalPagamentosEquipe)}. '
                       'Metas e comissões acima: só vendas. '
-                      'Não substitui o lucro de vendas; coexiste com taxas da Loja Config — evite somar a mesma despesa duas vezes.',
+                      'Não substitui o lucro operacional de vendas; complemento gerencial — evite somar a mesma despesa duas vezes com taxas operacionais.',
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
                     ),
                   ],

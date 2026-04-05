@@ -22,6 +22,7 @@ import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
 import 'movimentacao_estoque_service.dart';
 import 'venda_combo_estoque_expansion.dart';
+import 'venda_custo_mercadoria.dart';
 
 class VendasService {
   // ---------------------------
@@ -249,7 +250,8 @@ class VendasService {
     final String lojaEfetiva = lojaId.trim();
 
     // 1) expande combos e encontra produtos (para baixa de estoque)
-    final (itensParaEstoque, produtosEncontrados) = VendaComboEstoqueExpansion.expandirCombos(
+    final (itensParaEstoque, produtosEncontrados, linhaContaCustoMercadoria) =
+        VendaComboEstoqueExpansion.expandirCombos(
       itens: itens,
       produtosBox: produtosBox,
       lojaId: lojaEfetiva,
@@ -339,16 +341,20 @@ class VendasService {
     );
     final total = subtotal * (1 - descontoPct / 100) + frete;
 
-    // 5) custo e taxas (usa itens originais para preço, itensParaEstoque para custo)
-    int totalUnidades = 0;
-    double custoProdutos = 0.0;
-    for (var i = 0; i < itensParaEstoque.length; i++) {
-      final it = itensParaEstoque[i];
-      final p = produtosEncontrados[i];
-      totalUnidades += it.quantidade;
-      custoProdutos += (p.custoReal * it.quantidade);
-    }
-    final taxas = (3.50 * totalUnidades) + (0.15 * custoProdutos);
+    // 5) custo de mercadoria (custo real) e taxa legado APK — separados; combo = só componentes
+    final custoProdutos = VendaCustoMercadoria.somarCustoReal(
+      itens: itensParaEstoque,
+      produtos: produtosEncontrados,
+      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+    );
+    final totalUnidades = VendaCustoMercadoria.unidadesMercadoria(
+      itens: itensParaEstoque,
+      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+    );
+    final taxas = VendaCustoMercadoria.taxasLegadoVendaApk(
+      custoMercadoria: custoProdutos,
+      unidadesMercadoria: totalUnidades,
+    );
 
     // 6) se nenhum pagamento foi informado e não for fiado, joga tudo em dinheiro
     if (!isFiado && dinheiro == 0 && pix == 0 && cartao == 0) {
@@ -519,7 +525,7 @@ class VendasService {
         : 'hive_${venda.key}';
     var devolucaoResults = <EstoqueTransactionResult>[];
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      final (itensDevolucao, _) = VendaComboEstoqueExpansion.expandirCombos(
+      final (itensDevolucao, _, _) = VendaComboEstoqueExpansion.expandirCombos(
         itens: venda.itens!,
         produtosBox: produtosBox,
         lojaId: lojaId,
@@ -718,7 +724,7 @@ class VendasService {
         : 'hive_${venda.key}';
     var devolucaoResultsExclusao = <EstoqueTransactionResult>[];
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      final (itensDevolucao, _) = VendaComboEstoqueExpansion.expandirCombos(
+      final (itensDevolucao, _, _) = VendaComboEstoqueExpansion.expandirCombos(
         itens: venda.itens!,
         produtosBox: produtosBox,
         lojaId: lojaId,
