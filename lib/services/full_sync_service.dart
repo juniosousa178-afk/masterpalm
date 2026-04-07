@@ -12,6 +12,7 @@ import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
 import 'produto_remote_sync_guard.dart';
+import 'produtos_firestore_service.dart';
 import 'importar_vendas_firestore_service.dart';
 import 'store_resolver_facade.dart';
 
@@ -59,10 +60,10 @@ class FullSyncService {
       logD('   Clientes: ${result.clientesSincronizados}');
       logD('   Vendas: ${result.vendasSincronizadas}');
       logD('═══════════════════════════════════════════════════════════');
-
     } catch (e, st) {
       result.erro = e.toString();
-      logE('❌ [FULL-SYNC] Erro geral (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [FULL-SYNC] Erro geral (type=${e.runtimeType})',
+          error: e, st: st);
     }
 
     return result;
@@ -85,23 +86,29 @@ class FullSyncService {
         logD('🗑️ [FULL-SYNC] Limpando boxes antigas...');
 
         // Limpar conteúdo das boxes antigas (evita HiveError ao fechar box ainda referenciada)
-        final boxesToClear = [HiveBoxNames.produtos(cachedLojaId), HiveBoxNames.clientes(cachedLojaId)];
+        final boxesToClear = [
+          HiveBoxNames.produtos(cachedLojaId),
+          HiveBoxNames.clientes(cachedLojaId)
+        ];
         for (final boxName in boxesToClear) {
           try {
             if (Hive.isBoxOpen(boxName)) {
               final box = Hive.box(boxName);
               await box.clear();
-              logD('🧹 [SYNC] Box limpa ao trocar de loja (box=$boxName, lojaAntiga=$cachedLojaId, lojaAtual=$lojaIdAtual)');
+              logD(
+                  '🧹 [SYNC] Box limpa ao trocar de loja (box=$boxName, lojaAntiga=$cachedLojaId, lojaAtual=$lojaIdAtual)');
             }
           } catch (e) {
-            logD('⚠️ [SYNC] Erro ao limpar box ao trocar de loja (box=$boxName, type=${e.runtimeType}) – ignorando.');
+            logD(
+                '⚠️ [SYNC] Erro ao limpar box ao trocar de loja (box=$boxName, type=${e.runtimeType}) – ignorando.');
           }
         }
       }
 
       // Atualizar loja atual no cache
       await sessaoBox.put('last_synced_loja_id', lojaIdAtual);
-      await sessaoBox.put('last_sync_timestamp', DateTime.now().toIso8601String());
+      await sessaoBox.put(
+          'last_sync_timestamp', DateTime.now().toIso8601String());
 
       logD('✅ [FULL-SYNC] Cache verificado');
     } catch (e) {
@@ -149,11 +156,12 @@ class FullSyncService {
         for (final doc in snapshot.docs) {
           try {
             final data = doc.data() as Map<String, dynamic>;
-            final produto = _produtoFromFirestore(data, doc.id);
+            final produto = _produtoFromFirestore(data, doc.id, lojaId, box);
 
             // Verificar se já existe pelo idFirebase ou slug (whereType evita crash por typeId inválido)
-            final candidatos = box.values.whereType<Produto>().where(
-                (p) => p.idFirebase == doc.id || p.slug == produto.slug);
+            final candidatos = box.values
+                .whereType<Produto>()
+                .where((p) => p.idFirebase == doc.id || p.slug == produto.slug);
             final existente = candidatos.isEmpty ? null : candidatos.first;
 
             if (existente != null) {
@@ -186,6 +194,13 @@ class FullSyncService {
                 ..custoEditadoNoCadastro = produto.custoEditadoNoCadastro
                 ..updatedAt = produto.updatedAt
                 ..idFirebase = doc.id;
+              ProdutosFirestoreService.applyComboMetadataPullForExisting(
+                data,
+                existente,
+                produtosBox: box,
+                lojaId: lojaId,
+                docId: doc.id,
+              );
               await existente.save();
             } else {
               // Adicionar novo
@@ -195,21 +210,23 @@ class FullSyncService {
 
             totalSincronizados++;
           } catch (e) {
-            logW('⚠️ [FULL-SYNC] Erro ao processar produto (type=${e.runtimeType})');
+            logW(
+                '⚠️ [FULL-SYNC] Erro ao processar produto (type=${e.runtimeType})');
           }
         }
 
         lastDoc = snapshot.docs.last;
         hasMore = snapshot.docs.length == pageSize;
 
-        logD('📦 [FULL-SYNC] Lote processado: ${snapshot.docs.length} produtos');
+        logD(
+            '📦 [FULL-SYNC] Lote processado: ${snapshot.docs.length} produtos');
       }
 
       logD('✅ [FULL-SYNC] Produtos sincronizados: $totalSincronizados');
       return totalSincronizados;
-
     } catch (e, st) {
-      logE('❌ [FULL-SYNC] Erro ao sincronizar produtos (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [FULL-SYNC] Erro ao sincronizar produtos (type=${e.runtimeType})',
+          error: e, st: st);
       return 0;
     } finally {
       ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
@@ -260,15 +277,16 @@ class FullSyncService {
             totalSincronizados++;
           }
         } catch (e) {
-          logW('⚠️ [FULL-SYNC] Erro ao processar cliente (type=${e.runtimeType})');
+          logW(
+              '⚠️ [FULL-SYNC] Erro ao processar cliente (type=${e.runtimeType})');
         }
       }
 
       logD('✅ [FULL-SYNC] Clientes sincronizados: $totalSincronizados');
       return totalSincronizados;
-
     } catch (e, st) {
-      logE('❌ [FULL-SYNC] Erro ao sincronizar clientes (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [FULL-SYNC] Erro ao sincronizar clientes (type=${e.runtimeType})',
+          error: e, st: st);
       return 0;
     }
   }
@@ -289,19 +307,36 @@ class FullSyncService {
         vendasBox: box,
       );
 
-      logD('✅ [FULL-SYNC] Vendas: ${resultado.importadas} importadas (${resultado.jaExistentes} já existiam)');
+      logD(
+          '✅ [FULL-SYNC] Vendas: ${resultado.importadas} importadas (${resultado.jaExistentes} já existiam)');
       return resultado.importadas;
     } catch (e, st) {
-      logE('❌ [FULL-SYNC] Erro ao sincronizar vendas (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [FULL-SYNC] Erro ao sincronizar vendas (type=${e.runtimeType})',
+          error: e, st: st);
       return 0;
     }
   }
 
-  /// Converte documento Firestore para Produto
-  static Produto _produtoFromFirestore(Map<String, dynamic> data, String docId) {
+  /// Converte documento Firestore para Produto (alinhado ao pull de combo em [ProdutosFirestoreService]).
+  static Produto _produtoFromFirestore(
+    Map<String, dynamic> data,
+    String docId,
+    String lojaId,
+    Box<Produto> produtosBox,
+  ) {
     final preco = (data['precoFinal'] as num?)?.toDouble() ??
-                  (data['preco'] as num?)?.toDouble() ?? 0.0;
+        (data['preco'] as num?)?.toDouble() ??
+        0.0;
     final uAt = data['updatedAt'];
+    final lojaEfetiva = (data['lojaId']?.toString() ?? '').trim().isNotEmpty
+        ? data['lojaId'].toString()
+        : lojaId;
+    final combo = ProdutosFirestoreService.comboFieldsForNewProductPull(
+      data,
+      produtosBox: produtosBox,
+      lojaId: lojaId,
+      docId: docId,
+    );
     return Produto(
       nome: data['nome']?.toString() ?? '',
       descricao: data['descricao']?.toString() ?? '',
@@ -313,7 +348,8 @@ class FullSyncService {
       precoFinal: preco,
       precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?? preco,
       quantidade: (data['quantidade'] as num?)?.toInt() ??
-                  (data['estoque'] as num?)?.toInt() ?? 0,
+          (data['estoque'] as num?)?.toInt() ??
+          0,
       categoria: data['categoria']?.toString() ?? '',
       subcategoria: data['subcategoria']?.toString() ?? '',
       imagens: _parseListString(data['imagens']),
@@ -321,8 +357,8 @@ class FullSyncService {
       estoquePorTamanho: _parseMapStringInt(data['estoquePorTamanho']),
       cores: _parseListString(data['cores']),
       variacoes: _parseMapDynamic(data['variacoes']),
-      publicadoNoCatalogo: data['publicadoNoCatalogo'] == true ||
-                           data['publicar'] == true,
+      publicadoNoCatalogo:
+          data['publicadoNoCatalogo'] == true || data['publicar'] == true,
       divideSemJuros: data['divideSemJuros'] == true,
       maxParcelasSemJuros: (data['maxParcelasSemJuros'] is num)
           ? (data['maxParcelasSemJuros'] as num).toInt()
@@ -331,7 +367,7 @@ class FullSyncService {
           ? (data['percentualDescontoPix'] as num).toDouble()
           : 0.0,
       slug: data['slug']?.toString() ?? docId,
-      lojaId: data['lojaId']?.toString() ?? '',
+      lojaId: lojaEfetiva,
       idFirebase: docId,
       dataEntrada: data['dataEntrada'] is Timestamp
           ? (data['dataEntrada'] as Timestamp).toDate()
@@ -341,6 +377,8 @@ class FullSyncService {
       updatedAt: uAt is Timestamp ? uAt.toDate() : null,
       custoEditadoNoCadastro:
           (data['custoEditadoNoCadastro'] as bool?) ?? false,
+      tipoProduto: combo.$1,
+      itensCombo: combo.$2,
     );
   }
 

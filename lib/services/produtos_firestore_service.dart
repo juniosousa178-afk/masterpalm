@@ -20,7 +20,8 @@ import 'catalog_thumbnail_service.dart';
 import 'combo_receita_normalizacao.dart';
 import 'image_upload_service.dart';
 import 'sync_queue_service.dart';
-import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
+import '../src/blob_fetch_stub.dart'
+    if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 
 /// Serviço para sincronizar produtos com Firestore.
 ///
@@ -71,6 +72,7 @@ class ProdutosFirestoreService {
   static Future<void> syncProduto(
     Produto produto, {
     String? lojaId,
+
     /// Quando false, não grava Hive só para atualizar [Produto.updatedAt] após a nuvem
     /// (evita re-disparar [ProdutoAutoSyncService] em loop). Upload de imagem / novo
     /// [Produto.idFirebase] continuam persistindo no Hive.
@@ -97,7 +99,8 @@ class ProdutosFirestoreService {
         if (ImageUploadService.isLocalPath(imagemPath)) {
           logD('📤 [PRODUTOS-SYNC] Fazendo upload da imagem: $imagemPath');
           String? url;
-          final thumbBytes = await CatalogThumbnailService.generateFromPath(imagemPath);
+          final thumbBytes =
+              await CatalogThumbnailService.generateFromPath(imagemPath);
           if (thumbBytes != null) {
             url = await ImageUploadService.uploadImageFromBytes(
               bytes: thumbBytes,
@@ -132,7 +135,8 @@ class ProdutosFirestoreService {
           bool blobConvertido = false;
           if (kIsWeb) {
             try {
-              final bytes = await blob_fetch.fetchBlobUrlAsBytes(imagemPath)
+              final bytes = await blob_fetch
+                  .fetchBlobUrlAsBytes(imagemPath)
                   .timeout(const Duration(seconds: 15), onTimeout: () => null);
               if (bytes != null && bytes.isNotEmpty) {
                 final url = await ImageUploadService.uploadImageFromBytes(
@@ -146,7 +150,8 @@ class ProdutosFirestoreService {
                   imagensFinais.add(url);
                   imagensAtualizadas = true;
                   blobConvertido = true;
-                  logD('[PRODUTOS-SYNC] blob: URL convertida para Firebase: $url');
+                  logD(
+                      '[PRODUTOS-SYNC] blob: URL convertida para Firebase: $url');
                 }
               }
             } catch (_) {
@@ -154,7 +159,8 @@ class ProdutosFirestoreService {
             }
           }
           if (!blobConvertido) {
-            logW('[PRODUTOS-SYNC] blob: URL ignorada (não persiste fora do browser): $imagemPath');
+            logW(
+                '[PRODUTOS-SYNC] blob: URL ignorada (não persiste fora do browser): $imagemPath');
           }
         } else {
           imagensFinais.add(imagemPath);
@@ -165,7 +171,8 @@ class ProdutosFirestoreService {
       if (imagensAtualizadas) {
         produto.imagens = imagensFinais;
         await produto.save();
-        logD('✅ [PRODUTOS-SYNC] Imagens atualizadas no Hive com URLs do Firebase');
+        logD(
+            '✅ [PRODUTOS-SYNC] Imagens atualizadas no Hive com URLs do Firebase');
       }
 
       if (bumpHiveTimestamp) {
@@ -231,9 +238,12 @@ class ProdutosFirestoreService {
         'cores': produto.cores,
         'variacoes': variacoesPush,
         'variacoesExtraTipo': variacoesExtraPush,
-        if (produto.precoPorTamanho != null && produto.precoPorTamanho!.isNotEmpty)
+        if (produto.precoPorTamanho != null &&
+            produto.precoPorTamanho!.isNotEmpty)
           'precoPorTamanho': produto.precoPorTamanho,
         'tipoProduto': produto.tipoProduto,
+        // itensCombo omitido quando vazio: merge não apaga chave no Firestore.
+        // Limpeza remota explícita: enviar []. Pull: applyComboMetadataPullForExisting.
         if (produto.itensCombo != null && produto.itensCombo!.isNotEmpty)
           'itensCombo': produto.itensCombo,
 
@@ -242,7 +252,8 @@ class ProdutosFirestoreService {
         'maxParcelasSemJuros': produto.maxParcelasSemJuros,
 
         'videoUrl': produto.videoUrl.isNotEmpty ? produto.videoUrl : null,
-        'codigoBarras': produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
+        'codigoBarras':
+            produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
         'estoqueMinimo': produto.estoqueMinimo,
         'fornecedor': produto.fornecedor.isNotEmpty ? produto.fornecedor : null,
         'marketplaces': produto.marketplaces,
@@ -260,7 +271,8 @@ class ProdutosFirestoreService {
           // Fallback conservador para docs legados sem createdAt.
           produtoData['createdAt'] = FieldValue.serverTimestamp();
         }
-        _dlog('[ProdutoSync] update estoque_produtos/$produtoId (createdAt preservado)');
+        _dlog(
+            '[ProdutoSync] update estoque_produtos/$produtoId (createdAt preservado)');
       } else {
         produtoData['createdAt'] = FieldValue.serverTimestamp();
         _dlog('[ProdutoSync] create estoque_produtos/$produtoId');
@@ -298,9 +310,8 @@ class ProdutosFirestoreService {
             'valorPromo': produto.valorPromo,
             'peso': produto.peso,
             'tipoEmbalagem': produto.tipoEmbalagem,
-            'codigoBarras': produto.codigoBarras.isNotEmpty
-                ? produto.codigoBarras
-                : null,
+            'codigoBarras':
+                produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
             'estoqueMinimo': produto.estoqueMinimo,
             // Custo e campos internos nunca no documento público (merge não apaga se omitir)
             'custoReal': FieldValue.delete(),
@@ -324,7 +335,8 @@ class ProdutosFirestoreService {
           _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
           logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
         } catch (e) {
-          logW('⚠️ [PRODUTOS-SYNC] Produto não encontrado no catálogo público (normal se não publicado) (type=${e.runtimeType})');
+          logW(
+              '⚠️ [PRODUTOS-SYNC] Produto não encontrado no catálogo público (normal se não publicado) (type=${e.runtimeType})');
         }
       }
 
@@ -337,10 +349,14 @@ class ProdutosFirestoreService {
 
       logD('✅ [PRODUTOS-SYNC] Produto ${produto.nome} sincronizado');
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})', error: e, st: st);
+      logE(
+          '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})',
+          error: e,
+          st: st);
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       final key = produto.key;
-      final boxName = produto.box?.name ?? (storeId != null ? HiveBoxNames.produtos(storeId) : null);
+      final boxName = produto.box?.name ??
+          (storeId != null ? HiveBoxNames.produtos(storeId) : null);
       if (storeId != null && key != null && boxName != null) {
         await SyncQueueService.enqueue(
           type: SyncOperationType.upsertProduto,
@@ -358,14 +374,16 @@ class ProdutosFirestoreService {
   static bool _isBlobUrl(String? s) =>
       s != null && s.trim().toLowerCase().startsWith('blob:');
 
-  static Future<String?> _uploadDataImageUrl(String dataUrl, String lojaId) async {
+  static Future<String?> _uploadDataImageUrl(
+      String dataUrl, String lojaId) async {
     try {
       final uri = Uri.parse(dataUrl.trim());
       final data = uri.data;
       if (data == null) return null;
       final bytes = Uint8List.fromList(data.contentAsBytes());
       final ext = data.mimeType.split('/').last;
-      final path = 'lojas/$lojaId/produtos/img_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final path =
+          'lojas/$lojaId/produtos/img_${DateTime.now().millisecondsSinceEpoch}.$ext';
       final ref = FirebaseStorage.instance.ref(path);
       await ref.putData(
         bytes,
@@ -373,7 +391,8 @@ class ProdutosFirestoreService {
       );
       return await ref.getDownloadURL();
     } catch (e) {
-      logE('[PRODUTOS-SYNC] Erro ao fazer upload de data:image (type=${e.runtimeType})');
+      logE(
+          '[PRODUTOS-SYNC] Erro ao fazer upload de data:image (type=${e.runtimeType})');
       return null;
     }
   }
@@ -391,13 +410,17 @@ class ProdutosFirestoreService {
       try {
         await syncProduto(produto, lojaId: lojaId);
       } catch (e, st) {
-        logE('❌ [PRODUTOS-SYNC] Erro sync item hiveKey=$k (type=${e.runtimeType})', error: e, st: st);
+        logE(
+            '❌ [PRODUTOS-SYNC] Erro sync item hiveKey=$k (type=${e.runtimeType})',
+            error: e,
+            st: st);
       }
     }
   }
 
   /// Sincroniza todos os produtos locais para o Firestore (Hive → Firestore)
-  static Future<void> syncTodosProdutos({required String boxName, required String lojaId}) async {
+  static Future<void> syncTodosProdutos(
+      {required String boxName, required String lojaId}) async {
     try {
       logD('🔄 [PRODUTOS-SYNC] Iniciando sync de todos os produtos...');
 
@@ -413,14 +436,17 @@ class ProdutosFirestoreService {
             synced++;
           } catch (e, st) {
             errors++;
-            logE('❌ [PRODUTOS-SYNC] Erro no produto (type=${e.runtimeType})', error: e, st: st);
+            logE('❌ [PRODUTOS-SYNC] Erro no produto (type=${e.runtimeType})',
+                error: e, st: st);
           }
         }
       }
 
-      logD('✅ [PRODUTOS-SYNC] Sync completo: $synced produtos sincronizados, $errors erros');
+      logD(
+          '✅ [PRODUTOS-SYNC] Sync completo: $synced produtos sincronizados, $errors erros');
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro geral (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [PRODUTOS-SYNC] Erro geral (type=${e.runtimeType})',
+          error: e, st: st);
     }
   }
 
@@ -454,7 +480,8 @@ class ProdutosFirestoreService {
         lastDoc = snapshot.docs.last;
       }
 
-      logD('📦 [PRODUTOS-SYNC] Encontrados ${allDocs.length} produtos no Firestore');
+      logD(
+          '📦 [PRODUTOS-SYNC] Encontrados ${allDocs.length} produtos no Firestore');
 
       int sincronizados = 0;
       int atualizados = 0;
@@ -481,7 +508,7 @@ class ProdutosFirestoreService {
                   (p) => p.slug == slug && p.lojaId == lojaId,
                 );
                 logW(
-                  '[PRODUTO_MATCH_GUARD] Hive resolvido por slug (idFirebase local ≠ docId). '
+                  '[COMBO_MATCH_GUARD] [PRODUTO_MATCH_GUARD] Hive resolvido por slug (idFirebase local ≠ docId). '
                   'docId=$produtoId slug=$slug',
                   tag: 'PRODUTO_MATCH_GUARD',
                 );
@@ -503,7 +530,8 @@ class ProdutosFirestoreService {
             final pesoAntes = p.peso;
             final custoManualLocal = p.custoEditadoNoCadastro == true;
             p.nome = data['nome'] ?? p.nome;
-            p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
+            p.quantidade =
+                (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
             p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
             if (custoManualLocal) {
               logW(
@@ -513,14 +541,18 @@ class ProdutosFirestoreService {
               );
               p.custoEditadoNoCadastro = true;
             } else {
-              p.custoReal = (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
+              p.custoReal =
+                  (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
               final ce = data['custoEditadoNoCadastro'];
               p.custoEditadoNoCadastro = ce is bool ? ce : false;
             }
             p.frete = (data['frete'] as num?)?.toDouble() ?? p.frete;
-            p.gastosFixos = (data['gastosFixos'] as num?)?.toDouble() ?? p.gastosFixos;
-            p.gastosVariaveis = (data['gastosVariaveis'] as num?)?.toDouble() ?? p.gastosVariaveis;
-            p.precoSugerido = (data['precoSugerido'] as num?)?.toDouble() ?? p.precoSugerido;
+            p.gastosFixos =
+                (data['gastosFixos'] as num?)?.toDouble() ?? p.gastosFixos;
+            p.gastosVariaveis = (data['gastosVariaveis'] as num?)?.toDouble() ??
+                p.gastosVariaveis;
+            p.precoSugerido =
+                (data['precoSugerido'] as num?)?.toDouble() ?? p.precoSugerido;
             final pesoDados = data['peso'];
             if (pesoDados is num) {
               final pr = pesoDados.toDouble();
@@ -534,14 +566,18 @@ class ProdutosFirestoreService {
                 p.peso = pr;
               }
             }
-            p.tipoEmbalagem = (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
+            p.tipoEmbalagem =
+                (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
             p.categoria = data['categoria'] ?? p.categoria;
             p.subcategoria = data['subcategoria'] ?? p.subcategoria;
             p.descricao = data['descricao'] ?? p.descricao;
             p.imagens = (data['imagens'] as List?)?.cast<String>() ?? p.imagens;
             p.slug = data['slug'] ?? p.slug;
-            p.codigoBarras = (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
-            p.estoqueMinimo = (data['estoqueMinimo'] is num) ? (data['estoqueMinimo'] as num).toInt() : p.estoqueMinimo;
+            p.codigoBarras =
+                (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
+            p.estoqueMinimo = (data['estoqueMinimo'] is num)
+                ? (data['estoqueMinimo'] as num).toInt()
+                : p.estoqueMinimo;
             if (data['dataEntrada'] is Timestamp) {
               p.dataEntrada = (data['dataEntrada'] as Timestamp).toDate();
             }
@@ -551,8 +587,10 @@ class ProdutosFirestoreService {
             if (data.containsKey('fornecedor')) {
               p.fornecedor = (data['fornecedor'] ?? '').toString().trim();
             }
-            p.publicadoNoCatalogo = data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
-            p.tamanhos = (data['tamanhos'] as List?)?.cast<String>() ?? p.tamanhos;
+            p.publicadoNoCatalogo =
+                data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
+            p.tamanhos =
+                (data['tamanhos'] as List?)?.cast<String>() ?? p.tamanhos;
             p.cores = (data['cores'] as List?)?.cast<String>() ?? p.cores;
 
             // estoquePorTamanho / variações: semântica explícita (ausência = doc legado)
@@ -611,7 +649,8 @@ class ProdutosFirestoreService {
                   p.variacoesExtraTipo = null;
                   logD('[VARIACAO_PULL] variacoesExtraTipo remoto {} → limpo');
                 } else {
-                  p.variacoesExtraTipo = _parseVariacoesExtraTipoFromFirestore(vet);
+                  p.variacoesExtraTipo =
+                      _parseVariacoesExtraTipoFromFirestore(vet);
                 }
               }
             } else {
@@ -623,23 +662,22 @@ class ProdutosFirestoreService {
             final ppt = data['precoPorTamanho'];
             if (ppt != null && ppt is Map) {
               p.precoPorTamanho = Map<String, double>.from(
-                ppt.map((k, v) => MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0)),
+                ppt.map((k, v) =>
+                    MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0)),
               );
             } else if (ppt == null) {
               p.precoPorTamanho = null;
             }
-            p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ?? (data['preco'] as num?)?.toDouble() ?? p.precoUnitario;
-            p.tipoProduto = (data['tipoProduto'] ?? p.tipoProduto).toString();
-            final itc = data['itensCombo'];
-            if (itc != null && itc is List && itc.isNotEmpty) {
-              p.itensCombo = _parseItensComboFromFirestore(
-                itc,
-                lojaId: lojaId,
-                produtosBox: produtosBox,
-              );
-            } else if (itc == null) {
-              p.itensCombo = null;
-            }
+            p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
+                (data['preco'] as num?)?.toDouble() ??
+                p.precoUnitario;
+            applyComboMetadataPullForExisting(
+              data,
+              p,
+              produtosBox: produtosBox,
+              lojaId: lojaId,
+              docId: produtoId,
+            );
             p.divideSemJuros = data['divideSemJuros'] ?? p.divideSemJuros;
             p.percentualDescontoPix = (data['percentualDescontoPix'] is num)
                 ? (data['percentualDescontoPix'] as num).toDouble()
@@ -693,17 +731,29 @@ class ProdutosFirestoreService {
           } else {
             // Criar novo produto
             final uAt = data['updatedAt'];
-            final updatedAtDt = uAt != null && uAt is Timestamp ? uAt.toDate() : null;
+            final updatedAtDt =
+                uAt != null && uAt is Timestamp ? uAt.toDate() : null;
+            final comboNovo = comboFieldsForNewProductPull(
+              data,
+              produtosBox: produtosBox,
+              lojaId: lojaId,
+              docId: produtoId,
+            );
             final produto = Produto(
               idFirebase: produtoId,
               nome: data['nome'] ?? 'Produto sem nome',
               custoReal: (data['custoReal'] as num?)?.toDouble() ?? 0.0,
               frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
               gastosFixos: (data['gastosFixos'] as num?)?.toDouble() ?? 0.0,
-              gastosVariaveis: (data['gastosVariaveis'] as num?)?.toDouble() ?? 0.0,
-              precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ?? (data['preco'] as num?)?.toDouble() ?? 0.0,
+              gastosVariaveis:
+                  (data['gastosVariaveis'] as num?)?.toDouble() ?? 0.0,
+              precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ??
+                  (data['preco'] as num?)?.toDouble() ??
+                  0.0,
               precoFinal: (data['preco'] as num?)?.toDouble() ?? 0.0,
-              precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ?? (data['preco'] as num?)?.toDouble() ?? 0.0,
+              precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ??
+                  (data['preco'] as num?)?.toDouble() ??
+                  0.0,
               quantidade: (data['quantidade'] as num?)?.toInt() ?? 0,
               categoria: data['categoria'] ?? '',
               dataEntrada: data['dataEntrada'] is Timestamp
@@ -716,18 +766,16 @@ class ProdutosFirestoreService {
               subcategoria: data['subcategoria'] ?? '',
               publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
               tamanhos: (data['tamanhos'] as List?)?.cast<String>() ?? [],
-              estoquePorTamanho: Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
+              estoquePorTamanho:
+                  Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
               cores: (data['cores'] as List?)?.cast<String>() ?? [],
               variacoes: _parseVariacoesFromFirestore(data['variacoes']),
-              variacoesExtraTipo:
-                  _parseVariacoesExtraTipoFromFirestore(data['variacoesExtraTipo']),
-              precoPorTamanho: _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
-              tipoProduto: (data['tipoProduto'] ?? 'simples').toString(),
-              itensCombo: _parseItensComboFromFirestore(
-                data['itensCombo'],
-                lojaId: lojaId,
-                produtosBox: produtosBox,
-              ),
+              variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
+                  data['variacoesExtraTipo']),
+              precoPorTamanho:
+                  _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
+              tipoProduto: comboNovo.$1,
+              itensCombo: comboNovo.$2,
               divideSemJuros: data['divideSemJuros'] == true,
               percentualDescontoPix: (data['percentualDescontoPix'] is num)
                   ? (data['percentualDescontoPix'] as num).toDouble()
@@ -736,7 +784,9 @@ class ProdutosFirestoreService {
                   ? (data['maxParcelasSemJuros'] as num).toInt()
                   : 12,
               codigoBarras: (data['codigoBarras'] ?? '').toString(),
-              estoqueMinimo: (data['estoqueMinimo'] is num) ? (data['estoqueMinimo'] as num).toInt() : 0,
+              estoqueMinimo: (data['estoqueMinimo'] is num)
+                  ? (data['estoqueMinimo'] as num).toInt()
+                  : 0,
               fornecedor: (data['fornecedor'] ?? '').toString().trim(),
               peso: (data['peso'] as num?)?.toDouble() ?? 0.0,
               tipoEmbalagem: (data['tipoEmbalagem'] ?? 'padrao').toString(),
@@ -765,7 +815,10 @@ class ProdutosFirestoreService {
             logD('✅ Produto $produtoId sincronizado');
           }
         } catch (e, st) {
-          logE('❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})', error: e, st: st);
+          logE(
+              '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})',
+              error: e,
+              st: st);
         }
       }
 
@@ -774,24 +827,212 @@ class ProdutosFirestoreService {
       final toRemove = <int>[];
       for (final k in produtosBox.keys) {
         final p = produtosBox.get(k);
-        if (p != null && p.lojaId == lojaId && p.idFirebase.isNotEmpty && !firestoreIds.contains(p.idFirebase)) {
+        if (p != null &&
+            p.lojaId == lojaId &&
+            p.idFirebase.isNotEmpty &&
+            !firestoreIds.contains(p.idFirebase)) {
           toRemove.add(k as int);
         }
       }
       for (final k in toRemove) {
         await produtosBox.delete(k);
-        logD('🗑️ [PRODUTOS-SYNC] Produto local removido (excluído no Firestore): $k');
+        logD(
+            '🗑️ [PRODUTOS-SYNC] Produto local removido (excluído no Firestore): $k');
       }
 
-      logD('✅ [PRODUTOS-SYNC] Sync completo: $sincronizados novos, $atualizados atualizados, ${toRemove.length} removidos');
+      logD(
+          '✅ [PRODUTOS-SYNC] Sync completo: $sincronizados novos, $atualizados atualizados, ${toRemove.length} removidos');
       return sincronizados + atualizados;
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro ao sincronizar do Firestore (type=${e.runtimeType})', error: e, st: st);
+      logE(
+          '❌ [PRODUTOS-SYNC] Erro ao sincronizar do Firestore (type=${e.runtimeType})',
+          error: e,
+          st: st);
       return 0;
     } finally {
       ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
     }
   }
+
+  /// Receita de combo já persistida no Hive (independente do valor atual de [tipoProduto]).
+  static bool _receitaLocalNaoVazia(Produto p) =>
+      p.itensCombo != null && p.itensCombo!.isNotEmpty;
+
+  /// Pull Firestore → Hive: [tipoProduto] + [itensCombo] para produto **já existente** na box.
+  ///
+  /// Semântica:
+  /// - **itensCombo ausente** na mapa remota → não altera receita local (legado / doc incompleto).
+  /// - **itensCombo: null** (chave presente) → só apaga se não houver receita local a preservar.
+  /// - **itensCombo: []** → limpeza explícita da receita.
+  /// - **lista** → parse + aplicar; parse vazio com receita local válida → preservar local.
+  /// - **tipoProduto ausente** → não altera tipo local.
+  /// - **tipoProduto: simples** com receita local ainda preenchida após merge de itens → força `combo`.
+  static void applyComboMetadataPullForExisting(
+    Map<String, dynamic> data,
+    Produto p, {
+    required Box<Produto> produtosBox,
+    required String lojaId,
+    required String docId,
+  }) {
+    // --- itensCombo primeiro (depois ajustamos tipo em função da receita efetiva)
+    if (!data.containsKey('itensCombo')) {
+      logW(
+        '[COMBO_PULL_GUARD] doc=$docId itensCombo ausente no Firestore — mantendo local '
+        '(${p.itensCombo?.length ?? 0} itens)',
+        tag: 'COMBO_PULL_GUARD',
+      );
+    } else {
+      final itc = data['itensCombo'];
+      if (itc == null) {
+        if (_receitaLocalNaoVazia(p)) {
+          logW(
+            '[COMBO_PULL_GUARD] doc=$docId itensCombo remoto=null (chave presente) — '
+            'preservando receita local (${p.itensCombo!.length} itens)',
+            tag: 'COMBO_PULL_GUARD',
+          );
+        } else {
+          p.itensCombo = null;
+          logW(
+            '[COMBO_PULL_CLEAR] doc=$docId itensCombo=null explícito sem receita local',
+            tag: 'COMBO_PULL_CLEAR',
+          );
+        }
+      } else if (itc is! List) {
+        logW(
+          '[COMBO_PULL_GUARD] doc=$docId itensCombo tipo inválido (${itc.runtimeType}) — '
+          'mantendo receita local',
+          tag: 'COMBO_PULL_GUARD',
+        );
+      } else if (itc.isEmpty) {
+        p.itensCombo = null;
+        logW(
+          '[COMBO_PULL_CLEAR] doc=$docId itensCombo=[] limpeza explícita da receita',
+          tag: 'COMBO_PULL_CLEAR',
+        );
+      } else {
+        final parsed = _parseItensComboFromFirestore(
+          itc,
+          lojaId: lojaId,
+          produtosBox: produtosBox,
+        );
+        if (parsed != null && parsed.isNotEmpty) {
+          p.itensCombo = parsed;
+          logD(
+              '[COMBO_PULL_APPLY] doc=$docId itensCombo aplicados (${parsed.length} itens)');
+        } else if (_receitaLocalNaoVazia(p)) {
+          logW(
+            '[COMBO_PULL_GUARD] doc=$docId parse de itensCombo não produziu lista válida — '
+            'preservando receita local (${p.itensCombo!.length} itens)',
+            tag: 'COMBO_PULL_GUARD',
+          );
+        } else {
+          p.itensCombo = parsed;
+          logW(
+            '[COMBO_PULL_APPLY] doc=$docId itensCombo após parse vazio — receita limpa',
+            tag: 'COMBO_PULL_APPLY',
+          );
+        }
+      }
+    }
+
+    // --- tipoProduto (não rebaixar para simples se ainda há receita)
+    if (!data.containsKey('tipoProduto')) {
+      logW(
+        '[COMBO_PULL_GUARD] doc=$docId tipoProduto ausente — mantendo local tipo=${p.tipoProduto}',
+        tag: 'COMBO_PULL_GUARD',
+      );
+    } else {
+      final raw = data['tipoProduto'];
+      final remote = (raw ?? 'simples').toString().trim();
+      if (remote == 'combo') {
+        p.tipoProduto = 'combo';
+        logD('[COMBO_PULL_APPLY] doc=$docId tipoProduto=combo');
+      } else if (remote == 'simples') {
+        if (_receitaLocalNaoVazia(p)) {
+          p.tipoProduto = 'combo';
+          logW(
+            '[COMBO_PULL_GUARD] doc=$docId remoto tipoProduto=simples mas receita presente — '
+            'mantendo tipo combo',
+            tag: 'COMBO_PULL_GUARD',
+          );
+        } else {
+          p.tipoProduto = 'simples';
+          logD('[COMBO_PULL_APPLY] doc=$docId tipoProduto=simples');
+        }
+      } else if (remote.isNotEmpty) {
+        p.tipoProduto = remote;
+        logD('[COMBO_PULL_APPLY] doc=$docId tipoProduto=$remote');
+      }
+    }
+  }
+
+  /// Pull para **novo** [Produto] (sem estado local). Ausência de chave → defaults seguros.
+  static (String tipoProduto, List<Map<String, dynamic>>? itensCombo)
+      comboFieldsForNewProductPull(
+    Map<String, dynamic> data, {
+    required Box<Produto> produtosBox,
+    required String lojaId,
+    required String docId,
+  }) {
+    final tipoProduto = data.containsKey('tipoProduto')
+        ? (data['tipoProduto'] ?? 'simples').toString().trim()
+        : 'simples';
+    if (!data.containsKey('tipoProduto')) {
+      logD(
+          '[COMBO_PULL_APPLY] novo doc=$docId tipoProduto ausente — default simples');
+    }
+
+    List<Map<String, dynamic>>? itensCombo;
+    if (!data.containsKey('itensCombo')) {
+      itensCombo = null;
+      logD('[COMBO_PULL_APPLY] novo doc=$docId itensCombo ausente — null');
+    } else {
+      final itc = data['itensCombo'];
+      if (itc == null) {
+        itensCombo = null;
+        logD('[COMBO_PULL_APPLY] novo doc=$docId itensCombo=null');
+      } else if (itc is! List) {
+        itensCombo = null;
+        logW(
+          '[COMBO_PULL_GUARD] novo doc=$docId itensCombo tipo inválido — null',
+          tag: 'COMBO_PULL_GUARD',
+        );
+      } else if (itc.isEmpty) {
+        itensCombo = null;
+        logD('[COMBO_PULL_APPLY] novo doc=$docId itensCombo=[]');
+      } else {
+        itensCombo = _parseItensComboFromFirestore(
+          itc,
+          lojaId: lojaId,
+          produtosBox: produtosBox,
+        );
+        if (itensCombo == null || itensCombo.isEmpty) {
+          logW(
+            '[COMBO_PULL_GUARD] novo doc=$docId itensCombo presente mas parse retornou vazio',
+            tag: 'COMBO_PULL_GUARD',
+          );
+        } else {
+          logD(
+            '[COMBO_PULL_APPLY] novo doc=$docId itensCombo ok (${itensCombo.length} itens)',
+          );
+        }
+      }
+    }
+
+    var tipoFinal = tipoProduto.isEmpty ? 'simples' : tipoProduto;
+    if (_receitaNaoVazia(itensCombo) && tipoFinal != 'combo') {
+      tipoFinal = 'combo';
+      logW(
+        '[COMBO_PULL_GUARD] novo doc=$docId tipo remoto=$tipoProduto mas há itensCombo — '
+        'ajustando para combo',
+        tag: 'COMBO_PULL_GUARD',
+      );
+    }
+    return (tipoFinal, itensCombo);
+  }
+
+  static bool _receitaNaoVazia(List<Map<String, dynamic>>? it) =>
+      it != null && it.isNotEmpty;
 
   static List<Map<String, dynamic>>? _parseItensComboFromFirestore(
     dynamic data, {
@@ -800,15 +1041,35 @@ class ProdutosFirestoreService {
   }) {
     if (data == null || data is! List || data.isEmpty) return null;
     final result = <Map<String, dynamic>>[];
+    var skipped = 0;
     for (final e in data) {
-      if (e is! Map) continue;
+      if (e is! Map) {
+        skipped++;
+        continue;
+      }
       final m = Map<String, dynamic>.from(Map.from(e));
       final nome = (m['nome'] ?? '').toString().trim();
       final pid = ComboReceitaNormalizacao.pidFrom(m);
-      if (nome.isEmpty && pid.isEmpty) continue;
+      final slug = (m['slug'] ?? '').toString().trim();
+      if (nome.isEmpty && pid.isEmpty && slug.isEmpty) {
+        skipped++;
+        logW(
+          '[COMBO_PARSE_SKIP] item ignorado (sem nome, productId e slug)',
+          tag: 'COMBO_PULL_GUARD',
+        );
+        continue;
+      }
       result.add(m);
     }
-    if (result.isEmpty) return null;
+    if (result.isEmpty) {
+      if (skipped > 0) {
+        logW(
+          '[COMBO_PULL_GUARD] parse itensCombo: $skipped entrada(s) inválida(s), lista vazia',
+          tag: 'COMBO_PULL_GUARD',
+        );
+      }
+      return null;
+    }
     final loja = produtosBox.values.where((p) => p.lojaId == lojaId);
     return ComboReceitaNormalizacao.normalizeLista(result, loja);
   }
@@ -857,9 +1118,8 @@ class ProdutosFirestoreService {
             }
           }
         } else {
-          final qtd = v is num
-              ? v.toInt()
-              : int.tryParse(v?.toString() ?? '') ?? 0;
+          final qtd =
+              v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
           mapaCor[cor] = qtd;
         }
       }
@@ -869,7 +1129,8 @@ class ProdutosFirestoreService {
   }
 
   /// { tamanho: { cor: { extraValor: extraTipo } } }
-  static Map<String, dynamic>? _parseVariacoesExtraTipoFromFirestore(dynamic d) {
+  static Map<String, dynamic>? _parseVariacoesExtraTipoFromFirestore(
+      dynamic d) {
     if (d == null || d is! Map) return null;
     final out = <String, dynamic>{};
     for (final te in d.entries) {
@@ -926,9 +1187,13 @@ class ProdutosFirestoreService {
           .doc(produtoId)
           .update(updateData);
 
-      logD('✅ [PRODUTOS-SYNC] Quantidade atualizada: $produtoId = $novaQuantidade');
+      logD(
+          '✅ [PRODUTOS-SYNC] Quantidade atualizada: $produtoId = $novaQuantidade');
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro ao atualizar quantidade (type=${e.runtimeType})', error: e, st: st);
+      logE(
+          '❌ [PRODUTOS-SYNC] Erro ao atualizar quantidade (type=${e.runtimeType})',
+          error: e,
+          st: st);
     }
   }
 
@@ -947,7 +1212,10 @@ class ProdutosFirestoreService {
       final remoteCount = snapshot.count ?? 0;
       return remoteCount > localCount;
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro ao verificar dados para importar (type=${e.runtimeType})', error: e, st: st);
+      logE(
+          '❌ [PRODUTOS-SYNC] Erro ao verificar dados para importar (type=${e.runtimeType})',
+          error: e,
+          st: st);
       return false;
     }
   }
@@ -998,11 +1266,15 @@ class ProdutosFirestoreService {
       }
 
       if (toDelete.isNotEmpty) {
-        logD('🗑️ [PRODUTOS-SYNC] ${toDelete.length} produto(s) excedente(s) removido(s) do Firestore');
+        logD(
+            '🗑️ [PRODUTOS-SYNC] ${toDelete.length} produto(s) excedente(s) removido(s) do Firestore');
       }
       return toDelete.length;
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro ao limpar excedentes (type=${e.runtimeType})', error: e, st: st);
+      logE(
+          '❌ [PRODUTOS-SYNC] Erro ao limpar excedentes (type=${e.runtimeType})',
+          error: e,
+          st: st);
       return 0;
     }
   }
@@ -1022,7 +1294,8 @@ class ProdutosFirestoreService {
 
       logD('🗑️ [PRODUTOS-SYNC] Produto $produtoId deletado do Firestore');
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro ao deletar produto (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [PRODUTOS-SYNC] Erro ao deletar produto (type=${e.runtimeType})',
+          error: e, st: st);
     }
   }
 
@@ -1039,7 +1312,10 @@ class ProdutosFirestoreService {
       return;
     }
 
-    final col = _db.collection('lojas').doc(lojaId).collection(FSPaths.estoqueProdutosCol);
+    final col = _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection(FSPaths.estoqueProdutosCol);
     final tried = <String>{};
 
     Future<bool> tryDeleteDoc(String docId) async {
@@ -1076,7 +1352,8 @@ class ProdutosFirestoreService {
         return false;
       }
       await ref.delete();
-      logD('[DELETE_FALLBACK] estoque removido docId=$d (idFirebase vazio, match forte)');
+      logD(
+          '[DELETE_FALLBACK] estoque removido docId=$d (idFirebase vazio, match forte)');
       return true;
     }
 
