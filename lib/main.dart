@@ -116,6 +116,11 @@ import 'screens/modelos_importacao_screen.dart';
 // Widgets
 import 'widgets/notificacao_pedido_listener.dart';
 import 'widgets/update_check_wrapper.dart';
+import 'widgets/plan_gated_screen.dart';
+
+import 'core/plan_matrix.dart';
+import 'screens/marketplaces_screen.dart';
+import 'screens/configuracoes/canais_meta_screen.dart';
 
 // Serviços
 import 'services/deep_link_handler.dart';
@@ -727,6 +732,17 @@ bool _looksLikeStoreId(String v) {
 }
 
 String _normalizeSlug(String v) => v.trim().toLowerCase();
+
+/// Guard de plano em rotas nomeadas (deep link / push direto).
+Widget _planGate(PlanGateFeature f, Widget child) =>
+    PlanGatedScreen(feature: f, child: child);
+
+Widget _lojaIdRouteGated(
+  PlanGateFeature f,
+  Widget Function(String lojaId) builder,
+) {
+  return _lojaIdRoute((lojaId) => _planGate(f, builder(lojaId)));
+}
 
 /// Rota que exige lojaId; quando vazio mostra erro em vez de fallback 'padrao'.
 Widget _lojaIdRoute(Widget Function(String lojaId) builder) {
@@ -2039,7 +2055,10 @@ class MyApp extends StatelessWidget {
                 );
               },
               '/preconfig': (_) => const LojaPreconfigScreen(),
-              '/fornecedores': (_) => const FornecedoresScreen(),
+              '/fornecedores': (_) => _planGate(
+                    PlanGateFeature.fornecedores,
+                    const FornecedoresScreen(),
+                  ),
               '/vendas': (_) => kIsWeb
                   ? const AdminWebRouteShell(child: VendasScreen())
                   : const VendasScreen(),
@@ -2048,9 +2067,15 @@ class MyApp extends StatelessWidget {
                   : const ClientesScreen(),
               '/estoque': (_) => const EstoqueScreen(),
               '/historico_cliente': (_) => const HistoricoClientesScreen(),
-              '/backup': (_) => const BackupScreen(),
+              '/backup': (_) => _planGate(
+                    PlanGateFeature.backupLoja,
+                    const BackupScreen(),
+                  ),
               '/relatorios': (_) => const RelatoriosScreen(),
-              '/precificacao': (_) => const PrecificacaoUniversalScreen(),
+              '/precificacao': (_) => _planGate(
+                    PlanGateFeature.precificacao,
+                    const PrecificacaoUniversalScreen(),
+                  ),
               '/modelos_importacao': (ctx) {
                 final raw = ModalRoute.of(ctx)?.settings.arguments;
                 final map = raw is Map
@@ -2084,27 +2109,38 @@ class MyApp extends StatelessWidget {
               '/cadastro_usuario': (_) => const VendedoresScreen(), // Alias
               '/gerenciar_vendedores': (_) =>
                   const VendedoresScreen(), // Redireciona para tela unificada
-              '/vendedores': (_) =>
-                  const VendedoresScreen(), // Nova rota principal
+              '/vendedores': (_) => _planGate(
+                    PlanGateFeature.vendedores,
+                    const VendedoresScreen(),
+                  ),
               '/visualizar_permissoes': (_) =>
                   const VisualizarPermissoesScreen(),
               '/catalogo': (_) => const CatalogoScreen(),
               '/cadastro_catalogo': (_) => const CadastroCatalogoScreen(),
-              '/relatorio_financeiro': (_) => const RelatorioFinanceiroScreen(),
-              '/relatorios_financeiros': (_) =>
-                  const RelatoriosFinanceirosScreen(),
-              '/relatorio_mais_vendidos': (ctx) => _lojaIdRoute(
-                (lojaId) => RelatorioMaisVendidosScreen(lojaId: lojaId),
-              ),
-              '/relatorio_ranking_clientes': (ctx) => _lojaIdRoute(
-                (lojaId) => RelatorioRankingClientesScreen(lojaId: lojaId),
-              ),
-              '/relatorio_lucratividade_produto': (ctx) => _lojaIdRoute(
-                (lojaId) => RelatorioLucratividadeProdutoScreen(lojaId: lojaId),
-              ),
-              '/carrinhos_abandonados': (ctx) => _lojaIdRoute(
-                (lojaId) => CarrinhosAbandonadosScreen(lojaId: lojaId),
-              ),
+              '/relatorio_financeiro': (_) => _planGate(
+                    PlanGateFeature.relatorioFinanceiroDetalhado,
+                    const RelatorioFinanceiroScreen(),
+                  ),
+              '/relatorios_financeiros': (_) => _planGate(
+                    PlanGateFeature.relatoriosFinanceirosHub,
+                    const RelatoriosFinanceirosScreen(),
+                  ),
+              '/relatorio_mais_vendidos': (ctx) => _lojaIdRouteGated(
+                    PlanGateFeature.maisVendidos,
+                    (lojaId) => RelatorioMaisVendidosScreen(lojaId: lojaId),
+                  ),
+              '/relatorio_ranking_clientes': (ctx) => _lojaIdRouteGated(
+                    PlanGateFeature.relatorioRankingClientes,
+                    (lojaId) => RelatorioRankingClientesScreen(lojaId: lojaId),
+                  ),
+              '/relatorio_lucratividade_produto': (ctx) => _lojaIdRouteGated(
+                    PlanGateFeature.relatorioLucratividade,
+                    (lojaId) => RelatorioLucratividadeProdutoScreen(lojaId: lojaId),
+                  ),
+              '/carrinhos_abandonados': (ctx) => _lojaIdRouteGated(
+                    PlanGateFeature.carrinhosAbandonados,
+                    (lojaId) => CarrinhosAbandonadosScreen(lojaId: lojaId),
+                  ),
               '/catalog_avaliacoes_moderacao': (ctx) => _lojaIdRoute(
                 (lojaId) => kIsWeb
                     ? AdminWebRouteShell(
@@ -2112,45 +2148,81 @@ class MyApp extends StatelessWidget {
                       )
                     : CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
               ),
-              '/config/pagamentos': (_) =>
-                  const ConfigPagamentosSimplesScreen(),
-              '/config-pagamentos': (_) =>
-                  const ConfigPagamentosScreen(), // Avançado
-              '/admin_sync': (_) => const AdminSyncScreen(),
+              '/config/pagamentos': (_) => _planGate(
+                    PlanGateFeature.configurarPagamentosOnline,
+                    const ConfigPagamentosSimplesScreen(),
+                  ),
+              '/config-pagamentos': (_) => _planGate(
+                    PlanGateFeature.configurarPagamentosOnline,
+                    const ConfigPagamentosScreen(),
+                  ),
+              '/admin_sync': (_) => _planGate(
+                    PlanGateFeature.adminSync,
+                    const AdminSyncScreen(),
+                  ),
               '/configuracoes_catalogo': (_) => const LojaConfigScreen(),
               '/health': (_) => const HealthCheckScreen(),
               '/diagnostico': (_) => const DiagnosticoAppScreen(),
               '/ajuda': (_) => const AjudaScreen(),
               '/config_pin': (_) => const ConfigPinScreen(),
               '/test_checkout': (_) => const TestCheckout(),
-              '/pedidos_pendentes': (_) => _pedidosRoute(),
+              '/pedidos_pendentes': (_) => _planGate(
+                    PlanGateFeature.pedidosPrePedidos,
+                    _pedidosRoute(),
+                  ),
               '/pedidos': (ctx) {
                 final raw = ModalRoute.of(ctx)?.settings.arguments;
                 final map = raw is Map ? Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v))) : null;
                 final lojaIdArg = map?['lojaId']?.toString();
                 final pedidoIdArg = map?['pedidoId']?.toString();
                 if (lojaIdArg != null && lojaIdArg.isNotEmpty) {
-                  return PrePedidosScreen(
-                    lojaId: lojaIdArg,
-                    initialPedidoId: pedidoIdArg?.isNotEmpty == true ? pedidoIdArg : null,
+                  return _planGate(
+                    PlanGateFeature.pedidosPrePedidos,
+                    PrePedidosScreen(
+                      lojaId: lojaIdArg,
+                      initialPedidoId: pedidoIdArg?.isNotEmpty == true ? pedidoIdArg : null,
+                    ),
                   );
                 }
-                return _pedidosRoute();
+                return _planGate(
+                  PlanGateFeature.pedidosPrePedidos,
+                  _pedidosRoute(),
+                );
               },
               '/onboarding_loja': (_) => const OnboardingLojaScreen(),
-              '/campanhas_sorteio': (_) => const CampanhasSorteioScreen(),
-              '/fretes_cupons': (_) => const FretesCuponsScreen(),
-              '/metas_comissoes': (_) => const MetasComissoesScreen(),
-              '/motor_crescimento': (ctx) => _lojaIdRoute(
-                (lojaId) => MotorCrescimentoScreen(lojaId: lojaId),
-              ),
-              '/campanhas_sugeridas': (ctx) => _lojaIdRoute(
-                (lojaId) => CampanhasSugeridasScreen(lojaId: lojaId),
-              ),
+              '/campanhas_sorteio': (_) => _planGate(
+                    PlanGateFeature.campanhasSorteios,
+                    const CampanhasSorteioScreen(),
+                  ),
+              '/fretes_cupons': (_) => _planGate(
+                    PlanGateFeature.fretesCupons,
+                    const FretesCuponsScreen(),
+                  ),
+              '/metas_comissoes': (_) => _planGate(
+                    PlanGateFeature.metasComissoes,
+                    const MetasComissoesScreen(),
+                  ),
+              '/motor_crescimento': (ctx) => _lojaIdRouteGated(
+                    PlanGateFeature.motorCrescimento,
+                    (lojaId) => MotorCrescimentoScreen(lojaId: lojaId),
+                  ),
+              '/campanhas_sugeridas': (ctx) => _lojaIdRouteGated(
+                    PlanGateFeature.campanhasSugeridas,
+                    (lojaId) => CampanhasSugeridasScreen(lojaId: lojaId),
+                  ),
               '/notas_fiscais': (_) => const NotasFiscaisScreen(),
-              '/contas_receber': (_) => const ContasReceberScreen(),
-              '/financeiro': (_) => const FinanceiroScreen(),
-              '/globo_sorteio': (_) => const GloboSorteioScreenWrapper(),
+              '/contas_receber': (_) => _planGate(
+                    PlanGateFeature.contasReceber,
+                    const ContasReceberScreen(),
+                  ),
+              '/financeiro': (_) => _planGate(
+                    PlanGateFeature.financeiroLancamentos,
+                    const FinanceiroScreen(),
+                  ),
+              '/globo_sorteio': (_) => _planGate(
+                    PlanGateFeature.globoSorteio,
+                    const GloboSorteioScreenWrapper(),
+                  ),
               '/home': (_) => const HomeScreen(),
 
               // ✅ ROTA /loja: na Web usa SEMPRE o lojaId da URL (path ou fragment); no app usa LojaIdService

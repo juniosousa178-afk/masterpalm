@@ -3,6 +3,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import { checkRateLimit, getCallableIdentifier } from "./src/rateLimiter.js";
 
 const ROOT_EMAIL = "masterpalm@gmail.com";
 
@@ -14,7 +15,11 @@ function normalizeCanonicalPlanId(raw) {
   const p = String(raw || "").trim().toLowerCase();
   if (p === "mensal" || p === "pro_monthly") return "pro_monthly";
   if (p === "anual" || p === "pro_yearly") return "pro_yearly";
+  if (p === "basic" || p === "basic_monthly") return "basic_monthly";
+  if (p === "intermediate" || p === "intermediate_monthly") return "intermediate_monthly";
+  if (p === "trial_30d" || p === "free_trial_30d") return "free_trial_30d";
   if (p === "trial" || p === "trial_90d" || p === "free_trial_90d") return "free_trial_90d";
+  if (p === "free_limited") return "free_limited";
   if (p === "lifetime") return "lifetime";
   return p;
 }
@@ -32,7 +37,13 @@ function initDb() {
   return getFirestore();
 }
 
-// Trial 3 meses
+// Trial 90 dias (calendário)
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
 function addMonths(date, n) {
   const d = new Date(date);
   d.setMonth(d.getMonth() + n);
@@ -469,5 +480,61 @@ export const rootGrantPlan = onCall(async (request) => {
     console.error("[rootGrantPlan] error:", err);
     if (err instanceof HttpsError) throw err;
     throw new HttpsError("internal", "Erro ao conceder plano manual.");
+  }
+});
+
+// =============== TRIAL (30 dias — novas contas; callable mantém nome legado) ===============
+export const activateUserTrial90d = onCall(async (request) => {
+  try {
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "Faça login para continuar.");
+    }
+    await checkRateLimit("activateUserTrial90d", getCallableIdentifier(request));
+
+    const db = initDb();
+    const uid = request.auth.uid;
+    const email = normalizeEmail(request.auth.token?.email || "");
+
+    const userRef = db.collection("users").doc(uid);
+    const subRef = userRef.collection("subscriptions").doc();
+
+    await db.runTransaction(async (tx) => {
+      const userDoc = await tx.get(userRef);
+      const data = userDoc.exists ? userDoc.data() || {} : {};
+      if ((data.trialUsed ?? false) === true) {
+        throw new HttpsError("failed-precondition", "TRIAL_ALREADY_USED");
+      }
+      const now = new Date();
+      const end = addDays(now, 30);
+      tx.set(
+        userRef,
+        {
+          email: email || data.email || null,
+          currentPlanId: "free_trial_30d",
+          status: "trialing",
+          trialing: true,
+          currentPeriodEnd: Timestamp.fromDate(end),
+          trialUsed: true,
+          trialUsedAt: Timestamp.fromDate(now),
+          manualOverride: { enabled: false },
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      tx.set(subRef, {
+        planId: "free_trial_30d",
+        status: "trialing",
+        trialing: true,
+        createdAt: FieldValue.serverTimestamp(),
+        currentPeriodEnd: Timestamp.fromDate(end),
+        kind: "trial",
+      });
+    });
+
+    return { ok: true };
+  } catch (err) {
+    console.error("[activateUserTrial90d] error:", err);
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", "Erro ao ativar trial.");
   }
 });

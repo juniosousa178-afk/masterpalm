@@ -94,6 +94,31 @@ service cloud.firestore {
         || isLojaMemberElevated(lojaId);
     }
 
+    // -------- Planos / assinatura: cliente não escala para plano pago nem override manual --------
+    function userPlanManualTamperAttempt() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['manualOverride', 'manual_grant']);
+    }
+
+    function stringPlanLower(s) {
+      return s is string ? s.lower() : '';
+    }
+
+    function isPaidPlanIdUser(v) {
+      let x = stringPlanLower(v);
+      return x == 'pro_monthly' || x == 'pro_yearly' || x == 'lifetime'
+        || x == 'basic_monthly' || x == 'intermediate_monthly';
+    }
+
+    function userSelfSafePlanUpdate() {
+      return !userPlanManualTamperAttempt()
+        && (
+          !('currentPlanId' in request.resource.data)
+          || !isPaidPlanIdUser(request.resource.data.currentPlanId)
+          || request.resource.data.currentPlanId == resource.data.get('currentPlanId', '')
+        );
+    }
+
     // =========================
     // VALIDAÇÕES PARA WRITES PÚBLICOS (anti-abuso)
     // =========================
@@ -352,14 +377,34 @@ service cloud.firestore {
     // PRINCIPAL: users/{uid} + subscriptions
     // =========================
     match /users/{userId} {
-      allow read, write:
+      allow read:
+        if (isSignedIn() && request.auth.uid == userId)
+        || isAdminOrSystem();
+
+      allow create:
+        if isAdminOrSystem()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && (
+            !('currentPlanId' in request.resource.data)
+            || !isPaidPlanIdUser(request.resource.data.currentPlanId)
+          )
+        );
+
+      allow update:
+        if isAdminOrSystem()
+        || (isSignedIn() && request.auth.uid == userId && userSelfSafePlanUpdate());
+
+      allow delete:
         if (isSignedIn() && request.auth.uid == userId)
         || isAdminOrSystem();
 
       match /subscriptions/{subId} {
-        allow read, write:
+        allow read:
           if (isSignedIn() && request.auth.uid == userId)
           || isAdminOrSystem();
+        allow write: if isAdminOrSystem();
       }
     }
 
@@ -830,6 +875,14 @@ service cloud.firestore {
       );
       allow create: if isSignedIn();
       allow update, delete: if isProgramadorOrRoot();
+    }
+
+    // Pedidos de plano (checkout servidor): somente leitura do próprio usuário
+    match /plan_orders/{orderId} {
+      allow read: if isSignedIn()
+        && resource != null
+        && resource.data.userId == request.auth.uid;
+      allow write: if false;
     }
 
     // Índices server-side apenas (Cloud Functions Admin SDK). Cliente não acessa.

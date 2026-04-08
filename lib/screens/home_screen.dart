@@ -84,6 +84,7 @@ import 'dashboard_insights_screen.dart';
 import '../motor_crescimento/screens/motor_crescimento_screen.dart';
 import '../motor_crescimento_automacoes/screens/campanhas_sugeridas_screen.dart';
 import '../core/logger.dart';
+import '../core/plan_matrix.dart';
 import '../services/public_store_link_helper.dart';
 import '../utils/home_store_context_helper.dart';
 // WebLandingPlanCard é declarado no final deste arquivo para evitar problemas de resolução de import.
@@ -1226,6 +1227,95 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Widget _buildLockedPlanMenuTile(
+    String label,
+    IconData icon,
+    PlanGateFeature feature, {
+    bool sidebarMode = false,
+    Color? color,
+    Color? iconBgColor,
+  }) {
+    final muted = Colors.grey[600]!;
+    final bg = iconBgColor ?? _primaryColor.withValues(alpha: 0.08);
+    return ListTile(
+      dense: sidebarMode,
+      visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
+      leading: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: muted, size: 20),
+          ),
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Icon(Icons.lock_rounded, size: 16, color: _warningColor),
+          ),
+        ],
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          color: muted,
+          fontWeight: FontWeight.w500,
+          fontSize: sidebarMode ? 13 : null,
+        ),
+      ),
+      subtitle: Text(
+        PlanMatrix.upgradeHint(feature),
+        style: TextStyle(fontSize: sidebarMode ? 10 : 11, color: Colors.grey[500]),
+        maxLines: 3,
+      ),
+      trailing: TextButton(
+        onPressed: () {
+          if (!sidebarMode) Navigator.pop(context);
+          navigatorKey.currentState?.pushNamed('/planos');
+        },
+        child: const Text('Planos'),
+      ),
+    );
+  }
+
+  Widget _menuTileWithPlanGate(
+    String label,
+    IconData icon,
+    String route, {
+    Widget? pushWidget,
+    Color? color,
+    Color? iconBgColor,
+    bool sidebarMode = false,
+    required bool applyPlanGate,
+    required PlanAccessTier menuPlanTier,
+    PlanGateFeature? planFeature,
+  }) {
+    if (applyPlanGate &&
+        planFeature != null &&
+        !PlanMatrix.allows(menuPlanTier, planFeature)) {
+      return _buildLockedPlanMenuTile(
+        label,
+        icon,
+        planFeature,
+        sidebarMode: sidebarMode,
+        color: color,
+        iconBgColor: iconBgColor,
+      );
+    }
+    return _buildMenuTile(
+      label,
+      icon,
+      route,
+      pushWidget: pushWidget,
+      color: color,
+      iconBgColor: iconBgColor,
+      sidebarMode: sidebarMode,
+    );
+  }
+
   Widget _buildMainCard(
     IconData icon,
     String label,
@@ -1297,6 +1387,74 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Widget _mainCardWithPlanGate(
+    IconData icon,
+    String label,
+    String route, {
+    Widget? pushWidget,
+    Color? color,
+    String? subtitle,
+    required bool applyPlanGate,
+    required PlanAccessTier menuPlanTier,
+    PlanGateFeature? planFeature,
+  }) {
+    if (applyPlanGate &&
+        planFeature != null &&
+        !PlanMatrix.allows(menuPlanTier, planFeature)) {
+      return InkWell(
+        onTap: () => navigatorKey.currentState?.pushNamed('/planos'),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _warningColor.withValues(alpha: 0.35)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.lock_outline, size: 22, color: _warningColor),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: _surfaceColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                child: Text(
+                  PlanMatrix.upgradeHint(planFeature),
+                  style: TextStyle(fontSize: 9, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return _buildMainCard(
+      icon,
+      label,
+      route,
+      pushWidget: pushWidget,
+      color: color,
+      subtitle: subtitle,
+    );
+  }
+
   // ---------- menu lateral ----------
   Future<List<Widget>> _buildMenuLateral({bool sidebarMode = false}) async {
     final permissoes = await PermissaoService.todas();
@@ -1308,6 +1466,19 @@ class _HomeScreenState extends State<HomeScreen>
             ? true
             : (permissoes[k] ?? false),
     };
+
+    PlanAccessTier menuPlanTier = PlanAccessTier.lifetime;
+    final bool applyPlanGate = _tipo == 'admin';
+    if (applyPlanGate) {
+      final u = FirebaseAuth.instance.currentUser;
+      if (u != null) {
+        final pi = await PlanosService().fetchCurrentPlan(
+          uid: u.uid,
+          email: (u.email ?? '').trim().toLowerCase(),
+        );
+        if (pi != null) menuPlanTier = PlanMatrix.tierFor(pi);
+      }
+    }
 
     // Seções expansíveis: (título, cor?, filhos)
     final sections = <({String title, Color? color, List<Widget> children})>[];
@@ -1447,7 +1618,7 @@ class _HomeScreenState extends State<HomeScreen>
     // Sugestões / Insights – usa dados da loja ativa (sem placeholder)
     if (_lojaIdInterno.isNotEmpty) {
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Sugestões (Insights)',
           Icons.lightbulb_outline,
           '/dashboard_insights',
@@ -1459,13 +1630,16 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: _primaryColor.withValues(alpha:0.1),
           color: _primaryColor,
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.insights,
         ),
       );
     }
 
-    // Relatórios Financeiros & Metas - todos podem ver (filtrado por permissão dentro da tela)
+    // Relatórios Financeiros & Metas — gate para admin (free limitado vê upgrade)
     currentChildren.add(
-      _buildMenuTile(
+      _menuTileWithPlanGate(
         'Financeiro & Metas',
         Icons.trending_up,
         '/relatorios_financeiros',
@@ -1473,12 +1647,15 @@ class _HomeScreenState extends State<HomeScreen>
         iconBgColor: const Color(0xFFEC4899).withValues(alpha:0.1),
         color: const Color(0xFFEC4899),
         sidebarMode: sidebarMode,
+        applyPlanGate: applyPlanGate,
+        menuPlanTier: menuPlanTier,
+        planFeature: PlanGateFeature.relatoriosFinanceirosHub,
       ),
     );
 
     // ✅ Metas & Comissões - vendedores veem suas próprias, admin vê todas
     currentChildren.add(
-      _buildMenuTile(
+      _menuTileWithPlanGate(
         'Metas & Comissões',
         Icons.monetization_on,
         '/metas_comissoes',
@@ -1486,17 +1663,23 @@ class _HomeScreenState extends State<HomeScreen>
         iconBgColor: const Color(0xFF10B981).withValues(alpha:0.1),
         color: const Color(0xFF10B981),
         sidebarMode: sidebarMode,
+        applyPlanGate: applyPlanGate,
+        menuPlanTier: menuPlanTier,
+        planFeature: PlanGateFeature.metasComissoes,
       ),
     );
 
     currentChildren.add(
-      _buildMenuTile(
+      _menuTileWithPlanGate(
         'Mais vendidos',
         Icons.trending_up,
         '/relatorio_mais_vendidos',
         iconBgColor: const Color(0xFFEC4899).withValues(alpha:0.1),
         color: const Color(0xFFEC4899),
         sidebarMode: sidebarMode,
+        applyPlanGate: applyPlanGate,
+        menuPlanTier: menuPlanTier,
+        planFeature: PlanGateFeature.maisVendidos,
       ),
     );
 
@@ -1505,7 +1688,7 @@ class _HomeScreenState extends State<HomeScreen>
 
     if (_lojaIdInterno.isNotEmpty) {
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Pedidos',
           Icons.receipt_long,
           '/pedidos',
@@ -1513,6 +1696,9 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: _warningColor.withValues(alpha:0.1),
           color: _warningColor,
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.pedidosPrePedidos,
         ),
       );
     }
@@ -1525,13 +1711,19 @@ class _HomeScreenState extends State<HomeScreen>
           sidebarMode: sidebarMode));
     }
     if (combinadas['fornecedores'] == true) {
-      currentChildren.add(_buildMenuTile(
+      currentChildren.add(_menuTileWithPlanGate(
           'Fornecedores', Icons.local_shipping, '/fornecedores',
-          sidebarMode: sidebarMode));
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.fornecedores));
     }
     if (combinadas['precificacao'] == true) {
-      currentChildren.add(_buildMenuTile('Precificação', Icons.calculate, '/precificacao',
-          sidebarMode: sidebarMode));
+      currentChildren.add(_menuTileWithPlanGate('Precificação', Icons.calculate, '/precificacao',
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.precificacao));
     }
 
     // ✅ Notas Fiscais (admin/programador)
@@ -1547,12 +1739,15 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Contas a receber',
           Icons.receipt_long,
           '/contas_receber',
           pushWidget: const ContasReceberScreen(),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.contasReceber,
         ),
       );
     }
@@ -1562,20 +1757,23 @@ class _HomeScreenState extends State<HomeScreen>
 
       // ✅ VENDEDORES (tela unificada: lista, cadastra e gerencia permissões)
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Vendedores',
           Icons.people,
           '/vendedores',
           iconBgColor: const Color(0xFF6366F1).withValues(alpha:0.1),
           color: const Color(0xFF6366F1),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.vendedores,
         ),
       );
 
       startSection('IA');
 
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Motor de Crescimento IA',
           Icons.rocket_launch_outlined,
           '/motor_crescimento',
@@ -1583,10 +1781,13 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: _primaryColor.withValues(alpha:0.1),
           color: _primaryColor,
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.motorCrescimento,
         ),
       );
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Campanhas sugeridas',
           Icons.auto_awesome_motion,
           '/campanhas_sugeridas',
@@ -1594,10 +1795,13 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: _primaryColor.withValues(alpha:0.1),
           color: _primaryColor,
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSugeridas,
         ),
       );
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Marketing (Dicas)',
           Icons.auto_awesome,
           '/dicas_ia',
@@ -1605,10 +1809,13 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: _primaryColor.withValues(alpha:0.1),
           color: _primaryColor,
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.dicasIA,
         ),
       );
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Textos WhatsApp',
           Icons.chat,
           '/textos_whatsapp_ia',
@@ -1616,10 +1823,13 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: const Color(0xFF25D366).withValues(alpha:0.1),
           color: const Color(0xFF25D366),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.textosWhatsappIA,
         ),
       );
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Criar postagem',
           Icons.campaign_outlined,
           '/gerar_postagem',
@@ -1627,10 +1837,13 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: const Color(0xFF8B5CF6).withValues(alpha:0.1),
           color: const Color(0xFF8B5CF6),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.gerarPostagem,
         ),
       );
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Compartilhar catálogo no WhatsApp',
           Icons.share,
           '/compartilhar_whatsapp',
@@ -1638,10 +1851,13 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: const Color(0xFF25D366).withValues(alpha:0.1),
           color: const Color(0xFF25D366),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.compartilharWhatsapp,
         ),
       );
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Pergunte sobre vendas',
           Icons.analytics,
           '/analise_vendas_ia',
@@ -1649,13 +1865,16 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: _successColor.withValues(alpha:0.1),
           color: _successColor,
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.analiseVendasIA,
         ),
       );
 
       startSection('Marketing');
 
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Campanhas & Sorteios',
           Icons.casino,
           '/campanhas_sorteio',
@@ -1663,11 +1882,14 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: const Color(0xFFEC4899).withValues(alpha:0.1),
           color: const Color(0xFFEC4899),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
         ),
       );
 
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Globo de Sorteio',
           Icons.emoji_events,
           '/globo_sorteio',
@@ -1675,24 +1897,30 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: const Color(0xFFEC4899).withValues(alpha:0.1),
           color: const Color(0xFFEC4899),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.globoSorteio,
         ),
       );
 
       startSection('Configurações');
 
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Fretes & Cupons',
           Icons.local_offer,
           '/fretes_cupons',
           pushWidget: const FretesCuponsScreen(),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.fretesCupons,
         ),
       );
 
       // ✅ CANAIS META (WhatsApp, Instagram, Messenger)
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Canais Meta',
           Icons.chat_bubble,
           '/configuracoes/canais_meta',
@@ -1700,17 +1928,29 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: const Color(0xFF25D366).withValues(alpha:0.1),
           color: const Color(0xFF25D366),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.canaisMeta,
         ),
       );
 
-      currentChildren.add(_buildMenuTile(
+      currentChildren.add(_menuTileWithPlanGate(
           'Configurar Pagamentos', Icons.payments, '/config/pagamentos',
-          sidebarMode: sidebarMode));
-      currentChildren.add(_buildMenuTile(
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.configurarPagamentosOnline));
+      currentChildren.add(_menuTileWithPlanGate(
           'Sincronizar dados', Icons.cloud_sync, '/admin_sync',
-          sidebarMode: sidebarMode));
-      currentChildren.add(_buildMenuTile('Backup da Loja', Icons.backup, '/backup',
-          sidebarMode: sidebarMode));
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.adminSync));
+      currentChildren.add(_menuTileWithPlanGate('Backup da Loja', Icons.backup, '/backup',
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.backupLoja));
 
       // ✅ CONSOLIDAR LOJAS - Apenas para Naty Pratas
       final currentUid = FirebaseAuth.instance.currentUser?.uid;
@@ -1728,12 +1968,15 @@ class _HomeScreenState extends State<HomeScreen>
 
       // ✅ MARKETPLACES / ERP
       currentChildren.add(
-        _buildMenuTile(
+        _menuTileWithPlanGate(
           'Marketplaces / ERP',
           Icons.shopping_bag,
           '/marketplaces',
           pushWidget: const MarketplacesScreen(),
           sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.marketplaces,
         ),
       );
 
@@ -2033,6 +2276,19 @@ class _HomeScreenState extends State<HomeScreen>
             : (permissoes[k] ?? false),
     };
 
+    PlanAccessTier menuPlanTier = PlanAccessTier.lifetime;
+    final bool applyPlanGate = _tipo == 'admin';
+    if (applyPlanGate) {
+      final u = FirebaseAuth.instance.currentUser;
+      if (u != null) {
+        final pi = await PlanosService().fetchCurrentPlan(
+          uid: u.uid,
+          email: (u.email ?? '').trim().toLowerCase(),
+        );
+        if (pi != null) menuPlanTier = PlanMatrix.tierFor(pi);
+      }
+    }
+
     final cards = <Widget>[];
 
     // (Loja/Catálogo: acesso só pelo atalho "Catálogo" nos atalhos inteligentes; não duplicar no grid.)
@@ -2072,48 +2328,60 @@ class _HomeScreenState extends State<HomeScreen>
 
     // 5. Fornecedores
     if (combinadas['fornecedores'] == true) {
-      cards.add(_buildMainCard(
+      cards.add(_mainCardWithPlanGate(
         Icons.local_shipping,
         'Fornecedores',
         '/fornecedores',
         color: _warningColor,
         subtitle: 'Parceiros',
+        applyPlanGate: applyPlanGate,
+        menuPlanTier: menuPlanTier,
+        planFeature: PlanGateFeature.fornecedores,
       ));
     }
 
     // 6. Relatórios Financeiros (apenas admin/programador)
     if (_tipo == 'admin' || _tipo == 'programador') {
       cards.add(
-        _buildMainCard(
+        _mainCardWithPlanGate(
           Icons.analytics,
           'Relatórios',
           '/relatorio_financeiro',
           pushWidget: const RelatorioFinanceiroScreen(),
           color: const Color(0xFFEC4899),
           subtitle: 'Financeiro',
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.relatorioFinanceiroDetalhado,
         ),
       );
       cards.add(
-        _buildMainCard(
+        _mainCardWithPlanGate(
           Icons.payments_outlined,
           'Gestão financeira',
           '/financeiro',
           pushWidget: const FinanceiroScreen(),
           color: const Color(0xFF0D9488),
           subtitle: 'Lançamentos',
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.financeiroLancamentos,
         ),
       );
     }
 
     // 7. Financeiro & Metas (todos podem ver - filtrado por permissão dentro da tela)
     cards.add(
-      _buildMainCard(
+      _mainCardWithPlanGate(
         Icons.trending_up,
         'Metas',
         '/relatorios_financeiros',
         pushWidget: const RelatoriosFinanceirosScreen(),
         color: const Color(0xFF10B981),
         subtitle: 'Financeiro',
+        applyPlanGate: applyPlanGate,
+        menuPlanTier: menuPlanTier,
+        planFeature: PlanGateFeature.relatoriosFinanceirosHub,
       ),
     );
 

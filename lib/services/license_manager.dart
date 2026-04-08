@@ -221,20 +221,10 @@ class LicenseManager {
     // 1) espelho em users/{uid}
     if (await _checkMirrorUserDoc(user)) return true;
 
-    // 2) coleção de subscriptions
+    // 2) coleção de subscriptions (somente leitura Firestore; escrita via backend)
     if (await _checkSubscriptions(user)) return true;
 
-    // 3) cache local (licença com validade)
-    try {
-      final box = await Hive.openBox('licenca');
-      final ativado =
-          box.get('ativado', defaultValue: false) as bool;
-      final expStr = box.get('expiresAt');
-      if (ativado && expStr is String) {
-        final exp = DateTime.tryParse(expStr);
-        if (_notExpired(exp)) return true;
-      }
-    } catch (_) {}
+    // 3) Não liberar premium só por Hive — evita APK modificado / cache adulterado.
 
     // 4) DEPRECATED: `licenca.codigo` aposentado para liberação funcional.
     // Mantido apenas para leitura passiva/compatibilidade de dados antigos.

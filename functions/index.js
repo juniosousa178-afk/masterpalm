@@ -22,7 +22,7 @@ import nodemailer from "nodemailer";
 // xml2js: lazy load em calcularCorreios para reduzir cold start
 
 // ✅ ESM import com extensão
-import { ensureUserPlan, rootGrantPlan } from "./ensureUserPlan.js";
+import { ensureUserPlan, rootGrantPlan, activateUserTrial90d } from "./ensureUserPlan.js";
 import {
   checkRateLimit,
   checkIdempotency,
@@ -31,6 +31,12 @@ import {
   getCallableIdentifier,
 } from "./src/rateLimiter.js";
 import { processMpWebhook } from "./src/mpWebhookHandler.js";
+import {
+  generatePlanOrderId,
+  PLAN_ORDERS_COL,
+  tryProcessPlanOrderWebhook,
+} from "./src/planOrdersWebhook.js";
+import { validateMercadoPagoWebhookSignature } from "./src/mercadoPagoWebhookSignature.js";
 import { writeOrderLojaIndex } from "./src/orderLojaIndex.js";
 import {
   sugerirDescricaoProduto as aiSugerirDescricao,
@@ -56,6 +62,7 @@ dotenv.config();
 
 // ---------- Secrets (Secret Manager) ----------
 const S_MP_ACCESS_TOKEN = defineSecret("MP_ACCESS_TOKEN");
+const S_MP_WEBHOOK_SECRET = defineSecret("MP_WEBHOOK_SECRET");
 const S_WEB_BASE_URL = defineSecret("WEB_BASE_URL");
 const S_MP_APP_ID = defineSecret("MP_APP_ID");
 const S_MP_CLIENT_SECRET = defineSecret("MP_CLIENT_SECRET");
@@ -1413,15 +1420,43 @@ export const mpWebhook = onRequest(
 );
 
 // ============================== MERCADO PAGO — PLANOS ========================
-const PRICE_MENSAL = 25.9;
-const PRICE_ANUAL = 299.9;
+const PRICE_BASIC_MONTHLY = 19.99;
+const PRICE_INTERMEDIATE_MONTHLY = 29.99;
+const PRICE_PRO_MONTHLY = 39.99;
+const PRICE_PRO_YEARLY = 349.99;
+/** @deprecated nomes legados; mantidos para compatibilidade de clientes antigos */
+const PRICE_MENSAL = PRICE_PRO_MONTHLY;
+const PRICE_ANUAL = PRICE_PRO_YEARLY;
 
 function normalizePlanId(raw) {
   const p = String(raw || "").trim().toLowerCase();
   if (p === "mensal" || p === "pro_monthly") return "pro_monthly";
   if (p === "anual" || p === "pro_yearly") return "pro_yearly";
+  if (p === "basic" || p === "basic_monthly") return "basic_monthly";
+  if (p === "intermediate" || p === "intermediate_monthly") return "intermediate_monthly";
+  if (p === "trial_30d" || p === "free_trial_30d") return "free_trial_30d";
   if (p === "trial_90d" || p === "free_trial_90d") return "free_trial_90d";
+  if (p === "free_limited") return "free_limited";
+  if (p === "lifetime") return "lifetime";
   return p;
+}
+
+function planTitleForMp(canonicalPlanId) {
+  const c = normalizePlanId(canonicalPlanId);
+  if (c === "basic_monthly") return "MasterPalm — Plano Básico (mensal)";
+  if (c === "intermediate_monthly") return "MasterPalm — Plano Intermediário (mensal)";
+  if (c === "pro_monthly") return "MasterPalm — Plano Pro (mensal)";
+  if (c === "pro_yearly") return "MasterPalm — Plano Pro (anual)";
+  return `MasterPalm — ${c}`;
+}
+
+function unitPriceForPlan(canonicalPlanId) {
+  const c = normalizePlanId(canonicalPlanId);
+  if (c === "basic_monthly") return PRICE_BASIC_MONTHLY;
+  if (c === "intermediate_monthly") return PRICE_INTERMEDIATE_MONTHLY;
+  if (c === "pro_monthly") return PRICE_PRO_MONTHLY;
+  if (c === "pro_yearly") return PRICE_PRO_YEARLY;
+  return PRICE_PRO_MONTHLY;
 }
 
 function toLegacyPlanAlias(planId) {
@@ -1486,13 +1521,27 @@ async function findCheckoutByPayment({ preferenceId, externalRef, userEmail, exp
   return { doc: null, source: "none", ambiguous: false };
 }
 
-async function activatePlanForUser({ uid, plan, paymentId, status, amount }) {
+async function activatePlanForUser({
+  uid,
+  plan,
+  paymentId,
+  status,
+  amount,
+  planOrderId,
+}) {
   const now = new Date();
   let renew = null;
   const canonicalPlanId = normalizePlanId(plan);
-  if (canonicalPlanId === "pro_monthly") renew = addMonths(now, 1);
-  else if (canonicalPlanId === "pro_yearly") renew = addYears(now, 1);
-  else renew = addDays(now, 7);
+  if (canonicalPlanId === "pro_yearly") renew = addYears(now, 1);
+  else if (
+    canonicalPlanId === "pro_monthly" ||
+    canonicalPlanId === "basic_monthly" ||
+    canonicalPlanId === "intermediate_monthly"
+  ) {
+    renew = addMonths(now, 1);
+  } else {
+    renew = addMonths(now, 1);
+  }
 
   const ref = db.collection("users").doc(uid);
 
@@ -1503,6 +1552,7 @@ async function activatePlanForUser({ uid, plan, paymentId, status, amount }) {
     currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
     trialing: false,
     trialUsed: true,
+    planLastPaymentId: String(paymentId || ""),
     updatedAt: nowTs,
   };
 
@@ -1517,6 +1567,7 @@ async function activatePlanForUser({ uid, plan, paymentId, status, amount }) {
       currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
       kind: "paid",
       paymentId: String(paymentId || ""),
+      planOrderId: planOrderId || null,
       amount: amount ?? null,
       createdAt: nowTs,
       updatedAt: nowTs,
@@ -1524,7 +1575,34 @@ async function activatePlanForUser({ uid, plan, paymentId, status, amount }) {
     { merge: true }
   );
 
+  if (planOrderId) {
+    await db
+      .collection(PLAN_ORDERS_COL)
+      .doc(String(planOrderId))
+      .set(
+        {
+          userId: uid,
+          activatedPlanId: canonicalPlanId || "pro_monthly",
+          expiresAt: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
+          updatedAt: nowTs,
+        },
+        { merge: true }
+      );
+  }
+
   return payload;
+}
+
+/** Valida Firebase ID Token (Bearer) em HTTP onRequest */
+async function requireFirebaseUserFromRequest(req) {
+  const h = req.headers?.authorization || req.headers?.Authorization || "";
+  const m = /^Bearer\s+(.+)$/i.exec(String(h));
+  if (!m?.[1]) {
+    const err = new Error("NO_AUTH");
+    err.code = "NO_AUTH";
+    throw err;
+  }
+  return admin.auth().verifyIdToken(m[1].trim());
 }
 
 export const planCreatePreference = onRequest(
@@ -1536,30 +1614,86 @@ export const planCreatePreference = onRequest(
       const identifier = getClientIdentifier(req);
       await checkRateLimit("planCreatePreference", identifier);
 
-      const MP_TOKEN = S_MP_ACCESS_TOKEN.value() || process.env.MP_ACCESS_TOKEN || "";
-      if (!MP_TOKEN) return res.status(500).send("MP token not configured");
-
-      const WEB_BASE = S_WEB_BASE_URL.value() || process.env.WEB_BASE_URL || "https://mastepalm.com.br";
-
-      const { uid, email, plan, returnUrl, notificationUrl } = req.body || {};
-      if (!uid || !plan) return res.status(400).json({ error: "uid e plan são obrigatórios" });
-      if (!["mensal", "anual"].includes(plan)) {
-        return res.status(400).json({ error: "plan inválido (use mensal|anual)" });
+      let decoded;
+      try {
+        decoded = await requireFirebaseUserFromRequest(req);
+      } catch (authErr) {
+        if (authErr?.code === "NO_AUTH") {
+          return res.status(401).json({ error: "Autenticação obrigatória (Bearer ID token)." });
+        }
+        console.warn("[planCreatePreference] auth:", authErr?.message || authErr);
+        return res.status(401).json({ error: "Token inválido ou expirado." });
       }
 
-      const price = plan === "mensal" ? PRICE_MENSAL : PRICE_ANUAL;
+      const tokenUid = decoded.uid;
+      const tokenEmail = normalizeEmail(decoded.email || "");
 
-      const back = returnUrl || `${WEB_BASE}/assinatura/${plan}/retorno`;
+      const MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
+      if (!MP_TOKEN) return res.status(500).send("MP token not configured");
+
+      const WEB_BASE =
+        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://mastepalm.com.br";
+
+      const { plan, returnUrl, notificationUrl, installationId } = req.body || {};
+      if (!plan) {
+        return res.status(400).json({
+          error:
+            "plan é obrigatório (mensal|anual|basic_monthly|intermediate_monthly|pro_monthly|pro_yearly)",
+        });
+      }
+      const allowedPlans = new Set([
+        "mensal",
+        "anual",
+        "basic_monthly",
+        "intermediate_monthly",
+        "pro_monthly",
+        "pro_yearly",
+      ]);
+      const planStr = String(plan).trim().toLowerCase();
+      if (!allowedPlans.has(planStr)) {
+        return res.status(400).json({ error: "plan inválido" });
+      }
+
+      const planOrderId = generatePlanOrderId();
+      const canonical = normalizePlanId(planStr);
+      const price = unitPriceForPlan(canonical);
+
+      await db
+        .collection(PLAN_ORDERS_COL)
+        .doc(planOrderId)
+        .set({
+          planOrderId,
+          userId: tokenUid,
+          userEmail: tokenEmail || null,
+          canonicalPlanId: canonical,
+          legacyPlanAlias: planStr,
+          orderStatus: "PENDENTE",
+          installationId: installationId ? String(installationId).slice(0, 128) : null,
+          createdAt: nowTs,
+          updatedAt: nowTs,
+        });
+
+      console.log(
+        JSON.stringify({
+          evt: "plan_order_created",
+          planOrderId,
+          uid: tokenUid,
+          plan: planStr,
+          canonical,
+        }),
+      );
+
+      const back = returnUrl || `${WEB_BASE}/assinatura/${planStr}/retorno`;
       const notif =
         notificationUrl ||
         WEBHOOK_URL ||
         `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/planWebhook`;
 
-      const body = {
+      const mpBody = {
         items: [
           {
-            id: `masterpalm_${plan}`,
-            title: plan === "mensal" ? "MasterPalm Mensal" : "MasterPalm Anual",
+            id: `masterpalm_${canonical}`,
+            title: planTitleForMp(canonical),
             quantity: 1,
             unit_price: Number(price.toFixed(2)),
             currency_id: "BRL",
@@ -1567,12 +1701,19 @@ export const planCreatePreference = onRequest(
             description: "Assinatura do aplicativo MasterPalm",
           },
         ],
-        payer: { email: email || undefined },
+        payer: { email: tokenEmail || undefined },
         back_urls: { success: back, pending: back, failure: back },
         auto_return: "approved",
         notification_url: notif,
-        external_reference: `${uid}|${plan}`,
-        metadata: { uid, plan },
+        external_reference: planOrderId,
+        metadata: {
+          uid: tokenUid,
+          user_id: tokenUid,
+          plan: planStr,
+          normalized_plan_id: canonical,
+          user_email: tokenEmail || "",
+          plan_order_id: planOrderId,
+        },
         statement_descriptor: "MASTERPALM",
       };
 
@@ -1584,23 +1725,40 @@ export const planCreatePreference = onRequest(
             "Content-Type": "application/json",
             Authorization: `Bearer ${MP_TOKEN}`,
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(mpBody),
         },
         25000
       );
 
       if (!r.ok) {
         const txt = await r.text();
-        console.error("[planCreatePreference] error:", txt);
+        console.error("[planCreatePreference] MP error:", txt);
+        await db.collection(PLAN_ORDERS_COL).doc(planOrderId).set(
+          {
+            orderStatus: "FALHA",
+            mpPreferenceError: String(txt).slice(0, 2000),
+            updatedAt: nowTs,
+          },
+          { merge: true },
+        );
         return res.status(r.status).send(txt);
       }
 
       const data = await r.json();
 
+      await db.collection(PLAN_ORDERS_COL).doc(planOrderId).set(
+        {
+          preferenceId: data.id || null,
+          updatedAt: nowTs,
+        },
+        { merge: true },
+      );
+
       return res.json({
         id: data.id,
         init_point: data.init_point || data.sandbox_init_point,
         public_key: MP_PUBLIC_KEY || null,
+        planOrderId,
       });
     } catch (err) {
       if (err.code === "resource-exhausted") {
@@ -1613,10 +1771,48 @@ export const planCreatePreference = onRequest(
 );
 
 export const planWebhook = onRequest(
-  { cors: true, secrets: [S_MP_ACCESS_TOKEN], timeoutSeconds: 30, memory: "256MiB" },
+  {
+    cors: true,
+    secrets: [S_MP_ACCESS_TOKEN, S_MP_WEBHOOK_SECRET],
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
   corsWrap(async (req, res) => {
     try {
-      const MP_TOKEN = S_MP_ACCESS_TOKEN.value() || process.env.MP_ACCESS_TOKEN || "";
+      const WEBHOOK_SECRET =
+        (await S_MP_WEBHOOK_SECRET.value()) || process.env.MP_WEBHOOK_SECRET || "";
+      const sig = validateMercadoPagoWebhookSignature({
+        req,
+        webhookSecret: WEBHOOK_SECRET,
+      });
+      if (!sig.ok) {
+        const reason = sig.reason || "unknown";
+        let evt = "plan_webhook_signature_invalid";
+        if (reason === "header_missing") evt = "plan_webhook_signature_missing";
+        else if (
+          reason === "secret_missing" ||
+          reason === "hmac_error" ||
+          reason === "unknown"
+        ) {
+          evt = "plan_webhook_signature_error";
+        }
+        console.warn(
+          JSON.stringify({
+            evt,
+            reason,
+            ...(sig.detail ? { detail: String(sig.detail).slice(0, 200) } : {}),
+          }),
+        );
+        return res.status(401).send("Unauthorized");
+      }
+      console.log(
+        JSON.stringify({
+          evt: "plan_webhook_signature_valid",
+          dataIdLen: String(sig.dataId || "").length,
+        }),
+      );
+
+      const MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
       if (!MP_TOKEN) return res.status(200).send("OK");
 
       const body = req.body || {};
@@ -1637,6 +1833,18 @@ export const planWebhook = onRequest(
       }
 
       const payment = await r.json();
+
+      const consumed = await tryProcessPlanOrderWebhook({
+        db,
+        payment,
+        paymentId,
+        nowTs,
+        normalizePlanId,
+        mapCheckoutStatus,
+        activatePlanForUser,
+      });
+      if (consumed) return res.status(200).send("OK");
+
       const status = payment.status;
       const checkoutStatus = mapCheckoutStatus(status);
       const externalRef = payment.external_reference || "";
@@ -2423,7 +2631,7 @@ export const devCreateOrder = onRequest(
 );
 
 // ✅ Exporta os callables do plano (arquivo separado)
-export { ensureUserPlan, rootGrantPlan };
+export { ensureUserPlan, rootGrantPlan, activateUserTrial90d };
 
 // ============================== WHATSAPP – Confirmação de pedido (Canais Meta) ==============================
 

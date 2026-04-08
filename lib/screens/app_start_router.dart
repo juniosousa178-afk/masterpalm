@@ -378,16 +378,28 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
       final planos = PlanosService();
       PlanInfo? plan;
-      if (cacheValid) {
-        logD('✅ [ROUTER] Plano em cache, entrando na home');
-        final licencaPlan = (licenca.get('currentPlanId') ?? '').toString();
-        final cachedPlan = PlanosService.normalizePlanId(
-          licencaPlan.isNotEmpty
-              ? licencaPlan
-              : (sessao.get('plan_plan_id') ?? 'free_limited').toString(),
-        );
+      final licencaPlanRaw = (licenca.get('currentPlanId') ?? '').toString();
+      final cachedPlanFromSession =
+          (sessao.get('plan_plan_id') ?? '').toString();
+      final cachedPlanNorm = PlanosService.normalizePlanId(
+        licencaPlanRaw.isNotEmpty
+            ? licencaPlanRaw
+            : (cachedPlanFromSession.isNotEmpty
+                ? cachedPlanFromSession
+                : 'free_limited'),
+      );
+      final isPaidCached = cachedPlanNorm == PlanId.proMonthly ||
+          cachedPlanNorm == PlanId.proYearly ||
+          cachedPlanNorm == PlanId.lifetime ||
+          cachedPlanNorm == PlanId.basicMonthly ||
+          cachedPlanNorm == PlanId.intermediateMonthly;
+
+      // Plano pago: não usar atalho de cache de 1h — sempre revalidar no Firestore.
+      if (cacheValid && !isPaidCached) {
+        logD('✅ [ROUTER] Plano em cache (não pago), entrando na home');
+        final cachedPlan = cachedPlanNorm.isEmpty ? 'free_limited' : cachedPlanNorm;
         plan = PlanInfo(
-          planId: cachedPlan.isEmpty ? 'free_limited' : cachedPlan,
+          planId: cachedPlan,
           status: 'active',
           trialing: false,
           currentPeriodEnd: null,
@@ -414,13 +426,18 @@ class _AppStartRouterState extends State<AppStartRouter> {
       }
 
       if (plan == null) {
-        // Offline ou timeout: usar plano em cache se existir
+        // Offline ou timeout: cache só para planos não pagos (sem bypass de premium).
         final licencaPlan = (licenca.get('currentPlanId') ?? '').toString();
         final cachedPlanId = licencaPlan.isNotEmpty
             ? licencaPlan
             : (sessao.get('plan_plan_id') ?? 'free_limited').toString();
         final normalizedCached = PlanosService.normalizePlanId(cachedPlanId);
-        if (normalizedCached.isNotEmpty) {
+        final isPaidOffline = normalizedCached == PlanId.proMonthly ||
+            normalizedCached == PlanId.proYearly ||
+            normalizedCached == PlanId.lifetime ||
+            normalizedCached == PlanId.basicMonthly ||
+            normalizedCached == PlanId.intermediateMonthly;
+        if (normalizedCached.isNotEmpty && !isPaidOffline) {
           logD('📴 [ROUTER] Usando plano em cache (offline/timeout): $normalizedCached');
           plan = PlanInfo(
             planId: normalizedCached,
@@ -428,7 +445,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
             trialing: false,
             currentPeriodEnd: null,
             trialUsed: true,
-            manualOverride: true,
+            manualOverride: false,
           );
         }
         if (plan == null) {
@@ -442,7 +459,8 @@ class _AppStartRouterState extends State<AppStartRouter> {
       // Se for manualOverride (modo offline), pular validações de expiração
       if (!plan.manualOverride) {
         if (!plan.isLifetime) {
-          if (plan.currentPeriodEnd == null) {
+          final semDataOk = plan.planId == PlanId.freeLimited;
+          if (plan.currentPeriodEnd == null && !semDataOk) {
             await FirebaseAuth.instance.signOut();
             if (!mounted) return;
             _go(_routeLogin);
@@ -450,8 +468,9 @@ class _AppStartRouterState extends State<AppStartRouter> {
           }
 
           if (plan.isExpired) {
-            // Opção B: free_trial_90d expirado → migra para free_limited (não bloqueia)
-            if (plan.planId == PlanId.freeTrial90d) {
+            // Opção B: trial expirado → migra para free_limited (não bloqueia)
+            if (plan.planId == PlanId.freeTrial90d ||
+                plan.planId == PlanId.freeTrial30d) {
               try {
                 await planos
                     .migrateToFreeLimited(uid: uid, email: email)

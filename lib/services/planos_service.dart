@@ -1,10 +1,14 @@
 // lib/services/planos_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 class PlanId {
+  static const String freeTrial30d = 'free_trial_30d';
   static const String freeTrial90d = 'free_trial_90d';
   static const String freeLimited = 'free_limited'; // Após 90 dias: plano limitado (Opção B)
+  static const String basicMonthly = 'basic_monthly';
+  static const String intermediateMonthly = 'intermediate_monthly';
   static const String proMonthly = 'pro_monthly';
   static const String proYearly = 'pro_yearly';
   static const String lifetime = 'lifetime';
@@ -34,6 +38,10 @@ class PlanInfo {
   bool get hasLimits => isFreeLimited;
   bool get isActive {
     if (isLifetime) return true;
+    // Free limitado não tem data de término; permanece utilizável com limites numéricos.
+    if (isFreeLimited) {
+      return status == 'active' || status == 'trialing';
+    }
     if (status != 'active' && status != 'trialing') return false;
     if (currentPeriodEnd == null) return false;
     return currentPeriodEnd!.isAfter(DateTime.now());
@@ -83,9 +91,18 @@ class PlanosService {
       case 'anual':
       case 'pro_yearly':
         return PlanId.proYearly;
+      case 'trial_30d':
+      case 'free_trial_30d':
+        return PlanId.freeTrial30d;
       case 'trial_90d':
       case 'free_trial_90d':
         return PlanId.freeTrial90d;
+      case 'basic':
+      case 'basic_monthly':
+        return PlanId.basicMonthly;
+      case 'intermediate':
+      case 'intermediate_monthly':
+        return PlanId.intermediateMonthly;
       case 'free_limited':
         return PlanId.freeLimited;
       case 'lifetime':
@@ -203,20 +220,13 @@ class PlanosService {
       }
       return null;
     } catch (e) {
-      // Sem internet - retornar plano lifetime para permitir acesso offline
-      debugPrint('⚠️ Erro ao buscar plano (modo offline) (type=${e.runtimeType})');
-      return const PlanInfo(
-        planId: 'lifetime',
-        status: 'active',
-        trialing: false,
-        currentPeriodEnd: null,
-        trialUsed: false,
-        manualOverride: true,
-      );
+      // Sem rede / erro: não inventar plano — a UI deve reconsultar o Firestore.
+      debugPrint('⚠️ Erro ao buscar plano (type=${e.runtimeType})');
+      return null;
     }
   }
 
-  /// Garante trial 90 dias se ainda não tem plano e ainda não usou trial
+  /// Garante trial (30 dias — novo padrão) se ainda não tem plano e ainda não usou trial.
   Future<PlanInfo?> ensureTrial90dIfAllowed({
     required String uid,
     required String email,
@@ -225,53 +235,33 @@ class PlanosService {
     if (current != null) return current;
 
     // se não existe user doc ainda, cria e ativa trial
-    await activateFreeTrial90d(uid: uid, email: email);
+    await activateFreeTrialViaBackend(uid: uid, email: email);
     return fetchCurrentPlan(uid: uid, email: email);
   }
 
-  /// Ativa trial de 90 dias (somente se trialUsed != true)
-  Future<void> activateFreeTrial90d({
+  /// Ativa trial via Cloud Function (30 dias, `free_trial_30d`; legado 90d permanece no Firestore para contas antigas).
+  /// Escrita apenas no backend; cliente não grava subscriptions.
+  Future<void> activateFreeTrialViaBackend({
     required String uid,
     required String email,
   }) async {
-    final now = DateTime.now();
-    final end = now.add(const Duration(days: 90));
-    final subRef = _subsCol(uid).doc();
-    await _db.runTransaction((tx) async {
-      final userRef = _userRef(uid);
-      final userDoc = await tx.get(userRef);
-      final data = userDoc.data() ?? const <String, dynamic>{};
-      final alreadyUsed = (data['trialUsed'] ?? false) == true;
-      if (alreadyUsed) {
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('activateUserTrial90d');
+    try {
+      final result = await callable.call(<String, dynamic>{});
+      final map = result.data;
+      if (map is Map && map['ok'] == true) {
+        debugPrint('✅ [PlanosTrial] Trial ativado via CF uid=$uid');
+        return;
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'failed-precondition') {
         throw Exception('TRIAL_ALREADY_USED');
       }
-
-      tx.set(
-        userRef,
-        {
-          'email': email,
-          'currentPlanId': PlanId.freeTrial90d,
-          'status': 'trialing',
-          'trialing': true,
-          'currentPeriodEnd': Timestamp.fromDate(end),
-          'trialUsed': true,
-          'trialUsedAt': Timestamp.fromDate(now),
-          'manualOverride': {'enabled': false},
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-
-      tx.set(subRef, {
-        'planId': PlanId.freeTrial90d,
-        'status': 'trialing',
-        'trialing': true,
-        'createdAt': FieldValue.serverTimestamp(),
-        'currentPeriodEnd': Timestamp.fromDate(end),
-        'kind': 'trial',
-      });
-    });
-    debugPrint('✅ [PlanosTrial] Trial 90d ativado de forma atômica uid=$uid');
+      debugPrint('⚠️ [PlanosTrial] CF erro ${e.code}: ${e.message}');
+      rethrow;
+    }
   }
 
   /// Marca plano pago como ativo (pós webhook)

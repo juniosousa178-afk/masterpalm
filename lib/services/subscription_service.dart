@@ -3,6 +3,8 @@ import 'dart:developer' as dev;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'planos_service.dart';
+
 class SubscriptionStatus {
   final String plan;          // e.g. 'freelight', 'pro', ...
   final bool active;          // se o plano está ativo
@@ -40,11 +42,8 @@ class SubscriptionStatus {
   /// Aceita vários formatos de doc e nunca dá crash por cast errado.
   static SubscriptionStatus fromData(Map<String, dynamic> data) {
     String normalizePlan(String? raw) {
-      final p = (raw ?? '').trim().toLowerCase();
-      if (p == 'mensal' || p == 'pro_monthly') return 'pro_monthly';
-      if (p == 'anual' || p == 'pro_yearly') return 'pro_yearly';
-      if (p == 'trial_90d' || p == 'free_trial_90d') return 'free_trial_90d';
-      return p.isEmpty ? 'freelight' : p;
+      final n = PlanosService.normalizePlanId(raw);
+      return n.isEmpty ? 'freelight' : n;
     }
 
     // ---------- PLAN ----------
@@ -174,10 +173,10 @@ class SubscriptionService {
 
   /// Limites do plano free_limited (após trial expirado – Opção B)
   static const Map<String, int> freeLimitedLimits = {
-    'maxProducts': 10,
+    'maxProducts': 30,
     'maxImagesPerProduct': 1,
     'maxBanners': 1,
-    'maxMembers': 2,
+    'maxMembers': 1,
     'maxOrdersPerDay': 20,
     'maxClients': 20,
     'vendasMes': 10,

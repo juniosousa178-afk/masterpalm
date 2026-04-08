@@ -66,7 +66,9 @@ class PagamentoResultadoScreen extends StatelessWidget {
     final String title;
     if (isPlano) {
       title = isSuccess
-          ? 'Assinatura confirmada!'
+          ? (mpPending || !mpApproved
+              ? 'Aguardando confirmação'
+              : 'Pagamento recebido')
           : isPending
               ? 'Pagamento pendente'
               : 'Pagamento não realizado';
@@ -87,9 +89,11 @@ class PagamentoResultadoScreen extends StatelessWidget {
     final String message;
     if (isPlano) {
       message = isSuccess
-          ? 'Seu plano foi ativado com sucesso! O webhook irá confirmar em instantes. Você já pode usar todos os recursos.'
+          ? (mpPending || !mpApproved
+              ? 'O retorno do Mercado Pago não significa liberação imediata. O plano só fica ativo após o servidor confirmar o pagamento (webhook + consulta à API). Volte ao app e use «Atualizar» na tela de planos, se precisar.'
+              : 'Recebemos o retorno do checkout. A confirmação final ainda vem do servidor; se o pagamento foi aprovado, o plano liberará em instantes. Use «Atualizar» em Planos se não mudar sozinho.')
           : isPending
-              ? 'Seu pagamento está em análise. O plano será ativado automaticamente quando for aprovado.'
+              ? 'Seu pagamento está em análise. O plano será ativado somente quando o servidor confirmar a aprovação no Mercado Pago.'
               : 'O prazo para pagar pode ter expirado, o pagamento pode ter sido recusado ou reembolsado. Tente novamente ou escolha outra forma de pagamento.';
     } else if (isSuccess) {
       if (successExplicitPending) {

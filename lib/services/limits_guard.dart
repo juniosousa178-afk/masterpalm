@@ -2,10 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../core/logger.dart';
+import '../core/plan_matrix.dart';
 
 import 'firestore_paths.dart';
 import 'planos_service.dart';
-import 'subscription_service.dart';
 
 /// Guarda de limites por plano.
 /// Integrado com PlanosService: free_limited (após trial) e freelight têm restrições.
@@ -16,9 +16,12 @@ class LimitsGuard {
 
   /// Planos com limites aplicados (trial, free limitado, paid com teto de imagens/banners)
   static const _limitedPlans = [
+    'free_trial_30d',
     'free_trial_90d',
     'free_limited',
     'freelight',
+    'basic_monthly',
+    'intermediate_monthly',
     'pro_monthly',
     'pro_yearly',
     'lifetime',
@@ -31,13 +34,8 @@ class LimitsGuard {
   }
 
   static Map<String, int> _limitsForPlan(String? planId) {
-    final p = (planId ?? '').toLowerCase().trim();
-    if (p == PlanId.freeTrial90d) return SubscriptionService.trialLimits;
-    if (p == PlanId.freeLimited || p == 'freelight') return SubscriptionService.freeLimitedLimits;
-    if (p == PlanId.proMonthly || p == PlanId.proYearly || p == PlanId.lifetime) {
-      return SubscriptionService.paidLimits;
-    }
-    return SubscriptionService.freeLimits;
+    final p = PlanosService.normalizePlanId(planId);
+    return PlanMatrix.limitsMapForPlanId(p);
   }
 
   /// Lê o limite configurado conforme o plano

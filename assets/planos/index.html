@@ -1,156 +1,182 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Planos e Preços | MasterPalm</title>
+  <title>Planos MasterPalm | Gestão e catálogo para lojas</title>
+  <meta name="description" content="Trial 30 dias, Free limitado, Básico, Intermediário, Pro mensal e Pro anual — MasterPalm." />
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background-color: #1a1a1a; color: #f0f0f0; }
-    header { background-color: #4430f577; padding: 20px; text-align: center; font-size: 28px; font-weight: bold; color: #1a1a1a; }
-    .container { padding: 40px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; max-width: 1200px; margin: 0 auto; }
-    .card { background-color: #2a2a2a; border-radius: 12px; padding: 24px; text-align: center; box-shadow: 0 0 15px #00000050; transition: transform 0.2s; }
-    .card:hover { transform: scale(1.03); }
-    .card h2 { margin-top: 0; color: #25fc5477; }
-    .card p { font-size: 16px; color: #ccc; }
-    .card .preco { font-size: 26px; margin: 16px 0; font-weight: bold; color: #ffffff; }
-    .card button { padding: 10px 20px; border: none; border-radius: 8px; background-color: #30cef577; color: white; font-size: 16px; cursor: pointer; }
-    .muted { font-size: 12px; color: #999; margin-top: 8px; }
-    footer { background-color: #111; color: #aaa; text-align: center; padding: 16px; font-size: 13px; margin-top: 40px; }
+    :root {
+      --bg: #0b0f14;
+      --card: #121a22;
+      --accent: #38bdf8;
+      --accent2: #a78bfa;
+      --gold: #fbbf24;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1e293b55, transparent), var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      padding: 48px 20px 32px;
+      text-align: center;
+      max-width: 880px;
+      margin: 0 auto;
+    }
+    header h1 {
+      font-size: clamp(1.75rem, 4vw, 2.25rem);
+      font-weight: 700;
+      margin: 0 0 12px;
+      letter-spacing: -0.02em;
+    }
+    header p { color: var(--muted); margin: 0; font-size: 1.05rem; }
+    .cta-app {
+      display: inline-block;
+      margin-top: 24px;
+      padding: 14px 28px;
+      background: linear-gradient(135deg, var(--accent), #22d3ee);
+      color: #0f172a;
+      font-weight: 700;
+      text-decoration: none;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px #38bdf833;
+    }
+    .cta-app:hover { filter: brightness(1.05); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px 48px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px;
+      border: 1px solid #1e293b;
+      position: relative;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .card:hover { transform: translateY(-3px); border-color: #334155; }
+    .card.featured { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2)33; }
+    .card.best { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold)44; }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+      background: #1e293b;
+      color: var(--accent);
+      border: 1px solid #334155;
+    }
+    .badge.purple { color: var(--accent2); }
+    .badge.gold { color: var(--gold); border-color: #78350f; }
+    .card h2 { margin: 0 0 8px; font-size: 1.35rem; }
+    .tagline { color: var(--muted); font-size: 0.95rem; margin-bottom: 16px; min-height: 2.8em; }
+    .price { font-size: 1.75rem; font-weight: 800; margin-bottom: 16px; }
+    .price small { font-size: 0.95rem; font-weight: 500; color: var(--muted); }
+    ul { margin: 0; padding-left: 1.1rem; color: var(--muted); font-size: 0.92rem; }
+    li { margin-bottom: 6px; }
+    footer {
+      text-align: center;
+      padding: 32px 16px 48px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      border-top: 1px solid #1e293b;
+    }
+    footer a { color: var(--accent); }
   </style>
 </head>
 <body>
-  <header>Planos e Preços</header>
+  <header>
+    <h1>Planos MasterPalm</h1>
+    <p>Gestão de loja, estoque, vendas, catálogo e muito mais. Assinatura segura via app (Mercado Pago + confirmação no servidor).</p>
+    <a class="cta-app" href="https://app.mastepalm.com.br/">Abrir o app e assinar</a>
+  </header>
 
-  <div class="container">
+  <div class="grid">
     <div class="card">
-      <h2>Plano Gratuito</h2>
-      <p>Ideal para começar</p>
-      <div class="preco">R$ 0/mês</div>
-      <p>- Catálogo básico<br>- 10 produtos<br>- Link WhatsApp</p>
-      <button id="btnGratuito">Ativar grátis</button>
-      <div class="muted">Teste por 7 dias • limites aplicados</div>
+      <span class="badge">Teste</span>
+      <h2>Trial 30 dias</h2>
+      <p class="tagline">Teste tudo por 30 dias; depois migra para o Free limitado sem apagar dados.</p>
+      <div class="price">R$ 0 <small>/ 30 dias</small></div>
+      <ul>
+        <li>Acesso como Pro durante o trial</li>
+        <li>Contas antigas com trial 90 dias permanecem válidas</li>
+      </ul>
     </div>
 
     <div class="card">
-      <h2>Plano Profissional</h2>
-      <p>Mais visibilidade e recursos</p>
-      <div class="preco">R$ 29,90/mês</div>
-      <p>- Catálogo completo<br>- Produtos ilimitados<br>- Cores e logo<br>- Link com nome da loja</p>
-      <button id="btnProf">Assinar</button>
-      <div class="muted">Renovação mensal</div>
+      <span class="badge">Grátis</span>
+      <h2>Free limitado</h2>
+      <p class="tagline">Ideal para começar · catálogo básico e pedidos via WhatsApp.</p>
+      <div class="price">R$ 0 <small>/ mês</small></div>
+      <ul>
+        <li>30 produtos, 20 clientes, 10 vendas/mês</li>
+        <li>1 foto/produto, 1 banner, 1 usuário</li>
+      </ul>
     </div>
 
     <div class="card">
-      <h2>Plano Premium</h2>
-      <p>Para lojistas exigentes</p>
-      <div class="preco">R$ 59,90/mês</div>
-      <p>- Todos os recursos<br>- Domínio próprio<br>- Banner promocional<br>- Suporte prioritário</p>
-      <button id="btnPrem">Assinar</button>
-      <div class="muted">Renovação anual</div>
+      <span class="badge">Organização</span>
+      <h2>Básico</h2>
+      <p class="tagline">Para organizar sua loja — vendas, estoque e clientes.</p>
+      <div class="price">R$ 19,99 <small>/ mês</small></div>
+      <ul>
+        <li>300 produtos, 500 clientes, 5 fotos, 3 banners</li>
+        <li>Relatório básico e backup simples</li>
+      </ul>
+    </div>
+
+    <div class="card featured">
+      <span class="badge purple">Mais vendido</span>
+      <h2>Intermediário</h2>
+      <p class="tagline">Compras, precificação e combos para vender com mais margem.</p>
+      <div class="price">R$ 29,99 <small>/ mês</small></div>
+      <ul>
+        <li>2.000 produtos, 3.000 clientes, até 3 usuários</li>
+        <li>Fornecedores, relatório financeiro, ranking e lucratividade</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <span class="badge purple">Pro</span>
+      <h2>Pro mensal</h2>
+      <p class="tagline">Gestão completa — equipe, IA, campanhas e integrações.</p>
+      <div class="price">R$ 39,99 <small>/ mês</small></div>
+      <ul>
+        <li>Tudo do Intermediário + premium</li>
+        <li>Vendedores, metas, IA, marketplaces e mais</li>
+      </ul>
+    </div>
+
+    <div class="card best">
+      <span class="badge gold">Melhor oferta</span>
+      <h2>Pro anual</h2>
+      <p class="tagline">Tudo do Pro com economia no ano.</p>
+      <div class="price">R$ 349,99 <small>/ ano</small></div>
+      <ul>
+        <li>Mesmo acesso do Pro mensal</li>
+        <li>Renovação anual · previsibilidade</li>
+      </ul>
     </div>
   </div>
 
-  <footer>&copy; 2025 MasterPalm - Todos os direitos reservados</footer>
-
-  <!-- Redirecionamento Mercado Pago (substitua pelos seus links reais) -->
-  <script>
-    const MP_URLS = {
-      pro_monthly: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=SEU_PREF_ID_MENSAL',
-      pro_yearly: 'https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=SEU_PREF_ID_ANUAL'
-    };
-  </script>
-
-  <!-- Firebase: sessão + subscriptions -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, setDoc, addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-    // ⚙️ SUA CONFIG
-    const firebaseConfig = {
-      apiKey: "AIzaSyBPRazC3wOs-x7IdatMy26Dr81pEi4Xz44",
-      authDomain: "masterpalm-58c46.firebaseapp.com",
-      projectId: "masterpalm-58c46"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-
-    const btnGratuito = document.getElementById("btnGratuito");
-    const btnProf = document.getElementById("btnProf");
-    const btnPrem = document.getElementById("btnPrem");
-
-    function needLogin() {
-      alert("Faça login para escolher um plano.");
-      window.location.href = "login.html";
-    }
-
-    onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        needLogin();
-        return;
-      }
-
-      // Plano grátis (trial de 7 dias, limites via plano "free_trial")
-      btnGratuito.addEventListener("click", async () => {
-        btnGratuito.disabled = true;
-        try {
-          // 1) Cria/atualiza assinatura trial
-          await addDoc(collection(db, "users", user.uid, "subscriptions"), {
-            planId: "free_trial",
-            status: "trialing",
-            trialing: true,
-            createdAt: serverTimestamp(),
-            currentPeriodEnd: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-          });
-
-          // 2) Espelho simples no perfil (compatibilidade)
-          await setDoc(doc(db, "users", user.uid), {
-            currentPlanId: "free_trial",
-            lastPlanChange: serverTimestamp()
-          }, { merge: true });
-
-          alert("Plano gratuito ativado! Redirecionando para o painel…");
-          window.location.href = "painel.html";
-        } catch (e) {
-          alert("Erro ao ativar plano gratuito: " + (e?.message || e));
-          btnGratuito.disabled = false;
-        }
-      });
-
-      // Profissional (mensal)
-      btnProf.addEventListener("click", async () => {
-        await criarSubEIrParaCheckout(user.uid, "pro_monthly");
-      });
-
-      // Premium (anual)
-      btnPrem.addEventListener("click", async () => {
-        await criarSubEIrParaCheckout(user.uid, "pro_yearly");
-      });
-    });
-
-    async function criarSubEIrParaCheckout(uid, planId) {
-      try {
-        // Registra assinatura pendente (fica como rascunho até confirmar pagamento)
-        await addDoc(collection(db, "users", uid, "subscriptions"), {
-          planId,
-          status: "pending",
-          trialing: false,
-          createdAt: serverTimestamp()
-        });
-
-        const url = MP_URLS[planId];
-        if (!url) {
-          alert("Plano não encontrado/sem link configurado.");
-          return;
-        }
-        alert("Redirecionando para pagamento…");
-        window.location.href = url;
-      } catch (e) {
-        alert("Erro ao iniciar assinatura: " + (e?.message || e));
-      }
-    }
-  </script>
+  <footer>
+    Preços e condições podem ser atualizados; valores finais no checkout do app.
+    · <a href="https://mastepalm.com.br/">mastepalm.com.br</a>
+    · <a href="https://app.mastepalm.com.br/">app.mastepalm.com.br</a>
+  </footer>
 </body>
 </html>

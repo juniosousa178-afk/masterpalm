@@ -5,14 +5,13 @@ import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, Tar
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../services/planos_service.dart';
 import '../services/checkout_service.dart';
-import '../services/master_config_service.dart';
 import '../services/remote_config_service.dart';
-import '../utils/role_utils.dart';
 
+/// Preços exibidos (checkout continua definido no servidor).
+const double _kPrecoBasico = 19.99;
+const double _kPrecoIntermediario = 29.99;
 class PlanosScreen extends StatefulWidget {
   const PlanosScreen({super.key});
 
@@ -33,13 +32,21 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     return anualEquiv - _priceAnual;
   }
 
+  double get _economiaAnualVsIntermediario {
+    final ref = _kPrecoIntermediario * 12;
+    return ref - _priceAnual;
+  }
+
   final PlanosService _svc = PlanosService();
   bool _loading = true;
   bool _loadingGratis = false;
+  bool _loadingBasico = false;
+  bool _loadingIntermediario = false;
   bool _loadingMensal = false;
   bool _loadingAnual = false;
   PlanInfo? _plan;
-  bool _mpConfigurado = false;
+  /// Checkout de planos usa Cloud Function + Secret Manager (token MP não fica no app).
+  bool _checkoutPlanoServidor = true;
 
   bool get _isRoot {
     try {
@@ -52,10 +59,6 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       return false;
     }
   }
-
-  /// Apenas root por e-mail (acesso à tela Master Config); admin/programador não.
-  bool get _isRootAdmin =>
-      RoleUtils.isRootEmail(FirebaseAuth.instance.currentUser?.email);
 
   bool get _isMobile {
     if (kIsWeb) return false;
@@ -70,14 +73,20 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   /// Traduz planId para português
   String _traduzirPlanId(String planId) {
     switch (planId) {
+      case 'free_trial_30d':
+        return 'Teste grátis (30 dias)';
       case 'free_trial_90d':
-        return 'Teste grátis';
+        return 'Teste grátis (90 dias)';
       case 'free_limited':
         return 'Free limitado';
+      case 'basic_monthly':
+        return 'Básico';
+      case 'intermediate_monthly':
+        return 'Intermediário';
       case 'pro_monthly':
-        return 'Mensal';
+        return 'Pro mensal';
       case 'pro_yearly':
-        return 'Anual';
+        return 'Pro anual';
       case 'lifetime':
         return 'Acesso vitalício';
       default:
@@ -101,41 +110,6 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       return 'Você já usou o plano grátis. Escolha mensal ou anual.';
     }
     return 'Ocorreu um erro. Tente novamente ou escolha outra forma de pagamento.';
-  }
-
-  void _mostrarErroMpNaoConfigurado() {
-    final msg = _isRootAdmin
-        ? 'Configure o Mercado Pago em Configurações Master (menu lateral) para receber pagamentos de planos.'
-        : 'O Mercado Pago ainda não foi configurado. Entre em contato com o administrador para assinar um plano.';
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.info_outline, color: _fluorBlue),
-            SizedBox(width: 12),
-            Text('Mercado Pago', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-        content: Text(msg, style: const TextStyle(color: Colors.white70)),
-        actions: [
-          if (_isRootAdmin)
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/master_login');
-              },
-              child: const Text('Configurar agora', style: TextStyle(color: _fluorGreen)),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Entendi', style: TextStyle(color: Colors.white70)),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _mostrarAvisoCheckout(Future<void> Function() onConfirm) async {
@@ -175,258 +149,6 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     if (ok == true) await onConfirm();
   }
 
-  Future<void> _mostrarDialogConfigurarMp() async {
-    final accessTokenCtrl = TextEditingController();
-    final publicKeyCtrl = TextEditingController();
-    bool showToken = false;
-    bool testing = false;
-    bool saving = false;
-
-    try {
-      final config = await MasterConfigService.loadMasterConfig();
-      accessTokenCtrl.text = config.mercadoPagoAccessToken ?? '';
-      publicKeyCtrl.text = config.mercadoPagoPublicKey ?? '';
-    } catch (_) {}
-
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.payment, color: _fluorGreen),
-                SizedBox(width: 10),
-                Text('Conectar Mercado Pago', style: TextStyle(color: Colors.white)),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      final uri = Uri.parse('https://www.mercadopago.com.br/developers/panel/app');
-                      if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    },
-                    icon: const Icon(Icons.open_in_new, size: 18),
-                    label: const Text('Abrir painel do Mercado Pago'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _fluorGreen,
-                      side: const BorderSide(color: _fluorGreen),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Cole as chaves da sua aplicação (Produção):',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: accessTokenCtrl,
-                    obscureText: !showToken,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'Access Token',
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(showToken ? Icons.visibility_off : Icons.visibility, color: Colors.white54, size: 20),
-                        onPressed: () => setDialogState(() => showToken = !showToken),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: publicKeyCtrl,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Public Key',
-                      labelStyle: TextStyle(color: Colors.white70),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: testing || saving
-                              ? null
-                              : () async {
-                                  final token = accessTokenCtrl.text.trim();
-                                  if (token.isEmpty) {
-                                    ScaffoldMessenger.of(ctx).showSnackBar(
-                                      const SnackBar(content: Text('Digite o Access Token'), backgroundColor: Colors.orange),
-                                    );
-                                    return;
-                                  }
-                                  setDialogState(() => testing = true);
-                                  final ok = await MasterConfigService.testMercadoPagoConnection(token);
-                                  setDialogState(() => testing = false);
-                                  if (!ctx.mounted) return;
-                                  ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(
-                                      content: Text(ok ? 'Conexão OK!' : 'Falha na conexão. Verifique o token.'),
-                                      backgroundColor: ok ? Colors.green : Colors.red,
-                                    ),
-                                  );
-                                },
-                          icon: testing
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: _fluorGreen))
-                              : const Icon(Icons.wifi_tethering, size: 18, color: _fluorGreen),
-                          label: Text(testing ? 'Testando...' : 'Testar'),
-                          style: OutlinedButton.styleFrom(foregroundColor: _fluorGreen, side: const BorderSide(color: _fluorGreen)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
-                          onPressed: testing || saving
-                              ? null
-                              : () async {
-                                  final token = accessTokenCtrl.text.trim();
-                                  final publicKey = publicKeyCtrl.text.trim();
-                                  if (token.isEmpty || publicKey.isEmpty) {
-                                    ScaffoldMessenger.of(ctx).showSnackBar(
-                                      const SnackBar(content: Text('Preencha Access Token e Public Key'), backgroundColor: Colors.orange),
-                                    );
-                                    return;
-                                  }
-                                  setDialogState(() => saving = true);
-                                  try {
-                                    final email = FirebaseAuth.instance.currentUser?.email ?? 'programador';
-                                    await MasterConfigService.updateMercadoPagoKeys(
-                                      accessToken: token,
-                                      publicKey: publicKey,
-                                      updatedBy: email,
-                                    );
-                                    if (!ctx.mounted) return;
-                                    Navigator.of(ctx).pop();
-                                    _load();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Mercado Pago configurado!'), backgroundColor: Colors.green),
-                                    );
-                                  } catch (e) {
-                                    if (ctx.mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
-                                      );
-                                    }
-                                  } finally {
-                                    if (ctx.mounted) setDialogState(() => saving = false);
-                                  }
-                                },
-                          icon: saving
-                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                              : const Icon(Icons.save, size: 18),
-                          label: Text(saving ? 'Salvando...' : 'Salvar'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _fluorGreen,
-                            foregroundColor: Colors.black,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Fechar', style: TextStyle(color: Colors.white54)),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-    accessTokenCtrl.dispose();
-    publicKeyCtrl.dispose();
-  }
-
-  Widget _buildMpNaoConfiguradoBanner() {
-    return Card(
-      color: const Color(0xFF2A2A1A),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: _fluorGreen, width: 1),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.payment, color: _fluorGreen, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Mercado Pago não configurado',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        _isRoot
-                            ? 'Configure para receber pagamentos de planos mensais e anuais.'
-                            : 'Assinaturas pagas indisponíveis. Contate o administrador.',
-                        style: const TextStyle(color: Colors.white54, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (_isRoot) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _mostrarDialogConfigurarMp,
-                  icon: const Icon(Icons.link, size: 18),
-                  label: const Text('Conectar Mercado Pago'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _fluorGreen,
-                    foregroundColor: Colors.black,
-                  ),
-                ),
-              ),
-              if (_isRootAdmin) ...[
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, '/master_login'),
-                    icon: const Icon(Icons.settings, size: 18),
-                    label: const Text('Ir para Configurações Master'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _fluorGreen,
-                      side: const BorderSide(color: _fluorGreen),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   void initState() {
     super.initState();
@@ -461,16 +183,10 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
 
       final p = await _svc.fetchCurrentPlan(uid: user.uid, email: email);
 
-      bool mpOk = false;
-      try {
-        final token = await MasterConfigService.getMercadoPagoAccessToken();
-        mpOk = token != null && token.trim().isNotEmpty;
-      } catch (_) {}
-
       if (mounted) {
         setState(() {
           _plan = p;
-          _mpConfigurado = mpOk;
+          _checkoutPlanoServidor = true;
         });
       }
     } finally {
@@ -484,14 +200,14 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
 
     setState(() => _loadingGratis = true);
     try {
-      await _svc.activateFreeTrial90d(
+      await _svc.activateFreeTrialViaBackend(
         uid: user.uid,
         email: (user.email ?? '').trim().toLowerCase(),
       );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Plano grátis ativado por 90 dias!')),
+        const SnackBar(content: Text('Teste completo ativado por 30 dias!')),
       );
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
@@ -509,6 +225,70 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _assinarBasico() async {
+    await _mostrarAvisoCheckout(() async {
+      setState(() => _loadingBasico = true);
+      try {
+        await CheckoutService.abrirCheckoutPlano(
+          titulo: 'MasterPalm Básico',
+          preco: _kPrecoBasico,
+          planoId: 'basic_monthly',
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Checkout aberto. O plano libera após confirmação do pagamento no servidor.',
+            ),
+            duration: Duration(seconds: 6),
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ ${_mensagemErroAmigavel(e)}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } finally {
+        if (mounted) setState(() => _loadingBasico = false);
+      }
+    });
+  }
+
+  Future<void> _assinarIntermediario() async {
+    await _mostrarAvisoCheckout(() async {
+      setState(() => _loadingIntermediario = true);
+      try {
+        await CheckoutService.abrirCheckoutPlano(
+          titulo: 'MasterPalm Intermediário',
+          preco: _kPrecoIntermediario,
+          planoId: 'intermediate_monthly',
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Checkout aberto. O plano libera após confirmação do pagamento no servidor.',
+            ),
+            duration: Duration(seconds: 6),
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ ${_mensagemErroAmigavel(e)}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } finally {
+        if (mounted) setState(() => _loadingIntermediario = false);
+      }
+    });
+  }
+
   Future<void> _assinarMensal() async {
     await _mostrarAvisoCheckout(() async {
       setState(() => _loadingMensal = true);
@@ -522,8 +302,10 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Checkout aberto! Complete o pagamento na janela do Mercado Pago.'),
-            duration: Duration(seconds: 4),
+            content: Text(
+              'Checkout aberto. Após pagar, aguarde a confirmação no servidor — o plano libera quando o pagamento estiver aprovado no Mercado Pago.',
+            ),
+            duration: Duration(seconds: 6),
           ),
         );
       } catch (e) {
@@ -554,8 +336,10 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Checkout aberto! Complete o pagamento na janela do Mercado Pago.'),
-            duration: Duration(seconds: 4),
+            content: Text(
+              'Checkout aberto. Após pagar, aguarde a confirmação no servidor — o plano libera quando o pagamento estiver aprovado no Mercado Pago.',
+            ),
+            duration: Duration(seconds: 6),
           ),
         );
       } catch (e) {
@@ -601,35 +385,32 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
             ),
             const SizedBox(height: 12),
             const Text(
-              '1º Teste grátis (90 dias)',
+              '1º Teste grátis (30 dias — contas novas)',
               style: TextStyle(color: _fluorGreen, fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const SizedBox(height: 4),
             const Text(
-              'Durante 90 dias você tem: 80 produtos, 150 clientes, 50 vendas por mês, 10 fotos por produto e até 10 banners. '
-              'É suficiente para testar o app com sua loja.',
+              'Durante o trial você usa o app como no Pro: sem bloquear módulos. Contas antigas com trial de 90 dias continuam válidas até o fim do período.',
               style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
             ),
             const SizedBox(height: 12),
             const Text(
-              '2º Após os 90 dias (Free limitado)',
+              '2º Após o trial (Free limitado)',
               style: TextStyle(color: Colors.amber, fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const SizedBox(height: 4),
             const Text(
-              'O plano vira Free limitado automaticamente — não bloqueia o acesso. Seus dados não são apagados: você continua vendo e editando todos os produtos e clientes já cadastrados. '
-              'Os limites (10 produtos, 20 clientes, 10 vendas/mês, 1 foto por produto, 1 banner) valem só para adicionar coisas novas: não poderá cadastrar novo produto nem novo cliente até ficar dentro do limite ou assinar o plano pago. '
-              'Para continuar crescendo sem reduzir nada, assine o Mensal ou Anual.',
+              'Migração automática para Free limitado: seus dados permanecem. Aplicam-se limites (ex.: vendas/mês, produtos, clientes) e alguns módulos passam a pedir upgrade — sem apagar histórico.',
               style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
             ),
             const SizedBox(height: 12),
             const Text(
-              '3º Planos Mensal e Anual (pago)',
+              '3º Planos pagos (Básico, Intermediário, Pro)',
               style: TextStyle(color: _fluorBlue, fontWeight: FontWeight.w600, fontSize: 14),
             ),
             const SizedBox(height: 4),
             const Text(
-              'Produtos, clientes e vendas ilimitados. 10 fotos por produto e até 10 banners. Catálogo completo, relatórios, backup e suporte.',
+              'Cada nível libera mais operações e integrações. O checkout é seguro pelo servidor; o plano só ativa após confirmação do Mercado Pago.',
               style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
             ),
           ],
@@ -653,14 +434,15 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       if (plan.isLifetime) {
         expiresText = 'Acesso permanente';
       } else if (plan.planId == 'free_limited') {
-        expiresText = 'Plano com limites (10 produtos, 1 foto/produto, 10 vendas/mês, 20 clientes). Faça upgrade para liberar.';
+        expiresText =
+            'Plano com limites (30 produtos, 20 clientes, 10 vendas/mês, 1 foto/produto, 1 banner). Faça upgrade para liberar mais.';
       } else if (plan.currentPeriodEnd != null) {
         final d = plan.currentPeriodEnd!;
         expiresText =
             'Válido até ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
         final days = plan.daysLeft ?? 0;
         if (days > 0) {
-          expiresText += ' ? $days dias restantes';
+          expiresText += ' · $days dias restantes';
         }
       }
     }
@@ -690,7 +472,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                     ),
                   ),
                 ),
-                if (_mpConfigurado)
+                if (_checkoutPlanoServidor)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
@@ -701,10 +483,10 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.check_circle, size: 16, color: _fluorGreen),
+                        Icon(Icons.verified_user, size: 16, color: _fluorGreen),
                         SizedBox(width: 6),
                         Text(
-                          'MP configurado',
+                          'Confirmação no servidor',
                           style: TextStyle(color: _fluorGreen, fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ],
@@ -745,9 +527,15 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     if (_plan == null) return false;
     switch (planKey) {
       case 'gratis':
-        return _plan!.planId == 'free_trial_90d' && _plan!.isActive;
+        return (_plan!.planId == 'free_trial_90d' ||
+                _plan!.planId == 'free_trial_30d') &&
+            _plan!.isActive;
       case 'free_limited':
         return _plan!.planId == 'free_limited';
+      case 'basico':
+        return _plan!.planId == 'basic_monthly' && _plan!.isActive;
+      case 'intermediario':
+        return _plan!.planId == 'intermediate_monthly' && _plan!.isActive;
       case 'mensal':
         return _plan!.planId == 'pro_monthly' && _plan!.isActive;
       case 'anual':
@@ -766,52 +554,114 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       if (canShowFree)
         _card(
           key: 'gratis',
-          title: 'Plano Grátis (90 dias)',
-          subtitle: 'Até 80 produtos, 150 clientes, 50 vendas/mês. Após 90 dias, vira Free limitado.',
-          price: '${_fmtBRL(0)} / 90 dias',
+          badge: 'Comece aqui',
+          title: 'Teste tudo por 30 dias',
+          subtitle: 'Depois migra para o Free limitado, sem apagar dados.',
+          price: '${_fmtBRL(0)} / 30 dias',
+          titleColor: const Color(0xFF7DD3FC),
           bullets: const [
-            'Durante o trial: 80 produtos, 150 clientes, 50 vendas/mês',
-            '10 fotos por produto e até 10 banners (desktop + mobile)',
-            'Após 90 dias: Free limitado (10 produtos, 1 foto/produto, 10 vendas/mês, 20 clientes)',
-            'Faça upgrade para liberar mais',
+            'Todos os módulos como no Pro durante o trial',
+            'Contas antigas com trial de 90 dias seguem válidas até o fim',
+            'Ao expirar: limites e bloqueios — sem perder cadastros',
           ],
-          buttonLabel: 'Ativar grátis (90 dias)',
+          buttonLabel: 'Ativar teste grátis',
           onPressed: _ativarGratis90d,
           isLoading: _loadingGratis,
           isCurrent: _isPlanoAtual('gratis'),
         ),
+      if (_plan?.planId == 'free_limited')
+        _card(
+          key: 'free_limited',
+          badge: 'Continue grátis',
+          title: 'Free limitado',
+          subtitle: 'Ideal para começar · catálogo básico e pedidos via WhatsApp',
+          price: '${_fmtBRL(0)} / mês',
+          titleColor: const Color(0xFFE2E8F0),
+          bullets: const [
+            'Até 30 produtos, 20 clientes, 10 vendas/mês',
+            '1 foto por produto · 1 banner · 1 usuário',
+            'Upgrade libera compras, precificação, combos e relatórios',
+          ],
+          buttonLabel: 'Plano atual',
+          onPressed: () async {},
+          isLoading: false,
+          isCurrent: _isPlanoAtual('free_limited'),
+          buttonDisabled: true,
+        ),
+      _card(
+        key: 'basico',
+        badge: 'Organização',
+        title: 'Básico',
+        subtitle: 'Para organizar sua loja',
+        price: '${_fmtBRL(_kPrecoBasico)} / mês',
+        titleColor: _fluorGreen,
+        bullets: const [
+          '300 produtos · 500 clientes · 5 fotos/produto · 3 banners',
+          'Estoque, vendas, clientes, contas a receber, relatório básico',
+          'Sem fornecedores/compras/precificação/combos',
+        ],
+        buttonLabel: 'Assinar Básico',
+        onPressed: _assinarBasico,
+        isLoading: _loadingBasico,
+        isCurrent: _isPlanoAtual('basico'),
+      ),
+      _card(
+        key: 'intermediario',
+        badge: 'Mais vendido',
+        title: 'Intermediário',
+        subtitle: 'Compras, precificação e combos para mais margem',
+        price: '${_fmtBRL(_kPrecoIntermediario)} / mês',
+        titleColor: const Color(0xFFA78BFA),
+        bullets: const [
+          '2.000 produtos · 3.000 clientes · 10 fotos · 10 banners · 3 usuários',
+          'Fornecedores, compras, precificação, combos, pedidos',
+          'Relatório financeiro, ranking, lucratividade, carrinhos abandonados',
+        ],
+        buttonLabel: 'Assinar Intermediário',
+        onPressed: _assinarIntermediario,
+        isLoading: _loadingIntermediario,
+        isCurrent: _isPlanoAtual('intermediario'),
+        highlightBorder: true,
+      ),
       _card(
         key: 'mensal',
-        title: 'Plano Mensal',
-        subtitle: 'Tudo liberado',
+        badge: 'Pro',
+        title: 'Pro mensal',
+        subtitle: 'Gestão completa',
         price: '${_fmtBRL(_priceMensal)} / mês',
+        titleColor: _fluorGreen,
         bullets: const [
-          'Produtos, clientes e vendas ilimitados',
-          '10 fotos por produto e até 10 banners',
-          'Catálogo completo, relatórios e backup',
-          'Suporte',
+          'Limites altos · equipe · IA · campanhas · integrações',
+          'Vendedores, metas, fretes/cupons, Meta e marketplaces',
+          'Tudo do Intermediário e muito mais',
         ],
-        buttonLabel: _mpConfigurado ? 'Assinar mensal' : 'Mercado Pago não configurado',
-        onPressed: _mpConfigurado ? _assinarMensal : () async => _mostrarErroMpNaoConfigurado(),
+        buttonLabel: 'Assinar Pro mensal',
+        onPressed: _assinarMensal,
         isLoading: _loadingMensal,
         isCurrent: _isPlanoAtual('mensal'),
       ),
       _card(
         key: 'anual',
-        title: 'Plano Anual',
-        subtitle: 'Mais barato no ano',
+        badge: 'Melhor oferta',
+        title: 'Pro anual',
+        subtitle: 'Economize no anual · tudo do Pro',
         price: '${_fmtBRL(_priceAnual)} / ano',
-        economiaText: _economiaAnual > 0 ? 'Economize ${_fmtBRL(_economiaAnual)} no ano' : null,
+        titleColor: const Color(0xFFFBBF24),
+        economiaText: _economiaAnual > 0
+            ? 'Economize ${_fmtBRL(_economiaAnual)} vs 12x Pro mensal'
+            : (_economiaAnualVsIntermediario > 0
+                ? 'Economize ${_fmtBRL(_economiaAnualVsIntermediario)} vs 12x Intermediário'
+                : null),
         bullets: const [
-          'Tudo do mensal',
-          'Benefícios extras',
-          'Melhor custo-benefício',
-          'Suporte prioritário',
+          'Mesmo acesso do Pro mensal',
+          'Renovação anual · previsibilidade de custo',
+          'Destaque para quem quer escalar a operação',
         ],
-        buttonLabel: _mpConfigurado ? 'Assinar anual' : 'Mercado Pago não configurado',
-        onPressed: _mpConfigurado ? _assinarAnual : () async => _mostrarErroMpNaoConfigurado(),
+        buttonLabel: 'Assinar Pro anual',
+        onPressed: _assinarAnual,
         isLoading: _loadingAnual,
         isCurrent: _isPlanoAtual('anual'),
+        highlightBorder: true,
       ),
     ];
 
@@ -837,11 +687,6 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                 const SizedBox(height: 16),
                 _buildComoFuncionaCard(),
                 const SizedBox(height: 16),
-
-                if (!_mpConfigurado) ...[
-                  _buildMpNaoConfiguradoBanner(),
-                  const SizedBox(height: 16),
-                ],
 
                 if (_isRoot)
                   Padding(
@@ -875,7 +720,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                         crossAxisCount: constraints.maxWidth >= 900 ? 3 : 2,
                         mainAxisSpacing: 16,
                         crossAxisSpacing: 16,
-                        childAspectRatio: 0.75,
+                        childAspectRatio: 0.62,
                         children: cards,
                       );
                     }
@@ -903,7 +748,15 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     bool isLoading = false,
     bool isCurrent = false,
     String? economiaText,
+    String? badge,
+    Color titleColor = _fluorGreen,
+    bool highlightBorder = false,
+    bool buttonDisabled = false,
   }) {
+    final borderColor = isCurrent
+        ? _fluorGreen
+        : (highlightBorder ? const Color(0xFF6366F1) : Colors.transparent);
+    final borderW = isCurrent ? 2.0 : (highlightBorder ? 1.5 : 0.0);
     return Semantics(
       button: true,
       label: '$title. $subtitle. $price. $buttonLabel',
@@ -911,16 +764,39 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         color: const Color(0xFF141414),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: isCurrent
-              ? const BorderSide(color: _fluorGreen, width: 2)
+          side: borderW > 0
+              ? BorderSide(color: borderColor, width: borderW)
               : BorderSide.none,
         ),
-        elevation: 8,
+        elevation: highlightBorder ? 12 : 8,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (badge != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1E293B),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: titleColor.withValues(alpha: 0.45)),
+                      ),
+                      child: Text(
+                        badge,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (isCurrent)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 8),
@@ -943,8 +819,8 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: _fluorGreen,
+                style: TextStyle(
+                  color: titleColor,
                   fontWeight: FontWeight.bold,
                   fontSize: 20,
                 ),
@@ -990,7 +866,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('? ', style: TextStyle(color: Colors.white70)),
+                        const Text('• ', style: TextStyle(color: Colors.white70)),
                         Expanded(
                           child: Text(
                             b,
@@ -1013,7 +889,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: isLoading ? null : () => onPressed(),
+                  onPressed: (isLoading || buttonDisabled) ? null : () => onPressed(),
                   child: isLoading
                       ? const SizedBox(
                           width: 24,

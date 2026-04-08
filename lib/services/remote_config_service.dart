@@ -21,8 +21,8 @@ class RemoteConfigService {
   /// Valores padrão (fallback)
   static const String _defaultRecaptchaSiteKey =
       '6Ldz2esrAAAAAEXa0zdZlGPC7Bn4rnGX_jswYlTv';
-  static const double _defaultPlanoMensalPreco = 25.90;
-  static const double _defaultPlanoAnualPreco = 299.90;
+  static const double _defaultPlanoMensalPreco = 39.99;
+  static const double _defaultPlanoAnualPreco = 349.99;
   static const String _defaultGloboSorteApiKey = '';
 
   static String _recaptchaSiteKey = _defaultRecaptchaSiteKey;
