@@ -118,6 +118,7 @@ import 'screens/gerar_postagem_screen.dart';
 import 'screens/compartilhar_whatsapp_screen.dart';
 import 'screens/analise_vendas_ia_screen.dart';
 import 'screens/dashboard_insights_screen.dart';
+import 'screens/loja_preview_shell_screen.dart';
 
 // Widgets
 import 'widgets/notificacao_pedido_listener.dart';
@@ -2098,9 +2099,15 @@ class MyApp extends StatelessWidget {
                 } else if (t != null) {
                   idx = int.tryParse(t.toString()) ?? 0;
                 }
-                return ModelosImportacaoScreen(initialTabIndex: idx);
+                return _planGate(
+                  PlanGateFeature.modelosImportacao,
+                  ModelosImportacaoScreen(initialTabIndex: idx),
+                );
               },
-              '/relatorio_vendedor': (_) => const RelatorioVendedorScreen(),
+              '/relatorio_vendedor': (_) => _planGate(
+                    PlanGateFeature.vendedores,
+                    const RelatorioVendedorScreen(),
+                  ),
               '/cadastro': (_) => const CadastroScreen(),
               '/permissao': (_) => const PermissoesScreen(),
               '/permissoes': (_) => const PermissoesScreen(),
@@ -2154,13 +2161,14 @@ class MyApp extends StatelessWidget {
                     PlanGateFeature.carrinhosAbandonados,
                     (lojaId) => CarrinhosAbandonadosScreen(lojaId: lojaId),
                   ),
-              '/catalog_avaliacoes_moderacao': (ctx) => _lojaIdRoute(
-                (lojaId) => kIsWeb
-                    ? AdminWebRouteShell(
-                        child: CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
-                      )
-                    : CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
-              ),
+              '/catalog_avaliacoes_moderacao': (ctx) => _lojaIdRouteGated(
+                    PlanGateFeature.catalogoAvaliacoesModeracao,
+                    (lojaId) => kIsWeb
+                        ? AdminWebRouteShell(
+                            child: CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
+                          )
+                        : CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
+                  ),
               '/config/pagamentos': (_) => _planGate(
                     PlanGateFeature.configurarPagamentosOnline,
                     const ConfigPagamentosSimplesScreen(),
@@ -2223,7 +2231,10 @@ class MyApp extends StatelessWidget {
                     PlanGateFeature.campanhasSugeridas,
                     (lojaId) => CampanhasSugeridasScreen(lojaId: lojaId),
                   ),
-              '/notas_fiscais': (_) => const NotasFiscaisScreen(),
+              '/notas_fiscais': (_) => _planGate(
+                    PlanGateFeature.notasFiscais,
+                    const NotasFiscaisScreen(),
+                  ),
               '/contas_receber': (_) => _planGate(
                     PlanGateFeature.contasReceber,
                     const ContasReceberScreen(),
@@ -2369,17 +2380,7 @@ class MyApp extends StatelessWidget {
                 final rawArgs = ModalRoute.of(ctx)?.settings.arguments;
                 final args = rawArgs is Map ? rawArgs.cast<String, dynamic>() : <String, dynamic>{};
                 final lojaIdArg = args['lojaId']?.toString().trim() ?? '';
-
-                if (lojaIdArg.isEmpty) {
-                  return const ConfigureLojaPlaceholderScreen();
-                }
-                return PublicCatalogScreen(
-                  lojaId: lojaIdArg,
-                  initialCartId: null,
-                  initialPage: null,
-                  initialProdutoId: null,
-                  preview: true,
-                );
+                return LojaPreviewShellScreen(lojaId: lojaIdArg);
               },
             },
             onGenerateRoute: app_routes.onGenerateRoute,

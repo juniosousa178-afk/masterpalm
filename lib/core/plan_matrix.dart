@@ -56,6 +56,26 @@ enum PlanGateFeature {
   relatorioRankingClientes,
   relatorioLucratividade,
   carrinhosAbandonados,
+
+  /// Legado: rota de prévia usa subgates; [allows] retorna true para não travar a rota.
+  lojaPreview,
+
+  /// Moderação de avaliações do catálogo — Intermediário+.
+  catalogoAvaliacoesModeracao,
+
+  /// Notas fiscais — Intermediário+.
+  notasFiscais,
+
+  /// Importação por modelos — Intermediário+.
+  modelosImportacao,
+}
+
+/// Modo de conteúdo do hub /relatorios (subgates internos).
+enum PlanRelatoriosHubMode {
+  minimal,
+  basicSummary,
+  operational,
+  full,
 }
 
 /// Limites numéricos por tier (espelha regra comercial; LimitsGuard usa planId).
@@ -104,10 +124,9 @@ abstract final class PlanMatrix {
 
   /// Limites por plano canônico (Firestore). Trial pleno usa teto alto.
   static PlanLimitsRow limitsForPlanId(String? planId) {
-    final p = (planId ?? '').trim().toLowerCase();
+    final p = PlanosService.normalizePlanId(planId);
     switch (p) {
       case PlanId.freeLimited:
-      case 'freelight':
         return const PlanLimitsRow(
           maxProducts: 30,
           maxClients: 20,
@@ -173,11 +192,30 @@ abstract final class PlanMatrix {
     };
   }
 
+  /// Conteúdo permitido dentro de /relatorios (rota sempre aberta).
+  static PlanRelatoriosHubMode relatoriosHubMode(PlanAccessTier tier) {
+    switch (tier) {
+      case PlanAccessTier.freeLimited:
+        return PlanRelatoriosHubMode.minimal;
+      case PlanAccessTier.basic:
+        return PlanRelatoriosHubMode.basicSummary;
+      case PlanAccessTier.intermediate:
+        return PlanRelatoriosHubMode.operational;
+      case PlanAccessTier.pro:
+      case PlanAccessTier.trialFull:
+      case PlanAccessTier.lifetime:
+        return PlanRelatoriosHubMode.full;
+    }
+  }
+
   static bool allows(PlanAccessTier tier, PlanGateFeature f) {
     if (tier == PlanAccessTier.lifetime || tier == PlanAccessTier.trialFull) {
       return true;
     }
     if (tier == PlanAccessTier.pro) return true;
+
+    /// Pré-visualização do catálogo: rota sem gate; restrições no [PublicCatalogScreen].
+    if (f == PlanGateFeature.lojaPreview) return true;
 
     if (tier == PlanAccessTier.intermediate) {
       return !_isProOnly(f);
@@ -188,7 +226,11 @@ abstract final class PlanMatrix {
       return !_isIntermediateOnly(f);
     }
 
-    // freeLimited: itens deste enum são upgrades (o essencial fica nas permissões Hive).
+    // freeLimited: somente o que o produto liberou explicitamente (rotas sem gate usam subgates).
+    return _allowsFreeLimited(f);
+  }
+
+  static bool _allowsFreeLimited(PlanGateFeature f) {
     return false;
   }
 
@@ -208,6 +250,7 @@ abstract final class PlanMatrix {
       case PlanGateFeature.fretesCupons:
       case PlanGateFeature.canaisMeta:
       case PlanGateFeature.marketplaces:
+      case PlanGateFeature.adminSync:
         return true;
       default:
         return false;
@@ -226,6 +269,11 @@ abstract final class PlanMatrix {
       case PlanGateFeature.relatorioRankingClientes:
       case PlanGateFeature.relatorioLucratividade:
       case PlanGateFeature.carrinhosAbandonados:
+      case PlanGateFeature.catalogoAvaliacoesModeracao:
+      case PlanGateFeature.notasFiscais:
+      case PlanGateFeature.maisVendidos:
+      case PlanGateFeature.relatoriosFinanceirosHub:
+      case PlanGateFeature.modelosImportacao:
         return true;
       default:
         return false;
@@ -256,6 +304,14 @@ abstract final class PlanMatrix {
       case PlanGateFeature.backupLoja:
       case PlanGateFeature.adminSync:
         return 'Organize sua loja com o plano Básico ou superior.';
+      case PlanGateFeature.lojaPreview:
+        return 'Na prévia, free e básico simulam catálogo com pedido pelo WhatsApp; checkout completo no Intermediário.';
+      case PlanGateFeature.catalogoAvaliacoesModeracao:
+        return 'Moderação de avaliações do catálogo faz parte do Intermediário ou Pro.';
+      case PlanGateFeature.notasFiscais:
+        return 'Notas fiscais integradas ao fluxo exigem plano Intermediário ou superior.';
+      case PlanGateFeature.modelosImportacao:
+        return 'Importação por modelos de planilha está no plano Intermediário ou superior.';
       default:
         return 'Desbloqueie no plano Pro: equipe, IA, campanhas e integrações.';
     }

@@ -10,6 +10,9 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/plan_matrix.dart';
+import 'planos_service.dart';
+
 /// -------- PLANOS E LIMITES --------
 class PlanId {
   static const String freeTrial  = 'free_trial';
@@ -50,26 +53,6 @@ const Map<String, PlanLimits> kLimitsByPlan = {
 
 /// -------- GERENCIADOR DE LICENÇA --------
 class LicenseManager {
-  static String _normalizePlanId(String? raw) {
-    final p = (raw ?? '').trim().toLowerCase();
-    switch (p) {
-      case 'mensal':
-      case 'pro_monthly':
-        return PlanId.proMonthly;
-      case 'anual':
-      case 'pro_yearly':
-        return PlanId.proYearly;
-      case 'trial_90d':
-      case 'free_trial_90d':
-      case 'free_trial':
-        return 'free_trial_90d';
-      case 'free_limited':
-        return 'free_limited';
-      default:
-        return p;
-    }
-  }
-
   // ========== DEVICE ID ==========
   static Future<String> getDeviceId() async {
     final di = DeviceInfoPlugin();
@@ -107,7 +90,7 @@ class LicenseManager {
     required String planId,
     required DateTime? expiresAt,
   }) async {
-    final normalized = _normalizePlanId(planId);
+    final normalized = PlanosService.normalizePlanId(planId);
     final box = await Hive.openBox('licenca');
     await box.put('currentPlanId', normalized);
     if (expiresAt != null) {
@@ -160,13 +143,21 @@ class LicenseManager {
 
     final d = doc.data() ?? <String, dynamic>{};
 
-    String planId = _normalizePlanId(
+    String planId = PlanosService.normalizePlanId(
       (d['currentPlanId'] ?? d['current_plan_id'])?.toString(),
     );
     String status = (d['status'] ?? 'active').toString();
     if (status.isEmpty) status = 'active';
-    final end =
+    DateTime? end =
         _parseEnd(d['current_period_end'] ?? d['currentPeriodEnd']);
+
+    final mo = (d['manualOverride'] is Map) ? (d['manualOverride'] as Map) : null;
+    final moEnabled = mo != null && (mo['enabled'] == true);
+    if (moEnabled) {
+      planId = PlanosService.normalizePlanId((mo['planId'] ?? '').toString());
+      end = null;
+      status = 'active';
+    }
 
     if (planId.isNotEmpty && _isActiveStatus(status) && _notExpired(end)) {
       await cachePlanLocally(planId: planId, expiresAt: end);
@@ -189,7 +180,7 @@ class LicenseManager {
 
       for (final doc in snap.docs) {
         final s = doc.data();
-        final planId = _normalizePlanId(
+        final planId = PlanosService.normalizePlanId(
           (s['plan_id'] ?? s['planId'] ?? '').toString(),
         );
         final status = (s['status'] as String?) ?? 'active';
@@ -237,7 +228,14 @@ class LicenseManager {
   }
 
   static Future<PlanLimits> currentPlanLimits() async {
-    final planId = await getCachedPlanId() ?? PlanId.freeTrial;
-    return kLimitsByPlan[planId] ?? kLimitsByPlan[PlanId.freeTrial]!;
+    final raw = await getCachedPlanId();
+    final id = PlanosService.normalizePlanId(raw);
+    final map = PlanMatrix.limitsMapForPlanId(id.isEmpty ? null : id);
+    return PlanLimits(
+      maxProdutos: map['maxProducts'] ?? 999999,
+      maxClientes: map['maxClients'] ?? 999999,
+      suportePrioritario: id == PlanId.proYearly || id == 'lifetime',
+      dominioProprio: id == PlanId.proYearly || id == 'lifetime',
+    );
   }
 }

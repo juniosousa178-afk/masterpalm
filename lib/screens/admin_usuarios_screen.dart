@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 
 import '../themes/app_colors.dart';
+import '../services/planos_service.dart';
 
 /// Tela administrativa para gerenciar usuários e planos
 /// Somente acessível por masterpalm26@gmail.com (root)
@@ -39,14 +40,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
     return false;
   }
 
-  String _toCanonicalPlanId(String raw) {
-    final p = raw.trim().toLowerCase();
-    if (p == 'anual' || p == 'pro_yearly') return 'pro_yearly';
-    if (p == 'mensal' || p == 'pro_monthly') return 'pro_monthly';
-    if (p == 'trial_90d' || p == 'free_trial_90d') return 'free_trial_90d';
-    if (p == 'lifetime') return 'lifetime';
-    return p;
-  }
+  String _toCanonicalPlanId(String raw) => PlanosService.normalizePlanId(raw);
 
   @override
   void dispose() {

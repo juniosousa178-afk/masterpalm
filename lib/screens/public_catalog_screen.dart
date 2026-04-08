@@ -68,6 +68,7 @@ import 'public_catalog/widgets/carrinho_sheet_web.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import 'public_catalog/catalog_sobre_loja_screen.dart';
 import '../core/logger.dart';
+import '../core/plan_matrix.dart';
 import '../models/catalog_avaliacoes_ordem.dart';
 import '../models/catalog_sobre_loja_config.dart';
 
@@ -121,6 +122,9 @@ class PublicCatalogScreen extends StatefulWidget {
   /// ✅ Página do grid (1-based), quando `page` na URL é numérico — não confundir com [initialPage] (`page=dicas`).
   final int? initialCatalogPage;
 
+  /// No modo [preview], tier do admin para subgates (WhatsApp-only no free/básico).
+  final PlanAccessTier? adminPreviewTier;
+
   const PublicCatalogScreen({
     super.key,
     required this.lojaId,
@@ -141,6 +145,7 @@ class PublicCatalogScreen extends StatefulWidget {
     this.initialPmax,
     this.initialQ,
     this.initialCatalogPage,
+    this.adminPreviewTier,
   });
 
   @override
@@ -582,6 +587,41 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   static const String _keyMostrarEstoqueCatalogo = 'mostrar_estoque_catalogo';
   static const String _keyMostrarQuantidadeCatalogo =
       'mostrar_quantidade_catalogo';
+
+  bool get _adminPreviewRestrictsPayments {
+    if (!widget.preview || widget.adminPreviewTier == null) return false;
+    final t = widget.adminPreviewTier!;
+    return t == PlanAccessTier.freeLimited || t == PlanAccessTier.basic;
+  }
+
+  bool get _previewHideAvaliacoesForAdmin {
+    if (!widget.preview || widget.adminPreviewTier == null) return false;
+    return widget.adminPreviewTier == PlanAccessTier.freeLimited;
+  }
+
+  List<Map<String, dynamic>> _cuponsParaPreviaCart(
+    List<Map<String, dynamic>> cupons,
+  ) {
+    if (!_adminPreviewRestrictsPayments) return cupons;
+    return <Map<String, dynamic>>[];
+  }
+
+  List<Map<String, dynamic>> _fretesParaPreviaCart(
+    List<Map<String, dynamic>> fretes,
+  ) {
+    if (!_adminPreviewRestrictsPayments) return fretes;
+    return <Map<String, dynamic>>[];
+  }
+
+  String _gatewayParaPreviaCart(String gateway) {
+    if (!_adminPreviewRestrictsPayments) return gateway;
+    return 'whatsapp';
+  }
+
+  List<String> _paymentCodesParaPreviaRodape(List<String> codes) {
+    if (!_adminPreviewRestrictsPayments) return codes;
+    return <String>[];
+  }
   static const Color _successColor = Color(0xFF22C55E);
   static const String _baseUrlCatalogo = 'https://app.mastepalm.com.br/loja';
 
@@ -2683,6 +2723,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       return;
     }
 
+    final cuponsEff = _cuponsParaPreviaCart(cupons);
+    final fretesEff = _fretesParaPreviaCart(fretes);
+    final gatewayEff = _gatewayParaPreviaCart(checkoutGateway);
+
     final Map<String, dynamic>? initialFormData = _cachedCatalogCartForm;
 
     if (!mounted) return;
@@ -2716,8 +2760,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             lojaId: lojaId,
             items: _cart,
             catalogProducts: catalogProducts,
-            fretes: fretes,
-            cupons: cupons,
+            fretes: fretesEff,
+            cupons: cuponsEff,
             initialFormData: initialFormData,
             onFormDataToSave: (data) {
               final copy = Map<String, dynamic>.from(data);
@@ -2763,8 +2807,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             productPriceColor: productPriceColor,
             checkoutSummaryStyle: checkoutSummaryTokens,
             cartUiTokens: catalogCartUiTokens,
-            firstPurchaseCoupon: catalogFirstPurchaseCouponOffer,
-            checkoutGateway: checkoutGateway,
+            firstPurchaseCoupon: _adminPreviewRestrictsPayments
+                ? null
+                : catalogFirstPurchaseCouponOffer,
+            checkoutGateway: gatewayEff,
             checkoutButtonLabel: checkoutButtonLabel,
             pixKey: pixKey,
             freightToken: freightToken,
@@ -2773,7 +2819,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 _setCartItemQuantity(i, q, catalogProducts),
             showSnack: showCartSnack,
             onCheckoutPix:
-                (checkoutGateway == 'pix' || checkoutGateway == 'whatsapp') &&
+                (gatewayEff == 'pix' || gatewayEff == 'whatsapp') &&
                         pixKey.trim().isNotEmpty
                     ? ({
                         required Map<String, dynamic> customer,
@@ -4497,10 +4543,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final menuShowQuemSomos = safeBool(menuMap['quemSomos'], true);
                 final menuShowDicas = safeBool(menuMap['dicas'], true);
                 final exibirAvaliacoesCatalogo = safeBool(
-                  cfg['exibirAvaliacoesCatalogo'] ??
-                      cfg['exibir_depoimentos_catalogo'],
-                  false,
-                );
+                      cfg['exibirAvaliacoesCatalogo'] ??
+                          cfg['exibir_depoimentos_catalogo'],
+                      false,
+                    ) &&
+                    !_previewHideAvaliacoesForAdmin;
                 final catalogAvaliacoesOrdem =
                     CatalogAvaliacoesOrdem.fromFirestore(
                   cfg['catalogAvaliacoesOrdem'],
@@ -5256,7 +5303,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       whatsappVendedor: whatsappVendedor,
                                       lojaNome: lojaNome,
                                       paymentAsset: paymentAssets,
-                                      paymentCodes: paymentCodes,
+                                      paymentCodes: _paymentCodesParaPreviaRodape(paymentCodes),
                                       instagramUrl: instagramUrl,
                                       facebookUrl: facebookUrl,
                                       empresaRazao: empresaRazao,
@@ -5409,7 +5456,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             whatsappVendedor: whatsappVendedor,
                             lojaNome: lojaNome,
                             paymentAsset: paymentAssets,
-                            paymentCodes: paymentCodes,
+                            paymentCodes: _paymentCodesParaPreviaRodape(paymentCodes),
                             instagramUrl: instagramUrl,
                             facebookUrl: facebookUrl,
                             empresaRazao: empresaRazao,
@@ -6094,7 +6141,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       whatsappVendedor,
                                                   lojaNome: lojaNome,
                                                   paymentAsset: paymentAssets,
-                                                  paymentCodes: paymentCodes,
+                                                  paymentCodes: _paymentCodesParaPreviaRodape(paymentCodes),
                                                   instagramUrl: instagramUrl,
                                                   facebookUrl: facebookUrl,
                                                   empresaRazao: empresaRazao,
@@ -6198,7 +6245,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     whatsappVendedor,
                                                 lojaNome: lojaNome,
                                                 paymentAsset: paymentAssets,
-                                                paymentCodes: paymentCodes,
+                                                paymentCodes: _paymentCodesParaPreviaRodape(paymentCodes),
                                                 instagramUrl: instagramUrl,
                                                 facebookUrl: facebookUrl,
                                                 empresaRazao: empresaRazao,
@@ -6375,7 +6422,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               atendimentoWhatsapp:
                                                   atendimentoWhatsapp,
                                               links: footerLinks,
-                                              paymentCodes: paymentCodes,
+                                              paymentCodes:
+                                                  _paymentCodesParaPreviaRodape(
+                                                      paymentCodes),
                                               paymentAsset: paymentAssets,
                                               badgeSSL: badgeSSL,
                                               badgeGoogle: badgeGoogle,

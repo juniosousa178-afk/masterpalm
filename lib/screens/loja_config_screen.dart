@@ -29,6 +29,8 @@ import '../services/catalog_cache_service.dart';
 import '../services/limits_guard.dart';
 import '../services/sync_firestore_script.dart';
 import '../core/logger.dart';
+import '../core/plan_matrix.dart';
+import '../core/plan_access_resolver.dart';
 import '../widgets/catalog_color_field_editor.dart';
 import '../widgets/catalog_store_palette_card.dart';
 import '../widgets/catalog_visual_palette_presets_panel.dart';
@@ -110,11 +112,96 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   void _openConfigModule(_Pane pane) {
+    if (_paneLockedForCatalogConfig(pane)) {
+      _showCatalogUpgradeDialog(_catalogPaneLockedMessage(pane));
+      return;
+    }
     setState(() {
       _pane = pane;
       _hubMode = false;
     });
     _scheduleFirstErrorFieldFocus(pane);
+  }
+
+  PlanAccessTier? _planAccessTier;
+
+  bool get _isFreeLimitedCatalog =>
+      _planAccessTier == PlanAccessTier.freeLimited;
+
+  bool get _isBasicCatalog => _planAccessTier == PlanAccessTier.basic;
+
+  bool get _showsPedidoBaseUrlField =>
+      _planAccessTier == PlanAccessTier.intermediate ||
+      _planAccessTier == PlanAccessTier.pro ||
+      _planAccessTier == PlanAccessTier.trialFull ||
+      _planAccessTier == PlanAccessTier.lifetime;
+
+  bool _paneLockedForCatalogConfig(_Pane pane) {
+    final t = _planAccessTier;
+    if (t == null) return false;
+    switch (t) {
+      case PlanAccessTier.lifetime:
+      case PlanAccessTier.trialFull:
+      case PlanAccessTier.pro:
+      case PlanAccessTier.intermediate:
+        return false;
+      case PlanAccessTier.basic:
+        return pane == _Pane.financeiro;
+      case PlanAccessTier.freeLimited:
+        switch (pane) {
+          case _Pane.identidade:
+          case _Pane.midias:
+          case _Pane.publicar:
+            return false;
+          default:
+            return true;
+        }
+    }
+  }
+
+  String _catalogPaneLockedMessage(_Pane pane) {
+    if (_isBasicCatalog && pane == _Pane.financeiro) {
+      return 'Taxas avançadas e checkout online ficam disponíveis no plano Intermediário ou Pro.';
+    }
+    return 'No plano gratuito limitado você configura identidade, mídias e publicação. '
+        'Temas, layout, menu e rodapé exigem plano Básico ou superior; taxas e checkout online no Intermediário.';
+  }
+
+  Future<void> _loadPlanAccessTier() async {
+    try {
+      final t = await PlanAccessResolver.currentTier();
+      if (!mounted) return;
+      setState(() {
+        _planAccessTier = t;
+        if (_paneLockedForCatalogConfig(_pane) && !_hubMode) {
+          _hubMode = true;
+          _pane = _Pane.identidade;
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _showCatalogUpgradeDialog(String message) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Recurso do plano'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fechar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.of(context).pushNamed('/planos');
+            },
+            child: const Text('Ver planos'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Foco/scroll no primeiro campo com erro (uma vez por abertura do módulo; post-frame).
@@ -645,15 +732,27 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   void _openHubErrorTarget(({bool fretes, _Pane? pane}) t) {
     if (t.fretes) {
-      Navigator.push(
-        context,
-        MaterialPageRoute<void>(
-          builder: (_) => const FretesCuponsScreen(),
-        ),
-      );
+      unawaited(_openFretesCuponsScreenIfAllowed());
       return;
     }
     _openConfigModule(t.pane!);
+  }
+
+  Future<void> _openFretesCuponsScreenIfAllowed() async {
+    if (!await PlanAccessResolver.allows(PlanGateFeature.fretesCupons)) {
+      if (!mounted) return;
+      _showCatalogUpgradeDialog(
+        PlanMatrix.upgradeHint(PlanGateFeature.fretesCupons),
+      );
+      return;
+    }
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => const FretesCuponsScreen(),
+      ),
+    );
   }
 
   void _openPrevHubErrorTarget() {
@@ -1016,6 +1115,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
     _animationController.forward();
     unawaited(_initConfig());
+    unawaited(_loadPlanAccessTier());
     _verificarConectividade();
     _setupAutoSaveListeners();
   }
@@ -3705,7 +3805,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   Future<void> _abrirPreviewCatalogo() async {
     final lojaId = _activeStoreId();
-
+    final tier = await PlanAccessResolver.currentTier();
     if (!mounted) return;
 
     // Web: usa rota nomeada para manter histórico do browser (voltar no iPhone/Chrome).
@@ -3722,6 +3822,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         builder: (_) => PublicCatalogScreen(
           lojaId: lojaId,
           preview: true,
+          adminPreviewTier: tier,
         ),
       ),
     );
@@ -3993,18 +4094,29 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   children: [
                     // URL pública fixa no topo
                     _buildUrlCard(urlPublica),
+                    if (_isFreeLimitedCatalog) ...[
+                      const SizedBox(height: 12),
+                      _buildFreeLimitedCatalogBanner(cs),
+                    ],
+                    if (_isBasicCatalog) ...[
+                      const SizedBox(height: 12),
+                      _buildBasicCatalogBanner(cs),
+                    ],
                     const SizedBox(height: 12),
-                    _buildUrlCard(
-                      '$urlPublica?page=dicas',
-                      label: 'Link da tela Dicas e Informações',
-                      subtitle: 'Use este link para enviar somente a página de dicas ao cliente',
-                    ),
-                    const SizedBox(height: 16),
-                    CatalogStorePaletteCard(
-                      entries: _catalogPaletteOverviewEntries(),
-                      compactStrip: true,
-                    ),
-                    const SizedBox(height: 16),
+                    if (!_isFreeLimitedCatalog)
+                      _buildUrlCard(
+                        '$urlPublica?page=dicas',
+                        label: 'Link da tela Dicas e Informações',
+                        subtitle: 'Use este link para enviar somente a página de dicas ao cliente',
+                      ),
+                    if (!_isFreeLimitedCatalog) const SizedBox(height: 16),
+                    if (!_isFreeLimitedCatalog) ...[
+                      CatalogStorePaletteCard(
+                        entries: _catalogPaletteOverviewEntries(),
+                        compactStrip: true,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     _buildLojaConfigHub(isWide),
                   ],
                 ),
@@ -4257,7 +4369,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       IconButton(
         icon: Icon(Icons.visibility_outlined, color: actionIconColor),
         tooltip: 'Pré-visualizar',
-        onPressed: _salvando ? null : _abrirPreviewCatalogo,
+        onPressed: _salvando ? null : () => unawaited(_abrirPreviewCatalogo()),
       ),
       if (hubErrEdges.next != null)
         compact
@@ -4547,6 +4659,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   /// Apenas o switch de painéis — mesma árvore de widgets de antes.
   Widget _buildPaneEditorFor(_Pane pane) {
+    if (_paneLockedForCatalogConfig(pane)) {
+      return _buildFreeLimitedLockedPaneBody();
+    }
     return switch (pane) {
       _Pane.identidade => _paneIdentidade(),
       _Pane.midias => _paneMidias(),
@@ -4558,6 +4673,106 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _Pane.financeiro => _paneFinanceiro(),
       _Pane.publicar => _panePublicar(),
     };
+  }
+
+  Widget _buildFreeLimitedCatalogBanner(ColorScheme cs) {
+    return Material(
+      color: cs.primaryContainer.withValues(alpha: 0.4),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline_rounded, color: cs.primary, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Catálogo básico: pedidos pelo WhatsApp. Você pode editar identidade, mídias e publicar. '
+                'Temas, layout avançado, fretes/cupons e checkout online exigem upgrade.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: cs.onSurface.withValues(alpha: 0.88),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pushNamed('/planos'),
+              child: const Text('Planos'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBasicCatalogBanner(ColorScheme cs) {
+    return Material(
+      color: cs.secondaryContainer.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.palette_outlined, color: cs.secondary, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Plano Básico: personalize tema, layout e menu. Checkout online e taxas avançadas liberam no Intermediário.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: cs.onSurface.withValues(alpha: 0.88),
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pushNamed('/planos'),
+              child: const Text('Planos'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFreeLimitedLockedPaneBody() {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline_rounded, size: 52, color: cs.primary.withValues(alpha: 0.85)),
+          const SizedBox(height: 16),
+          Text(
+            'Módulo indisponível no plano gratuito',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No plano gratuito limitado use Identidade, Mídias e Publicar. '
+            'O catálogo público recebe pedidos pelo WhatsApp.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.72), height: 1.35),
+          ),
+          const SizedBox(height: 22),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pushNamed('/planos'),
+            icon: const Icon(Icons.workspace_premium_outlined),
+            label: const Text('Ver planos'),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: _goToHub,
+            child: const Text('Voltar aos módulos'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Agrega cores do draft atual por valor ARGB (mesma base da paleta e das sugestões nos editores).
@@ -4965,14 +5180,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         ),
       ),
       trailing: Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const FretesCuponsScreen(),
-          ),
-        );
-      },
+      onTap: () => unawaited(_openFretesCuponsScreenIfAllowed()),
     );
 
     final t = tooltip ?? 'Abrir fretes e cupons em tela dedicada';
@@ -6020,32 +6228,37 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   ),
                 ),
               ),
-              SizedBox(
-                width: 520,
-                child: TextField(
-                  controller: _pedidoBaseCtrl,
-                  focusNode: _focusPedidoBaseUrl,
-                  style: _fieldTextStyle(context),
-                  onChanged: (_) {
-                    _limparErroCampo('pedido_base');
-                    _scheduleAutoSave();
-                  },
-                  decoration: _inputDecoration(
-                    context,
-                    labelText: 'Link base do pedido',
-                    helperText: 'Ex.: https://app.mastepalm.com.br/pedido',
-                    errorText: _camposComErro.contains('pedido_base')
-                        ? 'URL inválida'
-                        : null,
-                    prefixIcon: const Icon(Icons.shopping_cart_checkout_outlined),
+              if (_showsPedidoBaseUrlField)
+                SizedBox(
+                  width: 520,
+                  child: TextField(
+                    controller: _pedidoBaseCtrl,
+                    focusNode: _focusPedidoBaseUrl,
+                    style: _fieldTextStyle(context),
+                    onChanged: (_) {
+                      _limparErroCampo('pedido_base');
+                      _scheduleAutoSave();
+                    },
+                    decoration: _inputDecoration(
+                      context,
+                      labelText: 'Link base do pedido',
+                      helperText: 'Ex.: https://app.mastepalm.com.br/pedido',
+                      errorText: _camposComErro.contains('pedido_base')
+                          ? 'URL inválida'
+                          : null,
+                      prefixIcon: const Icon(Icons.shopping_cart_checkout_outlined),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            'Essas informações alimentam o link de pedido no catálogo público e o botão de WhatsApp.',
+            _isFreeLimitedCatalog
+                ? 'No plano gratuito o catálogo envia o cliente para o WhatsApp. Link de pedido online e checkout ficam nos planos pagos.'
+                : _isBasicCatalog
+                    ? 'No Básico o pedido no catálogo continua pelo WhatsApp. Link de checkout online libera no Intermediário.'
+                    : 'Essas informações alimentam o link de pedido no catálogo público e o botão de WhatsApp.',
             style: TextStyle(color: cs.onSurfaceVariant),
           ),
         ],

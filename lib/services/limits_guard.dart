@@ -29,7 +29,9 @@ class LimitsGuard {
 
   /// Verifica se o plano tem restrições de limite
   bool hasLimits(String? planId) {
-    final p = (planId ?? '').toLowerCase().trim();
+    final raw = (planId ?? '').trim();
+    if (raw.isEmpty) return false;
+    final p = PlanosService.normalizePlanId(planId);
     return _limitedPlans.contains(p);
   }
 
@@ -187,9 +189,10 @@ class LimitsGuard {
   // ---------- Retrocompatibilidade (userStatus) ----------
 
   String _planOf(Map<String, dynamic>? userStatus) {
-    // Canônico obrigatório para os fluxos atuais.
     final plan = userStatus?['currentPlanId'];
-    return (plan as String?)?.toLowerCase().trim() ?? 'freelight';
+    final n = PlanosService.normalizePlanId(plan?.toString());
+    if (n.isNotEmpty) return n;
+    return PlanId.freeLimited;
   }
 
   /// @deprecated Use canAddProduto(lojaId, planId: ...) com planId de PlanosService

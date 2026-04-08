@@ -96,6 +96,8 @@ class PlanosService {
         return PlanId.freeTrial30d;
       case 'trial_90d':
       case 'free_trial_90d':
+      case 'trial':
+      case 'free_trial':
         return PlanId.freeTrial90d;
       case 'basic':
       case 'basic_monthly':
@@ -104,6 +106,7 @@ class PlanosService {
       case 'intermediate_monthly':
         return PlanId.intermediateMonthly;
       case 'free_limited':
+      case 'freelight':
         return PlanId.freeLimited;
       case 'lifetime':
         return PlanId.lifetime;
@@ -177,7 +180,14 @@ class PlanosService {
         final moEnabled = mo != null && (mo['enabled'] == true);
 
         // Fonte canônica
-        String planId = normalizePlanId(d['currentPlanId']?.toString());
+        final rawCurrent = d['currentPlanId']?.toString() ?? '';
+        String planId = normalizePlanId(rawCurrent);
+        if (rawCurrent.trim().isNotEmpty &&
+            rawCurrent.trim().toLowerCase() != planId) {
+          debugPrint(
+            '[PlanosCompat] currentPlanId legado normalizado -> $planId',
+          );
+        }
         String status = (d['status'] ?? 'active').toString();
         bool trialing = (d['trialing'] ?? false) == true;
         DateTime? end = _parseEnd(d['currentPeriodEnd']);
@@ -186,10 +196,12 @@ class PlanosService {
         if (status.trim().isEmpty) status = 'active';
 
         if (moEnabled) {
-          planId = normalizePlanId((mo['planId'] ?? PlanId.lifetime).toString());
+          final rawMo = (mo['planId'] ?? PlanId.lifetime).toString();
+          planId = normalizePlanId(rawMo);
           status = 'active';
           trialing = false;
           end = null; // override manual prevalece
+          debugPrint('[PlanosCompat] manualOverride ativo planId=$planId');
         }
 
         if (planId.isNotEmpty) {
@@ -206,8 +218,15 @@ class PlanosService {
 
       // Fallback legado em usuarios/{email}
       if (usuarioData != null && usuarioData['planoAtivo'] == true) {
-        final planoId = normalizePlanId((usuarioData['planoId'] ?? '').toString());
+        final rawLegado = (usuarioData['planoId'] ?? '').toString();
+        final planoId = normalizePlanId(rawLegado);
         if (planoId.isNotEmpty) {
+          if (rawLegado.trim().isNotEmpty &&
+              rawLegado.trim().toLowerCase() != planoId) {
+            debugPrint(
+              '[PlanosCompat] usuarios/planoId legado normalizado -> $planoId',
+            );
+          }
           return PlanInfo(
             planId: planoId,
             status: 'active',
@@ -338,10 +357,16 @@ class PlanosService {
     required String planId, // lifetime | pro_monthly | pro_yearly
     required String grantedByEmail, // masterpalm26@gmail.com
   }) async {
+    final canonical = normalizePlanId(planId);
+    if (planId.trim().toLowerCase() != canonical) {
+      debugPrint(
+        '[PlanosCompat] grantManualOverride entrada normalizada -> $canonical',
+      );
+    }
     // Se for lifetime, currentPeriodEnd fica null
     final override = {
       'enabled': true,
-      'planId': planId,
+      'planId': canonical,
       'grantedBy': grantedByEmail,
       'grantedAt': FieldValue.serverTimestamp(),
     };
@@ -349,10 +374,10 @@ class PlanosService {
     await _mirror(
       uid: targetUid,
       email: targetEmail,
-      planId: planId,
+      planId: canonical,
       status: 'active',
       trialing: false,
-      currentPeriodEnd: planId == PlanId.lifetime
+      currentPeriodEnd: canonical == PlanId.lifetime
           ? null
           : DateTime.now().add(const Duration(days: 3650)), // fallback longo
       manualOverride: override,

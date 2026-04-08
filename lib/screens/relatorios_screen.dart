@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -20,6 +21,7 @@ import '../utils/chart_utils.dart';
 import '../services/catalog_visitas_service.dart';
 import '../core/venda_metrics_filter.dart';
 import '../core/plan_matrix.dart';
+import '../core/plan_access_resolver.dart';
 import '../widgets/plan_gated_screen.dart';
 import 'relatorio_ranking_clientes_screen.dart';
 import 'relatorio_lucratividade_produto_screen.dart';
@@ -52,12 +54,33 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
   Box<Produto>? produtosBox;
   bool _lojaCarregando = true;
 
+  /// Subgate do hub (rota /relatorios aberta para todos os planos).
+  PlanRelatoriosHubMode _relHubMode = PlanRelatoriosHubMode.minimal;
+
   final _currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+
+  bool get _relAtLeastBasic =>
+      _relHubMode == PlanRelatoriosHubMode.basicSummary ||
+      _relHubMode == PlanRelatoriosHubMode.operational ||
+      _relHubMode == PlanRelatoriosHubMode.full;
+
+  bool get _relAtLeastOperational =>
+      _relHubMode == PlanRelatoriosHubMode.operational ||
+      _relHubMode == PlanRelatoriosHubMode.full;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLoja());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadLoja();
+      unawaited(_loadRelHubPlan());
+    });
+  }
+
+  Future<void> _loadRelHubPlan() async {
+    final t = await PlanAccessResolver.currentTier();
+    if (!mounted) return;
+    setState(() => _relHubMode = PlanMatrix.relatoriosHubMode(t));
   }
 
   Future<void> _loadLoja() async {
@@ -496,8 +519,12 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                         )
                       : const Icon(Icons.file_download_outlined, color: Colors.white),
-                  onPressed: _exportando ? null : exportarRelatoriosParaExcel,
-                  tooltip: _exportando ? 'Exportando...' : 'Exportar Excel',
+                  onPressed: (_exportando || !_relAtLeastBasic)
+                      ? null
+                      : exportarRelatoriosParaExcel,
+                  tooltip: !_relAtLeastBasic
+                      ? 'Disponível no plano Básico ou superior'
+                      : (_exportando ? 'Exportando...' : 'Exportar Excel'),
                 ),
               ),
             ],
@@ -560,6 +587,31 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_relHubMode == PlanRelatoriosHubMode.minimal)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: _buildSectionCard(
+                        title: 'Plano gratuito limitado',
+                        icon: Icons.lock_open_outlined,
+                        iconColor: _warningColor,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Resumo mínimo das vendas locais. Gráficos, exportação e relatórios operacionais vêm no Básico ou Intermediário.',
+                              style: TextStyle(fontSize: 14, height: 1.35),
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              onPressed: () =>
+                                  Navigator.pushNamed(context, '/planos'),
+                              icon: const Icon(Icons.workspace_premium_outlined),
+                              label: const Text('Ver planos'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   // Filtros de Data
                   _buildSectionCard(
                     title: 'Periodo',
@@ -615,309 +667,301 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
 
                   const SizedBox(height: 16),
 
-                  // Carrinhos abandonados
-                  InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PlanGatedScreen(
-                            feature: PlanGateFeature.carrinhosAbandonados,
-                            child: CarrinhosAbandonadosScreen(lojaId: lojaId),
-                          ),
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: _buildSectionCard(
-                      title: 'Carrinhos abandonados',
-                      icon: Icons.shopping_cart_outlined,
-                      iconColor: _warningColor,
-                      child: Row(
-                        children: [
-                          Icon(Icons.timer_outlined, color: _warningColor.withValues(alpha:0.8)),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'Ver carrinhos não finalizados e enviar lembrete por e-mail ou WhatsApp.',
-                              style: TextStyle(fontSize: 13, color: Colors.black87),
+                  if (_relAtLeastOperational) ...[
+                    InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PlanGatedScreen(
+                              feature: PlanGateFeature.carrinhosAbandonados,
+                              child: CarrinhosAbandonadosScreen(lojaId: lojaId),
                             ),
                           ),
-                          Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey.shade400),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Lucratividade por produto
-                  InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PlanGatedScreen(
-                            feature: PlanGateFeature.relatorioLucratividade,
-                            child: RelatorioLucratividadeProdutoScreen(lojaId: lojaId!),
-                          ),
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: _buildSectionCard(
-                      title: 'Lucratividade por produto',
-                      icon: Icons.trending_up,
-                      iconColor: _successColor,
-                      child: Row(
-                        children: [
-                          Icon(Icons.analytics_outlined, color: _successColor.withValues(alpha:0.8)),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'Ver custo, venda, margem e lucro por produto.',
-                              style: TextStyle(fontSize: 13, color: Colors.black87),
-                            ),
-                          ),
-                          Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey.shade400),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Exportar catálogo em PDF
-                  InkWell(
-                    onTap: _exportarCatalogoPdf,
-                    borderRadius: BorderRadius.circular(16),
-                    child: _buildSectionCard(
-                      title: 'Exportar catálogo em PDF',
-                      icon: Icons.picture_as_pdf_outlined,
-                      iconColor: _errorColor,
-                      child: const Row(
-                        children: [
-                          Icon(Icons.description, color: Colors.black54),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Gerar PDF com lista de produtos (nome, categoria, preço, estoque).',
-                              style: TextStyle(fontSize: 13, color: Colors.black87),
-                            ),
-                          ),
-                          Icon(Icons.arrow_forward_ios, size: 14, color: Colors.black54),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Visitas na loja online (catálogo público)
-                  FutureBuilder<int>(
-                    future: CatalogVisitasService.obterVisitas(lojaId!),
-                    builder: (context, snap) {
-                      final visitas = snap.hasData ? snap.data! : 0;
-                      return _buildSectionCard(
-                        title: 'Visitas na loja online',
-                        icon: Icons.visibility_outlined,
-                        iconColor: _primaryColor,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(
-                            children: [
-                              Icon(Icons.storefront_outlined, color: _primaryColor.withValues(alpha:0.8)),
-                              const SizedBox(width: 12),
-                              Text(
-                                snap.connectionState == ConnectionState.waiting
-                                    ? 'Carregando...'
-                                    : '$visitas visita(s) acumuladas (catálogo público; não é período do gráfico)',
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(16),
+                      child: _buildSectionCard(
+                        title: 'Carrinhos abandonados',
+                        icon: Icons.shopping_cart_outlined,
+                        iconColor: _warningColor,
+                        child: Row(
+                          children: [
+                            Icon(Icons.timer_outlined, color: _warningColor.withValues(alpha:0.8)),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Ver carrinhos não finalizados e enviar lembrete por e-mail ou WhatsApp.',
+                                style: TextStyle(fontSize: 13, color: Colors.black87),
                               ),
-                            ],
-                          ),
+                            ),
+                            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey.shade400),
+                          ],
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PlanGatedScreen(
+                              feature: PlanGateFeature.relatorioLucratividade,
+                              child: RelatorioLucratividadeProdutoScreen(lojaId: lojaId!),
+                            ),
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(16),
+                      child: _buildSectionCard(
+                        title: 'Lucratividade por produto',
+                        icon: Icons.trending_up,
+                        iconColor: _successColor,
+                        child: Row(
+                          children: [
+                            Icon(Icons.analytics_outlined, color: _successColor.withValues(alpha:0.8)),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Ver custo, venda, margem e lucro por produto.',
+                                style: TextStyle(fontSize: 13, color: Colors.black87),
+                              ),
+                            ),
+                            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey.shade400),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
-                  const SizedBox(height: 16),
+                  if (_relAtLeastBasic) ...[
+                    InkWell(
+                      onTap: _exportarCatalogoPdf,
+                      borderRadius: BorderRadius.circular(16),
+                      child: _buildSectionCard(
+                        title: 'Exportar catálogo em PDF',
+                        icon: Icons.picture_as_pdf_outlined,
+                        iconColor: _errorColor,
+                        child: const Row(
+                          children: [
+                            Icon(Icons.description, color: Colors.black54),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Gerar PDF com lista de produtos (nome, categoria, preço, estoque).',
+                                style: TextStyle(fontSize: 13, color: Colors.black87),
+                              ),
+                            ),
+                            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.black54),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FutureBuilder<int>(
+                      future: CatalogVisitasService.obterVisitas(lojaId!),
+                      builder: (context, snap) {
+                        final visitas = snap.hasData ? snap.data! : 0;
+                        return _buildSectionCard(
+                          title: 'Visitas na loja online',
+                          icon: Icons.visibility_outlined,
+                          iconColor: _primaryColor,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              children: [
+                                Icon(Icons.storefront_outlined, color: _primaryColor.withValues(alpha:0.8)),
+                                const SizedBox(width: 12),
+                                Text(
+                                  snap.connectionState == ConnectionState.waiting
+                                      ? 'Carregando...'
+                                      : '$visitas visita(s) acumuladas (catálogo público; não é período do gráfico)',
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
-                  // Grafico de Vendas
-                  _buildSectionCard(
-                    title: 'Grafico de Vendas',
-                    icon: Icons.bar_chart_outlined,
-                    iconColor: _successColor,
-                    child: barras.isEmpty
-                        ? _buildEmptyChart()
-                        : SizedBox(
-                            height: 220,
-                            child: BarChart(
-                              BarChartData(
-                                alignment: BarChartAlignment.spaceAround,
-                                maxY: safeMaxY(barras.map((e) => e.value).toList(), marginPercent: 0.2),
-                                barGroups: List.generate(
-                                  barras.length,
-                                  (i) => BarChartGroupData(
-                                    x: i,
-                                    barRods: [
-                                      BarChartRodData(
-                                        toY: barras[i].value,
-                                        width: 20,
-                                        color: _primaryColor,
-                                        borderRadius: const BorderRadius.only(
-                                          topLeft: Radius.circular(6),
-                                          topRight: Radius.circular(6),
-                                        ),
-                                        backDrawRodData: BackgroundBarChartRodData(
-                                          show: true,
-                                          toY: safeMaxY(barras.map((e) => e.value).toList(), marginPercent: 0.2),
-                                          color: Colors.grey.shade100,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                gridData: FlGridData(
-                                  show: true,
-                                  drawVerticalLine: false,
-                                  horizontalInterval: safeInterval(
-                                    min: 0,
-                                    max: barras.map((e) => e.value).reduce((a, b) => a > b ? a : b),
-                                    targetLines: 4,
-                                  ),
-                                  getDrawingHorizontalLine: (value) => FlLine(
-                                    color: Colors.grey.shade200,
-                                    strokeWidth: 1,
-                                  ),
-                                ),
-                                borderData: FlBorderData(show: false),
-                                titlesData: FlTitlesData(
-                                  leftTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      reservedSize: 50,
-                                      getTitlesWidget: (value, meta) {
-                                        return Text(
-                                          _currencyFormat.format(value),
-                                          style: TextStyle(
-                                            color: Colors.grey.shade600,
-                                            fontSize: 10,
+                  if (_relAtLeastBasic) ...[
+                    _buildSectionCard(
+                      title: 'Grafico de Vendas',
+                      icon: Icons.bar_chart_outlined,
+                      iconColor: _successColor,
+                      child: barras.isEmpty
+                          ? _buildEmptyChart()
+                          : SizedBox(
+                              height: 220,
+                              child: BarChart(
+                                BarChartData(
+                                  alignment: BarChartAlignment.spaceAround,
+                                  maxY: safeMaxY(barras.map((e) => e.value).toList(), marginPercent: 0.2),
+                                  barGroups: List.generate(
+                                    barras.length,
+                                    (i) => BarChartGroupData(
+                                      x: i,
+                                      barRods: [
+                                        BarChartRodData(
+                                          toY: barras[i].value,
+                                          width: 20,
+                                          color: _primaryColor,
+                                          borderRadius: const BorderRadius.only(
+                                            topLeft: Radius.circular(6),
+                                            topRight: Radius.circular(6),
                                           ),
-                                        );
-                                      },
+                                          backDrawRodData: BackgroundBarChartRodData(
+                                            show: true,
+                                            toY: safeMaxY(barras.map((e) => e.value).toList(), marginPercent: 0.2),
+                                            color: Colors.grey.shade100,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                  rightTitles: const AxisTitles(
-                                    sideTitles: SideTitles(showTitles: false),
+                                  gridData: FlGridData(
+                                    show: true,
+                                    drawVerticalLine: false,
+                                    horizontalInterval: safeInterval(
+                                      min: 0,
+                                      max: barras.map((e) => e.value).reduce((a, b) => a > b ? a : b),
+                                      targetLines: 4,
+                                    ),
+                                    getDrawingHorizontalLine: (value) => FlLine(
+                                      color: Colors.grey.shade200,
+                                      strokeWidth: 1,
+                                    ),
                                   ),
-                                  topTitles: const AxisTitles(
-                                    sideTitles: SideTitles(showTitles: false),
-                                  ),
-                                  bottomTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      getTitlesWidget: (value, meta) {
-                                        if (value.toInt() < barras.length) {
-                                          return Padding(
-                                            padding: const EdgeInsets.only(top: 8),
-                                            child: Text(
-                                              barras[value.toInt()].key,
-                                              style: TextStyle(
-                                                color: Colors.grey.shade600,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w500,
-                                              ),
+                                  borderData: FlBorderData(show: false),
+                                  titlesData: FlTitlesData(
+                                    leftTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        reservedSize: 50,
+                                        getTitlesWidget: (value, meta) {
+                                          return Text(
+                                            _currencyFormat.format(value),
+                                            style: TextStyle(
+                                              color: Colors.grey.shade600,
+                                              fontSize: 10,
                                             ),
                                           );
-                                        }
-                                        return const SizedBox.shrink();
-                                      },
+                                        },
+                                      ),
+                                    ),
+                                    rightTitles: const AxisTitles(
+                                      sideTitles: SideTitles(showTitles: false),
+                                    ),
+                                    topTitles: const AxisTitles(
+                                      sideTitles: SideTitles(showTitles: false),
+                                    ),
+                                    bottomTitles: AxisTitles(
+                                      sideTitles: SideTitles(
+                                        showTitles: true,
+                                        getTitlesWidget: (value, meta) {
+                                          if (value.toInt() < barras.length) {
+                                            return Padding(
+                                              padding: const EdgeInsets.only(top: 8),
+                                              child: Text(
+                                                barras[value.toInt()].key,
+                                                style: TextStyle(
+                                                  color: Colors.grey.shade600,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          return const SizedBox.shrink();
+                                        },
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Produtos Mais Vendidos
-                  _buildSectionCard(
-                    title: 'Produtos Mais Vendidos',
-                    icon: Icons.trending_up,
-                    iconColor: _successColor,
-                    child: _buildRankingList(
-                      items: _produtosMaisVendidos(),
-                      emptyMessage: 'Nenhum produto vendido no periodo',
-                      valueLabel: 'unidades',
-                      color: _successColor,
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                  ],
 
-                  const SizedBox(height: 16),
-
-                  // Ranking de clientes (melhoria dashboard)
-                  InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PlanGatedScreen(
-                            feature: PlanGateFeature.relatorioRankingClientes,
-                            child: RelatorioRankingClientesScreen(lojaId: lojaId!),
-                          ),
-                        ),
-                      );
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: _buildSectionCard(
-                      title: 'Ranking de clientes',
-                      icon: Icons.people_outline,
-                      iconColor: _primaryColor,
-                      child: Row(
-                        children: [
-                          Icon(Icons.leaderboard, color: _primaryColor.withValues(alpha:0.7)),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text(
-                              'Ver ranking por total comprado, quantidade de pedidos e ticket médio.',
-                              style: TextStyle(fontSize: 13, color: Colors.black87),
-                            ),
-                          ),
-                          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.black54),
-                        ],
+                  if (_relAtLeastBasic) ...[
+                    _buildSectionCard(
+                      title: 'Produtos Mais Vendidos',
+                      icon: Icons.trending_up,
+                      iconColor: _successColor,
+                      child: _buildRankingList(
+                        items: _produtosMaisVendidos(),
+                        emptyMessage: 'Nenhum produto vendido no periodo',
+                        valueLabel: 'unidades',
+                        color: _successColor,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                  ],
 
-                  const SizedBox(height: 16),
-
-                  // Clientes que Mais Compram
-                  _buildSectionCard(
-                    title: 'Clientes que Mais Compram',
-                    icon: Icons.people_outline,
-                    iconColor: _primaryColor,
-                    child: _buildRankingList(
-                      items: _clientesMaisCompram(),
-                      emptyMessage: 'Nenhuma compra no periodo',
-                      valueLabel: 'compras',
-                      color: _primaryColor,
+                  if (_relAtLeastOperational) ...[
+                    InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PlanGatedScreen(
+                              feature: PlanGateFeature.relatorioRankingClientes,
+                              child: RelatorioRankingClientesScreen(lojaId: lojaId!),
+                            ),
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(16),
+                      child: _buildSectionCard(
+                        title: 'Ranking de clientes',
+                        icon: Icons.people_outline,
+                        iconColor: _primaryColor,
+                        child: Row(
+                          children: [
+                            Icon(Icons.leaderboard, color: _primaryColor.withValues(alpha:0.7)),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                'Ver ranking por total comprado, quantidade de pedidos e ticket médio.',
+                                style: TextStyle(fontSize: 13, color: Colors.black87),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.black54),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                  ],
 
-                  const SizedBox(height: 16),
-
-                  // Produtos com Estoque Baixo
-                  _buildSectionCard(
-                    title: 'Produtos com Estoque Baixo',
-                    icon: Icons.warning_amber_outlined,
-                    iconColor: _warningColor,
-                    child: _buildLowStockList(),
-                  ),
-
-                  const SizedBox(height: 32),
+                  if (_relAtLeastBasic) ...[
+                    _buildSectionCard(
+                      title: 'Clientes que Mais Compram',
+                      icon: Icons.people_outline,
+                      iconColor: _primaryColor,
+                      child: _buildRankingList(
+                        items: _clientesMaisCompram(),
+                        emptyMessage: 'Nenhuma compra no periodo',
+                        valueLabel: 'compras',
+                        color: _primaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSectionCard(
+                      title: 'Produtos com Estoque Baixo',
+                      icon: Icons.warning_amber_outlined,
+                      iconColor: _warningColor,
+                      child: _buildLowStockList(),
+                    ),
+                    const SizedBox(height: 32),
+                  ],
+                  if (!_relAtLeastBasic) const SizedBox(height: 24),
                 ],
               ),
             ),

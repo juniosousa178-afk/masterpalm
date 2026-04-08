@@ -107,7 +107,8 @@ service cloud.firestore {
     function isPaidPlanIdUser(v) {
       let x = stringPlanLower(v);
       return x == 'pro_monthly' || x == 'pro_yearly' || x == 'lifetime'
-        || x == 'basic_monthly' || x == 'intermediate_monthly';
+        || x == 'basic_monthly' || x == 'intermediate_monthly'
+        || x == 'mensal' || x == 'anual';
     }
 
     function userSelfSafePlanUpdate() {
