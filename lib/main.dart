@@ -2104,11 +2104,18 @@ class MyApp extends StatelessWidget {
               '/master_login': (_) => const MasterLoginScreen(),
               '/master_config': (_) => const MasterConfigScreen(),
               '/site_config': (_) => const SiteConfigScreen(),
-              '/cadastro_usuarios': (_) =>
-                  const VendedoresScreen(), // Redireciona para tela unificada
-              '/cadastro_usuario': (_) => const VendedoresScreen(), // Alias
-              '/gerenciar_vendedores': (_) =>
-                  const VendedoresScreen(), // Redireciona para tela unificada
+              '/cadastro_usuarios': (_) => _planGate(
+                    PlanGateFeature.vendedores,
+                    const VendedoresScreen(),
+                  ),
+              '/cadastro_usuario': (_) => _planGate(
+                    PlanGateFeature.vendedores,
+                    const VendedoresScreen(),
+                  ),
+              '/gerenciar_vendedores': (_) => _planGate(
+                    PlanGateFeature.vendedores,
+                    const VendedoresScreen(),
+                  ),
               '/vendedores': (_) => _planGate(
                     PlanGateFeature.vendedores,
                     const VendedoresScreen(),
@@ -2224,6 +2231,14 @@ class MyApp extends StatelessWidget {
                     const GloboSorteioScreenWrapper(),
                   ),
               '/home': (_) => const HomeScreen(),
+              '/marketplaces': (_) => _planGate(
+                    PlanGateFeature.marketplaces,
+                    const MarketplacesScreen(),
+                  ),
+              '/configuracoes/canais_meta': (_) => _planGate(
+                    PlanGateFeature.canaisMeta,
+                    const CanaisMetaScreen(),
+                  ),
 
               // ✅ ROTA /loja: na Web usa SEMPRE o lojaId da URL (path ou fragment); no app usa LojaIdService
               '/loja': (_) {
