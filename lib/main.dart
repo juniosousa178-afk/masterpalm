@@ -112,6 +112,12 @@ import 'screens/config_pagamentos_screen.dart';
 import 'screens/config_pagamentos_simples_screen.dart';
 import 'screens/ajuda_screen.dart';
 import 'screens/modelos_importacao_screen.dart';
+import 'screens/dicas_ia_screen.dart';
+import 'screens/textos_whatsapp_ia_screen.dart';
+import 'screens/gerar_postagem_screen.dart';
+import 'screens/compartilhar_whatsapp_screen.dart';
+import 'screens/analise_vendas_ia_screen.dart';
+import 'screens/dashboard_insights_screen.dart';
 
 // Widgets
 import 'widgets/notificacao_pedido_listener.dart';
@@ -2229,6 +2235,30 @@ class MyApp extends StatelessWidget {
               '/globo_sorteio': (_) => _planGate(
                     PlanGateFeature.globoSorteio,
                     const GloboSorteioScreenWrapper(),
+                  ),
+              '/dashboard_insights': (_) => _lojaIdRouteGated(
+                    PlanGateFeature.insights,
+                    (lojaId) => DashboardInsightsScreen(lojaId: lojaId),
+                  ),
+              '/dicas_ia': (_) => _planGate(
+                    PlanGateFeature.dicasIA,
+                    const DicasIaScreen(),
+                  ),
+              '/textos_whatsapp_ia': (_) => _planGate(
+                    PlanGateFeature.textosWhatsappIA,
+                    const TextosWhatsAppIaScreen(),
+                  ),
+              '/gerar_postagem': (_) => _planGate(
+                    PlanGateFeature.gerarPostagem,
+                    const GerarPostagemScreen(),
+                  ),
+              '/compartilhar_whatsapp': (_) => _planGate(
+                    PlanGateFeature.compartilharWhatsapp,
+                    const CompartilharWhatsAppScreen(),
+                  ),
+              '/analise_vendas_ia': (_) => _planGate(
+                    PlanGateFeature.analiseVendasIA,
+                    const AnaliseVendasIaScreen(),
                   ),
               '/home': (_) => const HomeScreen(),
               '/marketplaces': (_) => _planGate(

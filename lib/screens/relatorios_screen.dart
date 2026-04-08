@@ -19,6 +19,8 @@ import '../services/loja_id_service.dart';
 import '../utils/chart_utils.dart';
 import '../services/catalog_visitas_service.dart';
 import '../core/venda_metrics_filter.dart';
+import '../core/plan_matrix.dart';
+import '../widgets/plan_gated_screen.dart';
 import 'relatorio_ranking_clientes_screen.dart';
 import 'relatorio_lucratividade_produto_screen.dart';
 import 'carrinhos_abandonados_screen.dart';
@@ -619,7 +621,10 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => CarrinhosAbandonadosScreen(lojaId: lojaId),
+                          builder: (_) => PlanGatedScreen(
+                            feature: PlanGateFeature.carrinhosAbandonados,
+                            child: CarrinhosAbandonadosScreen(lojaId: lojaId),
+                          ),
                         ),
                       );
                     },
@@ -652,7 +657,10 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => RelatorioLucratividadeProdutoScreen(lojaId: lojaId!),
+                          builder: (_) => PlanGatedScreen(
+                            feature: PlanGateFeature.relatorioLucratividade,
+                            child: RelatorioLucratividadeProdutoScreen(lojaId: lojaId!),
+                          ),
                         ),
                       );
                     },
@@ -856,7 +864,10 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => RelatorioRankingClientesScreen(lojaId: lojaId!),
+                          builder: (_) => PlanGatedScreen(
+                            feature: PlanGateFeature.relatorioRankingClientes,
+                            child: RelatorioRankingClientesScreen(lojaId: lojaId!),
+                          ),
                         ),
                       );
                     },

@@ -161,27 +161,108 @@ async function computePlanState({ db, uid, email }) {
     }
   }
 
-  // 2) Plano pago (mensal/anual)
+  // 2) Estado canônico no Firestore (callable trial 30d, planos pagos, free_limited)
   const canonicalPlan = normalizeCanonicalPlanId(data.currentPlanId || data.plan || "");
-  const plan = toLegacyPlanAlias(canonicalPlan);
+  const planAlias = toLegacyPlanAlias(canonicalPlan);
   const renewAt = toDateAny(data.currentPeriodEnd || data.plan_renewsAt);
 
-  if ((canonicalPlan === "pro_monthly" || canonicalPlan === "pro_yearly") && renewAt) {
+  if (canonicalPlan === "lifetime") {
+    await ref.set(
+      {
+        email,
+        currentPlanId: "lifetime",
+        status: "active",
+        trialing: false,
+        currentPeriodEnd: null,
+        blocked_reason: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return {
+      status: "active",
+      plan: "lifetime",
+      isRoot: false,
+      daysLeft: 99999,
+      endsAt: null,
+      shouldNotify: false,
+      allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
+      message: "Acesso vitalício.",
+      userDoc: data,
+    };
+  }
+
+  if (canonicalPlan === "free_limited") {
+    await ref.set(
+      {
+        email,
+        currentPlanId: "free_limited",
+        status: "active",
+        trialing: false,
+        currentPeriodEnd: null,
+        blocked_reason: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    return {
+      status: "active",
+      plan: "free_limited",
+      isRoot: false,
+      daysLeft: 99999,
+      endsAt: null,
+      shouldNotify: false,
+      allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
+      message: "Plano free limitado ativo.",
+      userDoc: data,
+    };
+  }
+
+  if (
+    (canonicalPlan === "free_trial_30d" || canonicalPlan === "free_trial_90d") &&
+    data.trialing === true
+  ) {
+    const end = renewAt;
+    if (end && now <= end) {
+      const daysLeft = daysBetweenCeil(now, end);
+      await ref.set(
+        {
+          email,
+          currentPlanId: canonicalPlan,
+          status: "trialing",
+          trialing: true,
+          currentPeriodEnd: Timestamp.fromDate(end),
+          blocked_reason: FieldValue.delete(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return {
+        status: "active",
+        plan: "trial",
+        isRoot: false,
+        daysLeft,
+        endsAt: end.toISOString(),
+        shouldNotify: false,
+        allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
+        message: "Trial ativo.",
+        userDoc: data,
+      };
+    }
+  }
+
+  const paidWithRenewal = ["pro_monthly", "pro_yearly", "basic_monthly", "intermediate_monthly"];
+  if (paidWithRenewal.includes(canonicalPlan) && renewAt) {
     if (now <= renewAt) {
       const daysLeft = daysBetweenCeil(now, renewAt);
-
-      // Notifica 15 dias antes, de 5 em 5 dias
       const notifyStart = 15;
       const notifyEvery = 5;
-
       let shouldNotify = false;
       let notifyMsg = null;
-
       if (daysLeft <= notifyStart && daysLeft > 0) {
         const lastNotifyAt = toDateAny(data.notify_lastAt);
         const canNotify =
           !lastNotifyAt || daysBetweenCeil(lastNotifyAt, now) >= notifyEvery;
-
         if (canNotify) {
           shouldNotify = true;
           notifyMsg = `Faltam ${daysLeft} dias para vencer seu plano.`;
@@ -194,7 +275,6 @@ async function computePlanState({ db, uid, email }) {
           );
         }
       }
-
       await ref.set(
         {
           email,
@@ -207,22 +287,19 @@ async function computePlanState({ db, uid, email }) {
         },
         { merge: true }
       );
-
       return {
         status: "active",
-        plan,
+        plan: planAlias,
         isRoot: false,
         daysLeft,
         endsAt: renewAt.toISOString(),
         shouldNotify,
         notifyMsg,
-        allowPlans: ["mensal", "anual"],
+        allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
         message: "Plano pago ativo.",
         userDoc: data,
       };
     }
-
-    // vencido
     await ref.set(
       {
         email,
@@ -235,64 +312,24 @@ async function computePlanState({ db, uid, email }) {
       },
       { merge: true }
     );
-
     return {
       status: "blocked",
-      plan,
+      plan: planAlias,
       isRoot: false,
       daysLeft: 0,
       endsAt: renewAt.toISOString(),
       shouldNotify: true,
       notifyMsg: "Seu plano venceu. Assine para continuar.",
-      allowPlans: ["mensal", "anual"],
+      allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
       message: "Plano vencido.",
       userDoc: data,
     };
   }
 
-  // 3) Trial 3 meses (uma vez)
-  const trialUsed = !!data.trial_used;
+  // 3) Legado: trial_endsAt (contas antigas). Não cria mais trial de 90 dias automaticamente.
   const trialEndsAt = toDateAny(data.trial_endsAt);
-  const trialStartedAt = toDateAny(data.trial_startedAt);
 
-  if (!trialUsed && !trialEndsAt && !trialStartedAt) {
-    const start = now;
-    const end = addMonths(now, 3);
-
-    await ref.set(
-      {
-        email,
-        currentPlanId: "free_trial_90d",
-        status: "trialing",
-        trialing: true,
-        currentPeriodEnd: Timestamp.fromDate(end),
-        trial_used: true,
-        trial_startedAt: Timestamp.fromDate(start),
-        trial_endsAt: Timestamp.fromDate(end),
-        notify_lastAt: FieldValue.delete(),
-        blocked_reason: FieldValue.delete(),
-        updatedAt: FieldValue.serverTimestamp(),
-        createdAt: data.createdAt || FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    const daysLeft = daysBetweenCeil(now, end);
-
-    return {
-      status: "active",
-      plan: "trial",
-      isRoot: false,
-      daysLeft,
-      endsAt: end.toISOString(),
-      shouldNotify: false,
-      allowPlans: ["mensal", "anual"],
-      message: "Trial iniciado (3 meses).",
-      userDoc: data,
-    };
-  }
-
-  // Trial existente
+  // Trial existente (legado)
   if (trialEndsAt) {
     if (now <= trialEndsAt) {
       const daysLeft = daysBetweenCeil(now, trialEndsAt);
@@ -391,13 +428,13 @@ async function computePlanState({ db, uid, email }) {
 
   return {
     status: "blocked",
-    plan: plan || "none",
+    plan: planAlias || canonicalPlan || "none",
     isRoot: false,
     daysLeft: 0,
     endsAt: null,
     shouldNotify: true,
     notifyMsg: "Você precisa assinar um plano (mensal ou anual) para continuar.",
-    allowPlans: ["mensal", "anual"],
+    allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
     message: "Bloqueado sem plano.",
     userDoc: data,
   };

@@ -85,6 +85,7 @@ import '../motor_crescimento/screens/motor_crescimento_screen.dart';
 import '../motor_crescimento_automacoes/screens/campanhas_sugeridas_screen.dart';
 import '../core/logger.dart';
 import '../core/plan_matrix.dart';
+import '../widgets/plan_gated_screen.dart';
 import '../services/public_store_link_helper.dart';
 import '../utils/home_store_context_helper.dart';
 // WebLandingPlanCard é declarado no final deste arquivo para evitar problemas de resolução de import.
@@ -1182,6 +1183,7 @@ class _HomeScreenState extends State<HomeScreen>
     IconData icon,
     String route, {
     Widget? pushWidget,
+    PlanGateFeature? pushPlanFeature,
     Color? color,
     Color? iconBgColor,
     bool sidebarMode = false,
@@ -1217,7 +1219,14 @@ class _HomeScreenState extends State<HomeScreen>
         final nav = navigatorKey.currentState;
         if (nav == null) return;
         if (pushWidget != null) {
-          nav.push(MaterialPageRoute(builder: (_) => pushWidget));
+          final w = pushWidget;
+          final Widget page = pushPlanFeature != null
+              ? PlanGatedScreen(
+                  feature: pushPlanFeature,
+                  child: w,
+                )
+              : w;
+          nav.push(MaterialPageRoute(builder: (_) => page));
         } else if (label == 'Licença (Admin)') {
           nav.push(MaterialPageRoute(builder: (_) => const AdminLoginScreen()));
         } else {
@@ -1310,6 +1319,7 @@ class _HomeScreenState extends State<HomeScreen>
       icon,
       route,
       pushWidget: pushWidget,
+      pushPlanFeature: applyPlanGate ? planFeature : null,
       color: color,
       iconBgColor: iconBgColor,
       sidebarMode: sidebarMode,
@@ -1321,6 +1331,7 @@ class _HomeScreenState extends State<HomeScreen>
     String label,
     String route, {
     Widget? pushWidget,
+    PlanGateFeature? pushPlanFeature,
     Color? color,
     String? subtitle,
   }) {
@@ -1331,7 +1342,14 @@ class _HomeScreenState extends State<HomeScreen>
         final nav = navigatorKey.currentState;
         if (nav == null) return;
         if (pushWidget != null) {
-          nav.push(MaterialPageRoute(builder: (_) => pushWidget));
+          final w = pushWidget;
+          final Widget page = pushPlanFeature != null
+              ? PlanGatedScreen(
+                  feature: pushPlanFeature,
+                  child: w,
+                )
+              : w;
+          nav.push(MaterialPageRoute(builder: (_) => page));
         } else {
           nav.pushNamed(route);
         }
@@ -1450,6 +1468,7 @@ class _HomeScreenState extends State<HomeScreen>
       label,
       route,
       pushWidget: pushWidget,
+      pushPlanFeature: applyPlanGate ? planFeature : null,
       color: color,
       subtitle: subtitle,
     );
