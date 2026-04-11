@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/feature_flags.dart';
 import '../core/logger.dart';
+import '../core/web_store_context_policy.dart';
 import '../core/remote_config_keys.dart';
 import '../models/user_profile.dart';
 import '../services/planos_service.dart';
@@ -837,33 +838,21 @@ class _AppStartRouterState extends State<AppStartRouter> {
     required String? resolvedId,
     required bool resolveThrew,
   }) {
-    if (resolveThrew) {
-      final sid = _sessionStoreId(sessao);
-      final sessionOk = sid.isNotEmpty && isValidForPublicLink(sid);
-      if (!sessionOk) {
-        logW(
-          '[LOJA_ID] unsafe_store_context_rejected motivo=resolve_exception_sem_sessao_segura',
-        );
-        return false;
+    final r = WebStoreContextPolicyResult.evaluate(
+      resolveThrew: resolveThrew,
+      resolvedStoreId: resolvedId,
+      sessionStoreId: _sessionStoreId(sessao),
+    );
+    if (r.allowed) {
+      if (resolveThrew) {
+        logD('[LOJA_ID] web resolve_exception sessão_ok');
       }
-      logD('[LOJA_ID] web resolve_exception sessão_ok');
       return true;
     }
-
-    final trimmed = resolvedId?.trim() ?? '';
-    final sid = _sessionStoreId(sessao);
-    final resolveOk = trimmed.isNotEmpty && isValidForPublicLink(trimmed);
-    final sessionOk = sid.isNotEmpty && isValidForPublicLink(sid);
-
-    if (!resolveOk && !sessionOk) {
-      logW('[LOJA_ID] unsafe_store_context_rejected motivo=no_safe_store');
-      return false;
-    }
-    if (resolveOk && sessionOk && trimmed != sid) {
-      logW('[LOJA_ID] unsafe_store_context_rejected motivo=resolve_session_mismatch');
-      return false;
-    }
-    return true;
+    logW(
+      '[LOJA_ID] unsafe_store_context_rejected motivo=${r.rejectionMotivo}',
+    );
+    return false;
   }
 
   void _setWebLojaMissingState() {

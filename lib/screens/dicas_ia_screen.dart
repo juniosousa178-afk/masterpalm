@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
@@ -244,9 +245,38 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
                                       : Colors.grey.shade100,
                                   borderRadius: BorderRadius.circular(16),
                                 ),
-                                child: SelectableText(
-                                  msg['content'] ?? '',
-                                  style: theme.textTheme.bodyMedium,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    Text(
+                                      msg['content'] ?? '',
+                                      style: theme.textTheme.bodyMedium,
+                                    ),
+                                    if (!isUser) ...[
+                                      const SizedBox(height: 4),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: IconButton(
+                                          visualDensity: VisualDensity.compact,
+                                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                          padding: EdgeInsets.zero,
+                                          tooltip: 'Copiar',
+                                          icon: Icon(Icons.copy, size: 18, color: Colors.grey.shade600),
+                                          onPressed: () {
+                                            final t = msg['content'] ?? '';
+                                            Clipboard.setData(ClipboardData(text: t));
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Texto copiado'),
+                                                behavior: SnackBarBehavior.floating,
+                                                duration: Duration(seconds: 2),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                             ),

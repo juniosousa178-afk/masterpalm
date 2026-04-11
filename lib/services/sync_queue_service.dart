@@ -8,7 +8,7 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:hive/hive.dart';
 
 import '../core/logger.dart';
@@ -262,6 +262,9 @@ class SyncQueueService {
 
           if (result) {
             await box.delete(key);
+            logD(
+              '[SYNC_QUEUE] item_removed_after_success operationId=${item.operationId}',
+            );
             processed++;
           } else {
             skipped++;
@@ -543,6 +546,29 @@ class SyncQueueService {
     }
     logD('[SYNC_QUEUE] retry_lote_concluido reativados=$n');
     return n;
+  }
+
+  /// Espelha [_incrementAttempt] sem I/O — regressão de dead-letter / max tentativas.
+  @visibleForTesting
+  static SyncQueueItem simulateStateAfterFailedAttempt(
+    SyncQueueItem item, {
+    int maxAttempts = 5,
+  }) {
+    if (item.deadLetter) return item;
+    final next = (item.attemptCount + 1).clamp(0, maxAttempts);
+    final justMarkedDead = next >= maxAttempts;
+    return SyncQueueItem(
+      id: item.id,
+      type: item.type,
+      lojaId: item.lojaId,
+      boxName: item.boxName,
+      entityKey: item.entityKey,
+      createdAt: item.createdAt,
+      attemptCount: next,
+      lastError: item.lastError,
+      deadLetter: justMarkedDead,
+      lastAttemptAt: item.lastAttemptAt,
+    );
   }
 
   /// Remove um item da fila (só a entrada de sync; não apaga venda/cliente no Hive).

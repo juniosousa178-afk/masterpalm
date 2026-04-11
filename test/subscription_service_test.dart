@@ -1,8 +1,12 @@
 // test/subscription_service_test.dart
 // Testes das constantes de limites por plano (trial, free_limited, paid).
 // Não chama Firebase; só valida os maps estáticos para evitar regressão.
+// free_limited: fonte canônica numérica = PlanMatrix.limitsForPlanId(PlanId.freeLimited)
+// (espelhada em SubscriptionService.freeLimitedLimits).
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:master_palm/core/plan_matrix.dart';
+import 'package:master_palm/services/planos_service.dart';
 import 'package:master_palm/services/subscription_service.dart';
 
 void main() {
@@ -31,12 +35,25 @@ void main() {
       expect(SubscriptionService.freeLimitedLimits.containsKey('maxImagesPerProduct'), true);
       expect(SubscriptionService.freeLimitedLimits.containsKey('maxBanners'), true);
     });
-    test('valores do free_limited (após 90 dias)', () {
-      expect(SubscriptionService.freeLimitedLimits['maxProducts'], 10);
+    test('valores do free_limited (após trial — Opção B)', () {
+      expect(SubscriptionService.freeLimitedLimits['maxProducts'], 30);
       expect(SubscriptionService.freeLimitedLimits['maxClients'], 20);
       expect(SubscriptionService.freeLimitedLimits['vendasMes'], 10);
       expect(SubscriptionService.freeLimitedLimits['maxImagesPerProduct'], 1);
       expect(SubscriptionService.freeLimitedLimits['maxBanners'], 1);
+    });
+
+    test('freeLimitedLimits campos da matriz coincidem com PlanMatrix', () {
+      final row = PlanMatrix.limitsForPlanId(PlanId.freeLimited);
+      expect(SubscriptionService.freeLimitedLimits['maxProducts'], row.maxProducts);
+      expect(SubscriptionService.freeLimitedLimits['maxClients'], row.maxClients);
+      expect(SubscriptionService.freeLimitedLimits['vendasMes'], row.vendasMes);
+      expect(
+        SubscriptionService.freeLimitedLimits['maxImagesPerProduct'],
+        row.maxImagesPerProduct,
+      );
+      expect(SubscriptionService.freeLimitedLimits['maxBanners'], row.maxBanners);
+      expect(SubscriptionService.freeLimitedLimits['maxMembers'], row.maxMembers);
     });
   });
 

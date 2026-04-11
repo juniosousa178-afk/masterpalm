@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
@@ -58,6 +59,26 @@ List<AjudaTelaTutorialOpcao> get ajudaTutorialOpcoes => const [
         titulo: 'Catálogo / loja',
         nomeParaIa: 'Catálogo e loja online (como o cliente vê, categorias, aparência)',
         icon: Icons.storefront,
+      ),
+      AjudaTelaTutorialOpcao(
+        titulo: 'Configuração do catálogo',
+        nomeParaIa:
+            'Configuração da loja e catálogo online no MasterPalm (hub de configuração com menu lateral por módulos). '
+            'O tutorial deve ter duas partes claras: '
+            '(1) VISÃO GERAL — para que serve o hub, fluxo recomendado (da identidade da loja até publicar no site), '
+            'o que muda no catálogo público após salvar/publicar, e atalho para fretes quando existir. '
+            '(2) POR MÓDULOS — explicar cada painel separadamente, com o mesmo nome do app: '
+            'Identidade e Contato (nome, WhatsApp, dados básicos); '
+            'Mídias e Banners (logo e banners desktop/mobile); '
+            'Tema e Cores (cores do catálogo e checkout); '
+            'Layout dos cards (colunas, sombras, bordas); '
+            'Menu e Páginas (navegação do catálogo, SAC); '
+            'Dicas e informações (cuidados, garantias); '
+            'Rodapé e Links (redes, políticas); '
+            'Taxas Financeiras (vínculo com relatórios/metas quando aplicável); '
+            'Publicar catálogo (enviar alterações ao site). '
+            'Deixe explícito que regras de frete e cupons de desconto são em outra tela (Fretes e cupons), não dentro destes módulos.',
+        icon: Icons.tune,
       ),
       AjudaTelaTutorialOpcao(
         titulo: 'Pedidos',
@@ -533,9 +554,38 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                                     : cs.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              child: SelectableText(
-                                msg['content'] ?? '',
-                                style: theme.textTheme.bodyMedium,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    msg['content'] ?? '',
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
+                                  if (!isUser) ...[
+                                    const SizedBox(height: 4),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                        padding: EdgeInsets.zero,
+                                        tooltip: 'Copiar',
+                                        icon: Icon(Icons.copy, size: 18, color: cs.onSurfaceVariant),
+                                        onPressed: () {
+                                          final t = msg['content'] ?? '';
+                                          Clipboard.setData(ClipboardData(text: t));
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Texto copiado'),
+                                              behavior: SnackBarBehavior.floating,
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
                           ),
