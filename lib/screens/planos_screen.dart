@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../services/planos_service.dart';
 import '../services/checkout_service.dart';
 import '../services/remote_config_service.dart';
+import '../utils/role_utils.dart';
 
 /// Preços exibidos (checkout continua definido no servidor).
 const double _kPrecoBasico = 19.99;
@@ -53,8 +54,8 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   bool get _isRoot {
     try {
       if (!Hive.isBoxOpen('sessao')) return false;
-      final email = FirebaseAuth.instance.currentUser?.email?.toLowerCase().trim();
-      if (email == 'masterpalm26@gmail.com' || email == 'masterpalm@gmail.com' || email == 'admin@masterpalm.com') return true;
+      final email = FirebaseAuth.instance.currentUser?.email;
+      if (RoleUtils.isRootEmail(email)) return true;
       final tipo = Hive.box('sessao').get('tipo_usuario')?.toString();
       return tipo == 'programador';
     } catch (_) {

@@ -2,9 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/site_config_service.dart';
+import '../utils/role_utils.dart';
 
 /// Tela para configurar o site de divulgação (links, contatos, download).
-/// Apenas masterpalm26@gmail.com (programador) pode acessar.
+/// Apenas contas root/programador ([RoleUtils.isRootEmail]) podem acessar.
 class SiteConfigScreen extends StatefulWidget {
   const SiteConfigScreen({super.key});
 
@@ -78,8 +79,7 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
 
   Future<void> _save() async {
     final email = FirebaseAuth.instance.currentUser?.email ?? '';
-    final rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com'};
-    if (!rootEmails.contains(email.toLowerCase().trim())) {
+    if (!RoleUtils.isRootEmail(email)) {
       _showSnack('Acesso negado. Apenas conta root.', isError: true);
       return;
     }
@@ -121,8 +121,7 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
   @override
   Widget build(BuildContext context) {
     final email = FirebaseAuth.instance.currentUser?.email ?? '';
-    final rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com'};
-    if (!rootEmails.contains(email.toLowerCase().trim())) {
+    if (!RoleUtils.isRootEmail(email)) {
       return Scaffold(
         appBar: AppBar(title: const Text('Config. do Site')),
         body: const Center(

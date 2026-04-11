@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/plan_matrix.dart';
+import '../utils/role_utils.dart';
 import 'planos_service.dart';
 
 /// -------- PLANOS E LIMITES --------
@@ -199,20 +200,26 @@ class LicenseManager {
   }
 
   // ========== VERIFICAÇÃO PRINCIPAL ==========
+  /// Ordem: root (RoleUtils) → users/{uid} → subscriptions só se **não** houver doc
+  /// canônico em users/{uid} (histórico não promove acesso acima do espelho).
   static Future<bool> hasValidAccessFallbackLegacy() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return false;
 
-    // 0) Root / programador – mesmo critério do PlanosService (lifetime automático)
-    const rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com', 'admin@masterpalm.com'};
-    if (user.email != null && rootEmails.contains(user.email!.toLowerCase().trim())) {
+    if (RoleUtils.isRootEmail(user.email)) {
       return true;
     }
 
-    // 1) espelho em users/{uid}
     if (await _checkMirrorUserDoc(user)) return true;
 
-    // 2) coleção de subscriptions (somente leitura Firestore; escrita via backend)
+    final userSnap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    if (userSnap.exists) {
+      return false;
+    }
+
     if (await _checkSubscriptions(user)) return true;
 
     // 3) Não liberar premium só por Hive — evita APK modificado / cache adulterado.

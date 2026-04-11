@@ -6,7 +6,8 @@ import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
-/// Emails que SEMPRE são programadores (root) - NUNCA sobrescrever
+/// Emails que SEMPRE são programadores (root) - NUNCA sobrescrever.
+/// Alinhar com `functions/src/rootAccounts.js` (ROOT_ACCOUNT_EMAILS).
 const Set<String> rootEmails = {
   'masterpalm26@gmail.com',
   'masterpalm@gmail.com', // fallback para migração

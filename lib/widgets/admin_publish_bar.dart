@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 
 import '../services/cloud_sync_service.dart'; // pushAll()
+import '../utils/role_utils.dart';
 
 /// Barra administrativa para publicar o rascunho no site diretamente do Catálogo Público.
 /// Só aparece para programador/admin/root.
@@ -27,10 +28,9 @@ class _AdminPublishBarState extends State<AdminPublishBar> {
       if (tipo == 'programador' || tipo == 'admin') return true;
     } catch (_) {}
 
-    // 2) Root (fallback)
-    final email =
-        FirebaseAuth.instance.currentUser?.email?.toLowerCase().trim();
-    if (email == 'masterpalm26@gmail.com' || email == 'masterpalm@gmail.com') return true;
+    // 2) Root (fallback — mesma lista que RoleUtils)
+    final email = FirebaseAuth.instance.currentUser?.email;
+    if (RoleUtils.isRootEmail(email)) return true;
 
     // 3) Web: ?admin=1 (útil p/ testes)
     if (kIsWeb) {

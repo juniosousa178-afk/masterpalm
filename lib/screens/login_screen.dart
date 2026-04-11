@@ -267,11 +267,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       });
     }
 
-    // ✅ ROOT override: forçar tipo programador para root emails
+    // ✅ ROOT override: forçar tipo programador (lista canônica: RoleUtils / rootAccounts)
     // ✅ Conta criada no login (Google ou criar conta) tem tipo explícito 'admin'. Vendedor é criado dentro da loja pelo admin.
-    const rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com', 'admin@masterpalm.com'};
     final emailLower = email.toLowerCase().trim();
-    final tipo = rootEmails.contains(emailLower)
+    final tipo = RoleUtils.isRootEmail(emailLower)
         ? 'programador'
         : (d['tipo'] ?? 'vendedor').toString();
 
@@ -467,8 +466,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           code == 'invalid-login-credentials') {
         setState(() => _carregando = false);
         if (!mounted) return;
-        const rootEmailsAuth = {'masterpalm26@gmail.com', 'masterpalm@gmail.com', 'admin@masterpalm.com'};
-        final isRoot = rootEmailsAuth.contains(login);
+        final isRoot = RoleUtils.isRootEmail(login);
         _showModernSnackBar(
           isRoot
               ? 'E-mail ou senha incorretos. Contas programador: use "Entrar com Google" ou defina senha no Firebase Console.'
@@ -553,8 +551,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       if (!mounted) return;
       HapticFeedback.heavyImpact();
       _playShakeAnimation();
-      final rootEmailsCheck = {'masterpalm26@gmail.com', 'masterpalm@gmail.com', 'admin@masterpalm.com'};
-      final isRootEmail = rootEmailsCheck.contains(login);
+      final isRootEmail = RoleUtils.isRootEmail(login);
       _showModernSnackBar(
         isRootEmail
             ? 'Use o botão "Entrar com Google" para acessar com masterpalm26@gmail.com (ou verifique a senha no Firebase Console).'
@@ -565,8 +562,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
 
     // ✅ ROOT override ANTES da lógica de vendedor
-    const rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com', 'admin@masterpalm.com'};
-    final isRoot = rootEmails.contains(usuario.email.toLowerCase().trim());
+    final isRoot = RoleUtils.isRootEmail(usuario.email);
     if (isRoot) {
       usuario = Usuario(
         nome: usuario.nome,
@@ -791,8 +787,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       final sessao = await _openBoxSafe<dynamic>('sessao');
       await usuariosBox.put(usuario.email, usuario);
 
-      const rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com', 'admin@masterpalm.com'};
-      final isRoot = rootEmails.contains(usuario.email.toLowerCase().trim());
+      final isRoot = RoleUtils.isRootEmail(usuario.email);
       Usuario usuarioFinal = usuario;
       if (isRoot) {
         usuarioFinal = Usuario(

@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { ROOT_EMAIL } from "../ensureUserPlan.js";
+import { isRootAccountEmail } from "../src/rootAccounts.js";
 import {
   classifyExpiredPaidSchedulerDoc,
   runScheduledReconcileBatch,
@@ -144,6 +145,20 @@ describe("classifyExpiredPaidSchedulerDoc", () => {
         email: ROOT_EMAIL,
       },
       ROOT_EMAIL,
+      new Date(),
+    );
+    assert.equal(d, "skip_protected");
+  });
+
+  it("skip_protected: qualquer email em ROOT_ACCOUNT_EMAILS", () => {
+    assert.equal(isRootAccountEmail("admin@masterpalm.com"), true);
+    const d = classifyExpiredPaidSchedulerDoc(
+      {
+        currentPlanId: "pro_monthly",
+        currentPeriodEnd: ts(PAST),
+        email: "admin@masterpalm.com",
+      },
+      "admin@masterpalm.com",
       new Date(),
     );
     assert.equal(d, "skip_protected");

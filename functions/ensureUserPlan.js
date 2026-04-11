@@ -4,8 +4,9 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { checkRateLimit, getCallableIdentifier } from "./src/rateLimiter.js";
+import { isRootAccountEmail, ROOT_EMAIL } from "./src/rootAccounts.js";
 
-export const ROOT_EMAIL = "masterpalm@gmail.com";
+export { isRootAccountEmail, ROOT_EMAIL };
 
 /** Planos pagos com renovação por período (espelha ramo em computePlanState). */
 export const PAID_PLANS_WITH_RENEWAL = Object.freeze([
@@ -81,8 +82,8 @@ export async function computePlanState({ db, uid, email }) {
   const data = snap.exists ? (snap.data() || {}) : {};
   const now = new Date();
 
-  // Root sempre ativo
-  const isRoot = normalizeEmail(email) === normalizeEmail(ROOT_EMAIL);
+  // Root/programador — mesma lista que o cliente (role_utils / rootAccounts)
+  const isRoot = isRootAccountEmail(email);
   if (isRoot) {
     await ref.set(
       {
@@ -621,7 +622,7 @@ export const rootGrantPlan = onCall(async (request) => {
     if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Faça login.");
 
     const callerEmail = normalizeEmail(request.auth.token?.email || "");
-    if (callerEmail !== normalizeEmail(ROOT_EMAIL)) {
+    if (!isRootAccountEmail(callerEmail)) {
       throw new HttpsError("permission-denied", "Apenas o root pode liberar planos.");
     }
 

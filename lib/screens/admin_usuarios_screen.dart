@@ -6,9 +6,10 @@ import 'package:hive/hive.dart';
 
 import '../themes/app_colors.dart';
 import '../services/planos_service.dart';
+import '../utils/role_utils.dart';
 
 /// Tela administrativa para gerenciar usuários e planos
-/// Somente acessível por masterpalm26@gmail.com (root)
+/// Somente acessível por contas root/programador ([RoleUtils.isRootEmail]).
 class AdminUsuariosScreen extends StatefulWidget {
   const AdminUsuariosScreen({super.key});
 
@@ -31,8 +32,8 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
 
   bool get _isRoot {
     try {
-      final email = FirebaseAuth.instance.currentUser?.email?.toLowerCase().trim();
-      if (email == 'masterpalm26@gmail.com' || email == 'masterpalm@gmail.com') return true;
+      final email = FirebaseAuth.instance.currentUser?.email;
+      if (RoleUtils.isRootEmail(email)) return true;
 
       final tipo = Hive.box('sessao').get('tipo_usuario')?.toString();
       if (tipo == 'programador') return true;
@@ -134,7 +135,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
         appBar: AppBar(title: const Text('Acesso Negado')),
         body: const Center(
           child: Text(
-            'Você não tem permissão para acessar esta tela.\nSomente o root (masterpalm26@gmail.com) pode gerenciar usuários.',
+            'Você não tem permissão para acessar esta tela.\nSomente contas root/programador podem gerenciar usuários.',
             textAlign: TextAlign.center,
           ),
         ),
@@ -732,7 +733,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
   /// Impede excluir root ou a própria conta
   bool _isRootOrCurrent(String email) {
     final e = email.toLowerCase().trim();
-    if (e == 'masterpalm26@gmail.com' || e == 'masterpalm@gmail.com' || e == 'admin@masterpalm.com') return true;
+    if (RoleUtils.isRootEmail(e)) return true;
     if (e == _currentUserEmail.toLowerCase().trim()) return true;
     return false;
   }

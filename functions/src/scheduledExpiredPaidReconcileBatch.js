@@ -7,12 +7,8 @@ import {
   computePlanState,
   normalizeCanonicalPlanId,
   PAID_PLANS_WITH_RENEWAL,
-  ROOT_EMAIL,
 } from "../ensureUserPlan.js";
-
-function normalizeEmail(s) {
-  return String(s || "").trim().toLowerCase();
-}
+import { isRootAccountEmail } from "./rootAccounts.js";
 
 /**
  * @typedef {'skip_not_paid' | 'skip_invalid_period' | 'skip_protected' | 'process'} SchedulerDocDecision
@@ -41,7 +37,7 @@ export function classifyExpiredPaidSchedulerDoc(data, email, now) {
   }
 
   if (data?.isRoot === true) return "skip_protected";
-  if (normalizeEmail(email) === normalizeEmail(ROOT_EMAIL)) {
+  if (isRootAccountEmail(email)) {
     return "skip_protected";
   }
   if (data?.manual_grant?.type === "lifetime") return "skip_protected";

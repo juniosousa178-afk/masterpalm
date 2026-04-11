@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 
 import '../services/cloud_sync_service.dart'; // pushAll()
+import '../utils/role_utils.dart';
 
 /// FAB administrativo para publicar rascunho -> live diretamente do catálogo.
 class AdminPublishFAB extends StatefulWidget {
@@ -23,9 +24,8 @@ class _AdminPublishFABState extends State<AdminPublishFAB> {
       final tipo = Hive.box('sessao').get('tipo_usuario')?.toString();
       if (tipo == 'programador' || tipo == 'admin') return true;
     } catch (_) {}
-    final email =
-        FirebaseAuth.instance.currentUser?.email?.toLowerCase().trim();
-    if (email == 'masterpalm26@gmail.com' || email == 'masterpalm@gmail.com') return true;
+    final email = FirebaseAuth.instance.currentUser?.email;
+    if (RoleUtils.isRootEmail(email)) return true;
     if (kIsWeb) {
       final adminFlag = Uri.base.queryParameters['admin'];
       if (adminFlag == '1' || adminFlag == 'true') return true;

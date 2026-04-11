@@ -3,6 +3,7 @@ import 'dart:developer' as dev;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../utils/role_utils.dart';
 import 'planos_service.dart';
 
 class SubscriptionStatus {
@@ -182,16 +183,18 @@ class SubscriptionService {
     'vendasMes': 10,
   };
 
-  /// UID/e-mail root – mantenha sincronizado com as rules
+  /// UID root legado (atalho) — e-mail root: [RoleUtils.isRootEmail].
+  static const String rootUid = 'vd0X6xXlq4be0cKhmIOiDtXTvKb2';
+
+  /// Preferir [RoleUtils.isRootEmail] — lista canônica em `lib/utils/role_utils.dart`.
   static const String rootEmail = 'masterpalm26@gmail.com';
-  static const String rootUid   = 'vd0X6xXlq4be0cKhmIOiDtXTvKb2';
 
   static bool get isSignedIn => _auth.currentUser != null;
 
   static bool get isRoot {
     final u = _auth.currentUser;
     if (u == null) return false;
-    return (u.uid == rootUid) || (u.email?.toLowerCase().trim() == rootEmail);
+    return (u.uid == rootUid) || RoleUtils.isRootEmail(u.email);
   }
 
   /// Lê users/{uid} (sem query). Caso não exista ou negado -> retorna FREE.

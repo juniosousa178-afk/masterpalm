@@ -93,6 +93,7 @@ import '../services/public_store_link_helper.dart';
 import '../utils/home_store_context_helper.dart';
 // WebLandingPlanCard é declarado no final deste arquivo para evitar problemas de resolução de import.
 import '../main.dart' show navigatorKey;
+import '../utils/role_utils.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -121,16 +122,6 @@ class _HomeScreenState extends State<HomeScreen>
   bool _vendedorSemPermissao =
       false; // ✅ Vendedor sem nenhuma permissão liberada
 
-  // ✅ ROOT por e-mail (mesma lógica das rules)
-  static const Set<String> _rootEmails = {
-    'masterpalm26@gmail.com',
-    'masterpalm@gmail.com',
-    'admin@masterpalm.com',
-  };
-
-  bool _isRootEmail(String email) =>
-      _rootEmails.contains(email.trim().toLowerCase());
-
   @override
   void initState() {
     super.initState();
@@ -149,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen>
       // Recalcula tipo (com ROOT override) aqui também, por segurança
       final user = FirebaseAuth.instance.currentUser;
       final email = (user?.email ?? '').trim().toLowerCase();
-      final isRoot = (sessao.get('is_root') == true) || _isRootEmail(email);
+      final isRoot = (sessao.get('is_root') == true) || RoleUtils.isRootEmail(email);
 
       final tipoHive = (sessao.get('tipo_usuario') as String?) ?? 'vendedor';
       final tipoEfetivo = isRoot ? 'programador' : tipoHive;
@@ -212,8 +203,8 @@ class _HomeScreenState extends State<HomeScreen>
 
     // ✅ ROOT override (impede "root virar vendedor")
     final isRoot = (sessao.get('is_root') == true) ||
-        _isRootEmail(emailAuth) ||
-        _isRootEmail(_usuario);
+        RoleUtils.isRootEmail(emailAuth) ||
+        RoleUtils.isRootEmail(_usuario);
     if (isRoot) {
       // força apenas no app (e grava no hive pra não ficar voltando)
       _tipo = 'programador';
@@ -2046,8 +2037,8 @@ class _HomeScreenState extends State<HomeScreen>
           sidebarMode: sidebarMode));
     }
 
-    // Master Config - apenas root (emails root; admin/programador não têm acesso)
-    if (_isRootEmail(_usuario)) {
+    // Master Config - apenas root (lista canônica RoleUtils; admin de loja não)
+    if (RoleUtils.isRootEmail(_usuario)) {
       startSection('Master', color: _errorColor);
       currentChildren.add(
         _buildMenuTile(

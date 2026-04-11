@@ -20,7 +20,7 @@ import '../services/remote_config_safe_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/public_store_link_helper.dart';
 import '../services/store_resolver_service.dart';
-import '../utils/role_utils.dart'; // ✅ Utilitário centralizado de roles
+import '../utils/role_utils.dart'; // rootEmails + RoleUtils
 import '../utils/last_route_observer.dart'; // ✅ Restaurar tela ao voltar do segundo plano
 
 class AppStartRouter extends StatefulWidget {
@@ -40,21 +40,15 @@ class _AppStartRouterState extends State<AppStartRouter> {
   static const String _routePlanos = '/planos';
   static const String _routeHome = '/home';
 
-  static const Set<String> _rootAdminEmailsHardcoded = {
-    'masterpalm26@gmail.com',
-    'masterpalm@gmail.com',
-    'admin@masterpalm.com',
-  };
-
   Set<String> _getRootAdminEmails() {
     if (!RemoteConfigSafeService.isFlagOn(rcEnableDynamicRootAdmins, fallback: false)) {
-      return _rootAdminEmailsHardcoded;
+      return Set<String>.from(rootEmails);
     }
     final list = RemoteConfigSafeService.getStringListFromJson(
       rcRootAdminEmailsJson,
-      fallback: _rootAdminEmailsHardcoded.toList(),
+      fallback: rootEmails.toList(),
     );
-    return list.isEmpty ? _rootAdminEmailsHardcoded : list.toSet();
+    return list.isEmpty ? Set<String>.from(rootEmails) : list.toSet();
   }
 
   bool _isPaidSubscriptionPlanId(String raw) {

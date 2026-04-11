@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
+import '../utils/role_utils.dart';
+
 class PlanId {
   static const String freeTrial30d = 'free_trial_30d';
   static const String freeTrial90d = 'free_trial_90d';
@@ -156,14 +158,15 @@ class PlanosService {
     }
   }
 
-  /// Lê o plano atual (considera manualOverride primeiro)
+  /// Precedência de leitura (alto → baixo): root/programador → manualOverride em
+  /// users/{uid} → demais campos em users/{uid} → usuarios/{email} só se users/{uid}
+  /// não existir → (Hive não promove plano aqui).
   Future<PlanInfo?> fetchCurrentPlan({
     required String uid,
     required String email,
   }) async {
-    // ✅ ROOT USERS tem plano lifetime automático
-    const rootEmails = {'masterpalm26@gmail.com', 'masterpalm@gmail.com', 'admin@masterpalm.com'};
-    if (rootEmails.contains(email.toLowerCase())) {
+    // 1) Root/programador — mesma lista que backend (rootAccounts / RoleUtils)
+    if (RoleUtils.isRootEmail(email)) {
       return const PlanInfo(
         planId: 'lifetime',
         status: 'active',
@@ -176,23 +179,14 @@ class PlanosService {
     }
 
     try {
-      // 1) Verificar na collection 'users/{uid}'
       final doc = await _userRef(uid).get().timeout(const Duration(seconds: 2));
-
-      // 2) Verificar também na collection 'usuarios/{email}' (fallback legado)
-      Map<String, dynamic>? usuarioData;
-      try {
-        final usuarioDoc = await _db.collection('usuarios').doc(email).get()
-            .timeout(const Duration(seconds: 2));
-        if (usuarioDoc.exists) usuarioData = usuarioDoc.data();
-      } catch (_) {}
 
       if (doc.exists) {
         final d = doc.data() ?? const <String, dynamic>{};
         final mo = (d['manualOverride'] is Map) ? (d['manualOverride'] as Map) : null;
         final moEnabled = mo != null && (mo['enabled'] == true);
 
-        // Fonte canônica
+        // Fonte canônica: users/{uid}
         final rawCurrent = d['currentPlanId']?.toString() ?? '';
         String planId = normalizePlanId(rawCurrent);
         if (rawCurrent.trim().isNotEmpty &&
@@ -207,7 +201,6 @@ class PlanosService {
         bool trialUsed = (d['trialUsed'] ?? false) == true;
         final cancelAtPeriodEnd =
             (d['cancelAtPeriodEnd'] ?? d['cancel_at_period_end']) == true;
-        // users/{uid} é canônico; legado em users.plan* não é mais lido.
         if (status.trim().isEmpty) status = 'active';
 
         if (moEnabled) {
@@ -215,7 +208,7 @@ class PlanosService {
           planId = normalizePlanId(rawMo);
           status = 'active';
           trialing = false;
-          end = null; // override manual prevalece
+          end = null;
           debugPrint('[PlanosCompat] manualOverride ativo planId=$planId');
         }
 
@@ -230,9 +223,17 @@ class PlanosService {
             cancelAtPeriodEnd: moEnabled ? false : cancelAtPeriodEnd,
           );
         }
+        return null;
       }
 
-      // Fallback legado em usuarios/{email}
+      // 2) Fallback legado: só quando users/{uid} não existe (nunca sobrescreve doc canônico)
+      Map<String, dynamic>? usuarioData;
+      try {
+        final usuarioDoc = await _db.collection('usuarios').doc(email).get()
+            .timeout(const Duration(seconds: 2));
+        if (usuarioDoc.exists) usuarioData = usuarioDoc.data();
+      } catch (_) {}
+
       if (usuarioData != null && usuarioData['planoAtivo'] == true) {
         final rawLegado = (usuarioData['planoId'] ?? '').toString();
         final planoId = normalizePlanId(rawLegado);

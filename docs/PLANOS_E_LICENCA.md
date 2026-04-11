@@ -10,8 +10,9 @@ O app reconhece acesso válido por **dois mecanismos**: o novo (planos em Firest
 
 - **users/{uid}**: campos `currentPlanId`, `status`, `currentPeriodEnd` (espelho do plano).
 - **users/{uid}/subscriptions**: subcoleção com `plan_id`, `status`, `current_period_end`.
-- **PlanosService** (`lib/services/planos_service.dart`): lê plano atual; para e-mails root retorna `lifetime` sem ir ao Firestore.
-- **LicenseManager** (`lib/services/license_manager.dart`): em `hasValidAccessFallbackLegacy()` consulta primeiro `users/{uid}` e depois `subscriptions`; se achar plano ativo e não expirado, grava cache local e retorna true.
+- **PlanosService** (`lib/services/planos_service.dart`): precedência explícita em `fetchCurrentPlan` — root/programador (`RoleUtils`) → `manualOverride` / campos em `users/{uid}` → `usuarios/{email}` **somente se** `users/{uid}` não existir.
+- **LicenseManager** (`lib/services/license_manager.dart`): `hasValidAccessFallbackLegacy()` — root (`RoleUtils`) → espelho `users/{uid}` → `subscriptions` **apenas** se não existir documento em `users/{uid}` (histórico não sobrepõe o canônico).
+- **Lista root/programador (única no app):** `lib/utils/role_utils.dart` (`rootEmails`). Backend espelhado em `functions/src/rootAccounts.js` (`ROOT_ACCOUNT_EMAILS`).
 
 ### Planos conhecidos
 
@@ -52,17 +53,17 @@ O app reconhece acesso válido por **dois mecanismos**: o novo (planos em Firest
 
 ## 4. Ordem de verificação (LicenseManager.hasValidAccessFallbackLegacy)
 
-1. Root (e-mails fixos) → true.
+1. Root/programador (`RoleUtils.isRootEmail`, mesma lista que `rootAccounts.js` no backend) → true.
 2. users/{uid} com plano ativo e não expirado → true e cache.
-3. users/{uid}/subscriptions com plano ativo e não expirado → true e cache.
-4. Cache local (ativado + expiresAt não expirado) → true.
-5. Legado (codigo + deviceId) → true.
+3. Se existe `users/{uid}` mas o espelho não validou acesso → **false** (não usar subscriptions para “escalar”).
+4. Se **não** existe `users/{uid}`: users/{uid}/subscriptions (histórico) com plano ativo e não expirado → true e cache.
+5. Hive/código legado não promove plano pago sozinho neste fluxo (ver implementação atual).
 6. Caso contrário → false.
 
 ---
 
 ## 5. Ao alterar
 
-- **PlanosService:** Se mudar lista de root ou planos, alinhar com LicenseManager (root) e com Firestore rules.
-- **LicenseManager:** Se adicionar/remover fonte de “acesso válido”, manter a ordem acima e não quebrar offline (cache).
+- **Root/programador:** alterar em conjunto `role_utils.dart` (Dart) e `functions/src/rootAccounts.js` (Node).
+- **PlanosService / LicenseManager:** manter a precedência documentada na secção 1 e 4.
 - **Telas de “Licença” ou “Plano”:** Consultar este doc para saber se tocam em Firestore, Hive ou ambos.
