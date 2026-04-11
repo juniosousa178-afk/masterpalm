@@ -47,6 +47,11 @@ class _ControleComprasFornecedorScreenState
     final valorCtrl = TextEditingController();
     final freteCtrl = TextEditingController();
     final descontoCtrl = TextEditingController();
+    var dataCompra = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
 
     final ok = await showDialog<bool>(
       context: context,
@@ -79,6 +84,31 @@ class _ControleComprasFornecedorScreenState
                         border: OutlineInputBorder(),
                       ),
                       textCapitalization: TextCapitalization.words,
+                    ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Data da compra'),
+                      subtitle: Text(
+                        DateFormat('dd/MM/yyyy').format(dataCompra),
+                      ),
+                      trailing: const Icon(Icons.calendar_today_outlined),
+                      onTap: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: dataCompra,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (d != null) {
+                          setLocal(() => dataCompra = d);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Lançamento no controle: data/hora de agora (ao salvar).',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                     ),
                     const SizedBox(height: 8),
                     TextField(
@@ -158,6 +188,7 @@ class _ControleComprasFornecedorScreenState
       valor: MoedaInputFormatter.parse(valorCtrl.text),
       frete: MoedaInputFormatter.parse(freteCtrl.text),
       desconto: MoedaInputFormatter.parse(descontoCtrl.text),
+      dataCompra: dataCompra,
     );
     await _load();
   }
@@ -272,8 +303,10 @@ class _ControleComprasFornecedorScreenState
                       delegate: SliverChildBuilderDelegate(
                         (context, i) {
                           final l = _linhas[i];
-                          final data = DateFormat('dd/MM/yyyy HH:mm')
-                              .format(l.criadoEm);
+                          final dataCompraStr =
+                              DateFormat('dd/MM/yyyy').format(l.dataCompra);
+                          final dataLancamentoStr =
+                              DateFormat('dd/MM/yyyy HH:mm').format(l.criadoEm);
                           return Dismissible(
                             key: ValueKey(l.id),
                             direction: DismissDirection.endToStart,
@@ -292,8 +325,9 @@ class _ControleComprasFornecedorScreenState
                                   ? '(sem nome)'
                                   : l.fornecedorNome),
                               subtitle: Text(
-                                '$data · valor ${_nf.format(l.valor)} + frete ${_nf.format(l.frete)} − desc. ${_nf.format(l.desconto)}',
-                                maxLines: 2,
+                                'Compra: $dataCompraStr · Lançado: $dataLancamentoStr\n'
+                                'valor ${_nf.format(l.valor)} + frete ${_nf.format(l.frete)} − desc. ${_nf.format(l.desconto)}',
+                                maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               trailing: Text(

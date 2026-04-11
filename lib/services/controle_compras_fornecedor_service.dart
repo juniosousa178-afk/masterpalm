@@ -18,6 +18,7 @@ class LinhaControleCompraFornecedor {
     required this.frete,
     required this.desconto,
     required this.total,
+    required this.dataCompra,
     required this.criadoEm,
   });
 
@@ -27,6 +28,9 @@ class LinhaControleCompraFornecedor {
   final double frete;
   final double desconto;
   final double total;
+  /// Data da compra (operacional — escolhida pelo usuário).
+  final DateTime dataCompra;
+  /// Data/hora em que o registro foi lançado no controle.
   final DateTime criadoEm;
 
   Map<String, dynamic> toJson() => {
@@ -36,10 +40,20 @@ class LinhaControleCompraFornecedor {
         'frete': frete,
         'desconto': desconto,
         'total': total,
+        'dataCompra': dataCompra.toIso8601String(),
         'criadoEm': criadoEm.toIso8601String(),
       };
 
   static LinhaControleCompraFornecedor fromJson(Map<String, dynamic> m) {
+    final criadoEm = DateTime.tryParse((m['criadoEm'] ?? '').toString()) ??
+        DateTime.now();
+    final rawDc = m['dataCompra'];
+    final parsedDc = rawDc != null
+        ? DateTime.tryParse(rawDc.toString())
+        : null;
+    final dataCompra = parsedDc ??
+        DateTime(criadoEm.year, criadoEm.month, criadoEm.day);
+
     return LinhaControleCompraFornecedor(
       id: (m['id'] ?? '').toString(),
       fornecedorNome: (m['fornecedorNome'] ?? '').toString().trim(),
@@ -47,8 +61,8 @@ class LinhaControleCompraFornecedor {
       frete: (m['frete'] as num?)?.toDouble() ?? 0,
       desconto: (m['desconto'] as num?)?.toDouble() ?? 0,
       total: (m['total'] as num?)?.toDouble() ?? 0,
-      criadoEm: DateTime.tryParse((m['criadoEm'] ?? '').toString()) ??
-          DateTime.now(),
+      dataCompra: dataCompra,
+      criadoEm: criadoEm,
     );
   }
 }
@@ -110,8 +124,10 @@ class ControleComprasFornecedorService {
     required double valor,
     required double frete,
     required double desconto,
+    required DateTime dataCompra,
   }) async {
     final total = valor + frete - desconto;
+    final dc = DateTime(dataCompra.year, dataCompra.month, dataCompra.day);
     final linhas = await carregar(lojaId);
     linhas.insert(
       0,
@@ -122,6 +138,7 @@ class ControleComprasFornecedorService {
         frete: frete,
         desconto: desconto,
         total: total,
+        dataCompra: dc,
         criadoEm: DateTime.now(),
       ),
     );

@@ -83,7 +83,7 @@ class LojaIdService extends ChangeNotifier {
       final current = FirebaseAuth.instance.currentUser;
       if (current == null) {
         logW(
-          '[LOJA_ID] resolve_failed_no_safe_context motivo=currentUser_null (sem fallback Hive no Web sem Auth)',
+          '[LOJA_ID] resolve_failed_no_safe_context motivo=currentUser_null',
         );
         return null;
       }
@@ -198,11 +198,7 @@ class LojaIdService extends ChangeNotifier {
           return trimmed;
         }
       } catch (e, st) {
-        logW(
-          '[LOJA_ID] resolve_timeout_retry_failed type=${e.runtimeType}',
-          error: e,
-          st: st,
-        );
+        logE('[LOJA_ID] resolve_timeout_retry_failed', error: e, st: st);
       }
     } catch (e) {
       logE('[STORE_SCREEN] Erro ao resolver loja (type=${e.runtimeType})', error: e);
@@ -223,7 +219,7 @@ class LojaIdService extends ChangeNotifier {
           return trimmed;
         }
       } catch (e, st) {
-        logW('[LOJA_ID] get_apos_espera_falhou type=${e.runtimeType}', error: e, st: st);
+        logE('[LOJA_ID] get_apos_espera_falhou', error: e, st: st);
       }
       // Web: Auth pode ainda não ter restaurado (ex.: abriu /vendas direto na URL); aguardar e retentar
       if (FirebaseAuth.instance.currentUser == null) {
@@ -241,11 +237,7 @@ class LojaIdService extends ChangeNotifier {
             return trimmed;
           }
         } catch (e, st) {
-          logW(
-            '[LOJA_ID] resolve_apos_auth_stream_falhou type=${e.runtimeType}',
-            error: e,
-            st: st,
-          );
+          logE('[LOJA_ID] resolve_apos_auth_stream_falhou', error: e, st: st);
         }
       }
     }
