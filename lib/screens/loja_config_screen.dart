@@ -1148,6 +1148,28 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     });
   }
 
+  /// Usado por [_PaneIdentidadeWidget]: [setState] deve ficar no State (não em StatelessWidget).
+  void _setStateIfSlugEmptyFromNome() {
+    if (_slugCtrl.text.trim().isEmpty) {
+      final autoSlug = _nomeCtrl.text
+          .trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
+      setState(() => _slugCtrl.text = autoSlug);
+    }
+  }
+
+  /// Rebuild leve (helper text / campos sanitizados) — painel identidade em `part`.
+  void _setStateIdentidadeHelperRebuild() {
+    setState(() {});
+  }
+
+  /// Tabs Desktop/Mobile no painel mídias — `part`.
+  void _setMediaTab(_MediaTab tab) {
+    setState(() => _mediaTab = tab);
+  }
+
   bool _isHttpUrlLeve(String raw) {
     final s = raw.trim().toLowerCase();
     return s.startsWith('http://') || s.startsWith('https://');

@@ -31,14 +31,7 @@ class _PaneIdentidadeWidget extends StatelessWidget {
               prefixIcon: const Icon(Icons.storefront_outlined),
             ),
             onChanged: (_) {
-              if (host._slugCtrl.text.trim().isEmpty) {
-                final autoSlug = host._nomeCtrl.text
-                    .trim()
-                    .toLowerCase()
-                    .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-                    .replaceAll(RegExp(r'^_+|_+$'), '');
-                host.setState(() => host._slugCtrl.text = autoSlug);
-              }
+              host._setStateIfSlugEmptyFromNome();
               host._scheduleAutoSave();
             },
           ),
@@ -66,7 +59,7 @@ class _PaneIdentidadeWidget extends StatelessWidget {
                   selection: TextSelection.collapsed(offset: sanitized.length),
                 );
               }
-              host.setState(() {});
+              host._setStateIdentidadeHelperRebuild();
               host._scheduleAutoSave();
             },
           ),
@@ -91,7 +84,7 @@ class _PaneIdentidadeWidget extends StatelessWidget {
                   selection: TextSelection.collapsed(offset: sanitized.length),
                 );
               }
-              host.setState(() {});
+              host._setStateIdentidadeHelperRebuild();
               host._scheduleAutoSave();
             },
           ),
@@ -122,7 +115,7 @@ class _PaneIdentidadeWidget extends StatelessWidget {
                             TextSelection.collapsed(offset: sanitized.length),
                       );
                     }
-                    host.setState(() {});
+                    host._setStateIdentidadeHelperRebuild();
                     host._scheduleAutoSave();
                   },
                 ),
@@ -140,7 +133,7 @@ class _PaneIdentidadeWidget extends StatelessWidget {
                     prefixIcon: const Icon(Icons.domain),
                   ),
                   onChanged: (_) {
-                    host.setState(() {});
+                    host._setStateIdentidadeHelperRebuild();
                     host._scheduleAutoSave();
                   },
                 ),
@@ -320,14 +313,12 @@ class _PaneMidiasWidget extends StatelessWidget {
               ChoiceChip(
                 label: const Text('Desktop'),
                 selected: isDesktop,
-                onSelected: (_) =>
-                    host.setState(() => host._mediaTab = _MediaTab.desktop),
+                onSelected: (_) => host._setMediaTab(_MediaTab.desktop),
               ),
               ChoiceChip(
                 label: const Text('Android / Mobile'),
                 selected: !isDesktop,
-                onSelected: (_) =>
-                    host.setState(() => host._mediaTab = _MediaTab.mobile),
+                onSelected: (_) => host._setMediaTab(_MediaTab.mobile),
               ),
               const SizedBox(width: 8),
               Text(
