@@ -9,6 +9,7 @@ import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
 import '../utils/store_access_guard.dart';
+import '../widgets/app_help_icon_button.dart';
 
 class GlobalSearchScreen extends StatefulWidget {
   final String lojaId;
@@ -143,6 +144,9 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          AppHelpIconButton(iconColor: theme.colorScheme.onSurface),
+        ],
       ),
       body: _searching
           ? const Center(child: CircularProgressIndicator())

@@ -24,6 +24,7 @@ import 'financeiro_lancamentos_screen.dart';
 import 'controle_compras_fornecedor_screen.dart';
 import 'financeiro_resumo_consolidado_screen.dart';
 import 'gastos_fixos_screen.dart';
+import '../../widgets/app_help_icon_button.dart';
 
 class FinanceiroScreen extends StatefulWidget {
   const FinanceiroScreen({super.key, this.mesInicial});
@@ -1041,6 +1042,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         backgroundColor: _primary,
         foregroundColor: Colors.white,
         actions: [
+          const AppHelpIconButton(iconColor: Colors.white),
           IconButton(
             icon: const Icon(Icons.cloud_download_outlined),
             onPressed: (_loading ||

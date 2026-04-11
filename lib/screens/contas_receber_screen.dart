@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../core/hive_box_names.dart';
 import '../models/conta_receber.dart';
 import '../services/loja_id_service.dart';
+import '../widgets/app_help_icon_button.dart';
 
 const Color _primaryColor = Color(0xFF6366F1);
 const Color _successColor = Color(0xFF22C55E);
@@ -214,6 +215,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
         backgroundColor: _primaryColor,
         foregroundColor: Colors.white,
         actions: [
+          const AppHelpIconButton(iconColor: Colors.white),
           PopupMenuButton<String>(
             initialValue: _filtro,
             onSelected: (v) => setState(() => _filtro = v),

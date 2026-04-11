@@ -71,6 +71,7 @@ import 'package:intl/intl.dart';
 import '../services/notificacao_centro_service.dart';
 import '../widgets/update_app_dialog.dart';
 import '../widgets/notificacao_centro_sheet.dart';
+import '../widgets/app_help_icon_button.dart';
 import '../widgets/dashboard_home_cards.dart';
 import '../widgets/dashboard_insights_section.dart';
 import '../widgets/home_intelligent_section.dart';
@@ -2792,6 +2793,7 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
         actions: [
+          AppHelpIconButton(iconColor: theme.colorScheme.onSurface),
           PopupMenuButton<String>(
             icon: Icon(Icons.more_vert, color: theme.colorScheme.onSurface),
             tooltip: 'Mais opções',

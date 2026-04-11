@@ -34,6 +34,7 @@ import '../services/clientes_firestore_service.dart';
 import '../services/sync_queue_service.dart';
 import '../services/financeiro_firestore_service.dart';
 import '../utils/responsive.dart';
+import '../widgets/app_help_icon_button.dart';
 import '../widgets/empty_state_cta.dart';
 import 'nova_venda_modal.dart';
 import '../services/loja_id_service.dart';
@@ -774,6 +775,7 @@ class _VendasScreenState extends State<VendasScreen>
           ),
         ),
         actions: [
+          const AppHelpIconButton(iconColor: _surfaceColor),
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(8),

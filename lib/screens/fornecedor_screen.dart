@@ -15,6 +15,7 @@ import '../services/fornecedores_firestore_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/sync_queue_service.dart';
 import 'compras/fornecedor_compras_screen.dart';
+import '../widgets/app_help_icon_button.dart';
 
 class FornecedoresScreen extends StatefulWidget {
   const FornecedoresScreen({super.key});
@@ -984,6 +985,7 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
                 onPressed: () => Navigator.pop(context),
               ),
               actions: [
+                const AppHelpIconButton(iconColor: Colors.white),
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert, color: Colors.white),
                   tooltip: 'Mais opções',

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/marketplace_service.dart';
 import '../services/store_resolver_facade.dart';
+import '../widgets/app_help_icon_button.dart';
 
 class MarketplacesScreen extends StatefulWidget {
   const MarketplacesScreen({super.key});
@@ -375,6 +376,7 @@ class _MarketplacesScreenState extends State<MarketplacesScreen> {
       appBar: AppBar(
         title: const Text('Integração com Marketplaces'),
         actions: [
+          AppHelpIconButton(iconColor: Theme.of(context).colorScheme.onSurface),
           if (!_loading)
             IconButton(
               icon: const Icon(Icons.save),

@@ -26,6 +26,7 @@ import 'package:printing/printing.dart';
 import '../core/hive_box_names.dart';
 import '../core/venda_metrics_filter.dart';
 import '../core/logger.dart';
+import '../widgets/app_help_icon_button.dart';
 import '../widgets/empty_state_cta.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
@@ -3160,6 +3161,7 @@ class _ClientesScreenState extends State<ClientesScreen>
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
+          const AppHelpIconButton(iconColor: Colors.black),
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(6),

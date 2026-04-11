@@ -55,6 +55,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/soft_delete_service.dart';
 import '../main.dart' show scaffoldMessengerKey;
+import '../widgets/app_help_icon_button.dart';
 
 const bool kAutoSyncOnStart = false;
 
@@ -3658,6 +3659,7 @@ String _formatGradeTexto(Produto p) {
   // ---------------------------------------------------------------------------
 
   Drawer _buildEstoqueDrawer() {
+    final podeVoltar = Navigator.of(context).canPop();
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -3686,6 +3688,122 @@ String _formatGradeTexto(Produto p) {
               ],
             ),
           ),
+          if (podeVoltar)
+            ListTile(
+              leading: const Icon(Icons.arrow_back),
+              title: const Text('Voltar'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).pop();
+              },
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(
+              'Atalhos rápidos',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+          ),
+          _drawerTile(
+            icon: Icons.receipt_long_outlined,
+            iconColor: _primaryColor,
+            label: 'Compras — finalizar no estoque',
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push<void>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const CompraPipelinePendentesEstoqueScreen(),
+                ),
+              );
+            },
+          ),
+          _drawerTile(
+            icon: Icons.cloud_upload,
+            iconColor: _successColor,
+            label: _sincronizandoEstoque ? 'Enviando…' : 'Enviar para Nuvem',
+            onTap: _sincronizandoEstoque
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    _enviarParaFirestore();
+                  },
+          ),
+          _drawerTile(
+            icon: Icons.cloud_download,
+            iconColor: const Color(0xFF3B82F6),
+            label: _sincronizandoEstoque ? 'Baixando…' : 'Baixar da Nuvem',
+            onTap: _sincronizandoEstoque
+                ? null
+                : () {
+                    Navigator.pop(context);
+                    _puxarDoFirestore();
+                  },
+          ),
+          _drawerTile(
+            icon: Icons.auto_awesome,
+            iconColor: Colors.amber,
+            label: 'Sugestões com IA (ofertas, compra, encalhados)',
+            onTap: () {
+              Navigator.pop(context);
+              _abrirSugestoesIaEstoque();
+            },
+          ),
+          _drawerTile(
+            icon: Icons.preview,
+            iconColor: _warningColor,
+            label: 'Visualizar catálogo',
+            onTap: () async {
+              Navigator.pop(context);
+              if (!mounted) return;
+              final nav = Navigator.of(context);
+              final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+                timeout: kIsWeb
+                    ? const Duration(seconds: 25)
+                    : const Duration(seconds: 10),
+              );
+              if (lojaId == null || lojaId.isEmpty || !mounted) return;
+              if (kIsWeb) {
+                nav.pushNamed(
+                  '/loja_preview',
+                  arguments: <String, dynamic>{'lojaId': lojaId},
+                );
+                return;
+              }
+              nav.push(
+                MaterialPageRoute(
+                  builder: (_) => PublicCatalogScreen(
+                    lojaId: lojaId,
+                    preview: true,
+                  ),
+                ),
+              );
+            },
+          ),
+          _drawerTile(
+            icon: Icons.qr_code_scanner,
+            iconColor: _warningColor,
+            label: 'Ler código de barras',
+            onTap: () {
+              Navigator.pop(context);
+              _baixaPorCodigoBarras();
+            },
+          ),
+          _drawerTile(
+            icon: Icons.checklist,
+            iconColor: _primaryColor,
+            label: 'Marcar produtos em lote',
+            onTap: () {
+              Navigator.pop(context);
+              _toggleModoSelecao();
+            },
+          ),
+          const Divider(height: 24),
           _drawerTile(
             icon: Icons.card_giftcard,
             iconColor: Colors.orange,
@@ -3740,24 +3858,6 @@ String _formatGradeTexto(Produto p) {
                 '/modelos_importacao',
                 arguments: const {'tab': 0},
               );
-            },
-          ),
-          _drawerTile(
-            icon: Icons.cloud_upload,
-            iconColor: Colors.green,
-            label: _sincronizandoEstoque ? 'Sincronizando…' : 'Enviar para Nuvem',
-            onTap: _sincronizandoEstoque ? null : () {
-              Navigator.pop(context);
-              _enviarParaFirestore();
-            },
-          ),
-          _drawerTile(
-            icon: Icons.cloud_download,
-            iconColor: const Color(0xFF3B82F6),
-            label: _sincronizandoEstoque ? 'Baixando…' : 'Baixar da Nuvem',
-            onTap: _sincronizandoEstoque ? null : () {
-              Navigator.pop(context);
-              _puxarDoFirestore();
             },
           ),
           _drawerTile(
@@ -3974,10 +4074,24 @@ String _formatGradeTexto(Produto p) {
       appBar: AppBar(
         backgroundColor: _cardColor,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: _surfaceColor),
-          onPressed: () => Navigator.pop(context),
+        automaticallyImplyLeading: false,
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.menu, color: _surfaceColor),
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+              tooltip: 'Menu do estoque',
+            ),
+            if (Navigator.of(context).canPop())
+              IconButton(
+                icon: const Icon(Icons.arrow_back, color: _surfaceColor),
+                onPressed: () => Navigator.pop(context),
+                tooltip: 'Voltar',
+              ),
+          ],
         ),
+        leadingWidth: Navigator.of(context).canPop() ? 112 : 56,
         title: _modoSelecao
             ? Text(
                 '${_produtosSelecionados.length} selecionado(s)',
@@ -4013,152 +4127,8 @@ String _formatGradeTexto(Produto p) {
               onPressed: _toggleModoSelecao,
               tooltip: 'Cancelar seleção',
             ),
-          ] else ...[
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.receipt_long_outlined,
-                    color: _primaryColor, size: 20),
-              ),
-              onPressed: () {
-                Navigator.push<void>(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        const CompraPipelinePendentesEstoqueScreen(),
-                  ),
-                );
-              },
-              tooltip: 'Compras — finalizar no estoque',
-            ),
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _successColor.withValues(alpha:0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _sincronizandoEstoque
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: _successColor),
-                      )
-                    : const Icon(Icons.cloud_upload, color: _successColor, size: 20),
-              ),
-              onPressed: _sincronizandoEstoque ? null : _enviarParaFirestore,
-              tooltip: 'Enviar para Nuvem',
-            ),
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF3B82F6).withValues(alpha:0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: _sincronizandoEstoque
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cloud_download, color: Color(0xFF3B82F6), size: 20),
-              ),
-              onPressed: _sincronizandoEstoque ? null : _puxarDoFirestore,
-              tooltip: _temDadosParaImportar == true
-                  ? 'Baixar da Nuvem (há produtos novos)'
-                  : 'Baixar da Nuvem',
-            ),
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha:0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
-              ),
-              onPressed: _abrirSugestoesIaEstoque,
-              tooltip: 'Sugestões com IA (ofertas, compra, produtos encalhados)',
-            ),
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.preview, color: _warningColor, size: 20),
-              ),
-              onPressed: () async {
-                if (!mounted) return;
-                final nav = Navigator.of(context);
-                final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
-                  timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10),
-                );
-                if (lojaId == null || lojaId.isEmpty || !mounted) return;
-                // Web: rota nomeada para manter histórico do browser (back no iPhone/Chrome).
-                if (kIsWeb) {
-                  nav.pushNamed(
-                    '/loja_preview',
-                    arguments: <String, dynamic>{'lojaId': lojaId},
-                  );
-                  return;
-                }
-
-                nav.push(
-                  MaterialPageRoute(
-                    builder: (_) => PublicCatalogScreen(
-                      lojaId: lojaId,
-                      preview: true,
-                    ),
-                  ),
-                );
-              },
-              tooltip: 'Visualizar catálogo',
-            ),
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _warningColor.withValues(alpha:0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.qr_code_scanner, color: _warningColor, size: 20),
-              ),
-              onPressed: _baixaPorCodigoBarras,
-              tooltip: 'Ler código de barras',
-            ),
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.checklist, color: _primaryColor, size: 20),
-              ),
-              onPressed: _toggleModoSelecao,
-              tooltip: 'Marcar produtos em lote',
-            ),
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha:0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.menu, color: _surfaceColor, size: 20),
-              ),
-              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-              tooltip: 'Menu Estoque',
-            ),
           ],
-          const SizedBox(width: 8),
+          const AppHelpIconButton(iconColor: _surfaceColor),
         ],
         bottom: (_importando && _importTotal > 0) || _exportandoEstoque || _syncEmBackground
             ? PreferredSize(

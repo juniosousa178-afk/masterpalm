@@ -16,6 +16,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
 import 'pre_pedidos/pre_pedido_operacional.dart';
+import '../widgets/app_help_icon_button.dart';
 
 /// Tela unificada para gerenciar pedidos (pré-pedidos do catálogo web)
 /// ✅ APENAS ADMIN/PROGRAMADOR pode acessar (vendedor NUNCA)
@@ -577,6 +578,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                     onPressed: () => Navigator.pop(context),
                   ),
                   actions: [
+                    const AppHelpIconButton(iconColor: Colors.white),
                     IconButton(
                       icon: Container(
                         padding: const EdgeInsets.all(6),
@@ -2900,6 +2902,9 @@ class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
         backgroundColor: _cardColor,
         title: const Text('IA – Pedidos', style: TextStyle(color: Colors.white)),
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
+        actions: const [
+          AppHelpIconButton(iconColor: Colors.white),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _enviando ? null : () => _enviar(null),

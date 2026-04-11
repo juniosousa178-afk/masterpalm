@@ -18,6 +18,7 @@ import '../services/indicacao_config_service.dart';
 import '../services/carrinho_abandonado_service.dart';
 import 'carrinhos_abandonados_screen.dart';
 import '../models/cupom.dart';
+import '../widgets/app_help_icon_button.dart';
 
 class FretesCuponsScreen extends StatefulWidget {
   final String? slug;
@@ -762,6 +763,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           'Fretes & Cupons',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: const [
+          AppHelpIconButton(iconColor: Colors.white),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,

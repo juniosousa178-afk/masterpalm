@@ -13,6 +13,7 @@ import '../services/nota_fiscal_firestore_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/permissao_service.dart';
 import '../services/via_cep_service.dart';
+import '../widgets/app_help_icon_button.dart';
 
 class NotasFiscaisScreen extends StatefulWidget {
   const NotasFiscaisScreen({super.key});
@@ -1215,6 +1216,9 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
           "Notas Fiscais",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: const [
+          AppHelpIconButton(iconColor: Colors.white),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Container(

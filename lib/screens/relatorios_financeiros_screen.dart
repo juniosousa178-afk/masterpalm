@@ -26,6 +26,7 @@ import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
 import '../core/venda_metrics_filter.dart';
 import '../core/financeiro_relatorio_taxas.dart';
+import '../widgets/app_help_icon_button.dart';
 
 class RelatoriosFinanceirosScreen extends StatefulWidget {
   const RelatoriosFinanceirosScreen({super.key});
@@ -429,6 +430,7 @@ class _RelatoriosFinanceirosScreenState
           backgroundColor: _cardColor,
           title: const Text('Financeiro & Metas'),
           actions: [
+            const AppHelpIconButton(),
             IconButton(
               icon: const Icon(Icons.auto_awesome),
               onPressed: _abrirSugestoesIa,
