@@ -140,7 +140,15 @@ class _AppStartRouterState extends State<AppStartRouter> {
       final storeInSessao = (sessao.get('store_id') ?? sessao.get('lojaId') ?? '').toString().trim();
       logD('[BOOT-STORE] Boxes Hive abertos | store_id em sessao=${storeInSessao.isNotEmpty ? storeInSessao : "vazio"}');
 
+      // Antes de sobrescrever usuario_logado: validar atalhos Web (vendedor cache) contra principal antigo.
+      final hivePrincipalBefore =
+          (sessao.get('usuario_logado_email') ?? sessao.get('usuario_logado') ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+
       sessao.put('usuario_logado', email);
+      sessao.put('usuario_logado_email', email);
 
       final rootEmails = _getRootAdminEmails();
       final isRootEmail = rootEmails.contains(email);
@@ -153,16 +161,27 @@ class _AppStartRouterState extends State<AppStartRouter> {
         sessao.put('is_root', false);
       }
 
-      // ✅ ROOT: abre home na hora e prepara loja em background
+      // ✅ ROOT: Web exige contexto de loja seguro (mesma política que admin); mobile mantém home + bind em background
       if (isRootEmail) {
-        logD(
-            '🔑 [ROUTER] ROOT USER - abrindo home e preparando loja em background');
+        logD('🔑 [ROUTER] ROOT USER');
+        if (kIsWeb) {
+          await _bindActiveStore(sessao: sessao, config: config, isRoot: true);
+          final ok = await _webResolveAndEvaluateStoreContext(sessao);
+          if (!ok) {
+            logW('[LOJA_ID] privileged_gate_block perfil=root_email');
+            _setWebLojaMissingState();
+            return;
+          }
+          logD('[LOJA_ID] privileged_gate_check perfil=root_email ok');
+          _goHomeOrRestore();
+          return;
+        }
         _goHomeOrRestore();
         _bindActiveStore(sessao: sessao, config: config, isRoot: true);
         return;
       }
 
-      // ✅ Atalho VENDEDOR: se já tem store_id em cache, abre home e atualiza em background
+      // ✅ Atalho VENDEDOR: Web só com principal Hive alinhado ao Auth e store_id válido
       final cachedTipo =
           (sessao.get('tipo_usuario') ?? sessao.get('role') ?? '')
               .toString()
@@ -171,12 +190,29 @@ class _AppStartRouterState extends State<AppStartRouter> {
           .toString()
           .trim();
       if (cachedTipo == 'vendedor' && cachedStore.isNotEmpty) {
-        logD(
-            '🚀 [ROUTER] Vendedor com sessão em cache → abrindo home e validando em background');
-        _goHomeOrRestore();
-        _runVendedorValidationInBackground(
-            uid: uid, email: email, sessao: sessao, config: config);
-        return;
+        if (kIsWeb) {
+          final principalOk =
+              hivePrincipalBefore.isNotEmpty && hivePrincipalBefore == email;
+          final storeOk = isValidForPublicLink(cachedStore);
+          if (!principalOk || !storeOk) {
+            logW(
+              '[LOJA_ID] vendedor_cache_rejected motivo=${!principalOk ? "principal_mismatch" : "unsafe_store"}',
+            );
+          } else {
+            logD('[LOJA_ID] privileged_gate_check perfil=vendedor_cache ok');
+            _goHomeOrRestore();
+            _runVendedorValidationInBackground(
+                uid: uid, email: email, sessao: sessao, config: config);
+            return;
+          }
+        } else {
+          logD(
+              '🚀 [ROUTER] Vendedor com sessão em cache → abrindo home e validando em background');
+          _goHomeOrRestore();
+          _runVendedorValidationInBackground(
+              uid: uid, email: email, sessao: sessao, config: config);
+          return;
+        }
       }
 
       // ✅ Verificação de e-mail: só para contas NOVAS (antigas não precisam)
@@ -335,8 +371,23 @@ class _AppStartRouterState extends State<AppStartRouter> {
       if (vendedorStoreId == null || vendedorStoreId.isEmpty) {
         final cachedStore = (sessao.get('store_id') ?? sessao.get('lojaId') ?? '').toString().trim();
         if (cachedStore.isNotEmpty) {
-          vendedorStoreId = cachedStore;
-          logD('📴 [ROUTER] Store da sessão (offline)');
+          if (kIsWeb) {
+            final principal = (sessao.get('usuario_logado_email') ??
+                    sessao.get('usuario_logado') ??
+                    '')
+                .toString()
+                .trim()
+                .toLowerCase();
+            if (principal == email && isValidForPublicLink(cachedStore)) {
+              vendedorStoreId = cachedStore;
+              logD('📴 [ROUTER] Store da sessão (offline Web) validada');
+            } else {
+              logW('[LOJA_ID] vendedor_cache_rejected motivo=offline_session_unsafe');
+            }
+          } else {
+            vendedorStoreId = cachedStore;
+            logD('📴 [ROUTER] Store da sessão (offline)');
+          }
         }
       }
       if (userRole == 'vendedor' && (sessao.get('tipo_usuario') ?? sessao.get('role')) != null) {
@@ -762,6 +813,59 @@ class _AppStartRouterState extends State<AppStartRouter> {
         .trim();
   }
 
+  /// Web: resolve loja (router) e aplica a mesma política segura para qualquer perfil.
+  Future<bool> _webResolveAndEvaluateStoreContext(Box sessao) async {
+    String? resolvedId;
+    var resolveThrew = false;
+    try {
+      resolvedId = await StoreResolverFacade.resolveForRouter(baseUri: Uri.base)
+          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+    } catch (e, st) {
+      resolveThrew = true;
+      logE('❌ [ROUTER] Erro ao verificar loja (type=${e.runtimeType})', error: e, st: st);
+    }
+    return _webEvaluateStoreContextSafe(
+      sessao: sessao,
+      resolvedId: resolvedId,
+      resolveThrew: resolveThrew,
+    );
+  }
+
+  /// Web: [resolveThrew] ou sessão/resolver incertos → false (nunca Home com contexto fantasma).
+  bool _webEvaluateStoreContextSafe({
+    required Box sessao,
+    required String? resolvedId,
+    required bool resolveThrew,
+  }) {
+    if (resolveThrew) {
+      final sid = _sessionStoreId(sessao);
+      final sessionOk = sid.isNotEmpty && isValidForPublicLink(sid);
+      if (!sessionOk) {
+        logW(
+          '[LOJA_ID] unsafe_store_context_rejected motivo=resolve_exception_sem_sessao_segura',
+        );
+        return false;
+      }
+      logD('[LOJA_ID] web resolve_exception sessão_ok');
+      return true;
+    }
+
+    final trimmed = resolvedId?.trim() ?? '';
+    final sid = _sessionStoreId(sessao);
+    final resolveOk = trimmed.isNotEmpty && isValidForPublicLink(trimmed);
+    final sessionOk = sid.isNotEmpty && isValidForPublicLink(sid);
+
+    if (!resolveOk && !sessionOk) {
+      logW('[LOJA_ID] unsafe_store_context_rejected motivo=no_safe_store');
+      return false;
+    }
+    if (resolveOk && sessionOk && trimmed != sid) {
+      logW('[LOJA_ID] unsafe_store_context_rejected motivo=resolve_session_mismatch');
+      return false;
+    }
+    return true;
+  }
+
   void _setWebLojaMissingState() {
     if (!mounted) return;
     setState(() {
@@ -781,6 +885,21 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
     logD('🎯 [ROUTER] Role: $role, isRoot: $isRoot');
 
+    if (kIsWeb) {
+      final ok = await _webResolveAndEvaluateStoreContext(sessao);
+      if (!ok) {
+        logW(
+          '[LOJA_ID] privileged_gate_block role=$role isRoot=$isRoot motivo=web_store_unsafe',
+        );
+        _setWebLojaMissingState();
+        return;
+      }
+      logD('[LOJA_ID] privileged_gate_check role=$role isRoot=$isRoot web_store_ok');
+      _goHomeOrRestore();
+      return;
+    }
+
+    // Mobile: programador/root seguem sem gate de loja (comportamento legado)
     if (isRoot || role == 'programador' || role == 'root') {
       logD('✅ [ROUTER] Root/Programador → /home');
       _goHomeOrRestore();
@@ -788,52 +907,25 @@ class _AppStartRouterState extends State<AppStartRouter> {
     }
 
     String? resolvedId;
+    var resolveThrew = false;
     try {
       resolvedId = await StoreResolverFacade.resolveForRouter(baseUri: Uri.base)
           .timeout(const Duration(seconds: 2), onTimeout: () => null);
     } catch (e, st) {
+      resolveThrew = true;
       logE('❌ [ROUTER] Erro ao verificar loja (type=${e.runtimeType})', error: e, st: st);
-      if (kIsWeb) {
-        final sid = _sessionStoreId(sessao);
-        final sessionOk = sid.isNotEmpty && isValidForPublicLink(sid);
-        if (!sessionOk) {
-          logW(
-            '[LOJA_ID] web_gate_block role=$role motivo=resolve_exception_sem_sessao_segura',
-          );
-          _setWebLojaMissingState();
-          return;
-        }
-        logD('[LOJA_ID] web resolve_exception sessão_ok — /home');
-        _goHomeOrRestore();
-        return;
-      }
+    }
+
+    if (resolveThrew) {
       _goHomeOrRestore();
       return;
     }
 
     final trimmed = resolvedId?.trim() ?? '';
-    final sid = _sessionStoreId(sessao);
-
-    if (kIsWeb) {
-      final resolveOk = trimmed.isNotEmpty && isValidForPublicLink(trimmed);
-      final sessionOk = sid.isNotEmpty && isValidForPublicLink(sid);
-
-      if (!resolveOk && !sessionOk) {
-        logW('[LOJA_ID] web_gate_block role=$role motivo=no_safe_store');
-        _setWebLojaMissingState();
-        return;
-      }
-      if (resolveOk && sessionOk && trimmed != sid) {
-        logW('[LOJA_ID] web_gate_block motivo=resolve_session_mismatch');
-        _setWebLojaMissingState();
-        return;
-      }
-    } else {
-      if (trimmed.isEmpty) {
-        logW('⚠️ [ROUTER] Sem loja → /home (fallback)');
-        _goHomeOrRestore();
-        return;
-      }
+    if (trimmed.isEmpty) {
+      logW('⚠️ [ROUTER] Sem loja → /home (fallback)');
+      _goHomeOrRestore();
+      return;
     }
 
     logD('✅ [ROUTER] Loja OK → /home');

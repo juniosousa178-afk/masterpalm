@@ -10,6 +10,9 @@ import '../services/public_store_link_helper.dart';
 import '../services/store_resolver_facade.dart';
 import 'store_context.dart';
 
+/// Fonte única de resolução de `lojaId` para telas/serviços.
+/// No **Web**, [AppStartRouter] aplica gate adicional (qualquer perfil) antes da Home;
+/// fallbacks Hive aqui exigem Auth + principal de sessão alinhados.
 class LojaIdService extends ChangeNotifier {
   String? _lojaId;
 
