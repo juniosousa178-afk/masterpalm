@@ -40,7 +40,6 @@ import 'dicas_ia_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/loja_id_service.dart';
-import '../services/store_resolver_facade.dart';
 import '../utils/text_utils.dart';
 import '../utils/moeda_input_formatter.dart';
 import 'barcode_scanner_screen.dart';
@@ -153,8 +152,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           '[WEB_NAV] Estoque._setup inicio (referência) uri=${Uri.base} route=${ModalRoute.of(context)?.settings.name ?? "null"}',
         );
       }
-      // Usa getWithTimeout para fallback Hive offline (igual Vendas/Clientes/Fornecedores)
-      String? lojaId = await LojaIdService.getWithTimeout(
+      // Alinhado a Vendas/Clientes/Financeiro: timeout + fallback sessão/Hive
+      String? lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
           timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
       if (lojaId == null || lojaId.trim().isEmpty) {
         if (kIsWeb && FirebaseAuth.instance.currentUser == null) {
@@ -164,7 +163,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                 .first
                 .timeout(const Duration(seconds: 3), onTimeout: () => null);
             if (!mounted) return;
-            lojaId = await LojaIdService.getWithTimeout(
+            lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
                 timeout: const Duration(seconds: 12));
           } catch (_) {}
         }
@@ -205,7 +204,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   Future<void> _enviarParaFirestore() async {
     setState(() => _sincronizandoEstoque = true);
     try {
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
       if (lojaId == null) {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
@@ -248,7 +248,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   Future<void> _puxarDoFirestore() async {
     setState(() => _sincronizandoEstoque = true);
     try {
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
       if (lojaId == null) {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
@@ -276,7 +277,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   /// Remove foto da logo (URL que aparece em muitos produtos ou mesma filename) de todos os produtos.
   Future<void> _removerFotoLogoDosProdutos() async {
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
+    final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
     if (lojaId == null) return;
     final produtos = _box.values.where((p) => p.lojaId == lojaId).toList();
     if (produtos.isEmpty) {
@@ -510,9 +512,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   Future<String?> _lojaIdParaLote() async {
     final cached = _lojaId?.trim();
     if (cached != null && cached.isNotEmpty) return cached;
-    final resolved = await StoreResolverFacade.resolveForAdminApp();
+    final resolved = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
     if (kDebugMode && resolved != null) {
-      logD('[ESTOQUE_LOTE] lojaId resolvido via StoreResolverFacade (cache de tela vazio)');
+      logD('[ESTOQUE_LOTE] lojaId resolvido via getWithTimeoutThenSessionFallback (cache de tela vazio)');
     }
     return resolved;
   }
@@ -1531,7 +1534,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   static const String _keyMostrarQuantidadeCatalogo = 'mostrar_quantidade_catalogo';
 
   Future<void> _abrirConfigCatalogo() async {
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
+    final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
     if (lojaId == null || lojaId.isEmpty) {
       _showSnackBar('Erro: Nenhuma loja ativa', isError: true);
       return;
@@ -2076,7 +2080,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
     setState(() => _publicando = true);
     try {
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
       if (lojaId == null || lojaId.isEmpty) {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
@@ -2137,7 +2142,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
     setState(() => _publicando = true);
     try {
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
       if (lojaId == null || lojaId.isEmpty) {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
@@ -2187,7 +2193,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   Future<void> _exportarEstoque() async {
     setState(() => _exportandoEstoque = true);
     try {
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
       if (lojaId == null) {
         if (mounted) _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
@@ -2307,7 +2314,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final qtdMov = nova - p.quantidade;
     p.quantidade = nova;
     await p.save();
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
+    final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
     if (lojaId != null && qtdMov != 0) {
       MovimentacaoEstoqueService.registrar(
         lojaId: lojaId,
@@ -2613,7 +2621,8 @@ Future<void> _importarProdutos() async {
 
     if (rows.isEmpty) throw "Nenhum dado encontrado";
 
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
+    final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
     if (lojaId == null) throw StateError('Nenhuma loja ativa');
 
     int ok = 0, fail = 0;
@@ -2952,7 +2961,8 @@ Future<void> _unificarDuplicados() async {
 
   setState(() => _unificando = true);
   try {
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
+    final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
     if (lojaId == null) {
       _showSnackBar('Nenhuma loja ativa', isError: true);
       return;
@@ -3029,7 +3039,8 @@ Future<void> _unificarDuplicados() async {
   Future<void> _identificarEExcluirOrfaos() async {
     setState(() => _excluindoOrfaos = true);
     try {
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
       if (lojaId == null) {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
@@ -3767,7 +3778,8 @@ String _formatGradeTexto(Produto p) {
               Navigator.pop(context);
               final messenger = ScaffoldMessenger.of(context);
               final navigator = Navigator.of(context);
-              final lojaId = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10));
+              final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+                  timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
               if (!mounted) return;
               if (lojaId == null || lojaId.trim().isEmpty) {
                 messenger.showSnackBar(
@@ -4085,8 +4097,10 @@ String _formatGradeTexto(Produto p) {
               onPressed: () async {
                 if (!mounted) return;
                 final nav = Navigator.of(context);
-                final lojaId = await StoreResolverFacade.resolveForAdminApp();
-                if (lojaId == null || !mounted) return;
+                final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+                  timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10),
+                );
+                if (lojaId == null || lojaId.isEmpty || !mounted) return;
                 // Web: rota nomeada para manter histórico do browser (back no iPhone/Chrome).
                 if (kIsWeb) {
                   nav.pushNamed(

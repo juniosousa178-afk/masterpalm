@@ -100,6 +100,32 @@ class AiLojaService {
     }
   }
 
+  /// Tutorial passo a passo para uma tela/área do MasterPalm (Ajuda). Usa o mesmo endpoint com modo especial.
+  /// [historico] vazio: gera o tutorial inicial; com mensagem: pergunta de acompanhamento.
+  static Future<String> chatAjudaTutorial({
+    required String nomeTela,
+    String? mensagem,
+    List<Map<String, String>>? historico,
+  }) async {
+    try {
+      final pref = await _getPref();
+      final callable = _httpsIa('chatDicasLoja');
+      final result = await callable.call(<String, dynamic>{
+        'modo': 'tutorial_tela',
+        'nomeTela': nomeTela.trim(),
+        if (mensagem != null && mensagem.trim().isNotEmpty) 'mensagem': mensagem.trim(),
+        if (historico != null && historico.isNotEmpty) 'historico': historico,
+        'preferirModelo': pref,
+      });
+      final data = result.data as Map<dynamic, dynamic>?;
+      final resposta = data?['resposta']?.toString();
+      if (resposta == null || resposta.isEmpty) throw Exception('Resposta da IA vazia');
+      return resposta;
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? e.code);
+    }
+  }
+
   static Future<String> _call(String name, Map<String, dynamic> params) async {
     params['preferirModelo'] = await _getPref();
     final result = await _httpsIa(name).call(params);

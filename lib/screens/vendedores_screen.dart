@@ -74,7 +74,9 @@ class _VendedoresScreenState extends State<VendedoresScreen>
     try {
       _storeId = (await StoreResolverFacade.resolveForAdminApp())?.trim();
       final sessao = await Hive.openBox('sessao');
-      _usuarioAtual = sessao.get('usuario_logado', defaultValue: '');
+      final rawLogin = sessao.get('usuario_logado', defaultValue: '');
+      _usuarioAtual =
+          rawLogin == null ? '' : rawLogin.toString().trim();
 
       if (_storeId == null || _storeId!.isEmpty) {
         _snack('Loja nao identificada', isError: true);

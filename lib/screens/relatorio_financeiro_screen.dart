@@ -94,7 +94,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
   }
 
   Future<void> _initData() async {
-    final resolvedId = (await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10)))?.trim();
+    final resolvedId =
+        (await LojaIdService.getWithTimeoutThenSessionFallback(
+            timeout: const Duration(seconds: 10)))
+            ?.trim();
 
     if (resolvedId == null || resolvedId.isEmpty) {
       debugPrint(
@@ -1707,8 +1710,12 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     );
     if (!r.temAlgumDado) return const SizedBox.shrink();
 
-    final estimativa = FinanceiroService.lucroEstimadoComModulo(
-      lucroVendasTaxasCustos: f.lucroTotal,
+    final resultadoGerencial = FinanceiroService.resultadoGerencialComModulo(
+      lucroOperacionalVendas: f.lucroTotal,
+      modulo: r,
+    );
+    final fluxoCaixa = FinanceiroService.fluxoCaixaComVendas(
+      somaFormasPagamentoVendas: f.totalDinheiro + f.totalPix + f.totalCartao,
       modulo: r,
     );
 
@@ -1743,9 +1750,12 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Despesas operacionais: R\$ ${_fmt(r.totalDespesasOperacionais)} · '
+              'Gastos fixos: R\$ ${_fmt(r.totalGastosFixos)} · '
+              'variáveis: R\$ ${_fmt(r.totalGastosVariaveis)} · '
+              'legado: R\$ ${_fmt(r.totalDespesasOperacionais)} · '
               'Compras mercadoria: R\$ ${_fmt(r.totalCompraMercadoria)} · '
               'Investimentos: R\$ ${_fmt(r.totalInvestimentos)} · '
+              'Retiradas: R\$ ${_fmt(r.totalRetiradas)} · '
               'Equipe/pró-labore: R\$ ${_fmt(r.totalPagamentosEquipe)}',
               style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
             ),
@@ -1759,8 +1769,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ],
             const SizedBox(height: 8),
             Text(
-              'Lucro operacional (base): R\$ ${_fmt(f.lucroTotal)} → '
-              'Resultado ajustado (vendas + módulo): R\$ ${_fmt(estimativa)}',
+              'Lucro operacional de vendas: R\$ ${_fmt(f.lucroTotal)} · '
+              'Resultado gerencial: R\$ ${_fmt(resultadoGerencial)} · '
+              'Fluxo de caixa (formas + módulo): R\$ ${_fmt(fluxoCaixa)}',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -1769,8 +1780,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'Não substitui o lucro operacional acima. Lançamentos do módulo são complemento gerencial; '
-              'taxas operacionais e despesas lançadas podem cobrir a mesma natureza — evite somar em duplicidade.',
+              'Resultado gerencial = lucro de vendas − despesas operacionais e equipe + ajustes; '
+              'compra de mercadoria e investimento/retirada não duplicam CMV nem misturam com lucro de venda. '
+              'Fluxo de caixa inclui todas as saídas pagas (compra, invest., retirada, etc.). '
+              'Evite lançar a mesma despesa que já está nas taxas de venda.',
               style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
             ),
           ],

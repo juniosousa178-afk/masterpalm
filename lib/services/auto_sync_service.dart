@@ -31,6 +31,10 @@ class AutoSyncResult {
   int fornecedoresSincronizados = 0;
   int vendasReconciliadas = 0;
   int clientesDeduplicados = 0;
+  int financeiroLancamentosEnviados = 0;
+  int financeiroGastosFixosEnviados = 0;
+  int financeiroLancamentosImportados = 0;
+  int financeiroGastosFixosImportados = 0;
 }
 
 /// Serviço de sincronização automática ao conectar.
@@ -90,10 +94,18 @@ class AutoSyncService {
         logW('⚠️ [AUTO-SYNC] Erro na fila pendente (type=${e.runtimeType})');
       }
 
-      // 2. FullSync: produtos + clientes
+      // 2. FullSync: produtos + clientes + vendas + módulo financeiro (Hive ↔ Firestore)
       final fullResult = await FullSyncService.syncInicialCompleto();
       result.produtosSincronizados = fullResult.produtosSincronizados;
       result.clientesSincronizados = fullResult.clientesSincronizados;
+      result.financeiroLancamentosEnviados =
+          fullResult.financeiroLancamentosEnviados;
+      result.financeiroGastosFixosEnviados =
+          fullResult.financeiroGastosFixosEnviados;
+      result.financeiroLancamentosImportados =
+          fullResult.financeiroLancamentosImportados;
+      result.financeiroGastosFixosImportados =
+          fullResult.financeiroGastosFixosImportados;
       if (!fullResult.sucesso && fullResult.erro != null) {
         logW('⚠️ [AUTO-SYNC] FullSync parcial: ${fullResult.erro}');
       }
@@ -166,6 +178,10 @@ class AutoSyncService {
       logD('✅ [AUTO-SYNC] SINCRONIZAÇÃO AUTOMÁTICA FINALIZADA');
       logD('   Produtos: ${result.produtosSincronizados} | Clientes: ${result.clientesSincronizados}');
       logD('   Vendas: ${result.vendasSincronizadas} | Fornecedores: ${result.fornecedoresSincronizados}');
+      logD(
+        '   Financeiro: enviados lanç.+gastos ${result.financeiroLancamentosEnviados}+${result.financeiroGastosFixosEnviados} · '
+        'importados ${result.financeiroLancamentosImportados}+${result.financeiroGastosFixosImportados}',
+      );
       logD('   Reconciliadas: ${result.vendasReconciliadas} | Deduplicados: ${result.clientesDeduplicados}');
       logD('═══════════════════════════════════════════════════════════');
     } catch (e, st) {

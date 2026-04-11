@@ -109,6 +109,31 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     if (s.contains('TRIAL_ALREADY_USED')) {
       return 'Você já usou o plano grátis. Escolha mensal ou anual.';
     }
+    if (s.contains('sessão inválida') ||
+        s.contains('sessão expirada') ||
+        s.contains('faça login novamente')) {
+      return 'Sessão expirada. Faça login novamente.';
+    }
+    if (s.contains('muitas tentativas')) {
+      return 'Muitas tentativas. Aguarde um minuto e tente de novo.';
+    }
+    if (s.contains('resposta inválida do servidor')) {
+      return 'Resposta inválida do servidor. Tente de novo em instantes.';
+    }
+    if (s.contains('plano inválido')) {
+      return 'Este plano não está disponível. Atualize o app ou contate o suporte.';
+    }
+    // Propaga mensagens curtas já amigáveis do backend (planCreatePreference, MP).
+    final full = e.toString();
+    if (full.startsWith('Exception: ')) {
+      final inner = full.substring('Exception: '.length).trim();
+      if (inner.length >= 8 &&
+          inner.length <= 200 &&
+          !inner.contains('stacktrace') &&
+          !inner.contains('at ')) {
+        return inner;
+      }
+    }
     return 'Ocorreu um erro. Tente novamente ou escolha outra forma de pagamento.';
   }
 

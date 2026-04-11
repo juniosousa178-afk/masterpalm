@@ -421,49 +421,54 @@ class SoftDeleteService {
       if (r.deleteAtDt.isBefore(now)) toRemove.add(r);
     }
     for (final r in toRemove) {
-      _pending.remove(r);
-      await _executeRealDelete(r);
+      try {
+        await _executeRealDelete(r);
+        _pending.remove(r);
+      } catch (e, st) {
+        logE(
+          '❌ [SOFT-DELETE] exclusão definitiva falhou; pendência mantida para retry. '
+          'id=${r.id} type=${r.type} (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
+      }
     }
     if (toRemove.isNotEmpty) await _save();
   }
 
   static Future<void> _executeRealDelete(_PendingRecord r) async {
-    try {
-      if (r.type == 'produto') {
-        final trashBox = await _trashProdutosBox();
-        final prod = trashBox.get(r.trashKey);
-        if (prod != null) {
-          await ProdutoExclusaoRemotaService.apagarImagensEEstoqueRemoto(
-            produto: prod,
-            lojaId: r.lojaId,
-          );
-        }
-        await trashBox.delete(r.trashKey);
-        logD('🗑️ [SOFT-DELETE] Produto excluído permanentemente (Firestore + lixeira local)');
-      } else if (r.type == 'venda') {
-        final trashBox = await _trashVendasBox();
-        final venda = trashBox.get(r.trashKey);
-        if (venda != null) {
-          final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
-          await VendasService.executarExclusaoPermanente(
-            venda: venda,
-            produtosBox: produtosBox,
-            lojaId: r.lojaId,
-          );
-        }
-        await trashBox.delete(r.trashKey);
-        logD('🗑️ [SOFT-DELETE] Venda ${r.idFirebase} excluída permanentemente (Firestore + local)');
-      } else if (r.type == 'cliente') {
-        final trashBox = await _trashClientesBox();
-        final cliente = trashBox.get(r.trashKey);
-        if (cliente != null && (cliente.idFirebase ?? '').isNotEmpty) {
-          await ClientesFirestoreService.deleteCliente(cliente.idFirebase!, lojaId: r.lojaId);
-        }
-        await trashBox.delete(r.trashKey);
-        logD('🗑️ [SOFT-DELETE] Cliente ${r.idFirebase} excluído permanentemente (Firestore + local)');
+    if (r.type == 'produto') {
+      final trashBox = await _trashProdutosBox();
+      final prod = trashBox.get(r.trashKey);
+      if (prod != null) {
+        await ProdutoExclusaoRemotaService.apagarImagensEEstoqueRemoto(
+          produto: prod,
+          lojaId: r.lojaId,
+        );
       }
-    } catch (e, st) {
-      logE('❌ [SOFT-DELETE] Erro ao excluir permanentemente (type=${e.runtimeType})', error: e, st: st);
+      await trashBox.delete(r.trashKey);
+      logD('🗑️ [SOFT-DELETE] Produto excluído permanentemente (Firestore + lixeira local)');
+    } else if (r.type == 'venda') {
+      final trashBox = await _trashVendasBox();
+      final venda = trashBox.get(r.trashKey);
+      if (venda != null) {
+        final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
+        await VendasService.executarExclusaoPermanente(
+          venda: venda,
+          produtosBox: produtosBox,
+          lojaId: r.lojaId,
+        );
+      }
+      await trashBox.delete(r.trashKey);
+      logD('🗑️ [SOFT-DELETE] Venda ${r.idFirebase} excluída permanentemente (Firestore + local)');
+    } else if (r.type == 'cliente') {
+      final trashBox = await _trashClientesBox();
+      final cliente = trashBox.get(r.trashKey);
+      if (cliente != null && (cliente.idFirebase ?? '').isNotEmpty) {
+        await ClientesFirestoreService.deleteCliente(cliente.idFirebase!, lojaId: r.lojaId);
+      }
+      await trashBox.delete(r.trashKey);
+      logD('🗑️ [SOFT-DELETE] Cliente ${r.idFirebase} excluído permanentemente (Firestore + local)');
     }
   }
 

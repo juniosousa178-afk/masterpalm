@@ -713,15 +713,21 @@ class VendasService {
   /// Executa devolução de estoque e exclusão do Firestore.
   /// Usado pelo SoftDeleteService quando a exclusão se torna definitiva após 30 s.
   /// Não altera vendasBox nem clientesBox (venda já está na lixeira).
+  ///
+  /// Se a devolução de estoque (incl. ajuste piso combo) falhar, propaga erro:
+  /// a exclusão definitiva deve ser abortada pelo chamador — não apagar Firestore
+  /// com estoque inconsistente.
   static Future<void> executarExclusaoPermanente({
     required Venda venda,
     required Box<Produto> produtosBox,
     required String lojaId,
   }) async {
-    // 1. Devolver produtos ao estoque (transacional, idempotente)
     final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
         ? venda.idFirebase!.trim()
         : 'hive_${venda.key}';
+    debugPrint('[VENDA_DELETE] devolucao_estoque_inicio vendaId=$vendaId');
+
+    // 1. Devolver produtos ao estoque (transacional, idempotente)
     var devolucaoResultsExclusao = <EstoqueTransactionResult>[];
     if (venda.itens != null && venda.itens!.isNotEmpty) {
       final (itensDevolucao, _, _) = VendaComboEstoqueExpansion.expandirCombos(
@@ -786,40 +792,54 @@ class VendasService {
               result: r,
             );
           }
-        } catch (_) {}
+        } catch (e, st) {
+          debugPrint(
+            '[VENDA_DELETE] devolucao_estoque_falhou vendaId=$vendaId erro=$e',
+          );
+          debugPrint(
+            '[VENDA_DELETE] exclusao_abortada_por_estoque (lote itens)',
+          );
+          Error.throwWithStackTrace(e, st);
+        }
       }
     } else {
-      try {
-        final itensFallback = <Map<String, dynamic>>[];
-        final linhas = venda.produtosDescricao.split('\n');
-        for (var linha in linhas) {
-          if (!linha.contains(' x ')) continue;
-          final partes = linha.split(' x ');
-          if (partes.length < 2) continue;
-          final qtd = int.tryParse(partes[0].trim()) ?? 1;
-          var nome = partes[1].split(' - R\$').first.trim();
-          if (nome.contains(' - ')) nome = nome.split(' - ').first.trim();
-          if (nome.isEmpty) continue;
-          itensFallback.add({'nome': nome, 'quantidade': qtd});
-        }
-        if (itensFallback.isNotEmpty) {
-          try {
-            final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+      final itensFallback = <Map<String, dynamic>>[];
+      final linhas = venda.produtosDescricao.split('\n');
+      for (var linha in linhas) {
+        if (!linha.contains(' x ')) continue;
+        final partes = linha.split(' x ');
+        if (partes.length < 2) continue;
+        final qtd = int.tryParse(partes[0].trim()) ?? 1;
+        var nome = partes[1].split(' - R\$').first.trim();
+        if (nome.contains(' - ')) nome = nome.split(' - ').first.trim();
+        if (nome.isEmpty) continue;
+        itensFallback.add({'nome': nome, 'quantidade': qtd});
+      }
+      if (itensFallback.isNotEmpty) {
+        try {
+          final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+            lojaId: lojaId,
+            itens: itensFallback,
+            vendaIdParaIdempotencia: vendaId,
+          );
+          devolucaoResultsExclusao = results;
+          for (final r in results) {
+            await EstoqueTransactionService.atualizarHiveAposTransacao(
+              produtosBox: produtosBox,
               lojaId: lojaId,
-              itens: itensFallback,
-              vendaIdParaIdempotencia: vendaId,
+              result: r,
             );
-            devolucaoResultsExclusao = results;
-            for (final r in results) {
-              await EstoqueTransactionService.atualizarHiveAposTransacao(
-                produtosBox: produtosBox,
-                lojaId: lojaId,
-                result: r,
-              );
-            }
-          } catch (_) {}
+          }
+        } catch (e, st) {
+          debugPrint(
+            '[VENDA_DELETE] devolucao_estoque_falhou vendaId=$vendaId erro=$e',
+          );
+          debugPrint(
+            '[VENDA_DELETE] exclusao_abortada_por_estoque (fallback texto)',
+          );
+          Error.throwWithStackTrace(e, st);
         }
-      } catch (_) {}
+      }
     }
 
     var pisoResultsExclusao = <EstoqueTransactionResult>[];
@@ -832,7 +852,7 @@ class VendasService {
       for (final r in pisoResultsExclusao) {
         final q = r.quantidadeDebitada.abs();
         if (q <= 0) continue;
-        MovimentacaoEstoqueService.registrar(
+        await MovimentacaoEstoqueService.registrar(
           lojaId: lojaId,
           produtoId: r.produtoId,
           produtoNome: r.produtoNome,
@@ -841,18 +861,33 @@ class VendasService {
           motivo: 'Devolução (ajuste kit combo)',
           usuario: 'App',
           vendaId: vendaId,
-        ).catchError((_) {});
+        );
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint(
+        '[VENDA_DELETE] devolucao_estoque_falhou vendaId=$vendaId (piso combo / mov.) erro=$e',
+      );
+      debugPrint('[VENDA_DELETE] exclusao_abortada_por_estoque');
+      Error.throwWithStackTrace(e, st);
+    }
 
-    await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
-      lojaId: lojaId,
-      produtosBox: produtosBox,
-      resultadosPrincipais: devolucaoResultsExclusao,
-      resultadosComboExtra: pisoResultsExclusao,
-    );
+    try {
+      await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        resultadosPrincipais: devolucaoResultsExclusao,
+        resultadosComboExtra: pisoResultsExclusao,
+      );
+    } catch (e, st) {
+      debugPrint(
+        '[VENDA_DELETE] catalogo_pos_estoque_falhou vendaId=$vendaId erro=$e — exclusao_abortada',
+      );
+      Error.throwWithStackTrace(e, st);
+    }
 
-    // 2. Deletar do Firestore
+    debugPrint('[VENDA_DELETE] devolucao_estoque_sucesso vendaId=$vendaId');
+
+    // 2. Deletar do Firestore (somente após estoque + catálogo auxiliar OK)
     if (venda.idFirebase != null && venda.idFirebase!.isNotEmpty) {
       await VendasFirestoreService.deleteVenda(venda.idFirebase!, lojaId: lojaId);
     }

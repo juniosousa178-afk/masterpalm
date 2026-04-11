@@ -6,21 +6,31 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/hive_box_names.dart';
+import '../../financeiro/financeiro_constants.dart';
+import '../../financeiro/lancamento_financeiro_competencia_ui.dart';
 import '../../models/lancamento_financeiro.dart';
 import '../../models/venda.dart';
 import '../../services/fechamento_service.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
 import '../../services/financeiro_service.dart';
+import '../../services/financeiro_ui_prefs_service.dart';
+import '../../services/gasto_fixo_lancamento_service.dart';
 import '../../services/loja_id_service.dart';
 import '../../utils/role_utils.dart';
 import '../relatorio_financeiro_screen.dart';
 import '../relatorios_financeiros_screen.dart';
 import 'financeiro_lancamentos_screen.dart';
+import 'controle_compras_fornecedor_screen.dart';
+import 'financeiro_resumo_consolidado_screen.dart';
 import 'gastos_fixos_screen.dart';
 
 class FinanceiroScreen extends StatefulWidget {
-  const FinanceiroScreen({super.key});
+  const FinanceiroScreen({super.key, this.mesInicial});
+
+  /// Quando aberto a partir do resumo consolidado: mantém o mês do fluxo atual.
+  /// Cold start / rota nomeada: use `null` (sempre mês civil atual).
+  final DateTime? mesInicial;
 
   @override
   State<FinanceiroScreen> createState() => _FinanceiroScreenState();
@@ -31,6 +41,16 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   static const Color _success = Color(0xFF22C55E);
   static const Color _warning = Color(0xFFF59E0B);
   static const Color _muted = Color(0xFF64748B);
+
+  late DateTime _mesSelecionado;
+
+  bool _prefsCarregadasDoDisco = false;
+  String? _prefsUserKeyCache;
+  String? _filtroStatus; // null = todos; pago | pendente
+  String? _filtroTipoGrupo; // null = todos; tipo ou [FinanceiroUiPrefsService.filtroGrupoEquipe]
+
+  /// Lista abaixo: `false` = critério data efetiva (pagamento ou lançamento); `true` = competência.
+  bool _visaoListaPorCompetencia = false;
 
   bool _loading = true;
   bool _acessoNegado = false;
@@ -61,6 +81,33 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   @override
   void initState() {
     super.initState();
+    final w = widget.mesInicial;
+    _mesSelecionado = w != null
+        ? DateTime(w.year, w.month)
+        : DateTime(DateTime.now().year, DateTime.now().month);
+    _load();
+  }
+
+  bool _mesmoMesCivil(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month;
+
+  Future<void> _persistirUiPrefs() async {
+    if (_lojaId.isEmpty) return;
+    final uk = _prefsUserKeyCache ?? await FinanceiroUiPrefsService.resolveUserKey();
+    _prefsUserKeyCache = uk;
+    await FinanceiroUiPrefsService.save(
+      visaoCompetencia: _visaoListaPorCompetencia,
+      filtroStatus: _filtroStatus,
+      filtroTipoGrupo: _filtroTipoGrupo,
+      lojaId: _lojaId,
+      userKey: uk,
+    );
+  }
+
+  void _irParaMesAtual() {
+    final alvo = DateTime(DateTime.now().year, DateTime.now().month);
+    if (_mesmoMesCivil(_mesSelecionado, alvo)) return;
+    setState(() => _mesSelecionado = alvo);
     _load();
   }
 
@@ -81,7 +128,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         return;
       }
 
-      final id = (await LojaIdService.getWithTimeout(
+      final id = (await LojaIdService.getWithTimeoutThenSessionFallback(
                   timeout: const Duration(seconds: 10)))
               ?.trim() ??
           '';
@@ -89,16 +136,44 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       if (id.isEmpty) {
         throw Exception('Loja não encontrada.');
       }
+      final lojaAnterior = _lojaId;
       _lojaId = id;
-      _lancBox = await FinanceiroHiveStore.openLancamentosBox(id);
+      if (lojaAnterior.isNotEmpty && lojaAnterior != id) {
+        _prefsCarregadasDoDisco = false;
+      }
 
-      final now = DateTime.now();
+      if (!_prefsCarregadasDoDisco) {
+        final userKey = await FinanceiroUiPrefsService.resolveUserKey();
+        _prefsUserKeyCache = userKey;
+        final d = await FinanceiroUiPrefsService.load(
+          lojaId: id,
+          userKey: userKey,
+        );
+        if (!mounted) return;
+        setState(() {
+          _visaoListaPorCompetencia = d.visaoCompetencia;
+          _filtroStatus = d.filtroStatus;
+          _filtroTipoGrupo = d.filtroTipoGrupo;
+          _prefsCarregadasDoDisco = true;
+        });
+      }
+
+      _lancBox = await FinanceiroHiveStore.openLancamentosBox(id);
+      if (_lancBox == null) {
+        debugPrint(
+          '[FINANCEIRO_UI] openLancamentosBox retornou null (lojaId=$id). '
+          'Resumo do módulo ficará zerado; lançamentos podem existir no disco.',
+        );
+      }
+
+      final y = _mesSelecionado.year;
+      final m = _mesSelecionado.month;
       if (_lancBox != null) {
         _moduloMes = FinanceiroService.resumoMesCalendario(
           box: _lancBox!,
           lojaId: id,
-          ano: now.year,
-          mes: now.month,
+          ano: y,
+          mes: m,
         );
       } else {
         _moduloMes = const ResumoFinanceiroModulo();
@@ -111,8 +186,8 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
             ? Hive.box<Venda>(vendasName)
             : await Hive.openBox<Venda>(vendasName);
         _resumoVendasMes = await FechamentoService.resumoMes(
-          ano: now.year,
-          mes: now.month,
+          ano: y,
+          mes: m,
           lojaId: id,
           vendasBox: vendasBox,
         );
@@ -369,15 +444,592 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     }
   }
 
-  List<LancamentoFinanceiro> get _recentes {
+  void _mudarMes(int delta) {
+    final n = DateTime(_mesSelecionado.year, _mesSelecionado.month + delta);
+    setState(() => _mesSelecionado = DateTime(n.year, n.month));
+    _load();
+  }
+
+  bool _passaFiltroTipo(LancamentoFinanceiro l) {
+    final g = _filtroTipoGrupo;
+    if (g == null) return true;
+    if (g == FinanceiroUiPrefsService.filtroGrupoEquipe) {
+      return l.tipo == FinanceiroTipoLancamento.pagamentoFuncionario ||
+          l.tipo == FinanceiroTipoLancamento.proLabore;
+    }
+    return l.tipo == g;
+  }
+
+  String _fmtMesAnoPt(DateTime d) =>
+      DateFormat('MMM/yyyy', 'pt_BR').format(d);
+
+  bool _entraListaPorPagamento(LancamentoFinanceiro l) {
+    final ini = DateTime(_mesSelecionado.year, _mesSelecionado.month, 1);
+    final fim = DateTime(
+      _mesSelecionado.year,
+      _mesSelecionado.month + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+    final d = l.dataEfetivaPagamentoOuLancamento;
+    return !d.isBefore(ini) && !d.isAfter(fim);
+  }
+
+  List<LancamentoFinanceiro> get _lancamentosFiltrados {
     if (_lancBox == null || _lojaId.isEmpty) return [];
-    final list = _lancBox!.values
-        .where((l) => l.lojaId == _lojaId)
-        .toList()
-      ..sort((a, b) =>
-          b.dataEfetivaPagamentoOuLancamento
-              .compareTo(a.dataEfetivaPagamentoOuLancamento));
-    return list.take(12).toList();
+    final list = _lancBox!.values.where((l) {
+      if (l.lojaId != _lojaId) return false;
+      if (_visaoListaPorCompetencia) {
+        if (!LancamentoFinanceiroCompetenciaUi.competenciaNoMes(
+          l,
+          _mesSelecionado.year,
+          _mesSelecionado.month,
+        )) {
+          return false;
+        }
+      } else {
+        if (!_entraListaPorPagamento(l)) return false;
+      }
+      if (_filtroStatus != null && l.status != _filtroStatus) return false;
+      if (!_passaFiltroTipo(l)) return false;
+      return true;
+    }).toList();
+    if (_visaoListaPorCompetencia) {
+      list.sort((a, b) {
+        final c = b.dataLancamento.compareTo(a.dataLancamento);
+        if (c != 0) return c;
+        return b.id.compareTo(a.id);
+      });
+    } else {
+      list.sort(
+        (a, b) => b.dataEfetivaPagamentoOuLancamento
+            .compareTo(a.dataEfetivaPagamentoOuLancamento),
+      );
+    }
+    return list;
+  }
+
+  Widget _cabecalhoKpis() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.insights_outlined, size: 22, color: _primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'KPIs oficiais do período (por pagamento)',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Indicadores baseados em pagamentos efetivos no mês civil selecionado.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _bannerListaVisao() {
+    final comp = _visaoListaPorCompetencia;
+    final bg = comp ? Colors.indigo.shade50 : Colors.teal.shade50;
+    final border = comp ? Colors.indigo.shade100 : Colors.teal.shade100;
+    final icon = comp ? Icons.account_tree_outlined : Icons.payments_outlined;
+    final iconColor = comp ? Colors.indigo.shade800 : Colors.teal.shade800;
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: iconColor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    comp
+                        ? 'Lista por competência — visão gerencial'
+                        : 'Lista por pagamento — alinhada aos KPIs',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: Colors.grey.shade900,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    comp
+                        ? 'Não altera os KPIs do topo'
+                        : 'Mesmo recorte dos indicadores oficiais',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _barraFiltros() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Lista de lançamentos',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                ChoiceChip(
+                  label: const Text('Por pagamento'),
+                  selected: !_visaoListaPorCompetencia,
+                  onSelected: (_) {
+                    setState(() => _visaoListaPorCompetencia = false);
+                    _persistirUiPrefs();
+                  },
+                ),
+                ChoiceChip(
+                  label: const Text('Por competência'),
+                  selected: _visaoListaPorCompetencia,
+                  onSelected: (_) {
+                    setState(() => _visaoListaPorCompetencia = true);
+                    _persistirUiPrefs();
+                  },
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 8),
+              child: _bannerListaVisao(),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String?>(
+                    value: _filtroStatus,
+                    decoration: const InputDecoration(
+                      labelText: 'Status',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: null, child: Text('Todos')),
+                      DropdownMenuItem(
+                          value: FinanceiroStatusLancamento.pago,
+                          child: Text('Pago')),
+                      DropdownMenuItem(
+                          value: FinanceiroStatusLancamento.pendente,
+                          child: Text('Pendente')),
+                    ],
+                    onChanged: (v) {
+                      setState(() => _filtroStatus = v);
+                      _persistirUiPrefs();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: DropdownButtonFormField<String?>(
+                    isExpanded: true,
+                    value: _filtroTipoGrupo,
+                    decoration: const InputDecoration(
+                      labelText: 'Tipo / visão',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Todos'),
+                      ),
+                      const DropdownMenuItem<String?>(
+                        value: FinanceiroUiPrefsService.filtroGrupoEquipe,
+                        child: Text('Equipe / pró-labore'),
+                      ),
+                      ...FinanceiroTipoLancamento.todos.map(
+                        (t) => DropdownMenuItem<String?>(
+                          value: t,
+                          child: Text(
+                            FinanceiroTipoLancamento.legivel(t),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      setState(() => _filtroTipoGrupo = v);
+                      _persistirUiPrefs();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _blocoComposicaoPeriodo() {
+    final m = _moduloMes;
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Composição do período (lançamentos pagos)',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            const SizedBox(height: 10),
+            _linhaComp('Gastos fixos pagos', m.totalGastosFixos),
+            _linhaComp('Gastos variáveis pagos', m.totalGastosVariaveis),
+            _linhaComp('Despesas operacionais (legado)', m.totalDespesasOperacionais),
+            _linhaComp('Equipe / pró-labore', m.totalPagamentosEquipe),
+            const Divider(height: 20),
+            _linhaComp('Compras de mercadoria', m.totalCompraMercadoria),
+            _linhaComp('Investimentos', m.totalInvestimentos),
+            _linhaComp('Retiradas', m.totalRetiradas),
+            _linhaComp('Entradas extras', m.totalEntradasExtras),
+            _linhaComp('Ajustes financeiros', m.totalAjustes, neutro: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _blocoAcoesMes() {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Gastos fixos (mês selecionado)',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        (_lancBox == null || _loading) ? null : _gerarGastosFixosMes,
+                    icon: const Icon(Icons.add_chart, size: 18),
+                    label: const Text('Gerar do mês'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        (_lancBox == null || _loading) ? null : _quitarGastosFixosLote,
+                    icon: const Icon(Icons.done_all, size: 18),
+                    label: const Text('Quitar gerados'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _blocoCompetenciaInfo() {
+    final box = _lancBox;
+    if (box == null || _lojaId.isEmpty) return const SizedBox.shrink();
+    final ini = DateTime(_mesSelecionado.year, _mesSelecionado.month, 1);
+    final fim = DateTime(
+      _mesSelecionado.year,
+      _mesSelecionado.month + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+    final pend =
+        LancamentoFinanceiroCompetenciaUi.contarPendentesCompetenciaMes(
+      box.values,
+      _lojaId,
+      _mesSelecionado.year,
+      _mesSelecionado.month,
+    );
+    final fora = LancamentoFinanceiroCompetenciaUi
+        .contarPagosNoMesComCompetenciaOutra(
+      box.values,
+      _lojaId,
+      _mesSelecionado.year,
+      _mesSelecionado.month,
+      ini,
+      fim,
+    );
+    return Card(
+      elevation: 0,
+      color: Colors.blue.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.blue.shade100),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.date_range, size: 18, color: Colors.blue.shade800),
+                const SizedBox(width: 6),
+                Text(
+                  'Competência × pagamento',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: Colors.blue.shade900,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Pendentes com competência neste mês: $pend',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+            ),
+            Text(
+              'Pagos neste mês (data) com competência em outro período: $fora',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _gerarGastosFixosMes() async {
+    if (_lancBox == null || _lojaId.isEmpty) return;
+    final gBox = await FinanceiroHiveStore.openGastosFixosBox(_lojaId);
+    if (!mounted) return;
+    if (gBox == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível abrir gastos fixos.')),
+      );
+      return;
+    }
+    final sessao = await Hive.openBox('sessao');
+    final u = (sessao.get('usuario_logado') ?? '').toString().trim();
+    try {
+      final r = await GastoFixoLancamentoService.gerarSugestoesMes(
+        gastosBox: gBox,
+        lancBox: _lancBox!,
+        lojaId: _lojaId,
+        ano: _mesSelecionado.year,
+        mes: _mesSelecionado.month,
+        usuarioId: u,
+        usuarioNome: u,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Criados ${r.criados}. Já existiam ${r.puladosJaExistiam}. '
+            'Ignorados: ${r.ignoradosInativosOuValorZero}.',
+          ),
+        ),
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _quitarGastosFixosLote() async {
+    if (_lancBox == null || _lojaId.isEmpty) return;
+    final n = GastoFixoLancamentoService.contarGeradosPendentesCompetencia(
+      lancBox: _lancBox!,
+      lojaId: _lojaId,
+      competenciaAno: _mesSelecionado.year,
+      competenciaMes: _mesSelecionado.month,
+    );
+    if (n == 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Nenhum lançamento gerado de gasto fixo pendente para esta competência.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    var dataPg = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          return AlertDialog(
+            title: const Text('Quitar gastos fixos gerados'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Serão marcados como pagos $n lançamento(s) gerados pelo cadastro '
+                    '(origem gasto fixo, referência gf_gen, competência '
+                    '${_mesSelecionado.month}/${_mesSelecionado.year}). '
+                    'Lançamentos manuais não são alterados.',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Data de pagamento'),
+                    subtitle: Text(DateFormat('dd/MM/yyyy').format(dataPg)),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.calendar_today),
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: dataPg,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2100),
+                        );
+                        if (d != null) {
+                          setLocal(() => dataPg = d);
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Confirmar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final res = await GastoFixoLancamentoService.quitarGeradosPendentesCompetencia(
+        lancBox: _lancBox!,
+        lojaId: _lojaId,
+        competenciaAno: _mesSelecionado.year,
+        competenciaMes: _mesSelecionado.month,
+        dataPagamento: dataPg,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Quitados: ${res.afetados} lançamento(s).')),
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _linhaComp(String r, double v, {bool neutro = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(child: Text(r, style: const TextStyle(fontSize: 13))),
+          Text(
+            _moeda.format(v),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: neutro ? Colors.grey.shade800 : Colors.grey.shade900,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -483,14 +1135,78 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      Text(
-                        'Resumo do mês (${DateFormat.MMMM('pt_BR').format(DateTime.now())})',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _muted,
+                      if (_lancBox == null && _lojaId.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Material(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.warning_amber_rounded,
+                                      color: Colors.amber.shade800, size: 22),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Não foi possível abrir o armazenamento local de lançamentos. '
+                                      'Os registros podem existir no aparelho; toque em Atualizar ou reinicie o app.',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.amber.shade900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
+                      Column(
+                        children: [
+                          Row(
+                            children: [
+                              IconButton(
+                                onPressed: _loading ? null : () => _mudarMes(-1),
+                                icon: const Icon(Icons.chevron_left),
+                                tooltip: 'Mês anterior',
+                              ),
+                              Expanded(
+                                child: Text(
+                                  DateFormat.yMMMM('pt_BR')
+                                      .format(_mesSelecionado),
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: _muted,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: _loading ? null : () => _mudarMes(1),
+                                icon: const Icon(Icons.chevron_right),
+                                tooltip: 'Próximo mês',
+                              ),
+                            ],
+                          ),
+                          if (!_mesmoMesCivil(
+                            _mesSelecionado,
+                            DateTime(
+                              DateTime.now().year,
+                              DateTime.now().month,
+                            ),
+                          ))
+                            TextButton(
+                              onPressed: _loading ? null : _irParaMesAtual,
+                              child: const Text('Mês atual'),
+                            ),
+                        ],
                       ),
+                      const SizedBox(height: 10),
+                      _cabecalhoKpis(),
                       if (_ultimaMigrF2c != null) ...[
                         const SizedBox(height: 8),
                         Text(
@@ -513,16 +1229,40 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                       ],
                       const SizedBox(height: 12),
                       _cardResumo(),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
+                      _blocoComposicaoPeriodo(),
+                      const SizedBox(height: 6),
                       Text(
-                        'Os valores de vendas abaixo seguem o mesmo critério do relatório financeiro. Lançamentos do módulo são complementares.',
+                        'Competência organiza o lançamento; pagamento impacta os indicadores.',
                         style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
+                      _barraFiltros(),
+                      const SizedBox(height: 10),
+                      _blocoAcoesMes(),
+                      const SizedBox(height: 10),
+                      _blocoCompetenciaInfo(),
+                      const SizedBox(height: 12),
                       Wrap(
                         spacing: 10,
                         runSpacing: 10,
                         children: [
+                          _chipAcao(
+                            icon: Icons.dashboard_customize_outlined,
+                            label: 'Resumo consolidado',
+                            onTap: () {
+                              Navigator.push<void>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      FinanceiroResumoConsolidadoScreen(
+                                    lojaId: _lojaId,
+                                    mesInicial: _mesSelecionado,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                           _chipAcao(
                             icon: Icons.add_circle_outline,
                             label: 'Novo lançamento',
@@ -580,15 +1320,30 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                               );
                             },
                           ),
+                          _chipAcao(
+                            icon: Icons.storefront_outlined,
+                            label: 'Controle por fornecedor',
+                            onTap: () {
+                              Navigator.push<void>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      ControleComprasFornecedorScreen(
+                                    lojaId: _lojaId,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ],
                       ),
                       const SizedBox(height: 24),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Lançamentos recentes',
-                            style: TextStyle(
+                          Text(
+                            'Lançamentos (${_lancamentosFiltrados.length})',
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
@@ -606,23 +1361,35 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                               if (!mounted) return;
                               _load();
                             },
-                            child: const Text('Ver todos'),
+                            child: const Text('Lista completa'),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      if (_recentes.isEmpty)
+                      if (_lancamentosFiltrados.isEmpty)
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.all(20),
                             child: Text(
-                              'Nenhum lançamento nesta loja. Toque em "Novo lançamento" para começar.',
+                              _lancBox == null
+                                  ? 'Armazenamento de lançamentos indisponível.'
+                                  : 'Nenhum lançamento no período/filtros. Ajuste o mês ou os filtros.',
                               style: TextStyle(color: Colors.grey.shade700),
                             ),
                           ),
                         )
                       else
-                        ..._recentes.map(_tileLancamento),
+                        ..._lancamentosFiltrados
+                            .take(60)
+                            .map(_tileLancamento),
+                      if (_lancamentosFiltrados.length > 60)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'Mostrando 60 de ${_lancamentosFiltrados.length}. Refine filtros ou abra a lista completa.',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -631,13 +1398,22 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
 
   Widget _cardResumo() {
     final rv = _resumoVendasMes;
-    final lucroVendas = rv?.lucro;
-    final lucroComModulo = lucroVendas != null
-        ? FinanceiroService.lucroEstimadoComModulo(
-            lucroVendasTaxasCustos: lucroVendas,
+    final lucroOpVendas = rv?.lucro;
+    final resultadoGerencial = lucroOpVendas != null
+        ? FinanceiroService.resultadoGerencialComModulo(
+            lucroOperacionalVendas: lucroOpVendas,
             modulo: _moduloMes,
           )
         : null;
+    final somaFormas = rv != null
+        ? rv.dinheiro + rv.pix + rv.cartao
+        : 0.0;
+    final fluxoCaixa = rv != null
+        ? FinanceiroService.fluxoCaixaComVendas(
+            somaFormasPagamentoVendas: somaFormas,
+            modulo: _moduloMes,
+          )
+        : _moduloMes.impactoLiquidoModulo;
 
     return Card(
       elevation: 0,
@@ -661,9 +1437,45 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                   ),
                   Expanded(
                     child: _miniMetric(
-                      'Lucro operacional*',
+                      'Lucro operacional de vendas',
                       _moeda.format(rv.lucro),
                       _success,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _miniMetric(
+                      'Resultado gerencial do mês',
+                      _moeda.format(resultadoGerencial ?? 0),
+                      resultadoGerencial != null && resultadoGerencial >= 0
+                          ? _success
+                          : Colors.redAccent,
+                    ),
+                  ),
+                  Expanded(
+                    child: _miniMetric(
+                      'Fluxo de caixa (vendas + lançamentos)',
+                      _moeda.format(fluxoCaixa),
+                      fluxoCaixa >= 0 ? _primary : Colors.redAccent,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _miniMetric(
+                      'Fluxo de caixa (só lançamentos)',
+                      _moeda.format(_moduloMes.impactoLiquidoModulo),
+                      _moduloMes.impactoLiquidoModulo >= 0
+                          ? _primary
+                          : Colors.redAccent,
                     ),
                   ),
                 ],
@@ -674,14 +1486,14 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
               children: [
                 Expanded(
                   child: _miniMetric(
-                    'Entradas extras',
+                    'Entradas extras (caixa)',
                     _moeda.format(_moduloMes.totalEntradasExtras),
                     _success,
                   ),
                 ),
                 Expanded(
                   child: _miniMetric(
-                    'Despesas (módulo)',
+                    'Saídas (módulo, todas)',
                     _moeda.format(_moduloMes.totalSaidasExplicitas),
                     _warning,
                   ),
@@ -693,29 +1505,30 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
               children: [
                 Expanded(
                   child: _miniMetric(
-                    'Investimentos',
-                    _moeda.format(_moduloMes.totalInvestimentos),
-                    Colors.deepPurple,
+                    'Compra mercadoria (caixa)',
+                    _moeda.format(_moduloMes.totalCompraMercadoria),
+                    Colors.brown,
                   ),
                 ),
                 Expanded(
                   child: _miniMetric(
-                    'Resultado ajustado**',
+                    'Investimentos / retiradas',
                     _moeda.format(
-                      lucroComModulo ??
-                          _moduloMes.impactoLiquidoModulo,
+                      _moduloMes.totalInvestimentos + _moduloMes.totalRetiradas,
                     ),
-                    lucroComModulo != null && lucroComModulo >= 0
-                        ? _success
-                        : Colors.redAccent,
+                    Colors.deepPurple,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              '* Lucro operacional de vendas: total − custo − taxas (como no fechamento).\n'
-              '** Vendas + impacto dos lançamentos do módulo no período (não é lucro líquido contábil).',
+              'Lucro operacional de vendas = vendas − custoProdutos − taxas (config/fechamento). '
+              'Resultado gerencial = esse lucro − (gastos fixos + variáveis + despesa legada + equipe) + ajustes; '
+              'não inclui compra de mercadoria (CMV nas vendas), investimento, retirada nem entrada extra. '
+              'Fluxo de caixa = recebimentos (dinheiro+pix+cartão) + entradas extras − saídas + ajustes. '
+              'Gastos fixos: use “Gerar lançamentos do mês” na tela de cadastro ou lance manualmente. '
+              'Sugestões ficam pendentes até marcar como pagas.',
               style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
             ),
           ],
@@ -789,10 +1602,21 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   }
 
   Widget _tileLancamento(LancamentoFinanceiro l) {
-    final df = DateFormat('dd/MM/yy');
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
+        onTap: () async {
+          await Navigator.push<void>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => FinanceiroLancamentosScreen(
+                lojaId: _lojaId,
+                lancamentoIdInicial: l.id,
+              ),
+            ),
+          );
+          if (mounted) _load();
+        },
         leading: CircleAvatar(
           backgroundColor: _primary.withValues(alpha: 0.12),
           child: const Icon(Icons.receipt_long,
@@ -804,9 +1628,11 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(
-          '${df.format(l.dataEfetivaPagamentoOuLancamento)} · ${l.status}',
+          '${FinanceiroTipoLancamento.legivel(l.tipo)}\n'
+          '${LancamentoFinanceiroCompetenciaUi.subtituloCompetenciaPagamento(l, _fmtMesAnoPt)}',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
+        isThreeLine: true,
         trailing: Text(
           _moeda.format(l.valor),
           style: const TextStyle(fontWeight: FontWeight.bold),

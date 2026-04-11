@@ -218,11 +218,61 @@ Requisitos:
 
 /**
  * Chat de dicas e ideias para o dono da loja.
+ * modo "tutorial_tela": tutor passo a passo para telas do MasterPalm (nomeTela obrigatório).
  */
 export async function chatDicasLoja(openaiKey, geminiKey, params) {
-  const mensagem = (params.mensagem || "").trim();
-  if (!mensagem) throw new Error("Mensagem é obrigatória");
   const historico = Array.isArray(params.historico) ? params.historico : [];
+  const modo = (params.modo || "").trim();
+  const nomeTela = (params.nomeTela || "").trim();
+  const mensagem = (params.mensagem || "").trim();
+
+  if (modo === "tutorial_tela") {
+    if (!nomeTela) throw new Error("nomeTela é obrigatório no modo tutorial");
+    const systemInstruction = `Você é o tutor oficial do aplicativo MasterPalm (gestão de loja no Brasil: estoque, vendas, catálogo web, pedidos, campanhas e sorteios, roleta da sorte, fretes, cupons, Pix, Mercado Pago, relatórios, vendedores, notas fiscais, integrações).
+Responda sempre em português do Brasil, tom didático e acolhedor.
+Para o tutorial inicial: seja completo (vários parágrafos permitidos). Use Markdown: ## para seções, listas numeradas nos passos, **negrito** só quando ajudar.
+Não invente botões ou menus que não existiriam em um ERP de loja; descreva fluxos plausíveis alinhados ao nome da tela.
+Se a tela for "Campanhas e Sorteios", cubra campanhas de sorteio (números por compra) e a Roleta da sorte (prêmios, valor mínimo) como recursos relacionados.`;
+
+    if (historico.length === 0) {
+      const prompt = `O lojista abriu a Ajuda e quer aprender a usar esta área do app: "${nomeTela}".
+
+Gere um tutorial com EXATAMENTE estas seções (títulos em Markdown ##):
+
+## Resumo
+Um parágrafo: o que essa tela/área faz, para quem é útil.
+
+## Passo a passo
+Lista numerada (5 a 12 passos) de como encontrar no app, configurar e usar no dia a dia. Seja específico.
+
+## Exemplos práticos
+Dois cenários fictícios com valores (ex.: "Loja de roupas", "pedido de R$ 120") mostrando como usar a funcionalidade.
+
+## Dicas rápidas
+Bullet points (4 a 6) com atalhos mentais e boas práticas.
+
+Não use emojis excessivos (no máximo 1 ou 2 no texto inteiro).`;
+      return generate(openaiKey, geminiKey, prompt, systemInstruction, params.preferirModelo);
+    }
+
+    const contexto = historico
+      .slice(-10)
+      .map((m) => `${m.role === "user" ? "Lojista" : "Tutor"}: ${m.content}`)
+      .join("\n");
+    const pergunta = mensagem || "Responda de forma útil e objetiva, mantendo o foco nesta tela.";
+    const prompt = `Tela em foco no MasterPalm: "${nomeTela}".
+
+Histórico da conversa:
+${contexto}
+
+Pergunta ou pedido de esclarecimento do lojista:
+${pergunta}
+
+Responda como Tutor MasterPalm (Markdown permitido).`;
+    return generate(openaiKey, geminiKey, prompt, systemInstruction, params.preferirModelo);
+  }
+
+  if (!mensagem) throw new Error("Mensagem é obrigatória");
   const systemInstruction = `Você é um assistente especializado em ajudar donos de loja e e-commerce.
 Responda sempre em português do Brasil, de forma prática e objetiva.
 Dê dicas de vendas, marketing, estoque, atendimento, precificação e ideias para crescer a loja.

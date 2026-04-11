@@ -82,11 +82,9 @@ class LojaIdService extends ChangeNotifier {
     try {
       final current = FirebaseAuth.instance.currentUser;
       if (current == null) {
-        if (kIsWeb) {
-          final webFallback = await _resolveSafeWebHiveFallback(authEmail: '');
-          if (webFallback != null && webFallback.isNotEmpty) return webFallback;
-        }
-        logW('[LOJAID] origem=LojaIdService.get retorno null motivo=auth currentUser null e fallback nao resolveu');
+        logW(
+          '[LOJA_ID] resolve_failed_no_safe_context motivo=currentUser_null (sem fallback Hive no Web sem Auth)',
+        );
         return null;
       }
 
@@ -157,7 +155,9 @@ class LojaIdService extends ChangeNotifier {
         ? (kIsWeb && timeout.inSeconds < 30 ? const Duration(seconds: 30) : timeout)
         : (kIsWeb ? const Duration(seconds: 30) : const Duration(seconds: 10));
     const retryTimeout = kIsWeb ? Duration(seconds: 20) : Duration(seconds: 5);
-    logD('[LOJAID] origem=LojaIdService.getWithTimeout inicio timeout=${effectiveTimeout.inSeconds}s web=$kIsWeb');
+    logD(
+      '[LOJA_ID] resolve_start getWithTimeout timeout=${effectiveTimeout.inSeconds}s web=$kIsWeb',
+    );
 
     // ⚠️ NÃO usar Hive como fast path: no Web, IndexedDB é compartilhado e pode ter
     // store_id de outro usuário (contaminação entre juniosousa178 e trindadejunio70).
@@ -169,7 +169,7 @@ class LojaIdService extends ChangeNotifier {
       logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=1 valor=${id ?? "null"}');
       final trimmed = id?.trim() ?? '';
       if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
-        logD('[LOJAID] origem=LojaIdService.getWithTimeout retorno=$trimmed motivo=StoreResolver tentativa1');
+        logD('[LOJA_ID] resolve_success fonte=StoreResolver tentativa=1');
         return trimmed;
       }
       // Retry quando retorna null/vazio (ex: Auth ainda não pronto no Web ao voltar)
@@ -181,23 +181,29 @@ class LojaIdService extends ChangeNotifier {
       logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=2 valor=${idRetry ?? "null"}');
       final trimmedRetry = idRetry?.trim() ?? '';
       if (trimmedRetry.isNotEmpty && isValidForPublicLink(trimmedRetry)) {
-        logD('[LOJAID] origem=LojaIdService.getWithTimeout retorno=$trimmedRetry motivo=StoreResolver tentativa2');
+        logD('[LOJA_ID] resolve_success fonte=StoreResolver tentativa=2');
         return trimmedRetry;
       }
     } on TimeoutException {
-      logW('[STORE_SCREEN] Timeout ao resolver loja; tentando retry e depois Hive');
+      logW('[LOJA_ID] resolve_timeout tentando_retry_apos_timeout');
       // Retry: no Web o Auth pode ter ficado pronto após o timeout
       try {
-        logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=timeout-retry');
+        logD('[LOJA_ID] resolve_start tentativa=timeout-retry');
         final id = await StoreResolverFacade.resolveForAdminApp()
             .timeout(retryTimeout, onTimeout: () => null);
-        logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=timeout-retry valor=${id ?? "null"}');
+        logD('[LOJA_ID] resolve_after_timeout valor=${id != null && id.isNotEmpty ? "ok" : "null"}');
         final trimmed = id?.trim() ?? '';
         if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
-          logD('[STORE_SCREEN] lojaId resolvido no retry = $trimmed');
+          logD('[LOJA_ID] resolve_success fonte=StoreResolver tentativa=timeout-retry');
           return trimmed;
         }
-      } catch (_) {}
+      } catch (e, st) {
+        logW(
+          '[LOJA_ID] resolve_timeout_retry_failed type=${e.runtimeType}',
+          error: e,
+          st: st,
+        );
+      }
     } catch (e) {
       logE('[STORE_SCREEN] Erro ao resolver loja (type=${e.runtimeType})', error: e);
     }
@@ -213,10 +219,12 @@ class LojaIdService extends ChangeNotifier {
         final id = await get();
         final trimmed = id?.trim() ?? '';
         if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
-          logD('[STORE_SCREEN] lojaId resolvido na última tentativa = $trimmed');
+          logD('[LOJA_ID] resolve_success fonte=get_apos_espera');
           return trimmed;
         }
-      } catch (_) {}
+      } catch (e, st) {
+        logW('[LOJA_ID] get_apos_espera_falhou type=${e.runtimeType}', error: e, st: st);
+      }
       // Web: Auth pode ainda não ter restaurado (ex.: abriu /vendas direto na URL); aguardar e retentar
       if (FirebaseAuth.instance.currentUser == null) {
         logD('[STORE_SCREEN] Web: aguardando Auth restaurar (até 5s)...');
@@ -229,38 +237,78 @@ class LojaIdService extends ChangeNotifier {
               .timeout(const Duration(seconds: 10), onTimeout: () => null);
           final trimmed = id?.trim() ?? '';
           if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
-            logD('[STORE_SCREEN] lojaId resolvido após Auth = $trimmed');
+            logD('[LOJA_ID] resolve_success fonte=StoreResolver_apos_auth_stream');
             return trimmed;
           }
-        } catch (_) {}
+        } catch (e, st) {
+          logW(
+            '[LOJA_ID] resolve_apos_auth_stream_falhou type=${e.runtimeType}',
+            error: e,
+            st: st,
+          );
+        }
       }
     }
 
-    // Fallback final (WEB): se StoreResolver falhar por atraso do FirebaseAuth,
-    // devolver store_id já persistido em Hive para evitar erro fatal
-    // "Não foi possível carregar a loja" em Vendas/Clientes.
+    // Fallback final (WEB): só Hive se usuário Firebase bater com sessão (ver _resolveSafeWebHiveFallback).
     if (kIsWeb) {
       try {
-        final authEmail =
-            FirebaseAuth.instance.currentUser?.email?.trim().toLowerCase() ?? '';
-        final webFallback = await _resolveSafeWebHiveFallback(authEmail: authEmail);
+        final webFallback = await _resolveSafeWebHiveFallback();
         if (webFallback != null && webFallback.isNotEmpty) return webFallback;
       } catch (e, st) {
-        logE('[STORE_SCREEN] Falha no fallback final WEB (type=${e.runtimeType})', error: e, st: st);
+        logE('[LOJA_ID] web_fallback_exception', error: e, st: st);
       }
     }
 
-    logW('[LOJAID] origem=LojaIdService.getWithTimeout retorno null motivo=tentativas esgotadas');
+    logW('[LOJA_ID] resolve_failed_no_safe_context motivo=getWithTimeout_esgotado');
     return null;
   }
 
-  /// Fallback seguro para WEB usando Hive:
-  /// - aceita apenas store_id válido (sem placeholder)
-  /// - exige principal de sessão (usuario_logado_email/usuario_logado)
-  /// - se authEmail vier preenchido, exige compatibilidade exata
-  static Future<String?> _resolveSafeWebHiveFallback({
-    required String authEmail,
+  /// Igual a [getWithTimeout], mas se ainda assim vier vazio chama [get].
+  ///
+  /// Motivo: em APK, [getWithTimeout] **não** usa Hive como fallback quando o
+  /// Firestore/Auth atrasam ou falham; os dados locais (ex.: `lancamentos_financeiros_*`)
+  /// ficam em boxes nomeadas com `store_id` já persistido em `sessao`/`config`.
+  /// Sem este passo, a Gestão Financeira pode abrir com outro critério de loja ou
+  /// sem loja — parecendo que os lançamentos “sumiram”.
+  static Future<String?> getWithTimeoutThenSessionFallback({
+    Duration? timeout,
   }) async {
+    final first = await getWithTimeout(timeout: timeout);
+    final t = first?.trim() ?? '';
+    if (t.isNotEmpty) return t;
+
+    try {
+      final second = await get();
+      final g = second?.trim() ?? '';
+      if (g.isNotEmpty) {
+        logD(
+          '[LOJAID] origem=getWithTimeoutThenSessionFallback retorno=$g motivo=fallback get() após timeout',
+        );
+        return g;
+      }
+    } catch (e) {
+      debugPrint(
+        '[LOJAID] getWithTimeoutThenSessionFallback: get() erro (type=${e.runtimeType})',
+      );
+    }
+    return null;
+  }
+
+  /// Fallback seguro para WEB usando Hive (somente com [FirebaseAuth] + sessão alinhados).
+  /// Não usa candidato sem usuário logado com e-mail verificável = mesmo principal em sessão.
+  static Future<String?> _resolveSafeWebHiveFallback() async {
+    if (!kIsWeb) return null;
+
+    final user = FirebaseAuth.instance.currentUser;
+    final authEmail = (user?.email ?? '').trim().toLowerCase();
+    if (user == null || authEmail.isEmpty) {
+      logW(
+        '[LOJA_ID] web_fallback_rejected motivo=no_firebase_user_or_email',
+      );
+      return null;
+    }
+
     final sessaoBox = Hive.isBoxOpen('sessao')
         ? Hive.box('sessao')
         : await Hive.openBox('sessao');
@@ -285,34 +333,24 @@ class LojaIdService extends ChangeNotifier {
     final cachedStoreIdCfg = normalizeFromBox(cfgBox) ?? '';
     final candidate = cachedStoreId.isNotEmpty ? cachedStoreId : cachedStoreIdCfg;
 
-    logW(
-      '[STORE_SCREEN] WEB safe fallback: authEmail=${authEmail.isNotEmpty ? authEmail : "null"} cachedPrincipal=${cachedPrincipal.isNotEmpty ? cachedPrincipal : "null"} candidate=$candidate',
-    );
-
     if (candidate.isEmpty || !isValidForPublicLink(candidate)) {
-      logW('[STORE_SCREEN] Fallback WEB negado: candidate inválido');
+      logW('[LOJA_ID] web_fallback_rejected motivo=candidate_invalido');
       return null;
-    }
-
-    if (authEmail.isNotEmpty) {
-      if (cachedPrincipal.isEmpty) {
-        logW('[STORE_SCREEN] Fallback WEB negado: cachedPrincipal vazio com auth pronto');
-        return null;
-      }
-      if (authEmail != cachedPrincipal) {
-        logW('[STORE_SCREEN] Fallback WEB negado: authEmail != cachedPrincipal');
-        return null;
-      }
-      logD('[STORE_SCREEN] Fallback WEB aceito: storeId=$candidate');
-      return candidate;
     }
 
     if (cachedPrincipal.isEmpty) {
-      logW('[STORE_SCREEN] Fallback WEB negado: auth pendente e cachedPrincipal vazio');
+      logW('[LOJA_ID] web_fallback_rejected motivo=cachedPrincipal_vazio');
       return null;
     }
 
-    logD('[STORE_SCREEN] Fallback WEB aceito (auth pendente): storeId=$candidate');
+    if (authEmail != cachedPrincipal) {
+      logW(
+        '[LOJA_ID] web_fallback_rejected motivo=principal_mismatch',
+      );
+      return null;
+    }
+
+    logD('[LOJA_ID] web_fallback_used');
     return candidate;
   }
 

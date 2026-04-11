@@ -1,8 +1,6 @@
 // lib/screens/financeiro/gastos_fixos_screen.dart
 // Cadastro de gastos fixos (sem geracao automatica nesta fase).
 
-import 'dart:async' show unawaited;
-
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
@@ -11,6 +9,7 @@ import '../../financeiro/financeiro_constants.dart';
 import '../../models/gasto_fixo_mensal.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
+import '../../services/gasto_fixo_lancamento_service.dart';
 import '../../utils/moeda_input_formatter.dart';
 
 class GastosFixosScreen extends StatefulWidget {
@@ -74,7 +73,7 @@ class _GastosFixosScreenState extends State<GastosFixosScreen> {
         item: item,
         onSalvar: (g) async {
           await box.put(g.id, g);
-          unawaited(FinanceiroFirestoreService.upsertGastoFixo(g));
+          await FinanceiroFirestoreService.upsertGastoFixo(g);
         },
       ),
     );
@@ -86,11 +85,145 @@ class _GastosFixosScreenState extends State<GastosFixosScreen> {
     g.ativo = !anterior;
     try {
       await g.save();
-      unawaited(FinanceiroFirestoreService.upsertGastoFixo(g));
+      await FinanceiroFirestoreService.upsertGastoFixo(g);
     } catch (_) {
       g.ativo = anterior;
     }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _gerarLancamentosMes() async {
+    final gBox = _box;
+    if (gBox == null) return;
+    final lancBox = await FinanceiroHiveStore.openLancamentosBox(widget.lojaId);
+    if (!mounted) return;
+    if (lancBox == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível abrir o armazenamento de lançamentos.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    final agora = DateTime.now();
+    var ano = agora.year;
+    var mes = agora.month;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          return AlertDialog(
+            title: const Text('Gerar lançamentos do mês'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Serão criados lançamentos pendentes (tipo “Gasto fixo”) para cada item ativo com valor > 0. '
+                    'O mesmo gasto fixo não será duplicado no mesmo mês.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Text('Mês:'),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: mes,
+                          items: List.generate(
+                            12,
+                            (i) => DropdownMenuItem(
+                              value: i + 1,
+                              child: Text('${i + 1}'),
+                            ),
+                          ),
+                          onChanged: (v) =>
+                              setLocal(() => mes = v ?? mes),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text('Ano:'),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: DropdownButton<int>(
+                          isExpanded: true,
+                          value: ano,
+                          items: List.generate(
+                            5,
+                            (i) {
+                              final y = agora.year - 2 + i;
+                              return DropdownMenuItem(
+                                value: y,
+                                child: Text('$y'),
+                              );
+                            },
+                          ),
+                          onChanged: (v) =>
+                              setLocal(() => ano = v ?? ano),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Gerar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    final sessao = await Hive.openBox('sessao');
+    final u = (sessao.get('usuario_logado') ?? '').toString().trim();
+
+    try {
+      final r = await GastoFixoLancamentoService.gerarSugestoesMes(
+        gastosBox: gBox,
+        lancBox: lancBox,
+        lojaId: widget.lojaId,
+        ano: ano,
+        mes: mes,
+        usuarioId: u,
+        usuarioNome: u,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Criados ${r.criados}. Já existiam ${r.puladosJaExistiam}. '
+            'Ignorados (inativo ou sem valor): ${r.ignoradosInativosOuValorZero}.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _excluir(GastoFixoMensal g) async {
@@ -115,9 +248,7 @@ class _GastosFixosScreenState extends State<GastosFixosScreen> {
       final id = g.id;
       final lojaId = widget.lojaId;
       await _box!.delete(id);
-      unawaited(
-        FinanceiroFirestoreService.deleteGastoFixo(lojaId: lojaId, id: id),
-      );
+      await FinanceiroFirestoreService.deleteGastoFixo(lojaId: lojaId, id: id);
       if (mounted) setState(() {});
     }
   }
@@ -130,6 +261,16 @@ class _GastosFixosScreenState extends State<GastosFixosScreen> {
         title: const Text('Gastos fixos mensais'),
         backgroundColor: _primary,
         foregroundColor: Colors.white,
+        actions: [
+          TextButton.icon(
+            onPressed: _box == null ? null : _gerarLancamentosMes,
+            icon: const Icon(Icons.playlist_add_check, color: Colors.white, size: 22),
+            label: const Text(
+              'Gerar lançamentos',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _box == null ? null : () => _abrirForm(),
@@ -154,8 +295,8 @@ class _GastosFixosScreenState extends State<GastosFixosScreen> {
                               child: Padding(
                                 padding: EdgeInsets.symmetric(horizontal: 24),
                                 child: Text(
-                                  'Cadastre aluguel, internet, salários etc. '
-                                  'A geração automática de lançamentos fica para uma fase futura.',
+                                  'Cadastre aluguel, internet, encargos etc. '
+                                  'Use “Gerar lançamentos” para criar sugestões pendentes do mês (sem duplicar).',
                                   textAlign: TextAlign.center,
                                 ),
                               ),

@@ -14,6 +14,7 @@ import '../models/venda.dart';
 import 'produto_remote_sync_guard.dart';
 import 'produtos_firestore_service.dart';
 import 'importar_vendas_firestore_service.dart';
+import 'financeiro_firestore_service.dart';
 import 'store_resolver_facade.dart';
 
 class FullSyncService {
@@ -52,6 +53,31 @@ class FullSyncService {
 
       // 5. Sincronizar vendas (Firestore → Hive)
       result.vendasSincronizadas = await _syncVendas(lojaId);
+
+      // 6. Módulo financeiro: lançamentos + cadastro de gastos fixos (Hive ↔ Firestore)
+      try {
+        final mig =
+            await FinanceiroFirestoreService.migrarLojaHiveParaFirestorePolicyA(
+                lojaId);
+        final pull =
+            await FinanceiroFirestoreService.pullLojaFirestoreParaHiveFase2d(
+                lojaId);
+        result.financeiroLancamentosEnviados = mig.lancamentosEnviados;
+        result.financeiroGastosFixosEnviados = mig.gastosEnviados;
+        result.financeiroLancamentosImportados = pull.lancamentosImportados;
+        result.financeiroGastosFixosImportados = pull.gastosImportados;
+        logD(
+          '💰 [FULL-SYNC] Financeiro: para nuvem — lanç. ${mig.lancamentosEnviados}, '
+          'gastos fixos ${mig.gastosEnviados}; da nuvem — lanç. ${pull.lancamentosImportados}, '
+          'gastos fixos ${pull.gastosImportados}',
+        );
+      } catch (e, st) {
+        logE(
+          '⚠️ [FULL-SYNC] Módulo financeiro (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
+      }
 
       result.sucesso = true;
       logD('═══════════════════════════════════════════════════════════');
@@ -419,11 +445,19 @@ class SyncResult {
   int produtosSincronizados = 0;
   int clientesSincronizados = 0;
   int vendasSincronizadas = 0;
+  /// Hive → Firestore (só documentos que ainda não existiam na nuvem).
+  int financeiroLancamentosEnviados = 0;
+  int financeiroGastosFixosEnviados = 0;
+  /// Firestore → Hive (só chaves que ainda não existiam localmente).
+  int financeiroLancamentosImportados = 0;
+  int financeiroGastosFixosImportados = 0;
 
   @override
   String toString() {
     if (sucesso) {
-      return 'Sincronização OK: $produtosSincronizados produtos, $clientesSincronizados clientes, $vendasSincronizadas vendas';
+      return 'Sincronização OK: $produtosSincronizados produtos, $clientesSincronizados clientes, '
+          '$vendasSincronizadas vendas; financeiro enviados ${financeiroLancamentosEnviados}+${financeiroGastosFixosEnviados}, '
+          'importados ${financeiroLancamentosImportados}+${financeiroGastosFixosImportados}';
     }
     return 'Erro: $erro';
   }

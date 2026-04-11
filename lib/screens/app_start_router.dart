@@ -17,6 +17,7 @@ import '../services/planos_service.dart';
 import '../services/user_profile_resolver.dart';
 import '../services/remote_config_safe_service.dart';
 import '../services/store_resolver_facade.dart';
+import '../services/public_store_link_helper.dart';
 import '../services/store_resolver_service.dart';
 import '../utils/role_utils.dart'; // ✅ Utilitário centralizado de roles
 import '../utils/last_route_observer.dart'; // ✅ Restaurar tela ao voltar do segundo plano
@@ -30,6 +31,7 @@ class AppStartRouter extends StatefulWidget {
 
 class _AppStartRouterState extends State<AppStartRouter> {
   bool _busy = true;
+  bool _webLojaMissing = false;
   String _msg = 'Iniciando...';
 
   // ✅ CORREÇÃO: Usar const (lowercase)
@@ -82,6 +84,11 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
   Future<void> _run() async {
     try {
+      if (mounted) {
+        setState(() {
+          _webLojaMissing = false;
+        });
+      }
       logD(
         '[ROUTE_GUARD] AppStartRouter._run inicio uri=${Uri.base} path=${Uri.base.path}',
       );
@@ -662,6 +669,14 @@ class _AppStartRouterState extends State<AppStartRouter> {
         }
       }
 
+      if (kIsWeb &&
+          loja != null &&
+          loja.isNotEmpty &&
+          !isValidForPublicLink(loja)) {
+        logW('[LOJA_ID] router_bind_rejected motivo=store_id_formato_invalido');
+        loja = null;
+      }
+
       if (loja == null || loja.isEmpty) {
         logW('⚠️ [ROUTER_GUARD] Nenhuma loja encontrada, continuando...');
         return;
@@ -738,6 +753,23 @@ class _AppStartRouterState extends State<AppStartRouter> {
     }
   }
 
+  String _sessionStoreId(Box sessao) {
+    return (sessao.get('store_id') ??
+            sessao.get('storeId') ??
+            sessao.get('lojaId') ??
+            '')
+        .toString()
+        .trim();
+  }
+
+  void _setWebLojaMissingState() {
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _webLojaMissing = true;
+    });
+  }
+
   Future<void> _routeByRoleAndLoja(Box sessao) async {
     final role =
         (sessao.get('role') ?? sessao.get('tipo_usuario') ?? 'vendedor')
@@ -755,21 +787,56 @@ class _AppStartRouterState extends State<AppStartRouter> {
       return;
     }
 
+    String? resolvedId;
     try {
-      final lojaId = await StoreResolverFacade.resolveForRouter(baseUri: Uri.base)
+      resolvedId = await StoreResolverFacade.resolveForRouter(baseUri: Uri.base)
           .timeout(const Duration(seconds: 2), onTimeout: () => null);
+    } catch (e, st) {
+      logE('❌ [ROUTER] Erro ao verificar loja (type=${e.runtimeType})', error: e, st: st);
+      if (kIsWeb) {
+        final sid = _sessionStoreId(sessao);
+        final sessionOk = sid.isNotEmpty && isValidForPublicLink(sid);
+        if (!sessionOk) {
+          logW(
+            '[LOJA_ID] web_gate_block role=$role motivo=resolve_exception_sem_sessao_segura',
+          );
+          _setWebLojaMissingState();
+          return;
+        }
+        logD('[LOJA_ID] web resolve_exception sessão_ok — /home');
+        _goHomeOrRestore();
+        return;
+      }
+      _goHomeOrRestore();
+      return;
+    }
 
-      if (lojaId == null || lojaId.trim().isEmpty) {
+    final trimmed = resolvedId?.trim() ?? '';
+    final sid = _sessionStoreId(sessao);
+
+    if (kIsWeb) {
+      final resolveOk = trimmed.isNotEmpty && isValidForPublicLink(trimmed);
+      final sessionOk = sid.isNotEmpty && isValidForPublicLink(sid);
+
+      if (!resolveOk && !sessionOk) {
+        logW('[LOJA_ID] web_gate_block role=$role motivo=no_safe_store');
+        _setWebLojaMissingState();
+        return;
+      }
+      if (resolveOk && sessionOk && trimmed != sid) {
+        logW('[LOJA_ID] web_gate_block motivo=resolve_session_mismatch');
+        _setWebLojaMissingState();
+        return;
+      }
+    } else {
+      if (trimmed.isEmpty) {
         logW('⚠️ [ROUTER] Sem loja → /home (fallback)');
         _goHomeOrRestore();
         return;
       }
-
-      logD('✅ [ROUTER] Loja OK → /home');
-    } catch (e, st) {
-      logE('❌ [ROUTER] Erro ao verificar loja (type=${e.runtimeType})', error: e, st: st);
     }
 
+    logD('✅ [ROUTER] Loja OK → /home');
     _goHomeOrRestore();
   }
 
@@ -821,6 +888,58 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
   @override
   Widget build(BuildContext context) {
+    if (_webLojaMissing) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF101010),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.store_outlined, size: 48, color: Colors.amber.shade200),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Loja não confirmada',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Não foi possível carregar o contexto da sua loja com segurança neste navegador. '
+                      'Verifique a conexão e tente novamente, ou saia e entre de novo.',
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.85)),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton(
+                      onPressed: () {
+                        setState(() {
+                          _webLojaMissing = false;
+                          _busy = true;
+                          _msg = 'Tentando novamente...';
+                        });
+                        _run();
+                      },
+                      child: const Text('Tentar novamente'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () => _go(_routeLogin),
+                      child: const Text('Voltar ao login'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF101010),
       body: Center(

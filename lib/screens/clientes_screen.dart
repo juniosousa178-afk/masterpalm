@@ -217,19 +217,19 @@ class _ClientesScreenState extends State<ClientesScreen>
     } catch (_) {}
     if (!mounted) return;
 
-    logD('[LOJAID] origem=Clientes._init antes LojaIdService.getWithTimeout');
-    lojaId = await LojaIdService.getWithTimeout(
+    logD('[LOJAID] origem=Clientes._init antes LojaIdService.getWithTimeoutThenSessionFallback');
+    lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
         timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
-    logD('[LOJAID] origem=Clientes._init depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
+    logD('[LOJAID] origem=Clientes._init depois LojaIdService.getWithTimeoutThenSessionFallback valor=${lojaId ?? "null"}');
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
       if (kDebugMode) logD('[STORE-RESOLVE] Clientes: lojaId null, tentando retry em 2s');
       await Future<void>.delayed(const Duration(seconds: 2));
       if (!mounted) return;
-      logD('[LOJAID] origem=Clientes._init retry antes LojaIdService.getWithTimeout');
-      lojaId = await LojaIdService.getWithTimeout(
+      logD('[LOJAID] origem=Clientes._init retry antes LojaIdService.getWithTimeoutThenSessionFallback');
+      lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
           timeout: kIsWeb ? const Duration(seconds: 15) : const Duration(seconds: 8));
-      logD('[LOJAID] origem=Clientes._init retry depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
+      logD('[LOJAID] origem=Clientes._init retry depois LojaIdService.getWithTimeoutThenSessionFallback valor=${lojaId ?? "null"}');
     }
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
@@ -241,10 +241,10 @@ class _ClientesScreenState extends State<ClientesScreen>
               .first
               .timeout(const Duration(seconds: 3), onTimeout: () => null);
           if (!mounted) return;
-          logD('[LOJAID] origem=Clientes._init authWait antes LojaIdService.getWithTimeout');
-          lojaId = await LojaIdService.getWithTimeout(
+          logD('[LOJAID] origem=Clientes._init authWait antes LojaIdService.getWithTimeoutThenSessionFallback');
+          lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
               timeout: const Duration(seconds: 12));
-          logD('[LOJAID] origem=Clientes._init authWait depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
+          logD('[LOJAID] origem=Clientes._init authWait depois LojaIdService.getWithTimeoutThenSessionFallback valor=${lojaId ?? "null"}');
         } catch (e) {
           logW('[CLIENTES_INIT] auth wait/retry falhou (type=${e.runtimeType})');
         }

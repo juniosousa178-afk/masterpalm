@@ -3052,11 +3052,13 @@ export const chatDicasLoja = onCall(
       }
       if (geminiKey.trim()) console.log("[chatDicasLoja] Usando Gemini");
       else console.log("[chatDicasLoja] Usando OpenAI");
-      const { mensagem, historico, preferirModelo } = request.data || {};
+      const { mensagem, historico, preferirModelo, modo, nomeTela } = request.data || {};
       const resposta = await aiChatDicas(openaiKey, geminiKey, {
         mensagem: mensagem || "",
         historico: Array.isArray(historico) ? historico : [],
         preferirModelo: preferirModelo || "openai",
+        modo: modo || "",
+        nomeTela: nomeTela || "",
       });
       return { resposta };
     } catch (err) {

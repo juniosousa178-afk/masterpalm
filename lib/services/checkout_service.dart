@@ -80,7 +80,8 @@ class CheckoutService {
         throw Exception('Plano inválido para assinatura paga');
       }
 
-      final idToken = await user.getIdToken();
+      // Força refresh para evitar 401 na Cloud Function com token expirado (comum no Web).
+      final idToken = await user.getIdToken(true);
       if (idToken == null || idToken.isEmpty) {
         throw Exception('Sessão inválida. Faça login novamente.');
       }
@@ -121,12 +122,29 @@ class CheckoutService {
         debugPrint(
           '❌ planCreatePreference ${resp.statusCode} ${resp.body}',
         );
-        throw Exception(
-          'Não foi possível iniciar o checkout. Tente novamente.',
-        );
+        var msg = 'Não foi possível iniciar o checkout. Tente novamente.';
+        try {
+          final err = jsonDecode(resp.body);
+          if (err is Map) {
+            final e = err['error'] ?? err['message'];
+            if (e != null && e.toString().trim().isNotEmpty) {
+              msg = e.toString();
+            }
+          }
+        } catch (_) {
+          final b = resp.body.trim();
+          if (b.length > 3 && b.length < 200 && !b.contains('<')) {
+            msg = b;
+          }
+        }
+        throw Exception(msg);
       }
 
-      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final decoded = jsonDecode(resp.body);
+      if (decoded is! Map) {
+        throw Exception('Resposta inválida do servidor de checkout.');
+      }
+      final data = Map<String, dynamic>.from(decoded);
       final initPoint = data['init_point']?.toString() ?? '';
       if (initPoint.isEmpty) {
         throw Exception('Resposta inválida do servidor');

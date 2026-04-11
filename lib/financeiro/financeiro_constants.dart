@@ -3,15 +3,22 @@
 
 /// Tipos de lançamento (valores persistidos — não renomear sem migração).
 abstract class FinanceiroTipoLancamento {
+  /// Despesa genérica (legado) — continua válida e entra no resultado gerencial.
   static const String despesaOperacional = 'despesa_operacional';
+  static const String gastoFixo = 'gasto_fixo';
+  static const String gastoVariavel = 'gasto_variavel';
   static const String compraMercadoria = 'compra_mercadoria';
   static const String investimento = 'investimento';
   static const String pagamentoFuncionario = 'pagamento_funcionario';
   static const String proLabore = 'pro_labore';
   static const String entradaExtra = 'entrada_extra';
   static const String ajusteFinanceiro = 'ajuste_financeiro';
+  /// Retirada do sócio / distribuição — não é despesa operacional; afeta caixa.
+  static const String retirada = 'retirada_financeira';
 
   static const List<String> todos = [
+    gastoFixo,
+    gastoVariavel,
     despesaOperacional,
     compraMercadoria,
     investimento,
@@ -19,6 +26,7 @@ abstract class FinanceiroTipoLancamento {
     proLabore,
     entradaExtra,
     ajusteFinanceiro,
+    retirada,
   ];
 
   /// Evita crash do dropdown se vier valor legado desconhecido.
@@ -27,20 +35,26 @@ abstract class FinanceiroTipoLancamento {
 
   static String legivel(String tipo) {
     switch (tipo) {
+      case gastoFixo:
+        return 'Gasto fixo';
+      case gastoVariavel:
+        return 'Gasto variável';
       case despesaOperacional:
-        return 'Despesa operacional';
+        return 'Despesa operacional (legado)';
       case compraMercadoria:
         return 'Compra de mercadoria';
       case investimento:
         return 'Investimento';
       case pagamentoFuncionario:
-        return 'Pagamento de funcionário';
+        return 'Salários / funcionários';
       case proLabore:
         return 'Pró-labore';
       case entradaExtra:
         return 'Entrada extra';
       case ajusteFinanceiro:
         return 'Ajuste financeiro';
+      case retirada:
+        return 'Retirada';
       default:
         return tipo;
     }
@@ -56,6 +70,8 @@ abstract class FinanceiroStatusLancamento {
 /// Origem do registro.
 abstract class FinanceiroOrigemLancamento {
   static const String manual = 'manual';
+  /// Lançamento criado a partir do cadastro de gastos fixos (sugestão do mês).
+  static const String geradoGastoFixo = 'gasto_fixo_gerado';
 }
 
 /// Grupo para UI (não persiste no tipo).

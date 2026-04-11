@@ -66,6 +66,8 @@ import '../screens/consolidate_stores_screen.dart';
 import '../screens/marketplaces_screen.dart';
 
 import '../services/app_update_service.dart';
+import '../services/remote_config_service.dart';
+import 'package:intl/intl.dart';
 import '../services/notificacao_centro_service.dart';
 import '../widgets/update_app_dialog.dart';
 import '../widgets/notificacao_centro_sheet.dart';
@@ -950,10 +952,19 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // Preços fixos alinhados a lib/screens/planos_screen.dart (Pro vem do Remote Config).
+  static const double _kLandingPrecoBasico = 19.99;
+  static const double _kLandingPrecoIntermediario = 29.99;
+
+  String _fmtBRL(double v) =>
+      NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2).format(v);
+
   // =========================
   // WEB landing (mastepalm.com.br) com seção de planos
   // =========================
   Widget _buildWebLanding() {
+    final proMensal = RemoteConfigService.planoMensalPreco;
+    final proAnual = RemoteConfigService.planoAnualPreco;
     return Scaffold(
       backgroundColor: _backgroundColor,
       body: SingleChildScrollView(
@@ -1053,19 +1064,17 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   const SizedBox(height: 24),
                   _buildWebLandingPlanCard(
-                    title: 'Teste Grátis (90 dias)',
+                    title: 'Teste grátis (30 dias — contas novas)',
                     price: 'R\$ 0',
-                    period: '90 dias',
+                    period: '30 dias',
                     color: _successColor,
                     icon: Icons.card_giftcard,
                     description:
-                        'Experimente o MasterPalm por 3 meses sem custo. Ideal para conhecer todas as funções antes de assinar.',
+                        'Use o app no nível Pro durante o trial. Contas antigas com trial de 90 dias continuam válidas até o fim do período.',
                     bullets: const [
-                      'Até 80 produtos e 150 clientes',
-                      '50 vendas por mês',
-                      '10 fotos por produto e até 10 banners',
-                      'Catálogo online, pedidos e relatórios',
-                      'Após 90 dias, vira plano Free limitado (você continua acessando; limites menores para adicionar itens novos)',
+                      'Todos os módulos como no Pro durante o trial',
+                      'Ao expirar: migra para Free limitado, sem apagar seus dados',
+                      'Checkout seguro no servidor (Mercado Pago) para planos pagos',
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -1076,50 +1085,63 @@ class _HomeScreenState extends State<HomeScreen>
                     color: _warningColor,
                     icon: Icons.savings_outlined,
                     description:
-                        'Após o período de teste, seu plano vira Free limitado. Seus dados não são apagados: você continua vendo e editando tudo que já cadastrou.',
+                        'Após o trial, limites numéricos para novas inclusões; histórico e cadastros existentes permanecem.',
                     bullets: const [
-                      '10 produtos, 20 clientes, 10 vendas por mês',
+                      'Até 30 produtos, 20 clientes, 10 vendas/mês',
                       '1 foto por produto e 1 banner',
-                      'Limites valem só para adicionar coisas novas',
-                      'Faça upgrade (Mensal ou Anual) para liberar mais',
+                      'Upgrade para Básico, Intermediário ou Pro libera mais',
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildWebLandingPlanCard(
-                    title: 'Plano Mensal',
-                    price: 'R\$ 25,90',
+                    title: 'Básico e Intermediário',
+                    price:
+                        '${_fmtBRL(_kLandingPrecoBasico)} (Básico) · ${_fmtBRL(_kLandingPrecoIntermediario)} (Intermediário)',
+                    period: 'mês',
+                    color: _primaryColor,
+                    icon: Icons.trending_up,
+                    description:
+                        'Níveis intermediários entre o Free e o Pro: mais produtos, fotos, relatórios e módulos operacionais.',
+                    bullets: const [
+                      'Básico: até 300 produtos, 500 clientes, relatório básico',
+                      'Intermediário: compras, precificação, combos e relatórios avançados',
+                      'Valores fixos; detalhes na tela Planos após login',
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildWebLandingPlanCard(
+                    title: 'Pro mensal',
+                    price: _fmtBRL(proMensal),
                     period: 'mês',
                     color: _primaryColor,
                     icon: Icons.workspace_premium,
                     description:
-                        'Tudo liberado para sua loja crescer sem limites. Pague mês a mês e cancele quando quiser.',
+                        'Gestão completa: equipe, IA, campanhas, integrações e limites altos. Preço pode ser ajustado no Firebase Remote Config.',
                     bullets: const [
-                      'Produtos, clientes e vendas ilimitados',
-                      '10 fotos por produto e até 10 banners',
-                      'Catálogo completo, relatórios e backup',
-                      'Suporte por e-mail e WhatsApp',
+                      'Tudo do Intermediário e recursos premium',
+                      'Vendedores, metas, fretes/cupons, Meta e marketplaces',
+                      'Cancele quando quiser (mensal)',
                     ],
                   ),
                   const SizedBox(height: 16),
                   _buildWebLandingPlanCard(
-                    title: 'Plano Anual',
-                    price: 'R\$ 299,90',
+                    title: 'Pro anual',
+                    price: _fmtBRL(proAnual),
                     period: 'ano',
                     color: const Color(0xFF0EA5E9),
                     icon: Icons.verified_user,
                     description:
-                        'Melhor custo-benefício: pague por ano e economize. Inclui tudo do plano Mensal com suporte prioritário.',
+                        'Mesmo acesso do Pro mensal com economia no ano. Confirmação de pagamento pelo servidor.',
                     bullets: const [
-                      'Tudo do plano Mensal',
-                      'Economia em relação ao mensal',
-                      'Suporte prioritário',
+                      'Renovação anual · previsibilidade de custo',
                       'Ideal para lojas em crescimento',
+                      'Melhor custo-benefício vs 12x mensal',
                     ],
                     badge: 'Recomendado',
                   ),
                   const SizedBox(height: 32),
                   const Text(
-                    'Quer começar? Faça login ou cadastre-se e ative o teste grátis de 90 dias.',
+                    'Quer começar? Faça login ou cadastre-se e ative o teste grátis (30 dias para contas novas).',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,

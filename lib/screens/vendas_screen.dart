@@ -32,6 +32,7 @@ import '../services/firestore_critical_listener_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/clientes_firestore_service.dart';
 import '../services/sync_queue_service.dart';
+import '../services/financeiro_firestore_service.dart';
 import '../utils/responsive.dart';
 import '../widgets/empty_state_cta.dart';
 import 'nova_venda_modal.dart';
@@ -212,19 +213,19 @@ class _VendasScreenState extends State<VendasScreen>
     }
     if (!mounted) return;
 
-    logD('[LOJAID] origem=Vendas._init antes LojaIdService.getWithTimeout');
-    lojaId = await LojaIdService.getWithTimeout(
+    logD('[LOJAID] origem=Vendas._init antes LojaIdService.getWithTimeoutThenSessionFallback');
+    lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
         timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
-    logD('[LOJAID] origem=Vendas._init depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
+    logD('[LOJAID] origem=Vendas._init depois LojaIdService.getWithTimeoutThenSessionFallback valor=${lojaId ?? "null"}');
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
       if (kDebugMode) logD('[STORE-RESOLVE] Vendas: lojaId null, tentando retry em 2s');
       await Future<void>.delayed(const Duration(seconds: 2));
       if (!mounted) return;
-      logD('[LOJAID] origem=Vendas._init retry antes LojaIdService.getWithTimeout');
-      lojaId = await LojaIdService.getWithTimeout(
+      logD('[LOJAID] origem=Vendas._init retry antes LojaIdService.getWithTimeoutThenSessionFallback');
+      lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
           timeout: kIsWeb ? const Duration(seconds: 15) : const Duration(seconds: 8));
-      logD('[LOJAID] origem=Vendas._init retry depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
+      logD('[LOJAID] origem=Vendas._init retry depois LojaIdService.getWithTimeoutThenSessionFallback valor=${lojaId ?? "null"}');
     }
     if (!mounted) return;
     if (lojaId == null || lojaId!.trim().isEmpty) {
@@ -237,10 +238,10 @@ class _VendasScreenState extends State<VendasScreen>
               .first
               .timeout(const Duration(seconds: 3), onTimeout: () => null);
           if (!mounted) return;
-          logD('[LOJAID] origem=Vendas._init authWait antes LojaIdService.getWithTimeout');
-          lojaId = await LojaIdService.getWithTimeout(
+          logD('[LOJAID] origem=Vendas._init authWait antes LojaIdService.getWithTimeoutThenSessionFallback');
+          lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
               timeout: const Duration(seconds: 12));
-          logD('[LOJAID] origem=Vendas._init authWait depois LojaIdService.getWithTimeout valor=${lojaId ?? "null"}');
+          logD('[LOJAID] origem=Vendas._init authWait depois LojaIdService.getWithTimeoutThenSessionFallback valor=${lojaId ?? "null"}');
         } catch (e) {
           logW('[VENDAS_INIT] auth wait/retry falhou (type=${e.runtimeType})');
         }
@@ -464,6 +465,22 @@ class _VendasScreenState extends State<VendasScreen>
       lojaId: lojaId!,
       produtosBox: produtosBox,
     );
+
+    try {
+      await FinanceiroFirestoreService.migrarLojaHiveParaFirestorePolicyA(
+        lojaId!,
+      );
+      await FinanceiroFirestoreService.pullLojaFirestoreParaHiveFase2d(
+        lojaId!,
+      );
+      logD('💰 [SYNC] Módulo financeiro (lançamentos + gastos fixos) sincronizado');
+    } catch (e, st) {
+      logE(
+        'Erro ao sincronizar módulo financeiro (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
+    }
 
     if (mounted) setState(() {});
   }

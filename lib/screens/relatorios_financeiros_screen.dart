@@ -18,7 +18,6 @@ import '../models/lancamento_financeiro.dart';
 import '../services/fechamento_service.dart';
 import '../services/financeiro_hive_store.dart';
 import '../services/financeiro_service.dart';
-import '../services/store_resolver_facade.dart';
 import '../services/meta_firestore_service.dart';
 import '../utils/chart_utils.dart';
 import '../utils/responsive.dart';
@@ -105,7 +104,10 @@ class _RelatoriosFinanceirosScreenState
           .toLowerCase();
       _isAdmin = _tipoUsuario == 'programador' || _tipoUsuario == 'admin';
 
-      _lojaId = (await StoreResolverFacade.resolveForAdminApp()) ?? '';
+      _lojaId = (await LojaIdService.getWithTimeoutThenSessionFallback(
+              timeout: const Duration(seconds: 10)))
+          ?.trim() ??
+          '';
       if (_lojaId.isEmpty) {
         throw Exception('Loja não encontrada. Faça login novamente.');
       }
@@ -1082,8 +1084,12 @@ class _RelatoriosFinanceirosScreenState
     if (r == null || !r.temAlgumDado) return const SizedBox.shrink();
 
     final lucroVendas = _lucroEstimado;
-    final comModulo = FinanceiroService.lucroEstimadoComModulo(
-      lucroVendasTaxasCustos: lucroVendas,
+    final resultadoGerencial = FinanceiroService.resultadoGerencialComModulo(
+      lucroOperacionalVendas: lucroVendas,
+      modulo: r,
+    );
+    final fluxoCaixa = FinanceiroService.fluxoCaixaComVendas(
+      somaFormasPagamentoVendas: _totalDinheiro + _totalPix + _totalCartao,
       modulo: r,
     );
 
@@ -1122,9 +1128,12 @@ class _RelatoriosFinanceirosScreenState
           ),
           const SizedBox(height: 12),
           Text(
-            'Despesas operacionais: R\$ ${_fmt(r.totalDespesasOperacionais)} · '
+            'Gastos fixos: R\$ ${_fmt(r.totalGastosFixos)} · '
+            'variáveis: R\$ ${_fmt(r.totalGastosVariaveis)} · '
+            'legado: R\$ ${_fmt(r.totalDespesasOperacionais)} · '
             'Compras: R\$ ${_fmt(r.totalCompraMercadoria)} · '
             'Investimentos: R\$ ${_fmt(r.totalInvestimentos)} · '
+            'Retiradas: R\$ ${_fmt(r.totalRetiradas)} · '
             'Equipe: R\$ ${_fmt(r.totalPagamentosEquipe)}',
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
@@ -1139,8 +1148,9 @@ class _RelatoriosFinanceirosScreenState
             ),
           const SizedBox(height: 12),
           Text(
-            'Lucro operacional (base): R\$ ${_fmt(lucroVendas)}  →  '
-            'Resultado (vendas + módulo): R\$ ${_fmt(comModulo)}',
+            'Lucro operacional de vendas: R\$ ${_fmt(lucroVendas)} · '
+            'Resultado gerencial: R\$ ${_fmt(resultadoGerencial)} · '
+            'Fluxo de caixa: R\$ ${_fmt(fluxoCaixa)}',
             style: TextStyle(
               color: Colors.teal.shade200,
               fontSize: 13,
@@ -1166,7 +1176,7 @@ class _RelatoriosFinanceirosScreenState
     }
     return Text(
       'Sem snapshot do mês · cálculo ao vivo. Lucro operacional: taxas operacionais da config ou valor gravado na venda. '
-      '${temReal ? '“Resultado (vendas + módulo)” inclui lançamentos; não duplique com taxas ou despesas da mesma natureza.' : ''}',
+        '${temReal ? 'Resultado gerencial e fluxo de caixa usam as regras do módulo; não duplique com taxas ou despesas da mesma natureza.' : ''}',
       style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.55)),
     );
   }
@@ -1924,6 +1934,21 @@ class _RelatoriosFinanceirosScreenState
     sb.writeln(
         '(-) Taxas operacionais (config ou gravadas na venda): ${fmt.format(_totalTaxas)}.');
     sb.writeln('(=) Lucro operacional de vendas: ${fmt.format(_lucroEstimado)}.');
+    final mod = _resumoModuloFinanceiro;
+    if (mod != null && mod.temAlgumDado) {
+      final rg = FinanceiroService.resultadoGerencialComModulo(
+        lucroOperacionalVendas: _lucroEstimado,
+        modulo: mod,
+      );
+      final fc = FinanceiroService.fluxoCaixaComVendas(
+        somaFormasPagamentoVendas: _totalDinheiro + _totalPix + _totalCartao,
+        modulo: mod,
+      );
+      sb.writeln(
+          '(≈) Resultado gerencial (vendas − despesas op./equipe + ajustes): ${fmt.format(rg)}.');
+      sb.writeln(
+          '(≈) Fluxo de caixa (formas de pgto + lançamentos): ${fmt.format(fc)}.');
+    }
     sb.writeln(
         'Formas de pagamento: Dinheiro ${fmt.format(_totalDinheiro)}, PIX ${fmt.format(_totalPix)}, Cartão ${fmt.format(_totalCartao)}.');
     return sb.toString();

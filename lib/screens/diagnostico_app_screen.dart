@@ -26,6 +26,7 @@ import '../services/planos_service.dart';
 import '../services/license_manager.dart';
 import '../services/venda_item_migration_service.dart';
 import 'auditoria_combos_debug_screen.dart';
+import '../widgets/sync_queue_diagnostico_section.dart';
 
 class DiagnosticoAppScreen extends StatefulWidget {
   const DiagnosticoAppScreen({super.key});
@@ -337,6 +338,8 @@ class _DiagnosticoAppScreenState extends State<DiagnosticoAppScreen> {
                 ),
                 const SizedBox(height: 16),
                 ...r.itens.map((i) => _ItemTile(item: i)),
+                const Divider(height: 32),
+                const SyncQueueDiagnosticoSection(),
                 const Divider(height: 32),
                 const Text('Detalhes', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),

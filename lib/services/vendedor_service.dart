@@ -46,7 +46,7 @@ class VendedorPerfil {
       storeId: (data['storeId'] ?? data['store_id'] ?? data['lojaId'] ?? '').toString(),
       adminUid: (data['adminUid'] ?? data['ownerId'] ?? data['createdBy'] ?? '').toString(),
       adminEmail: (data['adminEmail'] ?? data['ownerEmail'] ?? data['ownerAdminEmail'] ?? '').toString(),
-      ativo: data['ativo'] ?? data['active'] ?? true,
+      ativo: _parseBool(data['ativo'] ?? data['active'] ?? true),
       permissoes: _parsePermissoes(data['permissoes'] ?? data['permissions']),
       comissaoPercentual: (data['comissaoPercentual'] as num?)?.toDouble(),
       criadoEm: _parseTimestamp(data['criadoEm'] ?? data['createdAt']),
@@ -72,11 +72,27 @@ class VendedorPerfil {
     };
   }
 
+  /// Firestore às vezes grava bool como 1/0 — evita TypeError em runtime (Web minificado).
+  static bool _parseBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.trim().toLowerCase();
+      return s == 'true' || s == '1' || s == 'sim';
+    }
+    return true;
+  }
+
   static Map<String, bool> _parsePermissoes(dynamic raw) {
     if (raw == null) return {};
     if (raw is Map) {
       return Map<String, bool>.from(
-        raw.map((k, v) => MapEntry(k.toString(), v == true)),
+        raw.map(
+          (k, v) => MapEntry(
+            k.toString(),
+            v == true || v == 1 || v == '1' || v == 'true',
+          ),
+        ),
       );
     }
     return {};

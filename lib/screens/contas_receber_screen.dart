@@ -37,7 +37,8 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
   }
 
   Future<void> _init() async {
-    _lojaId = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10));
+    _lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+        timeout: const Duration(seconds: 10));
     if (!mounted) return;
     if (_lojaId == null || _lojaId!.trim().isEmpty) {
       if (mounted) {

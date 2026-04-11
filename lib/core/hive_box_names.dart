@@ -35,6 +35,10 @@ class HiveBoxNames {
   /// Lançamentos de compra por fornecedor (módulo interno; por loja).
   static String comprasFornecedor(String lojaId) => 'compras_fornecedor_$lojaId';
 
+  /// Controle operacional de totais de compra por fornecedor (não entra em lucro/relatórios).
+  static String controleTotaisCompraFornecedor(String lojaId) =>
+      'controle_tot_compras_forn_$lojaId';
+
   /// Fila compra → precificação → estoque (por loja).
   static String compraItemPipeline(String lojaId) => 'compra_item_pipeline_$lojaId';
 }

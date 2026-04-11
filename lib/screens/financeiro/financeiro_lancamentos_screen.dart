@@ -12,9 +12,15 @@ import '../../services/financeiro_hive_store.dart';
 import '../../utils/moeda_input_formatter.dart';
 
 class FinanceiroLancamentosScreen extends StatefulWidget {
-  const FinanceiroLancamentosScreen({super.key, required this.lojaId});
+  const FinanceiroLancamentosScreen({
+    super.key,
+    required this.lojaId,
+    this.lancamentoIdInicial,
+  });
 
   final String lojaId;
+  /// Abre o formulário deste lançamento após carregar (ex.: vindo da gestão financeira).
+  final String? lancamentoIdInicial;
 
   @override
   State<FinanceiroLancamentosScreen> createState() =>
@@ -28,12 +34,16 @@ class _FinanceiroLancamentosScreenState
   Box<LancamentoFinanceiro>? _box;
   bool _loading = true;
   String? _erro;
+  String? _pendenteAbrirId;
 
   final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: r'R$');
 
   @override
   void initState() {
     super.initState();
+    _pendenteAbrirId = widget.lancamentoIdInicial?.trim().isEmpty == true
+        ? null
+        : widget.lancamentoIdInicial?.trim();
     _open();
   }
 
@@ -47,7 +57,19 @@ class _FinanceiroLancamentosScreenState
       if (_box == null) {
         throw Exception('Não foi possível abrir os lançamentos (armazenamento).');
       }
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        final id = _pendenteAbrirId;
+        if (id != null) {
+          _pendenteAbrirId = null;
+          final existente = _box!.get(id);
+          if (existente != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _abrirFormulario(existente: existente);
+            });
+          }
+        }
+      }
     } catch (e) {
       if (mounted) {
         setState(() {

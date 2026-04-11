@@ -2239,10 +2239,18 @@ class MyApp extends StatelessWidget {
                     PlanGateFeature.contasReceber,
                     const ContasReceberScreen(),
                   ),
-              '/financeiro': (_) => _planGate(
-                    PlanGateFeature.financeiroLancamentos,
-                    const FinanceiroScreen(),
-                  ),
+              '/financeiro': (ctx) {
+                DateTime? mesInicial;
+                final raw = ModalRoute.of(ctx)?.settings.arguments;
+                if (raw is Map) {
+                  final m = raw['mesInicial'];
+                  if (m is DateTime) mesInicial = m;
+                }
+                return _planGate(
+                  PlanGateFeature.financeiroLancamentos,
+                  FinanceiroScreen(mesInicial: mesInicial),
+                );
+              },
               '/globo_sorteio': (_) => _planGate(
                     PlanGateFeature.globoSorteio,
                     const GloboSorteioScreenWrapper(),

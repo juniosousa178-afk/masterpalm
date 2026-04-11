@@ -14,7 +14,6 @@ import 'package:printing/printing.dart';
 import '../models/comissao_config.dart';
 import '../models/meta.dart';
 import '../models/venda_tracking.dart';
-import '../services/store_resolver_facade.dart';
 import '../services/comissao_service.dart';
 import '../services/comissao_config_service.dart';
 import '../services/meta_firestore_service.dart';
@@ -135,8 +134,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
     });
 
     try {
-      // Resolver loja
-      _lojaId = await StoreResolverFacade.resolveForAdminApp();
+      // Resolver loja (alinhado à Gestão financeira: timeout + fallback sessão/Hive)
+      final idResolved = (await LojaIdService.getWithTimeoutThenSessionFallback(
+              timeout: const Duration(seconds: 10)))
+          ?.trim();
+      _lojaId =
+          (idResolved != null && idResolved.isNotEmpty) ? idResolved : null;
       if (_lojaId == null) {
         throw Exception('Loja não encontrada');
       }
@@ -996,9 +999,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Lançamentos reais no período: despesas operacionais ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalDespesasOperacionais)}, '
+                      'Lançamentos: fixos ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalGastosFixos)}, '
+                      'variáveis ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalGastosVariaveis)}, '
+                      'legado ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalDespesasOperacionais)}, '
                       'compras ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalCompraMercadoria)}, '
                       'investimentos ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalInvestimentos)}, '
+                      'retiradas ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalRetiradas)}, '
                       'equipe ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalPagamentosEquipe)}. '
                       'Metas e comissões acima: só vendas. '
                       'Não substitui o lucro operacional de vendas; complemento gerencial — evite somar a mesma despesa duas vezes com taxas operacionais.',

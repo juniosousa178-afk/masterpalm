@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../services/master_config_service.dart';
 import '../themes/app_colors.dart';
+import 'ajuda_ia_tutorial_screen.dart';
 
 class AjudaScreen extends StatelessWidget {
   const AjudaScreen({super.key});
@@ -39,6 +40,8 @@ class AjudaScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           _buildHeader(context, primaryColor, cs),
+          const SizedBox(height: 16),
+          _buildAjudaIaCard(context, primaryColor, cs),
           const SizedBox(height: 16),
           _buildSuporteCard(context, primaryColor, cs),
           const SizedBox(height: 24),
@@ -79,6 +82,69 @@ class AjudaScreen extends StatelessWidget {
           _buildCardFerramentas(context, primaryColor, cs),
           const SizedBox(height: 32),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAjudaIaCard(
+      BuildContext context, Color primaryColor, ColorScheme cs) {
+    return Card(
+      elevation: 0,
+      color: primaryColor.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: primaryColor.withValues(alpha: 0.35)),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const AjudaIaTutorialScreen(),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: primaryColor.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.smart_toy, color: primaryColor, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Assistente IA — tutoriais por tela',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Escolha uma área (ex.: Campanhas e sorteios) e receba passo a passo, exemplos e um resumo.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurfaceVariant,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: cs.onSurfaceVariant, size: 24),
+            ],
+          ),
+        ),
       ),
     );
   }

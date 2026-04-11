@@ -24,8 +24,11 @@ class NotaFiscalService {
   /// Timeout para chamadas HTTP à Focus (emissão/consulta/cancelamento).
   static const Duration httpTimeout = Duration(seconds: 90);
 
-  /// URL base da API (configurar conforme provedor)
-  static const String _baseUrl = 'https://api.focusnfe.com.br/v2'; // Exemplo: Focus NFe
+  /// Focus NFe: produção e homologação usam hosts diferentes; token de homologação
+  /// falha com HTTP 401 na API de produção (e vice-versa).
+  static String get _baseUrl => _isProducao
+      ? 'https://api.focusnfe.com.br/v2'
+      : 'https://homologacao.focusnfe.com.br/v2';
 
   /// Token de autenticação (deve ser armazenado em variável de ambiente)
   static String? _apiToken;
@@ -33,13 +36,23 @@ class NotaFiscalService {
   /// Ambiente (homologacao ou producao)
   static bool _isProducao = false;
 
+  static String _sanitizeApiToken(String raw) {
+    return raw.trim().replaceAll(RegExp(r'[\r\n]+'), '');
+  }
+
   /// Configura o serviço
   static void configure({
     required String apiToken,
     bool producao = false,
   }) {
-    _apiToken = apiToken;
+    _apiToken = _sanitizeApiToken(apiToken);
     _isProducao = producao;
+  }
+
+  /// Header Basic Focus: `token:` (senha vazia), com token sanitizado.
+  static String _authorizationBasic() {
+    final t = _apiToken ?? '';
+    return 'Basic ${base64Encode(utf8.encode('${_sanitizeApiToken(t)}:'))}';
   }
 
   /// Converte status retornado pela Focus (e variações) para o modelo interno da UI:
@@ -88,6 +101,12 @@ class NotaFiscalService {
     }
     final t = erro.toString();
     if (t.startsWith('Exception: ')) return t.substring('Exception: '.length);
+    if (t.contains('401') &&
+        (t.toLowerCase().contains('basic') || t.toLowerCase().contains('access denied'))) {
+      return 'Token da API inválido ou ambiente incorreto. '
+          'Em homologação, use token de testes e desative "Produção" na config. '
+          'Verifique também se copiou o token completo, sem espaços extras.';
+    }
     return t;
   }
 
@@ -126,7 +145,7 @@ class NotaFiscalService {
       // Headers
       final headers = {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ${base64Encode(utf8.encode('$_apiToken:'))}',
+        'Authorization': _authorizationBasic(),
       };
 
       // Envia requisição
@@ -256,7 +275,7 @@ class NotaFiscalService {
 
       final url = Uri.parse('$_baseUrl/nfe/$chaveAcesso');
       final headers = {
-        'Authorization': 'Basic ${base64Encode(utf8.encode('$_apiToken:'))}',
+        'Authorization': _authorizationBasic(),
       };
 
       final response =
@@ -304,7 +323,7 @@ class NotaFiscalService {
       final url = Uri.parse('$_baseUrl/nfe/$chaveAcesso');
       final headers = {
         'Content-Type': 'application/json',
-        'Authorization': 'Basic ${base64Encode(utf8.encode('$_apiToken:'))}',
+        'Authorization': _authorizationBasic(),
       };
 
       final payload = {
