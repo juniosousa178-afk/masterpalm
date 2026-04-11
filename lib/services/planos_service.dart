@@ -21,6 +21,8 @@ class PlanInfo {
   final DateTime? currentPeriodEnd;
   final bool trialUsed;
   final bool manualOverride;
+  /// Renovação cancelada no fim do período (fonte: users/{uid}.cancelAtPeriodEnd no backend).
+  final bool cancelAtPeriodEnd;
 
   const PlanInfo({
     required this.planId,
@@ -29,11 +31,19 @@ class PlanInfo {
     required this.currentPeriodEnd,
     required this.trialUsed,
     required this.manualOverride,
+    this.cancelAtPeriodEnd = false,
   });
 
   bool get isLifetime => planId == PlanId.lifetime;
   /// Plano free limitado (após trial ou free sem upgrade)
   bool get isFreeLimited => planId == PlanId.freeLimited;
+  /// Assinatura paga mensal/anual (Básico, Intermediário, Pro) — não inclui trial nem lifetime.
+  bool get isPaidSubscription {
+    return planId == PlanId.basicMonthly ||
+        planId == PlanId.intermediateMonthly ||
+        planId == PlanId.proMonthly ||
+        planId == PlanId.proYearly;
+  }
   /// Tem restrições de limite (produtos, vendas, clientes, etc.)
   bool get hasLimits => isFreeLimited;
   bool get isActive {
@@ -125,6 +135,7 @@ class PlanosService {
     bool? trialUsed,
     DateTime? trialUsedAt,
     Map<String, dynamic>? manualOverride,
+    bool? cancelAtPeriodEnd,
   }) async {
     try {
       await _userRef(uid).set({
@@ -137,6 +148,7 @@ class PlanosService {
         if (trialUsed != null) 'trialUsed': trialUsed,
         if (trialUsedAt != null) 'trialUsedAt': Timestamp.fromDate(trialUsedAt),
         if (manualOverride != null) 'manualOverride': manualOverride,
+        if (cancelAtPeriodEnd != null) 'cancelAtPeriodEnd': cancelAtPeriodEnd,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true)).timeout(const Duration(seconds: 2));
     } catch (e) {
@@ -159,6 +171,7 @@ class PlanosService {
         currentPeriodEnd: null,
         trialUsed: false,
         manualOverride: true,
+        cancelAtPeriodEnd: false,
       );
     }
 
@@ -192,6 +205,8 @@ class PlanosService {
         bool trialing = (d['trialing'] ?? false) == true;
         DateTime? end = _parseEnd(d['currentPeriodEnd']);
         bool trialUsed = (d['trialUsed'] ?? false) == true;
+        final cancelAtPeriodEnd =
+            (d['cancelAtPeriodEnd'] ?? d['cancel_at_period_end']) == true;
         // users/{uid} é canônico; legado em users.plan* não é mais lido.
         if (status.trim().isEmpty) status = 'active';
 
@@ -212,6 +227,7 @@ class PlanosService {
             currentPeriodEnd: end,
             trialUsed: trialUsed,
             manualOverride: moEnabled,
+            cancelAtPeriodEnd: moEnabled ? false : cancelAtPeriodEnd,
           );
         }
       }
@@ -234,6 +250,7 @@ class PlanosService {
             currentPeriodEnd: _parseEnd(usuarioData['currentPeriodEnd']),
             trialUsed: true,
             manualOverride: usuarioData['manualOverride'] == true,
+            cancelAtPeriodEnd: false,
           );
         }
       }
@@ -283,6 +300,49 @@ class PlanosService {
     }
   }
 
+  /// Chama [ensureUserPlan] no backend — aplica vencimento de plano pago → free_limited e consistência.
+  Future<void> reconcilePlanStateWithBackend() async {
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('ensureUserPlan');
+    try {
+      await callable.call(<String, dynamic>{});
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('⚠️ [Planos] ensureUserPlan ${e.code}: ${e.message}');
+      rethrow;
+    }
+  }
+
+  /// Cancela só a renovação; o acesso permanece até [currentPeriodEnd] (Cloud Function).
+  Future<void> cancelRenewalAtPeriodEndViaBackend() async {
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('cancelPlanRenewalAtPeriodEnd');
+    try {
+      final result = await callable.call(<String, dynamic>{});
+      final map = result.data;
+      if (map is Map && map['ok'] == true) return;
+      throw Exception('Resposta inválida ao cancelar renovação.');
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? e.code);
+    }
+  }
+
+  /// Reativa a cobrança recorrente antes do fim do período atual.
+  Future<void> reactivateRenewalViaBackend() async {
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('reactivatePlanRenewal');
+    try {
+      final result = await callable.call(<String, dynamic>{});
+      final map = result.data;
+      if (map is Map && map['ok'] == true) return;
+      throw Exception('Resposta inválida ao reativar renovação.');
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? e.code);
+    }
+  }
+
   /// Marca plano pago como ativo (pós webhook)
   Future<void> markPaidActive({
     required String uid,
@@ -309,6 +369,7 @@ class PlanosService {
       status: 'active',
       trialing: false,
       currentPeriodEnd: currentPeriodEnd,
+      cancelAtPeriodEnd: false,
     );
   }
 
@@ -326,6 +387,7 @@ class PlanosService {
       currentPeriodEnd: null, // sem data de expiração
       trialUsed: true,
       manualOverride: null,
+      cancelAtPeriodEnd: false,
     );
     debugPrint('✅ [PLANOS] Migrado para free_limited (plano limitado)');
   }
@@ -381,6 +443,7 @@ class PlanosService {
           ? null
           : DateTime.now().add(const Duration(days: 3650)), // fallback longo
       manualOverride: override,
+      cancelAtPeriodEnd: false,
     );
   }
 

@@ -47,6 +47,7 @@ part 'loja_config_part_pane_internals.dart';
 part 'loja_config_part_pane_menu.dart';
 part 'loja_config_part_pane_rodape.dart';
 part 'loja_config_part_pane_layout.dart';
+part 'loja_config_part_pane_dicas.dart';
 
 enum _LayoutPreset { masterPadrao, masterLuxo, darkClean }
 enum _MediaTab { desktop, mobile }
@@ -5361,104 +5362,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     MapEntry('outros', 'Outras informações'),
   ];
 
-  Widget _paneDicas() {
-    return _Section(
-      title: 'Dicas, cuidados, garantias e qualidade',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _PaneMutedIntroText(
-            'Estas dicas aparecem no menu do catálogo e numa página dedicada. '
-            'O cliente pode ver cuidados com o produto, garantias, informações de qualidade etc. '
-            'Use o botão "Adicionar dica" e, em cada dica, opcionalmente um banner.',
-          ),
-          const SizedBox(height: 16),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _dicas.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final d = _dicas[index];
-              final titulo = (d['titulo'] ?? '').toString().trim();
-              final tipo = (d['tipo'] ?? 'informacoes').toString();
-              final tipoLabel = _dicaTipos.where((e) => e.key == tipo).map((e) => e.value).firstOrNull ?? tipo;
-              final bannerUrl = (d['bannerUrl'] ?? d['banner_url'] ?? '').toString().trim();
-              return Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: _primaryColor.withValues(alpha:0.3)),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  leading: bannerUrl.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: SizedBox(
-                            width: 56,
-                            height: 56,
-                            child: Image(
-                              image: mpImageProvider(bannerUrl),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: _primaryColor),
-                            ),
-                          ),
-                        )
-                      : Container(
-                          width: 56,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            color: _primaryColor.withValues(alpha:0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.lightbulb_outline, color: _primaryColor),
-                        ),
-                  title: Text(
-                    titulo.isEmpty ? '(Sem título)' : titulo,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
-                    tipoLabel,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        onPressed: () => _editarDica(context, index),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: _errorColor),
-                        onPressed: () {
-                          setState(() {
-                            _dicas.removeAt(index);
-                            _salvarRascunho(validar: false);
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () => _adicionarDica(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Adicionar dica'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _primaryColor,
-              side: const BorderSide(color: _primaryColor),
-            ),
-          ),
-        ],
-      ),
-    );
+  Widget _paneDicas() => _PaneDicasWidget(host: this);
+
+  void _dicasRemoveAt(int index) {
+    setState(() {
+      _dicas.removeAt(index);
+      _salvarRascunho(validar: false);
+    });
   }
 
   Future<void> _adicionarDica(BuildContext context) async {

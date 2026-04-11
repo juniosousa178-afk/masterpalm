@@ -48,6 +48,7 @@ export async function revokeIfLastPayment({ db, uid, paymentId, nowTs }) {
       status: "active",
       trialing: false,
       currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
       planLastPaymentId: FieldValue.delete(),
       updatedAt: nowTs,
     },

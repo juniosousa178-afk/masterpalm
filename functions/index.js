@@ -22,7 +22,14 @@ import nodemailer from "nodemailer";
 // xml2js: lazy load em calcularCorreios para reduzir cold start
 
 // ✅ ESM import com extensão
-import { ensureUserPlan, rootGrantPlan, activateUserTrial90d } from "./ensureUserPlan.js";
+import {
+  ensureUserPlan,
+  rootGrantPlan,
+  activateUserTrial90d,
+  cancelPlanRenewalAtPeriodEnd,
+  reactivatePlanRenewal,
+} from "./ensureUserPlan.js";
+import { scheduledReconcileExpiredPaidPlans } from "./scheduledExpiredPaidDowngrade.js";
 import {
   checkRateLimit,
   checkIdempotency,
@@ -1552,6 +1559,7 @@ async function activatePlanForUser({
     currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
     trialing: false,
     trialUsed: true,
+    cancelAtPeriodEnd: false,
     planLastPaymentId: String(paymentId || ""),
     updatedAt: nowTs,
   };
@@ -2631,7 +2639,14 @@ export const devCreateOrder = onRequest(
 );
 
 // ✅ Exporta os callables do plano (arquivo separado)
-export { ensureUserPlan, rootGrantPlan, activateUserTrial90d };
+export {
+  ensureUserPlan,
+  rootGrantPlan,
+  activateUserTrial90d,
+  cancelPlanRenewalAtPeriodEnd,
+  reactivatePlanRenewal,
+  scheduledReconcileExpiredPaidPlans,
+};
 
 // ============================== WHATSAPP – Confirmação de pedido (Canais Meta) ==============================
 

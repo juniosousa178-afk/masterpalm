@@ -1,7 +1,8 @@
 // lib/screens/planos_screen.dart
 // ignore_for_file: prefer_const_constructors
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
@@ -33,7 +34,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   }
 
   double get _economiaAnualVsIntermediario {
-    final ref = _kPrecoIntermediario * 12;
+    const ref = _kPrecoIntermediario * 12;
     return ref - _priceAnual;
   }
 
@@ -44,6 +45,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   bool _loadingIntermediario = false;
   bool _loadingMensal = false;
   bool _loadingAnual = false;
+  bool _loadingRenewal = false;
   PlanInfo? _plan;
   /// Checkout de planos usa Cloud Function + Secret Manager (token MP não fica no app).
   bool _checkoutPlanoServidor = true;
@@ -65,6 +67,24 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     return defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS;
   }
+
+  /// Assinatura paga com renovação ainda ativa (não é corte imediato de acesso).
+  bool get _canOfferCancelRenewal =>
+      _plan != null &&
+      _plan!.isPaidSubscription &&
+      !_plan!.manualOverride &&
+      !_isRoot &&
+      _plan!.cancelAtPeriodEnd != true &&
+      _plan!.currentPeriodEnd != null &&
+      _plan!.currentPeriodEnd!.isAfter(DateTime.now()) &&
+      _plan!.isActive;
+
+  bool get _canOfferReactivateRenewal =>
+      _plan != null &&
+      _plan!.isPaidSubscription &&
+      _plan!.cancelAtPeriodEnd == true &&
+      _plan!.currentPeriodEnd != null &&
+      _plan!.currentPeriodEnd!.isAfter(DateTime.now());
 
   String _fmtBRL(double v) =>
       NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2)
@@ -206,7 +226,17 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       }
       final email = (user.email ?? '').trim().toLowerCase();
 
-      final p = await _svc.fetchCurrentPlan(uid: user.uid, email: email);
+      var p = await _svc.fetchCurrentPlan(uid: user.uid, email: email);
+      if (p != null) {
+        try {
+          await _svc.reconcilePlanStateWithBackend();
+          final refreshed =
+              await _svc.fetchCurrentPlan(uid: user.uid, email: email);
+          if (refreshed != null) p = refreshed;
+        } catch (e) {
+          debugPrint('⚠️ [PlanosScreen] reconcile: $e');
+        }
+      }
 
       if (mounted) {
         setState(() {
@@ -532,6 +562,24 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                   style: const TextStyle(color: Colors.white54, fontSize: 14),
                 ),
               ),
+            if (plan != null &&
+                plan.cancelAtPeriodEnd &&
+                plan.currentPeriodEnd != null) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  'Renovação cancelada. Seu plano continua ativo até '
+                  '${plan.currentPeriodEnd!.day.toString().padLeft(2, '0')}/'
+                  '${plan.currentPeriodEnd!.month.toString().padLeft(2, '0')}/'
+                  '${plan.currentPeriodEnd!.year} — sem nova cobrança após essa data.',
+                  style: TextStyle(
+                    color: Colors.amber.shade200,
+                    fontSize: 14,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
@@ -542,10 +590,127 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Atualizar'),
             ),
+            if (_canOfferCancelRenewal) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange.shade200,
+                  side: BorderSide(color: Colors.orange.shade400),
+                ),
+                onPressed: (_loading || _loadingRenewal)
+                    ? null
+                    : _confirmarCancelarRenovacao,
+                icon: const Icon(Icons.event_busy, size: 18),
+                label: const Text('Cancelar renovação'),
+              ),
+            ],
+            if (_canOfferReactivateRenewal) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _fluorGreen,
+                  side: const BorderSide(color: _fluorGreen),
+                ),
+                onPressed:
+                    (_loading || _loadingRenewal) ? null : _reativarRenovacao,
+                icon: const Icon(Icons.autorenew, size: 18),
+                label: const Text('Reativar renovação'),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _confirmarCancelarRenovacao() async {
+    final p = _plan;
+    if (p == null || p.currentPeriodEnd == null) return;
+    final e = p.currentPeriodEnd!;
+    final lim = '${e.day.toString().padLeft(2, '0')}/'
+        '${e.month.toString().padLeft(2, '0')}/${e.year}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Cancelar renovação?',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Você mantém o acesso completo até $lim. Depois disso, o app passa para o '
+          'plano Free limitado (seus dados permanecem). Não haverá nova cobrança '
+          'após essa data.',
+          style: const TextStyle(color: Colors.white70, height: 1.35),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Voltar', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Confirmar',
+              style: TextStyle(color: Colors.orange.shade200),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _loadingRenewal = true);
+    try {
+      await _svc.cancelRenewalAtPeriodEndViaBackend();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Renovação cancelada. O acesso continua até o fim do período já pago.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_mensagemErroAmigavel(e)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loadingRenewal = false);
+        await _load();
+      }
+    }
+  }
+
+  Future<void> _reativarRenovacao() async {
+    setState(() => _loadingRenewal = true);
+    try {
+      await _svc.reactivateRenewalViaBackend();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Renovação reativada. As próximas cobranças seguem o fluxo normal.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_mensagemErroAmigavel(e)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loadingRenewal = false);
+        await _load();
+      }
+    }
   }
 
   bool _isPlanoAtual(String planKey) {

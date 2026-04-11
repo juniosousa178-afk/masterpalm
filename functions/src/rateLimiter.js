@@ -50,6 +50,8 @@ export const RATE_LIMITS = {
   // Callable genérico (planos, etc)
   ensureUserPlan: { maxPerMin: 30, windowMs: 60_000 },
   activateUserTrial90d: { maxPerMin: 5, windowMs: 60_000 },
+  cancelPlanRenewalAtPeriodEnd: { maxPerMin: 10, windowMs: 60_000 },
+  reactivatePlanRenewal: { maxPerMin: 10, windowMs: 60_000 },
 
   // Cliente catálogo: perfil, carrinho, favoritos (uso legítimo frequente)
   getClienteCatalog: { maxPerMin: 60, windowMs: 60_000 },

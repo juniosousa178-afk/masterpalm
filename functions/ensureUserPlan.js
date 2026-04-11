@@ -5,13 +5,21 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { checkRateLimit, getCallableIdentifier } from "./src/rateLimiter.js";
 
-const ROOT_EMAIL = "masterpalm@gmail.com";
+export const ROOT_EMAIL = "masterpalm@gmail.com";
+
+/** Planos pagos com renovação por período (espelha ramo em computePlanState). */
+export const PAID_PLANS_WITH_RENEWAL = Object.freeze([
+  "pro_monthly",
+  "pro_yearly",
+  "basic_monthly",
+  "intermediate_monthly",
+]);
 
 // LEGACY FLOW: callable mantido por retrocompatibilidade.
 // Fonte principal de assinatura/plano continua sendo o fluxo canônico
 // users/{uid}.currentPlanId/status/trialing/currentPeriodEnd.
 
-function normalizeCanonicalPlanId(raw) {
+export function normalizeCanonicalPlanId(raw) {
   const p = String(raw || "").trim().toLowerCase();
   if (p === "mensal" || p === "pro_monthly") return "pro_monthly";
   if (p === "anual" || p === "pro_yearly") return "pro_yearly";
@@ -67,7 +75,7 @@ function normalizeEmail(s) {
   return String(s || "").trim().toLowerCase();
 }
 
-async function computePlanState({ db, uid, email }) {
+export async function computePlanState({ db, uid, email }) {
   const ref = db.collection("users").doc(uid);
   const snap = await ref.get();
   const data = snap.exists ? (snap.data() || {}) : {};
@@ -161,6 +169,43 @@ async function computePlanState({ db, uid, email }) {
     }
   }
 
+  // 1b) manualOverride.enabled (PlanosService / admin) — não sofre downgrade automático
+  const mo = data.manualOverride;
+  if (mo && typeof mo === "object" && mo.enabled === true) {
+    const moPlanId = normalizeCanonicalPlanId(
+      String(mo.planId || data.currentPlanId || "lifetime").trim(),
+    );
+    const endMo = toDateAny(data.currentPeriodEnd);
+    let daysLeftMo = 99999;
+    let endsAtMo = null;
+    if (moPlanId !== "lifetime" && endMo && endMo > now) {
+      daysLeftMo = daysBetweenCeil(now, endMo);
+      endsAtMo = endMo.toISOString();
+    }
+    await ref.set(
+      {
+        email,
+        currentPlanId: moPlanId,
+        status: "active",
+        trialing: false,
+        blocked_reason: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return {
+      status: "active",
+      plan: toLegacyPlanAlias(moPlanId),
+      isRoot: false,
+      daysLeft: daysLeftMo,
+      endsAt: endsAtMo,
+      shouldNotify: false,
+      allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
+      message: "Override manual ativo.",
+      userDoc: data,
+    };
+  }
+
   // 2) Estado canônico no Firestore (callable trial 30d, planos pagos, free_limited)
   const canonicalPlan = normalizeCanonicalPlanId(data.currentPlanId || data.plan || "");
   const planAlias = toLegacyPlanAlias(canonicalPlan);
@@ -251,8 +296,7 @@ async function computePlanState({ db, uid, email }) {
     }
   }
 
-  const paidWithRenewal = ["pro_monthly", "pro_yearly", "basic_monthly", "intermediate_monthly"];
-  if (paidWithRenewal.includes(canonicalPlan) && renewAt) {
+  if (PAID_PLANS_WITH_RENEWAL.includes(canonicalPlan) && renewAt) {
     if (now <= renewAt) {
       const daysLeft = daysBetweenCeil(now, renewAt);
       const notifyStart = 15;
@@ -287,6 +331,10 @@ async function computePlanState({ db, uid, email }) {
         },
         { merge: true }
       );
+      const msgPaid =
+        data.cancelAtPeriodEnd === true
+          ? "Renovação cancelada; seu acesso continua até o fim do período pago."
+          : "Plano pago ativo.";
       return {
         status: "active",
         plan: planAlias,
@@ -296,32 +344,38 @@ async function computePlanState({ db, uid, email }) {
         shouldNotify,
         notifyMsg,
         allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
-        message: "Plano pago ativo.",
+        cancelAtPeriodEnd: data.cancelAtPeriodEnd === true,
+        message: msgPaid,
         userDoc: data,
       };
     }
+    // Período pago encerrado sem renovação → free_limited (dados preservados; limites do free)
     await ref.set(
       {
         email,
-        currentPlanId: canonicalPlan,
-        status: "inactive",
+        currentPlanId: "free_limited",
+        status: "active",
         trialing: false,
-        currentPeriodEnd: Timestamp.fromDate(renewAt),
-        blocked_reason: "Plano pago vencido",
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        trialUsed: true,
+        blocked_reason: FieldValue.delete(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
     return {
-      status: "blocked",
-      plan: planAlias,
+      status: "active",
+      plan: "free_limited",
       isRoot: false,
-      daysLeft: 0,
-      endsAt: renewAt.toISOString(),
+      daysLeft: 99999,
+      endsAt: null,
       shouldNotify: true,
-      notifyMsg: "Seu plano venceu. Assine para continuar.",
+      notifyMsg:
+        "Seu plano pago encerrou. Você está no Free limitado — seus dados foram mantidos.",
       allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
-      message: "Plano vencido.",
+      cancelAtPeriodEnd: false,
+      message: "Downgrade automático para free_limited após vencimento do período pago.",
       userDoc: data,
     };
   }
@@ -464,11 +518,100 @@ export const ensureUserPlan = onCall(async (request) => {
       notifyMsg: result.notifyMsg || null,
       allowPlans: result.allowPlans || ["mensal", "anual"],
       message: result.message,
+      cancelAtPeriodEnd: result.cancelAtPeriodEnd === true,
     };
   } catch (err) {
     console.error("[ensureUserPlan] error:", err);
     if (err instanceof HttpsError) throw err;
     throw new HttpsError("internal", "Erro ao validar plano do usuário.");
+  }
+});
+
+// =============== CANCELAR / REATIVAR RENOVAÇÃO (fim do período pago) ===============
+export const cancelPlanRenewalAtPeriodEnd = onCall(async (request) => {
+  try {
+    await checkRateLimit("cancelPlanRenewalAtPeriodEnd", getCallableIdentifier(request));
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "Faça login para continuar.");
+    }
+    const db = initDb();
+    const uid = request.auth.uid;
+    const ref = db.collection("users").doc(uid);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      throw new HttpsError("failed-precondition", "Perfil não encontrado.");
+    }
+    const data = snap.data() || {};
+    if (data.manualOverride && data.manualOverride.enabled === true) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Este acesso foi liberado manualmente; fale com o suporte para alterações.",
+      );
+    }
+    const mg = data.manual_grant;
+    if (mg?.type === "lifetime") {
+      throw new HttpsError("failed-precondition", "Plano vitalício não usa este fluxo.");
+    }
+    const canonical = normalizeCanonicalPlanId(data.currentPlanId || "");
+    const paid = ["pro_monthly", "pro_yearly", "basic_monthly", "intermediate_monthly"];
+    if (!paid.includes(canonical)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Nenhuma assinatura paga ativa para cancelar a renovação.",
+      );
+    }
+    const renewAt = toDateAny(data.currentPeriodEnd || data.plan_renewsAt);
+    if (!renewAt || renewAt <= new Date()) {
+      throw new HttpsError("failed-precondition", "O período pago já encerrou.");
+    }
+    await ref.set(
+      {
+        cancelAtPeriodEnd: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return { ok: true, cancelAtPeriodEnd: true };
+  } catch (err) {
+    console.error("[cancelPlanRenewalAtPeriodEnd] error:", err);
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", "Não foi possível cancelar a renovação.");
+  }
+});
+
+export const reactivatePlanRenewal = onCall(async (request) => {
+  try {
+    await checkRateLimit("reactivatePlanRenewal", getCallableIdentifier(request));
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "Faça login para continuar.");
+    }
+    const db = initDb();
+    const uid = request.auth.uid;
+    const ref = db.collection("users").doc(uid);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      throw new HttpsError("failed-precondition", "Perfil não encontrado.");
+    }
+    const data = snap.data() || {};
+    if (data.cancelAtPeriodEnd !== true) {
+      throw new HttpsError("failed-precondition", "Nada para reativar.");
+    }
+    const renewAt = toDateAny(data.currentPeriodEnd || data.plan_renewsAt);
+    if (!renewAt || renewAt <= new Date()) {
+      throw new HttpsError("failed-precondition", "O período já encerrou; assine novamente.");
+    }
+    await ref.set(
+      {
+        cancelAtPeriodEnd: false,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return { ok: true, cancelAtPeriodEnd: false };
+  } catch (err) {
+    console.error("[reactivatePlanRenewal] error:", err);
+    if (err instanceof HttpsError) throw err;
+    throw new HttpsError("internal", "Não foi possível reativar a renovação.");
   }
 });
 

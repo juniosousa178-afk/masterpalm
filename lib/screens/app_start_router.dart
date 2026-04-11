@@ -57,6 +57,14 @@ class _AppStartRouterState extends State<AppStartRouter> {
     return list.isEmpty ? _rootAdminEmailsHardcoded : list.toSet();
   }
 
+  bool _isPaidSubscriptionPlanId(String raw) {
+    final n = PlanosService.normalizePlanId(raw);
+    return n == PlanId.proMonthly ||
+        n == PlanId.proYearly ||
+        n == PlanId.basicMonthly ||
+        n == PlanId.intermediateMonthly;
+  }
+
   /// Resolve perfil do usuário atual via UserProfileResolver (só usado quando flag ON).
   Future<UserProfile?> _resolveUserProfile({required bool isRootEmail}) async {
     return UserProfileResolver.resolveCurrentUserProfile(isRoot: isRootEmail);
@@ -464,6 +472,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
           currentPeriodEnd: null,
           trialUsed: true,
           manualOverride: false,
+          cancelAtPeriodEnd: false,
         );
       } else {
         plan = await planos
@@ -473,14 +482,27 @@ class _AppStartRouterState extends State<AppStartRouter> {
           return null;
         });
         if (plan != null) {
+          try {
+            await planos
+                .reconcilePlanStateWithBackend()
+                .timeout(const Duration(seconds: 10));
+            final refreshed =
+                await planos.fetchCurrentPlan(uid: uid, email: email);
+            if (refreshed != null) plan = refreshed;
+          } catch (e) {
+            logW(
+                '⚠️ [ROUTER] reconcilePlanStateWithBackend falhou (type=${e.runtimeType})');
+          }
+          // Após try/catch o analisador não promove plan; entrada era != null e só trocamos por refreshed.
+          final p = plan!;
           sessao.put('plan_cache_until',
               DateTime.now().millisecondsSinceEpoch + 3600000); // 1h
-          sessao.put('plan_expired', plan.isExpired);
-          sessao.put('plan_plan_id', plan.planId);
+          sessao.put('plan_expired', p.isExpired);
+          sessao.put('plan_plan_id', p.planId);
           // Cache local apenas para boot/offline; Firestore segue canônico.
-          licenca.put('currentPlanId', plan.planId);
-          licenca.put('expiresAt', plan.currentPeriodEnd?.toIso8601String());
-          licenca.put('ativado', !plan.isExpired);
+          licenca.put('currentPlanId', p.planId);
+          licenca.put('expiresAt', p.currentPeriodEnd?.toIso8601String());
+          licenca.put('ativado', !p.isExpired);
         }
       }
 
@@ -505,6 +527,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
             currentPeriodEnd: null,
             trialUsed: true,
             manualOverride: false,
+            cancelAtPeriodEnd: false,
           );
         }
         if (plan == null) {
@@ -541,18 +564,31 @@ class _AppStartRouterState extends State<AppStartRouter> {
                 logW('⚠️ Erro ao migrar para free_limited (type=${e.runtimeType})');
               }
             } else {
-              // Planos pagos expirados: bloqueia (signOut)
+              // Plano pago vencido: backend → free_limited; fallback cliente; sem deslogar
               try {
                 await planos
-                    .markExpiredIfNeeded(uid: uid, email: email)
-                    .timeout(const Duration(seconds: 1));
+                    .reconcilePlanStateWithBackend()
+                    .timeout(const Duration(seconds: 10));
+                plan = await planos.fetchCurrentPlan(uid: uid, email: email);
               } catch (e) {
-                logW('⚠️ Erro ao marcar plano como expirado (type=${e.runtimeType})');
+                logW(
+                    '⚠️ [ROUTER] reconcile para plano pago expirado: ${e.runtimeType}');
               }
-              await FirebaseAuth.instance.signOut();
-              if (!mounted) return;
-              _go(_routeLogin);
-              return;
+              if (plan != null &&
+                  plan.isExpired &&
+                  _isPaidSubscriptionPlanId(plan.planId)) {
+                try {
+                  await planos
+                      .migrateToFreeLimited(uid: uid, email: email)
+                      .timeout(const Duration(seconds: 4));
+                  plan = await planos.fetchCurrentPlan(uid: uid, email: email);
+                  logD(
+                      '✅ [ROUTER] Plano pago expirado → free_limited (fallback)');
+                } catch (e) {
+                  logW(
+                      '⚠️ [ROUTER] migrateToFreeLimited pago expirado: $e');
+                }
+              }
             }
           }
         }
