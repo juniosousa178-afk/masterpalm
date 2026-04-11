@@ -1,4 +1,4 @@
-// lib/screens/loja_config_screen.dart
+﻿// lib/screens/loja_config_screen.dart
 // Configuração unificada da loja: identidade -> mídia -> tema -> fretes -> rodapé -> publicar
 // ✅ CORRIGIDO: Alinhado 100% com public_catalog_screen.dart
 
@@ -41,6 +41,12 @@ part 'loja_config_tema_pane.dart';
 part 'loja_config_widgets.dart';
 part 'loja_config_part_cards.dart';
 part 'loja_config_part_identidade_midias.dart';
+part 'loja_config_part_hub_layout.dart';
+part 'loja_config_part_pane_wrappers.dart';
+part 'loja_config_part_pane_internals.dart';
+part 'loja_config_part_pane_menu.dart';
+part 'loja_config_part_pane_rodape.dart';
+part 'loja_config_part_pane_layout.dart';
 
 enum _LayoutPreset { masterPadrao, masterLuxo, darkClean }
 enum _MediaTab { desktop, mobile }
@@ -1168,6 +1174,98 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   /// Tabs Desktop/Mobile no painel mídias — `part`.
   void _setMediaTab(_MediaTab tab) {
     setState(() => _mediaTab = tab);
+  }
+
+  void _onHubSearchChanged() => setState(() {});
+
+  void _clearHubSearch() {
+    _hubSearchCtrl.clear();
+    setState(() {});
+  }
+
+  void _setHubModuleFilterIfChanged(_HubModuleFilter value) {
+    if (_hubModuleFilter != value) setState(() => _hubModuleFilter = value);
+  }
+
+  /// Painel Layout — acordeão (`loja_config_part_pane_wrappers.dart`).
+  void _toggleLayoutAccordion(String id) {
+    setState(() {
+      if (_layoutPaneAccordionOpenId == id) {
+        _layoutPaneAccordionOpenId = null;
+      } else {
+        _layoutPaneAccordionOpenId = id;
+      }
+    });
+  }
+
+  /// Pull-to-refresh na vista de módulo (fora do hub).
+  Future<void> _refreshModuleConfigFromPull() async {
+    setState(() => _erroCarregamento = false);
+    await _verificarConectividade();
+    await _initConfig();
+  }
+
+  // --- Pane Menu & páginas: switches/dropdown (setState em [_PaneMenuWidget]) ---
+  void _menuSetShowCategorias(bool v) {
+    setState(() => _menuShowCategorias = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetShowEntrar(bool v) {
+    setState(() => _menuShowEntrar = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetShowContato(bool v) {
+    setState(() => _menuShowContato = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetShowSac(bool v) {
+    setState(() => _menuShowSac = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetShowQuemSomos(bool v) {
+    setState(() => _menuShowQuemSomos = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetShowDicas(bool v) {
+    setState(() => _menuShowDicas = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetExibirAvaliacoesCatalogo(bool v) {
+    setState(() => _exibirAvaliacoesCatalogo = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetCatalogAvaliacoesOrdem(CatalogAvaliacoesOrdem v) {
+    setState(() => _catalogAvaliacoesOrdem = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetShowMobileMenuGrid(bool v) {
+    setState(() => _showMobileMenuGrid = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetSobreLojaMostrarLegais(bool v) {
+    setState(() => _sobreLojaMostrarLegais = v);
+    _salvarRascunho(validar: false);
+  }
+
+  /// Painel Rodapé — bandeiras de pagamento (`loja_config_part_pane_rodape.dart`).
+  void _rodapeOnPaymentChanged(String p, bool? v) {
+    setState(() {
+      if (v == true) {
+        _payments.add(p);
+      } else {
+        _payments.remove(p);
+      }
+    });
+    _salvarRascunho(validar: false);
   }
 
   bool _isHttpUrlLeve(String raw) {
@@ -4019,26 +4117,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             ),
             if (_offline)
               SliverToBoxAdapter(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  color: _warningColor.withValues(alpha:0.15),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.wifi_off, color: _warningColor, size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Sem conexão. As alterações serão salvas localmente e sincronizadas quando a conexão voltar.',
-                          style: TextStyle(fontSize: 13, color: Colors.grey[800]),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: _verificarConectividade,
-                        child: const Text('Verificar'),
-                      ),
-                    ],
-                  ),
+                child: _LojaConfigOfflineConnectivityStripe(
+                  onVerificar: _verificarConectividade,
                 ),
               ),
             SliverToBoxAdapter(
@@ -4224,108 +4304,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   /// Tela cheia de um módulo: mesmos widgets de edição, mesmo estado (sem [Navigator.push]).
   Widget _buildModuleConfigView(ColorScheme cs, bool isDark) {
-    final items = _lojaConfigNavItems();
-    final meta = items.firstWhere((e) => e['pane'] == _pane, orElse: () => items.first);
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        _goToHub();
-      },
-      child: Scaffold(
-        backgroundColor: cs.surface,
-        appBar: AppBar(
-          backgroundColor: _primaryColor,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: _goToHub,
-            tooltip: 'Módulos',
-          ),
-          titleSpacing: 8,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                meta['label'] as String,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-              Text(
-                meta['subtitle'] as String,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.92),
-                  fontWeight: FontWeight.w400,
-                  height: 1.25,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-          actions: _buildLojaConfigAppBarActions(cs, isDark),
-        ),
-        body: Column(
-          children: [
-            if (_offline)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                color: _warningColor.withValues(alpha: 0.15),
-                child: Row(
-                  children: [
-                    const Icon(Icons.wifi_off, color: _warningColor, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Sem conexão. As alterações serão salvas localmente e sincronizadas quando a conexão voltar.',
-                        style: TextStyle(fontSize: 13, color: Colors.grey[800]),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _verificarConectividade,
-                      child: const Text('Verificar'),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () async {
-                  setState(() => _erroCarregamento = false);
-                  await _verificarConectividade();
-                  await _initConfig();
-                },
-                color: _primaryColor,
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 720),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _buildModulePaneErrorBanner(context, cs, _pane),
-                          _wrapLojaConfigFieldTheme(
-                            context,
-                            _buildPaneEditorFor(_pane),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return _ModuleConfigViewShell(host: this, cs: cs, isDark: isDark);
   }
 
   /// Metadados de navegação por painel (mesma ordem do enum de fluxo atual).
@@ -4773,316 +4752,6 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
   }
 
-  Color _hubModuleBorderColor(_HubModuleSignal s, ColorScheme cs) {
-    switch (s) {
-      case _HubModuleSignal.error:
-        return cs.error.withValues(alpha: 0.32);
-      case _HubModuleSignal.pending:
-        return cs.primary.withValues(alpha: 0.28);
-      case _HubModuleSignal.ok:
-        return _successColor.withValues(alpha: 0.26);
-      case _HubModuleSignal.neutral:
-        return Colors.transparent;
-    }
-  }
-
-  Color? _hubModuleDotColor(_HubModuleSignal s, ColorScheme cs) {
-    switch (s) {
-      case _HubModuleSignal.error:
-        return cs.error;
-      case _HubModuleSignal.pending:
-        return cs.primary;
-      case _HubModuleSignal.ok:
-        return _successColor;
-      case _HubModuleSignal.neutral:
-        return null;
-    }
-  }
-
-  String? _hubModuleStatusCaption(_HubModuleSignal s) {
-    switch (s) {
-      case _HubModuleSignal.error:
-        return 'Revisar configuração';
-      case _HubModuleSignal.pending:
-        return 'Alterações pendentes';
-      case _HubModuleSignal.ok:
-        return 'Sem pendências';
-      case _HubModuleSignal.neutral:
-        return null;
-    }
-  }
-
-  Widget _buildFretesCuponsShortcutCard(
-    ColorScheme cs, {
-    required _HubModuleSignal signal,
-    String? tooltip,
-  }) {
-    final caption = _hubModuleStatusCaption(signal);
-    final dotColor = _hubModuleDotColor(signal, cs);
-    final borderColor = switch (signal) {
-      _HubModuleSignal.neutral => _warningColor.withValues(alpha: 0.35),
-      _ => _hubModuleBorderColor(signal, cs),
-    };
-
-    final tile = ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      leading: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: _warningColor.withValues(alpha: 0.12),
-            ),
-            child: const Icon(Icons.local_shipping_outlined, color: _warningColor, size: 22),
-          ),
-          if (dotColor != null)
-            Positioned(
-              right: -1,
-              bottom: -1,
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: cs.surface, width: 2),
-                ),
-              ),
-            ),
-        ],
-      ),
-      title: Text(
-        'Fretes & Cupons',
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          fontSize: 15,
-          color: cs.onSurface,
-          letterSpacing: -0.1,
-        ),
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 2),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (caption != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  caption,
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.2,
-                    fontWeight: FontWeight.w500,
-                    color: switch (signal) {
-                      _HubModuleSignal.error => cs.error.withValues(alpha: 0.95),
-                      _HubModuleSignal.pending => cs.primary.withValues(alpha: 0.95),
-                      _HubModuleSignal.ok => _successColor.withValues(alpha: 0.92),
-                      _HubModuleSignal.neutral => cs.onSurfaceVariant,
-                    },
-                  ),
-                ),
-              ),
-            Text(
-              'Fretes e cupons em tela dedicada',
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.35,
-                color: cs.onSurfaceVariant.withValues(alpha: 0.92),
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
-      ),
-      trailing: Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
-      onTap: () => unawaited(_openFretesCuponsScreenIfAllowed()),
-    );
-
-    final t = tooltip ?? 'Abrir fretes e cupons em tela dedicada';
-    return Tooltip(
-      message: t,
-      waitDuration: const Duration(milliseconds: 400),
-      child: Card(
-        margin: const EdgeInsets.only(bottom: 4),
-        elevation: 0,
-        color: cs.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: borderColor, width: 1),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: tile,
-      ),
-    );
-  }
-
-  Widget _buildHubSearchField(ColorScheme cs, TextTheme tt) {
-    final hasText = _hubSearchCtrl.text.trim().isNotEmpty;
-    return TextField(
-      controller: _hubSearchCtrl,
-      onChanged: (_) => setState(() {}),
-      textInputAction: TextInputAction.search,
-      style: tt.bodyMedium?.copyWith(
-        color: cs.onSurface,
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-      ),
-      decoration: InputDecoration(
-        isDense: true,
-        filled: true,
-        fillColor: cs.surface,
-        hintText: 'Buscar módulo ou configuração',
-        hintStyle: tt.bodyMedium?.copyWith(
-          color: cs.onSurfaceVariant.withValues(alpha: 0.65),
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-        ),
-        prefixIcon: Icon(
-          Icons.search_rounded,
-          size: 22,
-          color: cs.onSurfaceVariant.withValues(alpha: 0.75),
-        ),
-        suffixIcon: hasText
-            ? IconButton(
-                tooltip: 'Limpar busca',
-                icon: Icon(Icons.close_rounded, size: 20, color: cs.onSurfaceVariant),
-                onPressed: () {
-                  _hubSearchCtrl.clear();
-                  setState(() {});
-                },
-              )
-            : null,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.55)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.55)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: _primaryColor.withValues(alpha: 0.65), width: 1.5),
-        ),
-      ),
-    );
-  }
-
-  /// Chips de filtro por estado (módulos + Fretes & Cupons no contagem).
-  Widget _buildHubFilterStrip(
-    ColorScheme cs,
-    TextTheme tt, {
-    required int countAll,
-    required int countError,
-    required int countPending,
-    required int countOk,
-    required int countNeutral,
-    required bool showFirstErrorShortcut,
-  }) {
-    Widget chip(String label, _HubModuleFilter value) {
-      final sel = _hubModuleFilter == value;
-      return Padding(
-        padding: const EdgeInsets.only(right: 8, bottom: 4),
-        child: ChoiceChip(
-          label: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: sel ? FontWeight.w600 : FontWeight.w500,
-              letterSpacing: -0.1,
-            ),
-          ),
-          selected: sel,
-          onSelected: (_) {
-            if (_hubModuleFilter != value) {
-              setState(() => _hubModuleFilter = value);
-            }
-          },
-          visualDensity: VisualDensity.compact,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-          selectedColor: _primaryColor.withValues(alpha: 0.16),
-          backgroundColor: cs.surface.withValues(alpha: 0.65),
-          labelStyle: TextStyle(
-            color: sel ? _primaryColor : cs.onSurface.withValues(alpha: 0.82),
-          ),
-          side: BorderSide(
-            color: sel
-                ? _primaryColor.withValues(alpha: 0.42)
-                : cs.outlineVariant.withValues(alpha: 0.55),
-            width: 1,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          showCheckmark: false,
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Text(
-                'Filtrar',
-                style: tt.labelSmall?.copyWith(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.88),
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                ),
-              ),
-            ),
-            if (showFirstErrorShortcut)
-              Tooltip(
-                message:
-                    'Abre o primeiro módulo com erro na ordem do hub (independente do filtro e da busca atual).',
-                waitDuration: const Duration(milliseconds: 450),
-                child: TextButton.icon(
-                  onPressed: _openFirstHubErrorTarget,
-                  style: TextButton.styleFrom(
-                    foregroundColor: cs.error.withValues(alpha: 0.92),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  icon: Icon(Icons.arrow_circle_right_outlined, size: 18, color: cs.error.withValues(alpha: 0.92)),
-                  label: Text(
-                    'Primeiro erro',
-                    style: tt.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      letterSpacing: -0.1,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              chip('Todos ($countAll)', _HubModuleFilter.all),
-              chip('Erros ($countError)', _HubModuleFilter.error),
-              chip('Pendentes ($countPending)', _HubModuleFilter.pending),
-              chip('OK ($countOk)', _HubModuleFilter.ok),
-              chip('Neutros ($countNeutral)', _HubModuleFilter.neutral),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   /// Painel principal: atalho Fretes & Cupons + grid de módulos (cada um abre tela dedicada no mesmo [State]).
   Widget _buildLojaConfigHub(bool isWide) {
     final items = _lojaConfigNavItems();
@@ -5200,8 +4869,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         final row = hubRows[idx];
         if (row.fretes) {
           out.add(
-            _buildFretesCuponsShortcutCard(
-              cs,
+            _HubFretesShortcutCard(
+              host: this,
+              cs: cs,
               signal: fretesHub.signal,
               tooltip: fretesHub.tooltip,
             ),
@@ -5243,9 +4913,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 childAspectRatio: cross == 1 ? 2.2 : 1.42,
                 children: [
                   for (final r in batch)
-                    _buildHubModuleCard(
-                      r.item!,
-                      cs,
+                    _HubModuleCardWidget(
+                      host: this,
+                      item: r.item!,
+                      cs: cs,
                       dirty: currentFull != null &&
                           _hubModuleHasPendingChanges(r.item!['pane'] as _Pane, currentFull),
                       hubSalvar: hubSalvar,
@@ -5293,212 +4964,23 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       return out;
     }
 
-    return Card(
-      elevation: 0,
-      color: cs.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+    return _LojaConfigHubShell(
+      isWide: isWide,
+      cs: cs,
+      tt: tt,
+      searchField: _HubSearchFieldWidget(host: this, cs: cs, tt: tt),
+      filterStrip: _HubFilterStripWidget(
+        host: this,
+        cs: cs,
+        tt: tt,
+        countAll: countAll,
+        countError: countError,
+        countPending: countPending,
+        countOk: countOk,
+        countNeutral: countNeutral,
+        showFirstErrorShortcut: countError > 0,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: _primaryColor.withValues(alpha: 0.14)),
-                  ),
-                  child: const Icon(Icons.dashboard_customize_outlined, color: _primaryColor, size: 22),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Módulos de configuração',
-                        style: tt.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.2,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isWide
-                            ? 'Abra cada área em tela própria para editar com foco. Salvar, sincronizar, publicar e pré-visualizar continuam no topo.'
-                            : 'Toque em um card para abrir o módulo. Use voltar para retornar ao painel.',
-                        style: tt.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.92),
-                          height: 1.45,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            Divider(height: 28, thickness: 1, color: cs.outlineVariant.withValues(alpha: 0.35)),
-            _buildHubSearchField(cs, tt),
-            const SizedBox(height: 14),
-            _buildHubFilterStrip(
-              cs,
-              tt,
-              countAll: countAll,
-              countError: countError,
-              countPending: countPending,
-              countOk: countOk,
-              countNeutral: countNeutral,
-              showFirstErrorShortcut: countError > 0,
-            ),
-            const SizedBox(height: 14),
-            ...hubDynamicBody(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHubModuleCard(
-    Map<String, dynamic> item,
-    ColorScheme cs, {
-    required bool dirty,
-    required List<({String campo, String msg})> hubSalvar,
-    required List<String> hubPubAvisos,
-  }) {
-    final icon = item['icon'] as IconData;
-    final label = item['label'] as String;
-    final subtitle = item['subtitle'] as String;
-    final pane = item['pane'] as _Pane;
-
-    final hub = _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos);
-    final signal = hub.signal;
-    final caption = _hubModuleStatusCaption(signal);
-    final dotColor = _hubModuleDotColor(signal, cs);
-    final borderColor = _hubModuleBorderColor(signal, cs);
-
-    final body = Material(
-      color: cs.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: borderColor, width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      elevation: 0,
-      child: InkWell(
-        onTap: () => _openConfigModule(pane),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: _primaryColor.withValues(alpha: 0.1),
-                      border: Border.all(color: _primaryColor.withValues(alpha: 0.2)),
-                    ),
-                    child: Icon(icon, color: _primaryColor, size: 24),
-                  ),
-                  if (dotColor != null)
-                    Positioned(
-                      right: -1,
-                      bottom: -1,
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: dotColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: cs.surfaceContainerLow, width: 2),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        letterSpacing: -0.1,
-                        color: cs.onSurface,
-                        height: 1.2,
-                      ),
-                    ),
-                    if (caption != null) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          height: 1.25,
-                          fontWeight: FontWeight.w500,
-                          color: switch (signal) {
-                            _HubModuleSignal.error => cs.error.withValues(alpha: 0.92),
-                            _HubModuleSignal.pending => cs.primary.withValues(alpha: 0.92),
-                            _HubModuleSignal.ok => _successColor.withValues(alpha: 0.9),
-                            _HubModuleSignal.neutral => cs.onSurfaceVariant.withValues(alpha: 0.88),
-                          },
-                          letterSpacing: 0.1,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.3,
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.88),
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.65)),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final tip = hub.tooltip;
-    if (tip == null || tip.isEmpty) return body;
-
-    return Tooltip(
-      message: tip,
-      waitDuration: const Duration(milliseconds: 400),
-      child: body,
+      moduleSections: hubDynamicBody(),
     );
   }
 
@@ -5780,1000 +5262,51 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   // ============== PANE: LAYOUT & CARDS ==============
-  /// Acordeão no painel Layout (visual alinhado a [loja_config_tema_pane]).
-  Widget _buildLayoutAccordionSection({
-    required String id,
-    required String title,
-    String? subtitle,
-    required Widget child,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final open = _layoutPaneAccordionOpenId == id;
-    return Card(
-      elevation: 0,
-      clipBehavior: Clip.antiAlias,
-      color: cs.surface,
-      surfaceTintColor: Colors.transparent,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
-            onTap: () {
-              setState(() {
-                if (open) {
-                  _layoutPaneAccordionOpenId = null;
-                } else {
-                  _layoutPaneAccordionOpenId = id;
-                }
-              });
-            },
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 14, 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: tt.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.2,
-                            color: cs.onSurface,
-                          ),
-                        ),
-                        if (subtitle != null && subtitle.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            subtitle,
-                            style: tt.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant.withValues(alpha: 0.92),
-                              height: 1.4,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    open ? Icons.expand_less : Icons.expand_more,
-                    color: cs.onSurfaceVariant,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.topCenter,
-            child: open
-                ? Padding(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-                    child: RepaintBoundary(child: child),
-                  )
-                : const SizedBox(width: double.infinity),
-          ),
-        ],
-      ),
-    );
+  /// Acordeão / par responsivo: [loja_config_part_pane_wrappers.dart].
+  Widget _paneLayout() => _PaneLayoutWidget(host: this);
+
+  void _layoutSetStateAndSave(void Function() mutate) {
+    setState(mutate);
+    _salvarRascunho(validar: false);
   }
 
-  /// Dois blocos lado a lado só com largura suficiente; senão empilha (evita overflow no mobile).
-  Widget _layoutResponsivePair({
-    required double breakpoint,
-    required Widget first,
-    required Widget second,
-    double gap = 12,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final narrow = constraints.maxWidth < breakpoint;
-        if (narrow) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              first,
-              SizedBox(height: gap),
-              second,
-            ],
-          );
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: first),
-            SizedBox(width: gap),
-            Expanded(child: second),
-          ],
-        );
-      },
-    );
+  void _layoutSetStateOnly(void Function() mutate) {
+    setState(mutate);
   }
 
-  Widget _paneLayout() {
-    final paletteSuggestions = _catalogColorPaletteSuggestions();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildLayoutAccordionSection(
-          id: 'layout_geral',
-          title: 'Layout geral',
-          subtitle:
-              'Estilo de página no catálogo público e tamanho do card de produto.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _layoutCatalogo,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(value: 'padrao', child: Text('Padrão atual (retrocompatível)')),
-                  DropdownMenuItem(value: 'minimalista_nuvemshop', child: Text('Minimalista estilo Nuvemshop')),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _layoutCatalogo = v);
-                  _salvarRascunho(validar: false);
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Opção de layout',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _productCardSize,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'small',
-                    child: Text('Pequena (layout mais compacto)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'medium',
-                    child: Text('Média (equilíbrio)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'large',
-                    child: Text('Grande (foto em destaque)'),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _productCardSize = v);
-                  _salvarRascunho(validar: false);
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Tamanho do card/foto do produto',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        _buildLayoutAccordionSection(
-          id: 'layout_promo',
-          title: 'Barra promocional superior',
-          subtitle:
-              'Letreiro no layout minimalista — texto, link, cores e rolagem.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SwitchListTile(
-                value: _promoBarEnabled,
-                onChanged: (v) {
-                  setState(() => _promoBarEnabled = v);
-                  _salvarRascunho(validar: false);
-                },
-                title: const Text('Ativar barra promocional'),
-                contentPadding: EdgeInsets.zero,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _promoBarTextCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Texto da barra promocional',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _promoBarLinkCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Link opcional da barra',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 12),
-              _layoutResponsivePair(
-                breakpoint: 560,
-                first: _catalogColorFieldTema(
-                  suggestions: paletteSuggestions,
-                  label: 'Cor fundo da barra',
-                  description: 'Fundo do letreiro promocional.',
-                  color: _promoBarBg,
-                  onChanged: (c) =>
-                      setState(() => _promoBarBg = c),
-                ),
-                second: _catalogColorFieldTema(
-                  suggestions: paletteSuggestions,
-                  label: 'Cor do texto da barra',
-                  description: 'Cor das letras do letreiro.',
-                  color: _promoBarText,
-                  onChanged: (c) =>
-                      setState(() => _promoBarText = c),
-                ),
-              ),
-              SwitchListTile(
-                value: _promoBarMarquee,
-                onChanged: (v) {
-                  setState(() => _promoBarMarquee = v);
-                  _salvarRascunho(validar: false);
-                },
-                title: const Text('Rolar texto longo no letreiro (minimalista)'),
-                subtitle: const Text(
-                  'Quando a frase não couber, ela passa automaticamente na horizontal.',
-                ),
-                contentPadding: EdgeInsets.zero,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _minimalSearchPlaceholderCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Placeholder da busca (layout minimalista)',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-            ],
-          ),
-        ),
-        _buildLayoutAccordionSection(
-          id: 'layout_hero',
-          title: 'Banner / letreiro (minimalista)',
-          subtitle:
-              'Card abaixo das categorias — imagens, textos, botão e aparência.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SwitchListTile(
-                value: _heroBannerEnabled,
-                onChanged: (v) {
-                  setState(() => _heroBannerEnabled = v);
-                  _salvarRascunho(validar: false);
-                },
-                title: const Text('Ativar banner promocional'),
-                contentPadding: EdgeInsets.zero,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _heroBannerTitleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Titulo do banner',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _heroBannerSubtitleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Subtitulo do banner',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 8),
-              _ImageFieldWithGallery(
-                label: 'Imagem banner (desktop)',
-                controller: _heroBannerImageCtrl,
-                onChanged: _scheduleAutoSave,
-                onPickImage: () => _pickAndUploadLayoutImage('hero_desktop'),
-              ),
-              const SizedBox(height: 8),
-              _ImageFieldWithGallery(
-                label: 'Imagem banner (mobile)',
-                controller: _heroBannerMobileImageCtrl,
-                onChanged: _scheduleAutoSave,
-                onPickImage: () => _pickAndUploadLayoutImage('hero_mobile'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _heroBannerButtonTextCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Texto do botao do banner',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _heroBannerButtonLinkCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Link do botao do banner',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 12),
-              ExpansionTile(
-                title: const Text(
-                  'Aparência do banner (layout minimalista)',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: const Text(
-                  'Cores do card, tipografia do título/subtítulo e do botão — independentes do tema geral.',
-                  style: TextStyle(fontSize: 12),
-                ),
-                children: [
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Card do banner',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _catalogColorFieldTema(
-                    suggestions: paletteSuggestions,
-                    label: 'Fundo do card',
-                    color: _heroCardBg,
-                    onChanged: (c) => setState(() => _heroCardBg = c),
-                  ),
-                  const SizedBox(height: 8),
-                  _layoutResponsivePair(
-                    breakpoint: 480,
-                    first: TextField(
-                      controller: _heroBannerHeightCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Altura do banner (px)',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (_) => _scheduleAutoSave(),
-                    ),
-                    second: TextField(
-                      controller: _heroBannerCardRadiusCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Raio dos cantos do card',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (_) => _scheduleAutoSave(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _heroBannerOverlayCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Escurecimento sobre a imagem (0–0,8)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => _scheduleAutoSave(),
-                  ),
-                  const Divider(height: 24),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Título',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _catalogColorFieldTema(
-                    suggestions: paletteSuggestions,
-                    label: 'Cor do título',
-                    color: _heroTitleColor,
-                    onChanged: (c) => setState(() => _heroTitleColor = c),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _heroBannerTitleSizeCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Tamanho da fonte (título)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => _scheduleAutoSave(),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<int>(
-                    isExpanded: true,
-                    value: _heroTitleFontWeight,
-                    decoration: const InputDecoration(
-                      labelText: 'Peso da fonte (título)',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 400, child: Text('400 (Regular)')),
-                      DropdownMenuItem(value: 500, child: Text('500 (Medium)')),
-                      DropdownMenuItem(value: 600, child: Text('600 (Semibold)')),
-                      DropdownMenuItem(value: 700, child: Text('700 (Bold)')),
-                      DropdownMenuItem(value: 800, child: Text('800 (Extra bold)')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _heroTitleFontWeight = v);
-                      _salvarRascunho(validar: false);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    value: _heroTitleCase,
-                    decoration: const InputDecoration(
-                      labelText: 'Caixa do texto (título)',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'none', child: Text('Normal')),
-                      DropdownMenuItem(
-                          value: 'lowercase', child: Text('minúsculas')),
-                      DropdownMenuItem(
-                          value: 'uppercase', child: Text('MAIÚSCULAS')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _heroTitleCase = v);
-                      _salvarRascunho(validar: false);
-                    },
-                  ),
-                  const Divider(height: 24),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Subtítulo',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _catalogColorFieldTema(
-                    suggestions: paletteSuggestions,
-                    label: 'Cor do subtítulo',
-                    color: _heroSubtitleColor,
-                    onChanged: (c) =>
-                        setState(() => _heroSubtitleColor = c),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _heroBannerSubtitleSizeCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Tamanho da fonte (subtítulo)',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (_) => _scheduleAutoSave(),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<int>(
-                    isExpanded: true,
-                    value: _heroSubtitleFontWeight,
-                    decoration: const InputDecoration(
-                      labelText: 'Peso da fonte (subtítulo)',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 400, child: Text('400 (Regular)')),
-                      DropdownMenuItem(value: 500, child: Text('500 (Medium)')),
-                      DropdownMenuItem(value: 600, child: Text('600 (Semibold)')),
-                      DropdownMenuItem(value: 700, child: Text('700 (Bold)')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _heroSubtitleFontWeight = v);
-                      _salvarRascunho(validar: false);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    value: _heroSubtitleCase,
-                    decoration: const InputDecoration(
-                      labelText: 'Caixa do texto (subtítulo)',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'none', child: Text('Normal')),
-                      DropdownMenuItem(
-                          value: 'lowercase', child: Text('minúsculas')),
-                      DropdownMenuItem(
-                          value: 'uppercase', child: Text('MAIÚSCULAS')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _heroSubtitleCase = v);
-                      _salvarRascunho(validar: false);
-                    },
-                  ),
-                  const Divider(height: 24),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Botão / destaque',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _layoutResponsivePair(
-                    breakpoint: 560,
-                    first: _catalogColorFieldTema(
-                      suggestions: paletteSuggestions,
-                      label: 'Fundo do botão',
-                      color: _heroButtonBg,
-                      onChanged: (c) => setState(() => _heroButtonBg = c),
-                    ),
-                    second: _catalogColorFieldTema(
-                      suggestions: paletteSuggestions,
-                      label: 'Texto do botão',
-                      color: _heroButtonTextColor,
-                      onChanged: (c) =>
-                          setState(() => _heroButtonTextColor = c),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _layoutResponsivePair(
-                    breakpoint: 480,
-                    first: TextField(
-                      controller: _heroBannerButtonSizeCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Tamanho da fonte (botão)',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (_) => _scheduleAutoSave(),
-                    ),
-                    second: TextField(
-                      controller: _heroBannerButtonRadiusCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Raio dos cantos do botão',
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (_) => _scheduleAutoSave(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<int>(
-                    isExpanded: true,
-                    value: _heroButtonFontWeight,
-                    decoration: const InputDecoration(
-                      labelText: 'Peso da fonte (botão)',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 400, child: Text('400 (Regular)')),
-                      DropdownMenuItem(value: 500, child: Text('500 (Medium)')),
-                      DropdownMenuItem(value: 600, child: Text('600 (Semibold)')),
-                      DropdownMenuItem(value: 700, child: Text('700 (Bold)')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _heroButtonFontWeight = v);
-                      _salvarRascunho(validar: false);
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    isExpanded: true,
-                    value: _heroButtonCase,
-                    decoration: const InputDecoration(
-                      labelText: 'Caixa do texto (botão)',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: 'none', child: Text('Normal')),
-                      DropdownMenuItem(
-                          value: 'lowercase', child: Text('minúsculas')),
-                      DropdownMenuItem(
-                          value: 'uppercase', child: Text('MAIÚSCULAS')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _heroButtonCase = v);
-                      _salvarRascunho(validar: false);
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ],
-          ),
-        ),
-        _buildLayoutAccordionSection(
-          id: 'layout_categorias',
-          title: 'Imagens por categoria',
-          subtitle:
-              'Uma foto por categoria no minimalista; compatível com configs antigas.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DropdownButtonFormField<String>(
-                isExpanded: true,
-                initialValue: (_catSelectedFromStore != null &&
-                        _knownCategoryNames.contains(_catSelectedFromStore))
-                    ? _catSelectedFromStore
-                    : null,
-                items: _knownCategoryNames
-                    .map((c) => DropdownMenuItem<String>(
-                          value: c,
-                          child: Text(c),
-                        ))
-                    .toList(),
-                onChanged: (v) {
-                  setState(() {
-                    _catSelectedFromStore = v;
-                    if (v != null) {
-                      _catImgCategoriaCtrl.text = v;
-                    }
-                  });
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Selecionar categoria existente (opcional)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _catImgCategoriaCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nome da categoria',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _catImgCategoriaIdCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'ID da categoria (opcional, para matching por id)',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 8),
-              _ImageFieldWithGallery(
-                label: 'Imagem da categoria',
-                controller: _catImgUrlCtrl,
-                onChanged: _scheduleAutoSave,
-                onPickImage: () => _pickAndUploadLayoutImage('cat_dynamic'),
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _upsertCategoryImageConfig();
-                    });
-                    _salvarRascunho(validar: false);
-                  },
-                  icon: const Icon(Icons.save_outlined, size: 18),
-                  label: const Text('Salvar categoria'),
-                ),
-              ),
-              if (_categoryImagesByName.isNotEmpty || _categoryImagesById.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Categorias configuradas',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                ..._categoryImagesByName.entries
-                    .where((e) => !e.key.startsWith('name:'))
-                    .map((e) => Card(
-                          elevation: 0,
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: e.value.trim().isEmpty
-                                ? const Icon(Icons.image_not_supported_outlined)
-                                : ClipRRect(
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Image(
-                                      image: mpImageProvider(e.value),
-                                      width: 42,
-                                      height: 42,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported_outlined),
-                                    ),
-                                  ),
-                            title: Text(e.key),
-                            subtitle: Text(
-                              e.value,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline),
-                              onPressed: () {
-                                final norm = _normalizeCategoryKey(e.key);
-                                setState(() {
-                                  _categoryImagesByName.remove(e.key);
-                                  _categoryImagesByName.remove(norm);
-                                  _categoryImagesByName.remove('name:$norm');
-                                });
-                                _salvarRascunho(validar: false);
-                              },
-                            ),
-                          ),
-                        )),
-              ],
-              if (_categoryImagesById.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ..._categoryImagesById.entries.map(
-                  (e) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('ID: ${e.key}'),
-                    subtitle: Text(
-                      e.value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () {
-                        setState(() => _categoryImagesById.remove(e.key));
-                        _salvarRascunho(validar: false);
-                      },
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: _loadKnownCategoryNamesFromStore,
-                  icon: const Icon(Icons.refresh, size: 16),
-                  label: const Text('Atualizar categorias da loja'),
-                ),
-              ),
-            ],
-          ),
-        ),
-        _buildLayoutAccordionSection(
-          id: 'layout_mais_vendidos',
-          title: 'Seção Mais vendidos',
-          subtitle:
-              'Carrossel no minimalista — métricas de venda, destaque e novidades.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SwitchListTile(
-                value: _minimalBestSellersEnabled,
-                onChanged: (v) {
-                  setState(() => _minimalBestSellersEnabled = v);
-                  _salvarRascunho(validar: false);
-                },
-                title: const Text('Exibir carrossel de mais vendidos'),
-                contentPadding: EdgeInsets.zero,
-              ),
-              TextField(
-                controller: _minimalBestSellersTitleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Título da seção',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _minimalBestSellersCountCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Quantidade de produtos (3 a 24)',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => _scheduleAutoSave(),
-              ),
-            ],
-          ),
-        ),
-        _buildLayoutAccordionSection(
-          id: 'layout_grid',
-          title: 'Grade de produtos (desktop × mobile)',
-          subtitle:
-              'Quantos cards de produto aparecem por linha em cada tipo de tela.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Desktop (navegador no PC)',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<int>(
-                isExpanded: true,
-                initialValue: _gridDesktopCols,
-                items: const [2, 3, 4, 5, 6]
-                    .map(
-                      (v) => DropdownMenuItem<int>(
-                        value: v,
-                        child: Text('$v cards por linha'),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _gridDesktopCols = v);
-                  _salvarRascunho(validar: false);
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Cards por linha (desktop)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
+  void _layoutOnCatSelectedFromStoreChanged(String? v) {
+    setState(() {
+      _catSelectedFromStore = v;
+      if (v != null) {
+        _catImgCategoriaCtrl.text = v;
+      }
+    });
+  }
 
-              const SizedBox(height: 16),
+  void _layoutSaveCategoryImagePressed() {
+    setState(() {
+      _upsertCategoryImageConfig();
+    });
+    _salvarRascunho(validar: false);
+  }
 
-              Text(
-                'Mobile (Android / iOS)',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<int>(
-                isExpanded: true,
-                initialValue: _gridMobileCols,
-                items: const [1, 2, 3]
-                    .map(
-                      (v) => DropdownMenuItem<int>(
-                        value: v,
-                        child: Text('$v cards por linha'),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _gridMobileCols = v);
-                  _salvarRascunho(validar: false);
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Cards por linha (mobile)',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        _buildLayoutAccordionSection(
-          id: 'layout_cards_style',
-          title: 'Estilo visual dos cards',
-          subtitle: 'Sombra, cantos arredondados e pré-visualização rápida.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SwitchListTile(
-                title: const Text('Aplicar sombra nos cards'),
-                subtitle: const Text(
-                  'Deixe desativado para um visual mais clean/minimalista.',
-                ),
-                value: _cardShowShadow,
-                onChanged: (v) {
-                  setState(() => _cardShowShadow = v);
-                  _salvarRascunho(validar: false);
-                },
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Arredondamento das bordas',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Slider(
-                min: 4,
-                max: 32,
-                divisions: 7,
-                label: '${_cardBorderRadius.round()} px',
-                value: _cardBorderRadius,
-                onChanged: (v) {
-                  setState(() => _cardBorderRadius = v);
-                },
-                onChangeEnd: (_) => _salvarRascunho(validar: false),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Bordas atuais: ${_cardBorderRadius.toStringAsFixed(0)} px',
-                style: const TextStyle(color: Colors.black54, fontSize: 12),
-              ),
-              const SizedBox(height: 16),
+  void _layoutRemoveCategoryImageByNameKey(String key) {
+    final norm = _normalizeCategoryKey(key);
+    setState(() {
+      _categoryImagesByName.remove(key);
+      _categoryImagesByName.remove(norm);
+      _categoryImagesByName.remove('name:$norm');
+    });
+    _salvarRascunho(validar: false);
+  }
 
-              Text(
-                'Pré-visualização rápida',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
+  void _layoutRemoveCategoryImageById(String id) {
+    setState(() => _categoryImagesById.remove(id));
+    _salvarRascunho(validar: false);
+  }
 
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _cFundo,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Desktop ($_gridDesktopCols por linha)',
-                      style: TextStyle(
-                        color: _cTexto,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildLayoutPreviewRow(
-                      cols: _gridDesktopCols,
-                      borderRadius: _cardBorderRadius,
-                      showShadow: _cardShowShadow,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Mobile ($_gridMobileCols por linha)',
-                      style: TextStyle(
-                        color: _cTexto,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildLayoutPreviewRow(
-                      cols: _gridMobileCols,
-                      borderRadius: _cardBorderRadius,
-                      showShadow: _cardShowShadow,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+  void _layoutSetCardBorderRadius(double v) {
+    setState(() => _cardBorderRadius = v);
   }
 
   Widget _buildLayoutPreviewRow({
@@ -6817,437 +5350,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   // ============== PANE: MENU & PÁGINAS ==============
-  Widget _paneMenu() {
-    return _Section(
-      title: 'Menu do catálogo & páginas internas',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Configure aqui os itens que irão aparecer no menu lateral do catálogo web: '
-            'categorias, entrar/cadastro, contato, SAC e a página "Quem somos".',
-            style: TextStyle(color: Colors.black54),
-          ),
-          const SizedBox(height: 16),
-
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  title: const Text('Mostrar "Categorias" no menu'),
-                  subtitle: const Text(
-                    'Lista de produtos por categoria (filtro visual).',
-                  ),
-                  value: _menuShowCategorias,
-                  onChanged: (v) {
-                    setState(() => _menuShowCategorias = v);
-                    _salvarRascunho(validar: false);
-                  },
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title: const Text('Mostrar botão "Entrar / Cadastro"'),
-                  subtitle: const Text(
-                    'No futuro poderá abrir a tela de cadastro/login.',
-                  ),
-                  value: _menuShowEntrar,
-                  onChanged: (v) {
-                    setState(() => _menuShowEntrar = v);
-                    _salvarRascunho(validar: false);
-                  },
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title: const Text('Mostrar atalho "Contato rápido"'),
-                  subtitle: const Text(
-                    'Usa o WhatsApp configurado na identidade da loja.',
-                  ),
-                  value: _menuShowContato,
-                  onChanged: (v) {
-                    setState(() => _menuShowContato = v);
-                    _salvarRascunho(validar: false);
-                  },
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title: const Text('Mostrar "SAC – Elogios, sugestões e críticas"'),
-                  value: _menuShowSac,
-                  onChanged: (v) {
-                    setState(() => _menuShowSac = v);
-                    _salvarRascunho(validar: false);
-                  },
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title: const Text('Mostrar página "Quem somos"'),
-                  value: _menuShowQuemSomos,
-                  onChanged: (v) {
-                    setState(() => _menuShowQuemSomos = v);
-                    _salvarRascunho(validar: false);
-                  },
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title: const Text('Mostrar "Dicas e informações" no menu'),
-                  subtitle: const Text(
-                    'Cuidados, garantias, qualidade – configurável na seção "Dicas e informações".',
-                  ),
-                  value: _menuShowDicas,
-                  onChanged: (v) {
-                    setState(() => _menuShowDicas = v);
-                    _salvarRascunho(validar: false);
-                  },
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title:
-                      const Text('Exibir "Avaliações de clientes" no catálogo'),
-                  subtitle: const Text(
-                    'Mostra seção de depoimentos por loja no catálogo web.',
-                  ),
-                  value: _exibirAvaliacoesCatalogo,
-                  onChanged: (v) {
-                    setState(() => _exibirAvaliacoesCatalogo = v);
-                    _salvarRascunho(validar: false);
-                  },
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: DropdownButtonFormField<CatalogAvaliacoesOrdem>(
-                    value: _catalogAvaliacoesOrdem,
-                    decoration: const InputDecoration(
-                      labelText: 'Ordem dos depoimentos (carrossel)',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: CatalogAvaliacoesOrdem.values
-                        .map(
-                          (e) => DropdownMenuItem(
-                            value: e,
-                            child: Text(e.labelConfig),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _catalogAvaliacoesOrdem = v);
-                      _salvarRascunho(validar: false);
-                    },
-                  ),
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  title: const Text('No celular, mostrar menu em cards na tela inicial'),
-                  subtitle: const Text(
-                    'Quando ativo, o catálogo mobile mostra um grid de atalhos.',
-                  ),
-                  value: _showMobileMenuGrid,
-                  onChanged: (v) {
-                    setState(() => _showMobileMenuGrid = v);
-                    _salvarRascunho(validar: false);
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Página "Quem somos"',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _quemSomosTituloCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'Título',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _quemSomosTextoCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    maxLines: 5,
-                    decoration: const InputDecoration(
-                      labelText: 'Texto de apresentação da loja',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                      helperText:
-                          'Esse texto aparecerá quando o cliente clicar em "Quem somos".',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Página "Sobre a loja" no catálogo',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'O botão "Sobre a loja" no rodapé do catálogo abre esta página. '
-                    'Use URL completa (https://...) para o banner — ex.: imagem no Firebase Storage.',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildSobreLojaPreview(context),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _sobreLojaTituloCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'Título da página',
-                      hintText: 'Ex.: Nossa história',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaSubtituloCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'Subtítulo / slogan',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _ImageFieldWithGallery(
-                    label: 'Banner',
-                    controller: _sobreLojaBannerUrlCtrl,
-                    onChanged: _scheduleAutoSave,
-                    onPickImage: _pickAndUploadSobreLojaBanner,
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaIntroCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    minLines: 4,
-                    maxLines: 10,
-                    decoration: const InputDecoration(
-                      labelText: 'História e apresentação',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                      helperText:
-                          'Parágrafos separados por linha em branco ficam bem na página.',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaMissaoCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Missão',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaVisaoCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Visão',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaValoresCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Valores',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaDestaquesCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    minLines: 2,
-                    maxLines: 6,
-                    decoration: const InputDecoration(
-                      labelText: 'Destaques (um por linha)',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                      helperText: 'Ex.: Entrega para todo o Brasil',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaEnderecoCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Endereço (opcional)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaHorarioCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'Horário de atendimento',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sobreLojaEmailCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'E-mail de exibição (opcional)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Mostrar razão social e CNPJ na página'),
-                    subtitle: Text(
-                      'Usa os dados do bloco Rodapé (razão e CNPJ).',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    value: _sobreLojaMostrarLegais,
-                    onChanged: (v) {
-                      setState(() => _sobreLojaMostrarLegais = v);
-                      _salvarRascunho(validar: false);
-                    },
-                  ),
-                  const SizedBox(height: 4),
-                  TextField(
-                    controller: _sobreCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'Site ou página externa (opcional)',
-                      prefixIcon: Icon(Icons.link),
-                      border: OutlineInputBorder(),
-                      helperText:
-                          'Se preenchido, aparece o botão "Visitar site" na página Sobre.',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'SAC – Elogios, sugestões e críticas',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sacWhatsappCtrl,
-                    focusNode: _focusSacWhatsapp,
-                    onChanged: (_) {
-                      _limparErroCampo('sac_whatsapp');
-                      _scheduleAutoSave();
-                    },
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9\s\-+()]')),
-                    ],
-                    decoration: InputDecoration(
-                      labelText: 'WhatsApp do SAC (opcional)',
-                      helperText:
-                          'Ex: 5533999999999 - Se vazio, será usado o mesmo WhatsApp do vendedor.',
-                      errorText: _camposComErro.contains('sac_whatsapp')
-                          ? 'Use 10 a 15 dígitos'
-                          : null,
-                      border: const OutlineInputBorder(),
-                      errorBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(color: _errorColor, width: 2),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      prefixIcon: const Icon(Icons.chat),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _sacEmailCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'E-mail do SAC (opcional)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.email_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Esses dados serão usados no menu do catálogo para o cliente enviar '
-                    'elogios, sugestões e reclamações.',
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _paneMenu() => _PaneMenuWidget(host: this);
 
   // ============== PANE: DICAS E INFORMAÇÕES ==============
   static const List<MapEntry<String, String>> _dicaTipos = [
@@ -7264,11 +5367,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          const _PaneMutedIntroText(
             'Estas dicas aparecem no menu do catálogo e numa página dedicada. '
             'O cliente pode ver cuidados com o produto, garantias, informações de qualidade etc. '
             'Use o botão "Adicionar dica" e, em cada dica, opcionalmente um banner.',
-            style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 16),
           ListView.separated(
@@ -7533,10 +5635,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          const _PaneMutedIntroText(
             'Configure as taxas usadas nos cálculos de lucro e custos nos relatórios. '
             'Os valores padrão são mantidos; altere apenas se necessário para sua loja.',
-            style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 16),
           Card(
@@ -7616,358 +5717,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
   }
 
-  Widget _paneRodape() {
-    const allPayments = [
-      'mastercard',
-      'visa',
-      'hipercard',
-      'amex',
-      'diners',
-      'elo',
-      'pix',
-      'boleto',
-      'transfer',
-      'barcode',
-    ];
-
-    return Column(
-      children: [
-        _Section(
-          title: 'Formas de pagamento (bandeiras)',
-          child: Column(
-            children: allPayments.map((p) {
-              final selected = _payments.contains(p);
-              return CheckboxListTile(
-                title: Text(p.toUpperCase()),
-                value: selected,
-                onChanged: (v) {
-                  setState(() {
-                    if (v == true) {
-                      _payments.add(p);
-                    } else {
-                      _payments.remove(p);
-                    }
-                  });
-                  _salvarRascunho(validar: false);
-                },
-              );
-            }).toList(),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        _Section(
-          title: 'Links do Rodapé',
-          child: LayoutBuilder(builder: (context, c) {
-            final narrow = c.maxWidth < 700;
-            final firstRow = narrow
-                ? Column(
-                    children: [
-                      TextField(
-                        controller: _instagramCtrl,
-                        onChanged: (_) => _scheduleAutoSave(),
-                        decoration: const InputDecoration(
-                          labelText: 'Instagram (URL)',
-                          prefixIcon: Icon(Icons.camera_alt_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _facebookCtrl,
-                        onChanged: (_) => _scheduleAutoSave(),
-                        decoration: const InputDecoration(
-                          labelText: 'Facebook (URL)',
-                          prefixIcon: Icon(Icons.facebook_outlined),
-                        ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _instagramCtrl,
-                          onChanged: (_) => _scheduleAutoSave(),
-                          decoration: const InputDecoration(
-                            labelText: 'Instagram (URL)',
-                            prefixIcon: Icon(Icons.camera_alt_outlined),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _facebookCtrl,
-                          onChanged: (_) => _scheduleAutoSave(),
-                          decoration: const InputDecoration(
-                            labelText: 'Facebook (URL)',
-                            prefixIcon: Icon(Icons.facebook_outlined),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-
-            // New social media row
-            final newSocialRow = narrow
-                ? Column(
-                    children: [
-                      TextField(
-                        controller: _tiktokCtrl,
-                        onChanged: (_) => _scheduleAutoSave(),
-                        decoration: const InputDecoration(
-                          labelText: 'TikTok (URL)',
-                          prefixIcon: Icon(Icons.music_note),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _telegramCtrl,
-                        onChanged: (_) => _scheduleAutoSave(),
-                        decoration: const InputDecoration(
-                          labelText: 'Telegram (URL)',
-                          prefixIcon: Icon(Icons.send),
-                        ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _tiktokCtrl,
-                          onChanged: (_) => _scheduleAutoSave(),
-                          decoration: const InputDecoration(
-                            labelText: 'TikTok (URL)',
-                            prefixIcon: Icon(Icons.music_note),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _telegramCtrl,
-                          onChanged: (_) => _scheduleAutoSave(),
-                          decoration: const InputDecoration(
-                            labelText: 'Telegram (URL)',
-                            prefixIcon: Icon(Icons.send),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-
-            final thirdSocialRow = narrow
-                ? Column(
-                    children: [
-                      TextField(
-                        controller: _kwaiCtrl,
-                        onChanged: (_) => _scheduleAutoSave(),
-                        decoration: const InputDecoration(
-                          labelText: 'Kwai (URL)',
-                          prefixIcon: Icon(Icons.video_library),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: _linkedinCtrl,
-                        onChanged: (_) => _scheduleAutoSave(),
-                        decoration: const InputDecoration(
-                          labelText: 'LinkedIn (URL)',
-                          prefixIcon: Icon(Icons.business),
-                        ),
-                      ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _kwaiCtrl,
-                          onChanged: (_) => _scheduleAutoSave(),
-                          decoration: const InputDecoration(
-                            labelText: 'Kwai (URL)',
-                            prefixIcon: Icon(Icons.video_library),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _linkedinCtrl,
-                          onChanged: (_) => _scheduleAutoSave(),
-                          decoration: const InputDecoration(
-                            labelText: 'LinkedIn (URL)',
-                            prefixIcon: Icon(Icons.business),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-
-            final secondRow = TextField(
-              controller: _trocasCtrl,
-              onChanged: (_) => _scheduleAutoSave(),
-              decoration: const InputDecoration(
-                labelText: 'Trocas & devoluções (URL)',
-                prefixIcon: Icon(Icons.receipt_long_outlined),
-                helperText:
-                    'A página "Sobre a loja" é configurada em Menu e páginas, acima.',
-              ),
-            );
-
-            // Email row
-            final emailRow = TextField(
-              controller: _emailRodapeCtrl,
-              onChanged: (_) => _scheduleAutoSave(),
-              decoration: const InputDecoration(
-                labelText: 'Email de contato',
-                prefixIcon: Icon(Icons.email_outlined),
-              ),
-            );
-
-            // WhatsApp row
-            final whatsappRow = TextField(
-              controller: _whatsappRodapeCtrl,
-              focusNode: _focusWhatsappRodape,
-              onChanged: (_) {
-                _limparErroCampo('whatsapp_rodape');
-                _scheduleAutoSave();
-              },
-              keyboardType: TextInputType.phone,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9\s\-+()]')),
-              ],
-              decoration: InputDecoration(
-                labelText: 'WhatsApp de contato',
-                prefixIcon: const Icon(Icons.phone_outlined),
-                helperText: 'Ex: 5533999999999',
-                helperStyle: const TextStyle(fontSize: 11),
-                errorText: _camposComErro.contains('whatsapp_rodape')
-                    ? 'Use 10 a 15 dígitos'
-                    : null,
-                errorBorder: OutlineInputBorder(
-                  borderSide: const BorderSide(color: _errorColor, width: 2),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            );
-
-            return Column(
-              children: [
-                firstRow,
-                const SizedBox(height: 10),
-                newSocialRow,
-                const SizedBox(height: 10),
-                thirdSocialRow,
-                const SizedBox(height: 10),
-                emailRow,
-                const SizedBox(height: 10),
-                whatsappRow,
-                const SizedBox(height: 10),
-                secondRow,
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _loginCtrl,
-                  onChanged: (_) => _scheduleAutoSave(),
-                  decoration: const InputDecoration(
-                    labelText: 'Link de login (opcional)',
-                    prefixIcon: Icon(Icons.lock_open_outlined),
-                  ),
-                ),
-              ],
-            );
-          }),
-        ),
-
-        const SizedBox(height: 16),
-
-        _Section(
-          title: 'Empresa no Rodapé',
-          child: LayoutBuilder(builder: (context, c) {
-            final narrow = c.maxWidth < 700;
-            if (narrow) {
-              return Column(
-                children: [
-                  TextField(
-                    controller: _razaoCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'Razão social',
-                      prefixIcon: Icon(Icons.business_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _cnpjCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'CNPJ',
-                      prefixIcon: Icon(Icons.badge_outlined),
-                    ),
-                  ),
-                ],
-              );
-            }
-            return Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _razaoCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'Razão social',
-                      prefixIcon: Icon(Icons.business_outlined),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _cnpjCtrl,
-                    onChanged: (_) => _scheduleAutoSave(),
-                    decoration: const InputDecoration(
-                      labelText: 'CNPJ',
-                      prefixIcon: Icon(Icons.badge_outlined),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }),
-        ),
-
-        const SizedBox(height: 16),
-
-        const Card(
-          elevation: 0,
-          child: Padding(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Como funciona?',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '? Salvar rascunho grava localmente e em lojas/{store_id}/draft_config/config.\n'
-                  '? Publicar copia o rascunho para lojas/{store_id}/config/config e também espelha no doc raiz.\n'
-                  '? O Catálogo Web lê os dados publicados (config/config).',
-                  style: TextStyle(color: Colors.black54),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget _paneRodape() => _PaneRodapeWidget(host: this);
 
   // =================== MÍDIAS: UPLOAD BÁSICO ===================
 

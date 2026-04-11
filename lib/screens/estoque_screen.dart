@@ -2131,6 +2131,80 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     }
   }
 
+  /// Abre formulário de kit (vários itens vendidos juntos).
+  Future<void> _abrirNovoKitForm() async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const ProdutoComboFormScreen()),
+    );
+    if (ok == true && mounted) {
+      final catalogoPendente = await CatalogPublishService.catalogoPrecisaAtualizar;
+      setState(() => _catalogoPrecisaAtualizar = catalogoPendente);
+    }
+  }
+
+  /// Escolha entre produto avulso ou kit ao tocar em «Novo produto».
+  Future<void> _mostrarEscolhaNovoProduto() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text(
+                    'Novo cadastro',
+                    style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'Escolha o tipo de item',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: _primaryColor.withValues(alpha: 0.15),
+                    child: const Icon(Icons.inventory_2_outlined, color: _primaryColor),
+                  ),
+                  title: const Text('Produto'),
+                  subtitle: const Text('Um item com preço e estoque próprios'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _abrirForm();
+                  },
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.orange.withValues(alpha: 0.2),
+                    child: const Icon(Icons.layers_outlined, color: Colors.orange),
+                  ),
+                  title: const Text('Kit'),
+                  subtitle: const Text('Vários produtos vendidos juntos'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _abrirNovoKitForm();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _remover(Produto p) async {
     final confirmar = await _showConfirmSheet(
       'Remover Produto?',
@@ -3810,16 +3884,12 @@ String _formatGradeTexto(Produto p) {
           ),
           const Divider(height: 24),
           _drawerTile(
-            icon: Icons.card_giftcard,
+            icon: Icons.layers_outlined,
             iconColor: Colors.orange,
-            label: 'Cadastrar combo',
+            label: 'Cadastrar kit',
             onTap: () async {
               Navigator.pop(context);
-              final ok = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(builder: (_) => const ProdutoComboFormScreen()),
-              );
-              if (ok == true && mounted) setState(() {});
+              await _abrirNovoKitForm();
             },
           ),
           _drawerTile(
@@ -4213,7 +4283,7 @@ String _formatGradeTexto(Produto p) {
                 )
               : FloatingActionButton.extended(
                   heroTag: 'fab_novo_produto',
-                  onPressed: () => _abrirForm(),
+                  onPressed: _mostrarEscolhaNovoProduto,
                   backgroundColor: _primaryColor,
                   icon: const Icon(Icons.add, color: Colors.white),
                   label: const Text('Novo Produto', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
@@ -4723,7 +4793,7 @@ String _formatGradeTexto(Produto p) {
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
-              onPressed: () => _abrirForm(),
+              onPressed: _mostrarEscolhaNovoProduto,
               icon: const Icon(Icons.add, size: 20),
               label: const Text('Adicionar produto'),
               style: FilledButton.styleFrom(
