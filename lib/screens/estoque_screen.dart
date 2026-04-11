@@ -3738,6 +3738,11 @@ String _formatGradeTexto(Produto p) {
             icon: Icons.cloud_download,
             iconColor: const Color(0xFF3B82F6),
             label: _sincronizandoEstoque ? 'Baixando…' : 'Baixar da Nuvem',
+            subtitle: _temDadosParaImportar == true
+                ? 'Há produtos na nuvem para importar'
+                : (_temDadosParaImportar == false
+                    ? 'Sem novidades para importar'
+                    : null),
             onTap: _sincronizandoEstoque
                 ? null
                 : () {
@@ -3988,6 +3993,7 @@ String _formatGradeTexto(Produto p) {
     required Color iconColor,
     required String label,
     VoidCallback? onTap,
+    String? subtitle,
   }) {
     return ListTile(
       leading: Container(
@@ -3999,6 +4005,12 @@ String _formatGradeTexto(Produto p) {
         child: Icon(icon, size: 22, color: iconColor),
       ),
       title: Text(label),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            )
+          : null,
       onTap: onTap,
     );
   }
