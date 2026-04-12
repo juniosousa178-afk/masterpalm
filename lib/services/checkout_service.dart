@@ -1,4 +1,5 @@
 // lib/services/checkout_service.dart
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,17 +11,26 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'license_manager.dart';
 import 'remote_config_service.dart';
 
-/// POST em [planCreatePreference] com token fresco; no Web repõe sessão e repete 1x em 401.
+/// POST em [planCreatePreference]: credencial MP só no backend (Secret Manager).
+/// No Web: [reload] + [getIdToken(true)] antes do POST; em 401, pausa curta e repete uma vez
+/// com [currentUser] atualizado (evita referência de [User] stale).
 Future<http.Response> _postPlanCreatePreference({
-  required User user,
   required Uri url,
   required Map<String, dynamic> body,
 }) async {
-  Future<http.Response> once() async {
+  Future<http.Response> attempt({required int attemptNumber}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('Usuário não autenticado');
+    }
     if (kIsWeb) {
       try {
         await user.reload();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint(
+          '⚠️ [CheckoutPlano] user.reload (tentativa $attemptNumber): $e',
+        );
+      }
     }
     final idToken = await user.getIdToken(true);
     if (idToken == null || idToken.isEmpty) {
@@ -38,12 +48,21 @@ Future<http.Response> _postPlanCreatePreference({
         .timeout(const Duration(seconds: 45));
   }
 
-  var resp = await once();
+  debugPrint(
+    '[CheckoutPlano] planCreatePreference — MP no servidor (não usa app_config/master)',
+  );
+  var resp = await attempt(attemptNumber: 1);
   if (resp.statusCode == 401) {
     debugPrint(
-      '⚠️ [CheckoutPlano] planCreatePreference 401 — nova tentativa com token',
+      '⚠️ [CheckoutPlano] planCreatePreference 401 na 1ª tentativa (Firebase ID token) — retry',
     );
-    resp = await once();
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    resp = await attempt(attemptNumber: 2);
+    if (resp.statusCode == 401) {
+      debugPrint(
+        '❌ [CheckoutPlano] planCreatePreference 401 após retry — sessão recusada pelo servidor',
+      );
+    }
   }
   return resp;
 }
@@ -154,7 +173,6 @@ class CheckoutService {
       }
 
       final resp = await _postPlanCreatePreference(
-        user: user,
         url: url,
         body: {
           'plan': plan,
@@ -219,20 +237,42 @@ class CheckoutService {
   static Future<bool> _abrirCheckoutPlanoRecorrente({
     required String planApi,
   }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Usuário não autenticado');
-    if (kIsWeb) {
-      try {
-        await user.reload();
-      } catch (_) {}
+    Future<HttpsCallableResult<dynamic>> callOnce() async {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Usuário não autenticado');
+      if (kIsWeb) {
+        try {
+          await user.reload();
+        } catch (e) {
+          debugPrint('⚠️ [CheckoutPlano] createPlanSubscription reload: $e');
+        }
+      }
+      await user.getIdToken(true);
+      final functions =
+          FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+      final callable = functions.httpsCallable('createPlanSubscription');
+      return callable.call(<String, dynamic>{
+        'plan': planApi,
+      });
     }
-    await user.getIdToken(true);
-    final functions =
-        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-    final callable = functions.httpsCallable('createPlanSubscription');
-    final result = await callable.call(<String, dynamic>{
-      'plan': planApi,
-    });
+
+    debugPrint(
+      '[CheckoutPlano] createPlanSubscription — MP no servidor (Secret Manager)',
+    );
+    HttpsCallableResult<dynamic> result;
+    try {
+      result = await callOnce();
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'unauthenticated') {
+        debugPrint(
+          '⚠️ [CheckoutPlano] createPlanSubscription unauthenticated — retry após refresh de token',
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        result = await callOnce();
+      } else {
+        rethrow;
+      }
+    }
     final map = result.data;
     if (map is! Map) {
       throw Exception('Resposta inválida do servidor (recorrente).');

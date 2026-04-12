@@ -1643,7 +1643,13 @@ export const planCreatePreference = onRequest(
         if (authErr?.code === "NO_AUTH") {
           return res.status(401).json({ error: "Autenticação obrigatória (Bearer ID token)." });
         }
-        console.warn("[planCreatePreference] auth:", authErr?.message || authErr);
+        console.warn(
+          JSON.stringify({
+            evt: "planCreatePreference_auth_fail",
+            code: String(authErr?.code || "unknown"),
+            domain: "planos_app",
+          }),
+        );
         return res.status(401).json({ error: "Token inválido ou expirado." });
       }
 

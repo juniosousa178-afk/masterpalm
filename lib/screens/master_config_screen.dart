@@ -601,10 +601,18 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                   _maintenanceMode ? const Color(0xFFF59E0B) : const Color(0xFF22C55E),
                 ),
                 _buildStatChip(
-                  'Mercado Pago',
-                  _config!.mercadoPagoAccessToken != null ? 'OK' : 'Não config',
-                  Icons.payment,
-                  _config!.mercadoPagoAccessToken != null ? const Color(0xFF22C55E) : Colors.grey,
+                  'Assinaturas (planos)',
+                  'MP no servidor',
+                  Icons.cloud_done,
+                  const Color(0xFF22C55E),
+                ),
+                _buildStatChip(
+                  'MP Firestore (legado)',
+                  _config!.mercadoPagoAccessToken != null ? 'Campos preenchidos' : 'Vazio',
+                  Icons.storage,
+                  _config!.mercadoPagoAccessToken != null
+                      ? const Color(0xFF6366F1)
+                      : Colors.grey,
                 ),
                 _buildStatChip(
                   'Versão',
@@ -718,22 +726,33 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                 Icon(Icons.payment, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'Mercado Pago - Assinaturas',
+                  'Mercado Pago — uso técnico / legado',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Text(
+              'O checkout de planos do app usa a conta Mercado Pago configurada no backend '
+              '(Secret Manager / variável de ambiente), não estes campos. '
+              'Mantenha-os apenas para diagnóstico, teste manual ou integrações legadas — '
+              'não são necessários para o fluxo normal de assinatura.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey[700],
+                    height: 1.35,
+                  ),
+            ),
             const SizedBox(height: 16),
             TextField(
               controller: _mpAccessTokenController,
               obscureText: !_showAccessToken,
               decoration: InputDecoration(
-                labelText: 'Access Token',
+                labelText: 'Access Token (opcional / admin)',
                 prefixIcon: const Icon(Icons.vpn_key),
                 border: const OutlineInputBorder(),
-                helperText: 'Token de acesso para receber pagamentos',
+                helperText: 'Só para testar conexão ou salvar cópia no Firestore; checkout de planos não lê daqui',
                 suffixIcon: IconButton(
                   icon: Icon(
                     _showAccessToken ? Icons.visibility_off : Icons.visibility,
@@ -747,10 +766,10 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             TextField(
               controller: _mpPublicKeyController,
               decoration: const InputDecoration(
-                labelText: 'Public Key',
+                labelText: 'Public Key (opcional / admin)',
                 prefixIcon: Icon(Icons.public),
                 border: OutlineInputBorder(),
-                helperText: 'Chave pública para checkout',
+                helperText: 'Legado; planos no app não dependem desta chave',
               ),
             ),
             const SizedBox(height: 16),
@@ -1374,8 +1393,12 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             _buildInfoRow('Usuários com acesso ilimitado',
                 _config!.usersWithUnlimitedAccess.length.toString()),
             _buildInfoRow(
-              'Mercado Pago configurado',
-              _config!.mercadoPagoAccessToken != null ? 'Sim' : 'Não',
+              'MP no Firestore (legado)',
+              _config!.mercadoPagoAccessToken != null ? 'Campos preenchidos' : 'Vazio',
+            ),
+            _buildInfoRow(
+              'Checkout planos (produção)',
+              'Backend / Secret Manager',
             ),
             _buildInfoRow('Modo manutenção', _maintenanceMode ? 'Ativo' : 'Inativo'),
           ],
