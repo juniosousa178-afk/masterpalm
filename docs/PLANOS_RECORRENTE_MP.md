@@ -123,7 +123,12 @@ Filtro único sugerido no Cloud Logging: texto `plan_v2_` **ou** (no dispositivo
 
 - Callable `getPlanBillingSnapshotForSupport` (região `southamerica-east1`): **somente** se o e-mail do token JWT estiver em `ROOT_ACCOUNT_EMAILS` (mesma lista que `functions/src/rootAccounts.js` / `RoleUtils` no app).
 - Corpo: exatamente um campo — `targetUid` **ou** `targetEmail`. Por e-mail: `admin.auth().getUserByEmail` (sem varredura de coleção). Por UID: leitura de `users/{uid}` após validar que o UID existe no Authentication.
-- **Sem escrita**; sem cancelar/reativar/sync de terceiros. Log JSON: `evt: plan_support_snapshot_read` (e `plan_support_snapshot_denied` se não for root).
+- **Sem escrita**; sem cancelar/reativar/sync de terceiros. **Auditoria (Cloud Logging):** filtrar por `plan_support_snapshot_`. Não são logados snapshot completo nem `providerSubscriptionId`.
+  - `plan_support_snapshot_read` — leitura permitida: `callerUid`, `callerEmail`, `lookupMode` (`uid`|`email`), `targetUid`, `targetEmailMasked`, `usersDocExists`, `found`.
+  - `plan_support_snapshot_denied` — acesso negado: `deniedReason` = `unauthenticated` | `not_root`.
+  - `plan_support_snapshot_not_found` — Authentication sem usuário: `lookupMode`, `targetEmailMasked` ou `targetUidMasked`, `authLookup: user_not_found`.
+  - `plan_support_snapshot_invalid` — parâmetros inválidos: `deniedReason` = `missing_target` | `both_target_uid_and_email`.
+  - `plan_support_snapshot_error` — falha inesperada no lookup (trecho curto do erro, sem payload).
 - No app: Planos → bloco piloto → campo **UID ou e-mail** → **Consultar**. O texto exibido replica campos do doc + `interpretationLabels` (ex.: `doc_v2_mp`, `cancel_renew_path_legado`, `sem_doc_users`).
 - **Limites:** não substitui auditoria completa no Console; e-mail deve ser o cadastrado no Firebase Auth. Rate limit: 40/min por identificador (abuso).
 - **Quando usar em vez do Firestore:** triagem rápida de billing de um cliente sem abrir o console; para edições continue usando o Console ou fluxos administrativos existentes.
