@@ -56,6 +56,8 @@ export const RATE_LIMITS = {
   cancelPlanSubscription: { maxPerMin: 10, windowMs: 60_000 },
   reactivatePlanSubscription: { maxPerMin: 10, windowMs: 60_000 },
   syncPlanSubscription: { maxPerMin: 20, windowMs: 60_000 },
+  /** Suporte root: leitura de snapshot de outra conta (sem escrita) */
+  getPlanBillingSnapshotForSupport: { maxPerMin: 40, windowMs: 60_000 },
 
   // Cliente catálogo: perfil, carrinho, favoritos (uso legítimo frequente)
   getClienteCatalog: { maxPerMin: 60, windowMs: 60_000 },

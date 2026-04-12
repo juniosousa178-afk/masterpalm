@@ -1,6 +1,6 @@
 // lib/services/checkout_service.dart
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +9,44 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import 'license_manager.dart';
 import 'remote_config_service.dart';
+
+/// POST em [planCreatePreference] com token fresco; no Web repõe sessão e repete 1x em 401.
+Future<http.Response> _postPlanCreatePreference({
+  required User user,
+  required Uri url,
+  required Map<String, dynamic> body,
+}) async {
+  Future<http.Response> once() async {
+    if (kIsWeb) {
+      try {
+        await user.reload();
+      } catch (_) {}
+    }
+    final idToken = await user.getIdToken(true);
+    if (idToken == null || idToken.isEmpty) {
+      throw Exception('Sessão inválida. Faça login novamente.');
+    }
+    return http
+        .post(
+          url,
+          headers: {
+            'Authorization': 'Bearer $idToken',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 45));
+  }
+
+  var resp = await once();
+  if (resp.statusCode == 401) {
+    debugPrint(
+      '⚠️ [CheckoutPlano] planCreatePreference 401 — nova tentativa com token',
+    );
+    resp = await once();
+  }
+  return resp;
+}
 
 /// Checkout de planos: preferência criada **somente** no backend (token MP fora do app).
 class CheckoutService {
@@ -103,12 +141,6 @@ class CheckoutService {
         }
       }
 
-      // Força refresh para evitar 401 na Cloud Function com token expirado (comum no Web).
-      final idToken = await user.getIdToken(true);
-      if (idToken == null || idToken.isEmpty) {
-        throw Exception('Sessão inválida. Faça login novamente.');
-      }
-
       final projectId = Firebase.app().options.projectId;
       final url = Uri.parse(
         'https://southamerica-east1-$projectId.cloudfunctions.net/planCreatePreference',
@@ -121,22 +153,20 @@ class CheckoutService {
         installationId = '';
       }
 
-      final resp = await http
-          .post(
-            url,
-            headers: {
-              'Authorization': 'Bearer $idToken',
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({
-              'plan': plan,
-              if (installationId.isNotEmpty) 'installationId': installationId,
-            }),
-          )
-          .timeout(const Duration(seconds: 45));
+      final resp = await _postPlanCreatePreference(
+        user: user,
+        url: url,
+        body: {
+          'plan': plan,
+          if (installationId.isNotEmpty) 'installationId': installationId,
+        },
+      );
 
       if (resp.statusCode == 401) {
-        throw Exception('Sessão expirada. Faça login novamente.');
+        throw Exception(
+          'Não foi possível validar a sessão com o servidor. '
+          'Atualize a página ou faça login de novo.',
+        );
       }
       if (resp.statusCode == 429) {
         throw Exception('Muitas tentativas. Aguarde um minuto e tente de novo.');
@@ -191,6 +221,11 @@ class CheckoutService {
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('Usuário não autenticado');
+    if (kIsWeb) {
+      try {
+        await user.reload();
+      } catch (_) {}
+    }
     await user.getIdToken(true);
     final functions =
         FirebaseFunctions.instanceFor(region: 'southamerica-east1');

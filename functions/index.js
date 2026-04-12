@@ -55,6 +55,7 @@ import {
   runReactivatePlanSubscription,
   runSyncPlanSubscription,
 } from "./src/mpPlanRecurring.js";
+import { runGetPlanBillingSnapshotForSupport } from "./src/planSupportRead.js";
 import { writeOrderLojaIndex } from "./src/orderLojaIndex.js";
 import {
   sugerirDescricaoProduto as aiSugerirDescricao,
@@ -2159,6 +2160,29 @@ export const syncPlanSubscription = onCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("[syncPlanSubscription]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  }
+);
+
+/** Somente root (e-mail em ROOT_ACCOUNT_EMAILS): leitura de billing/plano de outra conta por UID ou e-mail. Sem escrita. */
+export const getPlanBillingSnapshotForSupport = onCall(
+  { timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit(
+        "getPlanBillingSnapshotForSupport",
+        getCallableIdentifier(request),
+      );
+      return await runGetPlanBillingSnapshotForSupport({
+        db,
+        admin,
+        request,
+        normalizePlanId,
+      });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[getPlanBillingSnapshotForSupport]", e);
       throw new HttpsError("internal", String(e?.message || e));
     }
   }

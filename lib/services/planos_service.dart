@@ -233,6 +233,61 @@ class PilotBillingOperationHints {
   }
 }
 
+/// Resposta de [getPlanBillingSnapshotForSupport] (somente root; leitura de outra conta).
+class SupportPlanBillingSnapshotResult {
+  final bool ok;
+  final bool found;
+  final String? reason;
+  final Map<String, dynamic>? snapshot;
+
+  const SupportPlanBillingSnapshotResult({
+    required this.ok,
+    required this.found,
+    this.reason,
+    this.snapshot,
+  });
+
+  factory SupportPlanBillingSnapshotResult.fromMap(Map<String, dynamic> map) {
+    final snap = map['snapshot'];
+    Map<String, dynamic>? snapMap;
+    if (snap != null && snap is Map) {
+      snapMap = Map<String, dynamic>.from(snap);
+    }
+    return SupportPlanBillingSnapshotResult(
+      ok: map['ok'] == true,
+      found: map['found'] == true,
+      reason: map['reason']?.toString(),
+      snapshot: snapMap,
+    );
+  }
+
+  String get asSupportText {
+    if (!ok) return 'ok=false';
+    if (reason == 'auth_user_not_found') {
+      return 'Usuário não encontrado no Authentication.';
+    }
+    final s = snapshot;
+    if (s == null) return 'Sem snapshot (reason=$reason).';
+    final buf = StringBuffer()
+      ..writeln('uid=${s['uid']}')
+      ..writeln('email=${s['email']}')
+      ..writeln('usersDocExists=${s['usersDocExists']}')
+      ..writeln('currentPlanId=${s['currentPlanId']}')
+      ..writeln('status=${s['status']}')
+      ..writeln('trialing=${s['trialing']}')
+      ..writeln('currentPeriodEnd=${s['currentPeriodEnd']}')
+      ..writeln('cancelAtPeriodEnd=${s['cancelAtPeriodEnd']}')
+      ..writeln('billingVersion=${s['billingVersion']}')
+      ..writeln('billingSource=${s['billingSource']}')
+      ..writeln('providerSubscriptionId=${s['providerSubscriptionId']}')
+      ..writeln('manualOverride=${s['manualOverride']}')
+      ..writeln('manualGrant=${s['manualGrant']}')
+      ..writeln('usesMercadoRecurringPlanBilling=${s['usesMercadoRecurringPlanBilling']}')
+      ..writeln('interpretationLabels=${s['interpretationLabels']}');
+    return buf.toString();
+  }
+}
+
 /// Resultado do callable [syncPlanSubscription] (reconcilia MP → Firestore).
 class PlanSubscriptionSyncResult {
   final bool ok;
@@ -625,6 +680,37 @@ class PlanosService {
   /// Compatível com chamadas que ignoram o retorno estruturado.
   Future<void> syncPlanSubscriptionFromBackend() async {
     await syncMercadoPlanSubscriptionFromBackend();
+  }
+
+  /// Somente contas root (lista no backend `ROOT_ACCOUNT_EMAILS`): leitura do doc `users/{uid}` de **outro** usuário.
+  /// Sem escrita. Informe [targetUid] **ou** [targetEmail], não ambos.
+  Future<SupportPlanBillingSnapshotResult> getPlanBillingSnapshotForSupport({
+    String? targetUid,
+    String? targetEmail,
+  }) async {
+    final u = targetUid?.trim() ?? '';
+    final em = targetEmail?.trim() ?? '';
+    if (u.isEmpty && em.isEmpty) {
+      throw ArgumentError('Informe targetUid ou targetEmail.');
+    }
+    if (u.isNotEmpty && em.isNotEmpty) {
+      throw ArgumentError('Informe apenas targetUid ou targetEmail.');
+    }
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable =
+        functions.httpsCallable('getPlanBillingSnapshotForSupport');
+    final result = await callable.call(<String, dynamic>{
+      if (u.isNotEmpty) 'targetUid': u,
+      if (em.isNotEmpty) 'targetEmail': em,
+    });
+    final data = result.data;
+    if (data is! Map) {
+      throw Exception('Resposta inválida (getPlanBillingSnapshotForSupport).');
+    }
+    return SupportPlanBillingSnapshotResult.fromMap(
+      Map<String, dynamic>.from(Map<Object?, Object?>.from(data)),
+    );
   }
 
   /// Cancela renovação no Mercado Pago (preapproval pausado) + [cancelAtPeriodEnd] no Firestore.

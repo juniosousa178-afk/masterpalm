@@ -48,6 +48,9 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   bool _loadingAnual = false;
   bool _loadingRenewal = false;
   bool _syncPilotLoading = false;
+  final TextEditingController _supportLookupController = TextEditingController();
+  bool _supportConsultLoading = false;
+  String? _supportConsultResult;
   PlanInfo? _plan;
   /// Checkout de planos usa Cloud Function + Secret Manager (token MP não fica no app).
   bool _checkoutPlanoServidor = true;
@@ -206,6 +209,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    _supportLookupController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -531,6 +535,63 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                   style: TextStyle(color: Colors.white38, fontSize: 10),
                 ),
               ),
+            const Divider(height: 28, color: Colors.white24),
+            const Text(
+              'Consulta outra conta (somente root, leitura)',
+              style: TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _supportLookupController,
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'UID Firebase ou e-mail do usuário',
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: const Color(0xFF0D0D12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: Colors.teal.shade900),
+                ),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _supportConsultLoading ? null : _consultSupportSnapshot,
+                icon: _supportConsultLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.search, size: 18, color: Colors.amber),
+                label: Text(
+                  _supportConsultLoading ? 'Consultando…' : 'Consultar',
+                  style: const TextStyle(color: Colors.amber, fontSize: 13),
+                ),
+              ),
+            ),
+            if (_supportConsultResult != null) ...[
+              const SizedBox(height: 8),
+              SelectableText(
+                _supportConsultResult!,
+                style: const TextStyle(
+                  color: Colors.amberAccent,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  height: 1.35,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -843,6 +904,30 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
         setState(() => _syncPilotLoading = false);
         await _load();
       }
+    }
+  }
+
+  /// Diagnóstico somente leitura de outra conta (callable root-only).
+  Future<void> _consultSupportSnapshot() async {
+    final raw = _supportLookupController.text.trim();
+    if (raw.isEmpty) return;
+    setState(() {
+      _supportConsultLoading = true;
+      _supportConsultResult = null;
+    });
+    try {
+      final looksEmail = raw.contains('@');
+      final r = await _svc.getPlanBillingSnapshotForSupport(
+        targetUid: looksEmail ? null : raw,
+        targetEmail: looksEmail ? raw : null,
+      );
+      if (!mounted) return;
+      setState(() => _supportConsultResult = r.asSupportText);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _supportConsultResult = _mensagemErroAmigavel(e));
+    } finally {
+      if (mounted) setState(() => _supportConsultLoading = false);
     }
   }
 

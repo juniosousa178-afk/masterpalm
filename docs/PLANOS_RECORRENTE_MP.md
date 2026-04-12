@@ -119,6 +119,15 @@ Filtro único sugerido no Cloud Logging: texto `plan_v2_` **ou** (no dispositivo
 - `PilotBillingOperationHints` agrega rótulos operacionais (doc v2 vs legado, checkout RC global vs allowlist, `providerSubscriptionId`, disponibilidade de sync) — ver código em `planos_service.dart`.
 - Na tela Planos, o bloco **Piloto billing v2** mostra: título com sufixo **doc v2** / **doc legado**, subtítulo `via=RC global` ou `allowlist`, resumo em teal, dump canônico e botão sync (habilitado só com `providerSubscriptionId`).
 
+### Consulta de **outra** conta (somente root, leitura)
+
+- Callable `getPlanBillingSnapshotForSupport` (região `southamerica-east1`): **somente** se o e-mail do token JWT estiver em `ROOT_ACCOUNT_EMAILS` (mesma lista que `functions/src/rootAccounts.js` / `RoleUtils` no app).
+- Corpo: exatamente um campo — `targetUid` **ou** `targetEmail`. Por e-mail: `admin.auth().getUserByEmail` (sem varredura de coleção). Por UID: leitura de `users/{uid}` após validar que o UID existe no Authentication.
+- **Sem escrita**; sem cancelar/reativar/sync de terceiros. Log JSON: `evt: plan_support_snapshot_read` (e `plan_support_snapshot_denied` se não for root).
+- No app: Planos → bloco piloto → campo **UID ou e-mail** → **Consultar**. O texto exibido replica campos do doc + `interpretationLabels` (ex.: `doc_v2_mp`, `cancel_renew_path_legado`, `sem_doc_users`).
+- **Limites:** não substitui auditoria completa no Console; e-mail deve ser o cadastrado no Firebase Auth. Rate limit: 40/min por identificador (abuso).
+- **Quando usar em vez do Firestore:** triagem rápida de billing de um cliente sem abrir o console; para edições continue usando o Console ou fluxos administrativos existentes.
+
 ## Callables (região `southamerica-east1`)
 
 - `createPlanSubscription` — cria preapproval MP (`POST /preapproval`), grava `plan_recurring_intents/{id}` e estado pendente em `users/{uid}`.

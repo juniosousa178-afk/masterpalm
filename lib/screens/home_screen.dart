@@ -285,6 +285,9 @@ class _HomeScreenState extends State<HomeScreen>
 
       final end = plan.currentPeriodEnd;
       if (end == null) {
+        // free_limited não usa currentPeriodEnd (limites numéricos) — mesmo critério que [app_start_router].
+        if (plan.planId == 'free_limited') return;
+
         // sem end e não lifetime = considera inválido
         await FirebaseAuth.instance.signOut();
         if (!mounted) return;
