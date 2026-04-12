@@ -2,6 +2,8 @@
 import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/widgets.dart';
+
+import '../config/app_urls.dart';
 import '../main.dart' show navigatorKey;
 
 /// Handler de deep/app links que não depende de BuildContext.
@@ -78,9 +80,9 @@ class DeepLinkHandler {
       final lojaId = uri.queryParameters['loja'];
       final pedidoId = uri.queryParameters['pedido'];
 
-      // HTTPS: app.mastepalm.com.br/c/<slug>?pedido=<id>
+      // HTTPS: App Web admin (hosts canônico + legado) e site mastepalm
       if (uri.scheme == 'https' &&
-          (uri.host == 'app.mastepalm.com.br' ||
+          (AppUrls.appWebHostsAll.contains(uri.host) ||
               uri.host == 'mastepalm.com.br' ||
               uri.host == 'www.mastepalm.com.br')) {
 
@@ -112,9 +114,9 @@ class DeepLinkHandler {
         }
       }
 
-      // Rotas de entrada normais (web: app.mastepalm.com.br, /, /login) — não logar como "não reconhecida"
+      // Rotas de entrada normais (web App, /, /login) — não logar como "não reconhecida"
       final segments = uri.pathSegments;
-      if (segments.isEmpty) return; // raiz: https://app.mastepalm.com.br/
+      if (segments.isEmpty) return; // raiz do App Web
       final path = uri.path.toLowerCase().trim().replaceFirst(RegExp(r'/+$'), '').replaceFirst(RegExp(r'^/+'), '');
       if (path.isEmpty || path == 'login') return;
 

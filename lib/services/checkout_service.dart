@@ -67,6 +67,50 @@ Future<http.Response> _postPlanCreatePreference({
   return resp;
 }
 
+/// No Web, [planCreatePreferenceCall] usa auth do SDK (evita 401 quando o browser não envia Bearer ao HTTP).
+Future<Map<String, dynamic>?> _tryPlanCreatePreferenceCallOnWeb({
+  required String plan,
+  required String installationId,
+}) async {
+  if (!kIsWeb) return null;
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    try {
+      await user.reload();
+    } catch (e) {
+      debugPrint('[PlanosAuthDiag] callable reload: $e');
+    }
+    final idTok = await user.getIdToken(true);
+    debugPrint(
+      '[PlanosAuthDiag] planCreatePreferenceCall plan=$plan '
+      'idTokenNonEmpty=${idTok != null && idTok.isNotEmpty}',
+    );
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('planCreatePreferenceCall');
+    final result = await callable.call(<String, dynamic>{
+      'plan': plan,
+      if (installationId.isNotEmpty) 'installationId': installationId,
+    });
+    final data = result.data;
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return null;
+  } on FirebaseFunctionsException catch (e) {
+    final m = e.message ?? '';
+    debugPrint(
+      '[PlanosAuthDiag] planCreatePreferenceCall code=${e.code} '
+      'message=${m.length > 120 ? m.substring(0, 120) : m}',
+    );
+    return null;
+  } catch (e) {
+    debugPrint('[PlanosAuthDiag] planCreatePreferenceCall erro: $e');
+    return null;
+  }
+}
+
 /// Checkout de planos: preferência criada **somente** no backend (token MP fora do app).
 class CheckoutService {
   static String _normalizePlanId(String? raw) {
@@ -123,7 +167,12 @@ class CheckoutService {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        throw Exception('Usuário não autenticado');
+        debugPrint(
+          '[PlanosAuthGate] checkout de planos abortado: sem usuário Firebase',
+        );
+        throw Exception(
+          'Faça login para assinar um plano. Se já estiver logado, atualize a página.',
+        );
       }
 
       final canonical = _normalizePlanId(planoId);
@@ -170,6 +219,47 @@ class CheckoutService {
         installationId = await LicenseManager.getDeviceId();
       } catch (_) {
         installationId = '';
+      }
+
+      try {
+        if (kIsWeb) {
+          try {
+            await user.reload();
+          } catch (e) {
+            debugPrint('[PlanosAuthDiag] pre_http reload: $e');
+          }
+        }
+        final tok = await user.getIdToken(true);
+        final prov =
+            user.providerData.map((p) => p.providerId).join(',');
+        debugPrint(
+          '[PlanosAuthDiag] pre_http plan=$plan projectId=$projectId '
+          'uidPrefix=${user.uid.length >= 6 ? user.uid.substring(0, 6) : user.uid}… '
+          'providers=[$prov] idTokenNonEmpty=${tok != null && tok.isNotEmpty} url=$url',
+        );
+      } catch (e) {
+        debugPrint('[PlanosAuthDiag] pre_http token: $e');
+      }
+
+      if (kIsWeb) {
+        final viaCall = await _tryPlanCreatePreferenceCallOnWeb(
+          plan: plan,
+          installationId: installationId,
+        );
+        final initFromCall = viaCall?['init_point']?.toString() ?? '';
+        if (initFromCall.isNotEmpty) {
+          debugPrint(
+            '[PlanosAuthDiag] checkout planos via planCreatePreferenceCall (OK)',
+          );
+          final uri = Uri.parse(initFromCall);
+          if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+            throw Exception('Não foi possível abrir o checkout');
+          }
+          return true;
+        }
+        debugPrint(
+          '[PlanosAuthDiag] fallback planCreatePreference HTTP (callable sem init_point ou falhou)',
+        );
       }
 
       final resp = await _postPlanCreatePreference(

@@ -1,24 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Sitemap estático mínimo. Expansão com /loja/{slug} por loja fica para automação futura. -->
-<!-- URLs baseadas no host padrão do catálogo (WEB_BASE). Se o site canônico for outro domínio, substitua o prefixo em todas as <loc>. -->
+<!-- Prefixo = host canônico do app Web (docs/DOMAIN_APP_WEB.md). -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://app.mastepalm.com.br/</loc>
+    <loc>https://app.masterpalm.com.br/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://app.mastepalm.com.br/privacidade</loc>
+    <loc>https://app.masterpalm.com.br/privacidade</loc>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://app.mastepalm.com.br/modelos-importacao</loc>
+    <loc>https://app.masterpalm.com.br/modelos-importacao</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://app.mastepalm.com.br/download.html</loc>
+    <loc>https://app.masterpalm.com.br/download.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>

@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart'
     show kDebugMode, kIsWeb, kReleaseMode, defaultTargetPlatform, TargetPlatform;
 
 import '../core/remote_config_keys.dart';
+import 'app_urls.dart';
 import '../services/remote_config_safe_service.dart';
 
 /// Chave reCAPTCHA v3 para Web (fallback quando Remote Config falha ou não está disponível).
@@ -58,7 +59,8 @@ bool get skipAppCheckOnWebInDebug {
 const List<String> kAppCheckWebAllowedHosts = [
   'mastepalm.web.app',
   'masterpalm-58c46.web.app',
-  'app.mastepalm.com.br',
+  AppUrls.appWebHostCanonical,
+  AppUrls.appWebHostLegacyTypo,
   'localhost',
 ];
 

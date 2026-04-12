@@ -477,9 +477,15 @@ class _AppStartRouterState extends State<AppStartRouter> {
         });
         if (plan != null) {
           try {
-            await planos
-                .reconcilePlanStateWithBackend()
-                .timeout(const Duration(seconds: 10));
+            if (FirebaseAuth.instance.currentUser == null) {
+              logW(
+                '[PlanosAuthGate] reconcile ignorado: currentUser null após carregar plano',
+              );
+            } else {
+              await planos
+                  .reconcilePlanStateWithBackend()
+                  .timeout(const Duration(seconds: 10));
+            }
             final refreshed =
                 await planos.fetchCurrentPlan(uid: uid, email: email);
             if (refreshed != null) plan = refreshed;
@@ -560,9 +566,15 @@ class _AppStartRouterState extends State<AppStartRouter> {
             } else {
               // Plano pago vencido: backend → free_limited; fallback cliente; sem deslogar
               try {
-                await planos
-                    .reconcilePlanStateWithBackend()
-                    .timeout(const Duration(seconds: 10));
+                if (FirebaseAuth.instance.currentUser == null) {
+                  logW(
+                    '[PlanosAuthGate] reconcile (pago expirado) ignorado: currentUser null',
+                  );
+                } else {
+                  await planos
+                      .reconcilePlanStateWithBackend()
+                      .timeout(const Duration(seconds: 10));
+                }
                 plan = await planos.fetchCurrentPlan(uid: uid, email: email);
               } catch (e) {
                 logW(

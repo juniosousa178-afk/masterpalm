@@ -1354,7 +1354,7 @@ export const mpCatalogPayment = onRequest(
         if (valor == null || !titulo) {
           return res.status(400).json({ error: "Preferência requer titulo e valor" });
         }
-        const WEB_BASE = (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
+        const WEB_BASE = (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.masterpalm.com.br";
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         const mpBody = {
           items: [{ title: String(titulo), description: descricao || titulo, quantity: Number(quantidade) || 1, currency_id: "BRL", unit_price: Number(valor) }],
@@ -1615,16 +1615,223 @@ async function activatePlanForUser({
   return payload;
 }
 
+/** Bearer do header (Express pode normalizar chaves em minúsculas). */
+function extractBearerTokenFromRequest(req) {
+  const headers = req?.headers || {};
+  const authRaw =
+    headers.authorization ||
+    headers.Authorization ||
+    headers["authorization"] ||
+    (typeof headers.get === "function"
+      ? headers.get("authorization") || headers.get("Authorization") || ""
+      : "");
+  const m = /^Bearer\s+(.+)$/i.exec(String(authRaw).trim());
+  return m?.[1]?.trim() || null;
+}
+
+/** JWT Firebase: payload aud/iss/sub (sem validar assinatura) — só diagnóstico. */
+function planCreatePreferenceIdTokenPayloadDiag(bearerToken) {
+  if (!bearerToken) {
+    return { aud: null, iss: null, subHint: null, tokenLength: 0 };
+  }
+  const tokenLength = bearerToken.length;
+  let aud = null;
+  let iss = null;
+  let subHint = null;
+  try {
+    const parts = bearerToken.split(".");
+    if (parts.length >= 2) {
+      const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+      const json = Buffer.from(b64, "base64").toString("utf8");
+      const p = JSON.parse(json);
+      aud = p.aud != null ? String(p.aud) : null;
+      iss = p.iss != null ? String(p.iss).slice(0, 80) : null;
+      subHint = p.sub != null ? `${String(p.sub).slice(0, 10)}…` : null;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return { aud, iss, subHint, tokenLength };
+}
+
+function planCreatePreferenceAuthDiag(req, bearerToken) {
+  const headers = req?.headers || {};
+  const headerKeys = Object.keys(headers).filter((k) => /auth/i.test(String(k)));
+  const adminProjectId = process.env.GCLOUD_PROJECT || PROJECT_ID || "";
+  const payload = planCreatePreferenceIdTokenPayloadDiag(bearerToken);
+  const audMismatchHint =
+    !!payload.aud &&
+    !!adminProjectId &&
+    String(payload.aud) !== String(adminProjectId) &&
+    !String(payload.iss || "").includes(adminProjectId);
+  return {
+    evt: "planCreatePreference_auth_diag",
+    domain: "planos_app",
+    transport: "http",
+    authorizationHeaderPresent: !!bearerToken,
+    bearerPrefixPresent: !!bearerToken,
+    tokenLength: payload.tokenLength,
+    aud: payload.aud,
+    iss: payload.iss,
+    subHint: payload.subHint,
+    adminProjectId,
+    audDiffersFromGcloudProject: audMismatchHint,
+    headerKeysMatchingAuth: headerKeys.slice(0, 12),
+  };
+}
+
+/** Preferência MP checkout planos — compartilhado por HTTP e Callable. */
+async function executePlanPreferenceCheckout({
+  tokenUid,
+  tokenEmail,
+  planInput,
+  installationId,
+  returnUrl,
+  notificationUrl,
+  mpToken,
+  webBase,
+}) {
+  if (!mpToken) {
+    const err = new Error("MP token not configured");
+    err.code = "NO_MP";
+    throw err;
+  }
+  const allowedPlans = new Set([
+    "mensal",
+    "anual",
+    "basic_monthly",
+    "intermediate_monthly",
+    "pro_monthly",
+    "pro_yearly",
+  ]);
+  const planStr = String(planInput || "").trim().toLowerCase();
+  if (!allowedPlans.has(planStr)) {
+    const err = new Error("plan inválido");
+    err.code = "INVALID_PLAN";
+    throw err;
+  }
+
+  const planOrderId = generatePlanOrderId();
+  const canonical = normalizePlanId(planStr);
+  const price = unitPriceForPlan(canonical);
+
+  await db
+    .collection(PLAN_ORDERS_COL)
+    .doc(planOrderId)
+    .set({
+      planOrderId,
+      userId: tokenUid,
+      userEmail: tokenEmail || null,
+      canonicalPlanId: canonical,
+      legacyPlanAlias: planStr,
+      orderStatus: "PENDENTE",
+      installationId: installationId ? String(installationId).slice(0, 128) : null,
+      createdAt: nowTs,
+      updatedAt: nowTs,
+    });
+
+  console.log(
+    JSON.stringify({
+      evt: "plan_order_created",
+      planOrderId,
+      uid: tokenUid,
+      plan: planStr,
+      canonical,
+    }),
+  );
+
+  const back = returnUrl || `${webBase}/assinatura/${planStr}/retorno`;
+  const notif =
+    notificationUrl ||
+    WEBHOOK_URL ||
+    `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/planWebhook`;
+
+  const mpBody = {
+    items: [
+      {
+        id: `masterpalm_${canonical}`,
+        title: planTitleForMp(canonical),
+        quantity: 1,
+        unit_price: Number(price.toFixed(2)),
+        currency_id: "BRL",
+        category_id: "services",
+        description: "Assinatura do aplicativo MasterPalm",
+      },
+    ],
+    payer: { email: tokenEmail || undefined },
+    back_urls: { success: back, pending: back, failure: back },
+    auto_return: "approved",
+    notification_url: notif,
+    external_reference: planOrderId,
+    metadata: {
+      uid: tokenUid,
+      user_id: tokenUid,
+      plan: planStr,
+      normalized_plan_id: canonical,
+      user_email: tokenEmail || "",
+      plan_order_id: planOrderId,
+    },
+    statement_descriptor: "MASTERPALM",
+  };
+
+  const r = await fetchWithTimeout(
+    "https://api.mercadopago.com/checkout/preferences",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${mpToken}`,
+      },
+      body: JSON.stringify(mpBody),
+    },
+    25000,
+  );
+
+  if (!r.ok) {
+    const txt = await r.text();
+    console.error("[planCreatePreference] MP error:", txt);
+    await db.collection(PLAN_ORDERS_COL).doc(planOrderId).set(
+      {
+        orderStatus: "FALHA",
+        mpPreferenceError: String(txt).slice(0, 2000),
+        updatedAt: nowTs,
+      },
+      { merge: true },
+    );
+    const err = new Error("mp_http");
+    err.code = "MP_HTTP";
+    err.status = r.status;
+    err.mpBody = txt;
+    throw err;
+  }
+
+  const data = await r.json();
+
+  await db.collection(PLAN_ORDERS_COL).doc(planOrderId).set(
+    {
+      preferenceId: data.id || null,
+      updatedAt: nowTs,
+    },
+    { merge: true },
+  );
+
+  return {
+    id: data.id,
+    init_point: data.init_point || data.sandbox_init_point,
+    public_key: MP_PUBLIC_KEY || null,
+    planOrderId,
+  };
+}
+
 /** Valida Firebase ID Token (Bearer) em HTTP onRequest */
 async function requireFirebaseUserFromRequest(req) {
-  const h = req.headers?.authorization || req.headers?.Authorization || "";
-  const m = /^Bearer\s+(.+)$/i.exec(String(h));
-  if (!m?.[1]) {
+  const raw = extractBearerTokenFromRequest(req);
+  if (!raw) {
     const err = new Error("NO_AUTH");
     err.code = "NO_AUTH";
     throw err;
   }
-  return admin.auth().verifyIdToken(m[1].trim());
+  return admin.auth().verifyIdToken(raw);
 }
 
 export const planCreatePreference = onRequest(
@@ -1632,6 +1839,9 @@ export const planCreatePreference = onRequest(
   corsWrap(async (req, res) => {
     try {
       if (req.method !== "POST") return res.status(405).send("Method not allowed");
+
+      const bearerForDiag = extractBearerTokenFromRequest(req);
+      console.log(JSON.stringify(planCreatePreferenceAuthDiag(req, bearerForDiag)));
 
       const identifier = getClientIdentifier(req);
       await checkRateLimit("planCreatePreference", identifier);
@@ -1645,9 +1855,11 @@ export const planCreatePreference = onRequest(
         }
         console.warn(
           JSON.stringify({
-            evt: "planCreatePreference_auth_fail",
+            evt: "planCreatePreference_verify_fail",
             code: String(authErr?.code || "unknown"),
+            message: String(authErr?.message || "").slice(0, 200),
             domain: "planos_app",
+            adminProjectId: process.env.GCLOUD_PROJECT || PROJECT_ID || "",
           }),
         );
         return res.status(401).json({ error: "Token inválido ou expirado." });
@@ -1660,7 +1872,7 @@ export const planCreatePreference = onRequest(
       if (!MP_TOKEN) return res.status(500).send("MP token not configured");
 
       const WEB_BASE =
-        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://mastepalm.com.br";
+        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.masterpalm.com.br";
 
       const { plan, returnUrl, notificationUrl, installationId } = req.body || {};
       if (!plan) {
@@ -1669,125 +1881,31 @@ export const planCreatePreference = onRequest(
             "plan é obrigatório (mensal|anual|basic_monthly|intermediate_monthly|pro_monthly|pro_yearly)",
         });
       }
-      const allowedPlans = new Set([
-        "mensal",
-        "anual",
-        "basic_monthly",
-        "intermediate_monthly",
-        "pro_monthly",
-        "pro_yearly",
-      ]);
-      const planStr = String(plan).trim().toLowerCase();
-      if (!allowedPlans.has(planStr)) {
-        return res.status(400).json({ error: "plan inválido" });
-      }
 
-      const planOrderId = generatePlanOrderId();
-      const canonical = normalizePlanId(planStr);
-      const price = unitPriceForPlan(canonical);
-
-      await db
-        .collection(PLAN_ORDERS_COL)
-        .doc(planOrderId)
-        .set({
-          planOrderId,
-          userId: tokenUid,
-          userEmail: tokenEmail || null,
-          canonicalPlanId: canonical,
-          legacyPlanAlias: planStr,
-          orderStatus: "PENDENTE",
-          installationId: installationId ? String(installationId).slice(0, 128) : null,
-          createdAt: nowTs,
-          updatedAt: nowTs,
+      try {
+        const payload = await executePlanPreferenceCheckout({
+          tokenUid,
+          tokenEmail,
+          planInput: plan,
+          installationId,
+          returnUrl,
+          notificationUrl,
+          mpToken: MP_TOKEN,
+          webBase: WEB_BASE,
         });
-
-      console.log(
-        JSON.stringify({
-          evt: "plan_order_created",
-          planOrderId,
-          uid: tokenUid,
-          plan: planStr,
-          canonical,
-        }),
-      );
-
-      const back = returnUrl || `${WEB_BASE}/assinatura/${planStr}/retorno`;
-      const notif =
-        notificationUrl ||
-        WEBHOOK_URL ||
-        `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/planWebhook`;
-
-      const mpBody = {
-        items: [
-          {
-            id: `masterpalm_${canonical}`,
-            title: planTitleForMp(canonical),
-            quantity: 1,
-            unit_price: Number(price.toFixed(2)),
-            currency_id: "BRL",
-            category_id: "services",
-            description: "Assinatura do aplicativo MasterPalm",
-          },
-        ],
-        payer: { email: tokenEmail || undefined },
-        back_urls: { success: back, pending: back, failure: back },
-        auto_return: "approved",
-        notification_url: notif,
-        external_reference: planOrderId,
-        metadata: {
-          uid: tokenUid,
-          user_id: tokenUid,
-          plan: planStr,
-          normalized_plan_id: canonical,
-          user_email: tokenEmail || "",
-          plan_order_id: planOrderId,
-        },
-        statement_descriptor: "MASTERPALM",
-      };
-
-      const r = await fetchWithTimeout(
-        "https://api.mercadopago.com/checkout/preferences",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${MP_TOKEN}`,
-          },
-          body: JSON.stringify(mpBody),
-        },
-        25000
-      );
-
-      if (!r.ok) {
-        const txt = await r.text();
-        console.error("[planCreatePreference] MP error:", txt);
-        await db.collection(PLAN_ORDERS_COL).doc(planOrderId).set(
-          {
-            orderStatus: "FALHA",
-            mpPreferenceError: String(txt).slice(0, 2000),
-            updatedAt: nowTs,
-          },
-          { merge: true },
-        );
-        return res.status(r.status).send(txt);
+        return res.json(payload);
+      } catch (bizErr) {
+        if (bizErr?.code === "INVALID_PLAN") {
+          return res.status(400).json({ error: bizErr.message || "plan inválido" });
+        }
+        if (bizErr?.code === "NO_MP") {
+          return res.status(500).send("MP token not configured");
+        }
+        if (bizErr?.code === "MP_HTTP") {
+          return res.status(bizErr.status || 502).send(String(bizErr.mpBody || ""));
+        }
+        throw bizErr;
       }
-
-      const data = await r.json();
-
-      await db.collection(PLAN_ORDERS_COL).doc(planOrderId).set(
-        {
-          preferenceId: data.id || null,
-          updatedAt: nowTs,
-        },
-        { merge: true },
-      );
-
-      return res.json({
-        id: data.id,
-        init_point: data.init_point || data.sandbox_init_point,
-        public_key: MP_PUBLIC_KEY || null,
-        planOrderId,
-      });
     } catch (err) {
       if (err.code === "resource-exhausted") {
         return res.status(429).json({ error: err.message || "Muitas requisições.", retryAfter: 60 });
@@ -1795,7 +1913,67 @@ export const planCreatePreference = onRequest(
       console.error("[planCreatePreference] error:", err);
       return res.status(500).json({ error: String(err?.message || err) });
     }
-  })
+  }),
+);
+
+/** Mesmo fluxo de [planCreatePreference] com auth via Callable (recomendado no Web — evita 401 por header). */
+export const planCreatePreferenceCall = onCall(
+  { secrets: [S_MP_ACCESS_TOKEN, S_WEB_BASE_URL], timeoutSeconds: 45, memory: "256MiB" },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "Faça login novamente.");
+    }
+    await checkRateLimit("planCreatePreference", getCallableIdentifier(request));
+    const uid = request.auth.uid;
+    const email = normalizeEmail(request.auth.token?.email || "");
+    const { plan, installationId, returnUrl, notificationUrl } = request.data || {};
+    console.log(
+      JSON.stringify({
+        evt: "planCreatePreference_auth_diag",
+        domain: "planos_app",
+        transport: "callable",
+        uidHint: `${String(uid).slice(0, 10)}…`,
+        hasPlan: !!plan,
+        adminProjectId: process.env.GCLOUD_PROJECT || PROJECT_ID || "",
+      }),
+    );
+    if (!plan) {
+      throw new HttpsError(
+        "invalid-argument",
+        "plan é obrigatório (mensal|anual|basic_monthly|intermediate_monthly|pro_monthly|pro_yearly)",
+      );
+    }
+    const MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
+    const WEB_BASE =
+      (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.masterpalm.com.br";
+    try {
+      return await executePlanPreferenceCheckout({
+        tokenUid: uid,
+        tokenEmail: email,
+        planInput: plan,
+        installationId,
+        returnUrl,
+        notificationUrl,
+        mpToken: MP_TOKEN,
+        webBase: WEB_BASE,
+      });
+    } catch (bizErr) {
+      if (bizErr?.code === "INVALID_PLAN") {
+        throw new HttpsError("invalid-argument", bizErr.message || "plan inválido");
+      }
+      if (bizErr?.code === "NO_MP") {
+        throw new HttpsError("failed-precondition", "MP token não configurado");
+      }
+      if (bizErr?.code === "MP_HTTP") {
+        throw new HttpsError(
+          "internal",
+          `Mercado Pago: ${String(bizErr.mpBody || "").slice(0, 400)}`,
+        );
+      }
+      console.error("[planCreatePreferenceCall]", bizErr);
+      throw new HttpsError("internal", String(bizErr?.message || bizErr));
+    }
+  },
 );
 
 export const planWebhook = onRequest(
@@ -2716,7 +2894,7 @@ export const publishLojaDraft = onDocumentWritten(
 );
 
 // ============================== LINK CURTO – /c/:short → /loja/:slug ==============================
-const WEB_BASE = process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
+const WEB_BASE = process.env.WEB_BASE_URL || "https://app.masterpalm.com.br";
 
 export const redirectCatalogo = onRequest(
   { cors: true },

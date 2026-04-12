@@ -12,7 +12,26 @@
 
 ## Cliente (Flutter)
 
-- `lib/services/checkout_service.dart` chama o backend com **Firebase ID token** (`Authorization: Bearer`). No Web: `reload` + `getIdToken(true)` e **uma repetição** em 401 antes de mostrar erro de sessão ao usuário.
+- **Web (preferencial):** `httpsCallable('planCreatePreferenceCall')` — o SDK anexa o utilizador autenticado; não depende do header `Authorization` no `fetch`.
+- **Mobile / fallback:** `lib/services/checkout_service.dart` faz POST em `planCreatePreference` com **Firebase ID token** (`Authorization: Bearer`). No Web, se o callable não devolver `init_point`, cai-se neste fluxo; `reload` + `getIdToken(true)` e **uma repetição** em 401.
+
+## Callable `ensureUserPlan` e CORS (Web)
+
+- Em `functions/ensureUserPlan.js`, o `onCall` usa `cors: MASTERPALM_APP_WEB_ORIGINS` (origem canônica `https://app.masterpalm.com.br` primeiro, depois legado `app.mastepalm.com.br`, localhost, web.app, etc. — ver `docs/DOMAIN_APP_WEB.md`).
+- Motivo: domínios customizados do app Web podem falhar no preflight se o Callable v2 não listar a origem.
+- Log seguro: `ensureUserPlan_request` com `hasAuthUid` e `origin` truncado (sem token).
+
+## Diagnóstico de 401 (planos)
+
+- **Logs cliente:** prefixo `[PlanosAuthDiag]` (uid parcial, `providers`, `idTokenNonEmpty`, rota).
+- **Logs Functions:** `planCreatePreference_auth_diag` (HTTP: tokenLength, aud, iss, adminProjectId, chaves de header com “auth”); `planCreatePreference_verify_fail` se `verifyIdToken` falhar; callable com `transport: "callable"`.
+- **Nunca** logar o JWT completo.
+
+## Validação manual
+
+1. Web normal: Planos → assinar → deve usar callable (consola: mensagem de sucesso via callable).
+2. Se ainda 401 no HTTP fallback: comparar `aud` / `adminProjectId` nos logs com o projeto no Firebase Console.
+3. Janela anónima / sessão velha: após deploy da nova Function, fazer login de novo.
 
 ## Operação
 

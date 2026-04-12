@@ -20,6 +20,24 @@ export const PAID_PLANS_WITH_RENEWAL = Object.freeze([
 // Fonte principal de assinatura/plano continua sendo o fluxo canônico
 // users/{uid}.currentPlanId/status/trialing/currentPeriodEnd.
 
+/** Origens do app Web admin (Callable v2 — CORS). Canônico primeiro; legado “maste…” em seguida. */
+const MASTERPALM_APP_WEB_ORIGINS = [
+  "https://app.masterpalm.com.br",
+  "https://app.mastepalm.com.br",
+  "https://mastepalm.com.br",
+  "https://www.mastepalm.com.br",
+  "https://masterpalm.com.br",
+  "https://www.masterpalm.com.br",
+  "https://masterpalm-58c46.web.app",
+  "https://mastepalm.web.app",
+  "http://localhost:3000",
+  "http://localhost:5000",
+  "http://localhost:8080",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5000",
+  "http://127.0.0.1:8080",
+];
+
 export function normalizeCanonicalPlanId(raw) {
   const p = String(raw || "").trim().toLowerCase();
   if (p === "mensal" || p === "pro_monthly") return "pro_monthly";
@@ -496,8 +514,22 @@ export async function computePlanState({ db, uid, email }) {
 }
 
 // =============== CALLABLE PRINCIPAL ===============
-export const ensureUserPlan = onCall(async (request) => {
+export const ensureUserPlan = onCall(
+  { cors: MASTERPALM_APP_WEB_ORIGINS },
+  async (request) => {
   try {
+    const origin =
+      request.rawRequest?.headers?.origin ||
+      request.rawRequest?.headers?.["x-forwarded-host"] ||
+      null;
+    console.log(
+      JSON.stringify({
+        evt: "ensureUserPlan_request",
+        hasAuthUid: !!request.auth?.uid,
+        origin: origin ? String(origin).slice(0, 120) : null,
+      }),
+    );
+
     if (!request.auth?.uid) {
       throw new HttpsError("unauthenticated", "Faça login para continuar.");
     }
@@ -526,7 +558,8 @@ export const ensureUserPlan = onCall(async (request) => {
     if (err instanceof HttpsError) throw err;
     throw new HttpsError("internal", "Erro ao validar plano do usuário.");
   }
-});
+  },
+);
 
 // =============== CANCELAR / REATIVAR RENOVAÇÃO (fim do período pago) ===============
 export const cancelPlanRenewalAtPeriodEnd = onCall(async (request) => {

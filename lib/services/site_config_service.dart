@@ -1,6 +1,8 @@
 // lib/services/site_config_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../config/app_urls.dart';
+
 /// Configurações do site de divulgação (landing page)
 /// Salvas em Firestore para edição pelo programador no APK
 class SiteConfig {
@@ -18,7 +20,7 @@ class SiteConfig {
 
   SiteConfig({
     this.apkDownloadUrl = 'https://mastepalm.com.br/downloads/masterpalm.apk',
-    this.appWebUrl = 'https://app.mastepalm.com.br',
+    this.appWebUrl = AppUrls.appWebBase,
     this.supportWhatsappUrl = 'https://wa.me/55SEUNUMERO',
     this.instagramUrl = 'https://instagram.com/SEUINSTAGRAM',
     this.supportEmail = 'suporte@SEUDOMINIO.COM',
@@ -60,7 +62,7 @@ class SiteConfig {
     final useDefaultApk = apkUrl.isEmpty || apkUrl.contains('SEU-LINK-AQUI') || apkUrl.contains('seu-link-aqui');
     return SiteConfig(
         apkDownloadUrl: useDefaultApk ? 'https://mastepalm.com.br/downloads/masterpalm.apk' : apkUrl,
-        appWebUrl: (m['appWebUrl'] ?? 'https://app.mastepalm.com.br').toString(),
+        appWebUrl: (m['appWebUrl'] ?? AppUrls.appWebBase).toString(),
         supportWhatsappUrl: (m['supportWhatsappUrl'] ?? '').toString(),
         instagramUrl: (m['instagramUrl'] ?? '').toString(),
         supportEmail: (m['supportEmail'] ?? '').toString(),

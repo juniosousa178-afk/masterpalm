@@ -1,6 +1,7 @@
 // lib/screens/site_config_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../config/app_urls.dart';
 import '../services/site_config_service.dart';
 import '../utils/role_utils.dart';
 
@@ -159,7 +160,7 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
                   children: [
                     _buildSection('Links principais', [
                       _buildField('URL Download APK', _apkDownloadUrl, 'https://.../masterpalm.apk', keyboardType: TextInputType.url),
-                      _buildField('URL AppWeb', _appWebUrl, 'https://app.mastepalm.com.br', keyboardType: TextInputType.url),
+                      _buildField('URL AppWeb', _appWebUrl, AppUrls.appWebBase, keyboardType: TextInputType.url),
                     ]),
                     const SizedBox(height: 24),
                     _buildSection('Contatos', [

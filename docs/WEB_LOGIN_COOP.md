@@ -22,11 +22,11 @@ Com `same-origin-allow-popups`, o popup do OAuth **pode** comunicar com a janela
 ## O que conferir
 
 1. **Header na sua URL**  
-   Abra https://app.mastepalm.com.br/ (ou a URL do app), abra DevTools → Aba **Network** → recarregue → clique na primeira requisição (documento HTML). Em **Response Headers** deve aparecer:
+   Abra **https://app.masterpalm.com.br/** (domínio canônico do app Web; se ainda houver tráfego no legado, teste também `https://app.mastepalm.com.br/`). DevTools → **Network** → recarregue → clique na primeira requisição (documento HTML). Em **Response Headers** deve aparecer:
    ```http
    Cross-Origin-Opener-Policy: same-origin-allow-popups
    ```
-   Se você usa domínio customizado (ex.: app.mastepalm.com.br) e um CDN/proxy na frente do Firebase Hosting, esse header precisa ser repassado (ou configurado no CDN).
+   Se você usa domínio customizado (canônico: **app.masterpalm.com.br**; legado: app.mastepalm.com.br) e um CDN/proxy na frente do Firebase Hosting, esse header precisa ser repassado (ou configurado no CDN).
 
 2. **Login com Google**  
    Se o login com Google conclui e você entra no app, o aviso é apenas informativo e pode ser ignorado.

@@ -21,6 +21,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 // App Check config
 import 'config/app_check_config.dart';
+import 'config/app_urls.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
@@ -585,23 +586,30 @@ String _safeString(dynamic v, [String fallback = '']) {
 }
 
 // ===========================================================================
-// 🔧 Corrige domínios antigos (mastepalm.com.br → app.mastepalm.com.br)
+// 🔧 Normaliza links salvos para o App Web canônico (ver AppUrls / docs/DOMAIN_APP_WEB.md)
 // ===========================================================================
 Future<void> _fixPedidoLinkBase() async {
   final cfg = Hive.box('config');
 
+  String migrateAppWebHosts(String s) {
+    var t = s;
+    t = t.replaceAll('https://app.mastepalm.com.br', AppUrls.appWebBase);
+    t = t.replaceAll('http://app.mastepalm.com.br', AppUrls.appWebBase);
+    t = t.replaceAll('mastepalm.com.br', AppUrls.appWebHostCanonical);
+    return t;
+  }
+
   final atual = _safeString(cfg.get('pedido_link_base'));
-  final novo = (atual.isEmpty
-      ? 'https://app.mastepalm.com.br/pedido'
-      : atual.replaceAll('mastepalm.com.br', 'app.mastepalm.com.br'));
+  final novo = atual.isEmpty
+      ? '${AppUrls.appWebBase}/pedido'
+      : migrateAppWebHosts(atual);
   await cfg.put('pedido_link_base', novo);
 
   final pub = _safeString(cfg.get('public_link_base_url'));
   if (pub.isNotEmpty &&
       pub.contains('mastepalm.com.br') &&
       !pub.contains('app.')) {
-    await cfg.put('public_link_base_url',
-        pub.replaceAll('mastepalm.com.br', 'app.mastepalm.com.br'));
+    await cfg.put('public_link_base_url', migrateAppWebHosts(pub));
   }
 }
 
@@ -1536,7 +1544,10 @@ Future<void> _bootstrapSafe() async {
   logD('[BOOT-AUTH] firebaseOk=$firebaseOk');
 
   if (firebaseOk && kIsWeb && kDebugMode) {
-    logD('ℹ️ [WEB] OAuth: adicione app.mastepalm.com.br em Firebase Console → Authentication → Settings → Authorized domains (ver docs/SETUP_FIREBASE_WEB.md)');
+    logD(
+      'ℹ️ [WEB] OAuth: em Authentication → Settings → Authorized domains, inclua '
+      'App Web canônico: ${AppUrls.appWebHostCanonical}; legado: ${AppUrls.appWebHostLegacyTypo} (ver docs/DOMAIN_APP_WEB.md e SETUP_FIREBASE_WEB.md)',
+    );
   }
 
   // ⚡ FAST PATH (web + mobile): sem usuário → bootstrap mínimo para login
@@ -1545,12 +1556,12 @@ Future<void> _bootstrapSafe() async {
   if (firebaseOk) {
     var u = FirebaseAuth.instance.currentUser;
     if (u == null && kIsWeb) {
-      logD('🟡 [BOOT] Web: currentUser null, aguardando auth (até 3s)...');
+      logD('🟡 [BOOT] Web: currentUser null, aguardando auth (até 5s)...');
       try {
         await FirebaseAuth.instance.authStateChanges()
             .where((x) => x != null && !x.isAnonymous)
             .first
-            .timeout(const Duration(seconds: 3), onTimeout: () => null);
+            .timeout(const Duration(seconds: 5), onTimeout: () => null);
         u = FirebaseAuth.instance.currentUser;
       } catch (_) {}
     }

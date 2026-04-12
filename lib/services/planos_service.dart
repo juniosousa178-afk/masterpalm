@@ -1,6 +1,7 @@
 // lib/services/planos_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../utils/role_utils.dart';
@@ -561,6 +562,13 @@ class PlanosService {
 
   /// Chama [ensureUserPlan] no backend — aplica vencimento de plano pago → free_limited e consistência.
   Future<void> reconcilePlanStateWithBackend() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      debugPrint(
+        '[PlanosAuthGate] sem usuário Firebase, pulando ensureUserPlan',
+      );
+      return;
+    }
     final functions =
         FirebaseFunctions.instanceFor(region: 'southamerica-east1');
     final callable = functions.httpsCallable('ensureUserPlan');
