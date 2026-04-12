@@ -27,7 +27,7 @@
     "backfill:order-loja-index": "node ./backfill_order_loja_index.js",
     "backfill:order-loja-index:dry": "node ./backfill_order_loja_index.js --dry-run",
     "lint": "echo \"no lint\"",
-    "test": "node --test test/scheduledExpiredPaidReconcileBatch.test.js test/mpPlanRecurring.test.js",
+    "test": "node --test test/scheduledExpiredPaidReconcileBatch.test.js test/mpPlanRecurring.test.js test/planSupportRead_audit.test.js test/planSupportRead_audit_events.test.js test/planSupportRead_integration.test.js",
     "test:e2e": "firebase emulators:exec --only firestore --project demo-e2e-mp \"node --import ./test/e2e/prelude-firestore-emulator.mjs --test ./test/e2e/scheduledExpiredPaidReconcile.e2e.js\"",
     "test:e2e:only": "node --import ./test/e2e/prelude-firestore-emulator.mjs --test ./test/e2e/scheduledExpiredPaidReconcile.e2e.js",
     "setup": "npm i firebase-admin@^13.6.0 dotenv@^16.6.1",
