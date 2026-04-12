@@ -17,3 +17,7 @@ const String rcEnableDynamicRootAdmins = 'rc_enable_dynamic_root_admins';
 /// Flag: quando true, hosts App Check Web vêm de rc_appcheck_allowed_hosts_json.
 /// Default: false (usa lista hardcoded).
 const String rcEnableDynamicAppcheckHosts = 'rc_enable_dynamic_appcheck_hosts';
+
+/// Quando true, checkout de plano usa assinatura recorrente MP (createPlanSubscription).
+/// Default false: mantém [planCreatePreference] (pagamento pontual).
+const String rcUseRecurringPlanBilling = 'use_recurring_plan_billing';

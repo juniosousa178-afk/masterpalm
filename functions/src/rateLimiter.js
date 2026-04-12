@@ -52,6 +52,10 @@ export const RATE_LIMITS = {
   activateUserTrial90d: { maxPerMin: 5, windowMs: 60_000 },
   cancelPlanRenewalAtPeriodEnd: { maxPerMin: 10, windowMs: 60_000 },
   reactivatePlanRenewal: { maxPerMin: 10, windowMs: 60_000 },
+  createPlanSubscription: { maxPerMin: 5, windowMs: 60_000 },
+  cancelPlanSubscription: { maxPerMin: 10, windowMs: 60_000 },
+  reactivatePlanSubscription: { maxPerMin: 10, windowMs: 60_000 },
+  syncPlanSubscription: { maxPerMin: 20, windowMs: 60_000 },
 
   // Cliente catálogo: perfil, carrinho, favoritos (uso legítimo frequente)
   getClienteCatalog: { maxPerMin: 60, windowMs: 60_000 },

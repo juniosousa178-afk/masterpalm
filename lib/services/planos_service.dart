@@ -26,6 +26,12 @@ class PlanInfo {
   /// Renovação cancelada no fim do período (fonte: users/{uid}.cancelAtPeriodEnd no backend).
   final bool cancelAtPeriodEnd;
 
+  /// `2` = assinatura recorrente Mercado Pago (cancel/reativar via callables novos).
+  final int? billingVersion;
+  /// Ex.: prefixo `mp_` quando cobrança veio do fluxo recorrente MP.
+  final String? billingSource;
+  final String? providerSubscriptionId;
+
   const PlanInfo({
     required this.planId,
     required this.status,
@@ -34,7 +40,22 @@ class PlanInfo {
     required this.trialUsed,
     required this.manualOverride,
     this.cancelAtPeriodEnd = false,
+    this.billingVersion,
+    this.billingSource,
+    this.providerSubscriptionId,
   });
+
+  /// Decisão canônica para cancelar/reativar renovação: MP recorrente vs legado.
+  /// [users/{uid}] é a fonte; legado permanece o default.
+  bool get usesMercadoRecurringPlanBilling {
+    if (manualOverride) return false;
+    if (billingVersion == 2) return true;
+    final sid = providerSubscriptionId?.trim();
+    if (sid == null || sid.isEmpty) return false;
+    final src = (billingSource ?? '').toLowerCase();
+    if (src.startsWith('mp_')) return true;
+    return false;
+  }
 
   bool get isLifetime => planId == PlanId.lifetime;
   /// Plano free limitado (após trial ou free sem upgrade)
@@ -74,6 +95,159 @@ class PlanInfo {
   }
 }
 
+/// Resumo canônico do billing em [users/{uid}] (piloto / suporte). Sem nova fonte de verdade.
+class PlanCanonicalBillingSnapshot {
+  final String currentPlanId;
+  final String status;
+  final DateTime? currentPeriodEnd;
+  final bool cancelAtPeriodEnd;
+  final int? billingVersion;
+  final String? billingSource;
+  final String? providerSubscriptionId;
+  final bool usesMercadoRecurringPlanBilling;
+  final bool manualOverride;
+
+  const PlanCanonicalBillingSnapshot({
+    required this.currentPlanId,
+    required this.status,
+    required this.currentPeriodEnd,
+    required this.cancelAtPeriodEnd,
+    required this.billingVersion,
+    required this.billingSource,
+    required this.providerSubscriptionId,
+    required this.usesMercadoRecurringPlanBilling,
+    required this.manualOverride,
+  });
+
+  factory PlanCanonicalBillingSnapshot.fromPlanInfo(PlanInfo p) {
+    return PlanCanonicalBillingSnapshot(
+      currentPlanId: p.planId,
+      status: p.status,
+      currentPeriodEnd: p.currentPeriodEnd,
+      cancelAtPeriodEnd: p.cancelAtPeriodEnd,
+      billingVersion: p.billingVersion,
+      billingSource: p.billingSource,
+      providerSubscriptionId: p.providerSubscriptionId,
+      usesMercadoRecurringPlanBilling: p.usesMercadoRecurringPlanBilling,
+      manualOverride: p.manualOverride,
+    );
+  }
+
+  /// Uma linha por campo para colar em suporte / logs.
+  String get asSupportText {
+    final buf = StringBuffer()
+      ..writeln('planId=$currentPlanId')
+      ..writeln('status=$status')
+      ..writeln('currentPeriodEnd=${currentPeriodEnd?.toIso8601String() ?? 'null'}')
+      ..writeln('cancelAtPeriodEnd=$cancelAtPeriodEnd')
+      ..writeln('billingVersion=$billingVersion')
+      ..writeln('billingSource=${billingSource ?? 'null'}')
+      ..writeln('providerSubscriptionId=${providerSubscriptionId ?? 'null'}')
+      ..writeln('usesMercadoRecurringPlanBilling=$usesMercadoRecurringPlanBilling')
+      ..writeln('manualOverride=$manualOverride');
+    return buf.toString();
+  }
+}
+
+/// Linhas de apoio ao piloto (root/programador): deriva só de [PlanCanonicalBillingSnapshot] + flags RC já lidas na UI.
+/// Não substitui [users/{uid}]; não grava nada.
+class PilotBillingOperationHints {
+  final PlanCanonicalBillingSnapshot? snapshot;
+  final bool rcGlobal;
+  final bool rcEffective;
+
+  const PilotBillingOperationHints._({
+    required this.snapshot,
+    required this.rcGlobal,
+    required this.rcEffective,
+  });
+
+  factory PilotBillingOperationHints.fromInputs({
+    PlanCanonicalBillingSnapshot? snapshot,
+    required bool rcGlobal,
+    required bool rcEffective,
+  }) {
+    return PilotBillingOperationHints._(
+      snapshot: snapshot,
+      rcGlobal: rcGlobal,
+      rcEffective: rcEffective,
+    );
+  }
+
+  /// `true` se [syncPlanSubscription] tende a reconciliar (há id MP no doc).
+  bool get syncCallableLikelyUseful {
+    final id = snapshot?.providerSubscriptionId?.trim() ?? '';
+    return id.isNotEmpty;
+  }
+
+  /// Texto curto: doc canônico indica rotas v2 para cancel/reativar ou legado.
+  String get docCancelRenewLabel {
+    if (snapshot == null) {
+      return 'Doc canônico: não carregado (atualize).';
+    }
+    if (snapshot!.manualOverride) {
+      return 'Doc canônico: manualOverride — cancelar/reativar pode ser bloqueado.';
+    }
+    if (snapshot!.usesMercadoRecurringPlanBilling) {
+      return 'Doc canônico: v2 — cancelar/reativar usam callables MP.';
+    }
+    return 'Doc canônico: legado — cancelar/reativar usam callados legado.';
+  }
+
+  /// Como o app escolhe checkout (v2 vs legado) antes de falar com o backend.
+  String get checkoutRolloutLabel {
+    if (!rcEffective) {
+      return 'Checkout no app: só legado (RC global off e usuário fora da allowlist).';
+    }
+    if (rcGlobal) {
+      return 'Checkout no app: tenta v2 primeiro (RC global on); se backend off → fallback legado + log [PlanosPilot].';
+    }
+    return 'Checkout no app: tenta v2 (só allowlist; RC global off); se backend off → fallback legado + log [PlanosPilot].';
+  }
+
+  String get providerSubscriptionLine {
+    final id = snapshot?.providerSubscriptionId?.trim() ?? '';
+    if (id.isEmpty) {
+      return 'providerSubscriptionId: ausente — doc v2 incompleto para sync até create/webhook/sync.';
+    }
+    final short = id.length > 14 ? '${id.substring(0, 14)}…' : id;
+    return 'providerSubscriptionId: presente ($short)';
+  }
+
+  String get syncManualLine {
+    if (!syncCallableLikelyUseful) {
+      return 'Sync manual MP: aguardando id no doc (após create ou webhook).';
+    }
+    return 'Sync manual MP: disponível (botão abaixo chama syncPlanSubscription).';
+  }
+
+  /// Bloco pronto para o card piloto (sem o dump completo [asSupportText]).
+  String get asPilotSummaryLines {
+    return [
+      docCancelRenewLabel,
+      checkoutRolloutLabel,
+      'Rollout efetivo v2 no app: ${rcEffective ? "sim" : "não"} · RC global: ${rcGlobal ? "on" : "off"}',
+      providerSubscriptionLine,
+      syncManualLine,
+    ].join('\n');
+  }
+}
+
+/// Resultado do callable [syncPlanSubscription] (reconcilia MP → Firestore).
+class PlanSubscriptionSyncResult {
+  final bool ok;
+  final bool synced;
+  final String? reason;
+  final String? mpStatus;
+
+  const PlanSubscriptionSyncResult({
+    required this.ok,
+    required this.synced,
+    this.reason,
+    this.mpStatus,
+  });
+}
+
 class PlanosService {
   final _db = FirebaseFirestore.instance;
 
@@ -92,6 +266,13 @@ class PlanosService {
       } catch (_) {}
     }
     return null;
+  }
+
+  static int? _parseBillingVersion(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw.toString());
   }
 
   static String normalizePlanId(String? raw) {
@@ -158,6 +339,16 @@ class PlanosService {
     }
   }
 
+  /// Estado canônico de billing para piloto / diagnóstico (deriva de [fetchCurrentPlan]).
+  Future<PlanCanonicalBillingSnapshot?> fetchCanonicalBillingSnapshot({
+    required String uid,
+    required String email,
+  }) async {
+    final plan = await fetchCurrentPlan(uid: uid, email: email);
+    if (plan == null) return null;
+    return PlanCanonicalBillingSnapshot.fromPlanInfo(plan);
+  }
+
   /// Precedência de leitura (alto → baixo): root/programador → manualOverride em
   /// users/{uid} → demais campos em users/{uid} → usuarios/{email} só se users/{uid}
   /// não existir → (Hive não promove plano aqui).
@@ -175,6 +366,9 @@ class PlanosService {
         trialUsed: false,
         manualOverride: true,
         cancelAtPeriodEnd: false,
+        billingVersion: null,
+        billingSource: null,
+        providerSubscriptionId: null,
       );
     }
 
@@ -201,6 +395,9 @@ class PlanosService {
         bool trialUsed = (d['trialUsed'] ?? false) == true;
         final cancelAtPeriodEnd =
             (d['cancelAtPeriodEnd'] ?? d['cancel_at_period_end']) == true;
+        final billingVersion = _parseBillingVersion(d['billingVersion']);
+        final billingSource = d['billingSource']?.toString();
+        final providerSubscriptionId = d['providerSubscriptionId']?.toString();
         if (status.trim().isEmpty) status = 'active';
 
         if (moEnabled) {
@@ -221,6 +418,9 @@ class PlanosService {
             trialUsed: trialUsed,
             manualOverride: moEnabled,
             cancelAtPeriodEnd: moEnabled ? false : cancelAtPeriodEnd,
+            billingVersion: billingVersion,
+            billingSource: billingSource,
+            providerSubscriptionId: providerSubscriptionId,
           );
         }
         return null;
@@ -252,6 +452,9 @@ class PlanosService {
             trialUsed: true,
             manualOverride: usuarioData['manualOverride'] == true,
             cancelAtPeriodEnd: false,
+            billingVersion: null,
+            billingSource: null,
+            providerSubscriptionId: null,
           );
         }
       }
@@ -314,6 +517,49 @@ class PlanosService {
     }
   }
 
+  /// Cancela renovação do plano atual: MP recorrente (`billingVersion` / metadados) ou legado.
+  Future<void> cancelCurrentPlanRenewal({
+    required String uid,
+    required String email,
+  }) async {
+    final plan = await fetchCurrentPlan(uid: uid, email: email);
+    if (plan == null) {
+      throw Exception('Não foi possível carregar o plano atual.');
+    }
+    if (plan.manualOverride) {
+      throw Exception('Esta operação não está disponível para o seu tipo de conta.');
+    }
+    final mp = plan.usesMercadoRecurringPlanBilling;
+    debugPrint(
+      '[Planos] cancelCurrentPlanRenewal mpRecurring=$mp bv=${plan.billingVersion} src=${plan.billingSource}',
+    );
+    if (mp) {
+      await cancelMercadoPagoSubscriptionViaBackend();
+    } else {
+      await cancelRenewalAtPeriodEndViaBackend();
+    }
+  }
+
+  /// Reativa renovação do plano atual: MP recorrente ou legado.
+  Future<void> reactivateCurrentPlanRenewal({
+    required String uid,
+    required String email,
+  }) async {
+    final plan = await fetchCurrentPlan(uid: uid, email: email);
+    if (plan == null) {
+      throw Exception('Não foi possível carregar o plano atual.');
+    }
+    final mp = plan.usesMercadoRecurringPlanBilling;
+    debugPrint(
+      '[Planos] reactivateCurrentPlanRenewal mpRecurring=$mp bv=${plan.billingVersion} src=${plan.billingSource}',
+    );
+    if (mp) {
+      await reactivateMercadoPagoSubscriptionViaBackend();
+    } else {
+      await reactivateRenewalViaBackend();
+    }
+  }
+
   /// Cancela só a renovação; o acesso permanece até [currentPeriodEnd] (Cloud Function).
   Future<void> cancelRenewalAtPeriodEndViaBackend() async {
     final functions =
@@ -339,6 +585,73 @@ class PlanosService {
       final map = result.data;
       if (map is Map && map['ok'] == true) return;
       throw Exception('Resposta inválida ao reativar renovação.');
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? e.code);
+    }
+  }
+
+  /// Sincroniza estado da assinatura MP recorrente com [users/{uid}] (callable [syncPlanSubscription]).
+  /// Sem `providerSubscriptionId` o backend retorna `synced: false` (seguro; não altera legado).
+  Future<PlanSubscriptionSyncResult> syncMercadoPlanSubscriptionFromBackend() async {
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('syncPlanSubscription');
+    try {
+      final result = await callable.call(<String, dynamic>{});
+      final map = result.data;
+      if (map is! Map) {
+        debugPrint('⚠️ [PlanosPilot] syncPlanSubscription resposta inesperada');
+        return const PlanSubscriptionSyncResult(ok: false, synced: false, reason: 'invalid_response');
+      }
+      final ok = map['ok'] == true;
+      final synced = map['synced'] == true;
+      final reason = map['reason']?.toString();
+      final mpStatus = map['mpStatus']?.toString();
+      debugPrint(
+        '[PlanosPilot] syncPlanSubscription ok=$ok synced=$synced reason=$reason mpStatus=$mpStatus',
+      );
+      return PlanSubscriptionSyncResult(
+        ok: ok,
+        synced: synced,
+        reason: reason,
+        mpStatus: mpStatus,
+      );
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('⚠️ [PlanosPilot] syncPlanSubscription ${e.code}: ${e.message}');
+      rethrow;
+    }
+  }
+
+  /// Compatível com chamadas que ignoram o retorno estruturado.
+  Future<void> syncPlanSubscriptionFromBackend() async {
+    await syncMercadoPlanSubscriptionFromBackend();
+  }
+
+  /// Cancela renovação no Mercado Pago (preapproval pausado) + [cancelAtPeriodEnd] no Firestore.
+  Future<void> cancelMercadoPagoSubscriptionViaBackend() async {
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('cancelPlanSubscription');
+    try {
+      final result = await callable.call(<String, dynamic>{});
+      final map = result.data;
+      if (map is Map && map['ok'] == true) return;
+      throw Exception('Resposta inválida ao cancelar assinatura recorrente.');
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? e.code);
+    }
+  }
+
+  /// Reativa assinatura MP pausada (callable [reactivatePlanSubscription]).
+  Future<void> reactivateMercadoPagoSubscriptionViaBackend() async {
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('reactivatePlanSubscription');
+    try {
+      final result = await callable.call(<String, dynamic>{});
+      final map = result.data;
+      if (map is Map && map['ok'] == true) return;
+      throw Exception('Resposta inválida ao reativar assinatura MP.');
     } on FirebaseFunctionsException catch (e) {
       throw Exception(e.message ?? e.code);
     }

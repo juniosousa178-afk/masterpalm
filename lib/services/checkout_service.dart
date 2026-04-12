@@ -5,7 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+
 import 'license_manager.dart';
+import 'remote_config_service.dart';
 
 /// Checkout de planos: preferência criada **somente** no backend (token MP fora do app).
 class CheckoutService {
@@ -78,6 +81,26 @@ class CheckoutService {
       final plan = _apiPlanFromCanonical(canonical);
       if (!paid.contains(plan)) {
         throw Exception('Plano inválido para assinatura paga');
+      }
+
+      if (RemoteConfigService.shouldUseRecurringPlanBilling(
+        uid: user.uid,
+        email: user.email,
+      )) {
+        try {
+          return await _abrirCheckoutPlanoRecorrente(
+            planApi: plan,
+          );
+        } on FirebaseFunctionsException catch (e) {
+          if (e.code == 'failed-precondition' &&
+              (e.message ?? '').contains('RECURRING_PLAN_BILLING_DISABLED')) {
+            debugPrint(
+              '[PlanosPilot] fallback checkout legado: servidor RECURRING_PLAN_BILLING_DISABLED',
+            );
+          } else {
+            rethrow;
+          }
+        }
       }
 
       // Força refresh para evitar 401 na Cloud Function com token expirado (comum no Web).
@@ -160,6 +183,35 @@ class CheckoutService {
       debugPrint('❌ Erro ao abrir checkout (type=${e.runtimeType})');
       rethrow;
     }
+  }
+
+  /// Assinatura recorrente (MP preapproval) — backend [createPlanSubscription].
+  static Future<bool> _abrirCheckoutPlanoRecorrente({
+    required String planApi,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw Exception('Usuário não autenticado');
+    await user.getIdToken(true);
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('createPlanSubscription');
+    final result = await callable.call(<String, dynamic>{
+      'plan': planApi,
+    });
+    final map = result.data;
+    if (map is! Map) {
+      throw Exception('Resposta inválida do servidor (recorrente).');
+    }
+    final ok = map['ok'] == true;
+    final initPoint = map['initPoint']?.toString() ?? '';
+    if (!ok || initPoint.isEmpty) {
+      throw Exception(map['message']?.toString() ?? 'Falha ao iniciar assinatura recorrente.');
+    }
+    final uri = Uri.parse(initPoint);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      throw Exception('Não foi possível abrir o checkout');
+    }
+    return true;
   }
 
   static Future<void> abrirCheckoutPix({

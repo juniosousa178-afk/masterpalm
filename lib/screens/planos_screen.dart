@@ -47,6 +47,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   bool _loadingMensal = false;
   bool _loadingAnual = false;
   bool _loadingRenewal = false;
+  bool _syncPilotLoading = false;
   PlanInfo? _plan;
   /// Checkout de planos usa Cloud Function + Secret Manager (token MP não fica no app).
   bool _checkoutPlanoServidor = true;
@@ -413,6 +414,129 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     });
   }
 
+  /// Somente root/programador: estado canônico billing v2 + sync manual (piloto).
+  Widget _buildPilotBillingCard() {
+    final user = FirebaseAuth.instance.currentUser;
+    final rcGlobal = RemoteConfigService.useRecurringPlanBilling;
+    final rcEffective = user != null
+        ? RemoteConfigService.shouldUseRecurringPlanBilling(
+            uid: user.uid,
+            email: user.email,
+          )
+        : false;
+    final snap = _plan == null
+        ? null
+        : PlanCanonicalBillingSnapshot.fromPlanInfo(_plan!);
+    final hints = PilotBillingOperationHints.fromInputs(
+      snapshot: snap,
+      rcGlobal: rcGlobal,
+      rcEffective: rcEffective,
+    );
+    final pilotTitleSuffix = snap == null
+        ? ''
+        : (snap.usesMercadoRecurringPlanBilling ? ' · doc v2' : ' · doc legado');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Card(
+        color: const Color(0xFF151520),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.teal.shade800, width: 0.5),
+        ),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          iconColor: Colors.tealAccent,
+          collapsedIconColor: Colors.tealAccent,
+          title: Text(
+            'Piloto billing v2$pilotTitleSuffix',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            'Checkout v2: global=${rcGlobal ? "on" : "off"} · '
+            'efetivo=${rcEffective ? "sim" : "não"} · '
+            'via=${!rcEffective ? "—" : (rcGlobal ? "RC global" : "allowlist")}',
+            style: const TextStyle(color: Colors.white38, fontSize: 11),
+          ),
+          children: [
+            Text(
+              hints.asPilotSummaryLines,
+              style: const TextStyle(
+                color: Colors.tealAccent,
+                fontSize: 11,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Dump canônico (users/{uid})',
+              style: TextStyle(color: Colors.white38, fontSize: 10),
+            ),
+            const SizedBox(height: 4),
+            SelectableText(
+              snap == null
+                  ? 'Sem snapshot (atualize ou faça login).'
+                  : snap.asSupportText,
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 11,
+                fontFamily: 'monospace',
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: (_syncPilotLoading || !hints.syncCallableLikelyUseful)
+                    ? null
+                    : _syncBillingV2Pilot,
+                icon: _syncPilotLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        Icons.sync,
+                        size: 18,
+                        color: hints.syncCallableLikelyUseful
+                            ? Colors.tealAccent
+                            : Colors.white24,
+                      ),
+                label: Text(
+                  _syncPilotLoading
+                      ? 'Sincronizando…'
+                      : 'Sincronizar com Mercado Pago (syncPlanSubscription)',
+                  style: TextStyle(
+                    color: hints.syncCallableLikelyUseful
+                        ? Colors.tealAccent
+                        : Colors.white24,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+            if (!hints.syncCallableLikelyUseful)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  'Sync desativado até existir providerSubscriptionId no doc (após create ou webhook).',
+                  style: TextStyle(color: Colors.white38, fontSize: 10),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// Card explicando como funcionam os planos (trial → free limitado → pago)
   Widget _buildComoFuncionaCard() {
     return Card(
@@ -661,9 +785,14 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       ),
     );
     if (ok != true) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
     setState(() => _loadingRenewal = true);
     try {
-      await _svc.cancelRenewalAtPeriodEndViaBackend();
+      await _svc.cancelCurrentPlanRenewal(
+        uid: user.uid,
+        email: user.email ?? '',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -688,10 +817,44 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _syncBillingV2Pilot() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _syncPilotLoading = true);
+    try {
+      final r = await _svc.syncMercadoPlanSubscriptionFromBackend();
+      if (!mounted) return;
+      final msg = r.synced
+          ? 'Sync MP: ok (status=${r.mpStatus ?? "?"})'
+          : 'Sync MP: sem alteração (${r.reason ?? "—"})';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_mensagemErroAmigavel(e)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _syncPilotLoading = false);
+        await _load();
+      }
+    }
+  }
+
   Future<void> _reativarRenovacao() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
     setState(() => _loadingRenewal = true);
     try {
-      await _svc.reactivateRenewalViaBackend();
+      await _svc.reactivateCurrentPlanRenewal(
+        uid: user.uid,
+        email: user.email ?? '',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -900,6 +1063,8 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                       ),
                     ),
                   ),
+
+                if (_isRoot) _buildPilotBillingCard(),
 
                 LayoutBuilder(
                   builder: (context, constraints) {

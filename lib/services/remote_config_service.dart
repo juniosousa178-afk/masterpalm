@@ -29,6 +29,9 @@ class RemoteConfigService {
   static double _planoMensalPreco = _defaultPlanoMensalPreco;
   static double _planoAnualPreco = _defaultPlanoAnualPreco;
   static String _globoSorteApiKey = _defaultGloboSorteApiKey;
+  static bool _useRecurringPlanBilling = false;
+  /// UIDs ou e-mails (minúsculos) que podem usar checkout v2 com [use_recurring_plan_billing] global `false`.
+  static final Set<String> _recurringPlanBillingAllowlist = {};
   static bool _initialized = false;
 
   /// Retorna a chave reCAPTCHA (do Remote Config ou fallback)
@@ -42,6 +45,23 @@ class RemoteConfigService {
 
   /// API Key da Globo da Sorte (Remote Config – nunca hardcoded)
   static String get globoSorteApiKey => _globoSorteApiKey;
+
+  /// Assinatura recorrente Mercado Pago (createPlanSubscription). Requer backend USE_RECURRING_PLAN_BILLING.
+  static bool get useRecurringPlanBilling => _useRecurringPlanBilling;
+
+  /// Rollout: `true` se RC global [use_recurring_plan_billing] **ou** UID/e-mail em [recurring_plan_billing_allowlist].
+  /// O backend continua exigindo `USE_RECURRING_PLAN_BILLING`; sem isso o app faz fallback para legado.
+  static bool shouldUseRecurringPlanBilling({
+    required String uid,
+    String? email,
+  }) {
+    if (_useRecurringPlanBilling) return true;
+    if (_recurringPlanBillingAllowlist.isEmpty) return false;
+    if (_recurringPlanBillingAllowlist.contains(uid)) return true;
+    final e = (email ?? '').trim().toLowerCase();
+    if (e.isNotEmpty && _recurringPlanBillingAllowlist.contains(e)) return true;
+    return false;
+  }
 
   /// Inicializa Remote Config e busca valores.
   /// Chamar após Firebase.initializeApp().
@@ -61,6 +81,8 @@ class RemoteConfigService {
         _keyPlanoMensalPreco: _defaultPlanoMensalPreco,
         _keyPlanoAnualPreco: _defaultPlanoAnualPreco,
         _keyGloboSorteApiKey: _defaultGloboSorteApiKey,
+        'use_recurring_plan_billing': false,
+        'recurring_plan_billing_allowlist': '',
       });
 
       await _rc.fetchAndActivate();
@@ -76,6 +98,25 @@ class RemoteConfigService {
 
       final gsKey = _rc.getString(_keyGloboSorteApiKey).trim();
       if (gsKey.isNotEmpty) _globoSorteApiKey = gsKey;
+
+      try {
+        _useRecurringPlanBilling = _rc.getBool('use_recurring_plan_billing');
+      } catch (_) {
+        _useRecurringPlanBilling = false;
+      }
+
+      _recurringPlanBillingAllowlist.clear();
+      try {
+        final raw = _rc.getString('recurring_plan_billing_allowlist').trim();
+        if (raw.isNotEmpty) {
+          for (final part in raw.split(',')) {
+            final s = part.trim();
+            if (s.isNotEmpty) {
+              _recurringPlanBillingAllowlist.add(s.contains('@') ? s.toLowerCase() : s);
+            }
+          }
+        }
+      } catch (_) {}
 
       _initialized = true;
       logD('✅ [RemoteConfig] Inicializado. recaptcha_site_key carregado.');

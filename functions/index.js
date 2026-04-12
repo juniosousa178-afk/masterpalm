@@ -43,7 +43,18 @@ import {
   PLAN_ORDERS_COL,
   tryProcessPlanOrderWebhook,
 } from "./src/planOrdersWebhook.js";
-import { validateMercadoPagoWebhookSignature } from "./src/mercadoPagoWebhookSignature.js";
+import {
+  validateMercadoPagoWebhookSignature,
+  extractMercadoPagoWebhookDataId,
+} from "./src/mercadoPagoWebhookSignature.js";
+import {
+  handlePreapprovalWebhookNotification,
+  isRecurringPlanBillingEnabled,
+  runCancelPlanSubscription,
+  runCreatePlanSubscription,
+  runReactivatePlanSubscription,
+  runSyncPlanSubscription,
+} from "./src/mpPlanRecurring.js";
 import { writeOrderLojaIndex } from "./src/orderLojaIndex.js";
 import {
   sugerirDescricaoProduto as aiSugerirDescricao,
@@ -1535,6 +1546,7 @@ async function activatePlanForUser({
   status,
   amount,
   planOrderId,
+  billingExtras,
 }) {
   const now = new Date();
   let renew = null;
@@ -1562,6 +1574,7 @@ async function activatePlanForUser({
     cancelAtPeriodEnd: false,
     planLastPaymentId: String(paymentId || ""),
     updatedAt: nowTs,
+    ...(billingExtras && typeof billingExtras === "object" ? billingExtras : {}),
   };
 
   await ref.set(payload, { merge: true });
@@ -1823,6 +1836,25 @@ export const planWebhook = onRequest(
       const MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
       if (!MP_TOKEN) return res.status(200).send("OK");
 
+      const qTopic = String(req.query?.topic || "").toLowerCase();
+      if (
+        qTopic &&
+        qTopic !== "payment" &&
+        (qTopic === "subscription" || qTopic.includes("preapproval"))
+      ) {
+        const preId = extractMercadoPagoWebhookDataId(req);
+        if (preId && isRecurringPlanBillingEnabled()) {
+          await handlePreapprovalWebhookNotification({
+            db,
+            token: MP_TOKEN,
+            preapprovalId: preId,
+            nowTs,
+            normalizePlanId,
+          });
+          return res.status(200).send("OK");
+        }
+      }
+
       const body = req.body || {};
       const query = req.query || {};
       const paymentId = body?.data?.id || query["data.id"] || body?.id || query?.id;
@@ -1984,6 +2016,30 @@ export const planWebhook = onRequest(
       }
 
       if (status === "approved") {
+        const preapId = payment.preapproval_id || payment.preapproval?.id;
+        const billingExtras =
+          preapId && isRecurringPlanBillingEnabled()
+            ? {
+                provider: "mercado_pago",
+                billingVersion: 2,
+                billingSource: "mp_subscription_payment",
+                providerSubscriptionId: String(preapId),
+                planLastSyncedAt: nowTs,
+              }
+            : undefined;
+        if (billingExtras) {
+          console.log(
+            JSON.stringify({
+              evt: "plan_v2_payment_webhook",
+              uid: String(uid),
+              paymentId: String(paymentId),
+              planId: String(plan || ""),
+              providerSubscriptionId: String(preapId),
+              billingVersion: 2,
+              billingSource: "mp_subscription_payment",
+            }),
+          );
+        }
         await activatePlanForUser({
           uid,
           plan:
@@ -1992,6 +2048,7 @@ export const planWebhook = onRequest(
           paymentId: String(paymentId),
           status: "active",
           amount: payment.transaction_amount,
+          billingExtras,
         });
         await processedRef.set(
           {
@@ -2024,6 +2081,87 @@ export const planWebhook = onRequest(
       return res.status(200).send("OK");
     }
   })
+);
+
+// ---------- Planos: assinatura recorrente MP (preapproval) — USE_RECURRING_PLAN_BILLING no ambiente ----------
+export const createPlanSubscription = onCall(
+  { secrets: [S_MP_ACCESS_TOKEN, S_WEB_BASE_URL], timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("createPlanSubscription", getCallableIdentifier(request));
+      const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
+      if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
+      const webBase =
+        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || `https://${ROOT_DOMAIN}`;
+      const prices = {
+        PRICE_BASIC_MONTHLY,
+        PRICE_INTERMEDIATE_MONTHLY,
+        PRICE_PRO_MONTHLY,
+        PRICE_PRO_YEARLY,
+      };
+      return await runCreatePlanSubscription({
+        db,
+        request,
+        token,
+        webBase,
+        prices,
+        planTitleForMp,
+        normalizePlanId,
+      });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[createPlanSubscription]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  }
+);
+
+export const cancelPlanSubscription = onCall(
+  { secrets: [S_MP_ACCESS_TOKEN], timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("cancelPlanSubscription", getCallableIdentifier(request));
+      const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
+      if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
+      return await runCancelPlanSubscription({ db, request, token });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[cancelPlanSubscription]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  }
+);
+
+export const reactivatePlanSubscription = onCall(
+  { secrets: [S_MP_ACCESS_TOKEN], timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("reactivatePlanSubscription", getCallableIdentifier(request));
+      const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
+      if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
+      return await runReactivatePlanSubscription({ db, request, token });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[reactivatePlanSubscription]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  }
+);
+
+export const syncPlanSubscription = onCall(
+  { secrets: [S_MP_ACCESS_TOKEN], timeoutSeconds: 45, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("syncPlanSubscription", getCallableIdentifier(request));
+      const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
+      if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
+      return await runSyncPlanSubscription({ db, request, token, normalizePlanId });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[syncPlanSubscription]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  }
 );
 
 // ======================= SUBDOMÍNIOS AUTOMÁTICOS (Firebase Hosting) ==================

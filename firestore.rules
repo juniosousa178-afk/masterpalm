@@ -911,6 +911,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Assinatura recorrente MP (intenções + dedupe webhook) — só backend
+    match /plan_recurring_intents/{id} {
+      allow read, write: if false;
+    }
+    match /processed_plan_events/{id} {
+      allow read, write: if false;
+    }
+
     // Índices server-side apenas (Cloud Functions Admin SDK). Cliente não acessa.
     match /order_loja_index/{orderId} {
       allow read, write: if false;
