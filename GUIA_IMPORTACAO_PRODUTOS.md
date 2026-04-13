@@ -17,11 +17,13 @@ Este guia explica como importar produtos em massa para o sistema Master Palm usa
 | Campo | Tipo | Descrição | Exemplo | Padrão |
 |-------|------|-----------|---------|--------|
 | `preco` | Decimal | Preço de venda final | `49.90` | `0.0` |
-| `custo` | Decimal | Custo real do produto | `15.00` | `0.0` |
+| `custo` | Decimal | Custo real do produto (preço de custo) | `15.00` | `0.0` |
 | `frete` | Decimal | Custo de frete | `5.00` | `0.0` |
 | `gastos_fixos` | Decimal | Gastos fixos | `2.00` | `0.0` |
 | `gastos_variaveis` | Decimal | Gastos variáveis | `3.00` | `0.0` |
 | `preco_sugerido` | Decimal | Preço sugerido | `45.00` | `0.0` |
+
+**Preço de custo na planilha:** o modelo mínimo `masterpalm-estoque-minimo.csv` usa a coluna **`preco_custo`** (mesmo significado que `custo`). Cabeçalhos equivalentes aceitos: `preco_custo`, `preco de custo`, `preco custo`, `custo`, `custo real`, `custo_real`, `valor custo`, `valor de custo`.
 
 ### 📦 Campos de Estoque (Opcionais)
 
@@ -47,12 +49,18 @@ Este guia explica como importar produtos em massa para o sistema Master Palm usa
 
 | Campo | Tipo | Descrição | Exemplo | Padrão |
 |-------|------|-----------|---------|--------|
-| `imagens` | Texto | URLs das imagens separadas | `"https://url1.jpg;https://url2.jpg"` | _(vazio)_ |
+| `imagen` / `imagens` | Texto | URLs públicas das fotos (uma ou várias na mesma célula). O modelo mínimo usa o cabeçalho **`imagen`**. | `https://cdn.exemplo.com/foto1.jpg;https://cdn.exemplo.com/foto2.jpg` | _(vazio)_ |
 
-**Formato do campo `imagens`:**
-- Separe múltiplas URLs com vírgula (`,`) ou ponto e vírgula (`;`)
-- Suporta URLs de imagens online (http/https)
-- Exemplo: `"https://exemplo.com/foto1.jpg;https://exemplo.com/foto2.jpg;https://exemplo.com/foto3.jpg"`
+**Formato do campo (coluna `imagen` ou `imagens`):**
+- Use endereços **públicos** `http://` ou `https://` (não use caminhos locais do computador).
+- **Várias imagens** na mesma célula: separe com **`|`** (útil quando o CSV usa `;` entre colunas), **`,`** ou **`;`** entre URLs.
+- Exemplo: `https://exemplo.com/foto1.jpg;https://exemplo.com/foto2.jpg` ou `https://exemplo.com/a.jpg|https://exemplo.com/b.jpg`.
+- Na importação (**Estoque → Importar**), cada URL acessível é **baixada** e guardada no **Firebase Storage**; o produto passa a usar os links do Storage. URLs inválidas ou inacessíveis são ignoradas (o produto segue sem aquela foto).
+
+**Cabeçalhos aceitos** (o app trata como a mesma coluna):  
+`imagen`, `imagens`, `imagens_urls`, `fotos`, `foto`, `imagem`, `url_imagem`, `url_imagens`, `links_imagens`, `urls`, `images`, `image_urls`.
+
+**Modelo de estoque:** `masterpalm-estoque-minimo.csv` em `web/modelos-importacao/` usa a coluna **`imagen`** (URLs das fotos). Também disponível em **Modelos de importação** no app Web (`/modelos-importacao`) e na tela **Modelos de importação** do app.
 
 ### 📏 Campos de Características Físicas (Opcionais)
 
@@ -142,7 +150,7 @@ nome,preco,tamanhos,categoria
 
 ### ✅ Boas Práticas
 
-- **Use o arquivo de exemplo** (`exemplo_importacao_produtos.csv`) como base
+- **Use um arquivo modelo** como base: `exemplo_importacao_produtos.csv` na raiz do repositório ou **`masterpalm-estoque-minimo.csv`** (coluna **`imagen`** para URLs das fotos; ver `/modelos-importacao` ou tela **Modelos de importação**)
 - **Sempre inclua o campo `nome`** - é o único obrigatório
 - **Teste com poucos produtos primeiro** antes de importar centenas
 - **Use URLs públicas para imagens** (não use caminhos locais)
@@ -200,6 +208,6 @@ Se encontrar problemas na importação:
 
 ---
 
-**Arquivo de Exemplo:** `exemplo_importacao_produtos.csv`
-**Versão:** 1.0
-**Última atualização:** Janeiro 2026
+**Arquivos de exemplo:** `exemplo_importacao_produtos.csv` · modelo mínimo com coluna **`imagen`**: `web/modelos-importacao/masterpalm-estoque-minimo.csv`  
+**Versão:** 1.1  
+**Última atualização:** Abril 2026

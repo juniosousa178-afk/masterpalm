@@ -29,12 +29,14 @@ class _ModelosImportacaoScreenState extends State<ModelosImportacaoScreen>
   static const _estoqueHeaders = [
     'nome',
     'preco',
+    'preco_custo',
     'quantidade',
     'categoria',
     'subcategoria',
     'sku',
     'codigo_barras',
     'descricao',
+    'imagen',
   ];
 
   static const _clientesHeaders = [
@@ -77,12 +79,14 @@ class _ModelosImportacaoScreenState extends State<ModelosImportacaoScreen>
       [
         'Exemplo Pulseira',
         '29,90',
+        '12,50',
         '10',
         'Semijoias',
         'Pulseiras',
         'SKU-DEMO-001',
         '7891234567890',
         'Substitua pelos seus produtos',
+        'https://picsum.photos/seed/masterpalm-demo/800/800',
       ],
     ]);
     _clientesCtrls = _controllersFromSeeds([
@@ -347,7 +351,7 @@ class _ModelosImportacaoScreenState extends State<ModelosImportacaoScreen>
           _bloco(
             titulo: 'Produtos (estoque)',
             descricao:
-                'Edite as células abaixo ou adicione linhas. O app aceita .xlsx e .csv (na Web, PDF não). Depois de baixar, você pode abrir no Excel ou Google Planilhas, trocar os dados e salvar.',
+                'Edite as células abaixo ou adicione linhas. O app aceita .xlsx e .csv (na Web, PDF não). Coluna imagen (também aceita imagens): URLs públicas http(s); várias fotos separadas por | ou ;. Na importação, o app baixa e salva no Firebase Storage.',
             headers: _estoqueHeaders,
             ctrls: _estoqueCtrls,
             fileName: 'masterpalm-estoque-editado.csv',

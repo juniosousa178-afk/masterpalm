@@ -3568,7 +3568,18 @@ Map<String, dynamic> _normalizeRow(Map<String, dynamic> raw) {
     ]),
 
     'imagens': pick([
-      'imagens', 'imagens_urls', 'fotos', 'urls', 'images', 'image_urls', 'foto'
+      'imagen',
+      'imagens',
+      'imagens_urls',
+      'fotos',
+      'urls',
+      'images',
+      'image_urls',
+      'foto',
+      'imagem',
+      'url_imagem',
+      'url_imagens',
+      'links_imagens',
     ]),
 
     'codigo_barras': pick([
@@ -3588,7 +3599,18 @@ Map<String, dynamic> _normalizeRow(Map<String, dynamic> raw) {
     ]),
 
     'peso': pick(['peso']),
-    'custo': pick(['custo', 'custo real', 'custo_real']),
+    'custo': pick([
+      'preco custo',
+      'preco de custo',
+      'preco_custo',
+      'preco de custo unitario',
+      'preco_custo_unitario',
+      'custo',
+      'custo real',
+      'custo_real',
+      'valor custo',
+      'valor de custo',
+    ]),
     'frete': pick(['frete']),
     'gastos_fixos': pick(['gastos fixos', 'gastos_fixos']),
     'gastos_variaveis': pick(['gastos variaveis', 'gastos_variaveis']),

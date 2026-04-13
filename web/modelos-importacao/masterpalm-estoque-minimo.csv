@@ -1,2 +1,2 @@
-﻿nome;preco;quantidade;categoria;subcategoria;sku;codigo_barras;descricao
-Exemplo Pulseira;29,90;10;Semijoias;Pulseiras;SKU-DEMO-001;7891234567890;Substitua esta linha pelos seus produtos
+﻿nome;preco;preco_custo;quantidade;categoria;subcategoria;sku;codigo_barras;descricao;imagen
+Exemplo Pulseira;29,90;12,50;10;Semijoias;Pulseiras;SKU-DEMO-001;7891234567890;Substitua esta linha pelos seus produtos;https://picsum.photos/seed/masterpalm-demo/800/800
