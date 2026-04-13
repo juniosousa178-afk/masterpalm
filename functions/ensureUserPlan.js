@@ -20,10 +20,10 @@ export const PAID_PLANS_WITH_RENEWAL = Object.freeze([
 // Fonte principal de assinatura/plano continua sendo o fluxo canônico
 // users/{uid}.currentPlanId/status/trialing/currentPeriodEnd.
 
-/** Origens do app Web admin (Callable v2 — CORS). Canônico primeiro; legado “maste…” em seguida. */
+/** Origens do app Web admin (Callable v2 — CORS). Canônico: app.mastepalm.com.br; compat: app.masterpalm.com.br. */
 const MASTERPALM_APP_WEB_ORIGINS = [
-  "https://app.masterpalm.com.br",
   "https://app.mastepalm.com.br",
+  "https://app.masterpalm.com.br",
   "https://mastepalm.com.br",
   "https://www.mastepalm.com.br",
   "https://masterpalm.com.br",

@@ -1354,7 +1354,7 @@ export const mpCatalogPayment = onRequest(
         if (valor == null || !titulo) {
           return res.status(400).json({ error: "Preferência requer titulo e valor" });
         }
-        const WEB_BASE = (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.masterpalm.com.br";
+        const WEB_BASE = (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         const mpBody = {
           items: [{ title: String(titulo), description: descricao || titulo, quantity: Number(quantidade) || 1, currency_id: "BRL", unit_price: Number(valor) }],
@@ -1872,7 +1872,7 @@ export const planCreatePreference = onRequest(
       if (!MP_TOKEN) return res.status(500).send("MP token not configured");
 
       const WEB_BASE =
-        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.masterpalm.com.br";
+        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
 
       const { plan, returnUrl, notificationUrl, installationId } = req.body || {};
       if (!plan) {
@@ -1945,7 +1945,7 @@ export const planCreatePreferenceCall = onCall(
     }
     const MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
     const WEB_BASE =
-      (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.masterpalm.com.br";
+      (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
     try {
       return await executePlanPreferenceCheckout({
         tokenUid: uid,
@@ -2894,7 +2894,7 @@ export const publishLojaDraft = onDocumentWritten(
 );
 
 // ============================== LINK CURTO – /c/:short → /loja/:slug ==============================
-const WEB_BASE = process.env.WEB_BASE_URL || "https://app.masterpalm.com.br";
+const WEB_BASE = process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
 
 export const redirectCatalogo = onRequest(
   { cors: true },

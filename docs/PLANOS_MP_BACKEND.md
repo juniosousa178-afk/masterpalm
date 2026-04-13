@@ -17,7 +17,7 @@
 
 ## Callable `ensureUserPlan` e CORS (Web)
 
-- Em `functions/ensureUserPlan.js`, o `onCall` usa `cors: MASTERPALM_APP_WEB_ORIGINS` (origem canônica `https://app.masterpalm.com.br` primeiro, depois legado `app.mastepalm.com.br`, localhost, web.app, etc. — ver `docs/DOMAIN_APP_WEB.md`).
+- Em `functions/ensureUserPlan.js`, o `onCall` usa `cors: MASTERPALM_APP_WEB_ORIGINS` (origem canônica `https://app.mastepalm.com.br` primeiro, depois compat `https://app.masterpalm.com.br`, localhost, web.app, etc. — ver `docs/DOMAIN_APP_WEB.md`).
 - Motivo: domínios customizados do app Web podem falhar no preflight se o Callable v2 não listar a origem.
 - Log seguro: `ensureUserPlan_request` com `hasAuthUid` e `origin` truncado (sem token).
 

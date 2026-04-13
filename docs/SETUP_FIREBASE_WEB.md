@@ -7,8 +7,8 @@ Para login social (Google, etc.) e redirecionamento funcionarem no catálogo/app
 1. Abra [Firebase Console](https://console.firebase.google.com) → seu projeto.
 2. **Authentication** → **Settings** (Settings / Configurações) → aba **Authorized domains**.
 3. Adicione o domínio do app Web, por exemplo:
-   - **`app.masterpalm.com.br`** (canônico do SPA admin — ver `docs/DOMAIN_APP_WEB.md`)
-   - `app.mastepalm.com.br` (legado / typo, enquanto houver tráfego)
+   - **`app.mastepalm.com.br`** (canônico do SPA admin — ver `docs/DOMAIN_APP_WEB.md`)
+   - `app.masterpalm.com.br` (compatibilidade temporária, enquanto houver tráfego)
    - `mastepalm.web.app`
    - `masterpalm-58c46.web.app`
    - `localhost` (desenvolvimento)
@@ -40,7 +40,7 @@ significa que no `web/index.html` está sendo usado um **Client ID do Android**.
 4. Em **Origens JavaScript autorizadas** adicione:
    - `http://localhost`
    - `http://localhost:PORTA` (ex.: `http://localhost:62785` para desenvolvimento)
-   - Seu domínio em produção (ex.: `https://app.masterpalm.com.br`)
+   - Seu domínio em produção (ex.: `https://app.mastepalm.com.br`)
 5. Salve e copie o **Client ID** (termina em `.apps.googleusercontent.com`).
 6. No projeto, em **web/index.html**, na meta tag `google-signin-client_id`, substitua o valor pelo **Client ID do Aplicativo da Web** (não use o do Android).
 

@@ -35,7 +35,7 @@ Este documento guia a validação e ativação do App Check em modo monitorament
 
 1. Acesse [Google reCAPTCHA Admin](https://www.google.com/recaptcha/admin/create).
 2. Crie uma chave **reCAPTCHA v3**.
-3. Adicione os domínios onde o app web roda (ex: `app.mastepalm.com.br`, `localhost`).
+3. Adicione os domínios onde o app web roda: canônico `app.mastepalm.com.br` e, se ainda houver acessos, `app.masterpalm.com.br`; inclua `localhost` para dev.
 4. Use uma das opções:
    - **Remote Config**: chave `recaptcha_site_key` no Firebase Remote Config.
    - **Código**: preencha `kRecaptchaSiteKeyOverride` em `lib/config/app_check_config.dart`.

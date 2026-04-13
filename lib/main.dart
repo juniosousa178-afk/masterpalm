@@ -593,9 +593,10 @@ Future<void> _fixPedidoLinkBase() async {
 
   String migrateAppWebHosts(String s) {
     var t = s;
-    t = t.replaceAll('https://app.mastepalm.com.br', AppUrls.appWebBase);
-    t = t.replaceAll('http://app.mastepalm.com.br', AppUrls.appWebBase);
-    t = t.replaceAll('mastepalm.com.br', AppUrls.appWebHostCanonical);
+    // Legado temporário app.masterpalm.com.br → canônico app.mastepalm.com.br
+    t = t.replaceAll('https://app.masterpalm.com.br', AppUrls.appWebBase);
+    t = t.replaceAll('http://app.masterpalm.com.br', AppUrls.appWebBase);
+    t = t.replaceAll('app.masterpalm.com.br', AppUrls.appWebHostCanonical);
     return t;
   }
 

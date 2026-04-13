@@ -1,5 +1,5 @@
-# MasterPalm — SEO estático (app Web canônico: app.masterpalm.com.br — ver docs/DOMAIN_APP_WEB.md)
+# MasterPalm — SEO estático (app Web canônico: app.mastepalm.com.br — ver docs/DOMAIN_APP_WEB.md)
 User-agent: *
 Allow: /
 
-Sitemap: https://app.masterpalm.com.br/sitemap.xml
+Sitemap: https://app.mastepalm.com.br/sitemap.xml

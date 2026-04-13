@@ -16,7 +16,7 @@ import '../services/remote_config_safe_service.dart';
 /// Chave reCAPTCHA v3 para Web (fallback quando Remote Config falha ou não está disponível).
 /// Obtenha em: https://www.google.com/recaptcha/admin/create
 /// Tipo: reCAPTCHA v3
-/// Domínios: seus domínios web (ex: app.mastepalm.com.br, localhost)
+/// Domínios: canônico app.mastepalm.com.br (+ compat app.masterpalm.com.br se necessário), localhost
 ///
 /// Deixe vazio para usar o Remote Config (recaptcha_site_key).
 /// Preencha aqui se quiser override direto no código.
