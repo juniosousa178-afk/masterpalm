@@ -150,6 +150,21 @@ class _AppStartRouterState extends State<AppStartRouter> {
               .trim()
               .toLowerCase();
 
+      // Troca de conta no mesmo browser/dispositivo: Hive pode manter store_id da sessão anterior
+      // e o fallback em _bindActiveStore reutiliza esse valor → mismatch com Firestore ("Loja não confirmada").
+      if (hivePrincipalBefore.isNotEmpty && hivePrincipalBefore != email) {
+        logD(
+          '[BOOT-SESSION] Troca de conta ($hivePrincipalBefore → $email): limpando loja em cache',
+        );
+        sessao.delete('store_id');
+        sessao.delete('storeId');
+        sessao.delete('lojaId');
+        sessao.delete('loja_id');
+        sessao.delete('lojaIdAtual');
+        config.delete('last_loja_id');
+        StoreResolverService.invalidate();
+      }
+
       sessao.put('usuario_logado', email);
       sessao.put('usuario_logado_email', email);
 
@@ -737,7 +752,12 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
         final current = _isFirebaseReady() ? FirebaseAuth.instance.currentUser : null;
         final currentEmail = (current?.email ?? '').trim().toLowerCase();
-        final cachedUsuario = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+        final cachedUsuario = (sessao.get('usuario_logado_email') ??
+                sessao.get('usuario_logado') ??
+                '')
+            .toString()
+            .trim()
+            .toLowerCase();
 
         final sameUser = currentEmail.isNotEmpty &&
             cachedUsuario.isNotEmpty &&

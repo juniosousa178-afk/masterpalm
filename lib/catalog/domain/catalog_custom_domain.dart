@@ -1,4 +1,4 @@
-// Helpers mínimos para domínio customizado do catálogo (sem integração DNS).
+// Helpers para domínio customizado do catálogo (normalização + estados de UI/backend).
 
 /// Host CNAME público do catálogo Firebase Hosting (valor exibido ao lojista).
 const String kCatalogPublicCnameTarget = 'masterpalm-58c46.web.app';
@@ -12,6 +12,10 @@ const String kCatalogDnsRecordType = 'CNAME';
 const String kDominioStatusNaoConfigurado = 'nao_configurado';
 const String kDominioStatusPendente = 'pendente';
 const String kDominioStatusEmVerificacao = 'em_verificacao';
+const String kDominioStatusSolicitado = 'solicitado';
+const String kDominioStatusPendenteDns = 'pendente_dns';
+const String kDominioStatusDnsOk = 'dns_ok';
+const String kDominioStatusErro = 'erro';
 const String kDominioStatusAtivo = 'ativo';
 
 /// Remove protocolo, caminho, porta e normaliza minúsculas.
@@ -42,6 +46,14 @@ String dominioStatusLabelPt(String key) {
       return 'Pendente';
     case kDominioStatusEmVerificacao:
       return 'Em verificação';
+    case kDominioStatusSolicitado:
+      return 'Solicitação enviada';
+    case kDominioStatusPendenteDns:
+      return 'DNS pendente';
+    case kDominioStatusDnsOk:
+      return 'DNS correto';
+    case kDominioStatusErro:
+      return 'Erro';
     case kDominioStatusAtivo:
       return 'Ativo';
     case kDominioStatusNaoConfigurado:
@@ -54,13 +66,17 @@ String dominioStatusLabelPt(String key) {
 String dominioStatusFromStorage(String? raw, {required bool hasDomain}) {
   final s = (raw ?? '').trim();
   if (!hasDomain) return kDominioStatusNaoConfigurado;
+  if (s == kDominioStatusPendente) return kDominioStatusSolicitado;
+  if (s == kDominioStatusEmVerificacao) return kDominioStatusPendenteDns;
   const ok = {
-    kDominioStatusPendente,
-    kDominioStatusEmVerificacao,
+    kDominioStatusSolicitado,
+    kDominioStatusPendenteDns,
+    kDominioStatusDnsOk,
+    kDominioStatusErro,
     kDominioStatusAtivo,
   };
   if (ok.contains(s)) return s;
-  return kDominioStatusPendente;
+  return kDominioStatusSolicitado;
 }
 
 /// Valor gravado em [dominioStatus] no mapa de configuração.

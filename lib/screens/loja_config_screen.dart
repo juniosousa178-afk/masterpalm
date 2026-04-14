@@ -15,6 +15,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive/hive.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../models/catalog_avaliacoes_ordem.dart';
 import '../core/hive_box_names.dart';
@@ -39,6 +40,7 @@ import '../theme/catalog_visual_palette_presets.dart';
 import '../catalog/domain/catalog_custom_domain.dart';
 import '../screens/catalogo/catalog_domain_setup_screen.dart';
 import '../widgets/catalog_domain_section.dart';
+import '../services/catalog_domain_workflow_service.dart';
 
 part 'loja_config_tema_pane.dart';
 part 'loja_config_widgets.dart';
@@ -802,6 +804,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   String _dominioCatalogoStatus = kDominioStatusNaoConfigurado;
   String? _dominioProviderId;
   int? _dominioCatalogoUpdatedAt;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _catalogDomainOpSub;
+  String? _catalogDomainOpExpectedTarget;
+  String? _catalogDomainOpDnsObserved;
+  String? _catalogDomainOpLastCheckLabel;
+  String? _catalogDomainOpError;
 
   // ---------------------------------
   // MÍDIAS (logo / banners)
@@ -1165,7 +1172,79 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         });
       }
     }
+    _scheduleSyncCatalogDomainListener();
     _scheduleAutoSave();
+  }
+
+  void _scheduleSyncCatalogDomainListener() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncCatalogDomainListener();
+    });
+  }
+
+  String? _formatCatalogDomainCheckAt(dynamic v) {
+    if (v == null) return null;
+    DateTime? dt;
+    if (v is Timestamp) {
+      dt = v.toDate();
+    }
+    dt ??= DateTime.tryParse(v.toString());
+    if (dt == null) return null;
+    final d = dt.toLocal();
+    String two(int x) => x.toString().padLeft(2, '0');
+    return '${two(d.day)}/${two(d.month)}/${d.year} ${two(d.hour)}:${two(d.minute)}';
+  }
+
+  void _syncCatalogDomainListener() {
+    _catalogDomainOpSub?.cancel();
+    _catalogDomainOpSub = null;
+    final lojaStr = _resolvedLojaId?.trim() ?? '';
+    if (lojaStr.isEmpty) return;
+    final raw = normalizeCatalogDomainInput(_dominioCatalogoCtrl.text);
+    if (raw.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _catalogDomainOpExpectedTarget = null;
+          _catalogDomainOpDnsObserved = null;
+          _catalogDomainOpLastCheckLabel = null;
+          _catalogDomainOpError = null;
+        });
+      }
+      return;
+    }
+    final host = recommendedCatalogFqdn(raw);
+    _catalogDomainOpSub = FirebaseFirestore.instance
+        .collection('lojas')
+        .doc(lojaStr)
+        .collection('dominios_catalogo')
+        .doc(host)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      if (!snap.exists || snap.data() == null) {
+        setState(() {
+          _catalogDomainOpExpectedTarget = null;
+          _catalogDomainOpDnsObserved = null;
+          _catalogDomainOpLastCheckLabel = null;
+          _catalogDomainOpError = null;
+        });
+        return;
+      }
+      final d = snap.data()!;
+      final exp = (d['expectedTarget'] ?? '').toString().trim();
+      final obs = (d['dnsObservedTarget'] ?? '').toString().trim();
+      final err = (d['lastError'] ?? '').toString().trim();
+      final st = (d['status'] ?? '').toString().trim();
+      setState(() {
+        _catalogDomainOpExpectedTarget = exp.isNotEmpty ? exp : kCatalogPublicCnameTarget;
+        _catalogDomainOpDnsObserved = obs.isNotEmpty ? obs : null;
+        _catalogDomainOpLastCheckLabel = _formatCatalogDomainCheckAt(d['lastCheckAt']);
+        _catalogDomainOpError = err.isNotEmpty ? err : null;
+        if (st.isNotEmpty) {
+          _dominioCatalogoStatus = dominioStatusFromStorage(st, hasDomain: true);
+        }
+      });
+    });
   }
 
   Future<void> _addDominioCatalogoAndOpenGuide() async {
@@ -1174,14 +1253,54 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _snack('Informe o domínio desejado.', isError: true);
       return;
     }
-    setState(() {
-      _dominioCatalogoCtrl.text = norm;
-      _dominioCatalogoStatus = kDominioStatusPendente;
-      _dominioCatalogoUpdatedAt = DateTime.now().millisecondsSinceEpoch;
-    });
-    await _salvarRascunho(validar: false);
-    if (!mounted) return;
-    await _openCatalogDomainSetupScreen();
+    final loja = _resolvedLojaId?.trim() ?? '';
+    if (loja.isEmpty) {
+      _snack('Loja ativa não encontrada.', isError: true);
+      return;
+    }
+    setState(() => _salvando = true);
+    try {
+      final res = await CatalogDomainWorkflowService.submitRequest(
+        lojaId: loja,
+        dominioUserInput: norm,
+        providerId: _dominioProviderId,
+      );
+      final hostFinal = (res['hostFinal'] ?? '').toString().trim();
+      final status = (res['status'] ?? kDominioStatusSolicitado).toString().trim();
+      final upd = (res['dominioUpdatedAt'] as num?)?.toInt();
+      if (!mounted) return;
+      setState(() {
+        if (hostFinal.isNotEmpty) {
+          _dominioCatalogoCtrl.text = hostFinal;
+        } else {
+          _dominioCatalogoCtrl.text = norm;
+        }
+        _dominioCatalogoStatus = dominioStatusFromStorage(status, hasDomain: true);
+        _dominioCatalogoUpdatedAt = upd ?? DateTime.now().millisecondsSinceEpoch;
+        final p = res['providerId']?.toString().trim();
+        if (p != null && p.isNotEmpty) {
+          _dominioProviderId = p;
+        }
+      });
+      _scheduleSyncCatalogDomainListener();
+      await _salvarRascunho(validar: false);
+      if (!mounted) return;
+      await _openCatalogDomainSetupScreen();
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) {
+        _snack(
+          CatalogDomainWorkflowService.messageFromFunctionsException(e) ??
+              'Erro ao registrar domínio.',
+          isError: true,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _snack('Erro ao registrar domínio: $e', isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _salvando = false);
+    }
   }
 
   Future<void> _openCatalogDomainGuideOnly() async {
@@ -1190,9 +1309,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   Future<void> _openCatalogDomainSetupScreen() async {
     final norm = normalizeCatalogDomainInput(_dominioCatalogoCtrl.text);
+    final loja = _resolvedLojaId?.trim() ?? '';
+    if (loja.isEmpty) {
+      _snack('Loja ativa não encontrada.', isError: true);
+      return;
+    }
     final result = await Navigator.of(context).push<CatalogDomainSetupPopResult?>(
       MaterialPageRoute(
         builder: (ctx) => CatalogDomainSetupScreen(
+          lojaId: loja,
           dominioInformado: norm,
           statusInicial: _dominioCatalogoStatus,
           dominioProviderAtual: _dominioProviderId,
@@ -2566,6 +2691,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         _custoEmbalagemCtrl.text = (_doubleFrom(taxas['embalagem']) ?? 3.0).toString();
       }
     });
+    _scheduleSyncCatalogDomainListener();
   }
 
   double? _doubleFrom(dynamic v) {
@@ -6100,6 +6226,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _subdominioDominioBaseCtrl.dispose();
     _waCtrl.dispose();
     _pedidoBaseCtrl.dispose();
+    _catalogDomainOpSub?.cancel();
     _dominioCatalogoCtrl.dispose();
     _dLogoH.dispose();
     _dLogoW.dispose();

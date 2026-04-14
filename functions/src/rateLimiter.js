@@ -63,6 +63,10 @@ export const RATE_LIMITS = {
   getClienteCatalog: { maxPerMin: 60, windowMs: 60_000 },
   solicitarRedefinicaoSenhaCatalogo: { maxPerMin: 5, windowMs: 60_000 },
 
+  // Domínio próprio catálogo (CNAME + catalog_domains)
+  catalogDomainSubmitRequest: { maxPerMin: 12, windowMs: 60_000 },
+  catalogDomainVerifyDns: { maxPerMin: 24, windowMs: 60_000 },
+
   // IA loja: SEM rate limit (limite fica apenas nas APIs OpenAI/Gemini)
   // Endpoints removidos para evitar bloqueio indevido; usuários que pagam OpenAI não devem ser limitados pelo app.
 };

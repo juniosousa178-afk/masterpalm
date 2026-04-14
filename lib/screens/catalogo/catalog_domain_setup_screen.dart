@@ -1,9 +1,11 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../catalog/domain/catalog_custom_domain.dart';
 import '../../data/domain_provider_guides.dart';
 import '../../models/domain_provider_guide.dart';
+import '../../services/catalog_domain_workflow_service.dart';
 import 'catalog_domain_provider_screen.dart';
 
 /// Retorno opcional ao fechar a tela de configuração guiada (status local / provedor visto).
@@ -17,14 +19,17 @@ class CatalogDomainSetupPopResult {
   final String? dominioProvider;
 }
 
-/// Assistente de domínio próprio do catálogo (somente orientação — sem verificação DNS real).
+/// Assistente de domínio próprio do catálogo (orientação + verificação DNS via Cloud Function).
 class CatalogDomainSetupScreen extends StatefulWidget {
   const CatalogDomainSetupScreen({
     super.key,
+    required this.lojaId,
     required this.dominioInformado,
     required this.statusInicial,
     this.dominioProviderAtual,
   });
+
+  final String lojaId;
 
   /// Host normalizado informado pelo lojista (pode ser raiz ou FQDN).
   final String dominioInformado;
@@ -39,6 +44,8 @@ class CatalogDomainSetupScreen extends StatefulWidget {
 class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
   late String _localStatus;
   String? _lastProviderId;
+  bool _busy = false;
+  String? _lastVerifyMessage;
 
   @override
   void initState() {
@@ -54,6 +61,8 @@ class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
   String get _normalizedInput => normalizeCatalogDomainInput(widget.dominioInformado);
 
   String get _recommended => recommendedCatalogFqdn(_normalizedInput);
+
+  String get _hostForVerification => _recommended;
 
   Future<void> _copy(BuildContext context, String label, String value) async {
     if (value.isEmpty) return;
@@ -80,29 +89,61 @@ class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
     );
   }
 
-  void _marcarConfigurado() {
-    setState(() => _localStatus = kDominioStatusAtivo);
-    Navigator.of(context).pop(CatalogDomainSetupPopResult(
-      status: kDominioStatusAtivo,
-      dominioProvider: _lastProviderId,
-    ));
-  }
-
-  void _verificarNovamente() {
-    setState(() => _localStatus = kDominioStatusEmVerificacao);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Registramos “Em verificação” apenas no app. '
-          'A propagação DNS e a validação técnica final ainda dependem do seu provedor e da infraestrutura.',
-        ),
-        duration: Duration(seconds: 5),
-      ),
-    );
-    Navigator.of(context).pop(CatalogDomainSetupPopResult(
-      status: kDominioStatusEmVerificacao,
-      dominioProvider: _lastProviderId,
-    ));
+  Future<void> _verificarDnsNoServidor({required bool popAfter}) async {
+    if (_busy) return;
+    final host = _hostForVerification;
+    if (host.isEmpty || widget.lojaId.trim().isEmpty) return;
+    setState(() {
+      _busy = true;
+      _lastVerifyMessage = null;
+    });
+    try {
+      final out = await CatalogDomainWorkflowService.verifyDns(
+        lojaId: widget.lojaId.trim(),
+        hostNormalized: host,
+      );
+      if (!mounted) return;
+      final st = (out['status'] ?? '').toString().trim();
+      final err = (out['lastError'] ?? '').toString().trim();
+      final mapped = dominioStatusFromStorage(
+        st.isNotEmpty ? st : _localStatus,
+        hasDomain: true,
+      );
+      setState(() {
+        _localStatus = mapped;
+        _lastVerifyMessage = err.isNotEmpty ? err : null;
+      });
+      final okMsg = mapped == kDominioStatusAtivo
+          ? 'DNS correto. Domínio ativo no catálogo público.'
+          : mapped == kDominioStatusPendenteDns
+              ? 'Ainda aguardando DNS ou propagação.'
+              : mapped == kDominioStatusErro
+                  ? (err.isNotEmpty ? err : 'Não foi possível concluir a verificação.')
+                  : 'Status atualizado.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(okMsg), duration: const Duration(seconds: 5)),
+      );
+      if (popAfter) {
+        Navigator.of(context).pop(CatalogDomainSetupPopResult(
+          status: mapped,
+          dominioProvider: _lastProviderId,
+        ));
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      final msg = CatalogDomainWorkflowService.messageFromFunctionsException(e) ??
+          'Erro ao verificar DNS.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), duration: const Duration(seconds: 6)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), duration: const Duration(seconds: 5)),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -207,19 +248,19 @@ class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: cs.errorContainer.withValues(alpha: 0.25),
+              color: cs.primaryContainer.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.verified_user_outlined, color: cs.error, size: 22),
+                Icon(Icons.verified_user_outlined, color: cs.primary, size: 22),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'O MasterPalm não valida automaticamente o seu DNS nesta versão. '
-                    'Os status são informativos para você acompanhar o processo na loja.',
+                    'Após criar o CNAME no provedor, use “Verificar DNS” para checar no servidor '
+                    'e ativar o domínio no catálogo quando o apontamento estiver correto.',
                     style: tt.bodySmall?.copyWith(
                       color: cs.onSurface,
                       height: 1.4,
@@ -275,28 +316,46 @@ class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            'Atualizar status na loja',
+            'Verificação DNS',
             style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
-            'Use os botões abaixo só como controle interno. Eles não disparam verificação técnica no ar.',
+            'A checagem consulta o CNAME na internet e só ativa o domínio no catálogo se apontar para '
+            '$kCatalogPublicCnameTarget.',
             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, height: 1.35),
           ),
+          if (_lastVerifyMessage != null && _lastVerifyMessage!.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              _lastVerifyMessage!.trim(),
+              style: tt.bodySmall?.copyWith(color: cs.error, height: 1.35),
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: FilledButton(
-                  onPressed: hasDomain ? _marcarConfigurado : null,
-                  child: const Text('Marcar como configurado'),
+                  onPressed: hasDomain
+                      ? () => _verificarDnsNoServidor(popAfter: true)
+                      : null,
+                  child: _busy
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Verificar DNS'),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: hasDomain ? _verificarNovamente : null,
-                  child: const Text('Verificar novamente'),
+                  onPressed: hasDomain
+                      ? () => _verificarDnsNoServidor(popAfter: false)
+                      : null,
+                  child: const Text('Verificar e ficar aqui'),
                 ),
               ),
             ],
@@ -323,8 +382,12 @@ class _StatusStrip extends StatelessWidget {
     final label = dominioStatusLabelPt(status);
     final color = switch (status) {
       kDominioStatusAtivo => Colors.green.shade700,
+      kDominioStatusDnsOk => Colors.teal.shade700,
       kDominioStatusEmVerificacao => cs.primary,
+      kDominioStatusPendenteDns => cs.tertiary,
+      kDominioStatusSolicitado => cs.secondary,
       kDominioStatusPendente => cs.tertiary,
+      kDominioStatusErro => cs.error,
       _ => cs.onSurfaceVariant,
     };
     return Container(
@@ -343,7 +406,7 @@ class _StatusStrip extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Status no app',
+                  'Status do domínio',
                   style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
                 ),
                 Text(
@@ -503,11 +566,11 @@ class _IntroSteps extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const steps = [
-      'Adicione seu domínio na configuração da loja.',
+      'Toque em “Adicionar domínio” para registrar a solicitação no servidor.',
       'Escolha abaixo o provedor onde você edita o DNS.',
       'Crie o apontamento CNAME com os valores indicados.',
       'Aguarde a propagação (pode levar horas).',
-      'Volte aqui e atualize o status conforme o andamento.',
+      'Use “Verificar DNS” para checar e ativar o domínio no catálogo quando estiver correto.',
     ];
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;

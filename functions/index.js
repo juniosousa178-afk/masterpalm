@@ -70,6 +70,7 @@ import {
   chatAtendimentoCatalogo as aiChatAtendimentoCatalogo,
   sugerirPrecoCombo as aiSugerirPrecoCombo,
 } from "./src/aiLoja.js";
+import { runCatalogDomainSubmit, runCatalogDomainVerify } from "./src/catalogDomainWorkflow.js";
 
 // ✅ Webhooks Canais Meta (WhatsApp, Instagram, Messenger)
 export { webhookWhatsApp, webhookInstagram, webhookMessenger } from "./canaisMetaWebhooks.js";
@@ -3156,6 +3157,56 @@ export const getClienteCatalog = onCall(
       );
     }
   }
+);
+
+// ============================== DOMÍNIO PRÓPRIO DO CATÁLOGO ==============================
+export const catalogDomainSubmitRequest = onCall(
+  { timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    try {
+      const identifier = getCallableIdentifier(request);
+      await checkRateLimit("catalogDomainSubmitRequest", identifier);
+      if (!request.auth) {
+        throw new HttpsError("unauthenticated", "Login necessário.");
+      }
+      const { lojaId, dominioUserInput, providerId } = request.data || {};
+      const out = await runCatalogDomainSubmit(db, {
+        auth: request.auth,
+        lojaId,
+        dominioUserInput,
+        providerId,
+      });
+      return out;
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[catalogDomainSubmitRequest] error:", err);
+      throw new HttpsError("internal", err?.message || "Erro ao registrar domínio.");
+    }
+  },
+);
+
+export const catalogDomainVerifyDns = onCall(
+  { timeoutSeconds: 45, memory: "256MiB" },
+  async (request) => {
+    try {
+      const identifier = getCallableIdentifier(request);
+      await checkRateLimit("catalogDomainVerifyDns", identifier);
+      if (!request.auth) {
+        throw new HttpsError("unauthenticated", "Login necessário.");
+      }
+      const { lojaId, hostNormalized } = request.data || {};
+      const out = await runCatalogDomainVerify(db, {
+        auth: request.auth,
+        lojaId,
+        hostNormalized,
+      });
+      return out;
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[catalogDomainVerifyDns] error:", err);
+      throw new HttpsError("internal", err?.message || "Erro ao verificar DNS.");
+    }
+  },
 );
 
 // ============================== REDEFINIÇÃO DE SENHA (CATÁLOGO WEB) ==============================

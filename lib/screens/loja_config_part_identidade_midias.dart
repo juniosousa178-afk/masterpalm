@@ -241,6 +241,11 @@ class _PaneIdentidadeWidget extends StatelessWidget {
             textTheme: tt,
             domainController: host._dominioCatalogoCtrl,
             statusKey: host._dominioCatalogoStatus,
+            expectedTarget:
+                host._catalogDomainOpExpectedTarget ?? kCatalogPublicCnameTarget,
+            lastCheckLabel: host._catalogDomainOpLastCheckLabel,
+            dnsObserved: host._catalogDomainOpDnsObserved,
+            friendlyError: host._catalogDomainOpError,
             fieldStyle: host._fieldTextStyle,
             decorate: host._inputDecoration,
             primaryColor: _LojaConfigScreenState._primaryColor,

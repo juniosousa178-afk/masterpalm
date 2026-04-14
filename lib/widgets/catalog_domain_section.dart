@@ -19,6 +19,10 @@ class CatalogDomainSection extends StatelessWidget {
     required this.textTheme,
     required this.domainController,
     required this.statusKey,
+    this.expectedTarget,
+    this.lastCheckLabel,
+    this.dnsObserved,
+    this.friendlyError,
     required this.fieldStyle,
     required this.decorate,
     required this.primaryColor,
@@ -30,6 +34,11 @@ class CatalogDomainSection extends StatelessWidget {
   final TextTheme textTheme;
   final TextEditingController domainController;
   final String statusKey;
+  /// Alvo CNAME esperado (quando conhecido).
+  final String? expectedTarget;
+  final String? lastCheckLabel;
+  final String? dnsObserved;
+  final String? friendlyError;
   final TextStyle Function(BuildContext context) fieldStyle;
   final CatalogDomainInputDecorationFn decorate;
   final Color primaryColor;
@@ -43,13 +52,29 @@ class CatalogDomainSection extends StatelessWidget {
           Colors.green.withValues(alpha: 0.14),
           Colors.green.shade800,
         ),
+      kDominioStatusDnsOk => (
+          Colors.teal.withValues(alpha: 0.14),
+          Colors.teal.shade800,
+        ),
       kDominioStatusEmVerificacao => (
           cs.primary.withValues(alpha: 0.14),
           cs.primary,
         ),
+      kDominioStatusPendenteDns => (
+          cs.tertiary.withValues(alpha: 0.16),
+          cs.tertiary,
+        ),
+      kDominioStatusSolicitado => (
+          cs.secondary.withValues(alpha: 0.16),
+          cs.secondary,
+        ),
       kDominioStatusPendente => (
           cs.tertiary.withValues(alpha: 0.16),
           cs.tertiary,
+        ),
+      kDominioStatusErro => (
+          cs.error.withValues(alpha: 0.14),
+          cs.error,
         ),
       _ => (
           cs.surfaceContainerHighest.withValues(alpha: 0.9),
@@ -73,7 +98,7 @@ class CatalogDomainSection extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Status no app',
+                'Status do domínio',
                 style: textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.w600,
                   color: colorScheme.onSurfaceVariant,
@@ -142,9 +167,53 @@ class CatalogDomainSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
+        if (expectedTarget != null && expectedTarget!.trim().isNotEmpty) ...[
+          Text(
+            'Alvo esperado (CNAME): ${expectedTarget!.trim()}',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              height: 1.35,
+              fontFamily: 'monospace',
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        if (lastCheckLabel != null && lastCheckLabel!.trim().isNotEmpty) ...[
+          Text(
+            'Última verificação: ${lastCheckLabel!.trim()}',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        if (dnsObserved != null && dnsObserved!.trim().isNotEmpty) ...[
+          Text(
+            'DNS observado: ${dnsObserved!.trim()}',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              height: 1.35,
+              fontFamily: 'monospace',
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        if (friendlyError != null && friendlyError!.trim().isNotEmpty) ...[
+          Text(
+            friendlyError!.trim(),
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.error,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         Text(
-          'O subdomínio catalogo.seudominio será sugerido automaticamente quando fizer sentido. '
-          'Você cria o registro DNS manualmente no provedor — sem automação nesta versão.',
+          'O host final do catálogo será catalogo.seudominio quando você informar só o domínio raiz. '
+          'O registro DNS continua manual no provedor; a verificação e a ativação do catálogo são feitas com segurança no servidor.',
           style: textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
             height: 1.4,

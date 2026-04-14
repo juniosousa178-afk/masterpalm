@@ -473,6 +473,12 @@ service cloud.firestore {
         allow read, write: if isAdminOrSystem();
       }
 
+      // Workflow domínio do catálogo (somente leitura no cliente; escrita via Cloud Functions).
+      match /dominios_catalogo/{hostNorm} {
+        allow read: if belongsToStore(lojaId);
+        allow create, update, delete: if false;
+      }
+
       // Rascunho: produtos (simples e combo) com imagens, itensCombo, variacoes
       match /draft_produtos/{prodId} {
         allow read, write: if isAdminOrSystem();
