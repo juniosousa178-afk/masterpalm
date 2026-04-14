@@ -8,7 +8,7 @@ class CatalogCreatorCreditBar extends StatelessWidget {
   final Color accentColor;
   final void Function(String url) onOpenUrl;
 
-  static const String siteUrl = 'https://mastepalm.com.br';
+  static const String siteUrl = 'https://gestao.mastepalm.com.br';
 
   const CatalogCreatorCreditBar({
     super.key,

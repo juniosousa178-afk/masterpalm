@@ -16,7 +16,7 @@ import '../services/remote_config_safe_service.dart';
 /// Chave reCAPTCHA v3 para Web (fallback quando Remote Config falha ou não está disponível).
 /// Obtenha em: https://www.google.com/recaptcha/admin/create
 /// Tipo: reCAPTCHA v3
-/// Domínios: canônico app.mastepalm.com.br (+ compat app.masterpalm.com.br se necessário), localhost
+/// Domínios: app Web (app.*), site público (gestao.* + apex mastepalm legado), *.web.app, localhost.
 ///
 /// Deixe vazio para usar o Remote Config (recaptcha_site_key).
 /// Preencha aqui se quiser override direto no código.
@@ -61,6 +61,7 @@ const List<String> kAppCheckWebAllowedHosts = [
   'masterpalm-58c46.web.app',
   AppUrls.appWebHostCanonical,
   AppUrls.appWebHostLegacyTypo,
+  ...AppUrls.publicSiteHostsAll,
   'localhost',
 ];
 

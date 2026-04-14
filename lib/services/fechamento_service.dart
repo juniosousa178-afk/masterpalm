@@ -4,6 +4,7 @@ import 'package:hive/hive.dart';
 
 import '../models/venda.dart';
 import '../models/fechamento_mensal.dart';
+import '../core/venda_fiado_caixa.dart';
 import '../core/venda_metrics_filter.dart';
 import '../core/financeiro_relatorio_taxas.dart';
 import 'fechamento_firestore_service.dart';
@@ -67,6 +68,9 @@ class FechamentoService {
 
       // fallback: tenta inferir do texto formasPagamento
       if ((d + p + c) == 0) {
+        if (vendaFiadoSemPagamentoExplicito(v)) {
+          continue;
+        }
         final linhas = (v.formasPagamento.isNotEmpty ? v.formasPagamento : '')
             .split('\n')
             .map((l) => l.trim())

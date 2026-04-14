@@ -99,6 +99,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   /// Quando true, a próxima finalização será registrada como venda fiada (conta a receber).
   bool _pendenteFiado = false;
   int _pendenteDiasVencimento = 30;
+  int _pendenteQtdParcelasFiado = 1;
+  int _pendenteIntervaloParcelasDias = 30;
 
   /// produtos: produto, preço, qtd, tamanho, cor, extraValor (técnico), variacaoExtraResumo (exibição)
   List<Map<String, dynamic>> produtosSelecionados = [
@@ -1049,9 +1051,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     if (result.isFiado) {
       _pendenteFiado = true;
       _pendenteDiasVencimento = result.diasVencimento;
+      _pendenteQtdParcelasFiado = result.quantidadeParcelasFiado;
+      _pendenteIntervaloParcelasDias = result.intervaloParcelasDias;
       pagamentos = [];
     } else {
       _pendenteFiado = false;
+      _pendenteQtdParcelasFiado = 1;
+      _pendenteIntervaloParcelasDias = 30;
     }
 
     // Atualiza pagamentos com o que veio do dialog
@@ -1415,6 +1421,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         onErro: onErro,
         isFiado: _pendenteFiado,
         diasVencimentoFiado: _pendenteDiasVencimento,
+        quantidadeParcelasFiado: _pendenteQtdParcelasFiado,
+        intervaloParcelasDias: _pendenteIntervaloParcelasDias,
         vendaParaEditar: vendaParaEditarRef,
       );
       _pendenteFiado = false;
@@ -1464,6 +1472,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     void Function(String message)? onErro,
     bool isFiado = false,
     int diasVencimentoFiado = 30,
+    int quantidadeParcelasFiado = 1,
+    int intervaloParcelasDias = 30,
     Venda? vendaParaEditar,
   }) async {
     try {
@@ -1508,6 +1518,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         onSyncError: onErro,
         isFiado: isFiado,
         dataVencimentoFiado: isFiado ? DateTime.now().add(Duration(days: diasVencimentoFiado)) : null,
+        quantidadeParcelasFiado: quantidadeParcelasFiado,
+        intervaloParcelasDias: intervaloParcelasDias,
         itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
         onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
       );

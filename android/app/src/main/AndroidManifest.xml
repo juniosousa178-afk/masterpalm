@@ -90,6 +90,12 @@
                 <data android:scheme="https" android:host="www.mastepalm.com.br" />
                 <data android:scheme="https" android:host="www.mastepalm.com.br" android:pathPrefix="/c" />
                 <data android:scheme="https" android:host="www.mastepalm.com.br" android:pathPrefix="/pedido" />
+                <data android:scheme="https" android:host="gestao.mastepalm.com.br" />
+                <data android:scheme="https" android:host="gestao.mastepalm.com.br" android:pathPrefix="/c" />
+                <data android:scheme="https" android:host="gestao.mastepalm.com.br" android:pathPrefix="/pedido" />
+                <data android:scheme="https" android:host="www.gestao.mastepalm.com.br" />
+                <data android:scheme="https" android:host="www.gestao.mastepalm.com.br" android:pathPrefix="/c" />
+                <data android:scheme="https" android:host="www.gestao.mastepalm.com.br" android:pathPrefix="/pedido" />
             </intent-filter>
 
             <!-- Esquema customizado -->

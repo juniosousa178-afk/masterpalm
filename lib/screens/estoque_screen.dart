@@ -2285,6 +2285,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         xls.TextCellValue('Código/SKU'),
         xls.TextCellValue('Quantidade'),
         xls.TextCellValue('Preço Unitário'),
+        xls.TextCellValue('preco_custo'),
         xls.TextCellValue('Preço Final'),
         xls.TextCellValue('Publicado'),
       ]);
@@ -2297,6 +2298,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           xls.TextCellValue(p.slug),
           xls.IntCellValue(p.quantidade),
           xls.TextCellValue(p.precoUnitario.toStringAsFixed(2)),
+          xls.TextCellValue(p.custoReal.toStringAsFixed(2)),
           xls.TextCellValue((p.precoFinal > 0 ? p.precoFinal : p.precoUnitario).toStringAsFixed(2)),
           xls.TextCellValue(p.publicadoNoCatalogo ? 'Sim' : 'Não'),
         ]);

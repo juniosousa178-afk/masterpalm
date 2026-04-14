@@ -35,6 +35,15 @@ class ContaReceber extends HiveObject {
   @HiveField(8)
   String? idFirebase;
 
+  @HiveField(9)
+  int parcelaNumero;
+
+  @HiveField(10)
+  int parcelaTotal;
+
+  @HiveField(11)
+  bool lembrete2DiasEnviado;
+
   ContaReceber({
     required this.lojaId,
     required this.clienteNome,
@@ -45,5 +54,8 @@ class ContaReceber extends HiveObject {
     this.observacao = '',
     this.vendaKey = 0,
     this.idFirebase,
+    this.parcelaNumero = 1,
+    this.parcelaTotal = 1,
+    this.lembrete2DiasEnviado = false,
   });
 }

@@ -609,6 +609,11 @@ service cloud.firestore {
         allow read, write: if belongsToStore(lojaId);
       }
 
+      // Compras por fornecedor (espelho Hive ↔ app; CompraFornecedorFirestoreService)
+      match /compras_fornecedor/{compraId} {
+        allow read, write: if belongsToStore(lojaId);
+      }
+
       // Vendas (Nova Venda): inclui combos com itensComboComSelecao
       match /estoque_vendas/{vendaId} {
         allow read, write: if belongsToStore(lojaId) || sellerHasPermission(lojaId, 'vendas');
@@ -642,6 +647,20 @@ service cloud.firestore {
       }
 
       match /gastos_fixos_mensais/{docId} {
+        allow read: if canAccessLojaFinanceiro(lojaId)
+          && resource != null
+          && resource.data.lojaId == lojaId;
+        allow create: if canAccessLojaFinanceiro(lojaId)
+          && request.resource.data.lojaId == lojaId;
+        allow update: if canAccessLojaFinanceiro(lojaId)
+          && request.resource.data.lojaId == lojaId
+          && resource.data.lojaId == lojaId;
+        allow delete: if canAccessLojaFinanceiro(lojaId)
+          && resource.data.lojaId == lojaId;
+      }
+
+      // Controle operacional de compras por fornecedor (conferência; sync app).
+      match /controle_compras_fornecedor/{docId} {
         allow read: if canAccessLojaFinanceiro(lojaId)
           && resource != null
           && resource.data.lojaId == lojaId;
@@ -925,6 +944,15 @@ service cloud.firestore {
     }
     match /catalog_redirect_index/{short} {
       allow read, write: if false;
+    }
+
+    // Catálogo web: host customizado → lojaId (document ID = host normalizado, lowercase).
+    // Apenas get por ID; sem enumeração da coleção.
+    match /catalog_domains/{hostId} {
+      allow get: if !exists(/databases/$(database)/documents/catalog_domains/$(hostId))
+        || (resource.data.status == 'active' && resource.data.verified == true);
+      allow list: if false;
+      allow write: if false;
     }
 
     match /{document=**} {

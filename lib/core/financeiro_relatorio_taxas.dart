@@ -14,6 +14,7 @@ import 'package:hive/hive.dart';
 
 import '../models/venda.dart';
 import 'hive_box_names.dart';
+import 'venda_fiado_caixa.dart';
 
 /// Parâmetros de taxas lidos de `relatorio_financeiro` (draft_config / config).
 class RelatorioTaxasConfig {
@@ -80,6 +81,7 @@ abstract final class FinanceiroRelatorioTaxas {
     }
     final soma = v.pagamentoDinheiro + v.pagamentoPix + v.pagamentoCartao;
     if (soma > 0) return 0;
+    if (vendaFiadoSemPagamentoExplicito(v)) return 0;
     final linhas = (v.formasPagamento.isNotEmpty ? v.formasPagamento : '')
         .split('\n')
         .map((l) => l.trim())

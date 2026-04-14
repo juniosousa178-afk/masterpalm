@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../services/controle_compras_fornecedor_service.dart';
+import '../../services/financeiro_soft_delete_service.dart';
 import '../../utils/moeda_input_formatter.dart';
 
 class ControleComprasFornecedorScreen extends StatefulWidget {
@@ -212,8 +213,37 @@ class _ControleComprasFornecedorScreenState
       ),
     );
     if (conf == true) {
-      await ControleComprasFornecedorService.remover(widget.lojaId, linha.id);
+      final undoId = await FinanceiroSoftDeleteService.scheduleControleCompraDelete(
+        linha: linha,
+        lojaId: widget.lojaId,
+      );
       await _load();
+      if (!mounted) return;
+      if (undoId != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Registro excluído. Desfazer?'),
+            duration: const Duration(seconds: 30),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Desfazer',
+              onPressed: () async {
+                final okUndo = await FinanceiroSoftDeleteService.undo(undoId);
+                await _load();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      okUndo ? 'Registro restaurado.' : 'Não foi possível desfazer.',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -316,10 +346,35 @@ class _ControleComprasFornecedorScreenState
                               color: Colors.red.shade100,
                               child: const Icon(Icons.delete_outline),
                             ),
-                            onDismissed: (_) =>
-                                ControleComprasFornecedorService.remover(
-                                        widget.lojaId, l.id)
-                                    .then((_) => _load()),
+                            onDismissed: (_) async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              final undoId =
+                                  await FinanceiroSoftDeleteService
+                                      .scheduleControleCompraDelete(
+                                linha: l,
+                                lojaId: widget.lojaId,
+                              );
+                              await _load();
+                              if (!mounted || undoId == null) return;
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: const Text(
+                                    'Registro excluído. Desfazer?',
+                                  ),
+                                  duration: const Duration(seconds: 30),
+                                  behavior: SnackBarBehavior.floating,
+                                  action: SnackBarAction(
+                                    label: 'Desfazer',
+                                    onPressed: () async {
+                                      await FinanceiroSoftDeleteService.undo(
+                                        undoId,
+                                      );
+                                      await _load();
+                                    },
+                                  ),
+                                ),
+                              );
+                            },
                             child: ListTile(
                               title: Text(l.fornecedorNome.isEmpty
                                   ? '(sem nome)'

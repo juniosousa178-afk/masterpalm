@@ -19,7 +19,7 @@ class SiteConfig {
   final String? updatedBy;
 
   SiteConfig({
-    this.apkDownloadUrl = 'https://mastepalm.com.br/downloads/masterpalm.apk',
+    this.apkDownloadUrl = 'https://gestao.mastepalm.com.br/downloads/masterpalm.apk',
     this.appWebUrl = AppUrls.appWebBase,
     this.supportWhatsappUrl = 'https://wa.me/55SEUNUMERO',
     this.instagramUrl = 'https://instagram.com/SEUINSTAGRAM',
@@ -61,7 +61,7 @@ class SiteConfig {
     final apkUrl = (m['apkDownloadUrl'] ?? '').toString();
     final useDefaultApk = apkUrl.isEmpty || apkUrl.contains('SEU-LINK-AQUI') || apkUrl.contains('seu-link-aqui');
     return SiteConfig(
-        apkDownloadUrl: useDefaultApk ? 'https://mastepalm.com.br/downloads/masterpalm.apk' : apkUrl,
+        apkDownloadUrl: useDefaultApk ? 'https://gestao.mastepalm.com.br/downloads/masterpalm.apk' : apkUrl,
         appWebUrl: (m['appWebUrl'] ?? AppUrls.appWebBase).toString(),
         supportWhatsappUrl: (m['supportWhatsappUrl'] ?? '').toString(),
         instagramUrl: (m['instagramUrl'] ?? '').toString(),

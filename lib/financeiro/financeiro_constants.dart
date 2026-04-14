@@ -72,6 +72,8 @@ abstract class FinanceiroOrigemLancamento {
   static const String manual = 'manual';
   /// Lançamento criado a partir do cadastro de gastos fixos (sugestão do mês).
   static const String geradoGastoFixo = 'gasto_fixo_gerado';
+  /// Recebimento registrado a partir da tela Contas a receber (fiado / título).
+  static const String contaReceberFiado = 'conta_receber_fiado';
 }
 
 /// Grupo para UI (não persiste no tipo).

@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/hive_box_names.dart';
+import 'controle_compras_fornecedor_firestore_service.dart';
 
 /// Uma linha de compra para controle (totais por fornecedor).
 class LinhaControleCompraFornecedor {
@@ -82,13 +83,55 @@ class ControleComprasFornecedorService {
     try {
       final box = await _box(lojaId);
       final raw = box.get(_kJson);
-      if (raw == null || raw.isEmpty) return [];
-      final list = jsonDecode(raw) as List<dynamic>;
-      return list
-          .map((e) =>
-              LinhaControleCompraFornecedor.fromJson(Map<String, dynamic>.from(e as Map)))
-          .toList()
+      List<LinhaControleCompraFornecedor> local = [];
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw) as List<dynamic>;
+        local = list
+            .map((e) => LinhaControleCompraFornecedor.fromJson(
+                Map<String, dynamic>.from(e as Map)))
+            .toList();
+      }
+
+      final remotoMaps =
+          await ControleComprasFornecedorFirestoreService.listarMaps(lojaId);
+      final remoto = remotoMaps
+          .map((m) => LinhaControleCompraFornecedor.fromJson(m))
+          .toList();
+      if (remoto.isEmpty) {
+        if (local.isNotEmpty) {
+          try {
+            final cfg = Hive.isBoxOpen('config')
+                ? Hive.box('config')
+                : await Hive.openBox('config');
+            final flagKey =
+                'controle_compra_migr_fs_${lojaId.trim()}';
+            if (cfg.get(flagKey) != true) {
+              for (final l in local) {
+                await ControleComprasFornecedorFirestoreService.upsertMap(
+                  lojaId,
+                  l.id,
+                  l.toJson(),
+                );
+              }
+              await cfg.put(flagKey, true);
+            }
+          } catch (_) {}
+        }
+        local.sort((a, b) => b.criadoEm.compareTo(a.criadoEm));
+        return local;
+      }
+
+      final byId = <String, LinhaControleCompraFornecedor>{};
+      for (final l in local) {
+        byId[l.id] = l;
+      }
+      for (final r in remoto) {
+        byId[r.id] = r;
+      }
+      final merged = byId.values.toList()
         ..sort((a, b) => b.criadoEm.compareTo(a.criadoEm));
+      await salvarTodas(lojaId, merged);
+      return merged;
     } catch (e) {
       debugPrint('[CONTROLE_COMPRAS_FORN] carregar (type=${e.runtimeType})');
       return [];
@@ -143,11 +186,63 @@ class ControleComprasFornecedorService {
       ),
     );
     await salvarTodas(lojaId, linhas);
+    final nova = linhas.first;
+    await ControleComprasFornecedorFirestoreService.upsertMap(
+      lojaId,
+      nova.id,
+      nova.toJson(),
+    );
+  }
+
+  /// Remove só do Hive (uso interno: soft delete já apagou a nuvem).
+  static Future<void> removerApenasHive(String lojaId, String id) async {
+    final linhas = await _carregarSomenteHive(lojaId);
+    linhas.removeWhere((e) => e.id == id);
+    await salvarTodas(lojaId, linhas);
+  }
+
+  static Future<List<LinhaControleCompraFornecedor>> _carregarSomenteHive(
+      String lojaId) async {
+    try {
+      final box = await _box(lojaId);
+      final raw = box.get(_kJson);
+      if (raw == null || raw.isEmpty) return [];
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .map((e) => LinhaControleCompraFornecedor.fromJson(
+              Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } catch (e) {
+      debugPrint('[CONTROLE_COMPRAS_FORN] _carregarSomenteHive (type=${e.runtimeType})');
+      return [];
+    }
+  }
+
+  /// Restaura uma linha após desfazer exclusão (Hive + nuvem).
+  static Future<void> reinserirLinha(
+    String lojaId,
+    LinhaControleCompraFornecedor linha,
+  ) async {
+    final linhas = await _carregarSomenteHive(lojaId);
+    if (linhas.any((e) => e.id == linha.id)) {
+      await ControleComprasFornecedorFirestoreService.upsertMap(
+        lojaId,
+        linha.id,
+        linha.toJson(),
+      );
+      return;
+    }
+    linhas.insert(0, linha);
+    await salvarTodas(lojaId, linhas);
+    await ControleComprasFornecedorFirestoreService.upsertMap(
+      lojaId,
+      linha.id,
+      linha.toJson(),
+    );
   }
 
   static Future<void> remover(String lojaId, String id) async {
-    final linhas = await carregar(lojaId);
-    linhas.removeWhere((e) => e.id == id);
-    await salvarTodas(lojaId, linhas);
+    await removerApenasHive(lojaId, id);
+    await ControleComprasFornecedorFirestoreService.deleteLinha(lojaId, id);
   }
 }

@@ -8,7 +8,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "firebase:sha": "cd scripts && npm run sha:firebase",
     "firebase:atualizar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/atualizar-firebase.ps1",
-    "firebase:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/atualizar-firebase.ps1 -DeployFunctions"
+    "firebase:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/atualizar-firebase.ps1 -DeployFunctions",
+    "setup:catalog-domain": "node scripts/setup_catalog_domain.js"
   },
   "keywords": [],
   "author": "",

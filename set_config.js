@@ -13,7 +13,7 @@ async function main() {
   const data = {
     slug: slug,
     name: 'Master Palm Store',
-    pedido_link_base: 'https://mastepalm.com.br/pedido',
+    pedido_link_base: 'https://gestao.mastepalm.com.br/pedido',
     whatsapp: '5533999998888',
     whatsapp_vendedor: '5533999998888',
     colors: {
@@ -35,9 +35,9 @@ async function main() {
     links: {
       instagram: 'https://instagram.com/masterpalm',
       facebook: 'https://facebook.com/masterpalm',
-      sobre: 'https://mastepalm.com.br/sobre',
-      trocas: 'https://mastepalm.com.br/trocas',
-      login: 'https://mastepalm.com.br/login'
+      sobre: 'https://gestao.mastepalm.com.br/sobre',
+      trocas: 'https://gestao.mastepalm.com.br/trocas',
+      login: 'https://gestao.mastepalm.com.br/login'
     },
     empresa: {
       razao: 'Master Palm LTDA',

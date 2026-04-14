@@ -26,6 +26,8 @@ const MASTERPALM_APP_WEB_ORIGINS = [
   "https://app.masterpalm.com.br",
   "https://mastepalm.com.br",
   "https://www.mastepalm.com.br",
+  "https://gestao.mastepalm.com.br",
+  "https://www.gestao.mastepalm.com.br",
   "https://masterpalm.com.br",
   "https://www.masterpalm.com.br",
   "https://masterpalm-58c46.web.app",

@@ -30,6 +30,89 @@ class VendasService {
   // ---------------------------
 
   static String _fmt2(double v) => v.toStringAsFixed(2);
+  static List<double> _parcelarValores(double total, int parcelas) {
+    final qtd = parcelas.clamp(1, 48);
+    final totalCentavos = (total * 100).round();
+    final base = totalCentavos ~/ qtd;
+    final resto = totalCentavos % qtd;
+    return List<double>.generate(
+      qtd,
+      (i) => (base + (i < resto ? 1 : 0)) / 100.0,
+    );
+  }
+
+  /// Remove contas a receber criadas para esta venda (mesmo [vendaKey] Hive).
+  static Future<void> removerContasReceberVinculadasAVenda({
+    required String lojaId,
+    required int vendaKey,
+  }) async {
+    if (vendaKey <= 0) return;
+    final loja = lojaId.trim();
+    if (loja.isEmpty) return;
+    try {
+      final crBoxName = HiveBoxNames.contasReceber(loja);
+      final crBox = Hive.isBoxOpen(crBoxName)
+          ? Hive.box<ContaReceber>(crBoxName)
+          : await Hive.openBox<ContaReceber>(crBoxName);
+      final keysToDelete = <dynamic>[];
+      for (final k in crBox.keys) {
+        final c = crBox.get(k);
+        if (c != null && c.lojaId == loja && c.vendaKey == vendaKey) {
+          keysToDelete.add(k);
+        }
+      }
+      for (final k in keysToDelete) {
+        await crBox.delete(k);
+      }
+    } catch (e) {
+      debugPrint(
+        '[VENDAS-SERVICE] removerContasReceberVinculadasAVenda: $e',
+      );
+    }
+  }
+
+  /// Após desfazer exclusão de venda fiada: recria 1 título com o total (parcelas múltiplas viram um resumo).
+  static Future<void> recriarContaReceberFiadoAposUndoSeAplicavel({
+    required Venda venda,
+    required String lojaId,
+  }) async {
+    final loja = lojaId.trim();
+    if (loja.isEmpty) return;
+    if (!venda.formasPagamento.toLowerCase().contains('fiado')) return;
+    final vk = venda.key is int ? venda.key as int : 0;
+    if (vk <= 0) return;
+    final match = RegExp(
+      r'Vencimento:\s*(\d{2})/(\d{2})/(\d{4})',
+      caseSensitive: false,
+    ).firstMatch(venda.formasPagamento);
+    late DateTime venc;
+    if (match != null) {
+      venc = DateTime(
+        int.parse(match.group(3)!),
+        int.parse(match.group(2)!),
+        int.parse(match.group(1)!),
+      );
+    } else {
+      venc = DateTime.now().add(const Duration(days: 30));
+    }
+    final crBoxName = HiveBoxNames.contasReceber(loja);
+    final crBox = Hive.isBoxOpen(crBoxName)
+        ? Hive.box<ContaReceber>(crBoxName)
+        : await Hive.openBox<ContaReceber>(crBoxName);
+    await crBox.add(
+      ContaReceber(
+        lojaId: loja,
+        clienteNome: venda.clienteNome,
+        valor: venda.total,
+        dataVencimento: venc,
+        dataVenda: venda.data,
+        vendaKey: vk,
+        observacao: venda.observacao.trim().isEmpty
+            ? 'Venda fiada'
+            : venda.observacao.trim(),
+      ),
+    );
+  }
 
   /// Procura o produto no estoque por productId (preferencial), slug ou nome.
   /// Ordem: 1) productId/idFirebase, 2) slug, 3) nome.
@@ -237,6 +320,8 @@ class VendasService {
     void Function(String message)? onSyncError, // 🔹 feedback ao usuário quando sync Firestore falhar
     bool isFiado = false, // 🔹 venda fiada: gera conta a receber
     DateTime? dataVencimentoFiado, // 🔹 vencimento da conta (quando isFiado)
+    int quantidadeParcelasFiado = 1, // 🔹 número de parcelas do fiado
+    int intervaloParcelasDias = 30, // 🔹 intervalo em dias entre parcelas
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
     void Function(String? numeroSorte)? onNumeroSorteGerado,
   }) async {
@@ -360,6 +445,12 @@ class VendasService {
     if (!isFiado && dinheiro == 0 && pix == 0 && cartao == 0) {
       dinheiro = total;
     }
+    // Fiado: não compõe dinheiro/pix/cartão na venda até o recebimento em contas a receber.
+    if (isFiado) {
+      dinheiro = 0;
+      pix = 0;
+      cartao = 0;
+    }
 
     // 7) textos
     final linhas = itens.map((it) {
@@ -429,16 +520,26 @@ class VendasService {
       try {
         final crBoxName = HiveBoxNames.contasReceber(lojaEfetiva);
         final crBox = Hive.isBoxOpen(crBoxName) ? Hive.box<ContaReceber>(crBoxName) : await Hive.openBox<ContaReceber>(crBoxName);
-        final conta = ContaReceber(
-          lojaId: lojaEfetiva,
-          clienteNome: cliente.nome,
-          valor: total,
-          dataVencimento: dataVencimentoFiado,
-          dataVenda: venda.data,
-          vendaKey: venda.key is int ? venda.key as int : 0,
-          observacao: observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim(),
-        );
-        await crBox.add(conta);
+        final qtdParcelas = quantidadeParcelasFiado.clamp(1, 48);
+        final intervalo = intervaloParcelasDias.clamp(1, 120);
+        final valoresParcelas = _parcelarValores(total, qtdParcelas);
+        for (var i = 0; i < qtdParcelas; i++) {
+          final venc = dataVencimentoFiado.add(Duration(days: i * intervalo));
+          final conta = ContaReceber(
+            lojaId: lojaEfetiva,
+            clienteNome: cliente.nome,
+            valor: valoresParcelas[i],
+            dataVencimento: venc,
+            dataVenda: venda.data,
+            vendaKey: venda.key is int ? venda.key as int : 0,
+            observacao: qtdParcelas > 1
+                ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
+                : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
+            parcelaNumero: i + 1,
+            parcelaTotal: qtdParcelas,
+          );
+          await crBox.add(conta);
+        }
       } catch (e) {
         debugPrint('⚠️ [VENDAS-SERVICE] Erro ao criar conta a receber (type=${e.runtimeType})');
         onSyncError?.call('Erro ao criar conta a receber. A venda fiada não foi registrada. Tente novamente.');
@@ -672,6 +773,14 @@ class VendasService {
       resultadosPrincipais: devolucaoResults,
       resultadosComboExtra: pisoResults,
     );
+
+    final vendaHiveKey = venda.key is int ? venda.key as int : 0;
+    if (vendaHiveKey > 0) {
+      await removerContasReceberVinculadasAVenda(
+        lojaId: lojaId,
+        vendaKey: vendaHiveKey,
+      );
+    }
 
     // remove do histórico (apenas se cliente existir na box - evita erro em vendas catálogo sem cliente)
     final Cliente? cliente = clientesBox.values.firstWhereOrNull(

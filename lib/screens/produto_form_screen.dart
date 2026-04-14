@@ -466,6 +466,16 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         _tipoEmbalagem = _embalagensDisponiveis.first['id'].toString();
       }
 
+      if (widget.produto == null && mounted) {
+        final args = ModalRoute.of(context)?.settings.arguments;
+        if (args is Map) {
+          final f = (args['prefillFornecedor'] ?? '').toString().trim();
+          if (f.isNotEmpty && _fornecedor.text.trim().isEmpty) {
+            _fornecedor.text = f;
+          }
+        }
+      }
+
       final pipeId = widget.compraPipelineDocId?.trim() ?? '';
       if (pipeId.isNotEmpty) {
         final pBox = await CompraItemPipelineStore.openBox(id);
@@ -1294,6 +1304,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
     setState(() => _salvando = true);
 
+    late final Produto produtoSalvoParaRetorno;
+
     try {
       final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
       final custo = MoedaInputFormatter.parse(_custo.text);
@@ -1446,6 +1458,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             lojaId: lojaId!,
           );
           await _vincularCompraPipelineAposSalvar(existente);
+          produtoSalvoParaRetorno = existente;
         } else {
           // 🔒 Limite free_limited: verifica antes de inserir
           final guard = LimitsGuard();
@@ -1518,6 +1531,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
           await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
           await _vincularCompraPipelineAposSalvar(novo);
+          produtoSalvoParaRetorno = novo;
         }
       } else {
         // EDITAR PRODUTO
@@ -1583,6 +1597,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           lojaId: lojaId!,
         );
         await _vincularCompraPipelineAposSalvar(p);
+        produtoSalvoParaRetorno = p;
       }
 
       if (!mounted) return;
@@ -1597,7 +1612,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ),
       );
 
-      Navigator.pop(context, true);
+      Navigator.pop(context, produtoSalvoParaRetorno);
     } on TimeoutException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

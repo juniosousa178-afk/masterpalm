@@ -65,6 +65,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   /// Desconto do combo (sincronizado no Firestore após save)
   double _descontoComboValor = 0;
   double _descontoComboPercentual = 0;
+  /// true após "Aplicar" no diálogo — permite gravar 0,0 ao remover desconto; se false e ambos 0, não sobrescreve o Firestore (preserva após sync).
+  bool _descontoComboUsuarioAplicouDialog = false;
   bool _sugerindoDescricao = false;
   bool _sugerindoPreco = false;
 
@@ -153,20 +155,23 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     if (_itensCombo.isEmpty) {
       _itensCombo.add({'nome': '', 'slug': '', 'quantidade': '1', 'tamanho': '', 'cor': ''});
     }
-    // Carregar desconto do combo do Firestore (draft) se editando
+    // Carregar desconto do combo (mesmo docId do catálogo: idFirebase > slug > slugify(nome))
     if (widget.combo != null && lojaId != null) {
       try {
-        final slug = widget.combo!.slug.trim().isNotEmpty
-            ? widget.combo!.slug.trim()
-            : _gerarSlug(widget.combo!.nome);
-        final doc = await FirebaseFirestore.instance
-            .collection('lojas')
-            .doc(lojaId)
-            .collection('draft_produtos')
-            .doc(slug)
-            .get();
-        if (doc.exists && doc.data() != null) {
-          final d = doc.data()!;
+        final docId = CatalogoSyncService.catalogFirestoreDocId(widget.combo!);
+        Future<Map<String, dynamic>?> fetchDesconto(String collection) async {
+          final snap = await FirebaseFirestore.instance
+              .collection('lojas')
+              .doc(lojaId)
+              .collection(collection)
+              .doc(docId)
+              .get();
+          return snap.exists ? snap.data() : null;
+        }
+
+        Map<String, dynamic>? d = await fetchDesconto('draft_produtos');
+        d ??= await fetchDesconto('produtos');
+        if (d != null) {
           if (d['descontoComboValor'] is num) {
             _descontoComboValor = (d['descontoComboValor'] as num).toDouble();
           }
@@ -286,6 +291,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     final valor = MoedaInputFormatter.parse(valorCtrl.text);
     final perc = double.tryParse(percCtrl.text.replaceAll(',', '.').trim()) ?? 0;
     setState(() {
+      _descontoComboUsuarioAplicouDialog = true;
       _descontoComboValor = valor > 0 ? valor : 0;
       _descontoComboPercentual = perc > 0 ? perc.clamp(0.0, 100.0) : 0;
       _atualizarPrecoAutomatico();
@@ -318,8 +324,12 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     _preco.text = MoedaInputFormatter.format(valor);
   }
 
-  Future<void> _persistirDescontoFirestore(String lojaId, String slug) async {
-    if (_descontoComboValor <= 0 && _descontoComboPercentual <= 0) return;
+  Future<void> _persistirDescontoFirestore(String lojaId, String docIdCatalogo) async {
+    final semDescontoUi =
+        _descontoComboValor <= 0 && _descontoComboPercentual <= 0;
+    if (!_descontoComboUsuarioAplicouDialog && semDescontoUi) {
+      return;
+    }
     try {
       final data = {
         'descontoComboValor': _descontoComboValor,
@@ -327,8 +337,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
       };
       final base = FirebaseFirestore.instance.collection('lojas').doc(lojaId);
-      await base.collection('draft_produtos').doc(slug).set(data, SetOptions(merge: true));
-      await base.collection('produtos').doc(slug).set(data, SetOptions(merge: true));
+      await base.collection('draft_produtos').doc(docIdCatalogo).set(data, SetOptions(merge: true));
+      await base.collection('produtos').doc(docIdCatalogo).set(data, SetOptions(merge: true));
     } catch (_) {}
   }
 
@@ -626,8 +636,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       await CatalogoSyncService.upsertFromProduto(combo, target: SyncTarget.draft);
       await CatalogoSyncService.upsertFromProduto(combo, target: SyncTarget.live);
       await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
-      final slugCombo = combo.slug.trim().isNotEmpty ? combo.slug.trim() : _gerarSlug(combo.nome);
-      await _persistirDescontoFirestore(lojaId!, slugCombo);
+      final docIdCatalogo = CatalogoSyncService.catalogFirestoreDocId(combo);
+      await _persistirDescontoFirestore(lojaId!, docIdCatalogo);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

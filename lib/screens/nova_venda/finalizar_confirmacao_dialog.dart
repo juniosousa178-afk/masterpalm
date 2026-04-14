@@ -11,12 +11,16 @@ class FinalizarVendaResult {
   final double trocoTotal;
   final bool isFiado;
   final int diasVencimento;
+  final int quantidadeParcelasFiado;
+  final int intervaloParcelasDias;
 
   FinalizarVendaResult({
     required this.pagamentos,
     required this.trocoTotal,
     this.isFiado = false,
     this.diasVencimento = 30,
+    this.quantidadeParcelasFiado = 1,
+    this.intervaloParcelasDias = 30,
   });
 }
 
@@ -106,6 +110,9 @@ class _FinalizarVendaConfirmacaoDialogState
   final List<TextEditingController> _valorRecebidoControllers = [];
   bool _vendaFiada = false;
   final TextEditingController _diasVencimentoController = TextEditingController(text: '30');
+  final TextEditingController _quantidadeParcelasController = TextEditingController(text: '1');
+  final TextEditingController _intervaloParcelasController = TextEditingController(text: '30');
+  bool _fiadoParcelado = false;
 
   @override
   void initState() {
@@ -155,6 +162,8 @@ class _FinalizarVendaConfirmacaoDialogState
   @override
   void dispose() {
     _diasVencimentoController.dispose();
+    _quantidadeParcelasController.dispose();
+    _intervaloParcelasController.dispose();
     for (final c in _valorControllers) {
       c.dispose();
     }
@@ -228,11 +237,19 @@ class _FinalizarVendaConfirmacaoDialogState
 
     if (_vendaFiada) {
       final dias = int.tryParse(_diasVencimentoController.text.trim()) ?? 30;
+      final qtdParcelas = _fiadoParcelado
+          ? (int.tryParse(_quantidadeParcelasController.text.trim()) ?? 1).clamp(1, 48)
+          : 1;
+      final intervaloDias = _fiadoParcelado
+          ? (int.tryParse(_intervaloParcelasController.text.trim()) ?? 30).clamp(1, 120)
+          : 30;
       widget.onConfirmar(FinalizarVendaResult(
         pagamentos: [],
         trocoTotal: 0,
         isFiado: true,
         diasVencimento: dias.clamp(1, 365),
+        quantidadeParcelasFiado: qtdParcelas,
+        intervaloParcelasDias: intervaloDias,
       ));
       return;
     }
@@ -254,6 +271,27 @@ class _FinalizarVendaConfirmacaoDialogState
   }
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  List<Map<String, dynamic>> _calcularPreviewParcelas() {
+    final qtd = (int.tryParse(_quantidadeParcelasController.text.trim()) ?? 1).clamp(1, 48);
+    final intervalo = (int.tryParse(_intervaloParcelasController.text.trim()) ?? 30).clamp(1, 120);
+    final primeiroVenc = (int.tryParse(_diasVencimentoController.text.trim()) ?? 30).clamp(1, 365);
+    final totalCentavos = (widget.total * 100).round();
+    final valorBase = totalCentavos ~/ qtd;
+    final resto = totalCentavos % qtd;
+    final hoje = DateTime.now();
+    final out = <Map<String, dynamic>>[];
+    for (var i = 0; i < qtd; i++) {
+      final cents = valorBase + (i < resto ? 1 : 0);
+      final data = hoje.add(Duration(days: primeiroVenc + (i * intervalo)));
+      out.add({
+        'indice': i + 1,
+        'valor': cents / 100.0,
+        'data': data,
+      });
+    }
+    return out;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -387,14 +425,77 @@ class _FinalizarVendaConfirmacaoDialogState
               subtitle: _vendaFiada
                   ? Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: TextField(
-                        controller: _diasVencimentoController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Vencimento em (dias)',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _diasVencimentoController,
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setState(() {}),
+                            decoration: const InputDecoration(
+                              labelText: '1º vencimento em (dias)',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            value: _fiadoParcelado,
+                            onChanged: (v) => setState(() => _fiadoParcelado = v),
+                            title: const Text('Dividir em parcelas'),
+                          ),
+                          if (_fiadoParcelado) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _quantidadeParcelasController,
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (_) => setState(() {}),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Parcelas',
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _intervaloParcelasController,
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (_) => setState(() {}),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Intervalo (dias)',
+                                      border: OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                border: Border.all(color: Colors.blue.shade100),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: _calcularPreviewParcelas().take(6).map((p) {
+                                  final data = p['data'] as DateTime;
+                                  return Text(
+                                    '${p['indice']}ª: R\$ ${_fmt2(p['valor'] as num)} - ${data.day.toString().padLeft(2, '0')}/${data.month.toString().padLeft(2, '0')}/${data.year}',
+                                    style: const TextStyle(fontSize: 12),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     )
                   : null,

@@ -62,6 +62,7 @@ import 'screens/relatorio_vendedor_screen.dart';
 import 'screens/cadastro_screen.dart';
 import 'screens/permissoes_screen.dart';
 import 'screens/app_start_router.dart';
+import 'screens/web_public_marketing_app.dart';
 import 'screens/plano_screen.dart';
 import 'screens/config_pin_screen.dart';
 // import 'screens/cadastro_usuario_screen.dart'; // Substituído por vendedores_screen.dart
@@ -72,6 +73,7 @@ import 'screens/relatorio_financeiro_screen.dart';
 import 'screens/relatorios_financeiros_screen.dart';
 import 'screens/public_catalog_screen.dart';
 import 'screens/public_catalog/catalog_url_query_codec.dart';
+import 'services/catalog_domain_resolver.dart';
 import 'screens/loja_config_screen.dart';
 import 'screens/configure_loja_placeholder_screen.dart';
 import 'screens/onboarding_loja_screen.dart';
@@ -141,6 +143,7 @@ import 'services/notificacao_service.dart';
 import 'services/auto_sync_service.dart';
 import 'services/sync_queue_service.dart';
 import 'services/soft_delete_service.dart';
+import 'services/financeiro_soft_delete_service.dart';
 
 // ✅ DEBUG + LOJA
 import 'services/loja_id_service.dart';
@@ -600,6 +603,17 @@ Future<void> _fixPedidoLinkBase() async {
     return t;
   }
 
+  /// mastepalm.com.br (apex) → gestao.mastepalm.com.br; não altera app.* nem subdomínios.
+  String migratePublicSiteApex(String s) {
+    var t = s.trim();
+    if (t.isEmpty) return t;
+    final re = RegExp(r'^https?://(www\.)?mastepalm\.com\.br(?=/|$)', caseSensitive: false);
+    if (re.hasMatch(t) && !t.toLowerCase().contains('app.mastepalm')) {
+      t = t.replaceFirst(re, AppUrls.landingBase);
+    }
+    return t;
+  }
+
   final atual = _safeString(cfg.get('pedido_link_base'));
   final novo = atual.isEmpty
       ? '${AppUrls.appWebBase}/pedido'
@@ -610,7 +624,10 @@ Future<void> _fixPedidoLinkBase() async {
   if (pub.isNotEmpty &&
       pub.contains('mastepalm.com.br') &&
       !pub.contains('app.')) {
-    await cfg.put('public_link_base_url', migrateAppWebHosts(pub));
+    final migrated = migratePublicSiteApex(migrateAppWebHosts(pub));
+    if (migrated != pub) {
+      await cfg.put('public_link_base_url', migrated);
+    }
   }
 }
 
@@ -707,6 +724,7 @@ Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
 
     try {
       await SoftDeleteService.processOnStartup();
+      await FinanceiroSoftDeleteService.processOnStartup();
       logD('🟢 [BOOT_DEFERRED] SoftDeleteService.processOnStartup OK');
     } catch (e) {
       logW('⚠️ [BOOT_DEFERRED] SoftDelete (type=${e.runtimeType})');
@@ -1071,6 +1089,47 @@ bool _isPublicCatalogUrl() {
   final frag = uri.fragment.trim();
   if (frag.contains('loja/') || frag.startsWith('/loja/')) return true;
   return false;
+}
+
+/// Path `/loja/...` tem prioridade sobre resolução por host customizado.
+bool _uriHasLojaPathPriority(Uri uri) {
+  final path = uri.path;
+  if (path.startsWith('/loja/') || path.contains('/loja/')) return true;
+  if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'loja') {
+    return true;
+  }
+  return false;
+}
+
+/// Query / fragment explícitos de catálogo (legado) — prioridade sobre host mapeado.
+bool _uriHasExplicitCatalogQueryOrFragment(Uri uri) {
+  if (uri.queryParameters.containsKey('loja') ||
+      uri.queryParameters.containsKey('slug') ||
+      uri.queryParameters.containsKey('store_id')) {
+    return true;
+  }
+  final frag = uri.fragment.trim();
+  return frag.contains('loja/') || frag.startsWith('/loja/');
+}
+
+/// Retorno/checkout Mercado Pago no app web (`/pagamento/sucesso`, etc.) — não é catálogo root.
+bool _uriIsPagamentoPublicPath(Uri uri) {
+  final p = uri.path;
+  return p.startsWith('/pagamento') || p.contains('/pagamento/');
+}
+
+/// Site institucional (gestao / mastepalm apex): raiz sem admin; catálogo e fluxos MP ficam no build completo.
+bool _isPublicMarketingSite() {
+  if (!kIsWeb) return false;
+  if (_isPublicCatalogUrl()) return false;
+  final uri = _initialWebUri ?? Uri.base;
+  if (!AppUrls.isPublicMarketingHost(uri.host)) return false;
+  final p = uri.path;
+  if (p.startsWith('/pedido') || p.startsWith('/pagamento')) return false;
+  if (p.startsWith('/c/')) return false;
+  final atRoot = p.isEmpty || p == '/';
+  if (!atRoot) return false;
+  return true;
 }
 
 /// Extrai slug da URL a partir do fragment (#/loja/xxx).
@@ -1465,6 +1524,14 @@ Future<void> main() async {
           _initialWebUri = Uri.base;
           logD('🌐 [MAIN] URL para catálogo (atual): ${_initialWebUri?.path}');
         }
+        final uriWeb = _initialWebUri ?? Uri.base;
+        if (_uriIsPagamentoPublicPath(uriWeb)) {
+          logD(
+              '🌐 [MAIN] Path /pagamento/* → MyApp (fluxo MP; não CatalogWebRoot)');
+          runApp(const MyApp());
+          registerWebPopStateLogger();
+          return;
+        }
         final isCat = _isPublicCatalogUrl();
         logD('🌐 [MAIN] _isPublicCatalogUrl() → $isCat');
 
@@ -1487,6 +1554,44 @@ Future<void> main() async {
             indicacaoRef: indicacaoRef,
             produtoRef: produtoRef,
           ));
+        } else if (!_uriHasLojaPathPriority(uriWeb) &&
+            !_uriHasExplicitCatalogQueryOrFragment(uriWeb) &&
+            Firebase.apps.isNotEmpty) {
+          final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
+          final fromMappedHost =
+              await resolveLojaIdFromCatalogDomainMap(hostNorm);
+          if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
+            String lojaIdResolvido = fromMappedHost;
+            try {
+              lojaIdResolvido =
+                  await _resolveSlugToStoreIdIfNeeded(fromMappedHost);
+            } catch (e) {
+              logW(
+                  '⚠️ [MAIN] Resolver lojaId (domínio mapeado) falhou (type=${e.runtimeType})');
+            }
+            final vendedorRef = _vendedorRefFromUrl();
+            final indicacaoRef = _indicacaoRefFromUrl();
+            final produtoRef = _produtoRefFromUrl();
+            logD(
+                '🌐 [MAIN] Public Catalog via catalog_domains host=$hostNorm → $lojaIdResolvido');
+            runApp(CatalogWebRoot(
+              lojaId: lojaIdResolvido,
+              vendedorRef: vendedorRef,
+              indicacaoRef: indicacaoRef,
+              produtoRef: produtoRef,
+            ));
+          } else if (_isPublicMarketingSite()) {
+            logD(
+                '🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
+            runApp(const PublicMarketingWebApp());
+          } else {
+            logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
+            runApp(const MyApp());
+            registerWebPopStateLogger();
+          }
+        } else if (_isPublicMarketingSite()) {
+          logD('🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
+          runApp(const PublicMarketingWebApp());
         } else {
           logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
           runApp(const MyApp());
@@ -1832,6 +1937,7 @@ Future<void> _bootstrapDeferred({required bool firebaseOk}) async {
       logW('⚠️ [BOOT] Erro ao iniciar auto-sync deferred (type=${e.runtimeType})');
     }
     await SoftDeleteService.processOnStartup();
+    await FinanceiroSoftDeleteService.processOnStartup();
     logD('🟢 [BOOT] _bootstrapDeferred() concluído');
   } catch (e, st) {
     logW('⚠️ [BOOT] _bootstrapDeferred falhou (type=${e.runtimeType})');

@@ -106,6 +106,8 @@ const nowTs = FieldValue.serverTimestamp();
 const MP_PUBLIC_KEY = process.env.MP_PUBLIC_KEY || null; // opcional (front)
 const WEBHOOK_URL = process.env.WEBHOOK_URL || ""; // opcional (fallback)
 const ROOT_DOMAIN = process.env.ROOT_DOMAIN || "mastepalm.com.br";
+/** Site público / hosting (OAuth, return URLs). Subdomínios de loja continuam em [ROOT_DOMAIN]. */
+const PUBLIC_SITE_ORIGIN = process.env.PUBLIC_SITE_ORIGIN || "https://gestao.mastepalm.com.br";
 const HOSTING_SITE_ID = process.env.HOSTING_SITE_ID || "";
 const PROJECT_ID = process.env.PROJECT_ID || "";
 const COLLECTION_LOJAS = process.env.COLLECTION_LOJAS || "lojas";
@@ -452,7 +454,7 @@ export const mpOAuthInit = onRequest(
     }
 
     // URL no domínio próprio (preferida pelo MP) ou fallback Cloud Functions
-    const callbackUrl = `https://mastepalm.com.br/mp-oauth-callback`;
+    const callbackUrl = `${PUBLIC_SITE_ORIGIN}/mp-oauth-callback`;
     const state = Buffer.from(JSON.stringify({ lojaId, t: Date.now() })).toString("base64url");
 
     const params = new URLSearchParams({
@@ -483,7 +485,7 @@ export const mpOAuthCallback = onRequest(
       console.error("[mpOAuthCallback] MP retornou erro:", errorParam, req.query.error_description);
       res.redirect(
         302,
-        `https://mastepalm.com.br/loja?mp_oauth=error&msg=${encodeURIComponent(String(req.query.error_description || errorParam))}`
+        `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=error&msg=${encodeURIComponent(String(req.query.error_description || errorParam))}`
       );
       return;
     }
@@ -519,7 +521,7 @@ export const mpOAuthCallback = onRequest(
     }
 
     // URL no domínio próprio (preferida pelo MP) ou fallback Cloud Functions
-    const callbackUrl = `https://mastepalm.com.br/mp-oauth-callback`;
+    const callbackUrl = `${PUBLIC_SITE_ORIGIN}/mp-oauth-callback`;
 
     try {
       const tokenResp = await fetch(MP_TOKEN_URL, {
@@ -542,7 +544,7 @@ export const mpOAuthCallback = onRequest(
         const msg = tokenData.message || tokenData.error_description || "Falha ao obter token";
         res.redirect(
           302,
-          `https://mastepalm.com.br/loja?mp_oauth=error&msg=${encodeURIComponent(String(msg))}`
+          `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=error&msg=${encodeURIComponent(String(msg))}`
         );
         return;
       }
@@ -554,7 +556,7 @@ export const mpOAuthCallback = onRequest(
 
       if (!accessToken) {
         console.error("[mpOAuthCallback] access_token não retornado");
-        res.redirect(302, "https://mastepalm.com.br/loja?mp_oauth=error&msg=Token+nao+retornado");
+        res.redirect(302, `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=error&msg=Token+nao+retornado`);
         return;
       }
 
@@ -598,13 +600,13 @@ export const mpOAuthCallback = onRequest(
 
       res.redirect(
         302,
-        `https://mastepalm.com.br/loja?mp_oauth=ok&loja=${encodeURIComponent(lojaId)}`
+        `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=ok&loja=${encodeURIComponent(lojaId)}`
       );
     } catch (e) {
       console.error("[mpOAuthCallback] Erro:", e);
       res.redirect(
         302,
-        `https://mastepalm.com.br/loja?mp_oauth=error&msg=${encodeURIComponent(e.message || "Erro")}`
+        `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=error&msg=${encodeURIComponent(e.message || "Erro")}`
       );
     }
   }
@@ -1151,7 +1153,7 @@ export const createPreference = onRequest(
 
         if (!MP_TOKEN) return res.status(500).send("MP token not configured");
 
-        const WEB_BASE = S_WEB_BASE_URL.value() || process.env.WEB_BASE_URL || "https://mastepalm.com.br";
+        const WEB_BASE = S_WEB_BASE_URL.value() || process.env.WEB_BASE_URL || PUBLIC_SITE_ORIGIN;
 
         const back = returnUrl || `${WEB_BASE}/pedido/${orderId}`;
         const notif =
@@ -2277,7 +2279,7 @@ export const createPlanSubscription = onCall(
       const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
       if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
       const webBase =
-        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || `https://${ROOT_DOMAIN}`;
+        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || PUBLIC_SITE_ORIGIN;
       const prices = {
         PRICE_BASIC_MONTHLY,
         PRICE_INTERMEDIATE_MONTHLY,

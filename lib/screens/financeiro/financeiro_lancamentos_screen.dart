@@ -9,6 +9,7 @@ import '../../financeiro/financeiro_constants.dart';
 import '../../models/lancamento_financeiro.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
+import '../../services/financeiro_soft_delete_service.dart';
 import '../../utils/moeda_input_formatter.dart';
 
 class FinanceiroLancamentosScreen extends StatefulWidget {
@@ -130,41 +131,38 @@ class _FinanceiroLancamentosScreenState
       ),
     );
     if (ok == true && _box != null) {
-      final id = l.id;
       final lojaId = widget.lojaId;
-      await _box!.delete(id);
-      final remotoOk =
-          await FinanceiroFirestoreService.deleteLancamento(lojaId: lojaId, id: id);
-      if (mounted) {
-        if (!remotoOk) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'Removido neste aparelho. A exclusão na nuvem pode não ter concluído.',
-              ),
-              action: SnackBarAction(
-                label: 'Tentar de novo',
-                onPressed: () async {
-                  final ok2 = await FinanceiroFirestoreService.deleteLancamento(
-                    lojaId: lojaId,
-                    id: id,
-                  );
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          ok2
-                              ? 'Exclusão na nuvem concluída.'
-                              : 'Ainda sem confirmação da nuvem. Verifique a conexão.',
-                        ),
+      final undoId = await FinanceiroSoftDeleteService.scheduleLancamentoDelete(
+        l: l,
+        box: _box!,
+        lojaId: lojaId,
+      );
+      if (!mounted) return;
+      setState(() {});
+      if (undoId != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Lançamento excluído. Desfazer?'),
+            duration: const Duration(seconds: 30),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Desfazer',
+              onPressed: () async {
+                final okUndo = await FinanceiroSoftDeleteService.undo(undoId);
+                if (!mounted) return;
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      okUndo ? 'Lançamento restaurado.' : 'Não foi possível desfazer.',
                     ),
-                  );
-                },
-              ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
             ),
-          );
-        }
-        setState(() {});
+          ),
+        );
       }
     }
   }

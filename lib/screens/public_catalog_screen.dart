@@ -3285,6 +3285,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 // Na WEB: usar Cloud Function (evita CORS ao chamar api.mercadopago.com)
                 if (kIsWeb) {
                   try {
+                    final paymentOrigin = Uri.base.origin;
                     final body = <String, dynamic>{
                       'lojaId': lojaId,
                       'type': isPix ? 'pix' : 'preference',
@@ -3311,11 +3312,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           },
                         'backUrls': {
                           'success':
-                              'https://app.mastepalm.com.br/pagamento/sucesso?loja=$lojaId',
+                              '$paymentOrigin/pagamento/sucesso?loja=$lojaId',
                           'failure':
-                              'https://app.mastepalm.com.br/pagamento/falha?loja=$lojaId',
+                              '$paymentOrigin/pagamento/falha?loja=$lojaId',
                           'pending':
-                              'https://app.mastepalm.com.br/pagamento/pendente?loja=$lojaId',
+                              '$paymentOrigin/pagamento/pendente?loja=$lojaId',
                         },
                       },
                     };

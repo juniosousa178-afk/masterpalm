@@ -1,5 +1,6 @@
 // Sincronização opcional da compra local com Firestore (espelho). Não cria financeiro.
 
+import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:flutter/foundation.dart';
 
 import '../models/compra_fornecedor.dart';
@@ -34,6 +35,11 @@ class CompraFornecedorSyncService {
       debugPrint(
         '❌ [COMPRA-SYNC] Falha sync compra ${compra.id} (type=${e.runtimeType})',
       );
+      if (e is FirebaseException) {
+        debugPrint(
+          '   [COMPRA-SYNC] Firebase code=${e.code} message=${e.message}',
+        );
+      }
       debugPrint('$st');
       return false;
     }

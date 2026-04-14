@@ -19,6 +19,7 @@ import '../models/produto.dart';
 import '../models/venda.dart';
 import 'produto_exclusao_remota_service.dart';
 import 'clientes_firestore_service.dart';
+import 'vendas_firestore_service.dart';
 import 'vendas_service.dart';
 
 const _undoWindow = Duration(seconds: 30);
@@ -192,6 +193,22 @@ class SoftDeleteService {
     final key = venda.key as int?;
     if (key == null) return null;
 
+    await VendasService.removerContasReceberVinculadasAVenda(
+      lojaId: lojaId,
+      vendaKey: key,
+    );
+
+    final idFb = (venda.idFirebase ?? '').trim();
+    if (idFb.isNotEmpty) {
+      try {
+        await VendasFirestoreService.deleteVenda(idFb, lojaId: lojaId);
+      } catch (e) {
+        logW(
+          '[SOFT-DELETE] Falha ao remover venda do Firestore ao excluir (type=${e.runtimeType})',
+        );
+      }
+    }
+
     final trashBox = await _trashVendasBox();
     venda.lojaId = lojaId;
     await vendasBox.delete(key);
@@ -206,7 +223,7 @@ class SoftDeleteService {
       cliente = null;
     }
     if (cliente != null && cliente.historico != null) {
-      cliente.historico!.removeWhere((h) => identical(h, venda) || h.key == venda.key);
+      cliente.historico!.removeWhere((h) => identical(h, venda) || h.key == key);
       await cliente.save();
       try {
         await ClientesFirestoreService.syncCliente(cliente, lojaId: lojaId);
@@ -353,6 +370,23 @@ class SoftDeleteService {
             await ClientesFirestoreService.syncCliente(cliente, lojaId: r.lojaId);
           } catch (_) {}
         }
+        try {
+          await VendasFirestoreService.syncVenda(venda, lojaId: r.lojaId);
+        } catch (e) {
+          logW(
+            '[SOFT-DELETE] undo venda: sync Firestore falhou (type=${e.runtimeType})',
+          );
+        }
+        try {
+          await VendasService.recriarContaReceberFiadoAposUndoSeAplicavel(
+            venda: venda,
+            lojaId: r.lojaId,
+          );
+        } catch (e) {
+          logW(
+            '[SOFT-DELETE] undo venda: recriar fiado local falhou (type=${e.runtimeType})',
+          );
+        }
         _pending.removeAt(idx);
         await _save();
         return true;
@@ -451,6 +485,10 @@ class SoftDeleteService {
     } else if (r.type == 'venda') {
       final trashBox = await _trashVendasBox();
       final venda = trashBox.get(r.trashKey);
+      await VendasService.removerContasReceberVinculadasAVenda(
+        lojaId: r.lojaId,
+        vendaKey: r.hiveKey,
+      );
       if (venda != null) {
         final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
         await VendasService.executarExclusaoPermanente(

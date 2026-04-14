@@ -9,6 +9,7 @@ import '../../financeiro/financeiro_constants.dart';
 import '../../models/gasto_fixo_mensal.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
+import '../../services/financeiro_soft_delete_service.dart';
 import '../../services/gasto_fixo_lancamento_service.dart';
 import '../../utils/moeda_input_formatter.dart';
 
@@ -245,11 +246,39 @@ class _GastosFixosScreenState extends State<GastosFixosScreen> {
       ),
     );
     if (conf == true && _box != null) {
-      final id = g.id;
       final lojaId = widget.lojaId;
-      await _box!.delete(id);
-      await FinanceiroFirestoreService.deleteGastoFixo(lojaId: lojaId, id: id);
-      if (mounted) setState(() {});
+      final undoId = await FinanceiroSoftDeleteService.scheduleGastoFixoDelete(
+        g: g,
+        box: _box!,
+        lojaId: lojaId,
+      );
+      if (!mounted) return;
+      setState(() {});
+      if (undoId != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Gasto fixo excluído. Desfazer?'),
+            duration: const Duration(seconds: 30),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Desfazer',
+              onPressed: () async {
+                final okUndo = await FinanceiroSoftDeleteService.undo(undoId);
+                if (!mounted) return;
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      okUndo ? 'Gasto fixo restaurado.' : 'Não foi possível desfazer.',
+                    ),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
     }
   }
 

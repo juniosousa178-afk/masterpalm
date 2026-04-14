@@ -26,13 +26,16 @@ class ContaReceberAdapter extends TypeAdapter<ContaReceber> {
       observacao: fields[6] as String,
       vendaKey: fields[7] as int,
       idFirebase: fields[8] as String?,
+      parcelaNumero: fields[9] as int,
+      parcelaTotal: fields[10] as int,
+      lembrete2DiasEnviado: fields[11] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, ContaReceber obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.lojaId)
       ..writeByte(1)
@@ -50,7 +53,13 @@ class ContaReceberAdapter extends TypeAdapter<ContaReceber> {
       ..writeByte(7)
       ..write(obj.vendaKey)
       ..writeByte(8)
-      ..write(obj.idFirebase);
+      ..write(obj.idFirebase)
+      ..writeByte(9)
+      ..write(obj.parcelaNumero)
+      ..writeByte(10)
+      ..write(obj.parcelaTotal)
+      ..writeByte(11)
+      ..write(obj.lembrete2DiasEnviado);
   }
 
   @override

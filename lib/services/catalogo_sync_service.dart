@@ -388,6 +388,32 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   // ===============================================================
   // Firestore helpers
   // ===============================================================
+  /// Combos guardam desconto em chaves separadas (não existem no modelo [Produto]).
+  /// O [.set] completo do catálogo apagaria esses campos — preserva do documento atual.
+  static Future<Map<String, dynamic>> _mergeComboDescontoFromExistingDoc({
+    required String lojaId,
+    required SyncTarget target,
+    required String docId,
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(_collectionName(target))
+          .doc(docId)
+          .get();
+      if (!snap.exists) return data;
+      final old = snap.data();
+      if (old == null) return data;
+      final v = old['descontoComboValor'];
+      final p = old['descontoComboPercentual'];
+      if (v is num) data['descontoComboValor'] = v.toDouble();
+      if (p is num) data['descontoComboPercentual'] = p.toDouble();
+    } catch (_) {}
+    return data;
+  }
+
   static Future<void> _upsert(
     String lojaId,
     SyncTarget target,
@@ -491,11 +517,19 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       return;
     }
 
-    final data = await _buildCatalogData(
+    var data = await _buildCatalogData(
       pdt,
       docId,
       lojaId: lojaId,
     );
+    if (pdt.ehCombo) {
+      data = await _mergeComboDescontoFromExistingDoc(
+        lojaId: lojaId,
+        target: target,
+        docId: docId,
+        data: data,
+      );
+    }
 
     await _upsert(lojaId, target, docId, data);
     await _removeLegacySlugCatalogDocIfSameProduto(

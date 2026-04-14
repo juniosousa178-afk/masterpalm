@@ -80,11 +80,10 @@ class DeepLinkHandler {
       final lojaId = uri.queryParameters['loja'];
       final pedidoId = uri.queryParameters['pedido'];
 
-      // HTTPS: App Web admin (hosts canônico + legado) e site mastepalm
+      // HTTPS: App Web admin (hosts canônico + legado) e site público
       if (uri.scheme == 'https' &&
           (AppUrls.appWebHostsAll.contains(uri.host) ||
-              uri.host == 'mastepalm.com.br' ||
-              uri.host == 'www.mastepalm.com.br')) {
+              AppUrls.publicSiteHostsAll.contains(uri.host))) {
 
         // Formato 1: /c/<slug>?pedido=<id>
         if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'c') {

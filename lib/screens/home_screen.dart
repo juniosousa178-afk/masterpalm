@@ -36,6 +36,7 @@ import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/fornecedor.dart';
 import '../models/venda.dart';
+import '../models/conta_receber.dart';
 
 // ✅ tela fretes/cupons
 import '../screens/fretes_cupons_screen.dart';
@@ -235,6 +236,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     if (mounted) setState(() => _carregando = false);
+    await _alertarContasReceberPendentes();
 
     // ✅ Onboarding (primeira vez): exibir após sessão carregada
     if (mounted) {
@@ -252,6 +254,79 @@ class _HomeScreenState extends State<HomeScreen>
           if (mounted) setState(() {});
         }
       });
+    }
+  }
+
+  Future<void> _alertarContasReceberPendentes() async {
+    if (!mounted || _lojaIdInterno.trim().isEmpty) return;
+    try {
+      final boxName = HiveBoxNames.contasReceber(_lojaIdInterno.trim());
+      final box = Hive.isBoxOpen(boxName)
+          ? Hive.box<ContaReceber>(boxName)
+          : await Hive.openBox<ContaReceber>(boxName);
+      if (!mounted) return;
+
+      final hoje = DateTime.now();
+      final hojeBase = DateTime(hoje.year, hoje.month, hoje.day);
+      final pendentes = box.values
+          .where((c) => c.lojaId == _lojaIdInterno && !c.pago)
+          .toList();
+      if (pendentes.isEmpty) return;
+
+      final vencidas = pendentes.where((c) {
+        final d = DateTime(
+          c.dataVencimento.year,
+          c.dataVencimento.month,
+          c.dataVencimento.day,
+        );
+        return d.isBefore(hojeBase);
+      }).toList();
+      final vencendo = pendentes.where((c) {
+        final d = DateTime(
+          c.dataVencimento.year,
+          c.dataVencimento.month,
+          c.dataVencimento.day,
+        );
+        final dias = d.difference(hojeBase).inDays;
+        return dias >= 0 && dias <= 2;
+      }).toList();
+      if (vencidas.isEmpty && vencendo.isEmpty) return;
+
+      final valorTotal = (vencidas + vencendo)
+          .fold<double>(0, (s, c) => s + c.valor);
+
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Lembrete de cobrança'),
+          content: Text(
+            'Você tem ${vencidas.length} conta(s) em atraso e '
+            '${vencendo.length} vencendo em até 2 dias.\n\n'
+            'Total pendente: R\$ ${valorTotal.toStringAsFixed(2).replaceAll('.', ',')}.\n'
+            'Esse aviso continuará aparecendo até as contas serem quitadas.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Lembrar depois'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ContasReceberScreen(),
+                  ),
+                );
+              },
+              child: const Text('Abrir contas a receber'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      // Aviso não pode bloquear a Home caso a box não esteja disponível.
     }
   }
 

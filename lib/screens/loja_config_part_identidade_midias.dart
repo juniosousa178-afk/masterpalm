@@ -11,11 +11,15 @@ class _PaneIdentidadeWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return _Section(
-      title: 'Identidade & Contato',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final tt = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Section(
+          title: 'Identidade & Contato',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           Text(
             'Slug (URL): ${host._activeStoreId()}',
             style: TextStyle(fontWeight: FontWeight.bold, color: cs.onSurface),
@@ -224,8 +228,27 @@ class _PaneIdentidadeWidget extends StatelessWidget {
                     : 'Essas informações alimentam o link de pedido no catálogo público e o botão de WhatsApp.',
             style: TextStyle(color: cs.onSurfaceVariant),
           ),
-        ],
-      ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _Section(
+          title: 'Domínio próprio',
+          subtitle:
+              'Conecte seu domínio ao catálogo da sua loja e ofereça uma experiência mais profissional para seus clientes.',
+          child: CatalogDomainSection(
+            colorScheme: cs,
+            textTheme: tt,
+            domainController: host._dominioCatalogoCtrl,
+            statusKey: host._dominioCatalogoStatus,
+            fieldStyle: host._fieldTextStyle,
+            decorate: host._inputDecoration,
+            primaryColor: _LojaConfigScreenState._primaryColor,
+            onAddDomain: host._addDominioCatalogoAndOpenGuide,
+            onOpenGuide: host._openCatalogDomainGuideOnly,
+          ),
+        ),
+      ],
     );
   }
 }

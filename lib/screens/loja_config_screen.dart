@@ -36,6 +36,9 @@ import '../widgets/catalog_store_palette_card.dart';
 import '../widgets/catalog_visual_palette_presets_panel.dart';
 import '../widgets/catalog_store_mini_preview.dart';
 import '../theme/catalog_visual_palette_presets.dart';
+import '../catalog/domain/catalog_custom_domain.dart';
+import '../screens/catalogo/catalog_domain_setup_screen.dart';
+import '../widgets/catalog_domain_section.dart';
 
 part 'loja_config_tema_pane.dart';
 part 'loja_config_widgets.dart';
@@ -304,6 +307,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       'nome',
       'whatsapp',
       'pedidoBaseUrl',
+      'dominioCatalogo',
+      'dominioStatus',
+      'dominioUpdatedAt',
+      'dominioProvider',
       'lojaId',
     ],
     _Pane.midias: [
@@ -791,6 +798,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   final TextEditingController _subdominioDominioBaseCtrl = TextEditingController(text: 'mastepalm.com.br');
   final TextEditingController _waCtrl = TextEditingController();
   final TextEditingController _pedidoBaseCtrl = TextEditingController();
+  final TextEditingController _dominioCatalogoCtrl = TextEditingController();
+  String _dominioCatalogoStatus = kDominioStatusNaoConfigurado;
+  String? _dominioProviderId;
+  int? _dominioCatalogoUpdatedAt;
 
   // ---------------------------------
   // MÍDIAS (logo / banners)
@@ -1069,6 +1080,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _subdominioDominioBaseCtrl.addListener(_scheduleAutoSave);
     _waCtrl.addListener(_scheduleAutoSave);
     _pedidoBaseCtrl.addListener(_scheduleAutoSave);
+    _dominioCatalogoCtrl.addListener(_onDominioCatalogoEdited);
 
     // Dimensões de mídia
     _dLogoH.addListener(_scheduleAutoSave);
@@ -1142,6 +1154,62 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _loginCtrl.addListener(_scheduleAutoSave);
     _razaoCtrl.addListener(_scheduleAutoSave);
     _cnpjCtrl.addListener(_scheduleAutoSave);
+  }
+
+  void _onDominioCatalogoEdited() {
+    if (normalizeCatalogDomainInput(_dominioCatalogoCtrl.text).isEmpty) {
+      if (_dominioCatalogoStatus != kDominioStatusNaoConfigurado || _dominioProviderId != null) {
+        setState(() {
+          _dominioCatalogoStatus = kDominioStatusNaoConfigurado;
+          _dominioProviderId = null;
+        });
+      }
+    }
+    _scheduleAutoSave();
+  }
+
+  Future<void> _addDominioCatalogoAndOpenGuide() async {
+    final norm = normalizeCatalogDomainInput(_dominioCatalogoCtrl.text);
+    if (norm.isEmpty) {
+      _snack('Informe o domínio desejado.', isError: true);
+      return;
+    }
+    setState(() {
+      _dominioCatalogoCtrl.text = norm;
+      _dominioCatalogoStatus = kDominioStatusPendente;
+      _dominioCatalogoUpdatedAt = DateTime.now().millisecondsSinceEpoch;
+    });
+    await _salvarRascunho(validar: false);
+    if (!mounted) return;
+    await _openCatalogDomainSetupScreen();
+  }
+
+  Future<void> _openCatalogDomainGuideOnly() async {
+    await _openCatalogDomainSetupScreen();
+  }
+
+  Future<void> _openCatalogDomainSetupScreen() async {
+    final norm = normalizeCatalogDomainInput(_dominioCatalogoCtrl.text);
+    final result = await Navigator.of(context).push<CatalogDomainSetupPopResult?>(
+      MaterialPageRoute(
+        builder: (ctx) => CatalogDomainSetupScreen(
+          dominioInformado: norm,
+          statusInicial: _dominioCatalogoStatus,
+          dominioProviderAtual: _dominioProviderId,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      if (result.status != null && result.status!.trim().isNotEmpty) {
+        _dominioCatalogoStatus = result.status!.trim();
+      }
+      final p = result.dominioProvider?.trim();
+      if (p != null && p.isNotEmpty) {
+        _dominioProviderId = p;
+      }
+    });
+    await _salvarRascunho(validar: false);
   }
 
   // ✅ Agenda auto-save com debounce de 2 segundos (sem validação - só ao clicar Salvar/Publicar)
@@ -1894,6 +1962,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _linkCurtoCtrl.text = (data['linkCurto'] as String?) ?? _linkCurtoCtrl.text; // ✅ CARREGAR LINK CURTO
       _subdominioMascaraCtrl.text = (data['subdominioMascara'] ?? data['subdominio_mascara'] ?? '').toString().trim();
       _subdominioDominioBaseCtrl.text = (data['subdominioDominioBase'] ?? data['subdominio_dominio_base'] ?? 'mastepalm.com.br').toString().trim();
+      _dominioCatalogoCtrl.text = (data['dominioCatalogo'] ?? '').toString().trim();
+      final domProv = (data['dominioProvider'] ?? '').toString().trim();
+      _dominioProviderId = domProv.isEmpty ? null : domProv;
+      _dominioCatalogoStatus = dominioStatusFromStorage(
+        (data['dominioStatus'] ?? '').toString(),
+        hasDomain: _dominioCatalogoCtrl.text.isNotEmpty,
+      );
+      _dominioCatalogoUpdatedAt = (data['dominioUpdatedAt'] as num?)?.toInt();
       final waRaw = _stringFromDynamic(data['whatsapp']);
       _waCtrl.text = waRaw == null ? _waCtrl.text : (waRaw.trim().isEmpty ? '' : _extrairApenasDigitos(waRaw));
       _pedidoBaseCtrl.text =
@@ -2581,11 +2657,20 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final linkCurto = _linkCurtoCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
     final subMascara = _subdominioMascaraCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '');
     final subDominio = _subdominioDominioBaseCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9.-]'), '');
+    final domNorm = normalizeCatalogDomainInput(_dominioCatalogoCtrl.text);
     return {
       'slug': slugFinal, // ✅ SLUG AMIGÁVEL para URL pública
       if (linkCurto.isNotEmpty) 'linkCurto': linkCurto, // ✅ Link curto: app.mastepalm.com.br/c/{linkCurto}
       if (subMascara.isNotEmpty) 'subdominioMascara': subMascara,
       if (subMascara.isNotEmpty) 'subdominioDominioBase': subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br',
+      'dominioCatalogo': domNorm,
+      'dominioStatus': dominioStatusForConfigMap(domNorm, _dominioCatalogoStatus),
+      if (domNorm.isNotEmpty && _dominioCatalogoUpdatedAt != null)
+        'dominioUpdatedAt': _dominioCatalogoUpdatedAt,
+      if (domNorm.isEmpty)
+        'dominioProvider': ''
+      else if (_dominioProviderId != null && _dominioProviderId!.trim().isNotEmpty)
+        'dominioProvider': _dominioProviderId!.trim(),
       'lojaId': storeId,
       'nome': _nomeCtrl.text.trim(),
       'whatsapp': () {
@@ -4315,7 +4400,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'pane': _Pane.identidade,
         'label': 'Identidade & Contato',
         'railLabel': 'Identidade',
-        'subtitle': 'Nome da loja, WhatsApp, configurações básicas',
+        'subtitle': 'Nome, WhatsApp, domínio próprio do catálogo e dados básicos',
         'icon': Icons.storefront_outlined,
       },
       {
@@ -6015,6 +6100,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _subdominioDominioBaseCtrl.dispose();
     _waCtrl.dispose();
     _pedidoBaseCtrl.dispose();
+    _dominioCatalogoCtrl.dispose();
     _dLogoH.dispose();
     _dLogoW.dispose();
     _mLogoH.dispose();

@@ -17,6 +17,7 @@ import '../../services/compra_fornecedor_hive_store.dart';
 import '../../services/compra_fornecedor_sync_service.dart';
 import '../../services/compra_para_pipeline_service.dart';
 import '../../utils/compra_fornecedor_rateio.dart';
+import '../produto_form_screen.dart';
 
 class CompraFornecedorFormScreen extends StatefulWidget {
   const CompraFornecedorFormScreen({
@@ -40,6 +41,8 @@ class CompraFornecedorFormScreen extends StatefulWidget {
 class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen> {
   static const Color _primary = Color(0xFF6366F1);
   static const _uuid = Uuid();
+  /// Retorno do bottom sheet de escolha de produto (cadastro completo na tela de produto).
+  static final Object _sheetCadastrarProduto = Object();
 
   final _refCtrl = TextEditingController();
   final _obsCtrl = TextEditingController();
@@ -183,7 +186,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     final qBusca = ValueNotifier<String>('');
     CompraFornecedorItem? escolhido;
     try {
-      await showModalBottomSheet<void>(
+      final sheetResult = await showModalBottomSheet<Object?>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) {
@@ -208,7 +211,16 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
                       return Column(
                         children: [
                           Padding(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  Navigator.pop(ctx, _sheetCadastrarProduto),
+                              icon: const Icon(Icons.add_business_outlined),
+                              label: const Text('Cadastrar produto novo'),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                             child: TextField(
                               decoration: const InputDecoration(
                                 labelText: 'Buscar produto',
@@ -231,17 +243,19 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
                                     style: const TextStyle(fontSize: 12),
                                   ),
                                   onTap: () {
-                                    escolhido = CompraFornecedorItem(
-                                      produtoNome: p.nome,
-                                      quantidade: 1,
-                                      custoUnitario: p.custoReal,
-                                      productId: p.idFirebase.trim().isEmpty
-                                          ? null
-                                          : p.idFirebase.trim(),
-                                      itemCompraId: _uuid.v4(),
-                                      codigoBarras: p.codigoBarras.trim(),
+                                    Navigator.pop(
+                                      ctx,
+                                      CompraFornecedorItem(
+                                        produtoNome: p.nome,
+                                        quantidade: 1,
+                                        custoUnitario: p.custoReal,
+                                        productId: p.idFirebase.trim().isEmpty
+                                            ? null
+                                            : p.idFirebase.trim(),
+                                        itemCompraId: _uuid.v4(),
+                                        codigoBarras: p.codigoBarras.trim(),
+                                      ),
                                     );
-                                    Navigator.pop(ctx);
                                   },
                                 );
                               },
@@ -258,12 +272,38 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         );
       },
     );
+
+      if (!mounted) return;
+
+      if (identical(sheetResult, _sheetCadastrarProduto)) {
+        final salvo = await Navigator.of(context).push<Produto>(
+          MaterialPageRoute(
+            settings: RouteSettings(
+              arguments: {'prefillFornecedor': widget.fornecedorNome},
+            ),
+            builder: (_) => const ProdutoFormScreen(produto: null),
+          ),
+        );
+        if (!mounted || salvo == null) return;
+        escolhido = CompraFornecedorItem(
+          produtoNome: salvo.nome,
+          quantidade: 1,
+          custoUnitario: salvo.custoReal,
+          productId: salvo.idFirebase.trim().isEmpty
+              ? null
+              : salvo.idFirebase.trim(),
+          itemCompraId: _uuid.v4(),
+          codigoBarras: salvo.codigoBarras.trim(),
+        );
+      } else if (sheetResult is CompraFornecedorItem) {
+        escolhido = sheetResult;
+      }
     } finally {
       qBusca.dispose();
     }
 
     if (escolhido == null || !mounted) return;
-    final base = escolhido!;
+    final base = escolhido;
     final qtdCtrl = TextEditingController(text: '${base.quantidade}');
     final custoCtrl = TextEditingController(text: _fmtNum(base.custoUnitario));
     final ciCtrl = TextEditingController(text: base.codigoInterno);

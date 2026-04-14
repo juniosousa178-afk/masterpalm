@@ -5,7 +5,7 @@
 /// com “master” + R extra); mantido em [appWebHostsAll] para App Check / deep links / CORS
 /// até migração total de DNS e bookmarks. Ver `docs/DOMAIN_APP_WEB.md`.
 ///
-/// Landing pública: [landingBase] (`mastepalm.com.br` — domínio de marketing, não o app).
+/// Landing / site público (hosting): [landingBase] (`gestao.mastepalm.com.br` — não o app admin).
 class AppUrls {
   AppUrls._();
 
@@ -24,6 +24,23 @@ class AppUrls {
   /// URL base do App Web admin (SPA).
   static const String appWebBase = 'https://$appWebHostCanonical';
 
-  /// URL base da landing page (site de divulgação)
-  static const String landingBase = 'https://mastepalm.com.br';
+  /// Host do site público (catálogo curto / landing no mesmo hosting do Firebase).
+  static const String publicSiteHost = 'gestao.mastepalm.com.br';
+
+  /// URL base do site público (antes: mastepalm.com.br).
+  static const String landingBase = 'https://$publicSiteHost';
+
+  /// Hosts HTTPS aceitos como “site público” (deep links + legado).
+  static const List<String> publicSiteHostsAll = [
+    publicSiteHost,
+    'www.gestao.mastepalm.com.br',
+    'mastepalm.com.br',
+    'www.mastepalm.com.br',
+  ];
+
+  /// Site institucional (marketing) — **não** o SPA admin em [appWebHostsAll].
+  static bool isPublicMarketingHost(String host) {
+    final h = host.trim().toLowerCase();
+    return publicSiteHostsAll.contains(h);
+  }
 }
