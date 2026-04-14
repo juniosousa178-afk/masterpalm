@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import '../catalog/catalog_layout_config.dart';
+
 /// Serviço responsável por garantir que CADA usuário tenha
 /// sua própria loja (documento em lojas/{store_id}) e que
 /// o campo users/{uid}.store_id esteja sempre preenchido.
@@ -70,6 +72,7 @@ class TenantService {
         'lojaId': slug,
         'slug': slug,
         'nome': 'Minha Loja',
+        'layoutCatalogo': CatalogLayoutConfig.defaultForNewStoreDocuments,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -77,6 +80,7 @@ class TenantService {
         'lojaId': slug,
         'slug': slug,
         'nome': 'Minha Loja',
+        'layoutCatalogo': CatalogLayoutConfig.defaultForNewStoreDocuments,
         'createdAt': FieldValue.serverTimestamp(),
       });
 

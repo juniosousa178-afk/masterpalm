@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 import 'package:flutter/foundation.dart';
 
+import '../catalog/catalog_layout_config.dart';
 import '../widgets/input_field.dart';
 import '../widgets/neon_button.dart';
 import '../services/auth_service.dart';
@@ -166,6 +167,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'lojaId': slug,
           'slug': slug,
           'nome': name.isNotEmpty ? name : 'Minha Loja',
+          'layoutCatalogo': CatalogLayoutConfig.defaultForNewStoreDocuments,
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -173,6 +175,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           'lojaId': slug,
           'slug': slug,
           'nome': name.isNotEmpty ? name : 'Minha Loja',
+          'layoutCatalogo': CatalogLayoutConfig.defaultForNewStoreDocuments,
           'createdAt': FieldValue.serverTimestamp(),
         });
 

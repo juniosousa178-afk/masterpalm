@@ -37,6 +37,7 @@ import '../widgets/catalog_store_palette_card.dart';
 import '../widgets/catalog_visual_palette_presets_panel.dart';
 import '../widgets/catalog_store_mini_preview.dart';
 import '../theme/catalog_visual_palette_presets.dart';
+import '../catalog/catalog_layout_config.dart';
 import '../catalog/domain/catalog_custom_domain.dart';
 import '../screens/catalogo/catalog_domain_setup_screen.dart';
 import '../widgets/catalog_domain_section.dart';
@@ -895,7 +896,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   int _gridMobileCols = 2;
   bool _cardShowShadow = true;
   double _cardBorderRadius = 20;
-  String _layoutCatalogo = 'padrao';
+  String _layoutCatalogo = CatalogLayoutConfig.classic;
   String _productCardSize = 'medium';
 
   /// Acordeão aberto no painel Layout dos cards (mesmo padrão de Temas e Cores).
@@ -2313,10 +2314,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _cardShowShadow = (data['cardShowShadow'] as bool?) ?? _cardShowShadow;
       _cardBorderRadius =
           (data['cardBorderRadius'] as num?)?.toDouble() ?? _cardBorderRadius;
-      _layoutCatalogo = (data['layoutCatalogo'] ?? data['layout_catalogo'] ?? 'padrao')
-          .toString()
-          .trim()
-          .toLowerCase();
+      _layoutCatalogo = CatalogLayoutConfig.normalize(
+        data['layoutCatalogo'] ?? data['layout_catalogo'],
+      );
       _productCardSize = (() {
         final v = (data['productCardSize'] ?? 'medium')
             .toString()

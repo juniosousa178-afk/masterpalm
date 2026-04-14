@@ -12,6 +12,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hive/hive.dart';
 
+import '../catalog/catalog_layout_config.dart';
 import '../core/loja_id_adapter.dart';
 import '../core/logger.dart';
 import 'public_store_link_helper.dart';
@@ -285,6 +286,7 @@ class StoreResolverService {
           'lojaId': lojaId,
           'slug': lojaId,
           'nome': 'Minha Loja',
+          'layoutCatalogo': CatalogLayoutConfig.defaultForNewStoreDocuments,
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -293,6 +295,7 @@ class StoreResolverService {
           'lojaId': lojaId,
           'slug': lojaId,
           'nome': 'Minha Loja',
+          'layoutCatalogo': CatalogLayoutConfig.defaultForNewStoreDocuments,
           'createdAt': FieldValue.serverTimestamp(),
         });
 

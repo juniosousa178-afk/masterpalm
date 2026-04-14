@@ -33,6 +33,7 @@ import '../services/catalog_visitas_service.dart';
 import '../utils/instagram_launcher.dart';
 import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
+import '../catalog/catalog_layout_config.dart';
 import 'public_catalog/catalog_helpers.dart';
 import 'public_catalog/catalog_best_sellers_helper.dart';
 import 'public_catalog/catalog_product_card_size.dart';
@@ -509,6 +510,27 @@ void _aplicarPrecoComboFromSoma(List<Map<String, dynamic>> produtos) {
     p['priceMin'] = finalMin;
     p['priceMax'] = finalMax;
   }
+}
+
+/// [childAspectRatio] do grid clássico (cross / main): maior = célula menos alta.
+/// Só mobile estreito; em [width] ≥ 640 mantém [baseStandardAspectRatio] (ex.: small/medium/large).
+double _classicCatalogGridAspectRatio({
+  required double width,
+  required double baseStandardAspectRatio,
+}) {
+  if (width >= 640) return baseStandardAspectRatio;
+  if (width < 360) return baseStandardAspectRatio + 0.065;
+  return baseStandardAspectRatio + 0.04;
+}
+
+/// Grid minimalista: em desktop a célula alta deixa faixa vazia no rodapé do card.
+/// Só altera quando [isDesktopBody]; mobile mantém [baseFromSizeOrConfig] intacto.
+double _minimalCatalogGridAspectRatio({
+  required bool isDesktopBody,
+  required double baseFromSizeOrConfig,
+}) {
+  if (!isDesktopBody) return baseFromSizeOrConfig;
+  return (baseFromSizeOrConfig + 0.045).clamp(0.30, 0.52);
 }
 
 class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
@@ -4404,13 +4426,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         CatalogEstoqueHelper.parseCartItemQuantidade(
                             e['quantidade']));
 
-                final layoutCatalogo =
-                    (cfg['layoutCatalogo'] ?? cfg['layout_catalogo'] ?? 'padrao')
-                        .toString()
-                        .trim()
-                        .toLowerCase();
+                final layoutCatalogo = CatalogLayoutConfig.normalize(
+                  cfg['layoutCatalogo'] ?? cfg['layout_catalogo'],
+                );
                 final bool useMinimalLayout =
-                    layoutCatalogo == 'minimalista_nuvemshop';
+                    CatalogLayoutConfig.isMinimal(layoutCatalogo);
+                final viewportW = MediaQuery.sizeOf(context).width;
+                final int catalogGridMobileCols =
+                    !useMinimalLayout && viewportW < 640 && gridMobileCols > 2
+                        ? 2
+                        : gridMobileCols;
                 _tryHandleInitialProdutoDeepLink(
                   produtos: produtos,
                   useMinimalLayout: useMinimalLayout,
@@ -5999,7 +6024,26 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             CatalogSkeletonGrid(
                                                 isDesktop: isDesktopBody,
                                                 desktopCols: gridDesktopCols,
-                                                mobileCols: gridMobileCols)
+                                                mobileCols: catalogGridMobileCols,
+                                                childAspectRatio: useMinimalLayout
+                                                    ? _minimalCatalogGridAspectRatio(
+                                                        isDesktopBody:
+                                                            isDesktopBody,
+                                                        baseFromSizeOrConfig:
+                                                            CatalogProductCardSize
+                                                                .minimalAspectRatio(
+                                                          productCardSize,
+                                                        ),
+                                                      )
+                                                    : _classicCatalogGridAspectRatio(
+                                                        width: viewportW,
+                                                        baseStandardAspectRatio:
+                                                            CatalogProductCardSize
+                                                                .standardAspectRatio(
+                                                          productCardSize,
+                                                        ),
+                                                      ),
+                                              )
                                           else if (listaOrdenada.isEmpty)
                                             const CatalogEmptyProductsState()
                                           else ...[
@@ -6207,7 +6251,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   _onCatalogVariacaoExtraFromProductUi,
                                               isDesktop: isDesktopBody,
                                               desktopCols: gridDesktopCols,
-                                              mobileCols: gridMobileCols,
+                                              mobileCols: catalogGridMobileCols,
                                               onAdd: (it) =>
                                                   _addToCart(it, produtos),
                                               onProductViewed: _onProductViewed,
@@ -6324,16 +6368,27 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     isWeb: kIsWeb,
                                                   ).height,
                                               childAspectRatio: useMinimalLayout
-                                                  ? safeDouble(
-                                                      minimalGridCfg[
-                                                          'aspectRatio'],
-                                                      CatalogProductCardSize
-                                                          .minimalAspectRatio(
-                                                              productCardSize),
+                                                  ? _minimalCatalogGridAspectRatio(
+                                                      isDesktopBody:
+                                                          isDesktopBody,
+                                                      baseFromSizeOrConfig:
+                                                          safeDouble(
+                                                        minimalGridCfg[
+                                                            'aspectRatio'],
+                                                        CatalogProductCardSize
+                                                            .minimalAspectRatio(
+                                                          productCardSize,
+                                                        ),
+                                                      ),
                                                     )
-                                                  : CatalogProductCardSize
-                                                      .standardAspectRatio(
-                                                          productCardSize),
+                                                  : _classicCatalogGridAspectRatio(
+                                                      width: viewportW,
+                                                      baseStandardAspectRatio:
+                                                          CatalogProductCardSize
+                                                              .standardAspectRatio(
+                                                        productCardSize,
+                                                      ),
+                                                    ),
                                               mainAxisSpacing: useMinimalLayout
                                                   ? safeDouble(minimalGridCfg[
                                                       'mainAxisSpacing'], 18)

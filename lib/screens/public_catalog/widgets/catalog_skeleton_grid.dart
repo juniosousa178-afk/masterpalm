@@ -9,12 +9,15 @@ class CatalogSkeletonGrid extends StatelessWidget {
   final bool isDesktop;
   final int desktopCols;
   final int mobileCols;
+  /// Grid de loading; no clássico costuma seguir o mesmo [childAspectRatio] do grid real.
+  final double childAspectRatio;
 
   const CatalogSkeletonGrid({
     super.key,
     this.isDesktop = false,
     this.desktopCols = 4,
     this.mobileCols = 2,
+    this.childAspectRatio = 0.38,
   });
 
   @override
@@ -28,7 +31,7 @@ class CatalogSkeletonGrid extends StatelessWidget {
       crossAxisCount: cols,
       mainAxisSpacing: 16,
       crossAxisSpacing: 16,
-      childAspectRatio: 0.38,
+      childAspectRatio: childAspectRatio,
     );
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),

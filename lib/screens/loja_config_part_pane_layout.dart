@@ -18,7 +18,7 @@ class _PaneLayoutWidget extends StatelessWidget {
           id: 'layout_geral',
           title: 'Layout geral',
           subtitle:
-              'Estilo de página no catálogo público e tamanho do card de produto.',
+              'Minimalista Premium é o visual recomendado. Clássico compatível preserva o grid/cards de lojas antigas.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -26,8 +26,14 @@ class _PaneLayoutWidget extends StatelessWidget {
                 initialValue: host._layoutCatalogo,
                 isExpanded: true,
                 items: const [
-                  DropdownMenuItem(value: 'padrao', child: Text('Padrão atual (retrocompatível)')),
-                  DropdownMenuItem(value: 'minimalista_nuvemshop', child: Text('Minimalista estilo Nuvemshop')),
+                  DropdownMenuItem(
+                    value: 'minimalista_nuvemshop',
+                    child: Text('Minimalista Premium (recomendado)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'padrao',
+                    child: Text('Clássico compatível'),
+                  ),
                 ],
                 onChanged: (v) {
                   if (v == null) return;
