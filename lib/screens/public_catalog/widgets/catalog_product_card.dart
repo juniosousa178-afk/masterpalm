@@ -678,13 +678,6 @@ insetPadding:
       imageFlex = (imageFlex - wideShift).clamp(1, 999);
       contentFlex = contentFlex + wideShift;
     }
-    // Clássico (template minimal) em telas estreitas: mais fração para a imagem.
-    // Mantém BoxFit.contain — só aumenta o slot; a foto aparece maior, sem zoom nem corte.
-    if (classicMv && !widget.compact && screenW < 640) {
-      const int classicMobileImageBoost = 3;
-      imageFlex = (imageFlex + classicMobileImageBoost).clamp(1, 999);
-      contentFlex = (contentFlex - classicMobileImageBoost).clamp(6, 999);
-    }
     final titleSizeBase = useMinimalVisual
         ? (isLargeCard ? 13.5 : (isSmallCard ? 11.5 : 12.5))
         : (widget.compact ? (isLargeCard ? 13.0 : 12.0) : (isLargeCard ? 16.0 : 15.0));
@@ -1107,9 +1100,6 @@ insetPadding:
                       ),
                     ),
                   ),
-                    // Ancora ações na base do bloco de conteúdo (clássico: wide grid ou card estilo minimal).
-                    if (!widget.compact && (classicWideGrid || classicMv))
-                      const Spacer(),
                     SizedBox(
                       height: widget.compact
                           ? 3
