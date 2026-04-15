@@ -687,13 +687,17 @@ insetPadding:
     final actionHeightBase = useMinimalVisual
         ? (isLargeCard ? 34.0 : (isSmallCard ? 28.0 : 30.0))
         : (widget.compact ? 32.0 : (isLargeCard ? 42.0 : 36.0));
-    final titleSize = is360
+    var titleSize = is360
         ? (titleSizeBase - 0.8)
         : is390
             ? (titleSizeBase - 0.5)
             : is412
                 ? (titleSizeBase - 0.2)
                 : titleSizeBase;
+    // Só catálogo clássico (classicMv): nome um pouco maior; minimalista inalterado.
+    if (classicMv) {
+      titleSize += 1.0;
+    }
     final priceSize = is360
         ? (priceSizeBase - 0.5)
         : is390
@@ -720,11 +724,14 @@ insetPadding:
     if (useMinimalVisual && !widget.compact) {
       contentVPad = (contentVPad - 2.0).clamp(2.0, 999.0);
     }
+    if (classicMv && !widget.compact) {
+      contentVPad = (contentVPad - 1.5).clamp(2.0, 999.0);
+    }
     final bool minimalComprarCarrinhoRow =
         useMinimalVisual && widget.onAbrirCarrinho != null;
     final double contentPadBottom = minimalComprarCarrinhoRow
         ? (classicMv
-            ? ((screenW < 640 ? contentVPad + 4.0 : contentVPad + 6.0))
+            ? ((screenW < 640 ? contentVPad + 2.0 : contentVPad + 3.0))
                 .clamp(2.0, 999.0)
             : contentVPad + 16.0)
         : (classicWideGrid && showComprarDiretoFooter
@@ -732,16 +739,18 @@ insetPadding:
             : contentVPad);
     final spacingAfterTitle = widget.compact
         ? (is360 ? 1.0 : 2.0)
-        : (useMinimalVisual ? 2.5 : 1.0);
+        : (classicMv ? 1.0 : (useMinimalVisual ? 2.5 : 1.0));
     final parcelFontSize = useMinimalVisual
         ? 10.8
         : (widget.compact ? 8.0 : 9.0);
     final pixFontSize = useMinimalVisual
         ? 10.8
         : (widget.compact ? 8.0 : 9.0);
-    final afterPriceGap = useMinimalVisual
-        ? (widget.compact ? 1.0 : 1.5)
-        : 1.0;
+    final afterPriceGap = classicMv
+        ? (widget.compact ? 0.75 : 1.0)
+        : (useMinimalVisual
+            ? (widget.compact ? 1.0 : 1.5)
+            : 1.0);
     const titleLineHeight = 1.2;
     const titleBlockExtra = 1.0;
     final titleBlockHeight =
@@ -966,7 +975,11 @@ insetPadding:
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  fontWeight: useMinimalVisual ? FontWeight.w500 : FontWeight.w600,
+                                  fontWeight: classicMv
+                                      ? FontWeight.w700
+                                      : (useMinimalVisual
+                                          ? FontWeight.w500
+                                          : FontWeight.w600),
                                   fontSize: titleSize,
                                   color: productNameColor,
                                   height: titleLineHeight,
@@ -1040,7 +1053,8 @@ insetPadding:
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
-                                          if (hasParcelamento) const SizedBox(height: 1),
+                                          if (hasParcelamento)
+                                            SizedBox(height: classicMv ? 0 : 1),
                                         ],
                                         if (hasParcelamento)
                                           Text(
@@ -1105,10 +1119,10 @@ insetPadding:
                           ? 3
                           : (showComprarDiretoFooter
                               ? (useMinimalVisual
-                                  ? 4
+                                  ? (classicMv ? 2.0 : 4.0)
                                   : (classicWideGrid ? 2 : 1))
                               : (minimalComprarCarrinhoRow
-                                  ? 11.0
+                                  ? (classicMv ? 7.0 : 11.0)
                                   : (useMinimalVisual ? 3 : 1))),
                     ),
                     if (isMinimalPage && widget.onAbrirCarrinho != null)
