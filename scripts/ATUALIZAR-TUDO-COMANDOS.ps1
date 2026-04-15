@@ -23,13 +23,10 @@ $root = $PSScriptRoot
 if ($root -match "scripts$") { $root = Split-Path -Parent $root }
 Set-Location $root
 
-# Usar fvm se existir .fvm e o comando fvm estiver disponível; senao usar flutter/dart direto
-$FlutterCmd = "flutter"
-$DartCmd = "dart"
-if ((Test-Path ".fvm") -and (Get-Command "fvm" -ErrorAction SilentlyContinue)) {
-    $FlutterCmd = "fvm flutter"
-    $DartCmd = "fvm dart"
-}
+# Dart do PATH puro quebra scripts com hive_flutter (Offset/Rect sem dart:ui).
+# Ver scripts\_dart_from_flutter.ps1: FVM se houver; senao dart.exe junto ao flutter do PATH.
+. (Join-Path $PSScriptRoot "_dart_from_flutter.ps1")
+$FlutterCmd = $script:FlutterCmd
 
 # -----------------------------------------------------------------------------
 # LISTA DE COMANDOS (referência rápida)
@@ -40,29 +37,30 @@ $comandosRef = @"
 ========================================
 
 1) DEPENDÊNCIAS FLUTTER
-   fvm flutter clean
-   fvm flutter pub get
+   flutter clean && flutter pub get   (ou: fvm flutter clean / pub get se tiver FVM)
 
 2) GERAR CÓDIGO (Hive, etc.)
-   fvm dart run build_runner build --delete-conflicting-outputs
+   Use o Dart do Flutter (este script ja resolve). Manual: dart do ...\flutter\bin\cache\dart-sdk\bin\
+   dart run build_runner build --delete-conflicting-outputs
 
 3) SINCRONIZAR VERSÃO WEB (manifest.json, index.html)
-   fvm dart run tool/sync_web_version.dart
+   dart run tool/sync_web_version.dart   (mesmo Dart do Flutter acima)
 
 4) ATUALIZAR CATÁLOGO (produtos -> Firestore LIVE) [opcional]
-   fvm dart run lib/scripts/deploy_catalog_live.dart
+   .\scripts\deploy-catalogo.ps1
+   (ou: fvm dart run ... se tiver FVM; sem FVM use o script acima — evita dart errado no PATH)
 
 5) BUILD APP WEB (desktop + mobile web + catálogo online)
-   fvm flutter build web --release
+   flutter build web --release   (ou: fvm flutter build web --release)
 
 6) BUILD APK ANDROID (release)
-   fvm flutter build apk --release
+   flutter build apk --release   (ou: fvm flutter build apk --release)
 
 7) COPIAR APK PARA DOWNLOAD NO SITE
    Copy-Item build\app\outputs\flutter-apk\app-release.apk build\web\downloads\masterpalm.apk
 
 8) BUILD AAB (Play Store)
-   fvm flutter build appbundle --release
+   flutter build appbundle --release   (ou: fvm flutter build appbundle --release)
    -> Arquivo: build\app\outputs\bundle\release\app-release.aab
    -> Publicar em: https://play.google.com/console
 
@@ -117,19 +115,19 @@ Write-Host "  OK" -ForegroundColor Green
 
 # 2. Build runner
 $step++; Write-Host "`n[$step/11] build_runner (Hive)..." -ForegroundColor Yellow
-& cmd /c "$DartCmd run build_runner build --delete-conflicting-outputs" 2>$null
+Invoke-ProjDart run build_runner build --delete-conflicting-outputs 2>$null
 Write-Host "  OK" -ForegroundColor Green
 
 # 3. Sync versao web
 $step++; Write-Host "`n[$step/11] sync_web_version..." -ForegroundColor Yellow
-& cmd /c "$DartCmd run tool/sync_web_version.dart"
+Invoke-ProjDart run tool/sync_web_version.dart
 if ($LASTEXITCODE -ne 0) { throw "sync_web_version falhou" }
 Write-Host "  OK" -ForegroundColor Green
 
 # 4. Catalogo (opcional)
 $step++; Write-Host "`n[$step/11] Catalogo (deploy Firestore)..." -ForegroundColor Yellow
 if ($IncluirCatalogo) {
-    & cmd /c "$DartCmd run lib/scripts/deploy_catalog_live.dart" 2>$null
+    Invoke-ProjDart run lib/scripts/deploy_catalog_live.dart 2>$null
     if ($LASTEXITCODE -ne 0) { Write-Host "  Aviso: deploy_catalog_live falhou (pode ser SDK). Continuando." -ForegroundColor Yellow }
     else { Write-Host "  OK" -ForegroundColor Green }
 } else {

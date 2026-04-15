@@ -23,6 +23,9 @@ $root = $PSScriptRoot
 if ($root -match "scripts$") { $root = Split-Path -Parent $root }
 Set-Location $root
 
+. (Join-Path $PSScriptRoot "_dart_from_flutter.ps1")
+$FlutterCmd = $script:FlutterCmd
+
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  MasterPalm - Atualizar tudo" -ForegroundColor Cyan
@@ -33,9 +36,9 @@ Write-Host ""
 # 1. Dependências Flutter
 # -----------------------------------------------------------------------------
 Write-Host "[1/9] Flutter: clean + pub get" -ForegroundColor Yellow
-fvm flutter clean
-fvm flutter pub get
-if ($LASTEXITCODE -ne 0) { throw "fvm flutter pub get falhou" }
+& cmd /c "$FlutterCmd clean"
+& cmd /c "$FlutterCmd pub get"
+if ($LASTEXITCODE -ne 0) { throw "flutter pub get falhou" }
 Write-Host "  OK" -ForegroundColor Green
 Write-Host ""
 
@@ -43,7 +46,7 @@ Write-Host ""
 # 2. Gerar código (build_runner - Hive, etc.)
 # -----------------------------------------------------------------------------
 Write-Host "[2/9] Gerando código (build_runner)..." -ForegroundColor Yellow
-fvm dart run build_runner build --delete-conflicting-outputs
+Invoke-ProjDart run build_runner build --delete-conflicting-outputs
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Aviso: build_runner falhou ou nao necessario (verifique se hive_generator/build_runner estao no pubspec)" -ForegroundColor Gray
 } else {
@@ -55,7 +58,7 @@ Write-Host ""
 # 3. Sincronizar versão web (manifest.json, index.html)
 # -----------------------------------------------------------------------------
 Write-Host "[3/9] Sincronizando versao web (tool/sync_web_version.dart)..." -ForegroundColor Yellow
-fvm dart run tool/sync_web_version.dart
+Invoke-ProjDart run tool/sync_web_version.dart
 if ($LASTEXITCODE -ne 0) { throw "sync_web_version falhou" }
 Write-Host "  OK" -ForegroundColor Green
 Write-Host ""
@@ -66,7 +69,7 @@ Write-Host ""
 if ($IncluirCatalogo) {
     Write-Host "[4/9] Deploy do catalogo para LIVE (dados produtos -> Firestore)..." -ForegroundColor Yellow
     Write-Host "  Requer: loja ativa configurada no app. Execute o app antes se precisar." -ForegroundColor Gray
-    fvm dart run lib/scripts/deploy_catalog_live.dart
+    Invoke-ProjDart run lib/scripts/deploy_catalog_live.dart
     if ($LASTEXITCODE -ne 0) { throw "deploy_catalog_live falhou" }
     Write-Host "  OK" -ForegroundColor Green
 } else {
@@ -79,8 +82,8 @@ Write-Host ""
 # -----------------------------------------------------------------------------
 if (-not $SemWeb) {
     Write-Host "[5/9] Build Flutter Web (release)..." -ForegroundColor Yellow
-    fvm flutter build web --release
-    if ($LASTEXITCODE -ne 0) { throw "fvm flutter build web falhou" }
+    & cmd /c "$FlutterCmd build web --release"
+    if ($LASTEXITCODE -ne 0) { throw "flutter build web falhou" }
     Write-Host "  OK -> build/web" -ForegroundColor Green
 } else {
     Write-Host "[5/9] Build Flutter Web (pulado; -SemWeb)" -ForegroundColor Gray
@@ -104,8 +107,8 @@ if (-not $SemApk) {
         & .\gradlew.bat --stop 2>$null
         Pop-Location
     }
-    fvm flutter build apk --release
-    if ($LASTEXITCODE -ne 0) { throw "fvm flutter build apk falhou" }
+    & cmd /c "$FlutterCmd build apk --release"
+    if ($LASTEXITCODE -ne 0) { throw "flutter build apk falhou" }
     Write-Host "  OK -> build/app/outputs/flutter-apk/app-release.apk" -ForegroundColor Green
 } else {
     Write-Host "[6/9] Build APK (pulado; -SemApk)" -ForegroundColor Gray

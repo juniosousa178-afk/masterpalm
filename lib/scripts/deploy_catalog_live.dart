@@ -1,5 +1,12 @@
 // Script para fazer deploy completo do catálogo para LIVE
-// Execute: dart run lib/scripts/deploy_catalog_live.dart
+//
+// NÃO use o `dart` isolado do PATH (sem Flutter): hive_flutter precisa de dart:ui
+// e o compilador acusa Offset/Rect como método inexistente.
+//
+// Opções (na raiz do projeto):
+//   .\scripts\deploy-catalogo.ps1
+//   fvm dart run lib/scripts/deploy_catalog_live.dart   // se FVM estiver no PATH
+// Ou use o dart.exe do Flutter: ...\flutter\bin\cache\dart-sdk\bin\dart.exe run lib/scripts/deploy_catalog_live.dart
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';

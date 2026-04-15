@@ -47,9 +47,19 @@ dart run tool/sync_web_version.dart
 
 Sincroniza produtos (Hive → Firestore) para o catálogo público. Requer loja ativa.
 
+**Windows:** prefira o script abaixo — ele usa o Dart do SDK Flutter (evita erro `Offset`/`Rect` ao usar `dart` do PATH sem Flutter):
+
 ```powershell
-dart run lib/scripts/deploy_catalog_live.dart
+.\scripts\deploy-catalogo.ps1
 ```
+
+Com FVM no PATH:
+
+```powershell
+fvm dart run lib/scripts/deploy_catalog_live.dart
+```
+
+Ou o `dart.exe` dentro de `flutter\bin\cache\dart-sdk\bin\` do seu Flutter instalado.
 
 ### 3. Build app web (Flutter)
 

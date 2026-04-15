@@ -767,6 +767,8 @@ insetPadding:
             : 'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off')
         : '';
     final hasLinhaSecundaria = hasPix || hasParcelamento;
+    // Clássico (visual minimal): rodapé com altura intrínseca + leve sobreposição na faixa clara do contain.
+    final bool tightClassicFooter = classicMv && !widget.compact;
 
     return MouseRegion(
       onEnter: (_) {
@@ -814,7 +816,7 @@ insetPadding:
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              flex: imageFlex,
+              flex: tightClassicFooter ? 1 : imageFlex,
               child: ClipRRect(
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(widget.borderRadius),
@@ -929,13 +931,14 @@ insetPadding:
                 ),
               ),
             ),
-            Expanded(
-              flex: contentFlex,
+            _CatalogFooterWrap(
+              tight: tightClassicFooter,
+              contentFlex: contentFlex,
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   // Só limita a largura: maxHeight no filho faz o Column layoutar com teto finito
                   // e estourar *antes* do FittedBox aplicar escala (overflow 9–25px).
-                  return FittedBox(
+                  final fitted = FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.topCenter,
                     child: ConstrainedBox(
@@ -946,12 +949,17 @@ insetPadding:
                         padding: EdgeInsets.only(
                           left: widget.compact ? 4 : 10,
                           right: widget.compact ? 4 : 10,
-                          top: contentVPad,
-                          bottom: contentPadBottom,
+                          top: tightClassicFooter ? 0.0 : contentVPad,
+                          bottom: tightClassicFooter
+                              ? 4.0
+                              : contentPadBottom,
                         ),
                         child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisAlignment: MainAxisAlignment.start,
+                  mainAxisSize: tightClassicFooter
+                      ? MainAxisSize.min
+                      : MainAxisSize.max,
                   children: [
                   // flex: 0: no minimalista, flex 1 criava faixa vazia enorme entre o bloco de texto e os botões.
                   Flexible(
@@ -1647,12 +1655,51 @@ insetPadding:
                       ),
                     ),
                   );
+                  if (tightClassicFooter) {
+                    return Transform.translate(
+                      offset: Offset(0, is360 ? -12.0 : -16.0),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: cardColor),
+                        child: fitted,
+                      ),
+                    );
+                  }
+                  return fitted;
                 },
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Envolve o rodapé do card: no clássico “tight” usa [Flexible] para altura intrínseca
+/// (sem vácuo abaixo dos botões); nos demais mantém [Expanded] com [contentFlex].
+class _CatalogFooterWrap extends StatelessWidget {
+  const _CatalogFooterWrap({
+    required this.tight,
+    required this.contentFlex,
+    required this.child,
+  });
+
+  final bool tight;
+  final int contentFlex;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tight) {
+      return Flexible(
+        fit: FlexFit.loose,
+        flex: 0,
+        child: child,
+      );
+    }
+    return Expanded(
+      flex: contentFlex,
+      child: child,
     );
   }
 }

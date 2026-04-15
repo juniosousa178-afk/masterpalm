@@ -20,13 +20,8 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
 
-# Comando Flutter (FVM se existir .fvm)
-$FlutterCmd = "flutter"
-$DartCmd = "dart"
-if (Test-Path ".fvm") {
-    $FlutterCmd = "fvm flutter"
-    $DartCmd = "fvm dart"
-}
+. (Join-Path $PSScriptRoot "_dart_from_flutter.ps1")
+$FlutterCmd = $script:FlutterCmd
 
 $RunAnalyze = $Analyze
 $BuildWeb = -not $NoWeb
@@ -60,7 +55,7 @@ if ($SyncVersion) {
     Write-Host ""
     Write-Host "🔄 Sincronizando versão web..."
     if (Test-Path "tool/sync_web_version.dart") {
-        & cmd /c "$DartCmd run tool/sync_web_version.dart"
+        Invoke-ProjDart run tool/sync_web_version.dart
     } else {
         Write-Host "⚠️ tool/sync_web_version.dart não encontrado."
     }
