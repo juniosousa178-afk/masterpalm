@@ -1339,7 +1339,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final sheetBg = _cartUi.sheetBackground;
     return SafeArea(
       child: ColoredBox(
-        color: sheetBg.a == 0 ? Colors.transparent : sheetBg,
+        color: sheetBg.opacity == 0 ? Colors.transparent : sheetBg,
         child: LayoutBuilder(
           builder: (_, c) {
             // Checkout em 2 colunas (desktop): principal | resumo+CTA — estilo e-commerce.

@@ -1918,7 +1918,8 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Switch(
                   value: _indicacaoAtivo,
                   onChanged: (v) => setState(() => _indicacaoAtivo = v),
-                  activeThumbColor: _primaryColor,
+                  thumbColor: MaterialStateProperty.resolveWith((s) =>
+                      s.contains(MaterialState.selected) ? _primaryColor : null),
                 ),
               ],
             ),
@@ -2017,7 +2018,8 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Switch(
                   value: _carrinhoAbandonadoAtivo,
                   onChanged: (v) => setState(() => _carrinhoAbandonadoAtivo = v),
-                  activeThumbColor: _primaryColor,
+                  thumbColor: MaterialStateProperty.resolveWith((s) =>
+                      s.contains(MaterialState.selected) ? _primaryColor : null),
                 ),
               ],
             ),

@@ -5281,7 +5281,8 @@ String _formatGradeTexto(Produto p) {
                         title: const Text('Só produtos sem fotos'),
                         value: _filtroSemFotos,
                         onChanged: (v) => setState(() => _filtroSemFotos = v),
-                        activeThumbColor: _warningColor,
+                        thumbColor: MaterialStateProperty.resolveWith((s) =>
+                            s.contains(MaterialState.selected) ? _warningColor : null),
                       ),
                       SwitchListTile(
                         title: const Text('Alterados nas últimas 24 horas'),
@@ -5293,7 +5294,8 @@ String _formatGradeTexto(Produto p) {
                         onChanged: (v) => setState(
                           () => _filtroRecentementeAlterados = v,
                         ),
-                        activeThumbColor: _primaryColor,
+                        thumbColor: MaterialStateProperty.resolveWith((s) =>
+                            s.contains(MaterialState.selected) ? _primaryColor : null),
                       ),
                       const SizedBox(height: 16),
                       Row(
