@@ -709,8 +709,9 @@ class _DuvidasPergunteDialogState extends State<_DuvidasPergunteDialog> {
       kMaxContentWidth,
       MediaQuery.sizeOf(context).width - 40,
     );
-    return AlertDialog(
+    return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxW),
+      child: AlertDialog(
       title: const Text('Dúvidas? Pergunte'),
       content: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
@@ -755,6 +756,7 @@ class _DuvidasPergunteDialogState extends State<_DuvidasPergunteDialog> {
           label: Text(_enviando ? 'Enviando…' : 'Enviar'),
         ),
       ],
+      ),
     );
   }
 }

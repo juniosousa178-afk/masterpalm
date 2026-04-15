@@ -13,7 +13,7 @@ Future<void> showCatalogFirstPurchaseCouponDialog({
   required VoidCallback onDismiss,
 }) {
   final s = offer.style;
-  final copyAsFilled = s.copyButtonBackground.a > 0.02;
+  final copyAsFilled = s.copyButtonBackground.opacity > 0.02;
 
   return showDialog<void>(
     context: context,

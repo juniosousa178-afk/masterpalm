@@ -360,8 +360,9 @@ class _CompartilharCatalogoDialogState extends State<CompartilharCatalogoDialog>
       kMaxContentWidth,
       MediaQuery.sizeOf(context).width - 40,
     );
-    return AlertDialog(
+    return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxW),
+      child: AlertDialog(
       title: const Row(
         children: [
           Icon(Icons.send, color: Colors.green),
@@ -456,6 +457,7 @@ class _CompartilharCatalogoDialogState extends State<CompartilharCatalogoDialog>
           ),
         ),
       ],
+      ),
     );
   }
 }

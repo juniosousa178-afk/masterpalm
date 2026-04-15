@@ -6,7 +6,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:url_launcher/url_launcher.dart';
-import 'package:vector_math/vector_math_64.dart' show Vector3;
 
 import '../../../core/produto_variacao_extra.dart';
 import '../../../services/catalog_share_service.dart';
@@ -1518,7 +1517,7 @@ insetPadding:
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeOut,
         transform: (!kIsWeb && _hovered)
-            ? (Matrix4.identity()..scaleByVector3(Vector3(1.02, 1.02, 1.0)))
+            ? (Matrix4.identity()..scale(1.02, 1.02, 1.0))
             : Matrix4.identity(),
         decoration: BoxDecoration(
           color: cardColor,

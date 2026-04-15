@@ -2562,8 +2562,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           kMaxContentWidth,
           MediaQuery.sizeOf(context).width - 40,
         );
-        return AlertDialog(
+        return ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxW),
+          child: AlertDialog(
           title: const Text('Faixa de preço'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2627,6 +2628,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               child: const Text('Aplicar'),
             ),
           ],
+          ),
         );
       },
     );

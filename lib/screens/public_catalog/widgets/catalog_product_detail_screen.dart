@@ -916,8 +916,9 @@ class _DuvidasPergunteDialogDetailState
       kMaxContentWidth,
       MediaQuery.sizeOf(context).width - 40,
     );
-    return AlertDialog(
+    return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxW),
+      child: AlertDialog(
       title: const Text('Dúvidas? Pergunte'),
       content: SingleChildScrollView(
         physics:
@@ -972,6 +973,7 @@ class _DuvidasPergunteDialogDetailState
           label: Text(_enviando ? 'Enviando…' : 'Enviar'),
         ),
       ],
+      ),
     );
   }
 }

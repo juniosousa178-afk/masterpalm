@@ -194,21 +194,23 @@ class PerfilClienteScreen extends StatelessWidget {
                           kMaxContentWidth,
                           MediaQuery.sizeOf(context).width - 40,
                         );
-                        return AlertDialog(
+                        return ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: maxW),
-                          title: const Text('Sair'),
-                          content: const Text(
-                              'Deseja realmente sair da sua conta?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancelar'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Sair'),
-                            ),
-                          ],
+                          child: AlertDialog(
+                            title: const Text('Sair'),
+                            content: const Text(
+                                'Deseja realmente sair da sua conta?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancelar'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Sair'),
+                              ),
+                            ],
+                          ),
                         );
                       },
                     );

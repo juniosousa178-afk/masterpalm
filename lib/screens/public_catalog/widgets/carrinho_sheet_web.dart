@@ -4088,36 +4088,38 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 kMaxContentWidth,
                                 MediaQuery.sizeOf(context).width - 40,
                               );
-                              return AlertDialog(
+                              return ConstrainedBox(
                                 constraints: BoxConstraints(maxWidth: maxW),
-                                title: const Text('Login Necessário'),
-                                content: const Text(
-                                  'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
-                                  'Assim você poderá:\n'
-                                  '• Receber cupons de desconto\n'
-                                  '• Concorrer a prêmios com números da sorte\n'
-                                  '• Acompanhar seus pedidos',
+                                child: AlertDialog(
+                                  title: const Text('Login Necessário'),
+                                  content: const Text(
+                                    'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
+                                    'Assim você poderá:\n'
+                                    '• Receber cupons de desconto\n'
+                                    '• Concorrer a prêmios com números da sorte\n'
+                                    '• Acompanhar seus pedidos',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Cancelar'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        if (!context.mounted) return;
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => LoginScreenCliente(
+                                                lojaId: widget.lojaId),
+                                          ),
+                                        );
+                                      },
+                                      child: const Text('Fazer Login'),
+                                    ),
+                                  ],
                                 ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('Cancelar'),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: () {
-                                      Navigator.pop(context);
-                                      if (!context.mounted) return;
-                                      Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (_) => LoginScreenCliente(
-                                              lojaId: widget.lojaId),
-                                        ),
-                                      );
-                                    },
-                                    child: const Text('Fazer Login'),
-                                  ),
-                                ],
                               );
                             },
                           );
@@ -4298,31 +4300,33 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                     kMaxContentWidth,
                                     MediaQuery.sizeOf(ctx).width - 40,
                                   );
-                                  return AlertDialog(
+                                  return ConstrainedBox(
                                     constraints: BoxConstraints(maxWidth: maxW),
-                                    title: const Text('Login Necessário'),
-                                    content: const Text(
-                                      'Para finalizar sua compra, você precisa fazer login ou criar uma conta.',
+                                    child: AlertDialog(
+                                      title: const Text('Login Necessário'),
+                                      content: const Text(
+                                        'Para finalizar sua compra, você precisa fazer login ou criar uma conta.',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx),
+                                          child: const Text('Cancelar'),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () {
+                                            Navigator.pop(ctx);
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => LoginScreenCliente(
+                                                    lojaId: widget.lojaId),
+                                              ),
+                                            );
+                                          },
+                                          child: const Text('Fazer Login'),
+                                        ),
+                                      ],
                                     ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx),
-                                        child: const Text('Cancelar'),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          Navigator.pop(ctx);
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => LoginScreenCliente(
-                                                  lojaId: widget.lojaId),
-                                            ),
-                                          );
-                                        },
-                                        child: const Text('Fazer Login'),
-                                      ),
-                                    ],
                                   );
                                 },
                               );
@@ -4498,35 +4502,37 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                     kMaxContentWidth,
                                     MediaQuery.sizeOf(context).width - 40,
                                   );
-                                  return AlertDialog(
+                                  return ConstrainedBox(
                                     constraints: BoxConstraints(maxWidth: maxW),
-                                    title: const Text('Login Necessário'),
-                                    content: const Text(
-                                      'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
-                                      'Assim você poderá:\n'
-                                      '• Receber cupons de desconto\n'
-                                      '• Concorrer a prêmios com números da sorte\n'
-                                      '• Acompanhar seus pedidos',
+                                    child: AlertDialog(
+                                      title: const Text('Login Necessário'),
+                                      content: const Text(
+                                        'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
+                                        'Assim você poderá:\n'
+                                        '• Receber cupons de desconto\n'
+                                        '• Concorrer a prêmios com números da sorte\n'
+                                        '• Acompanhar seus pedidos',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context),
+                                          child: const Text('Cancelar'),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () {
+                                            Navigator.pop(context);
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) => LoginScreenCliente(
+                                                    lojaId: widget.lojaId),
+                                              ),
+                                            );
+                                          },
+                                          child: const Text('Fazer Login'),
+                                        ),
+                                      ],
                                     ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: const Text('Cancelar'),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () {
-                                          Navigator.pop(context);
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) => LoginScreenCliente(
-                                                  lojaId: widget.lojaId),
-                                            ),
-                                          );
-                                        },
-                                        child: const Text('Fazer Login'),
-                                      ),
-                                    ],
                                   );
                                 },
                               );

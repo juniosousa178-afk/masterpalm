@@ -426,21 +426,23 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                           kMaxContentWidth,
                           MediaQuery.sizeOf(context).width - 40,
                         );
-                        return AlertDialog(
+                        return ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: maxW),
-                          title: const Text('Sair'),
-                          content: const Text(
-                              'Deseja realmente sair da sua conta?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancelar'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Sair'),
-                            ),
-                          ],
+                          child: AlertDialog(
+                            title: const Text('Sair'),
+                            content: const Text(
+                                'Deseja realmente sair da sua conta?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancelar'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Sair'),
+                              ),
+                            ],
+                          ),
                         );
                       },
                     );
@@ -825,8 +827,9 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
           kMaxContentWidth,
           MediaQuery.sizeOf(context).width - 40,
         );
-        return AlertDialog(
+        return ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxW),
+          child: AlertDialog(
           title: const Text('Editar Dados Pessoais'),
           content: SingleChildScrollView(
             child: Form(
@@ -928,6 +931,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
               child: const Text('Salvar'),
             ),
           ],
+          ),
         );
       },
     );
@@ -951,8 +955,9 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
             kMaxContentWidth,
             MediaQuery.sizeOf(context).width - 40,
           );
-          return AlertDialog(
+          return ConstrainedBox(
             constraints: BoxConstraints(maxWidth: maxW),
+            child: AlertDialog(
             title: const Text('Alterar Senha'),
             content: SingleChildScrollView(
               child: Form(
@@ -1081,6 +1086,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                 child: const Text('Alterar'),
               ),
             ],
+          ),
           );
         },
       ),
