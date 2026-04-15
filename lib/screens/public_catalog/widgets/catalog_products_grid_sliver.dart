@@ -51,6 +51,8 @@ Widget buildCatalogProductsGridSliver({
   void Function(String? value)? onCatalogVariacaoExtraChanged,
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida.
   bool useMinimalLayout = false,
+  /// Clássico no grid quando [isDesktop] (corpo largo): ajuste interno do card.
+  bool classicGridWideBody = false,
   String productCardSize = CatalogProductCardSize.medium,
 }) {
   final listaParaCombo = todosProdutosParaCombo ?? products;
@@ -97,6 +99,8 @@ Widget buildCatalogProductsGridSliver({
               catalogInitialExtraValor: catalogInitialExtraValor,
               onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
               minimalLayout: useMinimalLayout,
+              classicMinimalCardVisual: !useMinimalLayout,
+              classicGridWideBody: classicGridWideBody,
               productCardSize: productCardSize,
             ),
           );

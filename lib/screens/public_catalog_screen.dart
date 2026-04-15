@@ -6252,6 +6252,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               isDesktop: isDesktopBody,
                                               desktopCols: gridDesktopCols,
                                               mobileCols: catalogGridMobileCols,
+                                              classicGridWideBody:
+                                                  !useMinimalLayout &&
+                                                      isDesktopBody,
                                               onAdd: (it) =>
                                                   _addToCart(it, produtos),
                                               onProductViewed: _onProductViewed,

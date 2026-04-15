@@ -50,6 +50,10 @@ class PublicCatalogProductCard extends StatelessWidget {
   final String? catalogShareUrl;
   /// Layout minimalista: card abre tela de detalhe ao toque, sem botão Ver, tipografia reduzida
   final bool minimalLayout;
+  /// No catálogo clássico: card com o mesmo template visual do minimalista.
+  final bool classicMinimalCardVisual;
+  /// Grid principal clássico com corpo desktop (≥1024).
+  final bool classicGridWideBody;
   final String productCardSize;
   final String? catalogInitialExtraValor;
   final void Function(String? value)? onCatalogVariacaoExtraChanged;
@@ -80,6 +84,8 @@ class PublicCatalogProductCard extends StatelessWidget {
     this.imageCacheHeight,
     this.catalogShareUrl,
     this.minimalLayout = false,
+    this.classicMinimalCardVisual = false,
+    this.classicGridWideBody = false,
     this.productCardSize = CatalogProductCardSize.medium,
     this.catalogInitialExtraValor,
     this.onCatalogVariacaoExtraChanged,
@@ -181,6 +187,8 @@ class PublicCatalogProductCard extends StatelessWidget {
       comboProductMap: ehCombo ? p : null,
       todosProdutosForCombo: ehCombo ? (todosProdutos ?? []) : null,
       minimalLayout: minimalLayout,
+      classicMinimalCardVisual: classicMinimalCardVisual,
+      classicGridWideBody: classicGridWideBody,
       productCardSize: productCardSize,
       initialCatalogExtraValor: catalogInitialExtraValor,
       onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
