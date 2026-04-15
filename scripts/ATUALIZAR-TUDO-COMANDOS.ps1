@@ -9,13 +9,15 @@
 #   .\scripts\ATUALIZAR-TUDO-COMANDOS.ps1 -IncluirCatalogo  # Inclui sync catálogo para Firestore
 #   .\scripts\ATUALIZAR-TUDO-COMANDOS.ps1 -SkipPlayStore    # Não gera AAB (Play Store)
 #   .\scripts\ATUALIZAR-TUDO-COMANDOS.ps1 -SkipDeploy      # Não faz firebase deploy
+#   .\scripts\ATUALIZAR-TUDO-COMANDOS.ps1 -SkipFvm         # Ignora FVM; usa flutter do PATH (SDK FVM corrompido)
 # =============================================================================
 
 param(
     [switch]$ApenasLista,      # Só imprime a lista de comandos (referência)
     [switch]$IncluirCatalogo,  # Roda deploy_catalog_live.dart (produtos -> Firestore)
     [switch]$SkipPlayStore,     # Não gera AAB (app bundle) para Play Store
-    [switch]$SkipDeploy         # Não executa firebase deploy no final
+    [switch]$SkipDeploy,        # Não executa firebase deploy no final
+    [switch]$SkipFvm            # Não usa FVM (cache corrompido ou exclusao da pasta falhou)
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,8 +25,12 @@ $root = $PSScriptRoot
 if ($root -match "scripts$") { $root = Split-Path -Parent $root }
 Set-Location $root
 
+if ($SkipFvm) {
+    $env:MASTERPALM_SKIP_FVM = "1"
+}
+
 # Dart do PATH puro quebra scripts com hive_flutter (Offset/Rect sem dart:ui).
-# Ver scripts\_dart_from_flutter.ps1: FVM se houver; senao dart.exe junto ao flutter do PATH.
+# Ver scripts\_dart_from_flutter.ps1: FVM se houver e saudavel; senao dart.exe junto ao flutter do PATH.
 . (Join-Path $PSScriptRoot "_dart_from_flutter.ps1")
 $FlutterCmd = $script:FlutterCmd
 
@@ -37,7 +43,8 @@ $comandosRef = @"
 ========================================
 
 1) DEPENDÊNCIAS FLUTTER
-   flutter clean && flutter pub get   (ou: fvm flutter clean / pub get se tiver FVM)
+   flutter clean && flutter pub get   (ou: fvm flutter se FVM OK)
+   Se FVM corromper: .\scripts\ATUALIZAR-TUDO-COMANDOS.ps1 -SkipFvm   ou   `$env:MASTERPALM_SKIP_FVM='1'
 
 2) GERAR CÓDIGO (Hive, etc.)
    Use o Dart do Flutter (este script ja resolve). Manual: dart do ...\flutter\bin\cache\dart-sdk\bin\
