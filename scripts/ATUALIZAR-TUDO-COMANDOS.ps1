@@ -21,6 +21,20 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Console UTF-8: acentos corretos no Windows (script em UTF-8 + code page 65001).
+try {
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    if ($Host.Name -eq 'ConsoleHost') {
+        [Console]::OutputEncoding = $utf8NoBom
+        [Console]::InputEncoding = $utf8NoBom
+    }
+    $OutputEncoding = $utf8NoBom
+    if ($PSVersionTable.PSVersion.Major -lt 6) {
+        chcp 65001 | Out-Null
+    }
+} catch { }
+
 $root = $PSScriptRoot
 if ($root -match "scripts$") { $root = Split-Path -Parent $root }
 Set-Location $root

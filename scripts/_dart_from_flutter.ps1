@@ -4,7 +4,7 @@
 # Define:
 #   $script:FlutterCmd     -> "fvm flutter" ou "flutter"
 #   $script:ProjDartExe   -> caminho do dart.exe do SDK Flutter (quando nao usa FVM)
-#   $script:UseFvmDart     -> $true se .fvm existe, fvm no PATH e fvm flutter responde
+#   $script:UseFvmDart     -> $true se .fvm existe, fvm no PATH, fvm flutter e fvm dart respondem
 #   Invoke-ProjDart        -> executa dart/fvm dart na raiz do projeto (hive_flutter precisa dart:ui)
 #
 # Forcar PATH (ignorar FVM): $env:MASTERPALM_SKIP_FVM = "1"
@@ -36,6 +36,13 @@ function Set-ProjDartExeFromFlutterPath {
 
 $skipFvm = $env:MASTERPALM_SKIP_FVM -match '^(1|true|yes)$'
 
+function Get-FvmCmdMergedOutput([string]$Arguments) {
+    $raw = cmd /c "$Arguments"
+    if ($null -eq $raw) { return '' }
+    if ($raw -is [array]) { return ($raw | ForEach-Object { "$_" }) -join "`n" }
+    return "$raw"
+}
+
 if (-not $skipFvm -and
     (Test-Path (Join-Path $script:DartFvmProjRoot ".fvm")) -and
     (Get-Command "fvm" -ErrorAction SilentlyContinue)) {
@@ -43,22 +50,32 @@ if (-not $skipFvm -and
     $script:FlutterCmd = "fvm flutter"
     Push-Location $script:DartFvmProjRoot
     try {
-        # Redirecionar tudo no cmd: stderr do Flutter ("Building flutter tool...") vira erro no PS com $ErrorActionPreference Stop.
+        # Redirecionar no cmd: stderr ("Building flutter tool...", kernel binary, etc.) quebra o PS com $ErrorActionPreference Stop.
         $prevEap = $ErrorActionPreference
+        $fvmOk = $false
         try {
             $ErrorActionPreference = 'SilentlyContinue'
-            cmd /c "fvm flutter --version >nul 2>&1" | Out-Null
+            # fvm pode devolver exit 0 e ainda emitir "Invalid kernel binary" (stderr mesclado com 2>&1).
+            $flutterTxt = Get-FvmCmdMergedOutput 'fvm flutter --version 2>&1'
+            $flutterBad = ($LASTEXITCODE -ne 0) -or
+                ($flutterTxt -match 'Invalid kernel|Kernel binary|doesn''t support Dart|doesn.t support Dart|Can''t load Kernel')
+            if (-not $flutterBad) {
+                $dartTxt = Get-FvmCmdMergedOutput 'fvm dart --version 2>&1'
+                $dartBad = ($LASTEXITCODE -ne 0) -or
+                    ($dartTxt -match 'Invalid kernel|Kernel binary|doesn''t support Dart|doesn.t support Dart|Can''t load Kernel')
+                $fvmOk = -not $dartBad
+            }
         }
         finally {
             $ErrorActionPreference = $prevEap
         }
-        if ($LASTEXITCODE -ne 0) {
+        if (-not $fvmOk) {
             Write-Warning @"
-FVM falhou (SDK corrompido ou pasta travada). Usando 'flutter' do PATH.
-Reparo manual: feche VS Code/Cursor/terminais, depois exclua a pasta da versao em
-  $env:USERPROFILE\fvm\versions\<versao>
-ou rode: fvm install
-Para sempre ignorar FVM neste shell: `$env:MASTERPALM_SKIP_FVM = '1'
+FVM nao esta utilizavel (flutter/dart do FVM ou pacote global incompativel com seu Dart).
+Usando 'flutter' / dart do SDK no PATH.
+Reparo FVM: dart pub global activate fvm
+  ou SDK/pasta: fvm install   / excluir versao em $env:USERPROFILE\fvm\versions\<versao>
+Ignorar FVM neste shell: `$env:MASTERPALM_SKIP_FVM = '1'   ou script -SkipFvm
 "@
             $script:UseFvmDart = $false
             $script:FlutterCmd = "flutter"
@@ -88,7 +105,14 @@ function Invoke-ProjDart {
                 if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
             }
             $argLine = $quoted -join ' '
-            & cmd /c "fvm dart $argLine"
+            $prevEap = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'SilentlyContinue'
+                cmd /c "fvm dart $argLine"
+            }
+            finally {
+                $ErrorActionPreference = $prevEap
+            }
         }
         elseif ($null -ne $script:ProjDartExe -and (Test-Path -LiteralPath $script:ProjDartExe)) {
             & $script:ProjDartExe @RemainingArgs
