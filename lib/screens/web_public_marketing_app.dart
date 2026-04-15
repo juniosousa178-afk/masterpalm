@@ -75,7 +75,7 @@ class _PublicMarketingWebAppState extends State<PublicMarketingWebApp> {
           slivers: [
             SliverAppBar(
               pinned: true,
-              backgroundColor: _bg.withValues(alpha: 0.92),
+              backgroundColor: _bg.withOpacity(0.92),
               surfaceTintColor: Colors.transparent,
               title: Row(
                 children: [
@@ -141,7 +141,7 @@ class _PublicMarketingWebAppState extends State<PublicMarketingWebApp> {
                           'multiusuários e operação mesmo com internet instável.',
                           style: TextStyle(
                             fontSize: 17,
-                            color: Colors.white.withValues(alpha: 0.78),
+                            color: Colors.white.withOpacity(0.78),
                             height: 1.45,
                           ),
                           textAlign: TextAlign.center,
@@ -245,8 +245,8 @@ class _PublicMarketingWebAppState extends State<PublicMarketingWebApp> {
       child: ActionChip(
         label: Text(label),
         onPressed: onTap,
-        backgroundColor: Colors.white.withValues(alpha: 0.08),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+        backgroundColor: Colors.white.withOpacity(0.08),
+        side: BorderSide(color: Colors.white.withOpacity(0.15)),
         labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
       ),
     );
@@ -277,12 +277,12 @@ class _PublicMarketingWebAppState extends State<PublicMarketingWebApp> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.check_circle_outline, size: 20, color: _accent.withValues(alpha: 0.9)),
+                Icon(Icons.check_circle_outline, size: 20, color: _accent.withOpacity(0.9)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     t,
-                    style: TextStyle(fontSize: 15, color: Colors.white.withValues(alpha: 0.85), height: 1.35),
+                    style: TextStyle(fontSize: 15, color: Colors.white.withOpacity(0.85), height: 1.35),
                   ),
                 ),
               ],

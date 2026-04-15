@@ -128,7 +128,7 @@ class _RelatorioVendedorScreenState extends State<RelatorioVendedorScreen> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: DropdownButtonFormField<String>(
-              initialValue: vendedorSelecionado,
+              value: vendedorSelecionado,
               hint: const Text(
                 'Selecione um vendedor',
                 style: TextStyle(color: Colors.white),

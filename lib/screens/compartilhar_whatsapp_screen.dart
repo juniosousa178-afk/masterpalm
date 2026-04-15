@@ -131,7 +131,7 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha:0.5),
+                      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: SelectableText(msgCatalogo, style: const TextStyle(height: 1.4)),
@@ -213,7 +213,7 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerHighest.withValues(alpha:0.5),
+                                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: SelectableText(msgCampanha, style: const TextStyle(height: 1.4)),

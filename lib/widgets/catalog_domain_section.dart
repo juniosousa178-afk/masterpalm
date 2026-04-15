@@ -49,35 +49,35 @@ class CatalogDomainSection extends StatelessWidget {
     final cs = colorScheme;
     return switch (statusKey) {
       kDominioStatusAtivo => (
-          Colors.green.withValues(alpha: 0.14),
+          Colors.green.withOpacity(0.14),
           Colors.green.shade800,
         ),
       kDominioStatusDnsOk => (
-          Colors.teal.withValues(alpha: 0.14),
+          Colors.teal.withOpacity(0.14),
           Colors.teal.shade800,
         ),
       kDominioStatusEmVerificacao => (
-          cs.primary.withValues(alpha: 0.14),
+          cs.primary.withOpacity(0.14),
           cs.primary,
         ),
       kDominioStatusPendenteDns => (
-          cs.tertiary.withValues(alpha: 0.16),
+          cs.tertiary.withOpacity(0.16),
           cs.tertiary,
         ),
       kDominioStatusSolicitado => (
-          cs.secondary.withValues(alpha: 0.16),
+          cs.secondary.withOpacity(0.16),
           cs.secondary,
         ),
       kDominioStatusPendente => (
-          cs.tertiary.withValues(alpha: 0.16),
+          cs.tertiary.withOpacity(0.16),
           cs.tertiary,
         ),
       kDominioStatusErro => (
-          cs.error.withValues(alpha: 0.14),
+          cs.error.withOpacity(0.14),
           cs.error,
         ),
       _ => (
-          cs.surfaceContainerHighest.withValues(alpha: 0.9),
+          cs.surfaceContainerHighest.withOpacity(0.9),
           cs.onSurfaceVariant,
         ),
     };
@@ -110,7 +110,7 @@ class CatalogDomainSection extends StatelessWidget {
               decoration: BoxDecoration(
                 color: bg,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: fg.withValues(alpha: 0.35)),
+                border: Border.all(color: fg.withOpacity(0.35)),
               ),
               child: Text(
                 statusLabel,

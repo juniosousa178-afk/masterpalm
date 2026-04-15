@@ -230,7 +230,7 @@ class _BackupScreenState extends State<BackupScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha:0.1),
+                      color: primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(
@@ -290,7 +290,7 @@ class _BackupScreenState extends State<BackupScreen>
                       leading: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: primaryColor.withValues(alpha:0.1),
+                          color: primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: const Icon(
@@ -405,7 +405,7 @@ class _BackupScreenState extends State<BackupScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: errorColor.withValues(alpha:0.1),
+                color: errorColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -570,7 +570,7 @@ class _BackupScreenState extends State<BackupScreen>
                               height: 150,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha:0.1),
+                                color: Colors.white.withOpacity(0.1),
                               ),
                             ),
                           ),
@@ -582,7 +582,7 @@ class _BackupScreenState extends State<BackupScreen>
                               height: 100,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha:0.08),
+                                color: Colors.white.withOpacity(0.08),
                               ),
                             ),
                           ),
@@ -606,7 +606,7 @@ class _BackupScreenState extends State<BackupScreen>
                                 Text(
                                   _storeId != null ? 'Loja: $_storeId' : 'Nenhuma loja selecionada',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha:0.9),
+                                    color: Colors.white.withOpacity(0.9),
                                     fontSize: 14,
                                   ),
                                 ),
@@ -632,13 +632,13 @@ class _BackupScreenState extends State<BackupScreen>
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                primaryColor.withValues(alpha:0.1),
-                                secondaryColor.withValues(alpha:0.05),
+                                primaryColor.withOpacity(0.1),
+                                secondaryColor.withOpacity(0.05),
                               ],
                             ),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: primaryColor.withValues(alpha:0.2),
+                              color: primaryColor.withOpacity(0.2),
                             ),
                           ),
                           child: Row(
@@ -646,7 +646,7 @@ class _BackupScreenState extends State<BackupScreen>
                               Container(
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
-                                  color: primaryColor.withValues(alpha:0.1),
+                                  color: primaryColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: const Icon(
@@ -722,7 +722,7 @@ class _BackupScreenState extends State<BackupScreen>
           // Loading overlay
           if (_isLoading)
             Container(
-              color: Colors.black.withValues(alpha:0.3),
+              color: Colors.black.withOpacity(0.3),
               child: const Center(
                 child: CircularProgressIndicator(color: primaryColor),
               ),
@@ -751,7 +751,7 @@ class _BackupScreenState extends State<BackupScreen>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha:0.05),
+                color: Colors.black.withOpacity(0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -762,7 +762,7 @@ class _BackupScreenState extends State<BackupScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha:0.1),
+                  color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(icon, color: color, size: 32),
@@ -799,7 +799,7 @@ class _BackupScreenState extends State<BackupScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -855,7 +855,7 @@ class _BackupScreenState extends State<BackupScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -866,7 +866,7 @@ class _BackupScreenState extends State<BackupScreen>
         leading: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: primaryColor.withValues(alpha:0.1),
+            color: primaryColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Icon(

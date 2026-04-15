@@ -1547,7 +1547,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.08),
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 20,
             offset: const Offset(0, -4),
           ),
@@ -1705,7 +1705,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           border: Border.all(color: Colors.grey.shade200),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha:0.04),
+                              color: Colors.black.withOpacity(0.04),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -1948,7 +1948,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary.withValues(alpha:0.08),
+                                    color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
@@ -2112,7 +2112,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               Expanded(
                                 flex: 2,
                                 child: DropdownButtonFormField<String>(
-                                  initialValue: item['forma'],
+                                  value: item['forma'],
                                   items: const ['Pix', 'Dinheiro', 'Cartão']
                                   .map(
                                     (v) => DropdownMenuItem(
@@ -2289,7 +2289,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   Text(
                                     'Gire e ganhe descontos ou brindes!',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha:0.8),
+                                      color: Colors.white.withOpacity(0.8),
                                       fontSize: 13,
                                     ),
                                   ),
@@ -2561,7 +2561,7 @@ class _RoletaPremiosDialogState extends State<RoletaPremiosDialog> {
                         BoxShadow(
                           blurRadius: 16,
                           spreadRadius: 2,
-                          color: Colors.black.withValues(alpha:0.6),
+                          color: Colors.black.withOpacity(0.6),
                         ),
                       ],
                     ),

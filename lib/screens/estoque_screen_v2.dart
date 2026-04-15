@@ -476,7 +476,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: _primaryColor.withValues(alpha:0.1),
+                      color: _primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.flash_on, color: _primaryColor),
@@ -611,7 +611,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
       leading: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: cor.withValues(alpha:0.1),
+          color: cor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, color: cor, size: 22),
@@ -892,13 +892,13 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
           boxShadow: [
             if (selecionado)
               BoxShadow(
-                color: _primaryColor.withValues(alpha:0.2),
+                color: _primaryColor.withOpacity(0.2),
                 blurRadius: 8,
                 offset: const Offset(0, 4),
               )
             else
               BoxShadow(
-                color: Colors.black.withValues(alpha:0.05),
+                color: Colors.black.withOpacity(0.05),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -976,7 +976,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: _successColor.withValues(alpha:0.1),
+                            color: _successColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -995,7 +995,7 @@ class _EstoqueScreenV2State extends State<EstoqueScreenV2> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha:0.1),
+                            color: Colors.blue.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(

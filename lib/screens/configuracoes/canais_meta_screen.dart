@@ -655,7 +655,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: _primaryColor.withValues(alpha:0.1),
+                      color: _primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.help_outline, color: _primaryColor),
@@ -857,7 +857,7 @@ class _CanaisMetaScreenState extends State<CanaisMetaScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha:0.1),
+                      color: color.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(Icons.help_outline, color: color),

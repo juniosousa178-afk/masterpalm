@@ -223,7 +223,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         key: ValueKey(forma),
-                        initialValue: forma,
+                        value: forma,
                         decoration: const InputDecoration(
                           labelText: 'Forma (caixa)',
                           border: OutlineInputBorder(),
@@ -645,9 +645,9 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
               margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _warningColor.withValues(alpha:0.15),
+                color: _warningColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _warningColor.withValues(alpha:0.5)),
+                border: Border.all(color: _warningColor.withOpacity(0.5)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -690,7 +690,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
                         ),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: c.pago ? _successColor.withValues(alpha:0.2) : _primaryColor.withValues(alpha:0.2),
+                            backgroundColor: c.pago ? _successColor.withOpacity(0.2) : _primaryColor.withOpacity(0.2),
                             child: Icon(c.pago ? Icons.check : Icons.schedule, color: c.pago ? _successColor : _primaryColor),
                           ),
                           title: Text(c.clienteNome, style: const TextStyle(fontWeight: FontWeight.w600)),

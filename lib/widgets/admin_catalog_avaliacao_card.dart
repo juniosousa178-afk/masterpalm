@@ -72,7 +72,7 @@ class AdminCatalogAvaliacaoCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.45)),
+        side: BorderSide(color: theme.dividerColor.withOpacity(0.45)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
@@ -84,7 +84,7 @@ class AdminCatalogAvaliacaoCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 22,
-                  backgroundColor: scheme.primaryContainer.withValues(alpha: 0.9),
+                  backgroundColor: scheme.primaryContainer.withOpacity(0.9),
                   foregroundColor: scheme.onPrimaryContainer,
                   child: Text(
                     _initialNome(),
@@ -134,7 +134,7 @@ class AdminCatalogAvaliacaoCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
-            Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.35)),
+            Divider(height: 1, color: theme.dividerColor.withOpacity(0.35)),
             const SizedBox(height: 12),
             Row(
               children: List.generate(
@@ -153,7 +153,7 @@ class AdminCatalogAvaliacaoCard extends StatelessWidget {
               avaliacao.comentario,
               style: theme.textTheme.bodyLarge?.copyWith(
                 height: 1.4,
-                color: theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.92),
+                color: theme.textTheme.bodyLarge?.color?.withOpacity(0.92),
               ),
             ),
             const SizedBox(height: 12),
@@ -176,7 +176,7 @@ class AdminCatalogAvaliacaoCard extends StatelessWidget {
                 'Fotos',
                 style: theme.textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.w600,
-                  color: scheme.onSurface.withValues(alpha: 0.75),
+                  color: scheme.onSurface.withOpacity(0.75),
                 ),
               ),
               const SizedBox(height: 8),
@@ -253,7 +253,7 @@ class AdminCatalogAvaliacaoCard extends StatelessWidget {
           child: Text(
             text,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.88),
+              color: theme.textTheme.bodySmall?.color?.withOpacity(0.88),
               height: 1.25,
             ),
           ),

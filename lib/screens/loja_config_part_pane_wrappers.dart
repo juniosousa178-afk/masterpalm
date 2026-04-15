@@ -51,7 +51,7 @@ class _ModuleConfigViewShell extends StatelessWidget {
                 meta['subtitle'] as String,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.white.withValues(alpha: 0.92),
+                  color: Colors.white.withOpacity(0.92),
                   fontWeight: FontWeight.w400,
                   height: 1.25,
                 ),
@@ -130,7 +130,7 @@ class _LayoutAccordionSection extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -161,7 +161,7 @@ class _LayoutAccordionSection extends StatelessWidget {
                           Text(
                             subtitle!,
                             style: tt.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                              color: cs.onSurfaceVariant.withOpacity(0.92),
                               height: 1.4,
                               fontSize: 13,
                             ),

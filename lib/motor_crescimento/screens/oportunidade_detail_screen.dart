@@ -183,7 +183,7 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
       decoration: BoxDecoration(
         color: _cardDark,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha:0.4), width: 1),
+        border: Border.all(color: color.withOpacity(0.4), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -193,7 +193,7 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha:0.15),
+                  color: color.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -217,7 +217,7 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          Text(o.descricao, style: TextStyle(color: Colors.white.withValues(alpha:0.8), fontSize: 14)),
+          Text(o.descricao, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14)),
         ],
       ),
     );
@@ -229,18 +229,18 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
       decoration: BoxDecoration(
         color: _cardDark,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _primaryColor.withValues(alpha:0.4), width: 1),
+        border: Border.all(color: _primaryColor.withOpacity(0.4), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(s.titulo, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
-          Text(s.descricao, style: TextStyle(color: Colors.white.withValues(alpha:0.85), fontSize: 14)),
+          Text(s.descricao, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14)),
           if (s.percentualDesconto > 0) ...[
             const SizedBox(height: 12),
             Text('Desconto sugerido: ${s.percentualDesconto.toInt()}%', style: const TextStyle(color: _primaryColor, fontWeight: FontWeight.w600)),
-            Text('Código cupom: ${s.codigoCupomSugerido}', style: TextStyle(color: Colors.white.withValues(alpha:0.8))),
+            Text('Código cupom: ${s.codigoCupomSugerido}', style: TextStyle(color: Colors.white.withOpacity(0.8))),
           ],
         ],
       ),
@@ -271,14 +271,14 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
                 onPressed: () => _copiar(texto, label),
                 icon: const Icon(Icons.copy_outlined, size: 20, color: Colors.white70),
                 style: IconButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha:0.08),
+                  backgroundColor: Colors.white.withOpacity(0.08),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          SelectableText(texto, style: TextStyle(color: Colors.white.withValues(alpha:0.9), fontSize: 14)),
+          SelectableText(texto, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14)),
         ],
       ),
     );
@@ -293,7 +293,7 @@ class _OportunidadeDetailScreenState extends State<OportunidadeDetailScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: _primaryColor,
           foregroundColor: Colors.white,
-          disabledBackgroundColor: _primaryColor.withValues(alpha:0.5),
+          disabledBackgroundColor: _primaryColor.withOpacity(0.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           elevation: 0,
         ),

@@ -102,7 +102,7 @@ class CampanhaParticipantesScreen extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
-                              color: Colors.greenAccent.withValues(alpha:0.2),
+                              color: Colors.greenAccent.withOpacity(0.2),
                               border: Border.all(color: Colors.greenAccent),
                               borderRadius: BorderRadius.circular(12),
                             ),

@@ -289,7 +289,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                initialValue: tipoUsuario,
+                value: tipoUsuario,
                 decoration: _input('Tipo de Usuário'),
                 items: const [
                   DropdownMenuItem(value: 'admin', child: Text('Administrador')),

@@ -197,7 +197,7 @@ class _RelatorioMaisVendidosScreenState extends State<RelatorioMaisVendidosScree
                         child: Text(
                           'Nenhuma venda com itens nesta loja.',
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
                           ),
                         ),
                       ),
@@ -210,7 +210,7 @@ class _RelatorioMaisVendidosScreenState extends State<RelatorioMaisVendidosScree
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: _primaryColor.withValues(alpha:0.2),
+                            backgroundColor: _primaryColor.withOpacity(0.2),
                             child: Text(
                               '$i',
                               style: const TextStyle(
@@ -266,9 +266,9 @@ class _ComparativoCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.12),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha:0.3)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -276,7 +276,7 @@ class _ComparativoCard extends StatelessWidget {
           Text(
             label,
             style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withValues(alpha:0.8),
+              color: theme.colorScheme.onSurface.withOpacity(0.8),
             ),
           ),
           const SizedBox(height: 4),

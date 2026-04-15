@@ -152,7 +152,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                       Text(
                         'Faça login para acompanhar seus pedidos e usar cupons de desconto',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
                           height: 1.4,
                         ),
                         textAlign: TextAlign.center,
@@ -167,7 +167,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha:0.06),
+                              color: Colors.black.withOpacity(0.06),
                               blurRadius: 20,
                               offset: const Offset(0, 4),
                             ),
@@ -275,10 +275,10 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withValues(alpha:0.08),
+                          color: theme.primaryColor.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: theme.primaryColor.withValues(alpha:0.2),
+                            color: theme.primaryColor.withOpacity(0.2),
                             width: 1,
                           ),
                         ),
@@ -294,7 +294,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
                               child: Text(
                                 'Usamos seu email apenas para identificação. Sem spam!',
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(alpha:0.8),
+                                  color: theme.colorScheme.onSurface.withOpacity(0.8),
                                   height: 1.3,
                                 ),
                               ),
@@ -341,7 +341,7 @@ class _ClienteLoginScreenState extends State<ClienteLoginScreen> {
         hintText: hint,
         prefixIcon: Icon(icon, size: 22),
         filled: true,
-        fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+        fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

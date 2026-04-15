@@ -313,7 +313,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                   Row(
                                     children: [
                                       CircleAvatar(
-                                        backgroundColor: _primaryColor.withValues(alpha:0.2),
+                                        backgroundColor: _primaryColor.withOpacity(0.2),
                                         child: Text(
                                           item.nome.isNotEmpty ? item.nome[0].toUpperCase() : '?',
                                           style: const TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),
@@ -385,7 +385,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                             child: Card(
                               margin: EdgeInsets.zero,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              color: _primaryColor.withValues(alpha:0.08),
+                              color: _primaryColor.withOpacity(0.08),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                 child: Row(
@@ -436,7 +436,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                   Row(
                                     children: [
                                       CircleAvatar(
-                                        backgroundColor: _primaryColor.withValues(alpha:0.2),
+                                        backgroundColor: _primaryColor.withOpacity(0.2),
                                         child: Text(
                                           item.clienteNome.isNotEmpty ? item.clienteNome[0].toUpperCase() : '?',
                                           style: const TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),

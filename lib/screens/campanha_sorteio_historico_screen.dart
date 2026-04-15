@@ -51,7 +51,7 @@ class _CampanhaSorteioHistoricoScreenState
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 4,
-        shadowColor: Colors.greenAccent.withValues(alpha:0.3),
+        shadowColor: Colors.greenAccent.withOpacity(0.3),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -201,7 +201,7 @@ class _CampanhaSorteioHistoricoScreenState
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.greenAccent.withValues(alpha:0.15),
+                      color: Colors.greenAccent.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -292,7 +292,7 @@ class _CampanhaSorteioHistoricoScreenState
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha:0.15),
+                      color: Colors.amber.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Row(
@@ -393,7 +393,7 @@ class _CampanhaSorteioHistoricoScreenState
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha:0.2),
+                      color: Colors.amber.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Row(
@@ -465,7 +465,7 @@ class _CampanhaSorteioHistoricoScreenState
                       icon: const Icon(Icons.message, color: Color(0xFF25D366)),
                       tooltip: 'WhatsApp',
                       style: IconButton.styleFrom(
-                        backgroundColor: const Color(0xFF25D366).withValues(alpha:0.15),
+                        backgroundColor: const Color(0xFF25D366).withOpacity(0.15),
                       ),
                     ),
                   if (telefone.isNotEmpty)
@@ -476,7 +476,7 @@ class _CampanhaSorteioHistoricoScreenState
                       icon: const Icon(Icons.phone, color: Colors.blue),
                       tooltip: 'Ligar',
                       style: IconButton.styleFrom(
-                        backgroundColor: Colors.blue.withValues(alpha:0.15),
+                        backgroundColor: Colors.blue.withOpacity(0.15),
                       ),
                     ),
                 ],
@@ -560,8 +560,8 @@ class _CampanhaSorteioHistoricoScreenState
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.amber.withValues(alpha:0.2),
-                    Colors.orange.withValues(alpha:0.1),
+                    Colors.amber.withOpacity(0.2),
+                    Colors.orange.withOpacity(0.1),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(12),

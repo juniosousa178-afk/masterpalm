@@ -414,7 +414,7 @@ class _PrecificacaoUniversalScreenState
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _successColor.withValues(alpha:0.15),
+                color: _successColor.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
               child:
@@ -689,7 +689,7 @@ class _PrecificacaoUniversalScreenState
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _errorColor.withValues(alpha:0.1),
+                color: _errorColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child:
@@ -792,7 +792,7 @@ class _PrecificacaoUniversalScreenState
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.15),
+                  color: _primaryColor.withOpacity(0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const CircularProgressIndicator(color: _primaryColor, strokeWidth: 2),
@@ -815,7 +815,7 @@ class _PrecificacaoUniversalScreenState
         title: const Text('Precificação Universal'),
         actions: [
           PopupMenuButton<String>(
-            icon: Icon(Icons.more_vert, color: Colors.white.withValues(alpha: 0.9)),
+            icon: Icon(Icons.more_vert, color: Colors.white.withOpacity(0.9)),
             tooltip: 'Mais opções',
             onSelected: (v) {
               if (v == 'modelo_import') {
@@ -847,12 +847,12 @@ class _PrecificacaoUniversalScreenState
             ],
           ),
           IconButton(
-            icon: Icon(Icons.refresh, color: Colors.white.withValues(alpha:0.9)),
+            icon: Icon(Icons.refresh, color: Colors.white.withOpacity(0.9)),
             onPressed: _restaurarPadrao,
             tooltip: 'Restaurar padrão',
           ),
           IconButton(
-            icon: Icon(Icons.picture_as_pdf, color: Colors.white.withValues(alpha:0.9)),
+            icon: Icon(Icons.picture_as_pdf, color: Colors.white.withOpacity(0.9)),
             onPressed: exportarPDF,
             tooltip: 'Exportar PDF',
           ),
@@ -884,7 +884,7 @@ class _PrecificacaoUniversalScreenState
                       'Aguarde enquanto os produtos são processados',
                       style: TextStyle(
                         fontSize: 13,
-                        color: cs.onSurfaceVariant.withValues(alpha:0.8),
+                        color: cs.onSurfaceVariant.withOpacity(0.8),
                       ),
                     ),
                   ],
@@ -958,7 +958,7 @@ class _PrecificacaoUniversalScreenState
       color: isDark ? cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: primaryColor.withValues(alpha:0.3)),
+        side: BorderSide(color: primaryColor.withOpacity(0.3)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
@@ -969,14 +969,14 @@ class _PrecificacaoUniversalScreenState
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: primaryColor.withValues(alpha:0.08),
+                color: primaryColor.withOpacity(0.08),
               ),
               child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha:0.15),
+                      color: primaryColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(Icons.tune, color: primaryColor, size: 22),
@@ -996,7 +996,7 @@ class _PrecificacaoUniversalScreenState
                     message: 'Markup: multiplicador do custo (150 = 1,5x). '
                         'Taxa cartão: percentual adicional (ex: 5%).',
                     child: Icon(Icons.help_outline,
-                        size: 20, color: primaryColor.withValues(alpha:0.8)),
+                        size: 20, color: primaryColor.withOpacity(0.8)),
                   ),
                 ],
               ),
@@ -1037,7 +1037,7 @@ class _PrecificacaoUniversalScreenState
       color: isDark ? cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: primaryColor.withValues(alpha: 0.3)),
+        side: BorderSide(color: primaryColor.withOpacity(0.3)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1063,7 +1063,7 @@ class _PrecificacaoUniversalScreenState
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _warningColor.withValues(alpha: 0.2),
+                      color: _warningColor.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -1168,7 +1168,7 @@ class _PrecificacaoUniversalScreenState
               icon: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(Icons.file_upload, color: primaryColor, size: 20),
@@ -1180,7 +1180,7 @@ class _PrecificacaoUniversalScreenState
               icon: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: _successColor.withValues(alpha:0.15),
+                  color: _successColor.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.add_circle, color: _successColor, size: 22),
@@ -1192,7 +1192,7 @@ class _PrecificacaoUniversalScreenState
               icon: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: _errorColor.withValues(alpha:0.1),
+                  color: _errorColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.delete_sweep, color: _errorColor, size: 20),
@@ -1217,11 +1217,11 @@ class _PrecificacaoUniversalScreenState
       decoration: InputDecoration(
         hintText: 'Buscar por nome...',
         hintStyle: TextStyle(color: cs.onSurfaceVariant),
-        prefixIcon: Icon(Icons.search, color: primaryColor.withValues(alpha:0.8)),
+        prefixIcon: Icon(Icons.search, color: primaryColor.withOpacity(0.8)),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: primaryColor.withValues(alpha:0.3)),
+          borderSide: BorderSide(color: primaryColor.withOpacity(0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -1242,7 +1242,7 @@ class _PrecificacaoUniversalScreenState
       color: isDark ? cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: primaryColor.withValues(alpha:0.3)),
+        side: BorderSide(color: primaryColor.withOpacity(0.3)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(48),
@@ -1252,7 +1252,7 @@ class _PrecificacaoUniversalScreenState
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: primaryColor.withValues(alpha:0.1),
+                color: primaryColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.inventory_2_outlined,
@@ -1351,7 +1351,7 @@ class _PrecificacaoUniversalScreenState
       color: isDark ? cs.surfaceContainerHighest : _cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: primaryColor.withValues(alpha:0.25)),
+        side: BorderSide(color: primaryColor.withOpacity(0.25)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1363,7 +1363,7 @@ class _PrecificacaoUniversalScreenState
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha:0.1),
+                    color: primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(Icons.inventory_2, color: primaryColor, size: 24),
@@ -1472,7 +1472,7 @@ class _PrecificacaoUniversalScreenState
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _successColor.withValues(alpha:0.15),
+                  color: _successColor.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1505,7 +1505,7 @@ class _PrecificacaoUniversalScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -1587,7 +1587,7 @@ class _AddProdutoSheetState extends State<_AddProdutoSheet> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: _sheetPrimary.withValues(alpha:0.1),
+                  color: _sheetPrimary.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.add_shopping_cart, color: _sheetPrimary),

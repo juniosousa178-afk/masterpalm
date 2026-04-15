@@ -816,7 +816,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.1),
+                    color: _primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -860,7 +860,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
             const Divider(),
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
-              initialValue: _freteProvider,
+              value: _freteProvider,
               decoration: InputDecoration(
                 labelText: 'Escolha o provedor de frete',
                 prefixIcon: const Icon(Icons.local_shipping),
@@ -1381,7 +1381,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _warningColor.withValues(alpha:0.1),
+                    color: _warningColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -1527,7 +1527,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.1),
+                    color: _primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.inventory_2, color: _primaryColor, size: 24),
@@ -1735,7 +1735,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   ),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: _primaryColor.withValues(alpha:0.2),
+                      backgroundColor: _primaryColor.withOpacity(0.2),
                       child: Text('$tam', style: const TextStyle(fontWeight: FontWeight.bold, color: _primaryColor)),
                     ),
                     title: Text('${e['nome']} — ${e['peso']}g', style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -1903,7 +1903,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _successColor.withValues(alpha:0.15),
+                    color: _successColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.card_giftcard, color: _successColor, size: 24),
@@ -2002,7 +2002,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _warningColor.withValues(alpha:0.15),
+                    color: _warningColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.shopping_cart_outlined, color: _warningColor, size: 24),
@@ -2103,7 +2103,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.1),
+                    color: _primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -2167,7 +2167,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _successColor.withValues(alpha:0.1),
+                    color: _successColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -2260,7 +2260,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
-          color: cupom.ativo ? tagColor.withValues(alpha:0.3) : Colors.grey.shade300,
+          color: cupom.ativo ? tagColor.withOpacity(0.3) : Colors.grey.shade300,
           width: 1,
         ),
       ),
@@ -2275,7 +2275,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: cupom.ativo
-                        ? tagColor.withValues(alpha:0.1)
+                        ? tagColor.withOpacity(0.1)
                         : Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -2308,10 +2308,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: tagColor.withValues(alpha:0.1),
+                              color: tagColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(6),
                               border: Border.all(
-                                color: tagColor.withValues(alpha:0.3),
+                                color: tagColor.withOpacity(0.3),
                               ),
                             ),
                             child: Text(
@@ -2330,10 +2330,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: _errorColor.withValues(alpha:0.1),
+                                color: _errorColor.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                  color: _errorColor.withValues(alpha:0.3),
+                                  color: _errorColor.withOpacity(0.3),
                                 ),
                               ),
                               child: const Text(
@@ -2373,7 +2373,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: _successColor.withValues(alpha:0.1),
+                          color: _successColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -2464,7 +2464,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -2505,7 +2505,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.local_offer, color: _primaryColor),
@@ -2557,7 +2557,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          initialValue: tipo,
+                          value: tipo,
                           decoration: InputDecoration(
                             labelText: 'Tipo de Desconto',
                             border: OutlineInputBorder(

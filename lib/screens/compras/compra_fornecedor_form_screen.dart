@@ -832,7 +832,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
           _secao('Status', [
             DropdownButtonFormField<String>(
               key: ValueKey<String>('stc_$_statusCompra'),
-              initialValue: _statusCompra,
+              value: _statusCompra,
               decoration: const InputDecoration(
                 labelText: 'Status da compra',
                 border: OutlineInputBorder(),
@@ -853,7 +853,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               key: ValueKey<String>('stp_$_statusPagamento'),
-              initialValue: _statusPagamento,
+              value: _statusPagamento,
               decoration: const InputDecoration(
                 labelText: 'Status do pagamento',
                 border: OutlineInputBorder(),

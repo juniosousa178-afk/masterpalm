@@ -27,7 +27,7 @@ class CatalogErrorLojaState extends StatelessWidget {
                 Icon(
                   Icons.storefront_outlined,
                   size: 64,
-                  color: themeData.colorScheme.onSurface.withValues(alpha: 0.5),
+                  color: themeData.colorScheme.onSurface.withOpacity(0.5),
                 ),
                 const SizedBox(height: 16),
                 Text(

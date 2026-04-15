@@ -23,7 +23,7 @@ class _LojaConfigModulePaneErrorBanner extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: cs.errorContainer.withValues(alpha: 0.55),
+        color: cs.errorContainer.withOpacity(0.55),
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
         child: Padding(
@@ -34,7 +34,7 @@ class _LojaConfigModulePaneErrorBanner extends StatelessWidget {
               Icon(
                 Icons.report_outlined,
                 size: 22,
-                color: onErr.withValues(alpha: 0.88),
+                color: onErr.withOpacity(0.88),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -62,7 +62,7 @@ class _LojaConfigModulePaneErrorBanner extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
-                                color: onErr.withValues(alpha: 0.75),
+                                color: onErr.withOpacity(0.75),
                               ),
                             ),
                           ),
@@ -73,7 +73,7 @@ class _LojaConfigModulePaneErrorBanner extends StatelessWidget {
                               style: tt.bodyMedium?.copyWith(
                                 fontSize: 13.5,
                                 height: 1.38,
-                                color: onErr.withValues(alpha: 0.94),
+                                color: onErr.withOpacity(0.94),
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
@@ -117,7 +117,7 @@ class _LojaConfigUrlCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -130,7 +130,7 @@ class _LojaConfigUrlCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: primaryColor.withValues(alpha: 0.1),
+                color: primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -205,7 +205,7 @@ class _LojaConfigFreeLimitedPlanBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = colorScheme;
     return Material(
-      color: cs.primaryContainer.withValues(alpha: 0.4),
+      color: cs.primaryContainer.withOpacity(0.4),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -221,7 +221,7 @@ class _LojaConfigFreeLimitedPlanBanner extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.35,
-                  color: cs.onSurface.withValues(alpha: 0.88),
+                  color: cs.onSurface.withOpacity(0.88),
                 ),
               ),
             ),
@@ -249,7 +249,7 @@ class _LojaConfigBasicPlanBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = colorScheme;
     return Material(
-      color: cs.secondaryContainer.withValues(alpha: 0.35),
+      color: cs.secondaryContainer.withOpacity(0.35),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -264,7 +264,7 @@ class _LojaConfigBasicPlanBanner extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   height: 1.35,
-                  color: cs.onSurface.withValues(alpha: 0.88),
+                  color: cs.onSurface.withOpacity(0.88),
                 ),
               ),
             ),
@@ -298,7 +298,7 @@ class _LojaConfigFreeLimitedLockedPaneBody extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.lock_outline_rounded, size: 52, color: cs.primary.withValues(alpha: 0.85)),
+          Icon(Icons.lock_outline_rounded, size: 52, color: cs.primary.withOpacity(0.85)),
           const SizedBox(height: 16),
           Text(
             'Módulo indisponível no plano gratuito',
@@ -310,7 +310,7 @@ class _LojaConfigFreeLimitedLockedPaneBody extends StatelessWidget {
             'No plano gratuito limitado use Identidade, Mídias e Publicar. '
             'O catálogo público recebe pedidos pelo WhatsApp.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: cs.onSurface.withValues(alpha: 0.72), height: 1.35),
+            style: TextStyle(color: cs.onSurface.withOpacity(0.72), height: 1.35),
           ),
           const SizedBox(height: 22),
           FilledButton.icon(
@@ -366,10 +366,10 @@ class _LojaConfigTutorialOverlay extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: primaryColor.withValues(alpha: 0.3)),
+            border: Border.all(color: primaryColor.withOpacity(0.3)),
             boxShadow: [
               BoxShadow(
-                color: primaryColor.withValues(alpha: 0.2),
+                color: primaryColor.withOpacity(0.2),
                 blurRadius: 20,
                 offset: const Offset(0, 4),
               ),
@@ -384,7 +384,7 @@ class _LojaConfigTutorialOverlay extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.1),
+                      color: primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(icon, color: primaryColor, size: 24),

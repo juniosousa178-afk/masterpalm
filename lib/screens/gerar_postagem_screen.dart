@@ -459,7 +459,7 @@ class _GerarPostagemScreenState extends State<GerarPostagemScreen> {
   Widget _buildBlocoSaida(ThemeData theme, String titulo, String texto, {bool isWhatsApp = false}) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha:0.5),
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

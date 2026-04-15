@@ -1013,7 +1013,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF22C55E).withValues(alpha:0.1),
+                        color: const Color(0xFF22C55E).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -1074,7 +1074,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
                                         color: const Color(0xFF6366F1)
-                                            .withValues(alpha:0.1),
+                                            .withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: const Icon(
@@ -1127,7 +1127,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: Colors.orange.withValues(alpha:0.1),
+                                      color: Colors.orange.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Row(
@@ -1372,7 +1372,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF6366F1).withValues(alpha:0.1),
+                              color: const Color(0xFF6366F1).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
@@ -1442,7 +1442,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                         color: Colors.white,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha:0.05),
+                            color: Colors.black.withOpacity(0.05),
                             blurRadius: 10,
                             offset: const Offset(0, -5),
                           ),
@@ -2240,7 +2240,7 @@ class _ClientesScreenState extends State<ClientesScreen>
             color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha:0.05),
+                color: Colors.black.withOpacity(0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -2422,7 +2422,7 @@ class _ClientesScreenState extends State<ClientesScreen>
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: color.withValues(alpha:0.1),
+          color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -2441,7 +2441,7 @@ class _ClientesScreenState extends State<ClientesScreen>
               label,
               style: TextStyle(
                 fontSize: 11,
-                color: color.withValues(alpha:0.8),
+                color: color.withOpacity(0.8),
               ),
             ),
           ],
@@ -2488,7 +2488,7 @@ class _ClientesScreenState extends State<ClientesScreen>
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -2558,7 +2558,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF6366F1).withValues(alpha:0.1),
+                            color: const Color(0xFF6366F1).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
@@ -2728,7 +2728,7 @@ class _ClientesScreenState extends State<ClientesScreen>
             color: Colors.white,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha:0.05),
+                color: Colors.black.withOpacity(0.05),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -2815,7 +2815,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF22C55E).withValues(alpha:0.1),
+                    color: const Color(0xFF22C55E).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
@@ -2907,7 +2907,7 @@ class _ClientesScreenState extends State<ClientesScreen>
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -3007,7 +3007,7 @@ class _ClientesScreenState extends State<ClientesScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha:0.1),
+                  color: Colors.orange.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Row(
@@ -3166,7 +3166,7 @@ class _ClientesScreenState extends State<ClientesScreen>
             icon: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.green.withValues(alpha:0.2),
+                color: Colors.green.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _enviandoClientes
@@ -3184,7 +3184,7 @@ class _ClientesScreenState extends State<ClientesScreen>
             icon: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: const Color(0xFF3B82F6).withValues(alpha:0.2),
+                color: const Color(0xFF3B82F6).withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _sincronizando
@@ -3204,7 +3204,7 @@ class _ClientesScreenState extends State<ClientesScreen>
             icon: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha:0.2),
+                color: Colors.amber.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
@@ -3385,7 +3385,7 @@ class _ClientesScreenState extends State<ClientesScreen>
           ),
           if (_importando || _exportando || _reparando || _sincronizando)
             Container(
-              color: Colors.black.withValues(alpha:0.3),
+              color: Colors.black.withOpacity(0.3),
               child: Center(
                 child: Card(
                   child: Padding(
@@ -3452,7 +3452,7 @@ class _ClientesLoadingBody extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha:0.08),
+              color: Colors.blue.withOpacity(0.08),
               shape: BoxShape.circle,
             ),
             child: const CircularProgressIndicator(),
@@ -3729,19 +3729,19 @@ class _SugestoesIaClientesScreenState extends State<_SugestoesIaClientesScreen> 
                   onPressed: _enviando ? null : () => _enviar('Sugestões para reter clientes e reduzir abandono.'),
                   icon: const Icon(Icons.loyalty, size: 18),
                   label: const Text('Retenção'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.15)),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _enviando ? null : () => _enviar('Sugestões para programa de indicação (trazer amigos).'),
                   icon: const Icon(Icons.group_add, size: 18),
                   label: const Text('Indicação'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.15)),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _enviando ? null : () => _enviar('Como segmentar clientes para campanhas? Sugestões.'),
                   icon: const Icon(Icons.pie_chart_outline, size: 18),
                   label: const Text('Segmentação'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.15)),
                 ),
               ],
             ),
@@ -3752,7 +3752,7 @@ class _SugestoesIaClientesScreenState extends State<_SugestoesIaClientesScreen> 
                 hintText: 'Ex: Como fidelizar os top 10 clientes?',
                 border: const OutlineInputBorder(),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha:0.05),
+                fillColor: Colors.white.withOpacity(0.05),
               ),
               maxLines: 2,
               enabled: !_enviando,
@@ -3773,7 +3773,7 @@ class _SugestoesIaClientesScreenState extends State<_SugestoesIaClientesScreen> 
                 constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Scrollbar(

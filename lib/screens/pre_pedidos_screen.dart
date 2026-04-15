@@ -259,7 +259,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _errorColor.withValues(alpha:0.1),
+                color: _errorColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.warning_amber_rounded,
@@ -274,9 +274,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _errorColor.withValues(alpha:0.05),
+                color: _errorColor.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _errorColor.withValues(alpha:0.2)),
+                border: Border.all(color: _errorColor.withOpacity(0.2)),
               ),
               child: Column(
                 children: [
@@ -420,7 +420,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _warningColor.withValues(alpha:0.1),
+                color: _warningColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.delete_sweep, size: 48, color: _warningColor),
@@ -583,7 +583,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       icon: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha:0.2),
+                          color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.auto_awesome, color: Colors.amber, size: 22),
@@ -650,7 +650,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                               height: 200,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha:0.1),
+                                color: Colors.white.withOpacity(0.1),
                               ),
                             ),
                           ),
@@ -662,7 +662,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                               height: 140,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha:0.1),
+                                color: Colors.white.withOpacity(0.1),
                               ),
                             ),
                           ),
@@ -685,7 +685,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                                 Text(
                                   'Pré-pedidos do catálogo web',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha:0.9),
+                                    color: Colors.white.withOpacity(0.9),
                                     fontSize: 14,
                                   ),
                                 ),
@@ -700,7 +700,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                     preferredSize: const Size.fromHeight(48),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha:0.15),
+                        color: Colors.white.withOpacity(0.15),
                       ),
                       child: TabBar(
                         controller: _tabController,
@@ -727,7 +727,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                                         horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
                                       color:
-                                          Colors.white.withValues(alpha:0.3),
+                                          Colors.white.withOpacity(0.3),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Text(
@@ -755,7 +755,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                                         horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
                                       color:
-                                          Colors.white.withValues(alpha:0.3),
+                                          Colors.white.withOpacity(0.3),
                                       borderRadius: BorderRadius.circular(10),
                                     ),
                                     child: Text(
@@ -819,7 +819,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                           selected: _ordenacao == 'recente',
                           onSelected: (_) =>
                               setState(() => _ordenacao = 'recente'),
-                          selectedColor: _primaryColor.withValues(alpha:0.3),
+                          selectedColor: _primaryColor.withOpacity(0.3),
                         ),
                         const SizedBox(width: 6),
                         ChoiceChip(
@@ -827,7 +827,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                           selected: _ordenacao == 'antigo',
                           onSelected: (_) =>
                               setState(() => _ordenacao = 'antigo'),
-                          selectedColor: _primaryColor.withValues(alpha:0.3),
+                          selectedColor: _primaryColor.withOpacity(0.3),
                         ),
                         const SizedBox(width: 6),
                         ChoiceChip(
@@ -835,7 +835,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                           selected: _ordenacao == 'valor_maior',
                           onSelected: (_) =>
                               setState(() => _ordenacao = 'valor_maior'),
-                          selectedColor: _primaryColor.withValues(alpha:0.3),
+                          selectedColor: _primaryColor.withOpacity(0.3),
                         ),
                         const SizedBox(width: 6),
                         ChoiceChip(
@@ -843,7 +843,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                           selected: _ordenacao == 'valor_menor',
                           onSelected: (_) =>
                               setState(() => _ordenacao = 'valor_menor'),
-                          selectedColor: _primaryColor.withValues(alpha:0.3),
+                          selectedColor: _primaryColor.withOpacity(0.3),
                         ),
                       ],
                     ),
@@ -960,7 +960,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha:0.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -1187,7 +1187,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             : null,
         boxShadow: [
           BoxShadow(
-            color: statusColor.withValues(alpha:0.1),
+            color: statusColor.withOpacity(0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1204,8 +1204,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  statusColor.withValues(alpha:0.1),
-                  statusColor.withValues(alpha:0.05)
+                  statusColor.withOpacity(0.1),
+                  statusColor.withOpacity(0.05)
                 ],
               ),
               borderRadius: const BorderRadius.only(
@@ -1218,7 +1218,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha:0.2),
+                    color: statusColor.withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(statusIcon, color: statusColor, size: 24),
@@ -1306,9 +1306,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: _warningColor.withValues(alpha:0.15),
+                color: _warningColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _warningColor.withValues(alpha:0.5)),
+                border: Border.all(color: _warningColor.withOpacity(0.5)),
               ),
               child: Row(
                 children: [
@@ -1371,7 +1371,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: _primaryColor.withValues(alpha:0.1),
+                            color: _primaryColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -1429,7 +1429,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _successColor.withValues(alpha:0.1),
+                    color: _successColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -1483,7 +1483,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                               horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
                             color:
-                                const Color(0xFF25D366).withValues(alpha:0.15),
+                                const Color(0xFF25D366).withOpacity(0.15),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Row(
@@ -1732,7 +1732,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.1),
+                        color: _primaryColor.withOpacity(0.1),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.receipt_long, color: _primaryColor),
@@ -1790,10 +1790,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                         child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: _primaryColor.withValues(alpha:0.05),
+                            color: _primaryColor.withOpacity(0.05),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                                color: _primaryColor.withValues(alpha:0.2)),
+                                color: _primaryColor.withOpacity(0.2)),
                           ),
                           child: Row(
                             children: [
@@ -1811,7 +1811,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: _primaryColor.withValues(alpha:0.1),
+                                  color: _primaryColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: const Icon(Icons.copy,
@@ -1970,7 +1970,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -2274,7 +2274,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _successColor.withValues(alpha:0.1),
+                color: _successColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.check_circle, size: 48, color: _successColor),
@@ -2495,7 +2495,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _errorColor.withValues(alpha:0.1),
+                color: _errorColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.delete_outline, size: 48, color: _errorColor),
@@ -2599,7 +2599,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _errorColor.withValues(alpha:0.1),
+                  color: _errorColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.cancel, size: 48, color: _errorColor),
@@ -2716,7 +2716,7 @@ class _PrePedidosErroBody extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha:0.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -2728,7 +2728,7 @@ class _PrePedidosErroBody extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: errorColor.withValues(alpha:0.1),
+                color: errorColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.error_outline, size: 48, color: errorColor),
@@ -2782,7 +2782,7 @@ class _PrePedidosEmptyBody extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: primaryColor.withValues(alpha:0.1),
+            color: primaryColor.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(
@@ -2820,7 +2820,7 @@ class _PrePedidosOfflineBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8),
-      color: warningColor.withValues(alpha:0.2),
+      color: warningColor.withOpacity(0.2),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -2940,19 +2940,19 @@ class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
                   onPressed: _enviando ? null : () => _enviar('Sugestões para reduzir atrasos nas entregas e melhorar prazo.'),
                   icon: const Icon(Icons.local_shipping, size: 18),
                   label: const Text('Entregas e prazos'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.15)),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _enviando ? null : () => _enviar('Como organizar e priorizar pedidos pendentes? Sugestões.'),
                   icon: const Icon(Icons.pending_actions, size: 18),
                   label: const Text('Pedidos pendentes'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.15)),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _enviando ? null : () => _enviar('Sugestões de mensagem ou comunicação com o cliente sobre status do pedido.'),
                   icon: const Icon(Icons.chat_bubble_outline, size: 18),
                   label: const Text('Comunicação com cliente'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.15)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.15)),
                 ),
               ],
             ),
@@ -2963,7 +2963,7 @@ class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
                 hintText: 'Ex: Como evitar pedidos cancelados?',
                 border: const OutlineInputBorder(),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha:0.05),
+                fillColor: Colors.white.withOpacity(0.05),
               ),
               maxLines: 2,
               enabled: !_enviando,
@@ -2984,7 +2984,7 @@ class _SugestoesIaPedidosScreenState extends State<_SugestoesIaPedidosScreen> {
                 constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Scrollbar(

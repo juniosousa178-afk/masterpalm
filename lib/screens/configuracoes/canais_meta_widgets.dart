@@ -515,12 +515,12 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [color, color.withValues(alpha:0.8)],
+          colors: [color, color.withOpacity(0.8)],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha:0.3),
+            color: color.withOpacity(0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -531,7 +531,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha:0.2),
+              color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: Colors.white, size: 32),
@@ -553,7 +553,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha:0.9),
+                    color: Colors.white.withOpacity(0.9),
                     fontSize: 13,
                   ),
                 ),
@@ -564,13 +564,13 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
             label: 'Ativar ou desativar canal',
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.2),
+                color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Switch(
                 value: enabled,
                 onChanged: onToggle,
-                activeTrackColor: Colors.white.withValues(alpha:0.4),
+                activeTrackColor: Colors.white.withOpacity(0.4),
               ),
             ),
           ),
@@ -586,13 +586,13 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isSuccess
-            ? _CanaisMetaScreenState._successColor.withValues(alpha:0.1)
-            : _CanaisMetaScreenState._errorColor.withValues(alpha:0.1),
+            ? _CanaisMetaScreenState._successColor.withOpacity(0.1)
+            : _CanaisMetaScreenState._errorColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isSuccess
-              ? _CanaisMetaScreenState._successColor.withValues(alpha:0.3)
-              : _CanaisMetaScreenState._errorColor.withValues(alpha:0.3),
+              ? _CanaisMetaScreenState._successColor.withOpacity(0.3)
+              : _CanaisMetaScreenState._errorColor.withOpacity(0.3),
         ),
       ),
       child: Row(
@@ -601,8 +601,8 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isSuccess
-                  ? _CanaisMetaScreenState._successColor.withValues(alpha:0.2)
-                  : _CanaisMetaScreenState._errorColor.withValues(alpha:0.2),
+                  ? _CanaisMetaScreenState._successColor.withOpacity(0.2)
+                  : _CanaisMetaScreenState._errorColor.withOpacity(0.2),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -651,7 +651,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withValues(alpha:isDark ? 0.2 : 0.05),
+            color: cs.shadow.withOpacity(isDark ? 0.2 : 0.05),
             blurRadius: 10,
           ),
         ],
@@ -707,7 +707,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: cs.shadow.withValues(alpha:0.1),
+            color: cs.shadow.withOpacity(0.1),
             blurRadius: 10,
           ),
         ],
@@ -838,7 +838,7 @@ extension _CanaisMetaWidgets on _CanaisMetaScreenState {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: color.withValues(alpha:0.1),
+              color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(

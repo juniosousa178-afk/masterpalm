@@ -60,14 +60,14 @@ class ResultadoRoletaCard extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 400),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [cor.withValues(alpha:0.9), cor.withValues(alpha:0.6)],
+            colors: [cor.withOpacity(0.9), cor.withOpacity(0.6)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: cor.withValues(alpha:0.5),
+              color: cor.withOpacity(0.5),
               blurRadius: 20,
               spreadRadius: 5,
             ),
@@ -80,7 +80,7 @@ class ResultadoRoletaCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.2),
+                color: Colors.white.withOpacity(0.2),
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(24),
                 ),
@@ -95,7 +95,7 @@ class ResultadoRoletaCard extends StatelessWidget {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha:0.2),
+                          color: Colors.black.withOpacity(0.2),
                           blurRadius: 10,
                           spreadRadius: 2,
                         ),
@@ -151,7 +151,7 @@ class ResultadoRoletaCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha:0.1),
+                          color: Colors.black.withOpacity(0.1),
                           blurRadius: 8,
                         ),
                       ],
@@ -176,10 +176,10 @@ class ResultadoRoletaCard extends StatelessWidget {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha:0.3),
+                      color: Colors.white.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha:0.5),
+                        color: Colors.white.withOpacity(0.5),
                         width: 2,
                       ),
                     ),
@@ -227,10 +227,10 @@ class ResultadoRoletaCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha:0.2),
+                      color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha:0.4),
+                        color: Colors.white.withOpacity(0.4),
                       ),
                     ),
                     child: Row(
@@ -294,7 +294,7 @@ class ResultadoRoletaCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.15),
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(

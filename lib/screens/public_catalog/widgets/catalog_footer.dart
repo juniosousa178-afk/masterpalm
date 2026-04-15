@@ -69,10 +69,10 @@ class CatalogFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = textSecondaryColor ?? textColor.withValues(alpha: 0.65);
+    final muted = textSecondaryColor ?? textColor.withOpacity(0.65);
     final icons = iconColor ?? textColor;
     final linksColor = linkColor ?? textColor;
-    final divider = dividerColor ?? textColor.withValues(alpha: 0.22);
+    final divider = dividerColor ?? textColor.withOpacity(0.22);
     final safeLinks = links.where((m) {
       final label = (m['label'] ?? '').trim();
       final url = (m['url'] ?? '').trim();

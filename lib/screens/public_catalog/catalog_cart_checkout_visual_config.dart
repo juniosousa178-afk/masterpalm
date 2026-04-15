@@ -138,12 +138,12 @@ class CatalogCartUiTokens {
       sheetBackground: c(CatalogCartColorKeys.cartBackground, Colors.transparent),
       cartCardBackground: c(CatalogCartColorKeys.cartCardBackground, card),
       sectionTitleColor:
-          c(CatalogCartColorKeys.cartSectionTitleColor, label.withValues(alpha: 0.95)),
+          c(CatalogCartColorKeys.cartSectionTitleColor, label.withOpacity(0.95)),
       primaryTextColor: c(CatalogCartColorKeys.cartPrimaryTextColor, fieldText),
       secondaryTextColor:
-          c(CatalogCartColorKeys.cartSecondaryTextColor, fieldText.withValues(alpha: 0.88)),
+          c(CatalogCartColorKeys.cartSecondaryTextColor, fieldText.withOpacity(0.88)),
       mutedTextColor:
-          c(CatalogCartColorKeys.cartMutedTextColor, secondary.withValues(alpha: 0.85)),
+          c(CatalogCartColorKeys.cartMutedTextColor, secondary.withOpacity(0.85)),
       inputBackground: c(CatalogCartColorKeys.cartInputBackground, fieldBg),
       inputTextColor: c(CatalogCartColorKeys.cartInputTextColor, fieldText),
       inputHintColor: c(CatalogCartColorKeys.cartInputHintColor, theme.checkoutFieldHint),
@@ -172,11 +172,11 @@ class CatalogCartUiTokens {
           c(CatalogCartColorKeys.cartPixButtonTextColor, const Color(0xFF0D9488)),
       itemDividerColor: c(
         CatalogCartColorKeys.cartItemDividerColor,
-        Colors.white.withValues(alpha: 0.06),
+        Colors.white.withOpacity(0.06),
       ),
       removeIconColor: c(
         CatalogCartColorKeys.cartRemoveIconColor,
-        theme.dangerColor.withValues(alpha: 0.85),
+        theme.dangerColor.withOpacity(0.85),
       ),
     );
   }
@@ -235,7 +235,7 @@ class CatalogFirstPurchaseCouponStyle {
       ),
       codeBackground: c(
         CatalogFirstPurchaseCouponColorKeys.codeBackground,
-        Colors.black.withValues(alpha: 0.35),
+        Colors.black.withOpacity(0.35),
       ),
       codeTextColor: c(
         CatalogFirstPurchaseCouponColorKeys.codeTextColor,
@@ -259,11 +259,11 @@ class CatalogFirstPurchaseCouponStyle {
       ),
       borderColor: c(
         CatalogFirstPurchaseCouponColorKeys.borderColor,
-        gold.withValues(alpha: 0.35),
+        gold.withOpacity(0.35),
       ),
       shadowColor: c(
         CatalogFirstPurchaseCouponColorKeys.shadowColor,
-        Colors.black.withValues(alpha: 0.55),
+        Colors.black.withOpacity(0.55),
       ),
     );
   }

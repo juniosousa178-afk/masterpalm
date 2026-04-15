@@ -106,7 +106,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: Colors.white.withValues(alpha:0.1),
+                  color: Colors.white.withOpacity(0.1),
                   width: 1,
                 ),
               ),
@@ -277,8 +277,8 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                               horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
                             color: qtd > 0
-                                ? Colors.green.withValues(alpha:0.1)
-                                : Colors.red.withValues(alpha:0.1),
+                                ? Colors.green.withOpacity(0.1)
+                                : Colors.red.withOpacity(0.1),
                             border: Border.all(
                               color: qtd > 0
                                   ? Colors.green[700]!
@@ -361,8 +361,8 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                                     ),
                                   ),
                                   backgroundColor: q > 0
-                                      ? Colors.green.withValues(alpha:0.08)
-                                      : Colors.grey.withValues(alpha:0.12),
+                                      ? Colors.green.withOpacity(0.08)
+                                      : Colors.grey.withOpacity(0.12),
                                 );
                               }).toList(),
                             ),
@@ -394,8 +394,8 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                               horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
                             color: qtd > 0
-                                ? Colors.green.withValues(alpha:0.1)
-                                : Colors.red.withValues(alpha:0.1),
+                                ? Colors.green.withOpacity(0.1)
+                                : Colors.red.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: qtd > 0
@@ -469,10 +469,10 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha:0.08),
+                        color: theme.colorScheme.primary.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: theme.colorScheme.primary.withValues(alpha:0.25),
+                          color: theme.colorScheme.primary.withOpacity(0.25),
                           width: 1,
                         ),
                       ),
@@ -515,7 +515,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                                     height: 24,
                                     alignment: Alignment.center,
                                     decoration: BoxDecoration(
-                                      color: theme.colorScheme.primary.withValues(alpha:0.2),
+                                      color: theme.colorScheme.primary.withOpacity(0.2),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Text(
@@ -554,7 +554,7 @@ class CatalogProductDetailsSheet extends StatelessWidget {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha:0.1),
+                                      color: Colors.white.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(

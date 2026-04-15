@@ -196,7 +196,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 8),
-              color: _warningColor.withValues(alpha:0.2),
+              color: _warningColor.withOpacity(0.2),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -239,7 +239,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                           height: 200,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha:0.1),
+                            color: Colors.white.withOpacity(0.1),
                           ),
                         ),
                       ),
@@ -251,7 +251,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                           height: 140,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha:0.1),
+                            color: Colors.white.withOpacity(0.1),
                           ),
                         ),
                       ),
@@ -274,7 +274,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                             Text(
                               'Gerencie suas campanhas e roleta da sorte',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha:0.9),
+                                color: Colors.white.withOpacity(0.9),
                                 fontSize: 14,
                               ),
                             ),
@@ -289,7 +289,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 preferredSize: const Size.fromHeight(48),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha:0.15),
+                    color: Colors.white.withOpacity(0.15),
                   ),
                   child: TabBar(
                     controller: _tabController,
@@ -558,7 +558,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
       label: Text(label),
       selected: selected,
       onSelected: (_) => setState(() => _filtroStatus = value),
-      selectedColor: _primaryColor.withValues(alpha:0.3),
+      selectedColor: _primaryColor.withOpacity(0.3),
       checkmarkColor: _primaryColor,
     );
   }
@@ -682,7 +682,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -698,7 +698,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [_primaryColor.withValues(alpha:0.1), _secondaryColor.withValues(alpha:0.05)],
+                colors: [_primaryColor.withOpacity(0.1), _secondaryColor.withOpacity(0.05)],
               ),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
@@ -710,7 +710,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.2),
+                    color: _primaryColor.withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.campaign, color: _primaryColor, size: 24),
@@ -763,7 +763,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha:0.1),
+                    color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -799,8 +799,8 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
                         color: ativa
-                            ? _successColor.withValues(alpha:0.1)
-                            : Colors.grey.withValues(alpha:0.1),
+                            ? _successColor.withOpacity(0.1)
+                            : Colors.grey.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: ativa ? _successColor : Colors.grey,
@@ -917,7 +917,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: Material(
-              color: _successColor.withValues(alpha:0.15),
+              color: _successColor.withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
               child: InkWell(
                 onTap: () => _mostrarDialogGravarSorteio(context, lojaId: widget.lojaId, campanhaId: id),
@@ -960,7 +960,7 @@ class _CampanhasSorteioListScreenState extends State<CampanhasSorteioListScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: color.withValues(alpha:0.1),
+          color: color.withOpacity(0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Column(

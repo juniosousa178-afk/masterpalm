@@ -155,12 +155,12 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.search, size: 64, color: theme.colorScheme.primary.withValues(alpha:0.5)),
+                      Icon(Icons.search, size: 64, color: theme.colorScheme.primary.withOpacity(0.5)),
                       const SizedBox(height: 16),
                       Text(
                         'Digite para buscar na sua loja',
                         style: theme.textTheme.bodyLarge?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                     ],
@@ -171,7 +171,7 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
                       child: Text(
                         'Nenhum resultado para "${_controller.text}"',
                         style: theme.textTheme.bodyLarge?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                     )

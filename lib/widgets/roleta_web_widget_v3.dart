@@ -360,7 +360,7 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [cor.withValues(alpha:0.8), cor],
+              colors: [cor.withOpacity(0.8), cor],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -377,7 +377,7 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.white.withValues(alpha:0.3),
+                      color: Colors.white.withOpacity(0.3),
                       blurRadius: 15,
                       spreadRadius: 3,
                     ),
@@ -414,13 +414,13 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha:0.2),
+                    color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white.withValues(alpha:0.4)),
+                    border: Border.all(color: Colors.white.withOpacity(0.4)),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.person_outline, color: Colors.white.withValues(alpha:0.95), size: 24),
+                      Icon(Icons.person_outline, color: Colors.white.withOpacity(0.95), size: 24),
                       const SizedBox(width: 12),
                       const Expanded(
                         child: Text(
@@ -500,7 +500,7 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
       child: Card(
         margin: const EdgeInsets.all(16),
         elevation: 12,
-        shadowColor: Colors.black.withValues(alpha:0.5),
+        shadowColor: Colors.black.withOpacity(0.5),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         child: Container(
           decoration: BoxDecoration(
@@ -515,7 +515,7 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
             ),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: const Color(0xFFFFD700).withValues(alpha:0.3),
+              color: const Color(0xFFFFD700).withOpacity(0.3),
               width: 2,
             ),
           ),
@@ -540,7 +540,7 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFFE31E24).withValues(alpha:0.5),
+                          color: const Color(0xFFE31E24).withOpacity(0.5),
                           blurRadius: 20,
                           spreadRadius: 2,
                         ),
@@ -654,7 +654,7 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withValues(alpha:0.2),
+                    color: Colors.orange.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.orange, width: 2),
                   ),
@@ -712,7 +712,7 @@ class _RoletaPainter extends CustomPainter {
 
       final paint = Paint()
         ..shader = RadialGradient(
-          colors: [corBase.withValues(alpha:0.9), corBase, corBase.withValues(alpha:0.8)],
+          colors: [corBase.withOpacity(0.9), corBase, corBase.withOpacity(0.8)],
           stops: const [0.0, 0.5, 1.0],
         ).createShader(Rect.fromCircle(center: center, radius: radius))
         ..style = PaintingStyle.fill;

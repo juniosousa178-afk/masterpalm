@@ -176,7 +176,7 @@ class _CatalogChatWidgetState extends State<CatalogChatWidget> {
                 ],
               ),
             ),
-            Divider(height: 1, color: Colors.white.withValues(alpha: 0.1)),
+            Divider(height: 1, color: Colors.white.withOpacity(0.1)),
             Expanded(
               child: ListView.builder(
                 controller: _scrollCtrl,
@@ -209,9 +209,9 @@ class _CatalogChatWidgetState extends State<CatalogChatWidget> {
                       onSubmitted: (_) => _enviar(),
                       decoration: InputDecoration(
                         hintText: 'Pergunte sobre produtos…',
-                        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
                         filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.08),
+                        fillColor: Colors.white.withOpacity(0.08),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,

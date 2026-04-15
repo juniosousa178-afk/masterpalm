@@ -764,14 +764,14 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [_corStatus(status), _corStatus(status).withValues(alpha:0.8)],
+          colors: [_corStatus(status), _corStatus(status).withOpacity(0.8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: _corStatus(status).withValues(alpha:0.3),
+            color: _corStatus(status).withOpacity(0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -797,7 +797,7 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
           Text(
             'Pedido realizado em',
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.9),
+              color: Colors.white.withOpacity(0.9),
               fontSize: 12,
             ),
           ),
@@ -881,7 +881,7 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),

@@ -156,7 +156,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                   Text(
                     'Enviamos um e-mail de confirmação para',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.8),
+                      color: Colors.white.withOpacity(0.8),
                       fontSize: 16,
                     ),
                     textAlign: TextAlign.center,
@@ -175,7 +175,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                   Text(
                     'Clique no link do e-mail para ativar sua conta e continuar.',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.7),
+                      color: Colors.white.withOpacity(0.7),
                       fontSize: 14,
                     ),
                     textAlign: TextAlign.center,
@@ -184,7 +184,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                   Text(
                     'Não esqueça de verificar a pasta de spam.',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.5),
+                      color: Colors.white.withOpacity(0.5),
                       fontSize: 12,
                     ),
                     textAlign: TextAlign.center,
@@ -194,7 +194,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withValues(alpha:0.2),
+                        color: Colors.orange.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(

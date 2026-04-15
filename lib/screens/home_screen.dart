@@ -418,7 +418,7 @@ class _HomeScreenState extends State<HomeScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _warningColor.withValues(alpha:0.1),
+                color: _warningColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.warning_amber_rounded,
@@ -535,7 +535,7 @@ class _HomeScreenState extends State<HomeScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _warningColor.withValues(alpha:0.1),
+                  color: _warningColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.cloud_sync,
@@ -666,7 +666,7 @@ class _HomeScreenState extends State<HomeScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.cloud_download,
@@ -960,7 +960,7 @@ class _HomeScreenState extends State<HomeScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _successColor.withValues(alpha:0.1),
+                color: _successColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.check_circle,
@@ -1051,12 +1051,12 @@ class _HomeScreenState extends State<HomeScreen>
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [_primaryColor, _primaryColor.withValues(alpha:0.8)],
+                        colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
                       ),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: _primaryColor.withValues(alpha:0.3),
+                          color: _primaryColor.withOpacity(0.3),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
@@ -1282,8 +1282,8 @@ class _HomeScreenState extends State<HomeScreen>
   }) {
     final theme = Theme.of(context);
     final itemColor = color ?? theme.colorScheme.onSurface;
-    final bgColor = iconBgColor ?? _primaryColor.withValues(alpha:0.1);
-    final trailingColor = theme.colorScheme.onSurface.withValues(alpha:0.5);
+    final bgColor = iconBgColor ?? _primaryColor.withOpacity(0.1);
+    final trailingColor = theme.colorScheme.onSurface.withOpacity(0.5);
 
     return ListTile(
       dense: sidebarMode,
@@ -1337,7 +1337,7 @@ class _HomeScreenState extends State<HomeScreen>
     Color? iconBgColor,
   }) {
     final muted = Colors.grey[600]!;
-    final bg = iconBgColor ?? _primaryColor.withValues(alpha: 0.08);
+    final bg = iconBgColor ?? _primaryColor.withOpacity(0.08);
     return ListTile(
       dense: sidebarMode,
       visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
@@ -1453,7 +1453,7 @@ class _HomeScreenState extends State<HomeScreen>
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha:0.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -1465,7 +1465,7 @@ class _HomeScreenState extends State<HomeScreen>
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: cardColor.withValues(alpha:0.1),
+                color: cardColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, size: 24, color: cardColor),
@@ -1518,10 +1518,10 @@ class _HomeScreenState extends State<HomeScreen>
           decoration: BoxDecoration(
             color: _cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _warningColor.withValues(alpha: 0.35)),
+            border: Border.all(color: _warningColor.withOpacity(0.35)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
+                color: Colors.black.withOpacity(0.05),
                 blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
@@ -1620,7 +1620,7 @@ class _HomeScreenState extends State<HomeScreen>
           'Visualizar Loja',
           Icons.storefront,
           '/loja/$_lojaSlugPublico',
-          iconBgColor: _successColor.withValues(alpha:0.1),
+          iconBgColor: _successColor.withOpacity(0.1),
           color: _successColor,
           sidebarMode: sidebarMode,
         ),
@@ -1644,7 +1644,7 @@ class _HomeScreenState extends State<HomeScreen>
           'Moderar avaliações',
           Icons.rate_review_outlined,
           '/catalog_avaliacoes_moderacao',
-          iconBgColor: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
+          iconBgColor: const Color(0xFF8B5CF6).withOpacity(0.1),
           color: const Color(0xFF8B5CF6),
           sidebarMode: sidebarMode,
         ),
@@ -1661,7 +1661,7 @@ class _HomeScreenState extends State<HomeScreen>
           leading: Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF3B82F6).withValues(alpha:0.1),
+              color: const Color(0xFF3B82F6).withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.language, color: Color(0xFF3B82F6), size: 20),
@@ -1721,7 +1721,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
     if (combinadas['vendas'] == true) {
       currentChildren.add(_buildMenuTile('Vendas', Icons.point_of_sale, '/vendas',
-          iconBgColor: _successColor.withValues(alpha:0.1),
+          iconBgColor: _successColor.withOpacity(0.1),
           color: _successColor,
           sidebarMode: sidebarMode));
     }
@@ -1738,7 +1738,7 @@ class _HomeScreenState extends State<HomeScreen>
             isVendedor: _tipo == 'vendedor',
             vendedorNome: _tipo == 'vendedor' ? _getFirstName(_usuario) : null,
           ),
-          iconBgColor: _primaryColor.withValues(alpha:0.1),
+          iconBgColor: _primaryColor.withOpacity(0.1),
           color: _primaryColor,
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1755,7 +1755,7 @@ class _HomeScreenState extends State<HomeScreen>
         Icons.trending_up,
         '/relatorios_financeiros',
         pushWidget: const RelatoriosFinanceirosScreen(),
-        iconBgColor: const Color(0xFFEC4899).withValues(alpha:0.1),
+        iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
         color: const Color(0xFFEC4899),
         sidebarMode: sidebarMode,
         applyPlanGate: applyPlanGate,
@@ -1771,7 +1771,7 @@ class _HomeScreenState extends State<HomeScreen>
         Icons.monetization_on,
         '/metas_comissoes',
         pushWidget: const MetasComissoesScreen(),
-        iconBgColor: const Color(0xFF10B981).withValues(alpha:0.1),
+        iconBgColor: const Color(0xFF10B981).withOpacity(0.1),
         color: const Color(0xFF10B981),
         sidebarMode: sidebarMode,
         applyPlanGate: applyPlanGate,
@@ -1785,7 +1785,7 @@ class _HomeScreenState extends State<HomeScreen>
         'Mais vendidos',
         Icons.trending_up,
         '/relatorio_mais_vendidos',
-        iconBgColor: const Color(0xFFEC4899).withValues(alpha:0.1),
+        iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
         color: const Color(0xFFEC4899),
         sidebarMode: sidebarMode,
         applyPlanGate: applyPlanGate,
@@ -1804,7 +1804,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.receipt_long,
           '/pedidos',
           pushWidget: PrePedidosScreen(lojaId: _lojaIdInterno),
-          iconBgColor: _warningColor.withValues(alpha:0.1),
+          iconBgColor: _warningColor.withOpacity(0.1),
           color: _warningColor,
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1872,7 +1872,7 @@ class _HomeScreenState extends State<HomeScreen>
           'Vendedores',
           Icons.people,
           '/vendedores',
-          iconBgColor: const Color(0xFF6366F1).withValues(alpha:0.1),
+          iconBgColor: const Color(0xFF6366F1).withOpacity(0.1),
           color: const Color(0xFF6366F1),
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1889,7 +1889,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.rocket_launch_outlined,
           '/motor_crescimento',
           pushWidget: MotorCrescimentoScreen(lojaId: _lojaIdInterno),
-          iconBgColor: _primaryColor.withValues(alpha:0.1),
+          iconBgColor: _primaryColor.withOpacity(0.1),
           color: _primaryColor,
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1903,7 +1903,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.auto_awesome_motion,
           '/campanhas_sugeridas',
           pushWidget: CampanhasSugeridasScreen(lojaId: _lojaIdInterno),
-          iconBgColor: _primaryColor.withValues(alpha:0.1),
+          iconBgColor: _primaryColor.withOpacity(0.1),
           color: _primaryColor,
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1917,7 +1917,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.auto_awesome,
           '/dicas_ia',
           pushWidget: const DicasIaScreen(),
-          iconBgColor: _primaryColor.withValues(alpha:0.1),
+          iconBgColor: _primaryColor.withOpacity(0.1),
           color: _primaryColor,
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1931,7 +1931,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.chat,
           '/textos_whatsapp_ia',
           pushWidget: const TextosWhatsAppIaScreen(),
-          iconBgColor: const Color(0xFF25D366).withValues(alpha:0.1),
+          iconBgColor: const Color(0xFF25D366).withOpacity(0.1),
           color: const Color(0xFF25D366),
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1945,7 +1945,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.campaign_outlined,
           '/gerar_postagem',
           pushWidget: const GerarPostagemScreen(),
-          iconBgColor: const Color(0xFF8B5CF6).withValues(alpha:0.1),
+          iconBgColor: const Color(0xFF8B5CF6).withOpacity(0.1),
           color: const Color(0xFF8B5CF6),
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1959,7 +1959,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.share,
           '/compartilhar_whatsapp',
           pushWidget: const CompartilharWhatsAppScreen(),
-          iconBgColor: const Color(0xFF25D366).withValues(alpha:0.1),
+          iconBgColor: const Color(0xFF25D366).withOpacity(0.1),
           color: const Color(0xFF25D366),
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1973,7 +1973,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.analytics,
           '/analise_vendas_ia',
           pushWidget: const AnaliseVendasIaScreen(),
-          iconBgColor: _successColor.withValues(alpha:0.1),
+          iconBgColor: _successColor.withOpacity(0.1),
           color: _successColor,
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -1990,7 +1990,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.casino,
           '/campanhas_sorteio',
           pushWidget: const CampanhasSorteioScreen(),
-          iconBgColor: const Color(0xFFEC4899).withValues(alpha:0.1),
+          iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
           color: const Color(0xFFEC4899),
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -2005,7 +2005,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.emoji_events,
           '/globo_sorteio',
           pushWidget: const GloboSorteioScreenWrapper(),
-          iconBgColor: const Color(0xFFEC4899).withValues(alpha:0.1),
+          iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
           color: const Color(0xFFEC4899),
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -2036,7 +2036,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.chat_bubble,
           '/configuracoes/canais_meta',
           pushWidget: const CanaisMetaScreen(),
-          iconBgColor: const Color(0xFF25D366).withValues(alpha:0.1),
+          iconBgColor: const Color(0xFF25D366).withOpacity(0.1),
           color: const Color(0xFF25D366),
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
@@ -2092,7 +2092,7 @@ class _HomeScreenState extends State<HomeScreen>
       );
 
       currentChildren.add(_buildMenuTile('Planos', Icons.workspace_premium, '/planos',
-          iconBgColor: _warningColor.withValues(alpha:0.1),
+          iconBgColor: _warningColor.withOpacity(0.1),
           color: _warningColor,
           sidebarMode: sidebarMode));
     }
@@ -2102,7 +2102,7 @@ class _HomeScreenState extends State<HomeScreen>
       startSection('Desenvolvedor');
       currentChildren.add(_buildMenuTile(
           'Diagnóstico do App', Icons.bug_report, '/diagnostico',
-          iconBgColor: Colors.orange.withValues(alpha:0.1),
+          iconBgColor: Colors.orange.withOpacity(0.1),
           color: Colors.orange,
           sidebarMode: sidebarMode));
       currentChildren.add(_buildMenuTile('Alterar PIN', Icons.vpn_key, '/config_pin',
@@ -2124,7 +2124,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.admin_panel_settings,
           '/master_login',
           color: _errorColor,
-          iconBgColor: _errorColor.withValues(alpha:0.1),
+          iconBgColor: _errorColor.withOpacity(0.1),
           sidebarMode: sidebarMode,
         ),
       );
@@ -2134,7 +2134,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.manage_accounts,
           '/admin_usuarios',
           color: _errorColor,
-          iconBgColor: _errorColor.withValues(alpha:0.1),
+          iconBgColor: _errorColor.withOpacity(0.1),
           sidebarMode: sidebarMode,
         ),
       );
@@ -2144,7 +2144,7 @@ class _HomeScreenState extends State<HomeScreen>
           Icons.language,
           '/site_config',
           color: _errorColor,
-          iconBgColor: _errorColor.withValues(alpha:0.1),
+          iconBgColor: _errorColor.withOpacity(0.1),
           sidebarMode: sidebarMode,
         ),
       );
@@ -2160,7 +2160,7 @@ class _HomeScreenState extends State<HomeScreen>
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: _warningColor.withValues(alpha:0.1),
+            color: _warningColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Icon(Icons.cloud_sync, color: _warningColor, size: 20),
@@ -2194,7 +2194,7 @@ class _HomeScreenState extends State<HomeScreen>
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: _primaryColor.withValues(alpha:0.1),
+            color: _primaryColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child:
@@ -2229,7 +2229,7 @@ class _HomeScreenState extends State<HomeScreen>
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: _primaryColor.withValues(alpha:0.1),
+            color: _primaryColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child:
@@ -2288,7 +2288,7 @@ class _HomeScreenState extends State<HomeScreen>
             secondary: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _primaryColor.withValues(alpha:0.1),
+                color: _primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(darkMode ? Icons.dark_mode : Icons.light_mode,
@@ -2347,7 +2347,7 @@ class _HomeScreenState extends State<HomeScreen>
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: s.color ?? theme.colorScheme.onSurface.withValues(alpha:0.6),
+              color: s.color ?? theme.colorScheme.onSurface.withOpacity(0.6),
               letterSpacing: 1.2,
             ),
           ),
@@ -2361,7 +2361,7 @@ class _HomeScreenState extends State<HomeScreen>
   // ignore: unused_element
   Widget _buildMenuSection(String title, {Color? color}) {
     final theme = Theme.of(context);
-    final sectionColor = color ?? theme.colorScheme.onSurface.withValues(alpha:0.6);
+    final sectionColor = color ?? theme.colorScheme.onSurface.withOpacity(0.6);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
       child: Text(
@@ -2539,7 +2539,7 @@ class _HomeScreenState extends State<HomeScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const CircularProgressIndicator(color: _primaryColor),
@@ -2578,12 +2578,12 @@ class _HomeScreenState extends State<HomeScreen>
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [_primaryColor, _primaryColor.withValues(alpha:0.8)],
+                        colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
                       ),
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: _primaryColor.withValues(alpha:0.25),
+                          color: _primaryColor.withOpacity(0.25),
                           blurRadius: 8,
                           offset: const Offset(0, 4),
                         ),
@@ -2695,7 +2695,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: theme.colorScheme.onSurface
-                                        .withValues(alpha:0.6)),
+                                        .withOpacity(0.6)),
                               ),
                               Text(
                                 _getFirstName(_usuario),
@@ -2755,7 +2755,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF3B82F6)
-                                          .withValues(alpha:0.15),
+                                          .withOpacity(0.15),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Badge(
@@ -2782,7 +2782,7 @@ class _HomeScreenState extends State<HomeScreen>
                           icon: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: _errorColor.withValues(alpha:0.1),
+                              color: _errorColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(Icons.logout,
@@ -2856,7 +2856,7 @@ class _HomeScreenState extends State<HomeScreen>
               'Gerencie sua loja com facilidade',
               style: TextStyle(
                 fontSize: 12,
-                color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
               ),
             ),
           ],
@@ -2935,7 +2935,7 @@ class _HomeScreenState extends State<HomeScreen>
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _errorColor.withValues(alpha:0.1),
+                color: _errorColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(Icons.logout, color: _errorColor, size: 20),
@@ -2963,7 +2963,7 @@ class _HomeScreenState extends State<HomeScreen>
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [_primaryColor, _primaryColor.withValues(alpha:0.8)],
+                      colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
                     ),
                   ),
                   child: Column(
@@ -2972,7 +2972,7 @@ class _HomeScreenState extends State<HomeScreen>
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha:0.2),
+                          color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(Icons.person,
@@ -2992,7 +2992,7 @@ class _HomeScreenState extends State<HomeScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha:0.2),
+                          color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -3070,7 +3070,7 @@ class WebLandingPlanCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -3083,9 +3083,9 @@ class WebLandingPlanCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
+                color: color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: color.withValues(alpha: 0.5)),
+                border: Border.all(color: color.withOpacity(0.5)),
               ),
               child: Text(
                 badge!,
@@ -3103,7 +3103,7 @@ class WebLandingPlanCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
+                  color: color.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: color, size: 28),

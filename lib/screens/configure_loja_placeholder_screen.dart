@@ -31,7 +31,7 @@ class ConfigureLojaPlaceholderScreen extends StatelessWidget {
               Icon(
                 Icons.store_outlined,
                 size: 80,
-                color: primaryColor.withValues(alpha:0.5),
+                color: primaryColor.withOpacity(0.5),
               ),
               const SizedBox(height: 24),
               Text(
@@ -49,7 +49,7 @@ class ConfigureLojaPlaceholderScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
-                  color: onSurface.withValues(alpha:0.7),
+                  color: onSurface.withOpacity(0.7),
                 ),
               ),
               const SizedBox(height: 32),

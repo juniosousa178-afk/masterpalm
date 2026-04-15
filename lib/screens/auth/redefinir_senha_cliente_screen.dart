@@ -181,7 +181,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                         ? 'Enviamos um código de 6 dígitos para seu email.'
                         : 'Informe seu email e enviaremos um código para redefinir.',
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha:0.7),
+                      color: theme.colorScheme.onSurface.withOpacity(0.7),
                       height: 1.4,
                     ),
                     textAlign: TextAlign.center,
@@ -194,7 +194,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha:0.06),
+                          color: Colors.black.withOpacity(0.06),
                           blurRadius: 20,
                           offset: const Offset(0, 4),
                         ),
@@ -212,7 +212,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                             labelText: 'Email',
                             prefixIcon: const Icon(Icons.email_outlined, size: 22),
                             filled: true,
-                            fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                            fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           validator: (v) {
@@ -252,7 +252,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                               labelText: 'Código de 6 dígitos',
                               prefixIcon: const Icon(Icons.pin_rounded, size: 22),
                               filled: true,
-                              fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                              fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
@@ -268,7 +268,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                                 onPressed: () => setState(() => _mostrarNovaSenha = !_mostrarNovaSenha),
                               ),
                               filled: true,
-                              fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                              fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
@@ -284,7 +284,7 @@ class _RedefinirSenhaClienteScreenState extends State<RedefinirSenhaClienteScree
                                 onPressed: () => setState(() => _mostrarConfirmarSenha = !_mostrarConfirmarSenha),
                               ),
                               filled: true,
-                              fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                              fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                           ),

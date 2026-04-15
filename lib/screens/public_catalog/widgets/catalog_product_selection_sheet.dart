@@ -251,7 +251,7 @@ class _CatalogProductSelectionSheetState
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: Colors.white.withValues(alpha:0.1),
+                  color: Colors.white.withOpacity(0.1),
                   width: 1,
                 ),
               ),
@@ -262,7 +262,7 @@ class _CatalogProductSelectionSheetState
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha:0.3),
+                    color: Colors.grey.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -281,7 +281,7 @@ class _CatalogProductSelectionSheetState
                       onPressed: () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close),
                       style: IconButton.styleFrom(
-                        backgroundColor: Colors.white.withValues(alpha:0.1),
+                        backgroundColor: Colors.white.withOpacity(0.1),
                       ),
                     ),
                   ],
@@ -298,10 +298,10 @@ class _CatalogProductSelectionSheetState
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha:0.05),
+                      color: Colors.white.withOpacity(0.05),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha:0.1),
+                        color: Colors.white.withOpacity(0.1),
                       ),
                     ),
                     child: Row(
@@ -420,7 +420,7 @@ class _CatalogProductSelectionSheetState
                             ),
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primary
-                                  .withValues(alpha:0.2),
+                                  .withOpacity(0.2),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -472,16 +472,16 @@ class _CatalogProductSelectionSheetState
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             decoration: BoxDecoration(
                               color: !hasStock
-                                  ? Colors.grey.withValues(alpha:0.1)
+                                  ? Colors.grey.withOpacity(0.1)
                                   : isSelected
                                       ? theme.colorScheme.primary
-                                      : Colors.white.withValues(alpha:0.05),
+                                      : Colors.white.withOpacity(0.05),
                               border: Border.all(
                                 color: !hasStock
-                                    ? Colors.grey.withValues(alpha:0.3)
+                                    ? Colors.grey.withOpacity(0.3)
                                     : isSelected
                                         ? theme.colorScheme.primary
-                                        : Colors.white.withValues(alpha:0.2),
+                                        : Colors.white.withOpacity(0.2),
                                 width: isSelected ? 2 : 1,
                               ),
                               borderRadius: BorderRadius.circular(10),
@@ -489,7 +489,7 @@ class _CatalogProductSelectionSheetState
                                   ? [
                                       BoxShadow(
                                         color: theme.colorScheme.primary
-                                            .withValues(alpha:0.3),
+                                            .withOpacity(0.3),
                                         blurRadius: 8,
                                         offset: const Offset(0, 2),
                                       ),
@@ -520,7 +520,7 @@ class _CatalogProductSelectionSheetState
                                         ? Colors.grey
                                         : isSelected
                                             ? Colors.white
-                                                .withValues(alpha:0.8)
+                                                .withOpacity(0.8)
                                             : Colors.grey[500],
                                   ),
                                 ),
@@ -574,7 +574,7 @@ class _CatalogProductSelectionSheetState
                             ),
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primary
-                                  .withValues(alpha:0.2),
+                                  .withOpacity(0.2),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Row(
@@ -589,7 +589,7 @@ class _CatalogProductSelectionSheetState
                                     shape: BoxShape.circle,
                                     border: Border.all(
                                       color: Colors.white
-                                          .withValues(alpha:0.5),
+                                          .withOpacity(0.5),
                                     ),
                                   ),
                                 ),
@@ -615,10 +615,10 @@ class _CatalogProductSelectionSheetState
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha:0.1),
+                          color: Colors.orange.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: Colors.orange.withValues(alpha:0.3),
+                            color: Colors.orange.withOpacity(0.3),
                           ),
                         ),
                         child: Row(
@@ -677,17 +677,17 @@ class _CatalogProductSelectionSheetState
                               ),
                               decoration: BoxDecoration(
                                 color: !hasStock
-                                    ? Colors.grey.withValues(alpha:0.1)
+                                    ? Colors.grey.withOpacity(0.1)
                                     : isSelected
                                         ? theme.colorScheme.primary
-                                        : Colors.white.withValues(alpha:0.05),
+                                        : Colors.white.withOpacity(0.05),
                                 border: Border.all(
                                   color: !hasStock
-                                      ? Colors.grey.withValues(alpha:0.3)
+                                      ? Colors.grey.withOpacity(0.3)
                                       : isSelected
                                           ? theme.colorScheme.primary
                                           : Colors.white
-                                              .withValues(alpha:0.2),
+                                              .withOpacity(0.2),
                                   width: isSelected ? 2 : 1,
                                 ),
                                 borderRadius: BorderRadius.circular(10),
@@ -695,7 +695,7 @@ class _CatalogProductSelectionSheetState
                                     ? [
                                         BoxShadow(
                                           color: theme.colorScheme.primary
-                                              .withValues(alpha:0.3),
+                                              .withOpacity(0.3),
                                           blurRadius: 8,
                                           offset: const Offset(0, 2),
                                         ),
@@ -715,13 +715,13 @@ class _CatalogProductSelectionSheetState
                                         color: isLight
                                             ? Colors.grey.shade400
                                             : Colors.white
-                                                .withValues(alpha:0.3),
+                                                .withOpacity(0.3),
                                         width: 2,
                                       ),
                                       boxShadow: [
                                         BoxShadow(
                                           color: Colors.black
-                                              .withValues(alpha:0.2),
+                                              .withOpacity(0.2),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         ),
@@ -771,7 +771,7 @@ class _CatalogProductSelectionSheetState
                                               ? Colors.grey
                                               : isSelected
                                                   ? Colors.white
-                                                      .withValues(alpha:0.8)
+                                                      .withOpacity(0.8)
                                                   : Colors.grey[500],
                                         ),
                                       ),
@@ -827,7 +827,7 @@ class _CatalogProductSelectionSheetState
                             ),
                             decoration: BoxDecoration(
                               color: theme.colorScheme.primary
-                                  .withValues(alpha: 0.2),
+                                  .withOpacity(0.2),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -867,11 +867,11 @@ class _CatalogProductSelectionSheetState
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? theme.colorScheme.primary
-                                  : Colors.white.withValues(alpha: 0.05),
+                                  : Colors.white.withOpacity(0.05),
                               border: Border.all(
                                 color: isSelected
                                     ? theme.colorScheme.primary
-                                    : Colors.white.withValues(alpha: 0.2),
+                                    : Colors.white.withOpacity(0.2),
                                 width: isSelected ? 2 : 1,
                               ),
                               borderRadius: BorderRadius.circular(10),
@@ -899,11 +899,11 @@ class _CatalogProductSelectionSheetState
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.primary
-                            .withValues(alpha:0.1),
+                            .withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
                           color: theme.colorScheme.primary
-                              .withValues(alpha:0.3),
+                              .withOpacity(0.3),
                         ),
                       ),
                       child: Row(
@@ -953,7 +953,7 @@ class _CatalogProductSelectionSheetState
                         ),
                         elevation: _podeAdicionar ? 4 : 0,
                         shadowColor: theme.colorScheme.primary
-                            .withValues(alpha:0.4),
+                            .withOpacity(0.4),
                       ),
                       onPressed: _podeAdicionar
                           ? () {

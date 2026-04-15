@@ -22,16 +22,16 @@ class CatalogAvaliacaoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fotos = avaliacao.fotos.take(3).toList();
-    final textSecondary = textColor.withValues(alpha: 0.72);
+    final textSecondary = textColor.withOpacity(0.72);
 
     return Container(
       width: cardWidth ?? 320,
       padding: const EdgeInsets.all(14),
       margin: EdgeInsets.only(right: cardWidth != null ? 0 : 12),
       decoration: BoxDecoration(
-        color: cardColor.withValues(alpha: 0.9),
+        color: cardColor.withOpacity(0.9),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: textColor.withValues(alpha: 0.1)),
+        border: Border.all(color: textColor.withOpacity(0.1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,7 +55,7 @@ class CatalogAvaliacaoCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: accentColor.withValues(alpha: 0.12),
+                    color: accentColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
@@ -84,7 +84,7 @@ class CatalogAvaliacaoCard extends StatelessWidget {
           Text(
             avaliacao.comentario,
             style: TextStyle(
-              color: textColor.withValues(alpha: 0.92),
+              color: textColor.withOpacity(0.92),
               fontSize: 13,
               height: 1.35,
             ),

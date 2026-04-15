@@ -3908,9 +3908,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           final textColor = uiColorsMap.isNotEmpty
               ? colorFromUiColors('textPrimary',
                   colorFromTheme(
-                      'texto', Colors.white.withValues(alpha: 0.95)))
+                      'texto', Colors.white.withOpacity(0.95)))
               : colorFromTheme(
-                  'texto', Colors.white.withValues(alpha: 0.95));
+                  'texto', Colors.white.withOpacity(0.95));
           final btnTextColor = uiColorsMap.isNotEmpty
               ? colorFromUiColors('buttonPrimaryText',
                   colorFromTheme('botaoTexto', Colors.white))
@@ -3998,8 +3998,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   colorFromCheckoutTheme('total', const Color(0xFF22C55E)))
               : colorFromCheckoutTheme('total', const Color(0xFF22C55E));
           final checkoutFieldBorder = uiColorsMap.isNotEmpty
-              ? colorFromUiColors('fieldBorder', Colors.white.withValues(alpha: 0.25))
-              : Colors.white.withValues(alpha: 0.25);
+              ? colorFromUiColors('fieldBorder', Colors.white.withOpacity(0.25))
+              : Colors.white.withOpacity(0.25);
 
           final catalogThemeDataResolved = CatalogThemeData.fromConfig(cfg);
           final catalogCheckoutSummaryTokens =
@@ -4489,7 +4489,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     (heroTitleStyle['letterCase'] ?? 'none').toString();
                 final Color heroBannerSubtitleColor =
                     readColorFromCfg(heroSubtitleStyle['color']) ??
-                        heroLegacyText.withValues(alpha: 0.96);
+                        heroLegacyText.withOpacity(0.96);
                 final double heroBannerSubtitleSize =
                     safeDouble(heroSubtitleStyle['fontSize'], 13);
                 final FontWeight heroBannerSubtitleW = parseFontWeightCfg(
@@ -4816,7 +4816,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               Icons.subdirectory_arrow_right,
                                               size: 18,
                                               color: primaryColor
-                                                  .withValues(alpha: 0.7)),
+                                                  .withOpacity(0.7)),
                                           title: Text(
                                             sub,
                                             style: TextStyle(
@@ -6570,11 +6570,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               ),
                                               decoration: BoxDecoration(
                                                 color:
-                                                    cardColor.withValues(alpha: 0.4),
+                                                    cardColor.withOpacity(0.4),
                                                 border: Border(
                                                   right: BorderSide(
                                                     color: textColor
-                                                        .withValues(alpha: 0.12),
+                                                        .withOpacity(0.12),
                                                     width: 1,
                                                   ),
                                                 ),
@@ -6596,7 +6596,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             FontWeight.w600,
                                                         letterSpacing: 0.8,
                                                         color: textColor
-                                                            .withValues(alpha: 0.7),
+                                                            .withOpacity(0.7),
                                                       ),
                                                     ),
                                                   ),
@@ -6692,7 +6692,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             bottom: _cart.isEmpty ? 24 : 88,
                             child: Material(
                               elevation: 4,
-                              color: primaryColor.withValues(alpha: 0.9),
+                              color: primaryColor.withOpacity(0.9),
                               borderRadius: BorderRadius.circular(28),
                               child: InkWell(
                                 onTap: () => _catalogScrollController.animateTo(

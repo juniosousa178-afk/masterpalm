@@ -67,16 +67,16 @@ class CatalogCheckoutSummaryTokens {
     return CatalogCheckoutSummaryTokens(
       cardBackground: card,
       panelGradientStart: const Color(0xFF0F172A),
-      panelGradientEnd: card.withValues(alpha: 0.95),
-      rowLabelColor: label.withValues(alpha: 0.72),
-      rowValueColor: fieldText.withValues(alpha: 0.88),
+      panelGradientEnd: card.withOpacity(0.95),
+      rowLabelColor: label.withOpacity(0.72),
+      rowValueColor: fieldText.withOpacity(0.88),
       pixDiscountValueColor: const Color(0xFF69F0AE),
       deductionValueColor: Colors.redAccent,
       totalRowLabelColor: fieldText,
       totalRowValueColor: total,
       totalBannerBackground: total,
       totalBannerTextColor: Colors.white,
-      cardShadowColor: const Color(0xFF090909).withValues(alpha: 0.55),
+      cardShadowColor: const Color(0xFF090909).withOpacity(0.55),
     );
   }
 }

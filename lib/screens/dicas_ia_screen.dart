@@ -241,7 +241,7 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                 decoration: BoxDecoration(
                                   color: isUser
-                                      ? (theme.colorScheme.primaryContainer.withValues(alpha:0.6))
+                                      ? (theme.colorScheme.primaryContainer.withOpacity(0.6))
                                       : Colors.grey.shade100,
                                   borderRadius: BorderRadius.circular(16),
                                 ),
@@ -302,7 +302,7 @@ class _DicasIaScreenState extends State<DicasIaScreen> {
             ),
             decoration: BoxDecoration(
               color: theme.scaffoldBackgroundColor,
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha:0.05), blurRadius: 8, offset: const Offset(0, -2))],
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, -2))],
             ),
             child: SafeArea(
               child: Row(

@@ -49,10 +49,10 @@ void _showPaletteColorDetail(BuildContext context, CatalogColorSuggestion s) {
                   decoration: BoxDecoration(
                     color: s.color,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: cs.outline.withValues(alpha: 0.35)),
+                    border: Border.all(color: cs.outline.withOpacity(0.35)),
                     boxShadow: [
                       BoxShadow(
-                        color: s.color.withValues(alpha: 0.3),
+                        color: s.color.withOpacity(0.3),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -92,7 +92,7 @@ void _showPaletteColorDetail(BuildContext context, CatalogColorSuggestion s) {
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
-                        child: Icon(Icons.circle, size: 6, color: cs.primary.withValues(alpha: 0.8)),
+                        child: Icon(Icons.circle, size: 6, color: cs.primary.withOpacity(0.8)),
                       ),
                       const SizedBox(width: 10),
                       Expanded(child: Text(u, style: Theme.of(ctx).textTheme.bodyMedium)),
@@ -145,7 +145,7 @@ class CatalogStorePaletteCard extends StatelessWidget {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.45)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -158,10 +158,10 @@ class CatalogStorePaletteCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.18),
+                    color: accent.withOpacity(0.18),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.palette_outlined, size: 22, color: cs.onSurface.withValues(alpha: 0.85)),
+                  child: Icon(Icons.palette_outlined, size: 22, color: cs.onSurface.withOpacity(0.85)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -180,7 +180,7 @@ class CatalogStorePaletteCard extends StatelessWidget {
                       Text(
                         subtitle,
                         style: tt.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                          color: cs.onSurfaceVariant.withOpacity(0.92),
                           height: 1.4,
                           fontSize: 13,
                         ),
@@ -251,7 +251,7 @@ class _CompactPaletteStrip extends StatelessWidget {
           'Resumo rápido (${entries.length} cores distintas)',
           style: tt.labelLarge?.copyWith(
             fontWeight: FontWeight.w600,
-            color: cs.onSurface.withValues(alpha: 0.88),
+            color: cs.onSurface.withOpacity(0.88),
           ),
         ),
         const SizedBox(height: 10),
@@ -274,7 +274,7 @@ class _CompactPaletteStrip extends StatelessWidget {
                           decoration: BoxDecoration(
                             color: e.color,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: cs.outline.withValues(alpha: 0.35)),
+                            border: Border.all(color: cs.outline.withOpacity(0.35)),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -323,7 +323,7 @@ class _CompactPaletteStrip extends StatelessWidget {
                 ),
               );
             },
-            icon: Icon(Icons.palette_outlined, size: 20, color: cs.primary.withValues(alpha: 0.9)),
+            icon: Icon(Icons.palette_outlined, size: 20, color: cs.primary.withOpacity(0.9)),
             label: Text('Ver paleta completa (${entries.length} cores)'),
           ),
         ),
@@ -364,12 +364,12 @@ class _PaletteSwatch extends StatelessWidget {
                         color: suggestion.color,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: cs.outline.withValues(alpha: 0.35),
+                          color: cs.outline.withOpacity(0.35),
                           width: 1,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: suggestion.color.withValues(alpha: 0.25),
+                            color: suggestion.color.withOpacity(0.25),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
@@ -380,7 +380,7 @@ class _PaletteSwatch extends StatelessWidget {
                     Text(
                       suggestion.originLabel,
                       style: tt.labelSmall?.copyWith(
-                        color: cs.onSurface.withValues(alpha: 0.88),
+                        color: cs.onSurface.withOpacity(0.88),
                         height: 1.25,
                         fontSize: 10.5,
                         fontWeight: FontWeight.w500,
@@ -410,7 +410,7 @@ class _PaletteSwatch extends StatelessWidget {
             tooltip: 'Copiar HEX',
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            icon: Icon(Icons.content_copy_outlined, size: 18, color: cs.onSurfaceVariant.withValues(alpha: 0.85)),
+            icon: Icon(Icons.content_copy_outlined, size: 18, color: cs.onSurfaceVariant.withOpacity(0.85)),
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: hex));
               if (!context.mounted) return;

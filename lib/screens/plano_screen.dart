@@ -155,7 +155,7 @@ class _PlanoScreenState extends State<PlanoScreen> {
         child: Column(
           children: [
             DropdownButtonFormField<String>(
-              initialValue: usuarioSelecionado,
+              value: usuarioSelecionado,
               isExpanded: true,
               dropdownColor: Colors.black,
               style: const TextStyle(color: Colors.white),

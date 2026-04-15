@@ -547,7 +547,7 @@ class _FinalizarVendaConfirmacaoDialogState
                         Expanded(
                           flex: 2,
                           child: DropdownButtonFormField<String>(
-                            initialValue: p['forma'],
+                            value: p['forma'],
                             decoration: const InputDecoration(
                               isDense: true,
                               contentPadding: EdgeInsets.symmetric(

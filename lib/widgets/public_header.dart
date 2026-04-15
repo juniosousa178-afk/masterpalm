@@ -61,7 +61,7 @@ class PublicHeader extends StatelessWidget {
                 hintText: 'Buscar produto...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
-                fillColor: Colors.black.withValues(alpha:0.5),
+                fillColor: Colors.black.withOpacity(0.5),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,

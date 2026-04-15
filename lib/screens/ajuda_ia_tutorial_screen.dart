@@ -362,7 +362,7 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: Text(
                 'Perguntas: $_usoPerguntas/${IaUsoLimiteService.limiteDe(TipoUsoIa.perguntas)}',
-                style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.9)),
+                style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.9)),
               ),
             ),
           ),
@@ -378,7 +378,7 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
       children: [
         Card(
           elevation: 0,
-          color: primary.withValues(alpha: 0.1),
+          color: primary.withOpacity(0.1),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -427,7 +427,7 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: primary.withValues(alpha: 0.12),
+                          color: primary.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(op.icon, color: primary, size: 22),
@@ -516,7 +516,7 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                           children: [
                             CircleAvatar(
                               radius: 18,
-                              backgroundColor: primary.withValues(alpha: 0.2),
+                              backgroundColor: primary.withOpacity(0.2),
                               child: Icon(Icons.smart_toy, size: 20, color: primary),
                             ),
                             const SizedBox(width: 12),
@@ -540,7 +540,7 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                           if (!isUser) ...[
                             CircleAvatar(
                               radius: 18,
-                              backgroundColor: primary.withValues(alpha: 0.2),
+                              backgroundColor: primary.withOpacity(0.2),
                               child: Icon(Icons.smart_toy, size: 20, color: primary),
                             ),
                             const SizedBox(width: 12),
@@ -550,7 +550,7 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               decoration: BoxDecoration(
                                 color: isUser
-                                    ? cs.primaryContainer.withValues(alpha: 0.65)
+                                    ? cs.primaryContainer.withOpacity(0.65)
                                     : cs.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(16),
                               ),
@@ -613,7 +613,7 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
           decoration: BoxDecoration(
             color: theme.scaffoldBackgroundColor,
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 8, offset: const Offset(0, -2)),
+              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, -2)),
             ],
           ),
           child: SafeArea(

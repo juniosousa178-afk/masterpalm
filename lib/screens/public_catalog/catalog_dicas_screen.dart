@@ -168,7 +168,7 @@ class CatalogDicasScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.lightbulb_outline, size: 64, color: theme.colorScheme.onSurfaceVariant.withValues(alpha:0.5)),
+                    Icon(Icons.lightbulb_outline, size: 64, color: theme.colorScheme.onSurfaceVariant.withOpacity(0.5)),
                     const SizedBox(height: 16),
                     Text(
                       'Nenhuma dica ou informação publicada no momento.',
@@ -301,7 +301,7 @@ class _DicasFooter extends StatelessWidget {
         color: theme.brightness == Brightness.dark ? theme.cardColor : footerBg,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.06),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 12,
             offset: const Offset(0, -4),
           ),
@@ -413,8 +413,8 @@ class _DicaCard extends StatelessWidget {
                     image: mpImageProvider(dica.bannerUrl!),
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => Container(
-                      color: topicColor.withValues(alpha:0.08),
-                      child: Icon(Icons.image_not_supported, size: 48, color: topicColor.withValues(alpha:0.4)),
+                      color: topicColor.withOpacity(0.08),
+                      child: Icon(Icons.image_not_supported, size: 48, color: topicColor.withOpacity(0.4)),
                     ),
                   ),
                 ),
@@ -427,7 +427,7 @@ class _DicaCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: topicColor.withValues(alpha:0.12),
+                      color: topicColor.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -547,8 +547,8 @@ class _DicaDetailScreen extends StatelessWidget {
                         image: mpImageProvider(dica.bannerUrl!),
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
-                          color: topicColor.withValues(alpha:0.08),
-                          child: Icon(Icons.image_not_supported, size: 64, color: topicColor.withValues(alpha:0.4)),
+                          color: topicColor.withOpacity(0.08),
+                          child: Icon(Icons.image_not_supported, size: 64, color: topicColor.withOpacity(0.4)),
                         ),
                       ),
                     ),
@@ -560,7 +560,7 @@ class _DicaDetailScreen extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: topicColor.withValues(alpha:0.12),
+                            color: topicColor.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(

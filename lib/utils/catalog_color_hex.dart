@@ -32,13 +32,13 @@ Color? tryParseCatalogHex(String raw) {
 
 /// Formato estável para exibição e cópia (sempre `#RRGGBB`).
 String formatCatalogHexRgb(Color color) {
-  final argb = color.toARGB32();
+  final argb = color.value;
   final rgb = argb & 0xFFFFFF;
   return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
 }
 
 /// Inclui alpha quando não for FF (útil para debug / cópia avançada).
 String formatCatalogHexArgb(Color color) {
-  final v = color.toARGB32();
+  final v = color.value;
   return '#${v.toRadixString(16).padLeft(8, '0').toUpperCase()}';
 }

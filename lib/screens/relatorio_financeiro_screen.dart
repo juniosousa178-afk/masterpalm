@@ -459,7 +459,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                     final v = vendas[i];
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: _primaryColor.withValues(alpha:0.2),
+                        backgroundColor: _primaryColor.withOpacity(0.2),
                         child: const Icon(Icons.receipt, color: _primaryColor, size: 20),
                       ),
                       title: Text(v.clienteNome),
@@ -515,7 +515,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha:0.05),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -605,7 +605,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  color: _warningColor.withValues(alpha:0.2),
+                  color: _warningColor.withOpacity(0.2),
                   child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -624,7 +624,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  color: _errorColor.withValues(alpha:0.15),
+                  color: _errorColor.withOpacity(0.15),
                   child: Row(
                     children: [
                       const Icon(Icons.sync_problem, size: 18, color: _errorColor),
@@ -674,7 +674,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                           height: 200,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha:0.1),
+                            color: Colors.white.withOpacity(0.1),
                           ),
                         ),
                       ),
@@ -686,7 +686,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                           height: 140,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha:0.1),
+                            color: Colors.white.withOpacity(0.1),
                           ),
                         ),
                       ),
@@ -710,7 +710,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                               'Lucro operacional de vendas = total − custo da mercadoria − taxas operacionais. '
                               'Taxas: config da loja ou valor já gravado na venda. Totais conforme período selecionado: cálculo ao vivo.',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha:0.9),
+                                color: Colors.white.withOpacity(0.9),
                                 fontSize: 13,
                               ),
                             ),
@@ -725,7 +725,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                 preferredSize: const Size.fromHeight(48),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha:0.15),
+                    color: Colors.white.withOpacity(0.15),
                   ),
                   child: TabBar(
                     controller: _tabController,
@@ -971,7 +971,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -979,7 +979,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
       ),
       child: Row(
         children: [
-          Icon(Icons.inbox_outlined, size: 40, color: color.withValues(alpha:0.5)),
+          Icon(Icons.inbox_outlined, size: 40, color: color.withOpacity(0.5)),
           const SizedBox(width: 16),
           Expanded(
             child: Text(
@@ -998,7 +998,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: _primaryColor.withValues(alpha:0.1),
+            color: _primaryColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: _primaryColor, size: 20),
@@ -1038,7 +1038,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1113,7 +1113,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _primaryColor.withValues(alpha:0.05),
+              color: _primaryColor.withOpacity(0.05),
               borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(16),
                 bottomRight: Radius.circular(16),
@@ -1161,7 +1161,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: color.withValues(alpha:0.1),
+              color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, color: color, size: 24),
@@ -1232,7 +1232,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1247,7 +1247,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [color.withValues(alpha:0.1), color.withValues(alpha:0.05)],
+                colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
               ),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
@@ -1262,7 +1262,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha:0.2),
+                        color: color.withOpacity(0.2),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(Icons.shopping_cart, color: color, size: 24),
@@ -1305,7 +1305,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: lucro >= 0 ? _successColor.withValues(alpha:0.1) : _errorColor.withValues(alpha:0.1),
+              color: lucro >= 0 ? _successColor.withOpacity(0.1) : _errorColor.withOpacity(0.1),
               borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(16),
                 bottomRight: Radius.circular(16),
@@ -1431,7 +1431,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha:0.05),
+                        color: Colors.black.withOpacity(0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -1511,7 +1511,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: _primaryColor.withValues(alpha:0.1),
+                      color: _primaryColor.withOpacity(0.1),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -1561,7 +1561,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1577,7 +1577,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [_primaryColor.withValues(alpha:0.1), _secondaryColor.withValues(alpha:0.05)],
+                colors: [_primaryColor.withOpacity(0.1), _secondaryColor.withOpacity(0.05)],
               ),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(16),
@@ -1589,7 +1589,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.2),
+                    color: _primaryColor.withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.calendar_today, color: _primaryColor),
@@ -1796,7 +1796,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isHighlight ? color.withValues(alpha:0.1) : _surfaceColor,
+        color: isHighlight ? color.withOpacity(0.1) : _surfaceColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

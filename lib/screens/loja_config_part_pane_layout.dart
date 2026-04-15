@@ -23,7 +23,7 @@ class _PaneLayoutWidget extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DropdownButtonFormField<String>(
-                initialValue: host._layoutCatalogo,
+                value: host._layoutCatalogo,
                 isExpanded: true,
                 items: const [
                   DropdownMenuItem(
@@ -46,7 +46,7 @@ class _PaneLayoutWidget extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: host._productCardSize,
+                value: host._productCardSize,
                 isExpanded: true,
                 items: const [
                   DropdownMenuItem(
@@ -523,7 +523,7 @@ class _PaneLayoutWidget extends StatelessWidget {
             children: [
               DropdownButtonFormField<String>(
                 isExpanded: true,
-                initialValue: (host._catSelectedFromStore != null &&
+                value: (host._catSelectedFromStore != null &&
                         host._knownCategoryNames.contains(host._catSelectedFromStore))
                     ? host._catSelectedFromStore
                     : null,
@@ -702,7 +702,7 @@ class _PaneLayoutWidget extends StatelessWidget {
               const SizedBox(height: 8),
               DropdownButtonFormField<int>(
                 isExpanded: true,
-                initialValue: host._gridDesktopCols,
+                value: host._gridDesktopCols,
                 items: const [2, 3, 4, 5, 6]
                     .map(
                       (v) => DropdownMenuItem<int>(
@@ -733,7 +733,7 @@ class _PaneLayoutWidget extends StatelessWidget {
               const SizedBox(height: 8),
               DropdownButtonFormField<int>(
                 isExpanded: true,
-                initialValue: host._gridMobileCols,
+                value: host._gridMobileCols,
                 items: const [1, 2, 3]
                     .map(
                       (v) => DropdownMenuItem<int>(

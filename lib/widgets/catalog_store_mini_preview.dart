@@ -100,7 +100,7 @@ class CatalogStoreMiniPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final frameBorder = cs.outlineVariant.withValues(alpha: 0.55);
+    final frameBorder = cs.outlineVariant.withOpacity(0.55);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -110,7 +110,7 @@ class CatalogStoreMiniPreview extends StatelessWidget {
           border: Border.all(color: frameBorder, width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: Colors.black.withOpacity(0.06),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -214,7 +214,7 @@ class CatalogStoreMiniPreview extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.search, size: _compact ? 14 : 15, color: colors.headerIcon.withValues(alpha: 0.85)),
+          Icon(Icons.search, size: _compact ? 14 : 15, color: colors.headerIcon.withOpacity(0.85)),
           SizedBox(width: _compact ? 6 : 8),
           Expanded(
             child: Text(
@@ -291,7 +291,7 @@ class CatalogStoreMiniPreview extends StatelessWidget {
         borderRadius: BorderRadius.circular(_rCard),
         boxShadow: [
           BoxShadow(
-            color: colors.cardShadow.withValues(alpha: 0.35),
+            color: colors.cardShadow.withOpacity(0.35),
             blurRadius: _compact ? 6 : 8,
             offset: const Offset(0, 2),
           ),
@@ -309,8 +309,8 @@ class CatalogStoreMiniPreview extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    colors.cardSubtitle.withValues(alpha: 0.25),
-                    colors.priceHighlight.withValues(alpha: 0.12),
+                    colors.cardSubtitle.withOpacity(0.25),
+                    colors.priceHighlight.withOpacity(0.12),
                   ],
                 ),
               ),
@@ -417,7 +417,7 @@ class CatalogStoreMiniPreview extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.cartPanelBackground,
         borderRadius: BorderRadius.circular(_rCard),
-        border: Border.all(color: colors.divider.withValues(alpha: 0.45)),
+        border: Border.all(color: colors.divider.withOpacity(0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

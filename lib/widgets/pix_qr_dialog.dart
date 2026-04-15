@@ -61,7 +61,7 @@ void showPixQrDialog({
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.teal.withValues(alpha:0.1),
+                color: Colors.teal.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(

@@ -415,7 +415,7 @@ class _CategoryItem extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: imageUrl.trim().isEmpty
-                ? Icon(Icons.category_outlined, color: textColor.withValues(alpha: 0.7))
+                ? Icon(Icons.category_outlined, color: textColor.withOpacity(0.7))
                 : SmartImage(src: imageUrl, fit: BoxFit.cover),
           ),
           if (showTitle) ...[
@@ -551,7 +551,7 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                           end: Alignment.bottomRight,
                           colors: [
                             backgroundColor,
-                            backgroundColor.withValues(alpha: 0.88),
+                            backgroundColor.withOpacity(0.88),
                           ],
                         )
                       : null,
@@ -564,7 +564,7 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                 height: layoutH,
                 width: double.infinity,
                 color:
-                    Colors.black.withValues(alpha: overlayBlend),
+                    Colors.black.withOpacity(overlayBlend),
               ),
               Positioned.fill(
                 child: Padding(

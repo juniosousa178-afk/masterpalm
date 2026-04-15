@@ -55,16 +55,16 @@ class PainelCrescimentoWidget extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha:0.8),
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
                   ),
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.08),
+                  color: _primaryColor.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _primaryColor.withValues(alpha:0.2)),
+                  border: Border.all(color: _primaryColor.withOpacity(0.2)),
                 ),
                 child: Wrap(
                   spacing: 10,

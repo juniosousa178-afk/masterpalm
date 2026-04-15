@@ -130,10 +130,10 @@ class _DnsFillCard extends StatelessWidget {
     final hasHost = recommendedFqdn.isNotEmpty;
     return Card(
       elevation: 0,
-      color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
+      color: cs.surfaceContainerHighest.withOpacity(0.65),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.5)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -267,7 +267,7 @@ class _NumberedStep extends StatelessWidget {
           height: 28,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: cs.primary.withValues(alpha: 0.12),
+            color: cs.primary.withOpacity(0.12),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
@@ -314,11 +314,11 @@ class _AlertCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final (bg, fg) = switch (tone) {
       _AlertTone.primary => (
-          cs.primaryContainer.withValues(alpha: 0.35),
+          cs.primaryContainer.withOpacity(0.35),
           cs.onPrimaryContainer,
         ),
       _AlertTone.warning => (
-          cs.tertiaryContainer.withValues(alpha: 0.4),
+          cs.tertiaryContainer.withOpacity(0.4),
           cs.onTertiaryContainer,
         ),
       _AlertTone.neutral => (
@@ -331,12 +331,12 @@ class _AlertCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.4)),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: fg.withValues(alpha: 0.9), size: 22),
+          Icon(icon, color: fg.withOpacity(0.9), size: 22),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

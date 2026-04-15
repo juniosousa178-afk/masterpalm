@@ -61,7 +61,7 @@ class Footer extends StatelessWidget {
           Text(
             '© ${DateTime.now().year} $lojaNome - Todos os direitos reservados',
             style: TextStyle(
-                color: textColor.withValues(alpha:0.7), fontSize: 13),
+                color: textColor.withOpacity(0.7), fontSize: 13),
           ),
           const SizedBox(height: 24),
 
@@ -107,7 +107,7 @@ class Footer extends StatelessWidget {
           // Links (opcional)
           if (links.isNotEmpty) ...[
             SectionTitle(
-                title: 'Links', color: textColor.withValues(alpha:0.8)),
+                title: 'Links', color: textColor.withOpacity(0.8)),
             const SizedBox(height: 8),
             Column(
               children: links
@@ -165,13 +165,13 @@ class Footer extends StatelessWidget {
           Text(
             empresaRazao,
             textAlign: TextAlign.center,
-            style: TextStyle(color: textColor.withValues(alpha:0.8)),
+            style: TextStyle(color: textColor.withOpacity(0.8)),
           ),
           if (empresaCnpj.trim().isNotEmpty)
             Text(
               'CNPJ: $empresaCnpj',
               textAlign: TextAlign.center,
-              style: TextStyle(color: textColor.withValues(alpha:0.8)),
+              style: TextStyle(color: textColor.withOpacity(0.8)),
             ),
           const SizedBox(height: 10),
         ],
@@ -206,7 +206,7 @@ class Footer extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
         decoration: BoxDecoration(
-          border: Border.all(color: color.withValues(alpha:0.4)),
+          border: Border.all(color: color.withOpacity(0.4)),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(

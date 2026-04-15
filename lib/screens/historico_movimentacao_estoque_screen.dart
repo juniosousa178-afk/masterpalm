@@ -188,8 +188,8 @@ class _HistoricoMovimentacaoEstoqueScreenState
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: isEntrada
-                                ? _successColor.withValues(alpha:0.2)
-                                : _errorColor.withValues(alpha:0.2),
+                                ? _successColor.withOpacity(0.2)
+                                : _errorColor.withOpacity(0.2),
                             child: Icon(
                               isEntrada ? Icons.add : Icons.remove,
                               color: isEntrada ? _successColor : _errorColor,

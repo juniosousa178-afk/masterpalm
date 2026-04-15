@@ -206,8 +206,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: isValido
-                    ? successColor.withValues(alpha:0.1)
-                    : errorColor.withValues(alpha:0.1),
+                    ? successColor.withOpacity(0.1)
+                    : errorColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -241,7 +241,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: warningColor.withValues(alpha:0.1),
+                  color: warningColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -428,7 +428,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: cor.withValues(alpha:0.1),
+                      color: cor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(icone, color: cor, size: 28),
@@ -469,7 +469,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                           width: 32,
                           height: 32,
                           decoration: BoxDecoration(
-                            color: cor.withValues(alpha:0.1),
+                            color: cor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Center(
@@ -610,7 +610,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha:0.1),
+                  color: primaryColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const CircularProgressIndicator(
@@ -796,7 +796,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                               height: 150,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha:0.1),
+                                color: Colors.white.withOpacity(0.1),
                               ),
                             ),
                           ),
@@ -808,7 +808,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                               height: 100,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withValues(alpha:0.08),
+                                color: Colors.white.withOpacity(0.08),
                               ),
                             ),
                           ),
@@ -832,7 +832,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                 Text(
                                   'Loja: $_lojaId',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha:0.9),
+                                    color: Colors.white.withOpacity(0.9),
                                     fontSize: 14,
                                   ),
                                 ),
@@ -1141,12 +1141,12 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            primaryColor.withValues(alpha:0.1),
-            secondaryColor.withValues(alpha:0.05),
+            primaryColor.withOpacity(0.1),
+            secondaryColor.withOpacity(0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: primaryColor.withValues(alpha:0.2)),
+        border: Border.all(color: primaryColor.withOpacity(0.2)),
       ),
       child: Column(
         children: [
@@ -1155,7 +1155,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha:0.1),
+                  color: primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
@@ -1224,7 +1224,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1236,7 +1236,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: cor.withValues(alpha:0.05),
+              color: cor.withOpacity(0.05),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(20)),
             ),
@@ -1245,7 +1245,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: cor.withValues(alpha:0.1),
+                    color: cor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icone, color: cor, size: 24),
@@ -1279,8 +1279,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: isConnected
-                        ? successColor.withValues(alpha:0.1)
-                        : Colors.grey.withValues(alpha:0.1),
+                        ? successColor.withOpacity(0.1)
+                        : Colors.grey.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -1371,7 +1371,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
   Widget _buildActionChip(
       String label, IconData icon, Color color, VoidCallback onTap) {
     return Material(
-      color: color.withValues(alpha:0.1),
+      color: color.withOpacity(0.1),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -1439,7 +1439,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1451,7 +1451,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: primaryColor.withValues(alpha:0.05),
+              color: primaryColor.withOpacity(0.05),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(20)),
             ),
@@ -1460,7 +1460,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: primaryColor.withValues(alpha:0.1),
+                    color: primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(

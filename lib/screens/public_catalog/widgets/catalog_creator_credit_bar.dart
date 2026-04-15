@@ -22,7 +22,7 @@ class CatalogCreatorCreditBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = textColor.withValues(alpha: 0.72);
+    final muted = textColor.withOpacity(0.72);
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -31,7 +31,7 @@ class CatalogCreatorCreditBar extends StatelessWidget {
           color: backgroundColor,
           border: Border(
             top: BorderSide(
-              color: textColor.withValues(alpha: 0.12),
+              color: textColor.withOpacity(0.12),
               width: 1,
             ),
           ),
@@ -71,7 +71,7 @@ class CatalogCreatorCreditBar extends StatelessWidget {
                         child: Icon(
                           Icons.open_in_new_rounded,
                           size: 14,
-                          color: accentColor.withValues(alpha: 0.75),
+                          color: accentColor.withOpacity(0.75),
                         ),
                       ),
                     ],

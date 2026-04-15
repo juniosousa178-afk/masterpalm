@@ -137,7 +137,7 @@ class _RedefinirSenhaClienteLojaScreenState
                   'Use esta tela quando um cliente do catálogo esqueceu a senha. '
                   'Informe o email dele e defina uma nova senha. Avise o cliente para que ele faça login com a nova senha.',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha:0.8),
+                    color: theme.colorScheme.onSurface.withOpacity(0.8),
                     height: 1.4,
                   ),
                 ),

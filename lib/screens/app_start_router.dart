@@ -1054,7 +1054,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
                     Text(
                       'Não foi possível carregar o contexto da sua loja com segurança neste navegador. '
                       'Verifique a conexão e tente novamente, ou saia e entre de novo.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.85)),
+                      style: TextStyle(color: Colors.white.withOpacity(0.85)),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 24),

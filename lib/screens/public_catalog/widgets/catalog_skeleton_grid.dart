@@ -50,7 +50,7 @@ class CatalogSkeletonGrid extends StatelessWidget {
                   child: Container(
                     margin: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: base.withValues(alpha:0.6),
+                      color: base.withOpacity(0.6),
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
@@ -59,7 +59,7 @@ class CatalogSkeletonGrid extends StatelessWidget {
                   height: 14,
                   margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
                   decoration: BoxDecoration(
-                    color: base.withValues(alpha:0.6),
+                    color: base.withOpacity(0.6),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -68,7 +68,7 @@ class CatalogSkeletonGrid extends StatelessWidget {
                   width: 80,
                   margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                   decoration: BoxDecoration(
-                    color: base.withValues(alpha:0.7),
+                    color: base.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),

@@ -556,7 +556,7 @@ Entre em contato conosco para retirar seu prêmio!
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 6,
-        shadowColor: Colors.greenAccent.withValues(alpha:0.4),
+        shadowColor: Colors.greenAccent.withOpacity(0.4),
         title: const Text('Roleta do Sorteio'),
       ),
       body: _carregandoNumeros
@@ -592,10 +592,10 @@ Entre em contato conosco para retirar seu prêmio!
                             vertical: 12,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.greenAccent.withValues(alpha:0.1),
+                            color: Colors.greenAccent.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.greenAccent.withValues(alpha:0.3),
+                              color: Colors.greenAccent.withOpacity(0.3),
                             ),
                           ),
                           child: Row(
@@ -669,7 +669,7 @@ Entre em contato conosco para retirar seu prêmio!
                               borderRadius: BorderRadius.circular(24),
                             ),
                             elevation: 8,
-                            shadowColor: Colors.greenAccent.withValues(alpha:0.7),
+                            shadowColor: Colors.greenAccent.withOpacity(0.7),
                           ),
                           child: Text(
                             _todosNumeros.isEmpty
@@ -713,7 +713,7 @@ Entre em contato conosco para retirar seu prêmio!
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.greenAccent.withValues(alpha:0.35),
+            color: Colors.greenAccent.withOpacity(0.35),
             blurRadius: 25,
             spreadRadius: 1,
           ),
@@ -751,7 +751,7 @@ Entre em contato conosco para retirar seu prêmio!
                 border: Border.all(color: Colors.greenAccent, width: 3),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.greenAccent.withValues(alpha:0.6),
+                    color: Colors.greenAccent.withOpacity(0.6),
                     blurRadius: 18,
                     spreadRadius: 2,
                   ),
@@ -779,7 +779,7 @@ Entre em contato conosco para retirar seu prêmio!
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.greenAccent.withValues(alpha:0.8),
+                      color: Colors.greenAccent.withOpacity(0.8),
                       blurRadius: 12,
                       spreadRadius: 1,
                     ),
@@ -815,7 +815,7 @@ Entre em contato conosco para retirar seu prêmio!
             boxShadow: ativo
                 ? [
                     BoxShadow(
-                      color: Colors.greenAccent.withValues(alpha:0.6),
+                      color: Colors.greenAccent.withOpacity(0.6),
                       blurRadius: 12,
                       spreadRadius: 1,
                     ),
@@ -883,14 +883,14 @@ class _RoletaCassinoPainter extends CustomPainter {
       );
       final paintHighlight = Paint()
         ..style = PaintingStyle.fill
-        ..color = Colors.white.withValues(alpha:0.04);
+        ..color = Colors.white.withOpacity(0.04);
       canvas.drawArc(innerRect, startAngle, sweep, true, paintHighlight);
 
       // Linha divisória
       final borderPaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2
-        ..color = Colors.black.withValues(alpha:0.6);
+        ..color = Colors.black.withOpacity(0.6);
       canvas.drawArc(outerRect, startAngle, sweep, true, borderPaint);
 
       // Desenha o número no segmento

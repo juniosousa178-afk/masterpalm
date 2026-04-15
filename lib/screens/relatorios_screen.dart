@@ -172,7 +172,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.2),
+                color: Colors.white.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
@@ -401,7 +401,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha:0.1),
+                  color: Colors.black.withOpacity(0.1),
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -413,7 +413,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: _errorColor.withValues(alpha:0.1),
+                    color: _errorColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.lock_outline, size: 48, color: _errorColor),
@@ -497,7 +497,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
@@ -508,7 +508,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
               Container(
                 margin: const EdgeInsets.only(right: 16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: IconButton(
@@ -544,7 +544,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                     end: Alignment.bottomRight,
                     colors: [
                       _primaryColor,
-                      _primaryColor.withValues(alpha:0.8),
+                      _primaryColor.withOpacity(0.8),
                     ],
                   ),
                 ),
@@ -558,7 +558,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                         height: 200,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha:0.1),
+                          color: Colors.white.withOpacity(0.1),
                         ),
                       ),
                     ),
@@ -570,7 +570,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                         height: 120,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha:0.1),
+                          color: Colors.white.withOpacity(0.1),
                         ),
                       ),
                     ),
@@ -649,7 +649,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: _errorColor.withValues(alpha:0.1),
+                                color: _errorColor.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Icon(Icons.clear, color: _errorColor, size: 20),
@@ -687,7 +687,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                         iconColor: _warningColor,
                         child: Row(
                           children: [
-                            Icon(Icons.timer_outlined, color: _warningColor.withValues(alpha:0.8)),
+                            Icon(Icons.timer_outlined, color: _warningColor.withOpacity(0.8)),
                             const SizedBox(width: 12),
                             const Expanded(
                               child: Text(
@@ -720,7 +720,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                         iconColor: _successColor,
                         child: Row(
                           children: [
-                            Icon(Icons.analytics_outlined, color: _successColor.withValues(alpha:0.8)),
+                            Icon(Icons.analytics_outlined, color: _successColor.withOpacity(0.8)),
                             const SizedBox(width: 12),
                             const Expanded(
                               child: Text(
@@ -772,7 +772,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: Row(
                               children: [
-                                Icon(Icons.storefront_outlined, color: _primaryColor.withValues(alpha:0.8)),
+                                Icon(Icons.storefront_outlined, color: _primaryColor.withOpacity(0.8)),
                                 const SizedBox(width: 12),
                                 Text(
                                   snap.connectionState == ConnectionState.waiting
@@ -924,7 +924,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                         iconColor: _primaryColor,
                         child: Row(
                           children: [
-                            Icon(Icons.leaderboard, color: _primaryColor.withValues(alpha:0.7)),
+                            Icon(Icons.leaderboard, color: _primaryColor.withOpacity(0.7)),
                             const SizedBox(width: 12),
                             const Expanded(
                               child: Text(
@@ -983,7 +983,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1004,7 +1004,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha:0.1),
+                    color: iconColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, size: 22, color: iconColor),
@@ -1042,10 +1042,10 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: date != null ? _primaryColor.withValues(alpha:0.1) : Colors.grey.shade100,
+          color: date != null ? _primaryColor.withOpacity(0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: date != null ? _primaryColor.withValues(alpha:0.3) : Colors.grey.shade200,
+            color: date != null ? _primaryColor.withOpacity(0.3) : Colors.grey.shade200,
           ),
         ),
         child: Row(
@@ -1132,7 +1132,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1144,7 +1144,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withValues(alpha:0.1),
+              color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, size: 20, color: color),
@@ -1240,9 +1240,9 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
           margin: EdgeInsets.only(bottom: index < items.length - 1 && index < 4 ? 8 : 0),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isFirst ? color.withValues(alpha:0.1) : Colors.grey.shade50,
+            color: isFirst ? color.withOpacity(0.1) : Colors.grey.shade50,
             borderRadius: BorderRadius.circular(12),
-            border: isFirst ? Border.all(color: color.withValues(alpha:0.3)) : null,
+            border: isFirst ? Border.all(color: color.withOpacity(0.3)) : null,
           ),
           child: Row(
             children: [
@@ -1304,7 +1304,7 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
       return Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: _successColor.withValues(alpha:0.1),
+          color: _successColor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: const Row(
@@ -1334,10 +1334,10 @@ class _RelatoriosScreenState extends State<RelatoriosScreen> {
           margin: EdgeInsets.only(bottom: index < produtos.length - 1 && index < 4 ? 8 : 0),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: isLow ? _errorColor.withValues(alpha:0.1) : _warningColor.withValues(alpha:0.1),
+            color: isLow ? _errorColor.withOpacity(0.1) : _warningColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isLow ? _errorColor.withValues(alpha:0.3) : _warningColor.withValues(alpha:0.3),
+              color: isLow ? _errorColor.withOpacity(0.3) : _warningColor.withOpacity(0.3),
             ),
           ),
           child: Row(

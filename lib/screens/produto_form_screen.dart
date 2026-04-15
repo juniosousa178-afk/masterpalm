@@ -2219,7 +2219,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                           Expanded(
                             flex: 2,
                             child: DropdownButtonFormField<String>(
-                              initialValue: _tipoEmbalagem,
+                              value: _tipoEmbalagem,
                               isExpanded: true,
                               decoration: InputDecoration(
                                 labelText: 'Tipo de Embalagem',
@@ -2777,7 +2777,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             if (_salvando)
               Positioned.fill(
                 child: Container(
-                  color: Colors.black.withValues(alpha:0.3),
+                  color: Colors.black.withOpacity(0.3),
                   child: const Center(
                     child: Card(
                       child: Padding(
@@ -2897,7 +2897,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha:0.1),
+                    color: iconColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(icon, color: iconColor, size: 24),
@@ -3056,7 +3056,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           }
         });
       },
-      selectedColor: color.withValues(alpha:0.2),
+      selectedColor: color.withOpacity(0.2),
       checkmarkColor: color,
       backgroundColor: Colors.grey.shade100,
       labelStyle: TextStyle(

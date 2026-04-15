@@ -134,7 +134,7 @@ class _CatalogAvaliacoesCarouselState extends State<CatalogAvaliacoesCarousel> {
                   borderRadius: BorderRadius.circular(999),
                   color: i == _pageIndex
                       ? widget.accentColor
-                      : widget.textColor.withValues(alpha: 0.22),
+                      : widget.textColor.withOpacity(0.22),
                 ),
               ),
             ),

@@ -118,8 +118,8 @@ class CatalogSobreLojaScreen extends StatelessWidget {
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                                 colors: [
-                                  Colors.black.withValues(alpha: 0.14),
-                                  Colors.black.withValues(alpha: 0.62),
+                                  Colors.black.withOpacity(0.14),
+                                  Colors.black.withOpacity(0.62),
                                 ],
                               ),
                             ),
@@ -154,7 +154,7 @@ class CatalogSobreLojaScreen extends StatelessWidget {
                                     maxLines: 3,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.96),
+                                      color: Colors.white.withOpacity(0.96),
                                       fontSize: 15,
                                       height: 1.35,
                                       shadows: const [
@@ -206,7 +206,7 @@ class CatalogSobreLojaScreen extends StatelessWidget {
                                               size: 18, color: primary),
                                           label: Text(t),
                                           backgroundColor: primary
-                                              .withValues(alpha: 0.08),
+                                              .withOpacity(0.08),
                                           side: BorderSide.none,
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 4, vertical: 2),
@@ -297,7 +297,7 @@ class CatalogSobreLojaScreen extends StatelessWidget {
                                 Card(
                                   elevation: 0,
                                   color: theme.colorScheme.surfaceContainerHighest
-                                      .withValues(alpha: 0.35),
+                                      .withOpacity(0.35),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(16),
                                   ),
@@ -430,9 +430,9 @@ class _BannerPlaceholder extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            topic.withValues(alpha: 0.16),
-            topic.withValues(alpha: 0.08),
-            Colors.black.withValues(alpha: 0.06),
+            topic.withOpacity(0.16),
+            topic.withOpacity(0.08),
+            Colors.black.withOpacity(0.06),
           ],
         ),
       ),
@@ -444,7 +444,7 @@ class _BannerPlaceholder extends StatelessWidget {
             child: Icon(
               Icons.auto_awesome_rounded,
               size: 86,
-              color: topic.withValues(alpha: 0.15),
+              color: topic.withOpacity(0.15),
             ),
           ),
           Positioned(
@@ -456,13 +456,13 @@ class _BannerPlaceholder extends StatelessWidget {
                 Icon(
                   Icons.image_outlined,
                   size: 18,
-                  color: Colors.white.withValues(alpha: 0.95),
+                  color: Colors.white.withOpacity(0.95),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   'Banner da loja',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.95),
+                    color: Colors.white.withOpacity(0.95),
                     fontWeight: FontWeight.w600,
                     fontSize: 13.5,
                     shadows: const [
@@ -495,9 +495,9 @@ class _EmptyHint extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: topic.withValues(alpha: 0.08),
+        color: topic.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: topic.withValues(alpha: 0.2)),
+        border: Border.all(color: topic.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,7 +553,7 @@ class _InfoCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.25)),
+        side: BorderSide(color: theme.dividerColor.withOpacity(0.25)),
       ),
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -677,7 +677,7 @@ class _SobreLojaFooterBar extends StatelessWidget {
         color: theme.brightness == Brightness.dark ? theme.cardColor : footerBg,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 12,
             offset: const Offset(0, -4),
           ),

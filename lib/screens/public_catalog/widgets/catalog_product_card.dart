@@ -239,7 +239,7 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
         borderRadius: BorderRadius.circular(6),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.3),
+            color: Colors.black.withOpacity(0.3),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -599,7 +599,7 @@ insetPadding:
     final hasImg = widget.imagens.isNotEmpty || widget.imageUrl.isNotEmpty;
 
     final cardColor = theme.cardColor;
-    final borderColor = Colors.white.withValues(alpha:0.06);
+    final borderColor = Colors.white.withOpacity(0.06);
     final catalogExt = theme.extension<CatalogThemeExtension>();
     final productNameColor =
         catalogExt?.productNameColor ?? theme.textTheme.bodyMedium?.color ?? Colors.white;
@@ -904,7 +904,7 @@ insetPadding:
                                           Text(
                                             parcelamentoTexto,
                                             style: TextStyle(
-                                              color: theme.colorScheme.onSurface.withValues(alpha: 0.82),
+                                              color: theme.colorScheme.onSurface.withOpacity(0.82),
                                               fontSize: parcelFontSize,
                                               fontWeight: FontWeight.w400,
                                               height: 1.15,
@@ -1096,7 +1096,7 @@ insetPadding:
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: verColor,
                                       side: BorderSide(
-                                          color: verColor.withValues(alpha: 0.7)),
+                                          color: verColor.withOpacity(0.7)),
                                       padding:
                                           const EdgeInsets.symmetric(horizontal: 4),
                                       minimumSize: Size.zero,
@@ -1256,7 +1256,7 @@ insetPadding:
                                   side: BorderSide(
                                     color: (catalogExt?.buttonVerText ??
                                             theme.colorScheme.primary)
-                                        .withValues(alpha: 0.7),
+                                        .withOpacity(0.7),
                                   ),
                                   padding:
                                       const EdgeInsets.symmetric(horizontal: 6),
@@ -1377,7 +1377,7 @@ insetPadding:
                                 child: OutlinedButton(
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: catalogExt?.buttonVerText ?? theme.colorScheme.primary,
-                                    side: BorderSide(color: (catalogExt?.buttonVerText ?? theme.colorScheme.primary).withValues(alpha:0.7)),
+                                    side: BorderSide(color: (catalogExt?.buttonVerText ?? theme.colorScheme.primary).withOpacity(0.7)),
                                     padding: EdgeInsets.symmetric(horizontal: widget.compact ? 4 : 8),
                                     minimumSize: Size.zero,
                                     shape: RoundedRectangleBorder(
@@ -1525,21 +1525,21 @@ insetPadding:
           borderRadius: BorderRadius.circular(widget.borderRadius),
           border: Border.all(
             color: _hovered
-                ? theme.colorScheme.primary.withValues(alpha:0.35)
+                ? theme.colorScheme.primary.withOpacity(0.35)
                 : borderColor,
           ),
           boxShadow: widget.showShadow
               ? (_hovered
                   ? [
                       BoxShadow(
-                        color: theme.colorScheme.primary.withValues(alpha:0.24),
+                        color: theme.colorScheme.primary.withOpacity(0.24),
                         blurRadius: 18,
                         offset: const Offset(0, 10),
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha:0.35),
+                        color: Colors.black.withOpacity(0.35),
                         blurRadius: 12,
                         offset: const Offset(0, 8),
                       ),
@@ -1600,7 +1600,7 @@ insetPadding:
                             if (widget.catalogShareUrl != null &&
                                 widget.catalogShareUrl!.isNotEmpty)
                               Material(
-                                color: Colors.white.withValues(alpha:0.9),
+                                color: Colors.white.withOpacity(0.9),
                                 shape: const CircleBorder(),
                                 child: InkWell(
                                   onTap: _compartilharProduto,
@@ -1645,7 +1645,7 @@ insetPadding:
                         top: 8,
                         right: 8,
                         child: Material(
-                          color: Colors.white.withValues(alpha:0.9),
+                          color: Colors.white.withOpacity(0.9),
                           shape: const CircleBorder(),
                           child: InkWell(
                             onTap: widget.onToggleFavorito,

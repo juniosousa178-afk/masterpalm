@@ -94,7 +94,7 @@ class _MotorCrescimentoScreenState extends State<MotorCrescimentoScreen> {
                             'Carregando primeiras $_primeiraPaginaLimit oportunidades…',
                             style: TextStyle(
                               fontSize: 14,
-                              color: theme.colorScheme.onSurface.withValues(alpha:0.8),
+                              color: theme.colorScheme.onSurface.withOpacity(0.8),
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -145,7 +145,7 @@ class _MotorCrescimentoScreenState extends State<MotorCrescimentoScreen> {
                                   'Carregando mais oportunidades…',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: theme.colorScheme.onSurface.withValues(alpha:0.7),
+                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
                                   ),
                                 ),
                               ],
@@ -335,7 +335,7 @@ class _MetricaCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -392,7 +392,7 @@ class _OportunidadeTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withValues(alpha:0.15),
+          backgroundColor: color.withOpacity(0.15),
           child: Icon(
             oportunidade.tipo == TipoOportunidade.produtoParado
                 ? Icons.inventory_2_outlined

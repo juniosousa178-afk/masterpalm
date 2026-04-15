@@ -407,7 +407,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                                      backgroundColor: statusColor.withValues(alpha:0.2),
+                                      backgroundColor: statusColor.withOpacity(0.2),
                                     ),
                                   ),
                                 );
@@ -605,7 +605,7 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
                   top: 4,
                   right: 4,
                   child: Material(
-                    color: Colors.white.withValues(alpha:0.9),
+                    color: Colors.white.withOpacity(0.9),
                     shape: const CircleBorder(),
                     child: InkWell(
                       onTap: () async {

@@ -100,7 +100,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                       borderRadius: BorderRadius.circular(borderRadiusDesktop),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha:0.12),
+                          color: Colors.black.withOpacity(0.12),
                           blurRadius: 20,
                           offset: const Offset(0, 6),
                         ),
@@ -109,7 +109,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(borderRadiusDesktop),
                       child: Container(
-                        color: Colors.black.withValues(alpha:0.04),
+                        color: Colors.black.withOpacity(0.04),
                         child: Center(
                           child: CatalogImagePlaceholder(
                             url: url,
@@ -128,7 +128,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(borderRadiusMobile),
                   child: Container(
-                    color: Colors.black.withValues(alpha:0.04),
+                    color: Colors.black.withOpacity(0.04),
                     child: Center(
                       child: CatalogImagePlaceholder(
                         url: url,
@@ -155,7 +155,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withValues(alpha:0.25),
+                          Colors.black.withOpacity(0.25),
                         ],
                       ),
                     ),
@@ -181,7 +181,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                   decoration: BoxDecoration(
                     color: active
                         ? Colors.white
-                        : Colors.white.withValues(alpha:0.4),
+                        : Colors.white.withOpacity(0.4),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 );

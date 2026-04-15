@@ -195,7 +195,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
                       shape: BoxShape.circle,
                       color: _currentPage == index
                           ? Colors.white
-                          : Colors.white.withValues(alpha:0.4),
+                          : Colors.white.withOpacity(0.4),
                     ),
                   ),
                 ),
@@ -232,7 +232,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.purple.withValues(alpha:0.3),
+            color: Colors.purple.withOpacity(0.3),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -256,7 +256,7 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha:0.2),
+                    color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -356,7 +356,7 @@ class _StarsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withValues(alpha:0.1)
+      ..color = Colors.white.withOpacity(0.1)
       ..style = PaintingStyle.fill;
 
     // Desenha algumas estrelas aleatórias

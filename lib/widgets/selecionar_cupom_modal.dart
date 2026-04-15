@@ -83,7 +83,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00BCD4).withValues(alpha:0.1),
+                    color: const Color(0xFF00BCD4).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -360,7 +360,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF9C27B0).withValues(alpha:0.1),
+                          color: const Color(0xFF9C27B0).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
@@ -421,7 +421,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: podeUsar
-                    ? const Color(0xFF00BCD4).withValues(alpha:0.1)
+                    ? const Color(0xFF00BCD4).withOpacity(0.1)
                     : Colors.grey[200],
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -542,7 +542,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: tagColor!.withValues(alpha:0.1),
+                            color: tagColor!.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -615,7 +615,7 @@ class _SelecionarCupomModalState extends State<SelecionarCupomModal> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: podeUsar
-                    ? const Color(0xFF00BCD4).withValues(alpha:0.1)
+                    ? const Color(0xFF00BCD4).withOpacity(0.1)
                     : Colors.grey[200],
                 borderRadius: BorderRadius.circular(8),
               ),

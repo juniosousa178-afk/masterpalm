@@ -140,7 +140,7 @@ class _TextosWhatsAppIaScreenState extends State<TextosWhatsAppIaScreen> {
           if (_mensagemGerada != null) ...[
             const SizedBox(height: 20),
             Card(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha:0.5),
+              color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(

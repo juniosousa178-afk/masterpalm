@@ -159,7 +159,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                     decoration: BoxDecoration(
                       color: s.color,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Theme.of(ctx).colorScheme.outline.withValues(alpha: 0.35)),
+                      border: Border.all(color: Theme.of(ctx).colorScheme.outline.withOpacity(0.35)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -255,7 +255,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                     decoration: BoxDecoration(
                       color: s.color,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: cs.outline.withValues(alpha: 0.4)),
+                      border: Border.all(color: cs.outline.withOpacity(0.4)),
                     ),
                   ),
                 ),
@@ -270,7 +270,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
             ),
             IconButton(
               tooltip: 'Onde é usada',
-              icon: Icon(Icons.info_outline, size: 18, color: accentRose.withValues(alpha: 0.95)),
+              icon: Icon(Icons.info_outline, size: 18, color: accentRose.withOpacity(0.95)),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
               onPressed: () => _showSuggestionUsesDialog(s),
@@ -306,13 +306,13 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
           padding: const EdgeInsets.only(top: 4, bottom: 4),
           child: Row(
             children: [
-              Icon(Icons.label_outline, size: 14, color: accentRose.withValues(alpha: 0.9)),
+              Icon(Icons.label_outline, size: 14, color: accentRose.withOpacity(0.9)),
               const SizedBox(width: 6),
               Text(
                 _catalogGroupTitlePt(key),
                 style: tt.labelSmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: cs.onSurface.withValues(alpha: 0.88),
+                  color: cs.onSurface.withOpacity(0.88),
                 ),
               ),
             ],
@@ -455,7 +455,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final borderColor = cs.outlineVariant.withValues(alpha: 0.65);
+    final borderColor = cs.outlineVariant.withOpacity(0.65);
     const accentRose = Color(0xFFC9A4A8);
     final suggestions = widget.suggestions.take(widget.maxSuggestions).toList();
 
@@ -467,7 +467,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
         border: Border.all(color: borderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -489,10 +489,10 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                     decoration: BoxDecoration(
                       color: widget.color,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: cs.outline.withValues(alpha: 0.35), width: 1.2),
+                      border: Border.all(color: cs.outline.withOpacity(0.35), width: 1.2),
                       boxShadow: [
                         BoxShadow(
-                          color: widget.color.withValues(alpha: 0.35),
+                          color: widget.color.withOpacity(0.35),
                           blurRadius: 6,
                           offset: const Offset(0, 2),
                         ),
@@ -518,7 +518,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                         Text(
                           widget.description!,
                           style: tt.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                            color: cs.onSurfaceVariant.withOpacity(0.92),
                             height: 1.35,
                             fontSize: 12.5,
                           ),
@@ -553,7 +553,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                   onPressed: _openPicker,
                   tooltip: 'Seletor visual',
                   style: IconButton.styleFrom(
-                    backgroundColor: accentRose.withValues(alpha: 0.22),
+                    backgroundColor: accentRose.withOpacity(0.22),
                     foregroundColor: cs.onSurface,
                   ),
                   icon: const Icon(Icons.palette_outlined, size: 22),
@@ -596,7 +596,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: cs.primary.withValues(alpha: 0.85), width: 1.5),
+                  borderSide: BorderSide(color: cs.primary.withOpacity(0.85), width: 1.5),
                 ),
               ),
               inputFormatters: [
@@ -610,13 +610,13 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    Icon(Icons.auto_awesome_outlined, size: 16, color: accentRose.withValues(alpha: 0.95)),
+                    Icon(Icons.auto_awesome_outlined, size: 16, color: accentRose.withOpacity(0.95)),
                     const SizedBox(width: 6),
                     Text(
                       'Cores já usadas no catálogo',
                       style: tt.labelLarge?.copyWith(
                         fontWeight: FontWeight.w600,
-                        color: cs.onSurface.withValues(alpha: 0.88),
+                        color: cs.onSurface.withOpacity(0.88),
                         fontSize: 12,
                       ),
                     ),
@@ -626,7 +626,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                 Text(
                   'Quadrado: aplicar no campo · ícones: copiar HEX ou ver onde é usada.',
                   style: tt.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.85),
+                    color: cs.onSurfaceVariant.withOpacity(0.85),
                     fontSize: 11.5,
                   ),
                 ),
@@ -638,7 +638,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
                     onPressed: () => _openSuggestionsBottomSheet(context),
-                    icon: Icon(Icons.auto_awesome_outlined, size: 18, color: accentRose.withValues(alpha: 0.95)),
+                    icon: Icon(Icons.auto_awesome_outlined, size: 18, color: accentRose.withOpacity(0.95)),
                     label: Text(
                       'Cores já usadas (${suggestions.length})',
                       style: tt.labelLarge?.copyWith(

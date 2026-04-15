@@ -295,7 +295,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 8),
-              color: _warningColor.withValues(alpha:0.2),
+              color: _warningColor.withOpacity(0.2),
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -363,7 +363,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             label: const Text('Hoje'),
             selected: _periodoSelecionado == 'hoje',
             onSelected: (_) => _definirPeriodo('hoje'),
-            selectedColor: _primaryColor.withValues(alpha:0.3),
+            selectedColor: _primaryColor.withOpacity(0.3),
             labelStyle: TextStyle(color: _periodoSelecionado == 'hoje' ? _primaryColor : Colors.white),
           ),
           const SizedBox(width: 8),
@@ -371,7 +371,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             label: const Text('Semana'),
             selected: _periodoSelecionado == 'semana',
             onSelected: (_) => _definirPeriodo('semana'),
-            selectedColor: _primaryColor.withValues(alpha:0.3),
+            selectedColor: _primaryColor.withOpacity(0.3),
             labelStyle: TextStyle(color: _periodoSelecionado == 'semana' ? _primaryColor : Colors.white),
           ),
           const SizedBox(width: 8),
@@ -379,7 +379,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             label: const Text('Mês'),
             selected: _periodoSelecionado == 'mes',
             onSelected: (_) => _definirPeriodo('mes'),
-            selectedColor: _primaryColor.withValues(alpha:0.3),
+            selectedColor: _primaryColor.withOpacity(0.3),
             labelStyle: TextStyle(color: _periodoSelecionado == 'mes' ? _primaryColor : Colors.white),
           ),
         ],
@@ -396,7 +396,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         decoration: BoxDecoration(
           color: _cardColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.withValues(alpha:0.1)),
+          border: Border.all(color: Colors.grey.withOpacity(0.1)),
         ),
       )),
     );
@@ -608,7 +608,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.2),
+                    color: _primaryColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(_getPeriodoTexto(), style: const TextStyle(color: _primaryColor, fontSize: 12)),
@@ -639,9 +639,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _successColor.withValues(alpha:0.1),
+                  color: _successColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _successColor.withValues(alpha:0.3)),
+                  border: Border.all(color: _successColor.withOpacity(0.3)),
                 ),
                 child: Row(
                   children: [
@@ -668,7 +668,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withValues(alpha:0.1)),
+        border: Border.all(color: Colors.grey.withOpacity(0.1)),
       ),
       child: child,
     );
@@ -678,9 +678,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: cor.withValues(alpha:0.1),
+        color: cor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: cor.withValues(alpha:0.3)),
+        border: Border.all(color: cor.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -717,7 +717,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             label: const Text('Todas'),
             selected: _filtroStatusComissao == 'todas',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'todas'),
-            selectedColor: _primaryColor.withValues(alpha:0.3),
+            selectedColor: _primaryColor.withOpacity(0.3),
             labelStyle: TextStyle(color: _filtroStatusComissao == 'todas' ? _primaryColor : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
@@ -725,7 +725,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             label: const Text('Pendentes'),
             selected: _filtroStatusComissao == 'pendentes',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'pendentes'),
-            selectedColor: _primaryColor.withValues(alpha:0.3),
+            selectedColor: _primaryColor.withOpacity(0.3),
             labelStyle: TextStyle(color: _filtroStatusComissao == 'pendentes' ? _primaryColor : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
@@ -733,7 +733,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             label: const Text('Pagas'),
             selected: _filtroStatusComissao == 'pagas',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'pagas'),
-            selectedColor: _primaryColor.withValues(alpha:0.3),
+            selectedColor: _primaryColor.withOpacity(0.3),
             labelStyle: TextStyle(color: _filtroStatusComissao == 'pagas' ? _primaryColor : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
@@ -741,7 +741,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             label: const Text('Estornadas'),
             selected: _filtroStatusComissao == 'estornadas',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'estornadas'),
-            selectedColor: _primaryColor.withValues(alpha:0.3),
+            selectedColor: _primaryColor.withOpacity(0.3),
             labelStyle: TextStyle(color: _filtroStatusComissao == 'estornadas' ? _primaryColor : Colors.grey.shade400),
           ),
         ],
@@ -810,12 +810,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             padding: EdgeInsets.all(16),
             child: Text('Suas Comissões', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
           ),
-          Divider(height: 1, color: Colors.grey.withValues(alpha:0.2)),
+          Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: comissoes.length,
-            separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.withValues(alpha:0.2)),
+            separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
             itemBuilder: (context, index) => _buildComissaoTile(comissoes[index]),
           ),
         ],
@@ -847,7 +847,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: statusColor.withValues(alpha:0.2),
+        backgroundColor: statusColor.withOpacity(0.2),
         child: Icon(statusIcon, color: statusColor, size: 20),
       ),
       title: Text(
@@ -874,7 +874,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: statusColor.withValues(alpha:0.2),
+              color: statusColor.withOpacity(0.2),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
@@ -945,7 +945,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.2),
+                        color: _primaryColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(_getPeriodoTexto(), style: const TextStyle(color: _primaryColor, fontSize: 12)),
@@ -976,9 +976,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
+                  color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _primaryColor.withValues(alpha: 0.35)),
+                  border: Border.all(color: _primaryColor.withOpacity(0.35)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1108,11 +1108,11 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      ChoiceChip(label: const Text('Por vendas'), selected: _ordenacaoVendedores == 'vendas', onSelected: (_) => setState(() => _ordenacaoVendedores = 'vendas'), selectedColor: _primaryColor.withValues(alpha:0.3)),
+                      ChoiceChip(label: const Text('Por vendas'), selected: _ordenacaoVendedores == 'vendas', onSelected: (_) => setState(() => _ordenacaoVendedores = 'vendas'), selectedColor: _primaryColor.withOpacity(0.3)),
                       const SizedBox(width: 6),
-                      ChoiceChip(label: const Text('Por nome'), selected: _ordenacaoVendedores == 'nome', onSelected: (_) => setState(() => _ordenacaoVendedores = 'nome'), selectedColor: _primaryColor.withValues(alpha:0.3)),
+                      ChoiceChip(label: const Text('Por nome'), selected: _ordenacaoVendedores == 'nome', onSelected: (_) => setState(() => _ordenacaoVendedores = 'nome'), selectedColor: _primaryColor.withOpacity(0.3)),
                       const SizedBox(width: 6),
-                      ChoiceChip(label: const Text('Por comissão'), selected: _ordenacaoVendedores == 'comissao', onSelected: (_) => setState(() => _ordenacaoVendedores = 'comissao'), selectedColor: _primaryColor.withValues(alpha:0.3)),
+                      ChoiceChip(label: const Text('Por comissão'), selected: _ordenacaoVendedores == 'comissao', onSelected: (_) => setState(() => _ordenacaoVendedores = 'comissao'), selectedColor: _primaryColor.withOpacity(0.3)),
                       const SizedBox(width: 6),
                       Tooltip(
                         message: _ordenacaoDescendente ? 'Maior primeiro (clique para inverter)' : 'Menor primeiro (clique para inverter)',
@@ -1127,12 +1127,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
               ],
             ),
           ),
-          Divider(height: 1, color: Colors.grey.withValues(alpha:0.2)),
+          Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _resumosVendedoresFiltrados.length,
-            separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.withValues(alpha:0.2)),
+            separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
             itemBuilder: (context, index) => _buildVendedorTileAdmin(_resumosVendedoresFiltrados[index]),
           ),
         ],
@@ -1145,7 +1145,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         leading: CircleAvatar(
-          backgroundColor: _primaryColor.withValues(alpha:0.2),
+          backgroundColor: _primaryColor.withOpacity(0.2),
           child: Text(
             (resumo.vendedorNome ?? 'V')[0].toUpperCase(),
             style: const TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
@@ -1175,7 +1175,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         children: [
           Container(
             padding: const EdgeInsets.all(16),
-            color: Colors.black.withValues(alpha:0.2),
+            color: Colors.black.withOpacity(0.2),
             child: Column(
               children: [
                 Row(
@@ -1267,7 +1267,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                             activeTrackColor: _primaryColor,
                             inactiveTrackColor: Colors.grey.shade800,
                             thumbColor: _primaryColor,
-                            overlayColor: _primaryColor.withValues(alpha:0.2),
+                            overlayColor: _primaryColor.withOpacity(0.2),
                           ),
                           child: Slider(
                             value: _config!.comissaoGlobalPercent,
@@ -1286,7 +1286,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
-                          color: _primaryColor.withValues(alpha:0.2),
+                          color: _primaryColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -1866,7 +1866,7 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
               onPressed: _enviando ? null : () => _enviar('O que fazer para bater a meta? Dê sugestões práticas.'),
               icon: const Icon(Icons.flag),
               label: const Text('O que fazer para bater a meta?'),
-              style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
+              style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.2)),
             ),
             const SizedBox(height: 20),
             TextField(
@@ -1875,7 +1875,7 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
                 hintText: 'Ou digite sua pergunta...',
                 border: const OutlineInputBorder(),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha:0.05),
+                fillColor: Colors.white.withOpacity(0.05),
               ),
               maxLines: 2,
               enabled: !_enviando,
@@ -1896,7 +1896,7 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
                 constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Scrollbar(

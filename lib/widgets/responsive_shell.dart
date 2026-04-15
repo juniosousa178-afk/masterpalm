@@ -75,7 +75,7 @@ class AdminSidebar extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [_primaryColor, _primaryColor.withValues(alpha:0.8)],
+              colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
             ),
           ),
           child: Column(
@@ -84,7 +84,7 @@ class AdminSidebar extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.person, size: 28, color: Colors.white),
@@ -103,7 +103,7 @@ class AdminSidebar extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(

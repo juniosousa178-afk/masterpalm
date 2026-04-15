@@ -523,7 +523,7 @@ class _RelatoriosFinanceirosScreenState
               'Base principal: vendas − custo − taxas operacionais (config ou gravadas na venda).',
               style: TextStyle(
                 fontSize: 11,
-                color: Colors.white.withValues(alpha: 0.45),
+                color: Colors.white.withOpacity(0.45),
               ),
             ),
             const SizedBox(height: 12),
@@ -602,7 +602,7 @@ class _RelatoriosFinanceirosScreenState
                   Text(
                     'Meta do Mês',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.7),
+                      color: Colors.white.withOpacity(0.7),
                       fontSize: 14,
                     ),
                   ),
@@ -617,7 +617,7 @@ class _RelatoriosFinanceirosScreenState
                         CircularProgressIndicator(
                           value: progressoMeta / 100,
                           strokeWidth: 12,
-                          backgroundColor: Colors.white.withValues(alpha:0.1),
+                          backgroundColor: Colors.white.withOpacity(0.1),
                           valueColor: AlwaysStoppedAnimation(
                             progressoMeta >= 100
                                 ? _successColor
@@ -643,7 +643,7 @@ class _RelatoriosFinanceirosScreenState
                                     ? 'Meta Batida!'
                                     : 'concluído',
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha:0.6),
+                                  color: Colors.white.withOpacity(0.6),
                                   fontSize: 12,
                                 ),
                               ),
@@ -659,7 +659,7 @@ class _RelatoriosFinanceirosScreenState
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
-                        color: _successColor.withValues(alpha:0.2),
+                        color: _successColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Row(
@@ -720,7 +720,7 @@ class _RelatoriosFinanceirosScreenState
                     borderRadius: BorderRadius.circular(6),
                     child: LinearProgressIndicator(
                       value: (progressoHoje / 100).clamp(0, 1),
-                      backgroundColor: Colors.white.withValues(alpha:0.1),
+                      backgroundColor: Colors.white.withOpacity(0.1),
                       valueColor: AlwaysStoppedAnimation(
                         progressoHoje >= 100 ? _successColor : _warningColor,
                       ),
@@ -768,9 +768,9 @@ class _RelatoriosFinanceirosScreenState
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _warningColor.withValues(alpha:0.1),
+                color: _warningColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _warningColor.withValues(alpha:0.3)),
+                border: Border.all(color: _warningColor.withOpacity(0.3)),
               ),
               child: const Row(
                 children: [
@@ -802,7 +802,7 @@ class _RelatoriosFinanceirosScreenState
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cor.withValues(alpha:0.3)),
+        border: Border.all(color: cor.withOpacity(0.3)),
       ),
       child: Column(
         children: [
@@ -820,7 +820,7 @@ class _RelatoriosFinanceirosScreenState
           Text(
             titulo,
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.6),
+              color: Colors.white.withOpacity(0.6),
               fontSize: 12,
             ),
             textAlign: TextAlign.center,
@@ -836,7 +836,7 @@ class _RelatoriosFinanceirosScreenState
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: _primaryColor.withValues(alpha:0.15),
+            color: _primaryColor.withOpacity(0.15),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: _primaryColor, size: 20),
@@ -963,7 +963,7 @@ class _RelatoriosFinanceirosScreenState
       selected: selecionado,
       onSelected: (_) => _selecionarFiltroTempo(valor),
       backgroundColor: _bgColor,
-      selectedColor: _primaryColor.withValues(alpha:0.3),
+      selectedColor: _primaryColor.withOpacity(0.3),
       labelStyle: TextStyle(
         color: selecionado ? _primaryColor : Colors.white70,
         fontWeight: selecionado ? FontWeight.bold : FontWeight.normal,
@@ -1053,18 +1053,18 @@ class _RelatoriosFinanceirosScreenState
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha:0.08)),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.inbox_outlined,
-              size: 64, color: Colors.white.withValues(alpha:0.3)),
+              size: 64, color: Colors.white.withOpacity(0.3)),
           const SizedBox(height: 16),
           Text(
             'Nenhuma venda no período',
             style: TextStyle(
-                color: Colors.white.withValues(alpha:0.8),
+                color: Colors.white.withOpacity(0.8),
                 fontSize: 16,
                 fontWeight: FontWeight.w600),
           ),
@@ -1073,7 +1073,7 @@ class _RelatoriosFinanceirosScreenState
             'Altere os filtros de data ou vendedor para ver resultados.',
             textAlign: TextAlign.center,
             style:
-                TextStyle(color: Colors.white.withValues(alpha:0.5), fontSize: 13),
+                TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
           ),
         ],
       ),
@@ -1101,7 +1101,7 @@ class _RelatoriosFinanceirosScreenState
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.teal.withValues(alpha: 0.4)),
+        border: Border.all(color: Colors.teal.withOpacity(0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1126,7 +1126,7 @@ class _RelatoriosFinanceirosScreenState
           Text(
             'Lançamentos reais no período. Não substitui o lucro operacional dos cards acima. '
             'Complemento gerencial — evite dupla contagem com taxas ou despesas da mesma natureza.',
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 12),
+            style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 12),
           ),
           const SizedBox(height: 12),
           Text(
@@ -1173,13 +1173,13 @@ class _RelatoriosFinanceirosScreenState
         'Snapshot histórico · fechamento salvo ${snap.mes.toString().padLeft(2, '0')}/${snap.ano} '
         '(loja, todos os vendedores). Lucro operacional = totais preservados do fechamento. '
         '${temReal ? 'Módulo financeiro: complemento gerencial no período — não some com o mesmo gasto duas vezes.' : ''}',
-        style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.55)),
+        style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.55)),
       );
     }
     return Text(
       'Sem snapshot do mês · cálculo ao vivo. Lucro operacional: taxas operacionais da config ou valor gravado na venda. '
         '${temReal ? 'Resultado gerencial e fluxo de caixa usam as regras do módulo; não duplique com taxas ou despesas da mesma natureza.' : ''}',
-      style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.55)),
+      style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.55)),
     );
   }
 
@@ -1271,7 +1271,7 @@ class _RelatoriosFinanceirosScreenState
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cor.withValues(alpha:0.3)),
+        border: Border.all(color: cor.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1283,7 +1283,7 @@ class _RelatoriosFinanceirosScreenState
               Expanded(
                 child: Text(titulo,
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha:0.7), fontSize: 12)),
+                        color: Colors.white.withOpacity(0.7), fontSize: 12)),
               ),
             ],
           ),
@@ -1416,9 +1416,9 @@ class _RelatoriosFinanceirosScreenState
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _warningColor.withValues(alpha:0.1),
+                color: _warningColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _warningColor.withValues(alpha:0.3)),
+                border: Border.all(color: _warningColor.withOpacity(0.3)),
               ),
               child: Row(
                 children: [
@@ -1517,7 +1517,7 @@ class _RelatoriosFinanceirosScreenState
       decoration: BoxDecoration(
         color: _cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cor.withValues(alpha:0.3)),
+        border: Border.all(color: cor.withOpacity(0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1654,7 +1654,7 @@ class _RelatoriosFinanceirosScreenState
                   horizontalInterval:
                       safeInterval(min: 0, max: maxY, targetLines: 4),
                   getDrawingHorizontalLine: (value) => FlLine(
-                      color: Colors.white.withValues(alpha:0.1), strokeWidth: 1),
+                      color: Colors.white.withOpacity(0.1), strokeWidth: 1),
                 ),
                 borderData: FlBorderData(show: false),
                 barTouchData: BarTouchData(
@@ -1762,7 +1762,7 @@ class _RelatoriosFinanceirosScreenState
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                          color: _primaryColor.withValues(alpha:0.15),
+                          color: _primaryColor.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(10)),
                       child: const Icon(Icons.flag, color: _primaryColor),
                     ),
@@ -1846,10 +1846,10 @@ class _RelatoriosFinanceirosScreenState
                               padding: const EdgeInsets.symmetric(
                                   vertical: 16, horizontal: 12),
                               decoration: BoxDecoration(
-                                color: _successColor.withValues(alpha:0.1),
+                                color: _successColor.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                    color: _successColor.withValues(alpha:0.3)),
+                                    color: _successColor.withOpacity(0.3)),
                               ),
                               child: Text('R\$ ${_fmt(sugerida)}',
                                   style: const TextStyle(
@@ -1986,7 +1986,7 @@ class _RelatoriosFinanceirosScreenState
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.15),
+                        color: _primaryColor.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(10)),
                     child: const Icon(Icons.help_outline, color: _primaryColor),
                   ),
@@ -2024,7 +2024,7 @@ class _RelatoriosFinanceirosScreenState
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.1),
+                    color: _primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2040,7 +2040,7 @@ class _RelatoriosFinanceirosScreenState
                     Text(
                       'Taxas = (% cartão só sobre cartão) + MEI + custos fixos + embalagem '
                       'quando não há valor gravado na venda; se houver, usa-se o valor da venda',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
+                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13),
                     ),
                   ],
                 ),
@@ -2050,13 +2050,13 @@ class _RelatoriosFinanceirosScreenState
                 'Mês civil já fechado com snapshot: os totais principais seguem o fechamento salvo. '
                 'Sem snapshot: cálculo ao vivo conforme vendas, config e valores gravados nas vendas.',
                 style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.55), fontSize: 12),
+                    color: Colors.white.withOpacity(0.55), fontSize: 12),
               ),
               const SizedBox(height: 8),
               Text(
                   'Percentuais e embalagem vêm da Loja Config quando a venda não traz taxas gravadas.',
                   style: TextStyle(
-                      color: Colors.white.withValues(alpha:0.5), fontSize: 12)),
+                      color: Colors.white.withOpacity(0.5), fontSize: 12)),
             ],
           ),
         ),
@@ -2101,7 +2101,7 @@ class _RelatoriosFinanceirosScreenState
                 const SizedBox(height: 2),
                 Text(descricao,
                     style: TextStyle(
-                        color: Colors.white.withValues(alpha:0.6), fontSize: 12)),
+                        color: Colors.white.withOpacity(0.6), fontSize: 12)),
               ],
             ),
           ),
@@ -2234,7 +2234,7 @@ class _SugestoesIaFinanceiroScreenState
                     icon: const Icon(Icons.receipt_long, size: 18),
                     label: const Text('Gerar DRE'),
                     style: FilledButton.styleFrom(
-                        backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                        backgroundColor: _primaryColor.withOpacity(0.2)),
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _enviando
@@ -2244,7 +2244,7 @@ class _SugestoesIaFinanceiroScreenState
                     icon: const Icon(Icons.flag, size: 18),
                     label: const Text('Bater a meta'),
                     style: FilledButton.styleFrom(
-                        backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                        backgroundColor: _primaryColor.withOpacity(0.2)),
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _enviando
@@ -2254,7 +2254,7 @@ class _SugestoesIaFinanceiroScreenState
                     icon: const Icon(Icons.savings, size: 18),
                     label: const Text('Corte de gastos'),
                     style: FilledButton.styleFrom(
-                        backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                        backgroundColor: _primaryColor.withOpacity(0.2)),
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _enviando
@@ -2264,7 +2264,7 @@ class _SugestoesIaFinanceiroScreenState
                     icon: const Icon(Icons.trending_up, size: 18),
                     label: const Text('Melhorar lucratividade'),
                     style: FilledButton.styleFrom(
-                        backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                        backgroundColor: _primaryColor.withOpacity(0.2)),
                   ),
                   FilledButton.tonalIcon(
                     onPressed: _enviando
@@ -2274,7 +2274,7 @@ class _SugestoesIaFinanceiroScreenState
                     icon: const Icon(Icons.balance, size: 18),
                     label: const Text('Lucro alto - onde mexer?'),
                     style: FilledButton.styleFrom(
-                        backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                        backgroundColor: _primaryColor.withOpacity(0.2)),
                   ),
                 ],
               ),
@@ -2286,7 +2286,7 @@ class _SugestoesIaFinanceiroScreenState
                       'Ex: Por que meu lucro caiu? Análise do PIX vs cartão?',
                   border: const OutlineInputBorder(),
                   filled: true,
-                  fillColor: Colors.white.withValues(alpha:0.05),
+                  fillColor: Colors.white.withOpacity(0.05),
                 ),
                 maxLines: 2,
                 enabled: !_enviando,
@@ -2318,7 +2318,7 @@ class _SugestoesIaFinanceiroScreenState
                       maxHeight: MediaQuery.of(context).size.height * 0.5),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.1),
+                    color: _primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Scrollbar(

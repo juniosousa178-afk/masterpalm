@@ -198,7 +198,7 @@ class _CompraCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -215,7 +215,7 @@ class _CompraCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: _successColor.withValues(alpha:0.1),
+                    color: _successColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Icon(Icons.receipt_long, color: _successColor, size: 24),
@@ -264,10 +264,10 @@ class _CompraCard extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: _primaryColor.withValues(alpha:0.06),
+                      color: _primaryColor.withOpacity(0.06),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: _primaryColor.withValues(alpha:0.2),
+                        color: _primaryColor.withOpacity(0.2),
                         width: 1,
                       ),
                     ),
@@ -276,7 +276,7 @@ class _CompraCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: _primaryColor.withValues(alpha:0.15),
+                            color: _primaryColor.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(Icons.person, size: 20, color: _primaryColor),
@@ -398,7 +398,7 @@ class _CompraCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: _successColor.withValues(alpha:0.1),
+              color: _successColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.inventory_2_outlined, size: 18, color: _successColor),

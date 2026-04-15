@@ -183,7 +183,7 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: vendedor.ativo ? _successColor.withValues(alpha:0.1) : _errorColor.withValues(alpha:0.1),
+                      color: vendedor.ativo ? _successColor.withOpacity(0.1) : _errorColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -203,7 +203,7 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _warningColor.withValues(alpha:0.1),
+                    color: _warningColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Row(
@@ -225,7 +225,7 @@ class _GerenciarVendedoresScreenState extends State<GerenciarVendedoresScreen> {
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.1),
+                        color: _primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(

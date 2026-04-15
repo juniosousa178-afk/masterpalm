@@ -146,7 +146,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                       Text(
                         'Preencha os dados para se cadastrar',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
                           height: 1.4,
                         ),
                         textAlign: TextAlign.center,
@@ -161,7 +161,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha:0.06),
+                              color: Colors.black.withOpacity(0.06),
                               blurRadius: 20,
                               offset: const Offset(0, 4),
                             ),
@@ -179,7 +179,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                                 hintText: 'Seu nome',
                                 prefixIcon: const Icon(Icons.person_outline_rounded, size: 22),
                                 filled: true,
-                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -211,7 +211,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                                 hintText: 'seu@email.com',
                                 prefixIcon: const Icon(Icons.email_outlined, size: 22),
                                 filled: true,
-                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -246,7 +246,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                                 hintText: '(11) 99999-9999',
                                 prefixIcon: const Icon(Icons.phone_outlined, size: 22),
                                 filled: true,
-                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -268,7 +268,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                                 hintText: '********',
                                 prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
                                 filled: true,
-                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -308,7 +308,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                                 hintText: '********',
                                 prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
                                 filled: true,
-                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -376,10 +376,10 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: theme.primaryColor.withValues(alpha:0.08),
+                          color: theme.primaryColor.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: theme.primaryColor.withValues(alpha:0.2),
+                            color: theme.primaryColor.withOpacity(0.2),
                             width: 1,
                           ),
                         ),
@@ -395,7 +395,7 @@ class _CadastroScreenClienteState extends State<CadastroScreenCliente> {
                               child: Text(
                                 'Seus dados são protegidos e usados apenas para sua conta.',
                                 style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface.withValues(alpha:0.8),
+                                  color: theme.colorScheme.onSurface.withOpacity(0.8),
                                   height: 1.3,
                                 ),
                               ),

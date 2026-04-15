@@ -90,7 +90,7 @@ class CampanhaMotorResultScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _successColor.withValues(alpha:0.2),
+                    color: _successColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.check_circle, color: _successColor, size: 32),
@@ -185,7 +185,7 @@ class CampanhaMotorResultScreen extends StatelessWidget {
           const SizedBox(height: 8),
           SelectableText(
             valor,
-            style: TextStyle(color: Colors.white.withValues(alpha:0.9), fontSize: 14),
+            style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14),
           ),
         ],
       ),

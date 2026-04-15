@@ -156,7 +156,7 @@ class _ProdutoChip extends StatelessWidget {
           color: _cardBg,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: emPromocao ? const Color(0xFF4ADE80).withValues(alpha: 0.5) : Colors.white12,
+            color: emPromocao ? const Color(0xFF4ADE80).withOpacity(0.5) : Colors.white12,
             width: emPromocao ? 1.5 : 1,
           ),
         ),
@@ -167,7 +167,7 @@ class _ProdutoChip extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 2),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF4ADE80).withValues(alpha: 0.2),
+                  color: const Color(0xFF4ADE80).withOpacity(0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text('Promoção', style: TextStyle(color: Color(0xFF4ADE80), fontSize: 8, fontWeight: FontWeight.w600)),

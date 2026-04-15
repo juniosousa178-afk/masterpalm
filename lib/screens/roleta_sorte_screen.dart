@@ -381,7 +381,7 @@ class _RoletaSorteScreenState extends State<RoletaSorteScreen>
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: tipo,
+                value: tipo,
                 dropdownColor: const Color(0xFF0F1117),
                 decoration: _inputDeco("Tipo"),
                 style: const TextStyle(color: Colors.white),
@@ -458,7 +458,7 @@ class RoletaPainter extends CustomPainter {
 
     for (int i = 0; i < premios.length; i++) {
       paint.color = Colors.primaries[i % Colors.primaries.length]
-          .withValues(alpha:0.8);
+          .withOpacity(0.8);
 
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),

@@ -296,7 +296,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  initialValue: pagamento,
+                  value: pagamento,
                   items: const [
                     DropdownMenuItem(value: 'Pix', child: Text('Pix')),
                     DropdownMenuItem(
@@ -623,7 +623,7 @@ if (numero.isEmpty) {
               gradient: LinearGradient(
                 colors: [
                   corHex(config?.corBotao ?? '0xFF2196F3'),
-                  corHex(config?.corBotao ?? '0xFF2196F3').withValues(alpha:0.7),
+                  corHex(config?.corBotao ?? '0xFF2196F3').withOpacity(0.7),
                 ],
               ),
             ),
@@ -956,7 +956,7 @@ if (numero.isEmpty) {
                                                 Padding(
                                                   padding: const EdgeInsets.only(bottom: 6),
                                                   child: DropdownButtonFormField<String>(
-                                                    initialValue: tamanhoSelecionado,
+                                                    value: tamanhoSelecionado,
                                                     isDense: true,
                                                     items: p.tamanhos
                                                         .map((t) => DropdownMenuItem(
@@ -990,7 +990,7 @@ if (numero.isEmpty) {
                                                 Padding(
                                                   padding: const EdgeInsets.only(bottom: 6),
                                                   child: DropdownButtonFormField<String>(
-                                                    initialValue: corSelecionada,
+                                                    value: corSelecionada,
                                                     isDense: true,
                                                     items: coresDisponiveis
                                                         .map((c) => DropdownMenuItem(

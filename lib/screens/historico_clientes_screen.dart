@@ -232,7 +232,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
       label: Text(label),
       selected: selecionado,
       onSelected: (_) => _aplicarPeriodoRapido(periodo),
-      selectedColor: _primaryColor.withValues(alpha:0.2),
+      selectedColor: _primaryColor.withOpacity(0.2),
       checkmarkColor: _primaryColor,
     );
   }
@@ -461,7 +461,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
-                      color: _successColor.withValues(alpha:0.1),
+                      color: _successColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Row(
@@ -566,7 +566,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha:0.04),
+                              color: Colors.black.withOpacity(0.04),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
@@ -603,7 +603,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
                                       Container(
                                         padding: const EdgeInsets.all(10),
                                         decoration: BoxDecoration(
-                                          color: _primaryColor.withValues(alpha:0.1),
+                                          color: _primaryColor.withOpacity(0.1),
                                           borderRadius: BorderRadius.circular(10),
                                         ),
                                         child: const Icon(Icons.person, size: 24, color: _primaryColor),
@@ -638,7 +638,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
                                           vertical: 6,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: _successColor.withValues(alpha:0.1),
+                                          color: _successColor.withOpacity(0.1),
                                           borderRadius: BorderRadius.circular(20),
                                         ),
                                         child: Text(

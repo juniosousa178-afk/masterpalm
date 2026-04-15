@@ -39,7 +39,7 @@ class WebLandingPlanCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.06),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -52,9 +52,9 @@ class WebLandingPlanCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: color.withValues(alpha:0.15),
+                color: color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: color.withValues(alpha:0.5)),
+                border: Border.all(color: color.withOpacity(0.5)),
               ),
               child: Text(
                 badge!,
@@ -68,7 +68,7 @@ class WebLandingPlanCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha:0.12),
+                  color: color.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(icon, color: color, size: 28),

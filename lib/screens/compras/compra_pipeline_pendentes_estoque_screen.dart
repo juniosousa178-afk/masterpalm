@@ -175,7 +175,7 @@ class _CompraPipelinePendentesEstoqueScreenState
             : null,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
-        fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        fillColor: cs.surfaceContainerHighest.withOpacity(0.45),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
@@ -190,7 +190,7 @@ class _CompraPipelinePendentesEstoqueScreenState
         isDense: true,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         filled: true,
-        fillColor: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        fillColor: cs.surfaceContainerHighest.withOpacity(0.45),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       ),
@@ -316,10 +316,10 @@ class _CompraPipelinePendentesEstoqueScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.75),
+        color: cs.surfaceContainerHighest.withOpacity(0.75),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.45),
+          color: cs.outlineVariant.withOpacity(0.45),
         ),
       ),
       child: Text(
@@ -641,9 +641,9 @@ class _CompraPipelinePendentesEstoqueScreenState
       return Expanded(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+            color: cs.surfaceContainerHighest.withOpacity(0.55),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+            border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
@@ -699,7 +699,7 @@ class _CompraPipelinePendentesEstoqueScreenState
         selected: sel,
         showCheckmark: false,
         visualDensity: VisualDensity.compact,
-        selectedColor: cs.primaryContainer.withValues(alpha: 0.65),
+        selectedColor: cs.primaryContainer.withOpacity(0.65),
         labelStyle: TextStyle(
           fontSize: 13,
           fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
@@ -859,7 +859,7 @@ class _CompraPipelinePendentesEstoqueScreenState
   Widget _cardAguardandoPrecificacao(CompraItemPipeline row) {
     return _shellPipelineCard(
       onTap: _abrirPrecificacao,
-      barColor: _prioridadePrecificacao.withValues(alpha: 0.85),
+      barColor: _prioridadePrecificacao.withOpacity(0.85),
       children: [
         Text(
           row.nomeProdutoProvisorio,
@@ -885,7 +885,7 @@ class _CompraPipelinePendentesEstoqueScreenState
           'Custo ${_fmtMoney(row.custoUnitario)}',
           style: TextStyle(
             fontSize: 12,
-            color: _prioridadePrecificacao.withValues(alpha: 0.92),
+            color: _prioridadePrecificacao.withOpacity(0.92),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -902,7 +902,7 @@ class _CompraPipelinePendentesEstoqueScreenState
   Widget _cardProntoEstoque(CompraItemPipeline row) {
     return _shellPipelineCard(
       onTap: () => _abrirFinalizacao(row),
-      barColor: _prioridadeEstoque.withValues(alpha: 0.88),
+      barColor: _prioridadeEstoque.withOpacity(0.88),
       children: [
         Text(
           row.nomeProdutoProvisorio,
@@ -930,7 +930,7 @@ class _CompraPipelinePendentesEstoqueScreenState
           style: TextStyle(
             fontSize: 12,
             height: 1.25,
-            color: _prioridadeEstoque.withValues(alpha: 0.92),
+            color: _prioridadeEstoque.withOpacity(0.92),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -947,8 +947,8 @@ class _CompraPipelinePendentesEstoqueScreenState
   Widget _cardRastreio(CompraItemPipeline row) {
     final temRef = _temReferenciaProdutoRastreio(row);
     final cs = Theme.of(context).colorScheme;
-    final barNeutra = cs.outlineVariant.withValues(alpha: 0.75);
-    final rotuloRastreio = cs.onSurfaceVariant.withValues(alpha: 0.9);
+    final barNeutra = cs.outlineVariant.withOpacity(0.75);
+    final rotuloRastreio = cs.onSurfaceVariant.withOpacity(0.9);
     return _shellPipelineCard(
       onTap: temRef ? () => _abrirProdutoRastreio(row) : null,
       barColor: barNeutra,

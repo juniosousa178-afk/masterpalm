@@ -225,7 +225,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                 filled: true,
                                 fillColor: Theme.of(context).brightness == Brightness.dark
                                     ? null
-                                    : Colors.grey.withValues(alpha:0.08),
+                                    : Colors.grey.withOpacity(0.08),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
                                   borderSide: BorderSide.none,
@@ -239,12 +239,12 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                               children: [
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
-                                    initialValue: _filterTipo,
+                                    value: _filterTipo,
                                     decoration: InputDecoration(
                                       filled: true,
                                       fillColor: Theme.of(context).brightness == Brightness.dark
                                           ? null
-                                          : Colors.grey.withValues(alpha:0.08),
+                                          : Colors.grey.withOpacity(0.08),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
                                         borderSide: BorderSide.none,
@@ -266,12 +266,12 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: DropdownButtonFormField<String>(
-                                    initialValue: _ordenacao,
+                                    value: _ordenacao,
                                     decoration: InputDecoration(
                                       filled: true,
                                       fillColor: Theme.of(context).brightness == Brightness.dark
                                           ? null
-                                          : Colors.grey.withValues(alpha:0.08),
+                                          : Colors.grey.withOpacity(0.08),
                                       border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(12),
                                         borderSide: BorderSide.none,
@@ -358,7 +358,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
-                                  side: BorderSide(color: Colors.grey.withValues(alpha:0.2)),
+                                  side: BorderSide(color: Colors.grey.withOpacity(0.2)),
                                 ),
                                 child: ExpansionTile(
                                   leading: CircleAvatar(
@@ -505,7 +505,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
           ),
           if (_loading)
             Container(
-              color: Colors.black.withValues(alpha:0.3),
+              color: Colors.black.withOpacity(0.3),
               child: const Center(
                 child: Card(
                   child: Padding(
@@ -838,7 +838,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
               valueListenable: tipoSelecionado,
               builder: (context, tipo, _) {
                 return DropdownButtonFormField<String>(
-                  initialValue: tipo,
+                  value: tipo,
                   decoration: const InputDecoration(labelText: 'Tipo de usuário'),
                   items: const [
                     DropdownMenuItem(value: 'programador', child: Text('Programador')),

@@ -220,9 +220,9 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: widget.cardColor.withValues(alpha: 0.82),
+              color: widget.cardColor.withOpacity(0.82),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: widget.textColor.withValues(alpha: 0.12)),
+              border: Border.all(color: widget.textColor.withOpacity(0.12)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,7 +291,7 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
                   Text(
                     'Fotos da galeria (${_fotosUrlsGaleria.length}/${CatalogAvaliacaoFotosInput.maxFotosPorAvaliacao})',
                     style: TextStyle(
-                      color: widget.textColor.withValues(alpha: 0.75),
+                      color: widget.textColor.withOpacity(0.75),
                       fontSize: 12,
                     ),
                   ),
@@ -303,7 +303,7 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
                       for (var i = 0; i < _fotosUrlsGaleria.length; i++)
                         _GaleriaThumb(
                           url: _fotosUrlsGaleria[i],
-                          borderColor: widget.textColor.withValues(alpha: 0.2),
+                          borderColor: widget.textColor.withOpacity(0.2),
                           onRemove: () =>
                               setState(() => _fotosUrlsGaleria.removeAt(i)),
                         ),
@@ -357,15 +357,15 @@ class _CatalogAvaliacoesSectionState extends State<CatalogAvaliacoesSection> {
   InputDecoration _inputDecoration(String label) {
     return InputDecoration(
       labelText: label,
-      labelStyle: TextStyle(color: widget.textColor.withValues(alpha: 0.78)),
+      labelStyle: TextStyle(color: widget.textColor.withOpacity(0.78)),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: widget.textColor.withValues(alpha: 0.18)),
+        borderSide: BorderSide(color: widget.textColor.withOpacity(0.18)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: widget.accentColor.withValues(alpha: 0.9)),
+        borderSide: BorderSide(color: widget.accentColor.withOpacity(0.9)),
       ),
     );
   }

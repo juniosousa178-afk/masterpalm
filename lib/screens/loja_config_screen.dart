@@ -863,7 +863,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   Color _cButtonSecondaryBg = Colors.transparent;
   Color _cButtonSecondaryText = const Color(0xFF00A8FF);
   Color _cButtonSecondaryBorder = const Color(0xFF00A8FF);
-  Color _cBadgeBackground = const Color(0xFF00A8FF).withValues(alpha:0.15);
+  Color _cBadgeBackground = const Color(0xFF00A8FF).withOpacity(0.15);
   Color _cBadgeText = const Color(0xFF00A8FF);
   Color _cIcon = Colors.white;
   Color _cShadow = Colors.black45;
@@ -1502,7 +1502,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.7),
+              color: theme.colorScheme.outlineVariant.withOpacity(0.7),
             ),
             color: theme.colorScheme.surfaceContainerLowest,
           ),
@@ -1531,8 +1531,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black.withValues(alpha: 0.10),
-                            Colors.black.withValues(alpha: 0.52),
+                            Colors.black.withOpacity(0.10),
+                            Colors.black.withOpacity(0.52),
                           ],
                         ),
                       ),
@@ -1595,7 +1595,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(999),
                                   color: theme.colorScheme.primary
-                                      .withValues(alpha: 0.1),
+                                      .withOpacity(0.1),
                                 ),
                                 child: Text(
                                   c,
@@ -1626,9 +1626,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            primary.withValues(alpha: 0.18),
-            primary.withValues(alpha: 0.07),
-            theme.colorScheme.secondary.withValues(alpha: 0.08),
+            primary.withOpacity(0.18),
+            primary.withOpacity(0.07),
+            theme.colorScheme.secondary.withOpacity(0.08),
           ],
         ),
       ),
@@ -1640,7 +1640,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             child: Icon(
               Icons.auto_awesome_rounded,
               size: 74,
-              color: primary.withValues(alpha: 0.16),
+              color: primary.withOpacity(0.16),
             ),
           ),
           Positioned(
@@ -1649,7 +1649,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             child: Text(
               'Banner da loja',
               style: theme.textTheme.labelMedium?.copyWith(
-                color: Colors.white.withValues(alpha: 0.94),
+                color: Colors.white.withOpacity(0.94),
                 fontWeight: FontWeight.w700,
                 shadows: const [
                   Shadow(color: Colors.black45, blurRadius: 8),
@@ -2408,7 +2408,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       if (sCol != null) {
         _heroSubtitleColor = Color(sCol);
       } else if (tCol != null) {
-        _heroSubtitleColor = Color(tCol).withValues(alpha: 0.96);
+        _heroSubtitleColor = Color(tCol).withOpacity(0.96);
       }
       final btnBg = colorToInt(heroButtonStyle['backgroundColor']) ??
           colorToInt(heroButtonStyle['background']) ??
@@ -2811,78 +2811,78 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // ✅ CORRIGIDO: Salva em 'theme' (igual ao que o public_catalog lê)
       // Salva como int (mais compatível e eficiente)
       'theme': {
-        'fundo': _cFundo.toARGB32(),
-        'card': _cCard.toARGB32(),
-        'texto': _cTexto.toARGB32(),
-        'primaria': _cPrimaria.toARGB32(),
-        'botaoTexto': _cBotaoTexto.toARGB32(),
-        'cabecalho': _cCabecalho.toARGB32(),
+        'fundo': _cFundo.value,
+        'card': _cCard.value,
+        'texto': _cTexto.value,
+        'primaria': _cPrimaria.value,
+        'botaoTexto': _cBotaoTexto.value,
+        'cabecalho': _cCabecalho.value,
       },
 
       // ✅ CORRIGIDO: Salva em 'checkoutTheme' (igual ao que o public_catalog lê)
       'checkoutTheme': {
-        'card': _cCarrinhoCard.toARGB32(),
-        'campo': _cCarrinhoCampo.toARGB32(),
-        'texto': _cCarrinhoTexto.toARGB32(),
-        'label': _cCarrinhoLabel.toARGB32(),
-        'total': _cCarrinhoTotal.toARGB32(),
+        'card': _cCarrinhoCard.value,
+        'campo': _cCarrinhoCampo.value,
+        'texto': _cCarrinhoTexto.value,
+        'label': _cCarrinhoLabel.value,
+        'total': _cCarrinhoTotal.value,
       },
 
       // ✅ NOVO: Cores unificadas do catálogo e checkout
       'uiColors': {
-        'background': _cFundo.toARGB32(),
-        'cardBackground': _cCard.toARGB32(),
-        'textPrimary': _cTexto.toARGB32(),
-        'textSecondary': _cTextSecondary.toARGB32(),
-        'cardTextPrimary': _cCardTextPrimary.toARGB32(),
-        'cardTextSecondary': _cCardTextSecondary.toARGB32(),
-        'labelText': _cCarrinhoLabel.toARGB32(),
-        'priceHighlight': _cPriceHighlight.toARGB32(),
-        'danger': _cDanger.toARGB32(),
-        'fieldBackground': _cCarrinhoCampo.toARGB32(),
-        'fieldText': _cCarrinhoTexto.toARGB32(),
-        'fieldHint': _cFieldHint.toARGB32(),
-        'fieldBorder': _cFieldBorder.toARGB32(),
-        'dividerColor': _cDivider.toARGB32(),
-        'buttonPrimaryBg': _cPrimaria.toARGB32(),
-        'buttonPrimaryText': _cBotaoTexto.toARGB32(),
-        'buttonSecondaryBg': _cButtonSecondaryBg.toARGB32(),
-        'buttonSecondaryText': _cButtonSecondaryText.toARGB32(),
-        'buttonSecondaryBorder': _cButtonSecondaryBorder.toARGB32(),
-        'badgeBackground': _cBadgeBackground.toARGB32(),
-        'badgeText': _cBadgeText.toARGB32(),
-        'iconColor': _cIcon.toARGB32(),
-        'shadowColor': _cShadow.toARGB32(),
+        'background': _cFundo.value,
+        'cardBackground': _cCard.value,
+        'textPrimary': _cTexto.value,
+        'textSecondary': _cTextSecondary.value,
+        'cardTextPrimary': _cCardTextPrimary.value,
+        'cardTextSecondary': _cCardTextSecondary.value,
+        'labelText': _cCarrinhoLabel.value,
+        'priceHighlight': _cPriceHighlight.value,
+        'danger': _cDanger.value,
+        'fieldBackground': _cCarrinhoCampo.value,
+        'fieldText': _cCarrinhoTexto.value,
+        'fieldHint': _cFieldHint.value,
+        'fieldBorder': _cFieldBorder.value,
+        'dividerColor': _cDivider.value,
+        'buttonPrimaryBg': _cPrimaria.value,
+        'buttonPrimaryText': _cBotaoTexto.value,
+        'buttonSecondaryBg': _cButtonSecondaryBg.value,
+        'buttonSecondaryText': _cButtonSecondaryText.value,
+        'buttonSecondaryBorder': _cButtonSecondaryBorder.value,
+        'badgeBackground': _cBadgeBackground.value,
+        'badgeText': _cBadgeText.value,
+        'iconColor': _cIcon.value,
+        'shadowColor': _cShadow.value,
       },
 
       // ✅ NOVO: Cores do cabeçalho do catálogo
       'catalogHeaderColors': {
-        'background': _cCabecalho.toARGB32(),
-        'text': _cHeaderText.toARGB32(),
-        'icon': _cHeaderIcon.toARGB32(),
-        'searchBackground': _cHeaderSearchBg.toARGB32(),
-        'searchText': _cHeaderSearchText.toARGB32(),
-        'searchHint': _cHeaderSearchHint.toARGB32(),
+        'background': _cCabecalho.value,
+        'text': _cHeaderText.value,
+        'icon': _cHeaderIcon.value,
+        'searchBackground': _cHeaderSearchBg.value,
+        'searchText': _cHeaderSearchText.value,
+        'searchHint': _cHeaderSearchHint.value,
       },
 
       // ✅ NOVO: Cores do rodapé do catálogo
       'catalogFooterColors': {
-        'background': _cFooterBackground.toARGB32(),
-        'text': _cFooterText.toARGB32(),
-        'textSecondary': _cFooterTextSecondary.toARGB32(),
-        'icon': _cFooterIcon.toARGB32(),
-        'link': _cFooterLink.toARGB32(),
-        'divider': _cFooterDivider.toARGB32(),
+        'background': _cFooterBackground.value,
+        'text': _cFooterText.value,
+        'textSecondary': _cFooterTextSecondary.value,
+        'icon': _cFooterIcon.value,
+        'link': _cFooterLink.value,
+        'divider': _cFooterDivider.value,
       },
 
       // ✅ NOVO: Cores da tela Dicas e Informações
       'catalogDicasColors': {
-        'background': _cDicasBackground.toARGB32(),
-        'footerBackground': _cDicasFooterBg.toARGB32(),
-        'footerText': _cDicasFooterText.toARGB32(),
-        'buttonBackground': _cDicasButtonBg.toARGB32(),
-        'buttonText': _cDicasButtonText.toARGB32(),
-        'topicPrimary': _cDicasTopicPrimary.toARGB32(),
+        'background': _cDicasBackground.value,
+        'footerBackground': _cDicasFooterBg.value,
+        'footerText': _cDicasFooterText.value,
+        'buttonBackground': _cDicasButtonBg.value,
+        'buttonText': _cDicasButtonText.value,
+        'topicPrimary': _cDicasTopicPrimary.value,
       },
       
       'gridDesktopCols': _gridDesktopCols,
@@ -2894,8 +2894,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       'promoBar': {
         'enabled': _promoBarEnabled,
         'text': _promoBarTextCtrl.text.trim(),
-        'backgroundColor': _promoBarBg.toARGB32(),
-        'textColor': _promoBarText.toARGB32(),
+        'backgroundColor': _promoBarBg.value,
+        'textColor': _promoBarText.value,
         'link': _promoBarLinkCtrl.text.trim(),
         'height': 34,
         'alignment': 'center',
@@ -2908,8 +2908,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             : _minimalSearchPlaceholderCtrl.text.trim(),
         'height': 44,
         'radius': 10,
-        'background': Colors.white.toARGB32(),
-        'borderColor': const Color(0x1A000000).toARGB32(),
+        'background': Colors.white.value,
+        'borderColor': const Color(0x1A000000).value,
       },
       'heroBanner': {
         'enabled': _heroBannerEnabled,
@@ -2928,17 +2928,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'overlayOpacity': double.tryParse(
                 _heroBannerOverlayCtrl.text.replaceAll(',', '.')) ??
             0.16,
-        'textColor': _heroTitleColor.toARGB32(),
-        'buttonColor': _heroButtonBg.toARGB32(),
-        'backgroundColor': _heroCardBg.toARGB32(),
+        'textColor': _heroTitleColor.value,
+        'buttonColor': _heroButtonBg.value,
+        'backgroundColor': _heroCardBg.value,
         'card': {
-          'backgroundColor': _heroCardBg.toARGB32(),
+          'backgroundColor': _heroCardBg.value,
           'borderRadius': double.tryParse(
                   _heroBannerCardRadiusCtrl.text.replaceAll(',', '.')) ??
               18,
         },
         'titleStyle': {
-          'color': _heroTitleColor.toARGB32(),
+          'color': _heroTitleColor.value,
           'fontSize': double.tryParse(
                   _heroBannerTitleSizeCtrl.text.replaceAll(',', '.')) ??
               17,
@@ -2946,7 +2946,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           'letterCase': _heroTitleCase,
         },
         'subtitleStyle': {
-          'color': _heroSubtitleColor.toARGB32(),
+          'color': _heroSubtitleColor.value,
           'fontSize': double.tryParse(
                   _heroBannerSubtitleSizeCtrl.text.replaceAll(',', '.')) ??
               13,
@@ -2954,8 +2954,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           'letterCase': _heroSubtitleCase,
         },
         'buttonStyle': {
-          'backgroundColor': _heroButtonBg.toARGB32(),
-          'textColor': _heroButtonTextColor.toARGB32(),
+          'backgroundColor': _heroButtonBg.value,
+          'textColor': _heroButtonTextColor.value,
           'fontSize': double.tryParse(
                   _heroBannerButtonSizeCtrl.text.replaceAll(',', '.')) ??
               13,
@@ -3781,7 +3781,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           _cButtonSecondaryBg = Colors.transparent;
           _cButtonSecondaryText = const Color(0xFF00A8FF);
           _cButtonSecondaryBorder = const Color(0xFF00A8FF);
-          _cBadgeBackground = const Color(0xFF00A8FF).withValues(alpha:0.15);
+          _cBadgeBackground = const Color(0xFF00A8FF).withOpacity(0.15);
           _cBadgeText = const Color(0xFF00A8FF);
           _cIcon = Colors.white;
           _cShadow = Colors.black45;
@@ -3826,7 +3826,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           _cButtonSecondaryBg = Colors.transparent;
           _cButtonSecondaryText = const Color(0xFFFFD700);
           _cButtonSecondaryBorder = const Color(0xFFFFD700);
-          _cBadgeBackground = const Color(0xFFFFD700).withValues(alpha:0.15);
+          _cBadgeBackground = const Color(0xFFFFD700).withOpacity(0.15);
           _cBadgeText = const Color(0xFFFFD700);
           _cIcon = const Color(0xFFF5F5F5);
           _cShadow = Colors.black54;
@@ -3871,7 +3871,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           _cButtonSecondaryBg = Colors.transparent;
           _cButtonSecondaryText = const Color(0xFF00FFA3);
           _cButtonSecondaryBorder = const Color(0xFF00FFA3);
-          _cBadgeBackground = const Color(0xFF00FFA3).withValues(alpha:0.15);
+          _cBadgeBackground = const Color(0xFF00FFA3).withOpacity(0.15);
           _cBadgeText = const Color(0xFF00FFA3);
           _cIcon = Colors.white70;
           _cShadow = Colors.black38;
@@ -3996,7 +3996,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           color: c,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: Theme.of(ctx).colorScheme.outline.withValues(alpha: 0.3),
+                            color: Theme.of(ctx).colorScheme.outline.withOpacity(0.3),
                           ),
                         ),
                       ),
@@ -4155,7 +4155,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: _errorColor.withValues(alpha:0.1),
+                    color: _errorColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.error_outline, size: 64, color: _errorColor),
@@ -4280,7 +4280,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           height: 200,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha:0.1),
+                            color: Colors.white.withOpacity(0.1),
                           ),
                         ),
                       ),
@@ -4292,7 +4292,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           height: 140,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha:0.1),
+                            color: Colors.white.withOpacity(0.1),
                           ),
                         ),
                       ),
@@ -4315,7 +4315,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                             Text(
                               'Escolha um módulo abaixo para editar com foco',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha:0.9),
+                                color: Colors.white.withOpacity(0.9),
                                 fontSize: 14,
                               ),
                             ),
@@ -4596,7 +4596,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       isDense: false,
       labelStyle: TextStyle(
-        color: cs.onSurfaceVariant.withValues(alpha: 0.95),
+        color: cs.onSurfaceVariant.withOpacity(0.95),
         fontSize: 14,
         fontWeight: FontWeight.w500,
         height: 1.2,
@@ -4607,12 +4607,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         fontWeight: FontWeight.w500,
       ),
       hintStyle: TextStyle(
-        color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+        color: cs.onSurfaceVariant.withOpacity(0.75),
         fontSize: 14,
         fontWeight: FontWeight.w400,
       ),
       helperStyle: TextStyle(
-        color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+        color: cs.onSurfaceVariant.withOpacity(0.88),
         fontSize: 12,
         height: 1.35,
       ),
@@ -4620,7 +4620,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       prefixIconColor: cs.onSurfaceVariant,
       border: OutlineInputBorder(borderRadius: r),
       enabledBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.85)),
+        borderSide: BorderSide(color: cs.outlineVariant.withOpacity(0.85)),
         borderRadius: r,
       ),
       focusedBorder: OutlineInputBorder(
@@ -4689,7 +4689,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   /// Agrega cores do draft atual por valor ARGB (mesma base da paleta e das sugestões nos editores).
   void _fillCatalogPaletteBucket(Map<int, Set<String>> bucket) {
     void put(Color c, String label) {
-      bucket.putIfAbsent(c.toARGB32(), () => <String>{}).add(label);
+      bucket.putIfAbsent(c.value, () => <String>{}).add(label);
     }
 
     put(_cFundo, 'Fundo da página');
@@ -4747,56 +4747,56 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   /// Hash das cores da paleta — invalida cache de sugestões / card “Paleta da Loja”.
   int _computeCatalogPaletteHash() {
     return Object.hashAll([
-      _cFundo.toARGB32(),
-      _cCard.toARGB32(),
-      _cTexto.toARGB32(),
-      _cPrimaria.toARGB32(),
-      _cBotaoTexto.toARGB32(),
-      _cCabecalho.toARGB32(),
-      _cCarrinhoCard.toARGB32(),
-      _cCarrinhoCampo.toARGB32(),
-      _cCarrinhoTexto.toARGB32(),
-      _cCarrinhoLabel.toARGB32(),
-      _cCarrinhoTotal.toARGB32(),
-      _cTextSecondary.toARGB32(),
-      _cCardTextPrimary.toARGB32(),
-      _cCardTextSecondary.toARGB32(),
-      _cPriceHighlight.toARGB32(),
-      _cDanger.toARGB32(),
-      _cFieldHint.toARGB32(),
-      _cFieldBorder.toARGB32(),
-      _cDivider.toARGB32(),
-      _cButtonSecondaryBg.toARGB32(),
-      _cButtonSecondaryText.toARGB32(),
-      _cButtonSecondaryBorder.toARGB32(),
-      _cBadgeBackground.toARGB32(),
-      _cBadgeText.toARGB32(),
-      _cIcon.toARGB32(),
-      _cShadow.toARGB32(),
-      _cHeaderText.toARGB32(),
-      _cHeaderIcon.toARGB32(),
-      _cHeaderSearchBg.toARGB32(),
-      _cHeaderSearchText.toARGB32(),
-      _cHeaderSearchHint.toARGB32(),
-      _cFooterBackground.toARGB32(),
-      _cFooterText.toARGB32(),
-      _cFooterTextSecondary.toARGB32(),
-      _cFooterIcon.toARGB32(),
-      _cFooterLink.toARGB32(),
-      _cFooterDivider.toARGB32(),
-      _cDicasBackground.toARGB32(),
-      _cDicasFooterBg.toARGB32(),
-      _cDicasFooterText.toARGB32(),
-      _cDicasButtonBg.toARGB32(),
-      _cDicasButtonText.toARGB32(),
-      _cDicasTopicPrimary.toARGB32(),
-      _promoBarBg.toARGB32(),
-      _promoBarText.toARGB32(),
-      _heroCardBg.toARGB32(),
-      _heroTitleColor.toARGB32(),
-      _heroSubtitleColor.toARGB32(),
-      _heroButtonBg.toARGB32(),
-      _heroButtonTextColor.toARGB32(),
+      _cFundo.value,
+      _cCard.value,
+      _cTexto.value,
+      _cPrimaria.value,
+      _cBotaoTexto.value,
+      _cCabecalho.value,
+      _cCarrinhoCard.value,
+      _cCarrinhoCampo.value,
+      _cCarrinhoTexto.value,
+      _cCarrinhoLabel.value,
+      _cCarrinhoTotal.value,
+      _cTextSecondary.value,
+      _cCardTextPrimary.value,
+      _cCardTextSecondary.value,
+      _cPriceHighlight.value,
+      _cDanger.value,
+      _cFieldHint.value,
+      _cFieldBorder.value,
+      _cDivider.value,
+      _cButtonSecondaryBg.value,
+      _cButtonSecondaryText.value,
+      _cButtonSecondaryBorder.value,
+      _cBadgeBackground.value,
+      _cBadgeText.value,
+      _cIcon.value,
+      _cShadow.value,
+      _cHeaderText.value,
+      _cHeaderIcon.value,
+      _cHeaderSearchBg.value,
+      _cHeaderSearchText.value,
+      _cHeaderSearchHint.value,
+      _cFooterBackground.value,
+      _cFooterText.value,
+      _cFooterTextSecondary.value,
+      _cFooterIcon.value,
+      _cFooterLink.value,
+      _cFooterDivider.value,
+      _cDicasBackground.value,
+      _cDicasFooterBg.value,
+      _cDicasFooterText.value,
+      _cDicasButtonBg.value,
+      _cDicasButtonText.value,
+      _cDicasTopicPrimary.value,
+      _promoBarBg.value,
+      _promoBarText.value,
+      _heroCardBg.value,
+      _heroTitleColor.value,
+      _heroSubtitleColor.value,
+      _heroButtonBg.value,
+      _heroButtonTextColor.value,
     ]);
   }
 
@@ -4900,7 +4900,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final out = <CatalogColorSuggestion>[];
 
     void pick(Color c) {
-      final k = c.toARGB32();
+      final k = c.value;
       if (!bucket.containsKey(k) || seen.contains(k)) return;
       seen.add(k);
       out.add(build(k));
@@ -5065,7 +5065,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     : 'Nenhum módulo com este status.',
                 textAlign: TextAlign.center,
                 style: tt.bodyMedium?.copyWith(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.9),
+                  color: cs.onSurfaceVariant.withOpacity(0.9),
                   height: 1.4,
                 ),
               ),
@@ -5164,7 +5164,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     : 'Nenhuma área da loja corresponde a este filtro.',
                 textAlign: TextAlign.center,
                 style: tt.bodyMedium?.copyWith(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+                  color: cs.onSurfaceVariant.withOpacity(0.88),
                   height: 1.4,
                 ),
               ),
@@ -5539,7 +5539,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               boxShadow: showShadow
                   ? [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha:0.25),
+                        color: Colors.black.withOpacity(0.25),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -5550,7 +5550,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               child: Text(
                 'Card',
                 style: TextStyle(
-                  color: _cTexto.withValues(alpha:0.7),
+                  color: _cTexto.withOpacity(0.7),
                   fontSize: 12,
                 ),
               ),
@@ -5625,7 +5625,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       isExpanded: true,
-                      initialValue: tipo,
+                      value: tipo,
                       decoration: const InputDecoration(
                         labelText: 'Tipo',
                         border: OutlineInputBorder(),

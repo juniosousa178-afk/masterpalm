@@ -1543,7 +1543,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1620,7 +1620,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
           if (mounted) _load();
         },
         leading: CircleAvatar(
-          backgroundColor: _primary.withValues(alpha: 0.12),
+          backgroundColor: _primary.withOpacity(0.12),
           child: const Icon(Icons.receipt_long,
               color: Color(0xFF6366F1), size: 20),
         ),

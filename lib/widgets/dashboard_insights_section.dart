@@ -238,7 +238,7 @@ class _DashboardInsightsTickerState extends State<DashboardInsightsTicker> {
                 margin: const EdgeInsets.only(top: 2),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.08),
+                  color: Colors.white.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -247,7 +247,7 @@ class _DashboardInsightsTickerState extends State<DashboardInsightsTicker> {
                     Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha:0.2),
+                        color: color.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Icon(icon, size: 14, color: color),
@@ -274,7 +274,7 @@ class _DashboardInsightsTickerState extends State<DashboardInsightsTicker> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.white.withValues(alpha:0.9),
+                              color: Colors.white.withOpacity(0.9),
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
                             ),
@@ -366,9 +366,9 @@ class _InsightTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha:0.3)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -383,7 +383,7 @@ class _InsightTile extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha:0.25),
+                    color: color.withOpacity(0.25),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -411,7 +411,7 @@ class _InsightTile extends StatelessWidget {
                     insight.subtitle!,
                     style: TextStyle(
                       fontSize: 12,
-                      color: theme.colorScheme.onSurface.withValues(alpha:0.7),
+                      color: theme.colorScheme.onSurface.withOpacity(0.7),
                     ),
                   ),
                 ],

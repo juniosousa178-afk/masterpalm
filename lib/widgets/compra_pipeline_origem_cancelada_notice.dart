@@ -24,7 +24,7 @@ class CompraPipelineOrigemCanceladaNotice extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final cs = Theme.of(context).colorScheme;
-    final bg = cs.secondaryContainer.withValues(alpha: 0.45);
+    final bg = cs.secondaryContainer.withOpacity(0.45);
     final fg = cs.onSecondaryContainer;
     return Semantics(
       label:
@@ -34,7 +34,7 @@ class CompraPipelineOrigemCanceladaNotice extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
+          border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -62,7 +62,7 @@ class CompraPipelineOrigemCanceladaNotice extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.3,
-                        color: fg.withValues(alpha: 0.92),
+                        color: fg.withOpacity(0.92),
                       ),
                     ),
                   ],
@@ -92,8 +92,8 @@ class CompraPipelineOrigemCanceladaChip extends StatelessWidget {
         avatar: Icon(Icons.history_rounded, size: 16, color: cs.onSecondaryContainer),
         label: const Text('Origem cancelada'),
         labelStyle: TextStyle(fontSize: 11.5, color: cs.onSecondaryContainer),
-        backgroundColor: cs.secondaryContainer.withValues(alpha: 0.55),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.35)),
+        backgroundColor: cs.secondaryContainer.withOpacity(0.55),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.35)),
         padding: const EdgeInsets.symmetric(horizontal: 4),
       ),
     );

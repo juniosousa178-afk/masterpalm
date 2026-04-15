@@ -177,7 +177,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                           color: isSelected ? Colors.white : textColor,
                         ),
                       ),
-                      backgroundColor: cardColor.withValues(alpha:0.5),
+                      backgroundColor: cardColor.withOpacity(0.5),
                       selectedColor: primaryColor,
                       checkmarkColor: Colors.white,
                       showCheckmark: false,
@@ -208,7 +208,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                         color: isSelected ? Colors.white : textColor,
                       ),
                     ),
-                    backgroundColor: cardColor.withValues(alpha:0.5),
+                    backgroundColor: cardColor.withOpacity(0.5),
                     selectedColor: primaryColor,
                     checkmarkColor: Colors.white,
                     showCheckmark: false,
@@ -289,15 +289,15 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                             ),
                             backgroundColor: isSelected
                                 ? null
-                                : cardColor.withValues(alpha:0.85),
+                                : cardColor.withOpacity(0.85),
                             selectedColor:
-                                primaryColor.withValues(alpha:0.7),
+                                primaryColor.withOpacity(0.7),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                               side: BorderSide(
                                 color: isSelected
                                     ? primaryColor
-                                    : textColor.withValues(alpha:0.4),
+                                    : textColor.withOpacity(0.4),
                               ),
                             ),
                             onSelected: (_) => onSubcategorySelectedNull(),
@@ -339,15 +339,15 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
                           ),
                           backgroundColor: isSelected
                               ? null
-                              : cardColor.withValues(alpha:0.85),
+                              : cardColor.withOpacity(0.85),
                           selectedColor:
-                              primaryColor.withValues(alpha:0.7),
+                              primaryColor.withOpacity(0.7),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                             side: BorderSide(
                               color: isSelected
                                   ? primaryColor
-                                  : textColor.withValues(alpha:0.4),
+                                  : textColor.withOpacity(0.4),
                             ),
                           ),
                           onSelected: (_) => onSubcategorySelected(subcat),
@@ -429,7 +429,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
   }) {
     return Material(
       color: isSelected
-          ? primaryColor.withValues(alpha:0.2)
+          ? primaryColor.withOpacity(0.2)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
@@ -556,7 +556,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
                   side: BorderSide(
                     color: hasAlgoAtivo
                         ? primaryColor
-                        : textColor.withValues(alpha: 0.12),
+                        : textColor.withOpacity(0.12),
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(22),
@@ -574,7 +574,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: textColor.withValues(alpha: 0.72),
+                    color: textColor.withOpacity(0.72),
                     fontSize: 12.5,
                     fontWeight: FontWeight.w500,
                   ),
@@ -649,7 +649,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 12),
                 decoration: BoxDecoration(
-                  color: textColor.withValues(alpha: 0.2),
+                  color: textColor.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -673,7 +673,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
                   child: Text(
                     'Variação (tamanho / medida e cor)',
                     style: TextStyle(
-                      color: textColor.withValues(alpha: 0.85),
+                      color: textColor.withOpacity(0.85),
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -925,7 +925,7 @@ class _FilterActionTile extends StatelessWidget {
     return ListTile(
       dense: true,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      tileColor: selected ? primaryColor.withValues(alpha: 0.12) : null,
+      tileColor: selected ? primaryColor.withOpacity(0.12) : null,
       contentPadding: const EdgeInsets.symmetric(horizontal: 10),
       title: Text(
         label,
@@ -972,7 +972,7 @@ class _FilterSwitchTile extends StatelessWidget {
       trailing: Icon(
         value ? Icons.check_box : Icons.check_box_outline_blank,
         size: 20,
-        color: value ? Colors.green : textColor.withValues(alpha: 0.6),
+        color: value ? Colors.green : textColor.withOpacity(0.6),
       ),
       onTap: onTap,
     );
@@ -1011,7 +1011,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
           Material(
             color: paginaAtual > 0
                 ? primaryColor
-                : cardColor.withValues(alpha:0.5),
+                : cardColor.withOpacity(0.5),
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               onTap: onPagePrev,
@@ -1023,7 +1023,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
                   size: 24,
                   color: paginaAtual > 0
                       ? Colors.white
-                      : textColor.withValues(alpha:0.4),
+                      : textColor.withOpacity(0.4),
                 ),
               ),
             ),
@@ -1046,7 +1046,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
           Material(
             color: paginaAtual < totalPaginas - 1
                 ? primaryColor
-                : cardColor.withValues(alpha:0.5),
+                : cardColor.withOpacity(0.5),
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               onTap: onPageNext,
@@ -1058,7 +1058,7 @@ class CatalogPaginacaoRow extends StatelessWidget {
                   size: 24,
                   color: paginaAtual < totalPaginas - 1
                       ? Colors.white
-                      : textColor.withValues(alpha:0.4),
+                      : textColor.withOpacity(0.4),
                 ),
               ),
             ),

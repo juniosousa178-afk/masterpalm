@@ -691,7 +691,7 @@ class _CatalogInlineGalleryState extends State<_CatalogInlineGallery> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.38),
+                  color: Colors.black.withOpacity(0.38),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(

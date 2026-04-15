@@ -68,7 +68,7 @@ class _PalettePresetCard extends StatelessWidget {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.55)),
+          side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.55)),
         ),
         clipBehavior: Clip.antiAlias,
         child: Padding(
@@ -88,7 +88,7 @@ class _PalettePresetCard extends StatelessWidget {
                           color: sw[j],
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: colorScheme.outline.withValues(alpha: 0.25),
+                            color: colorScheme.outline.withOpacity(0.25),
                             width: 1,
                           ),
                         ),
@@ -117,7 +117,7 @@ class _PalettePresetCard extends StatelessWidget {
                   style: textTheme.bodySmall?.copyWith(
                     fontSize: 11,
                     height: 1.25,
-                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
+                    color: colorScheme.onSurfaceVariant.withOpacity(0.9),
                   ),
                 ),
               ),

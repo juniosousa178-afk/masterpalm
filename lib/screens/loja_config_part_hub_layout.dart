@@ -6,11 +6,11 @@ part of 'loja_config_screen.dart';
 Color _hubSignalBorderColor(_HubModuleSignal s, ColorScheme cs, Color successColor) {
   switch (s) {
     case _HubModuleSignal.error:
-      return cs.error.withValues(alpha: 0.32);
+      return cs.error.withOpacity(0.32);
     case _HubModuleSignal.pending:
-      return cs.primary.withValues(alpha: 0.28);
+      return cs.primary.withOpacity(0.28);
     case _HubModuleSignal.ok:
-      return successColor.withValues(alpha: 0.26);
+      return successColor.withOpacity(0.26);
     case _HubModuleSignal.neutral:
       return Colors.transparent;
   }
@@ -67,7 +67,7 @@ class _LojaConfigHubShell extends StatelessWidget {
       color: cs.surfaceContainerHighest,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.45)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -81,10 +81,10 @@ class _LojaConfigHubShell extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _LojaConfigScreenState._primaryColor.withValues(alpha: 0.07),
+                    color: _LojaConfigScreenState._primaryColor.withOpacity(0.07),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                        color: _LojaConfigScreenState._primaryColor.withValues(alpha: 0.14)),
+                        color: _LojaConfigScreenState._primaryColor.withOpacity(0.14)),
                   ),
                   child: const Icon(Icons.dashboard_customize_outlined,
                       color: _LojaConfigScreenState._primaryColor, size: 22),
@@ -108,7 +108,7 @@ class _LojaConfigHubShell extends StatelessWidget {
                             ? 'Abra cada área em tela própria para editar com foco. Salvar, sincronizar, publicar e pré-visualizar continuam no topo.'
                             : 'Toque em um card para abrir o módulo. Use voltar para retornar ao painel.',
                         style: tt.bodyMedium?.copyWith(
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                          color: cs.onSurfaceVariant.withOpacity(0.92),
                           height: 1.45,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w400,
@@ -119,7 +119,7 @@ class _LojaConfigHubShell extends StatelessWidget {
                 ),
               ],
             ),
-            Divider(height: 28, thickness: 1, color: cs.outlineVariant.withValues(alpha: 0.35)),
+            Divider(height: 28, thickness: 1, color: cs.outlineVariant.withOpacity(0.35)),
             searchField,
             const SizedBox(height: 14),
             filterStrip,
@@ -150,7 +150,7 @@ class _HubFretesShortcutCard extends StatelessWidget {
     final caption = _hubSignalStatusCaption(signal);
     final dotColor = _hubSignalDotColor(signal, cs, _LojaConfigScreenState._successColor);
     final borderColor = switch (signal) {
-      _HubModuleSignal.neutral => _LojaConfigScreenState._warningColor.withValues(alpha: 0.35),
+      _HubModuleSignal.neutral => _LojaConfigScreenState._warningColor.withOpacity(0.35),
       _ => _hubSignalBorderColor(signal, cs, _LojaConfigScreenState._successColor),
     };
 
@@ -164,7 +164,7 @@ class _HubFretesShortcutCard extends StatelessWidget {
             height: 46,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: _LojaConfigScreenState._warningColor.withValues(alpha: 0.12),
+              color: _LojaConfigScreenState._warningColor.withOpacity(0.12),
             ),
             child: const Icon(Icons.local_shipping_outlined,
                 color: _LojaConfigScreenState._warningColor, size: 22),
@@ -210,10 +210,10 @@ class _HubFretesShortcutCard extends StatelessWidget {
                     height: 1.2,
                     fontWeight: FontWeight.w500,
                     color: switch (signal) {
-                      _HubModuleSignal.error => cs.error.withValues(alpha: 0.95),
-                      _HubModuleSignal.pending => cs.primary.withValues(alpha: 0.95),
+                      _HubModuleSignal.error => cs.error.withOpacity(0.95),
+                      _HubModuleSignal.pending => cs.primary.withOpacity(0.95),
                       _HubModuleSignal.ok =>
-                        _LojaConfigScreenState._successColor.withValues(alpha: 0.92),
+                        _LojaConfigScreenState._successColor.withOpacity(0.92),
                       _HubModuleSignal.neutral => cs.onSurfaceVariant,
                     },
                   ),
@@ -224,14 +224,14 @@ class _HubFretesShortcutCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 height: 1.35,
-                color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                color: cs.onSurfaceVariant.withOpacity(0.92),
                 fontWeight: FontWeight.w400,
               ),
             ),
           ],
         ),
       ),
-      trailing: Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.7)),
+      trailing: Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withOpacity(0.7)),
       onTap: () => unawaited(host._openFretesCuponsScreenIfAllowed()),
     );
 
@@ -283,14 +283,14 @@ class _HubSearchFieldWidget extends StatelessWidget {
         fillColor: cs.surface,
         hintText: 'Buscar módulo ou configuração',
         hintStyle: tt.bodyMedium?.copyWith(
-          color: cs.onSurfaceVariant.withValues(alpha: 0.65),
+          color: cs.onSurfaceVariant.withOpacity(0.65),
           fontSize: 14,
           fontWeight: FontWeight.w400,
         ),
         prefixIcon: Icon(
           Icons.search_rounded,
           size: 22,
-          color: cs.onSurfaceVariant.withValues(alpha: 0.75),
+          color: cs.onSurfaceVariant.withOpacity(0.75),
         ),
         suffixIcon: hasText
             ? IconButton(
@@ -302,16 +302,16 @@ class _HubSearchFieldWidget extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.55)),
+          borderSide: BorderSide(color: cs.outlineVariant.withOpacity(0.55)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.55)),
+          borderSide: BorderSide(color: cs.outlineVariant.withOpacity(0.55)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
-              color: _LojaConfigScreenState._primaryColor.withValues(alpha: 0.65), width: 1.5),
+              color: _LojaConfigScreenState._primaryColor.withOpacity(0.65), width: 1.5),
         ),
       ),
     );
@@ -361,15 +361,15 @@ class _HubFilterStripWidget extends StatelessWidget {
           visualDensity: VisualDensity.compact,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-          selectedColor: _LojaConfigScreenState._primaryColor.withValues(alpha: 0.16),
-          backgroundColor: cs.surface.withValues(alpha: 0.65),
+          selectedColor: _LojaConfigScreenState._primaryColor.withOpacity(0.16),
+          backgroundColor: cs.surface.withOpacity(0.65),
           labelStyle: TextStyle(
-            color: sel ? _LojaConfigScreenState._primaryColor : cs.onSurface.withValues(alpha: 0.82),
+            color: sel ? _LojaConfigScreenState._primaryColor : cs.onSurface.withOpacity(0.82),
           ),
           side: BorderSide(
             color: sel
-                ? _LojaConfigScreenState._primaryColor.withValues(alpha: 0.42)
-                : cs.outlineVariant.withValues(alpha: 0.55),
+                ? _LojaConfigScreenState._primaryColor.withOpacity(0.42)
+                : cs.outlineVariant.withOpacity(0.55),
             width: 1,
           ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -388,7 +388,7 @@ class _HubFilterStripWidget extends StatelessWidget {
               child: Text(
                 'Filtrar',
                 style: tt.labelSmall?.copyWith(
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+                  color: cs.onSurfaceVariant.withOpacity(0.88),
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.2,
                 ),
@@ -402,12 +402,12 @@ class _HubFilterStripWidget extends StatelessWidget {
                 child: TextButton.icon(
                   onPressed: host._openFirstHubErrorTarget,
                   style: TextButton.styleFrom(
-                    foregroundColor: cs.error.withValues(alpha: 0.92),
+                    foregroundColor: cs.error.withOpacity(0.92),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  icon: Icon(Icons.arrow_circle_right_outlined, size: 18, color: cs.error.withValues(alpha: 0.92)),
+                  icon: Icon(Icons.arrow_circle_right_outlined, size: 18, color: cs.error.withOpacity(0.92)),
                   label: Text(
                     'Primeiro erro',
                     style: tt.labelLarge?.copyWith(
@@ -492,8 +492,8 @@ class _HubModuleCardWidget extends StatelessWidget {
                     height: 46,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      color: _LojaConfigScreenState._primaryColor.withValues(alpha: 0.1),
-                      border: Border.all(color: _LojaConfigScreenState._primaryColor.withValues(alpha: 0.2)),
+                      color: _LojaConfigScreenState._primaryColor.withOpacity(0.1),
+                      border: Border.all(color: _LojaConfigScreenState._primaryColor.withOpacity(0.2)),
                     ),
                     child: Icon(icon, color: _LojaConfigScreenState._primaryColor, size: 24),
                   ),
@@ -542,11 +542,11 @@ class _HubModuleCardWidget extends StatelessWidget {
                           height: 1.25,
                           fontWeight: FontWeight.w500,
                           color: switch (signal) {
-                            _HubModuleSignal.error => cs.error.withValues(alpha: 0.92),
-                            _HubModuleSignal.pending => cs.primary.withValues(alpha: 0.92),
+                            _HubModuleSignal.error => cs.error.withOpacity(0.92),
+                            _HubModuleSignal.pending => cs.primary.withOpacity(0.92),
                             _HubModuleSignal.ok =>
-                              _LojaConfigScreenState._successColor.withValues(alpha: 0.9),
-                            _HubModuleSignal.neutral => cs.onSurfaceVariant.withValues(alpha: 0.88),
+                              _LojaConfigScreenState._successColor.withOpacity(0.9),
+                            _HubModuleSignal.neutral => cs.onSurfaceVariant.withOpacity(0.88),
                           },
                           letterSpacing: 0.1,
                         ),
@@ -560,14 +560,14 @@ class _HubModuleCardWidget extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.3,
-                        color: cs.onSurfaceVariant.withValues(alpha: 0.88),
+                        color: cs.onSurfaceVariant.withOpacity(0.88),
                         fontWeight: FontWeight.w400,
                       ),
                     ),
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withValues(alpha: 0.65)),
+              Icon(Icons.chevron_right_rounded, size: 22, color: cs.onSurfaceVariant.withOpacity(0.65)),
             ],
           ),
         ),

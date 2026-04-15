@@ -233,7 +233,7 @@ class _RelatorioRankingClientesScreenState
                       ),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: _primaryColor.withValues(alpha:0.2),
+                          backgroundColor: _primaryColor.withOpacity(0.2),
                           child: Text(
                             '$pos',
                             style: const TextStyle(

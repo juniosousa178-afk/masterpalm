@@ -722,7 +722,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: _fluorGreen.withValues(alpha:0.2),
+                      color: _fluorGreen.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(color: _fluorGreen),
                     ),
@@ -1229,7 +1229,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E293B),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: titleColor.withValues(alpha: 0.45)),
+                        border: Border.all(color: titleColor.withOpacity(0.45)),
                       ),
                       child: Text(
                         badge,
@@ -1292,7 +1292,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: _fluorGreen.withValues(alpha:0.15),
+                    color: _fluorGreen.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -1330,7 +1330,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _fluorBlue,
                     foregroundColor: Colors.black,
-                    disabledBackgroundColor: Colors.grey.withValues(alpha:0.3),
+                    disabledBackgroundColor: Colors.grey.withOpacity(0.3),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

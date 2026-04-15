@@ -76,7 +76,7 @@ class PlanBlockedScaffold extends StatelessWidget {
                 Icon(
                   Icons.lock_outline_rounded,
                   size: 56,
-                  color: theme.colorScheme.primary.withValues(alpha: 0.85),
+                  color: theme.colorScheme.primary.withOpacity(0.85),
                 ),
                 const SizedBox(height: 20),
                 Text(
@@ -91,7 +91,7 @@ class PlanBlockedScaffold extends StatelessWidget {
                   PlanMatrix.upgradeHint(feature),
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
                     height: 1.35,
                   ),
                 ),

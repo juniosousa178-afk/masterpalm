@@ -143,7 +143,7 @@ class _Section extends StatelessWidget {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.45)),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
@@ -171,7 +171,7 @@ class _Section extends StatelessWidget {
                         Text(
                           subtitle!,
                           style: tt.bodySmall?.copyWith(
-                            color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                            color: cs.onSurfaceVariant.withOpacity(0.92),
                             height: 1.4,
                             fontSize: 13,
                           ),

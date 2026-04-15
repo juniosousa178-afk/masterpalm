@@ -171,7 +171,7 @@ class _AnaliseVendasIaScreenState extends State<AnaliseVendasIaScreen> {
           if (_resposta != null) ...[
             const SizedBox(height: 20),
             Card(
-              color: theme.colorScheme.primaryContainer.withValues(alpha:0.3),
+              color: theme.colorScheme.primaryContainer.withOpacity(0.3),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(

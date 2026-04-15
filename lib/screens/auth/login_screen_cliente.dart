@@ -225,7 +225,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                       Text(
                         'Faça login para continuar',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
                           height: 1.4,
                         ),
                         textAlign: TextAlign.center,
@@ -240,7 +240,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha:0.06),
+                              color: Colors.black.withOpacity(0.06),
                               blurRadius: 20,
                               offset: const Offset(0, 4),
                             ),
@@ -259,7 +259,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                                 hintText: 'seu@email.com',
                                 prefixIcon: const Icon(Icons.email_outlined, size: 22),
                                 filled: true,
-                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -290,7 +290,7 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                                 hintText: '********',
                                 prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22),
                                 filled: true,
-                                fillColor: isDark ? null : Colors.grey.withValues(alpha:0.06),
+                                fillColor: isDark ? null : Colors.grey.withOpacity(0.06),
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -368,17 +368,17 @@ class _LoginScreenClienteState extends State<LoginScreenCliente> {
                             const SizedBox(height: 16),
                             Row(
                               children: [
-                                Expanded(child: Divider(color: theme.colorScheme.outline.withValues(alpha:0.5))),
+                                Expanded(child: Divider(color: theme.colorScheme.outline.withOpacity(0.5))),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 12),
                                   child: Text(
                                     'ou',
                                     style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                                      color: theme.colorScheme.onSurface.withOpacity(0.6),
                                     ),
                                   ),
                                 ),
-                                Expanded(child: Divider(color: theme.colorScheme.outline.withValues(alpha:0.5))),
+                                Expanded(child: Divider(color: theme.colorScheme.outline.withOpacity(0.5))),
                               ],
                             ),
                             const SizedBox(height: 16),

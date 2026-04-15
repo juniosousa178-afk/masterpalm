@@ -18,7 +18,7 @@ Future<void> showCatalogFirstPurchaseCouponDialog({
   return showDialog<void>(
     context: context,
     barrierDismissible: true,
-    barrierColor: Colors.black.withValues(alpha: 0.38),
+    barrierColor: Colors.black.withOpacity(0.38),
     builder: (ctx) {
       return Dialog(
         backgroundColor: Colors.transparent,
@@ -27,11 +27,11 @@ Future<void> showCatalogFirstPurchaseCouponDialog({
         child: Material(
           color: s.background,
           elevation: 8,
-          shadowColor: s.shadowColor.withValues(alpha: 0.38),
+          shadowColor: s.shadowColor.withOpacity(0.38),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
             side: BorderSide(
-              color: s.borderColor.withValues(alpha: 0.55),
+              color: s.borderColor.withOpacity(0.55),
               width: 1,
             ),
           ),
@@ -54,7 +54,7 @@ Future<void> showCatalogFirstPurchaseCouponDialog({
                       icon: Icon(
                         Icons.close_rounded,
                         size: 22,
-                        color: s.textColor.withValues(alpha: 0.55),
+                        color: s.textColor.withOpacity(0.55),
                       ),
                       tooltip: 'Fechar',
                       visualDensity: VisualDensity.compact,
@@ -87,7 +87,7 @@ Future<void> showCatalogFirstPurchaseCouponDialog({
                         fontSize: 14,
                         height: 1.55,
                         letterSpacing: 0.02,
-                        color: s.textColor.withValues(alpha: 0.94),
+                        color: s.textColor.withOpacity(0.94),
                       ),
                     ),
                   ),
@@ -101,7 +101,7 @@ Future<void> showCatalogFirstPurchaseCouponDialog({
                       color: s.codeBackground,
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: s.borderColor.withValues(alpha: 0.28),
+                        color: s.borderColor.withOpacity(0.28),
                         width: 1,
                       ),
                     ),
@@ -175,7 +175,7 @@ Future<void> showCatalogFirstPurchaseCouponDialog({
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: s.copyButtonTextColor,
                                   side: BorderSide(
-                                    color: s.borderColor.withValues(alpha: 0.55),
+                                    color: s.borderColor.withOpacity(0.55),
                                     width: 1.05,
                                   ),
                                   padding: const EdgeInsets.symmetric(
@@ -232,7 +232,7 @@ Future<void> showCatalogFirstPurchaseCouponDialog({
                     child: Text(
                       'Fechar',
                       style: TextStyle(
-                        color: s.textColor.withValues(alpha: 0.62),
+                        color: s.textColor.withOpacity(0.62),
                         fontWeight: FontWeight.w500,
                         fontSize: 13,
                         letterSpacing: 0.15,

@@ -506,7 +506,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                 height: 4,
                 margin: const EdgeInsets.only(top: 12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.5),
+                  color: Colors.grey.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -659,7 +659,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                       elevation: 1,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
-                        side: BorderSide(color: primaryColor.withValues(alpha:0.3), width: 1.5),
+                        side: BorderSide(color: primaryColor.withOpacity(0.3), width: 1.5),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -673,7 +673,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                   height: 32,
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(
-                                    color: primaryColor.withValues(alpha:0.2),
+                                    color: primaryColor.withOpacity(0.2),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Text(
@@ -703,10 +703,10 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                 decoration: BoxDecoration(
-                                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
+                                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.65),
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
-                                    color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+                                    color: theme.colorScheme.outlineVariant.withOpacity(0.6),
                                   ),
                                 ),
                                 child: Row(
@@ -776,7 +776,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                           }
                                         });
                                       },
-                                      selectedColor: primaryColor.withValues(alpha:0.25),
+                                      selectedColor: primaryColor.withOpacity(0.25),
                                       checkmarkColor: primaryColor,
                                       side: BorderSide(
                                         color: sel ? primaryColor : theme.dividerColor,
@@ -795,12 +795,12 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                       decoration: BoxDecoration(
-                                        color: theme.dividerColor.withValues(alpha:0.3),
+                                        color: theme.dividerColor.withOpacity(0.3),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
                                         'Único (sem variação)',
-                                        style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withValues(alpha:0.7)),
+                                        style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withOpacity(0.7)),
                                       ),
                                     ),
                                   ],
@@ -831,7 +831,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                           _selecoes[i]['extra'] = '';
                                         });
                                       },
-                                      selectedColor: primaryColor.withValues(alpha:0.25),
+                                      selectedColor: primaryColor.withOpacity(0.25),
                                       checkmarkColor: primaryColor,
                                       side: BorderSide(
                                         color: sel ? primaryColor : theme.dividerColor,
@@ -870,7 +870,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                                           _selecoes[i]['extra'] = '';
                                         });
                                       },
-                                      selectedColor: primaryColor.withValues(alpha:0.25),
+                                      selectedColor: primaryColor.withOpacity(0.25),
                                       checkmarkColor: primaryColor,
                                       side: BorderSide(
                                         color: sel ? primaryColor : theme.dividerColor,

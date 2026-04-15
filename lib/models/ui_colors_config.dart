@@ -106,7 +106,7 @@ class UiColorsConfig {
       buttonSecondaryBg: Colors.transparent,
       buttonSecondaryText: primary,
       buttonSecondaryBorder: primary,
-      badgeBackground: primary.withValues(alpha: 0.15),
+      badgeBackground: primary.withOpacity(0.15),
       badgeText: primary,
       iconColor: text,
       shadowColor: Colors.black45,
@@ -142,7 +142,7 @@ class UiColorsConfig {
       buttonSecondaryBg: Colors.transparent,
       buttonSecondaryText: primary,
       buttonSecondaryBorder: primary,
-      badgeBackground: primary.withValues(alpha: 0.15),
+      badgeBackground: primary.withOpacity(0.15),
       badgeText: primary,
       iconColor: text,
       shadowColor: Colors.black54,
@@ -178,7 +178,7 @@ class UiColorsConfig {
       buttonSecondaryBg: Colors.transparent,
       buttonSecondaryText: primary,
       buttonSecondaryBorder: primary,
-      badgeBackground: primary.withValues(alpha: 0.15),
+      badgeBackground: primary.withOpacity(0.15),
       badgeText: primary,
       iconColor: text,
       shadowColor: Colors.black38,
@@ -278,30 +278,30 @@ class UiColorsConfig {
   /// Converte para Map (para salvar no Firestore)
   Map<String, dynamic> toMap() {
     return {
-      'background': background.toARGB32(),
-      'cardBackground': cardBackground.toARGB32(),
-      'textPrimary': textPrimary.toARGB32(),
-      'textSecondary': textSecondary.toARGB32(),
-      'cardTextPrimary': cardTextPrimary.toARGB32(),
-      'cardTextSecondary': cardTextSecondary.toARGB32(),
-      'labelText': labelText.toARGB32(),
-      'primaryColor': primaryColor.toARGB32(),
-      'priceHighlight': priceHighlight.toARGB32(),
-      'danger': danger.toARGB32(),
-      'fieldBackground': fieldBackground.toARGB32(),
-      'fieldText': fieldText.toARGB32(),
-      'fieldHint': fieldHint.toARGB32(),
-      'fieldBorder': fieldBorder.toARGB32(),
-      'dividerColor': dividerColor.toARGB32(),
-      'buttonPrimaryBg': buttonPrimaryBg.toARGB32(),
-      'buttonPrimaryText': buttonPrimaryText.toARGB32(),
-      'buttonSecondaryBg': buttonSecondaryBg.toARGB32(),
-      'buttonSecondaryText': buttonSecondaryText.toARGB32(),
-      'buttonSecondaryBorder': buttonSecondaryBorder.toARGB32(),
-      'badgeBackground': badgeBackground.toARGB32(),
-      'badgeText': badgeText.toARGB32(),
-      'iconColor': iconColor.toARGB32(),
-      'shadowColor': shadowColor.toARGB32(),
+      'background': background.value,
+      'cardBackground': cardBackground.value,
+      'textPrimary': textPrimary.value,
+      'textSecondary': textSecondary.value,
+      'cardTextPrimary': cardTextPrimary.value,
+      'cardTextSecondary': cardTextSecondary.value,
+      'labelText': labelText.value,
+      'primaryColor': primaryColor.value,
+      'priceHighlight': priceHighlight.value,
+      'danger': danger.value,
+      'fieldBackground': fieldBackground.value,
+      'fieldText': fieldText.value,
+      'fieldHint': fieldHint.value,
+      'fieldBorder': fieldBorder.value,
+      'dividerColor': dividerColor.value,
+      'buttonPrimaryBg': buttonPrimaryBg.value,
+      'buttonPrimaryText': buttonPrimaryText.value,
+      'buttonSecondaryBg': buttonSecondaryBg.value,
+      'buttonSecondaryText': buttonSecondaryText.value,
+      'buttonSecondaryBorder': buttonSecondaryBorder.value,
+      'badgeBackground': badgeBackground.value,
+      'badgeText': badgeText.value,
+      'iconColor': iconColor.value,
+      'shadowColor': shadowColor.value,
     };
   }
 
@@ -309,18 +309,18 @@ class UiColorsConfig {
   Map<String, dynamic> toLegacyMap() {
     return {
       'theme': {
-        'fundo': background.toARGB32(),
-        'card': cardBackground.toARGB32(),
-        'texto': textPrimary.toARGB32(),
-        'primaria': primaryColor.toARGB32(),
-        'botaoTexto': buttonPrimaryText.toARGB32(),
+        'fundo': background.value,
+        'card': cardBackground.value,
+        'texto': textPrimary.value,
+        'primaria': primaryColor.value,
+        'botaoTexto': buttonPrimaryText.value,
       },
       'checkoutTheme': {
-        'card': cardBackground.toARGB32(),
-        'campo': fieldBackground.toARGB32(),
-        'texto': textSecondary.toARGB32(),
-        'label': labelText.toARGB32(),
-        'total': priceHighlight.toARGB32(),
+        'card': cardBackground.value,
+        'campo': fieldBackground.value,
+        'texto': textSecondary.value,
+        'label': labelText.value,
+        'total': priceHighlight.value,
       },
     };
   }
@@ -404,7 +404,7 @@ class CatalogHeaderColors {
       background: bgFallback,
       text: Colors.white,
       icon: Colors.white,
-      searchBackground: Colors.white.withValues(alpha: 0.1),
+      searchBackground: Colors.white.withOpacity(0.1),
       searchText: Colors.white,
       searchHint: Colors.white70,
     );
@@ -452,12 +452,12 @@ class CatalogHeaderColors {
 
   Map<String, dynamic> toMap() {
     return {
-      'background': background.toARGB32(),
-      'text': text.toARGB32(),
-      'icon': icon.toARGB32(),
-      'searchBackground': searchBackground.toARGB32(),
-      'searchText': searchText.toARGB32(),
-      'searchHint': searchHint.toARGB32(),
+      'background': background.value,
+      'text': text.value,
+      'icon': icon.value,
+      'searchBackground': searchBackground.value,
+      'searchText': searchText.value,
+      'searchHint': searchHint.value,
     };
   }
 
@@ -542,12 +542,12 @@ class CatalogFooterColors {
 
   Map<String, dynamic> toMap() {
     return {
-      'background': background.toARGB32(),
-      'text': text.toARGB32(),
-      'textSecondary': textSecondary.toARGB32(),
-      'icon': icon.toARGB32(),
-      'link': link.toARGB32(),
-      'divider': divider.toARGB32(),
+      'background': background.value,
+      'text': text.value,
+      'textSecondary': textSecondary.value,
+      'icon': icon.value,
+      'link': link.value,
+      'divider': divider.value,
     };
   }
 

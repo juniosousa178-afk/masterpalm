@@ -108,7 +108,7 @@ class AppTheme {
         color: WidgetStateProperty.resolveWith<Color?>((states) {
           final selected = states.contains(WidgetState.selected);
           return selected
-              ? neonBlue.withValues(alpha:0.25)
+              ? neonBlue.withOpacity(0.25)
               : surface10;
         }),
         // Estilo do texto

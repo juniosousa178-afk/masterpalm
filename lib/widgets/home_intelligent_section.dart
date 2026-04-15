@@ -52,7 +52,7 @@ class HomeIntelligentSection extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha:0.8),
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
                   ),
                 ),
               ),
@@ -155,9 +155,9 @@ class _IntelligentCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           decoration: BoxDecoration(
-            color: color.withValues(alpha:0.1),
+            color: color.withOpacity(0.1),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: color.withValues(alpha:0.2)),
+            border: Border.all(color: color.withOpacity(0.2)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -168,7 +168,7 @@ class _IntelligentCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha:0.2),
+                      color: color.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(icon, size: 16, color: color),
@@ -178,7 +178,7 @@ class _IntelligentCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                       decoration: BoxDecoration(
-                        color: color.withValues(alpha:0.25),
+                        color: color.withOpacity(0.25),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -208,7 +208,7 @@ class _IntelligentCard extends StatelessWidget {
                 subtitle,
                 style: TextStyle(
                   fontSize: 9,
-                  color: theme.colorScheme.onSurface.withValues(alpha:0.6),
+                  color: theme.colorScheme.onSurface.withOpacity(0.6),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

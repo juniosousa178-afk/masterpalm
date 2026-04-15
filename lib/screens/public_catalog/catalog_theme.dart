@@ -190,8 +190,8 @@ class CatalogThemeData {
         ? colorFromUiColors('cardBackground', colorFromTheme('card', const Color(0xFF020617)))
         : colorFromTheme('card', const Color(0xFF020617));
     final textColor = uiColorsMap.isNotEmpty
-        ? colorFromUiColors('textPrimary', colorFromTheme('texto', Colors.white.withValues(alpha:0.95)))
-        : colorFromTheme('texto', Colors.white.withValues(alpha:0.95));
+        ? colorFromUiColors('textPrimary', colorFromTheme('texto', Colors.white.withOpacity(0.95)))
+        : colorFromTheme('texto', Colors.white.withOpacity(0.95));
     final btnTextColor = uiColorsMap.isNotEmpty
         ? colorFromUiColors('buttonPrimaryText', colorFromTheme('botaoTexto', Colors.white))
         : colorFromTheme('botaoTexto', Colors.white);
@@ -207,7 +207,7 @@ class CatalogThemeData {
     final buttonSecondaryBg = colorFromUiColors('buttonSecondaryBg', Colors.transparent);
     final buttonSecondaryText = colorFromUiColors('buttonSecondaryText', primaryColor);
     final buttonSecondaryBorder = colorFromUiColors('buttonSecondaryBorder', primaryColor);
-    final badgeBackground = colorFromUiColors('badgeBackground', primaryColor.withValues(alpha:0.15));
+    final badgeBackground = colorFromUiColors('badgeBackground', primaryColor.withOpacity(0.15));
     final badgeText = colorFromUiColors('badgeText', primaryColor);
 
     final headerColor = headerColorsMap.isNotEmpty
@@ -243,8 +243,8 @@ class CatalogThemeData {
         : colorFromCheckoutTheme('total', const Color(0xFF22C55E));
     final checkoutFieldHint = colorFromUiColors('fieldHint', const Color(0xFF6B7280));
     final checkoutFieldBorder = uiColorsMap.isNotEmpty
-        ? colorFromUiColors('fieldBorder', Colors.white.withValues(alpha:0.25))
-        : Colors.white.withValues(alpha:0.25);
+        ? colorFromUiColors('fieldBorder', Colors.white.withOpacity(0.25))
+        : Colors.white.withOpacity(0.25);
 
     final productNameColor = cardTextPrimary;
     final productPriceColor = priceHighlightColor;
@@ -254,7 +254,7 @@ class CatalogThemeData {
         CatalogCheckoutSummaryColorKeys.gradientStart, const Color(0xFF0F172A));
     final checkoutSummaryPanelBottom = colorFromUiColors(
         CatalogCheckoutSummaryColorKeys.gradientEnd,
-        checkoutCardColor.withValues(alpha: 0.95));
+        checkoutCardColor.withOpacity(0.95));
     final checkoutSummaryRowLabelColor = colorFromUiColors(
         CatalogCheckoutSummaryColorKeys.rowLabel, checkoutLabelColor);
     final checkoutSummaryRowValueColor = colorFromUiColors(
@@ -271,7 +271,7 @@ class CatalogThemeData {
         CatalogCheckoutSummaryColorKeys.totalBannerText, Colors.white);
     final checkoutCardShadowColor = colorFromUiColors(
         CatalogCheckoutSummaryColorKeys.cardShadow,
-        const Color(0xFF090909).withValues(alpha: 0.55));
+        const Color(0xFF090909).withOpacity(0.55));
 
     return CatalogThemeData(
       primaryColor: primaryColor,

@@ -29,7 +29,7 @@ class _PaneTemaWidgetState extends State<_PaneTemaWidget> {
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        side: BorderSide(color: cs.outlineVariant.withOpacity(0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -68,7 +68,7 @@ class _PaneTemaWidgetState extends State<_PaneTemaWidget> {
                           Text(
                             subtitle,
                             style: tt.bodySmall?.copyWith(
-                              color: cs.onSurfaceVariant.withValues(alpha: 0.92),
+                              color: cs.onSurfaceVariant.withOpacity(0.92),
                               height: 1.4,
                               fontSize: 13,
                             ),
@@ -429,7 +429,7 @@ class _PaneTemaWidgetState extends State<_PaneTemaWidget> {
                               width: 56,
                               height: 56,
                               decoration: BoxDecoration(
-                                color: widget.host._cPrimaria.withValues(alpha:0.2),
+                                color: widget.host._cPrimaria.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
@@ -449,7 +449,7 @@ class _PaneTemaWidgetState extends State<_PaneTemaWidget> {
                                   Text(
                                     'Descrição breve do produto...',
                                     style: TextStyle(
-                                      color: widget.host._cTexto.withValues(alpha:0.7),
+                                      color: widget.host._cTexto.withOpacity(0.7),
                                       fontSize: 12,
                                     ),
                                   ),
@@ -597,7 +597,7 @@ class _PaneTemaWidgetState extends State<_PaneTemaWidget> {
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: widget.host._cPrimaria.withValues(alpha:0.18),
+                            color: widget.host._cPrimaria.withOpacity(0.18),
                           ),
                           child: Icon(
                             Icons.receipt_long_outlined,
@@ -664,7 +664,7 @@ class _PaneTemaWidgetState extends State<_PaneTemaWidget> {
                                   'Subtotal',
                                   style: TextStyle(
                                     color: widget.host._cCarrinhoTexto
-                                        .withValues(alpha:0.8),
+                                        .withOpacity(0.8),
                                     fontSize: 12,
                                   ),
                                   maxLines: 1,
@@ -801,7 +801,7 @@ class _PaneTemaWidgetState extends State<_PaneTemaWidget> {
                             child: Text(
                               'Digite o cupom',
                               style: TextStyle(
-                                color: widget.host._cCarrinhoTexto.withValues(alpha:0.7),
+                                color: widget.host._cCarrinhoTexto.withOpacity(0.7),
                                 fontSize: 12,
                               ),
                               maxLines: 1,

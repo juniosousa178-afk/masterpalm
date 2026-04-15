@@ -515,11 +515,11 @@ class _CampanhaSorteioFormScreenState
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.deepPurple.withValues(alpha:0.25),
+                                color: Colors.deepPurple.withOpacity(0.25),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
                                   color: Colors.deepPurpleAccent
-                                      .withValues(alpha:0.5),
+                                      .withOpacity(0.5),
                                 ),
                               ),
                               child: const Row(
@@ -676,7 +676,7 @@ class _DateChip extends StatelessWidget {
         child: Row(
           children: [
             Icon(Icons.calendar_month,
-                size: 18, color: Colors.white.withValues(alpha:0.8)),
+                size: 18, color: Colors.white.withOpacity(0.8)),
             const SizedBox(width: 8),
             Text(
               label,

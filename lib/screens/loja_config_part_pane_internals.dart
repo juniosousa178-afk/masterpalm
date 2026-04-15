@@ -29,7 +29,7 @@ class _LojaConfigOfflineConnectivityStripe extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: _LojaConfigScreenState._warningColor.withValues(alpha: 0.15),
+      color: _LojaConfigScreenState._warningColor.withOpacity(0.15),
       child: Row(
         children: [
           const Icon(Icons.wifi_off,

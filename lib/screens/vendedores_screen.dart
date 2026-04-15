@@ -223,8 +223,8 @@ class _VendedoresScreenState extends State<VendedoresScreen>
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: vendedor.ativo
-                          ? _successColor.withValues(alpha:0.1)
-                          : _errorColor.withValues(alpha:0.1),
+                          ? _successColor.withOpacity(0.1)
+                          : _errorColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -243,7 +243,7 @@ class _VendedoresScreenState extends State<VendedoresScreen>
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _warningColor.withValues(alpha:0.1),
+                    color: _warningColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Row(
@@ -266,7 +266,7 @@ class _VendedoresScreenState extends State<VendedoresScreen>
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.1),
+                        color: _primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
@@ -789,7 +789,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: _primaryColor.withValues(alpha:0.1),
+                      color: _primaryColor.withOpacity(0.1),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.person_add, color: _primaryColor),
@@ -888,10 +888,10 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.05),
+                  color: _primaryColor.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(8),
                   border:
-                      Border.all(color: _primaryColor.withValues(alpha:0.2)),
+                      Border.all(color: _primaryColor.withOpacity(0.2)),
                 ),
                 child: const Row(
                   children: [
@@ -933,7 +933,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
-                    disabledBackgroundColor: _successColor.withValues(alpha:0.6),
+                    disabledBackgroundColor: _successColor.withOpacity(0.6),
                   ),
                 ),
               ),

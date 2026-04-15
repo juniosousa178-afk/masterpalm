@@ -283,7 +283,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.1),
+                        color: _primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.receipt_long, color: _primaryColor),
@@ -328,7 +328,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                             Icon(
                               Icons.check_circle_outline,
                               size: 64,
-                              color: _successColor.withValues(alpha:0.5),
+                              color: _successColor.withOpacity(0.5),
                             ),
                             const SizedBox(height: 16),
                             const Text(
@@ -371,7 +371,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -393,7 +393,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                   width: 50,
                   height: 50,
                   decoration: BoxDecoration(
-                    color: _primaryColor.withValues(alpha:0.1),
+                    color: _primaryColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Center(
@@ -448,7 +448,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.1),
+                        color: _primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Text(
@@ -527,7 +527,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: _primaryColor.withValues(alpha:0.1),
+                      color: _primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.person, color: _primaryColor),
@@ -806,7 +806,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _primaryColor.withValues(alpha:0.1),
+                color: _primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(Icons.receipt_long, color: _primaryColor),
@@ -904,7 +904,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _errorColor.withValues(alpha:0.1),
+                color: _errorColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(Icons.cancel, color: _errorColor),
@@ -1066,7 +1066,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _successColor.withValues(alpha:0.1),
+                  color: _successColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.check_circle, color: _successColor),
@@ -1119,7 +1119,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _errorColor.withValues(alpha:0.1),
+                  color: _errorColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.error, color: _errorColor),
@@ -1337,7 +1337,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha:0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 10,
                 ),
               ],
@@ -1434,7 +1434,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
           ),
         ],
@@ -1500,7 +1500,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1516,7 +1516,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                   width: 50,
                   height: 50,
                   decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha:0.1),
+                    color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(statusIcon, color: statusColor),
@@ -1542,7 +1542,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: statusColor.withValues(alpha:0.1),
+                              color: statusColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -1658,7 +1658,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: _successColor.withValues(alpha:0.1),
+                    color: _successColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -1695,9 +1695,9 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               margin: const EdgeInsets.all(16),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _warningColor.withValues(alpha:0.1),
+                color: _warningColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _warningColor.withValues(alpha:0.3)),
+                border: Border.all(color: _warningColor.withOpacity(0.3)),
               ),
               child: Row(
                 children: [
@@ -1739,7 +1739,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -1753,7 +1753,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: _warningColor.withValues(alpha:0.1),
+                color: _warningColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Center(
@@ -1840,7 +1840,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               gradient: LinearGradient(
                 colors: [
                   _primaryColor,
-                  _primaryColor.withValues(alpha:0.8),
+                  _primaryColor.withOpacity(0.8),
                 ],
               ),
               borderRadius: BorderRadius.circular(16),
@@ -1850,7 +1850,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha:0.2),
+                    color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.settings, color: Colors.white, size: 28),
@@ -1894,13 +1894,13 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha:0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 10,
                 ),
               ],
             ),
             child: DropdownButtonFormField<String>(
-              initialValue: _providerSelecionado,
+              value: _providerSelecionado,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.business, color: _primaryColor),
                 border: OutlineInputBorder(
@@ -1971,7 +1971,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha:0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 10,
                 ),
               ],
@@ -2045,9 +2045,9 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _successColor.withValues(alpha:0.05),
+        color: _successColor.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _successColor.withValues(alpha:0.2)),
+        border: Border.all(color: _successColor.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2078,9 +2078,9 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha:0.05),
+        color: Colors.blue.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.withValues(alpha:0.2)),
+        border: Border.all(color: Colors.blue.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2110,9 +2110,9 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.purple.withValues(alpha:0.05),
+        color: Colors.purple.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.purple.withValues(alpha:0.2)),
+        border: Border.all(color: Colors.purple.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2178,7 +2178,7 @@ class _NotasFiscaisScreenState extends State<NotasFiscaisScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue.withValues(alpha:0.05),
+        color: Colors.blue.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

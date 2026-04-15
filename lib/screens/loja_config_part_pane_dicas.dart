@@ -42,7 +42,7 @@ class _PaneDicasWidget extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(
                       color: _LojaConfigScreenState._primaryColor
-                          .withValues(alpha: 0.3)),
+                          .withOpacity(0.3)),
                 ),
                 child: ListTile(
                   contentPadding:
@@ -68,7 +68,7 @@ class _PaneDicasWidget extends StatelessWidget {
                           height: 56,
                           decoration: BoxDecoration(
                             color: _LojaConfigScreenState._primaryColor
-                                .withValues(alpha: 0.1),
+                                .withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(

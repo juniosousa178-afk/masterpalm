@@ -90,10 +90,10 @@ class AjudaScreen extends StatelessWidget {
       BuildContext context, Color primaryColor, ColorScheme cs) {
     return Card(
       elevation: 0,
-      color: primaryColor.withValues(alpha: 0.12),
+      color: primaryColor.withOpacity(0.12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: primaryColor.withValues(alpha: 0.35)),
+        side: BorderSide(color: primaryColor.withOpacity(0.35)),
       ),
       child: InkWell(
         onTap: () {
@@ -111,7 +111,7 @@ class AjudaScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha: 0.2),
+                  color: primaryColor.withOpacity(0.2),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.smart_toy, color: primaryColor, size: 28),
@@ -159,11 +159,11 @@ class AjudaScreen extends StatelessWidget {
 
         return Card(
           elevation: 0,
-          color: const Color(0xFF25D366).withValues(alpha:0.12),
+          color: const Color(0xFF25D366).withOpacity(0.12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: const Color(0xFF25D366).withValues(alpha:0.4),
+              color: const Color(0xFF25D366).withOpacity(0.4),
             ),
           ),
           child: InkWell(
@@ -176,7 +176,7 @@ class AjudaScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF25D366).withValues(alpha:0.2),
+                      color: const Color(0xFF25D366).withOpacity(0.2),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -234,7 +234,7 @@ class AjudaScreen extends StatelessWidget {
   Widget _buildHeader(BuildContext context, Color primaryColor, ColorScheme cs) {
     return Card(
       elevation: 0,
-      color: primaryColor.withValues(alpha:0.08),
+      color: primaryColor.withOpacity(0.08),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -294,7 +294,7 @@ class AjudaScreen extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: cor.withValues(alpha:0.15),
+            color: cor.withOpacity(0.15),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icone, color: cor, size: 24),
@@ -816,9 +816,9 @@ class AjudaScreen extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.grey.withValues(alpha:0.1),
+        color: Colors.grey.withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.withValues(alpha:0.3)),
+        border: Border.all(color: Colors.grey.withOpacity(0.3)),
       ),
       child: Text(
         text,

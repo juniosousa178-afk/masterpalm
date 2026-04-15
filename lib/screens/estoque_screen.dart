@@ -1678,7 +1678,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.1),
+                        color: _primaryColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.flash_on, color: _primaryColor),
@@ -1868,7 +1868,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       leading: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: cor.withValues(alpha:0.1),
+          color: cor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, color: cor, size: 22),
@@ -2175,7 +2175,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                 const SizedBox(height: 8),
                 ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: _primaryColor.withValues(alpha: 0.15),
+                    backgroundColor: _primaryColor.withOpacity(0.15),
                     child: const Icon(Icons.inventory_2_outlined, color: _primaryColor),
                   ),
                   title: const Text('Produto'),
@@ -2187,7 +2187,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                 ),
                 ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: Colors.orange.withValues(alpha: 0.2),
+                    backgroundColor: Colors.orange.withOpacity(0.2),
                     child: const Icon(Icons.layers_outlined, color: Colors.orange),
                   ),
                   title: const Text('Kit'),
@@ -2506,7 +2506,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: confirmColor.withValues(alpha:0.1),
+                color: confirmColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.warning_amber_rounded, size: 48, color: confirmColor),
@@ -3763,7 +3763,7 @@ String _formatGradeTexto(Produto p) {
         padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
-            decoration: BoxDecoration(color: _primaryColor.withValues(alpha:0.12)),
+            decoration: BoxDecoration(color: _primaryColor.withOpacity(0.12)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.end,
@@ -4093,7 +4093,7 @@ String _formatGradeTexto(Produto p) {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: iconColor.withValues(alpha:0.1),
+          color: iconColor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, size: 22, color: iconColor),
@@ -4213,7 +4213,7 @@ String _formatGradeTexto(Produto p) {
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.check_box, color: _primaryColor, size: 20),
@@ -4225,7 +4225,7 @@ String _formatGradeTexto(Produto p) {
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: _errorColor.withValues(alpha:0.1),
+                  color: _errorColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(Icons.close, color: _errorColor, size: 20),
@@ -4244,7 +4244,7 @@ String _formatGradeTexto(Produto p) {
                   children: [
                     LinearProgressIndicator(
                       value: (_importando && _importTotal > 0) ? _importProgress / _importTotal : null,
-                      backgroundColor: _primaryColor.withValues(alpha:0.2),
+                      backgroundColor: _primaryColor.withOpacity(0.2),
                       valueColor: const AlwaysStoppedAnimation<Color>(_primaryColor),
                     ),
                   ],
@@ -4326,7 +4326,7 @@ String _formatGradeTexto(Produto p) {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                  color: _primaryColor.withValues(alpha:0.12),
+                  color: _primaryColor.withOpacity(0.12),
                   child: Row(
                     children: [
                       const SizedBox(
@@ -4362,7 +4362,7 @@ String _formatGradeTexto(Produto p) {
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha:0.05),
+                            color: Colors.black.withOpacity(0.05),
                             blurRadius: 10,
                             offset: const Offset(0, 2),
                           ),
@@ -4423,7 +4423,7 @@ String _formatGradeTexto(Produto p) {
                     ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _surfaceColor,
-                      side: BorderSide(color: _primaryColor.withValues(alpha: 0.45)),
+                      side: BorderSide(color: _primaryColor.withOpacity(0.45)),
                       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
                       alignment: Alignment.centerLeft,
                     ),
@@ -4440,7 +4440,7 @@ String _formatGradeTexto(Produto p) {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha:0.05),
+                        color: Colors.black.withOpacity(0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -4567,7 +4567,7 @@ String _formatGradeTexto(Produto p) {
           if (_importando || _publicando)
             Positioned.fill(
               child: Container(
-                color: Colors.black.withValues(alpha:0.3),
+                color: Colors.black.withOpacity(0.3),
                 child: Center(
                   child: Container(
                     padding: const EdgeInsets.all(24),
@@ -4629,12 +4629,12 @@ String _formatGradeTexto(Produto p) {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [_primaryColor, _primaryColor.withValues(alpha:0.8)],
+          colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: _primaryColor.withValues(alpha:0.3),
+            color: _primaryColor.withOpacity(0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -4647,7 +4647,7 @@ String _formatGradeTexto(Produto p) {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.inventory_2, color: Colors.white, size: 28),
@@ -4659,7 +4659,7 @@ String _formatGradeTexto(Produto p) {
                   children: [
                     Text(
                       'Total em Estoque',
-                      style: TextStyle(color: Colors.white.withValues(alpha:0.9), fontSize: 14),
+                      style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14),
                     ),
                     Text(
                       '$_totalEstoque itens',
@@ -4675,7 +4675,7 @@ String _formatGradeTexto(Produto p) {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -4722,7 +4722,7 @@ String _formatGradeTexto(Produto p) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.15),
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -4735,7 +4735,7 @@ String _formatGradeTexto(Produto p) {
               children: [
                 Text(
                   label,
-                  style: TextStyle(color: Colors.white.withValues(alpha:0.8), fontSize: 11),
+                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
                 ),
                 FittedBox(
                   fit: BoxFit.scaleDown,
@@ -4764,7 +4764,7 @@ String _formatGradeTexto(Produto p) {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha:0.1),
+                color: Colors.grey.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
@@ -4793,7 +4793,7 @@ String _formatGradeTexto(Produto p) {
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: _primaryColor.withValues(alpha: 0.12),
+                color: _primaryColor.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.inventory_2_outlined, size: 56, color: _primaryColor),
@@ -4812,7 +4812,7 @@ String _formatGradeTexto(Produto p) {
               'Adicione seu primeiro produto para começar',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: _surfaceColor.withValues(alpha: 0.7),
+                color: _surfaceColor.withOpacity(0.7),
               ),
             ),
             const SizedBox(height: 24),
@@ -4847,8 +4847,8 @@ String _formatGradeTexto(Produto p) {
         boxShadow: [
           BoxShadow(
             color: selecionado
-                ? _primaryColor.withValues(alpha:0.2)
-                : Colors.black.withValues(alpha:0.05),
+                ? _primaryColor.withOpacity(0.2)
+                : Colors.black.withOpacity(0.05),
             blurRadius: selecionado ? 10 : 10,
             offset: const Offset(0, 4),
           ),
@@ -4898,7 +4898,7 @@ String _formatGradeTexto(Produto p) {
                       height: 70,
                       child: thumb.isEmpty
                           ? Container(
-                              color: avatarColor.withValues(alpha:0.1),
+                              color: avatarColor.withOpacity(0.1),
                               child: Icon(Icons.image_outlined, color: avatarColor),
                             )
                           : Image(
@@ -4909,7 +4909,7 @@ String _formatGradeTexto(Produto p) {
                                       : FileImage(io.File(thumb)) as ImageProvider,
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => Container(
-                                color: avatarColor.withValues(alpha:0.1),
+                                color: avatarColor.withOpacity(0.1),
                                 child: Icon(Icons.broken_image, color: avatarColor),
                               ),
                             ),
@@ -4941,7 +4941,7 @@ String _formatGradeTexto(Produto p) {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: _successColor.withValues(alpha:0.1),
+                                  color: _successColor.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: const Row(
@@ -4998,7 +4998,7 @@ String _formatGradeTexto(Produto p) {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: _primaryColor.withValues(alpha:0.15),
+                                        color: _primaryColor.withOpacity(0.15),
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: const Icon(Icons.remove, size: 14, color: _primaryColor),
@@ -5014,7 +5014,7 @@ String _formatGradeTexto(Produto p) {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: _successColor.withValues(alpha:0.15),
+                                        color: _successColor.withOpacity(0.15),
                                         borderRadius: BorderRadius.circular(6),
                                       ),
                                       child: const Icon(Icons.add, size: 14, color: _successColor),
@@ -5064,7 +5064,7 @@ String _formatGradeTexto(Produto p) {
                         icon: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: _primaryColor.withValues(alpha:0.1),
+                            color: _primaryColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(Icons.edit, color: _primaryColor, size: 18),
@@ -5079,7 +5079,7 @@ String _formatGradeTexto(Produto p) {
                         icon: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: _warningColor.withValues(alpha:0.1),
+                            color: _warningColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(Icons.copy, color: _warningColor, size: 18),
@@ -5094,7 +5094,7 @@ String _formatGradeTexto(Produto p) {
                         icon: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: _errorColor.withValues(alpha:0.1),
+                            color: _errorColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(Icons.delete_outline, color: _errorColor, size: 18),
@@ -5355,7 +5355,7 @@ String _formatGradeTexto(Produto p) {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -5378,7 +5378,7 @@ String _formatGradeTexto(Produto p) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -5424,7 +5424,7 @@ class _EstoqueLoadingBody extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: primaryColor.withValues(alpha:0.1),
+              color: primaryColor.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: CircularProgressIndicator(color: primaryColor),
@@ -5455,7 +5455,7 @@ class _EstoqueAcessoNegadoBody extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: errorColor.withValues(alpha:0.1),
+              color: errorColor.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.lock, size: 64, color: errorColor),
@@ -5573,19 +5573,19 @@ class _SugestoesIaEstoqueScreenState extends State<_SugestoesIaEstoqueScreen> {
                   onPressed: _enviando ? null : () => _enviar('Sugestões de oferta ou promoção para escoar estoque. Quais produtos promover e como?'),
                   icon: const Icon(Icons.discount, size: 18),
                   label: const Text('Sugestões de oferta'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.2)),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _enviando ? null : () => _enviar('Sugestão de compra ou reposição. Quais produtos repor com base no estoque atual?'),
                   icon: const Icon(Icons.shopping_cart, size: 18),
                   label: const Text('Sugestão de compra'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.2)),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _enviando ? null : () => _enviar('Quais produtos parecem encalhados ou parados? Dê alertas e sugestões para movimentar.'),
                   icon: const Icon(Icons.warning_amber, size: 18),
                   label: const Text('Alertas produtos encalhados'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.2)),
                 ),
               ],
             ),
@@ -5596,7 +5596,7 @@ class _SugestoesIaEstoqueScreenState extends State<_SugestoesIaEstoqueScreen> {
                 hintText: 'Ex: Qual categoria tem mais estoque parado?',
                 border: const OutlineInputBorder(),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha:0.05),
+                fillColor: Colors.white.withOpacity(0.05),
               ),
               maxLines: 2,
               enabled: !_enviando,
@@ -5617,7 +5617,7 @@ class _SugestoesIaEstoqueScreenState extends State<_SugestoesIaEstoqueScreen> {
                 constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Scrollbar(

@@ -200,10 +200,10 @@ class _CampanhasSugeridasScreenState extends State<CampanhasSugeridasScreen> {
                     Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.1),
+                        color: _primaryColor.withOpacity(0.1),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(Icons.auto_awesome, size: 48, color: _primaryColor.withValues(alpha:0.8)),
+                      child: Icon(Icons.auto_awesome, size: 48, color: _primaryColor.withOpacity(0.8)),
                     ),
                     const SizedBox(height: 24),
                     const Text(
@@ -215,7 +215,7 @@ class _CampanhasSugeridasScreenState extends State<CampanhasSugeridasScreen> {
                     Text(
                       'Quando houver produtos parados há mais de 30 dias ou estoque baixo, aparecerão sugestões de campanha aqui para você ativar com um clique.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white.withValues(alpha:0.7), fontSize: 14, height: 1.4),
+                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14, height: 1.4),
                     ),
                   ],
                 ),
@@ -271,7 +271,7 @@ class _CampanhaSugeridaCard extends StatelessWidget {
         color: _cardDark,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isAltaPrioridade ? color.withValues(alpha:0.6) : color.withValues(alpha:0.3),
+          color: isAltaPrioridade ? color.withOpacity(0.6) : color.withOpacity(0.3),
           width: isAltaPrioridade ? 1.5 : 1,
         ),
       ),
@@ -284,7 +284,7 @@ class _CampanhaSugeridaCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha:0.15),
+                  color: color.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -314,7 +314,7 @@ class _CampanhaSugeridaCard extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: color.withValues(alpha:0.2),
+                            color: color.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -326,7 +326,7 @@ class _CampanhaSugeridaCard extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                             decoration: BoxDecoration(
-                              color: _primaryColor.withValues(alpha:0.2),
+                              color: _primaryColor.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: const Text('Prioridade alta', style: TextStyle(color: _primaryColor, fontSize: 10, fontWeight: FontWeight.w600)),
@@ -336,12 +336,12 @@ class _CampanhaSugeridaCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       c.motivoSugestao,
-                      style: TextStyle(color: Colors.white.withValues(alpha:0.8), fontSize: 13),
+                      style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       c.dicaImpacto,
-                      style: TextStyle(color: Colors.white.withValues(alpha:0.6), fontSize: 12, fontStyle: FontStyle.italic),
+                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12, fontStyle: FontStyle.italic),
                     ),
                   ],
                 ),
@@ -353,7 +353,7 @@ class _CampanhaSugeridaCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha:0.05),
+                color: Colors.white.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -367,7 +367,7 @@ class _CampanhaSugeridaCard extends StatelessWidget {
                   if (c.codigoCupom.isNotEmpty)
                     Text(
                       'Cupom: ${c.codigoCupom}',
-                      style: TextStyle(color: Colors.white.withValues(alpha:0.95), fontSize: 13, fontWeight: FontWeight.w500),
+                      style: TextStyle(color: Colors.white.withOpacity(0.95), fontSize: 13, fontWeight: FontWeight.w500),
                     ),
                 ],
               ),

@@ -236,7 +236,7 @@ class _BackupScreenWebState extends State<BackupScreen> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: primaryColor.withValues(alpha:0.1),
+                  color: primaryColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.download, size: 64, color: primaryColor),

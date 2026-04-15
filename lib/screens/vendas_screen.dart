@@ -780,7 +780,7 @@ class _VendasScreenState extends State<VendasScreen>
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _successColor.withValues(alpha:0.15),
+                color: _successColor.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _enviandoVendas
@@ -798,7 +798,7 @@ class _VendasScreenState extends State<VendasScreen>
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFF3B82F6).withValues(alpha:0.15),
+                color: const Color(0xFF3B82F6).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _importandoVendas
@@ -818,7 +818,7 @@ class _VendasScreenState extends State<VendasScreen>
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha:0.2),
+                color: Colors.amber.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
@@ -830,7 +830,7 @@ class _VendasScreenState extends State<VendasScreen>
             icon: Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: _primaryColor.withValues(alpha:0.1),
+                color: _primaryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: _exportandoVendas
@@ -945,12 +945,12 @@ class _VendasScreenState extends State<VendasScreen>
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [_successColor, _successColor.withValues(alpha:0.8)],
+          colors: [_successColor, _successColor.withOpacity(0.8)],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: _successColor.withValues(alpha:0.3),
+            color: _successColor.withOpacity(0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -963,7 +963,7 @@ class _VendasScreenState extends State<VendasScreen>
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.point_of_sale, color: Colors.white, size: 28),
@@ -976,7 +976,7 @@ class _VendasScreenState extends State<VendasScreen>
                     Text(
                       'Vendas de Hoje',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha:0.9),
+                        color: Colors.white.withOpacity(0.9),
                         fontSize: 14,
                       ),
                     ),
@@ -994,7 +994,7 @@ class _VendasScreenState extends State<VendasScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha:0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -1050,7 +1050,7 @@ class _VendasScreenState extends State<VendasScreen>
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha:0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 10,
                   offset: const Offset(0, 2),
                 ),
@@ -1088,7 +1088,7 @@ class _VendasScreenState extends State<VendasScreen>
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha:0.05),
+                        color: Colors.black.withOpacity(0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -1134,7 +1134,7 @@ class _VendasScreenState extends State<VendasScreen>
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha:0.05),
+                        color: Colors.black.withOpacity(0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -1197,7 +1197,7 @@ class _VendasScreenState extends State<VendasScreen>
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1219,7 +1219,7 @@ class _VendasScreenState extends State<VendasScreen>
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: avatarColor.withValues(alpha:0.1),
+                        color: avatarColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Center(
@@ -1306,7 +1306,7 @@ class _VendasScreenState extends State<VendasScreen>
                       icon: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: _primaryColor.withValues(alpha:0.1),
+                          color: _primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.edit_outlined, color: _primaryColor, size: 18),
@@ -1320,7 +1320,7 @@ class _VendasScreenState extends State<VendasScreen>
                       icon: Container(
                         padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: _primaryColor.withValues(alpha:0.1),
+                          color: _primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.print, color: _primaryColor, size: 18),
@@ -1335,7 +1335,7 @@ class _VendasScreenState extends State<VendasScreen>
                         icon: Container(
                           padding: const EdgeInsets.all(6),
                           decoration: BoxDecoration(
-                            color: _errorColor.withValues(alpha:0.1),
+                            color: _errorColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(Icons.delete_outline, color: _errorColor, size: 18),
@@ -1440,7 +1440,7 @@ class _VendasScreenState extends State<VendasScreen>
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _successColor.withValues(alpha:0.1),
+                        color: _successColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Icon(Icons.receipt_long, color: _successColor, size: 24),
@@ -1488,10 +1488,10 @@ class _VendasScreenState extends State<VendasScreen>
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: _primaryColor.withValues(alpha:0.06),
+                          color: _primaryColor.withOpacity(0.06),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: _primaryColor.withValues(alpha:0.2),
+                            color: _primaryColor.withOpacity(0.2),
                             width: 1,
                           ),
                         ),
@@ -1500,7 +1500,7 @@ class _VendasScreenState extends State<VendasScreen>
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: _primaryColor.withValues(alpha:0.15),
+                                color: _primaryColor.withOpacity(0.15),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Icon(Icons.person, size: 24, color: _primaryColor),
@@ -1715,7 +1715,7 @@ class _VendasScreenState extends State<VendasScreen>
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: _successColor.withValues(alpha:0.1),
+              color: _successColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.inventory_2_outlined, size: 18, color: _successColor),
@@ -1829,7 +1829,7 @@ class _VendasScreenState extends State<VendasScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _errorColor.withValues(alpha:0.1),
+                color: _errorColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.delete_forever, size: 48, color: _errorColor),
@@ -2372,7 +2372,7 @@ class _VendasLoadingBody extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: successColor.withValues(alpha:0.1),
+              color: successColor.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: CircularProgressIndicator(color: successColor),
@@ -2500,7 +2500,7 @@ class _VendasSyncFalhouBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: warningColor.withValues(alpha:0.15),
+      color: warningColor.withOpacity(0.15),
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -2540,7 +2540,7 @@ class _VendasEmptyStateFiltros extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.grey.withValues(alpha:0.1),
+              color: Colors.grey.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(Icons.receipt_long, size: 64, color: Colors.grey[400]),
@@ -2583,7 +2583,7 @@ class _VendasStatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha:0.15),
+        color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -2597,7 +2597,7 @@ class _VendasStatCard extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha:0.8),
+                    color: Colors.white.withOpacity(0.8),
                     fontSize: 11,
                   ),
                 ),
@@ -2636,7 +2636,7 @@ class _VendasInfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -2759,19 +2759,19 @@ class _SugestoesIaVendasScreenState extends State<_SugestoesIaVendasScreen> {
                   onPressed: _enviando ? null : () => _enviar('Como aumentar o ticket médio? Dê sugestões práticas.'),
                   icon: const Icon(Icons.trending_up, size: 18),
                   label: const Text('Aumentar ticket médio'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.2)),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _enviando ? null : () => _enviar('Sugestões para vender mais com base nos dados de vendas e vendedores.'),
                   icon: const Icon(Icons.point_of_sale, size: 18),
                   label: const Text('Vender mais'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.2)),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _enviando ? null : () => _enviar('Analise o desempenho dos vendedores e sugira melhorias ou incentivos.'),
                   icon: const Icon(Icons.people, size: 18),
                   label: const Text('Desempenho vendedores'),
-                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withValues(alpha:0.2)),
+                  style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.2)),
                 ),
               ],
             ),
@@ -2782,7 +2782,7 @@ class _SugestoesIaVendasScreenState extends State<_SugestoesIaVendasScreen> {
                 hintText: 'Ex: Por que as vendas caíram no último mês?',
                 border: const OutlineInputBorder(),
                 filled: true,
-                fillColor: Colors.white.withValues(alpha:0.05),
+                fillColor: Colors.white.withOpacity(0.05),
               ),
               maxLines: 2,
               enabled: !_enviando,
@@ -2803,7 +2803,7 @@ class _SugestoesIaVendasScreenState extends State<_SugestoesIaVendasScreen> {
                 constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _primaryColor.withValues(alpha:0.1),
+                  color: _primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Scrollbar(

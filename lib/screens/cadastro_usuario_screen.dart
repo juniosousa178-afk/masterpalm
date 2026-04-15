@@ -358,7 +358,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _successColor.withValues(alpha:0.1),
+                color: _successColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.check_circle, size: 64, color: _successColor),
@@ -485,7 +485,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                           height: 200,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha:0.1),
+                            color: Colors.white.withOpacity(0.1),
                           ),
                         ),
                       ),
@@ -497,7 +497,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                           height: 140,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: Colors.white.withValues(alpha:0.1),
+                            color: Colors.white.withOpacity(0.1),
                           ),
                         ),
                       ),
@@ -520,7 +520,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                             Text(
                               'Adicione novos vendedores à sua equipe',
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha:0.9),
+                                color: Colors.white.withOpacity(0.9),
                                 fontSize: 14,
                               ),
                             ),
@@ -546,7 +546,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha:0.05),
+                            color: Colors.black.withOpacity(0.05),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -557,7 +557,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: _primaryColor.withValues(alpha:0.1),
+                              color: _primaryColor.withOpacity(0.1),
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.person, color: _primaryColor, size: 24),
@@ -581,7 +581,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: _successColor.withValues(alpha:0.1),
+                                        color: _successColor.withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
@@ -625,7 +625,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha:0.05),
+                            color: Colors.black.withOpacity(0.05),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -702,7 +702,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
 
                             if (podeEscolherTipo) ...[
                               DropdownButtonFormField<String>(
-                                initialValue: _tipoSelecionado,
+                                value: _tipoSelecionado,
                                 decoration: InputDecoration(
                                   labelText: 'Tipo de usuário',
                                   prefixIcon: const Icon(Icons.admin_panel_settings,
@@ -770,7 +770,7 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                                   padding: const EdgeInsets.symmetric(vertical: 16),
                                   shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12)),
-                                  disabledBackgroundColor: _successColor.withValues(alpha:0.6),
+                                  disabledBackgroundColor: _successColor.withOpacity(0.6),
                                 ),
                               ),
                             ),
@@ -785,9 +785,9 @@ class _CadastroUsuariosScreenState extends State<CadastroUsuariosScreen>
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: _primaryColor.withValues(alpha:0.05),
+                        color: _primaryColor.withOpacity(0.05),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: _primaryColor.withValues(alpha:0.2)),
+                        border: Border.all(color: _primaryColor.withOpacity(0.2)),
                       ),
                       child: const Row(
                         children: [

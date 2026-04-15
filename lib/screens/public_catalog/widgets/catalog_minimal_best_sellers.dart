@@ -130,7 +130,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                       child: Text(
                         title.trim().isEmpty ? 'Mais vendidos' : title.trim(),
                         style: TextStyle(
-                          color: textColor.withValues(alpha: 0.92),
+                          color: textColor.withOpacity(0.92),
                           fontSize: titleSize,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.15,
@@ -181,7 +181,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                             color: cardColor,
                             borderRadius: BorderRadius.circular(radius),
                             border: Border.all(
-                              color: textColor.withValues(alpha: 0.06),
+                              color: textColor.withOpacity(0.06),
                               width: 1,
                             ),
                           ),
@@ -199,7 +199,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                                           child: Icon(
                                             Icons.image_outlined,
                                             color: textColor
-                                                .withValues(alpha: 0.32),
+                                                .withOpacity(0.32),
                                             size: narrow ? 32 : 34,
                                           ),
                                         )
@@ -221,7 +221,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
-                                        color: textColor.withValues(alpha: 0.9),
+                                        color: textColor.withOpacity(0.9),
                                         fontSize: bodyNameSize,
                                         fontWeight: FontWeight.w500,
                                         height: 1.22,
@@ -271,7 +271,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                                                 ? TextAlign.right
                                                 : TextAlign.left,
                                             style: TextStyle(
-                                              color: textColor.withValues(alpha: 0.62),
+                                              color: textColor.withOpacity(0.62),
                                               fontSize: narrow ? 8.8 : 9.2,
                                               fontWeight: FontWeight.w500,
                                               height: 1.1,

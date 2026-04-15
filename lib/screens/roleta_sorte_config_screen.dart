@@ -169,7 +169,7 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      initialValue: tipo,
+                      value: tipo,
                       dropdownColor: const Color(0xFF0F1117),
                       decoration: const InputDecoration(
                         labelText: 'Tipo',
@@ -333,7 +333,7 @@ class _RoletaSorteConfigScreenState extends State<RoletaSorteConfigScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  initialValue: tipo,
+                  value: tipo,
                   dropdownColor: const Color(0xFF0F1117),
                   decoration: const InputDecoration(
                     labelText: 'Tipo',

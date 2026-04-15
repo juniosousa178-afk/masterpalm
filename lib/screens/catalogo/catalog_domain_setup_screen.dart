@@ -173,10 +173,10 @@ class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
           if (!hasDomain) ...[
             Card(
               elevation: 0,
-              color: cs.secondaryContainer.withValues(alpha: 0.25),
+              color: cs.secondaryContainer.withOpacity(0.25),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
-                side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+                side: BorderSide(color: cs.outlineVariant.withOpacity(0.45)),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -248,9 +248,9 @@ class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withValues(alpha: 0.35),
+              color: cs.primaryContainer.withOpacity(0.35),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.35)),
+              border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -289,13 +289,13 @@ class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+                  side: BorderSide(color: cs.outlineVariant.withOpacity(0.5)),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   leading: CircleAvatar(
-                    backgroundColor: cs.primary.withValues(alpha: 0.12),
+                    backgroundColor: cs.primary.withOpacity(0.12),
                     child: Icon(Icons.dns_rounded, color: cs.primary, size: 22),
                   ),
                   title: Text(
@@ -393,9 +393,9 @@ class _StatusStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.65),
+        color: cs.surfaceContainerHighest.withOpacity(0.65),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
       ),
       child: Row(
         children: [
@@ -450,7 +450,7 @@ class _SummaryCard extends StatelessWidget {
       color: cs.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: cs.primary.withValues(alpha: 0.22), width: 1),
+        side: BorderSide(color: cs.primary.withOpacity(0.22), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -522,7 +522,7 @@ class _SummaryCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: cs.primary.withValues(alpha: 0.12),
+                      color: cs.primary.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(

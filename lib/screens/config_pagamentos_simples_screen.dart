@@ -506,7 +506,7 @@ class _ConfigPagamentosSimplesScreenState
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha:0.3),
+                  color: Colors.amber.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
@@ -594,7 +594,7 @@ class _ConfigPagamentosSimplesScreenState
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha:0.15),
+                  color: Colors.orange.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.orange.shade300),
                 ),
@@ -732,7 +732,7 @@ class _ConfigPagamentosSimplesScreenState
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.blue.withValues(alpha:0.08),
+          color: Colors.blue.withOpacity(0.08),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.blue.shade200),
         ),
@@ -795,7 +795,7 @@ class _ConfigPagamentosSimplesScreenState
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF009EE3).withValues(alpha:0.1),
+                    color: const Color(0xFF009EE3).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Image.network(
@@ -847,7 +847,7 @@ class _ConfigPagamentosSimplesScreenState
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha:0.1),
+                  color: Colors.green.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1047,7 +1047,7 @@ class _ConfigPagamentosSimplesScreenState
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: cor.withValues(alpha:0.1),
+                    color: cor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icone, color: cor, size: 24),
@@ -1090,7 +1090,7 @@ class _ConfigPagamentosSimplesScreenState
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha:0.1),
+                  color: Colors.green.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1470,7 +1470,7 @@ class _ConfigPagamentosSimplesScreenState
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.teal.withValues(alpha:0.1),
+                      color: Colors.teal.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(Icons.pix, color: Colors.teal),
@@ -1679,7 +1679,7 @@ class _ConfigPagamentosSimplesScreenState
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: selecionado ? color.withValues(alpha:0.1) : Colors.grey.shade100,
+          color: selecionado ? color.withOpacity(0.1) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: selecionado ? color : Colors.grey.shade300,
@@ -1778,7 +1778,7 @@ class _ConfigPagamentosSimplesScreenState
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.amber.withValues(alpha:0.2),
+                color: Colors.amber.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.amber),
               ),
@@ -2042,7 +2042,7 @@ class _DialogConectarMPState extends State<_DialogConectarMP> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha:0.1),
+                  color: Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Row(
@@ -2173,7 +2173,7 @@ class _DialogConectarPagSeguroState extends State<_DialogConectarPagSeguro> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00A859).withValues(alpha:0.1),
+                  color: const Color(0xFF00A859).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Row(
@@ -2290,7 +2290,7 @@ class _DialogConectarTonState extends State<_DialogConectarTon> {
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00D4AA).withValues(alpha:0.1),
+                  color: const Color(0xFF00D4AA).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Row(
@@ -2422,7 +2422,7 @@ class _DialogConectarInfinitePayState extends State<_DialogConectarInfinitePay> 
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF6B35).withValues(alpha:0.1),
+                  color: const Color(0xFFFF6B35).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Row(

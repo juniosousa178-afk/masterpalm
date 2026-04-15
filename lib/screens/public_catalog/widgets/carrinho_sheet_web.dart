@@ -271,21 +271,21 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final w = widget.cartUiTokens;
     if (w != null) return w;
     final card = widget.checkoutCardColor ?? widget.cardColor;
-    final field = widget.checkoutFieldBg ?? card.withValues(alpha: 0.92);
+    final field = widget.checkoutFieldBg ?? card.withOpacity(0.92);
     final ft = widget.checkoutFieldTextColor ?? widget.textColor;
     final lb = widget.checkoutLabelColor ?? widget.textColor;
     final bord =
-        widget.checkoutFieldBorder ?? Colors.white.withValues(alpha: 0.12);
+        widget.checkoutFieldBorder ?? Colors.white.withOpacity(0.12);
     return CatalogCartUiTokens(
       sheetBackground: Colors.transparent,
       cartCardBackground: card,
-      sectionTitleColor: lb.withValues(alpha: 0.95),
+      sectionTitleColor: lb.withOpacity(0.95),
       primaryTextColor: ft,
-      secondaryTextColor: ft.withValues(alpha: 0.88),
-      mutedTextColor: widget.textColor.withValues(alpha: 0.62),
+      secondaryTextColor: ft.withOpacity(0.88),
+      mutedTextColor: widget.textColor.withOpacity(0.62),
       inputBackground: field,
       inputTextColor: ft,
-      inputHintColor: Colors.white.withValues(alpha: 0.48),
+      inputHintColor: Colors.white.withOpacity(0.48),
       inputBorderColor: bord,
       summaryCardBackground: card,
       summaryLabelColor: lb,
@@ -300,8 +300,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       whatsappButtonTextColor: Colors.white,
       pixButtonBorderColor: const Color(0xFF0D9488),
       pixButtonTextColor: const Color(0xFF0D9488),
-      itemDividerColor: Colors.white.withValues(alpha: 0.06),
-      removeIconColor: Colors.redAccent.withValues(alpha: 0.82),
+      itemDividerColor: Colors.white.withOpacity(0.06),
+      removeIconColor: Colors.redAccent.withOpacity(0.82),
     );
   }
 
@@ -2276,7 +2276,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final mq = MediaQuery.sizeOf(context);
     final compact = mq.width < 420;
     final border = Color.alphaBlend(
-      cu.inputBorderColor.withValues(alpha: 0.38),
+      cu.inputBorderColor.withOpacity(0.38),
       cu.cartCardBackground,
     );
 
@@ -2308,7 +2308,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.35,
-                      color: cu.sectionTitleColor.withValues(alpha: 0.88),
+                      color: cu.sectionTitleColor.withOpacity(0.88),
                     ),
                   ),
                 ),
@@ -2448,8 +2448,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                     style: TextStyle(
                                       fontSize: 12,
                                       height: 1.35,
-                                      color: cu.mutedTextColor.withValues(
-                                        alpha: 0.88,
+                                      color: cu.mutedTextColor.withOpacity(0.88,
                                       ),
                                     ),
                                   ),
@@ -2463,7 +2462,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                         border: Border.all(
                                           color: Color.alphaBlend(
                                             cu.inputBorderColor
-                                                .withValues(alpha: 0.5),
+                                                .withOpacity(0.5),
                                             cu.inputBackground,
                                           ),
                                         ),
@@ -2557,14 +2556,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           visualDensity: VisualDensity.compact,
                           style: IconButton.styleFrom(
                             foregroundColor:
-                                cu.removeIconColor.withValues(alpha: 0.75),
-                            hoverColor: cu.removeIconColor.withValues(alpha: 0.08),
+                                cu.removeIconColor.withOpacity(0.75),
+                            hoverColor: cu.removeIconColor.withOpacity(0.08),
                           ),
                           tooltip: 'Remover item',
                           icon: Icon(
                             Icons.close_rounded,
                             size: 18,
-                            color: cu.removeIconColor.withValues(alpha: 0.85),
+                            color: cu.removeIconColor.withOpacity(0.85),
                           ),
                           onPressed: () => _removeItemAndRefresh(i),
                         ),
@@ -2587,7 +2586,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final cu = _cartUi;
     final compact = MediaQuery.sizeOf(context).width < 420;
     final border = Color.alphaBlend(
-      cu.inputBorderColor.withValues(alpha: 0.38),
+      cu.inputBorderColor.withOpacity(0.38),
       cu.cartCardBackground,
     );
 
@@ -2595,14 +2594,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       final hasError = campoKey != null && _camposComErro.contains(campoKey);
       const erroColor = Color(0xFFEF4444);
       final borderIdle = Color.alphaBlend(
-        cu.inputBorderColor.withValues(alpha: 0.65),
+        cu.inputBorderColor.withOpacity(0.65),
         cu.inputBackground,
       );
       return InputDecoration(
         labelText: label,
         hintText: hint,
         hintStyle: TextStyle(
-          color: cu.inputHintColor.withValues(alpha: 0.88),
+          color: cu.inputHintColor.withOpacity(0.88),
           fontWeight: FontWeight.w400,
           fontSize: 14,
         ),
@@ -2614,7 +2613,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         ),
         filled: true,
         fillColor: hasError
-            ? erroColor.withValues(alpha: 0.08)
+            ? erroColor.withOpacity(0.08)
             : cu.inputBackground,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
@@ -2673,10 +2672,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444).withValues(alpha:0.15),
+                    color: const Color(0xFFEF4444).withOpacity(0.15),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                        color: const Color(0xFFEF4444).withValues(alpha:0.5)),
+                        color: const Color(0xFFEF4444).withOpacity(0.5)),
                   ),
                   child: Row(
                     children: [
@@ -2704,7 +2703,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.35,
-                  color: cu.sectionTitleColor.withValues(alpha: 0.88),
+                  color: cu.sectionTitleColor.withOpacity(0.88),
                 ),
               ),
               const SizedBox(height: 4),
@@ -3107,7 +3106,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   }) {
     final cu = _cartUi;
     final border = Color.alphaBlend(
-      cu.inputBorderColor.withValues(alpha: 0.38),
+      cu.inputBorderColor.withOpacity(0.38),
       cu.cartCardBackground,
     );
     return DecoratedBox(
@@ -3127,7 +3126,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.35,
-                color: cu.sectionTitleColor.withValues(alpha: 0.88),
+                color: cu.sectionTitleColor.withOpacity(0.88),
               ),
             ),
             if (subtitle != null) ...[
@@ -3162,7 +3161,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       VoidCallback? onDismiss,
     }) {
       return Material(
-        color: Color.alphaBlend(accent.withValues(alpha: 0.12), cu.cartCardBackground),
+        color: Color.alphaBlend(accent.withOpacity(0.12), cu.cartCardBackground),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: EdgeInsets.fromLTRB(pad, pad * 0.85, pad * 0.5, pad * 0.85),
@@ -3175,7 +3174,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 child: Text(
                   text,
                   style: TextStyle(
-                    color: cu.primaryTextColor.withValues(alpha: 0.94),
+                    color: cu.primaryTextColor.withOpacity(0.94),
                     fontSize: 13.5,
                     height: 1.4,
                     fontWeight: FontWeight.w500,
@@ -3245,7 +3244,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
           fontSize: 12.5,
           letterSpacing: 0.28,
           height: 1.35,
-          color: textoLabel.withValues(alpha: 0.92),
+          color: textoLabel.withOpacity(0.92),
         );
 
     return Column(
@@ -3271,7 +3270,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: Color.alphaBlend(
-                          bordaCampo.withValues(alpha: 0.55),
+                          bordaCampo.withOpacity(0.55),
                           campoBg,
                         ),
                       ),
@@ -3315,7 +3314,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: textoCampo.withValues(alpha: 0.72),
+                                      color: textoCampo.withOpacity(0.72),
                                       fontSize: 13,
                                     ),
                                   ),
@@ -3343,7 +3342,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: Color.alphaBlend(
-                        bordaCampo.withValues(alpha: 0.55),
+                        bordaCampo.withOpacity(0.55),
                         campoBg,
                       ),
                     ),
@@ -3352,13 +3351,13 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   child: Row(
                     children: [
                       Icon(Icons.info_outline,
-                          color: textoCampo.withValues(alpha: 0.6), size: 20),
+                          color: textoCampo.withOpacity(0.6), size: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           'Calcule o frete digitando seu CEP acima',
                           style: TextStyle(
-                              color: textoCampo.withValues(alpha: 0.72),
+                              color: textoCampo.withOpacity(0.72),
                               fontSize: 13),
                         ),
                       ),
@@ -3382,7 +3381,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: Color.alphaBlend(
-                      bordaCampo.withValues(alpha: 0.55),
+                      bordaCampo.withOpacity(0.55),
                       campoBg,
                     ),
                   ),
@@ -3450,7 +3449,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       decoration: InputDecoration(
                         hintText: 'Digite o cupom',
                         hintStyle: TextStyle(
-                          color: textoMutado.withValues(alpha: 0.88),
+                          color: textoMutado.withOpacity(0.88),
                           fontSize: 14,
                         ),
                         filled: true,
@@ -3463,7 +3462,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide(
                             color: Color.alphaBlend(
-                              bordaCampo.withValues(alpha: 0.55),
+                              bordaCampo.withOpacity(0.55),
                               campoBg,
                             ),
                           ),
@@ -3472,7 +3471,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           borderRadius: BorderRadius.circular(10),
                           borderSide: BorderSide(
                             color: Color.alphaBlend(
-                              bordaCampo.withValues(alpha: 0.55),
+                              bordaCampo.withOpacity(0.55),
                               campoBg,
                             ),
                           ),
@@ -3568,7 +3567,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: cu.secondaryActionTextColor,
                   side: BorderSide(
-                    color: cu.secondaryActionTextColor.withValues(alpha: 0.38),
+                    color: cu.secondaryActionTextColor.withOpacity(0.38),
                     width: 1.05,
                   ),
                   padding: EdgeInsets.symmetric(
@@ -3867,7 +3866,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final compact = MediaQuery.sizeOf(context).width < 420;
 
     final sidebarBorder = Color.alphaBlend(
-      cu.inputBorderColor.withValues(alpha: 0.4),
+      cu.inputBorderColor.withOpacity(0.4),
       cu.summaryCardBackground,
     );
 
@@ -3878,7 +3877,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         border: Border.all(color: sidebarBorder),
         boxShadow: [
           BoxShadow(
-            color: s.cardShadowColor.withValues(alpha: 0.12),
+            color: s.cardShadowColor.withOpacity(0.12),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -3900,7 +3899,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.35,
-                color: cu.sectionTitleColor.withValues(alpha: 0.88),
+                color: cu.sectionTitleColor.withOpacity(0.88),
               ),
             ),
             const SizedBox(height: 4),
@@ -3925,11 +3924,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(10),
                 color: Color.alphaBlend(
-                  s.panelGradientStart.withValues(alpha: 0.14),
+                  s.panelGradientStart.withOpacity(0.14),
                   cu.summaryCardBackground,
                 ),
                 border: Border.all(
-                  color: cu.inputBorderColor.withValues(alpha: 0.28),
+                  color: cu.inputBorderColor.withOpacity(0.28),
                 ),
               ),
               child: Column(
@@ -4012,7 +4011,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             fontWeight: FontWeight.w600,
                             fontSize: 13.5,
                             letterSpacing: -0.05,
-                            color: cu.summaryLabelColor.withValues(alpha: 0.95),
+                            color: cu.summaryLabelColor.withOpacity(0.95),
                           ),
                         ),
                       ),
@@ -4269,7 +4268,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: cu.pixButtonTextColor,
                     side: BorderSide(
-                      color: cu.pixButtonBorderColor.withValues(alpha: 0.85),
+                      color: cu.pixButtonBorderColor.withOpacity(0.85),
                       width: 1.1,
                     ),
                     padding: EdgeInsets.symmetric(vertical: compact ? 14 : 15),
@@ -4466,7 +4465,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: cu.secondaryActionTextColor,
                     side: BorderSide(
-                      color: cu.secondaryActionTextColor.withValues(alpha: 0.42),
+                      color: cu.secondaryActionTextColor.withOpacity(0.42),
                       width: 1.1,
                     ),
                     padding: EdgeInsets.symmetric(vertical: compact ? 14 : 15),
@@ -4634,7 +4633,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 fontSize: 13,
                 height: 1.3,
                 letterSpacing: -0.05,
-                color: lc.withValues(alpha: 0.94),
+                color: lc.withOpacity(0.94),
               ),
             ),
           ),
