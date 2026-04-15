@@ -770,171 +770,7 @@ insetPadding:
     // Clássico (visual minimal): rodapé com altura intrínseca + leve sobreposição na faixa clara do contain.
     final bool tightClassicFooter = classicMv && !widget.compact;
 
-    return MouseRegion(
-      onEnter: (_) {
-        if (!kIsWeb) return;
-        setState(() => _hovered = true);
-      },
-      onExit: (_) {
-        if (!kIsWeb) return;
-        setState(() => _hovered = false);
-      },
-      child: AnimatedContainer(
-        clipBehavior: Clip.antiAlias,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-        transform: (!kIsWeb && _hovered)
-            ? (Matrix4.identity()..scaleByVector3(Vector3(1.02, 1.02, 1.0)))
-            : Matrix4.identity(),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(widget.borderRadius),
-          border: Border.all(
-            color: _hovered
-                ? theme.colorScheme.primary.withValues(alpha:0.35)
-                : borderColor,
-          ),
-          boxShadow: widget.showShadow
-              ? (_hovered
-                  ? [
-                      BoxShadow(
-                        color: theme.colorScheme.primary.withValues(alpha:0.24),
-                        blurRadius: 18,
-                        offset: const Offset(0, 10),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha:0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 8),
-                      ),
-                    ])
-              : null,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              flex: tightClassicFooter ? 1 : imageFlex,
-              child: ClipRRect(
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(widget.borderRadius),
-                  topRight: Radius.circular(widget.borderRadius),
-                ),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: isMinimalPage ? _openDetails : _openGallery,
-                      child: Container(
-                        color: cardColor,
-                        width: double.infinity,
-                        height: double.infinity,
-                        child: CatalogImagePlaceholder(
-                          url: hasImg
-                              ? (widget.imagens.isNotEmpty
-                                  ? widget.imagens.first
-                                  : widget.imageUrl)
-                              : '',
-                          radius: BorderRadius.zero,
-                          // Padrão: contain + topCenter = foto inteira, cola no topo do card,
-                          // letterbox só embaixo (sem crop, sem zoom exagerado).
-                          // Minimalista: cover para preencher o slot como antes.
-                          fit: isMinimalPage
-                              ? BoxFit.cover
-                              : BoxFit.contain,
-                          alignment: isMinimalPage
-                              ? Alignment.center
-                              : Alignment.topCenter,
-                          cacheWidth: widget.imageCacheWidth ?? (kIsWeb ? 600 : 500),
-                          cacheHeight: widget.imageCacheHeight ?? (kIsWeb ? 800 : 667),
-                        ),
-                      ),
-                    ),
-                    if ((widget.catalogShareUrl != null && widget.catalogShareUrl!.isNotEmpty) ||
-                        widget.emPromocao ||
-                        (widget.isNovo && !widget.emPromocao) ||
-                        widget.ehCombo)
-                      Positioned(
-                        top: 8,
-                        left: 8,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (widget.catalogShareUrl != null &&
-                                widget.catalogShareUrl!.isNotEmpty)
-                              Material(
-                                color: Colors.white.withValues(alpha:0.9),
-                                shape: const CircleBorder(),
-                                child: InkWell(
-                                  onTap: _compartilharProduto,
-                                  customBorder: const CircleBorder(),
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(6),
-                                    child: Icon(Icons.share_outlined, size: 18, color: Colors.black87),
-                                  ),
-                                ),
-                              ),
-                            if (widget.catalogShareUrl != null &&
-                                widget.catalogShareUrl!.isNotEmpty &&
-                                (widget.emPromocao || widget.isNovo || widget.ehCombo))
-                              const SizedBox(width: 6),
-                            if (widget.ehCombo)
-                              _buildBadge('Kit', Colors.orange[700]!),
-                            if (widget.ehCombo && (widget.emPromocao || widget.isNovo))
-                              const SizedBox(width: 6),
-                            if (widget.emPromocao)
-                              _buildBadge(
-                                widget.percentualPromo > 0
-                                    ? '-${widget.percentualPromo.toStringAsFixed(0)}%'
-                                    : '-R\$ ${widget.valorPromo.toStringAsFixed(2).replaceAll('.', ',')}',
-                                Colors.red[700]!,
-                              ),
-                            if (widget.isNovo && !widget.emPromocao)
-                              _buildBadge('Novo', Colors.green[700]!),
-                          ],
-                        ),
-                      ),
-                    if (widget.showStockBadge && widget.quantidade > 0 && widget.quantidade <= 5)
-                      Positioned(
-                        bottom: 8,
-                        left: 8,
-                        child: _buildBadge(
-                          'Últimas ${widget.quantidade}',
-                          Colors.orange[700]!,
-                        ),
-                      ),
-                    if (widget.onToggleFavorito != null)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Material(
-                          color: Colors.white.withValues(alpha:0.9),
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            onTap: widget.onToggleFavorito,
-                            customBorder: const CircleBorder(),
-                            child: Padding(
-                              padding: const EdgeInsets.all(6),
-                              child: Icon(
-                                widget.isFavorito ? Icons.favorite : Icons.favorite_border,
-                                color: widget.isFavorito ? Colors.red : Colors.grey[700],
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            _CatalogFooterWrap(
-              tight: tightClassicFooter,
-              contentFlex: contentFlex,
-              child: LayoutBuilder(
+    final catalogFooterWidget = LayoutBuilder(
                 builder: (context, constraints) {
                   // Só limita a largura: maxHeight no filho faz o Column layoutar com teto finito
                   // e estourar *antes* do FittedBox aplicar escala (overflow 9–25px).
@@ -1666,42 +1502,185 @@ insetPadding:
                   }
                   return fitted;
                 },
+    );
+
+    return MouseRegion(
+      onEnter: (_) {
+        if (!kIsWeb) return;
+        setState(() => _hovered = true);
+      },
+      onExit: (_) {
+        if (!kIsWeb) return;
+        setState(() => _hovered = false);
+      },
+      child: AnimatedContainer(
+        clipBehavior: Clip.antiAlias,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        transform: (!kIsWeb && _hovered)
+            ? (Matrix4.identity()..scaleByVector3(Vector3(1.02, 1.02, 1.0)))
+            : Matrix4.identity(),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(widget.borderRadius),
+          border: Border.all(
+            color: _hovered
+                ? theme.colorScheme.primary.withValues(alpha:0.35)
+                : borderColor,
+          ),
+          boxShadow: widget.showShadow
+              ? (_hovered
+                  ? [
+                      BoxShadow(
+                        color: theme.colorScheme.primary.withValues(alpha:0.24),
+                        blurRadius: 18,
+                        offset: const Offset(0, 10),
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha:0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 8),
+                      ),
+                    ])
+              : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              flex: tightClassicFooter ? 1 : imageFlex,
+              child: ClipRRect(
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(widget.borderRadius),
+                  topRight: Radius.circular(widget.borderRadius),
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: isMinimalPage ? _openDetails : _openGallery,
+                      child: Container(
+                        color: cardColor,
+                        width: double.infinity,
+                        height: double.infinity,
+                        child: CatalogImagePlaceholder(
+                          url: hasImg
+                              ? (widget.imagens.isNotEmpty
+                                  ? widget.imagens.first
+                                  : widget.imageUrl)
+                              : '',
+                          radius: BorderRadius.zero,
+                          // Padrão: contain + topCenter = foto inteira, cola no topo do card,
+                          // letterbox só embaixo (sem crop, sem zoom exagerado).
+                          // Minimalista: cover para preencher o slot como antes.
+                          fit: isMinimalPage
+                              ? BoxFit.cover
+                              : BoxFit.contain,
+                          alignment: isMinimalPage
+                              ? Alignment.center
+                              : Alignment.topCenter,
+                          cacheWidth: widget.imageCacheWidth ?? (kIsWeb ? 600 : 500),
+                          cacheHeight: widget.imageCacheHeight ?? (kIsWeb ? 800 : 667),
+                        ),
+                      ),
+                    ),
+                    if ((widget.catalogShareUrl != null && widget.catalogShareUrl!.isNotEmpty) ||
+                        widget.emPromocao ||
+                        (widget.isNovo && !widget.emPromocao) ||
+                        widget.ehCombo)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (widget.catalogShareUrl != null &&
+                                widget.catalogShareUrl!.isNotEmpty)
+                              Material(
+                                color: Colors.white.withValues(alpha:0.9),
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  onTap: _compartilharProduto,
+                                  customBorder: const CircleBorder(),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(6),
+                                    child: Icon(Icons.share_outlined, size: 18, color: Colors.black87),
+                                  ),
+                                ),
+                              ),
+                            if (widget.catalogShareUrl != null &&
+                                widget.catalogShareUrl!.isNotEmpty &&
+                                (widget.emPromocao || widget.isNovo || widget.ehCombo))
+                              const SizedBox(width: 6),
+                            if (widget.ehCombo)
+                              _buildBadge('Kit', Colors.orange[700]!),
+                            if (widget.ehCombo && (widget.emPromocao || widget.isNovo))
+                              const SizedBox(width: 6),
+                            if (widget.emPromocao)
+                              _buildBadge(
+                                widget.percentualPromo > 0
+                                    ? '-${widget.percentualPromo.toStringAsFixed(0)}%'
+                                    : '-R\$ ${widget.valorPromo.toStringAsFixed(2).replaceAll('.', ',')}',
+                                Colors.red[700]!,
+                              ),
+                            if (widget.isNovo && !widget.emPromocao)
+                              _buildBadge('Novo', Colors.green[700]!),
+                          ],
+                        ),
+                      ),
+                    if (widget.showStockBadge && widget.quantidade > 0 && widget.quantidade <= 5)
+                      Positioned(
+                        bottom: 8,
+                        left: 8,
+                        child: _buildBadge(
+                          'Últimas ${widget.quantidade}',
+                          Colors.orange[700]!,
+                        ),
+                      ),
+                    if (widget.onToggleFavorito != null)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Material(
+                          color: Colors.white.withValues(alpha:0.9),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            onTap: widget.onToggleFavorito,
+                            customBorder: const CircleBorder(),
+                            child: Padding(
+                              padding: const EdgeInsets.all(6),
+                              child: Icon(
+                                widget.isFavorito ? Icons.favorite : Icons.favorite_border,
+                                color: widget.isFavorito ? Colors.red : Colors.grey[700],
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
+            if (tightClassicFooter)
+              Flexible(
+                fit: FlexFit.loose,
+                flex: 0,
+                child: catalogFooterWidget,
+              )
+            else
+              Expanded(
+                flex: contentFlex,
+                child: catalogFooterWidget,
+              ),
+
           ],
         ),
       ),
     );
   }
 }
-
-/// Envolve o rodapé do card: no clássico “tight” usa [Flexible] para altura intrínseca
-/// (sem vácuo abaixo dos botões); nos demais mantém [Expanded] com [contentFlex].
-class _CatalogFooterWrap extends StatelessWidget {
-  const _CatalogFooterWrap({
-    required this.tight,
-    required this.contentFlex,
-    required this.child,
-  });
-
-  final bool tight;
-  final int contentFlex;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    if (tight) {
-      return Flexible(
-        fit: FlexFit.loose,
-        flex: 0,
-        child: child,
-      );
-    }
-    return Expanded(
-      flex: contentFlex,
-      child: child,
-    );
-  }
-}
-
 
