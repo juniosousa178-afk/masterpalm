@@ -660,15 +660,15 @@ insetPadding:
       imageFlex = (imageFlex - flexShift).clamp(1, 999);
       contentFlex = contentFlex + flexShift;
     }
-    // Template minimal (página minimal ou card clássico “minimal”): mais área para texto/botões.
-    if (useMinimalVisual &&
+    // Só na página minimalista: altera fração imagem/conteúdo (clássico com classicMv não mexe na foto).
+    if (isMinimalPage &&
         widget.onAbrirCarrinho != null &&
         !widget.compact) {
       const int minimalFooterShift = 3;
       imageFlex = (imageFlex - minimalFooterShift).clamp(1, 999);
       contentFlex = contentFlex + minimalFooterShift;
     }
-    if (useMinimalVisual && !widget.compact && isLargeCard) {
+    if (isMinimalPage && !widget.compact && isLargeCard) {
       imageFlex = (imageFlex + 2).clamp(1, 999);
       contentFlex = (contentFlex - 2).clamp(1, 999);
     }
@@ -677,6 +677,13 @@ insetPadding:
       const int wideShift = 4;
       imageFlex = (imageFlex - wideShift).clamp(1, 999);
       contentFlex = contentFlex + wideShift;
+    }
+    // Clássico (template minimal) em telas estreitas: mais fração para a imagem.
+    // Mantém BoxFit.contain — só aumenta o slot; a foto aparece maior, sem zoom nem corte.
+    if (classicMv && !widget.compact && screenW < 640) {
+      const int classicMobileImageBoost = 3;
+      imageFlex = (imageFlex + classicMobileImageBoost).clamp(1, 999);
+      contentFlex = (contentFlex - classicMobileImageBoost).clamp(6, 999);
     }
     final titleSizeBase = useMinimalVisual
         ? (isLargeCard ? 13.5 : (isSmallCard ? 11.5 : 12.5))
@@ -723,7 +730,10 @@ insetPadding:
     final bool minimalComprarCarrinhoRow =
         useMinimalVisual && widget.onAbrirCarrinho != null;
     final double contentPadBottom = minimalComprarCarrinhoRow
-        ? contentVPad + 16.0
+        ? (classicMv
+            ? ((screenW < 640 ? contentVPad + 4.0 : contentVPad + 6.0))
+                .clamp(2.0, 999.0)
+            : contentVPad + 16.0)
         : (classicWideGrid && showComprarDiretoFooter
             ? (contentVPad - 2.0).clamp(2.0, 999.0)
             : contentVPad);
@@ -828,10 +838,10 @@ insetPadding:
                           // Padrão: contain + topCenter = foto inteira, cola no topo do card,
                           // letterbox só embaixo (sem crop, sem zoom exagerado).
                           // Minimalista: cover para preencher o slot como antes.
-                          fit: useMinimalVisual
+                          fit: isMinimalPage
                               ? BoxFit.cover
                               : BoxFit.contain,
-                          alignment: useMinimalVisual
+                          alignment: isMinimalPage
                               ? Alignment.center
                               : Alignment.topCenter,
                           cacheWidth: widget.imageCacheWidth ?? (kIsWeb ? 600 : 500),
@@ -1097,8 +1107,9 @@ insetPadding:
                       ),
                     ),
                   ),
-                    // Ancora a faixa de ações na base do bloco (com ou sem botão Comprar).
-                    if (classicWideGrid) const Spacer(),
+                    // Ancora ações na base do bloco de conteúdo (clássico: wide grid ou card estilo minimal).
+                    if (!widget.compact && (classicWideGrid || classicMv))
+                      const Spacer(),
                     SizedBox(
                       height: widget.compact
                           ? 3
