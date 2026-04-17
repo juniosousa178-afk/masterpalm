@@ -1,6 +1,7 @@
 // lib/models/produto.dart
 import 'package:hive/hive.dart';
 
+import '../core/combo_config_canonical.dart';
 import '../core/produto_variacao_extra.dart';
 
 part 'produto.g.dart';
@@ -154,6 +155,10 @@ class Produto extends HiveObject {
   @HiveField(39)
   List<Map<String, dynamic>>? itensCombo;
 
+  /// Combo configurável (grupos/opções). Se ausente ou sem `grupos`, mantém comportamento só com [itensCombo].
+  @HiveField(44)
+  Map<String, dynamic>? comboConfig;
+
   /// Data da última alteração (salvo/sincronizado). Usado para filtro "recentemente alterados".
   @HiveField(40)
   DateTime? updatedAt;
@@ -166,6 +171,14 @@ class Produto extends HiveObject {
   /// Nome ou identificação do fornecedor (opcional).
   @HiveField(42, defaultValue: '')
   String fornecedor;
+
+  /// Categorias adicionais associadas ao produto (além de [categoria]).
+  @HiveField(45, defaultValue: <String>[])
+  List<String> categoriasExtras;
+
+  /// Subcategorias adicionais associadas ao produto (além de [subcategoria]).
+  @HiveField(46, defaultValue: <String>[])
+  List<String> subcategoriasExtras;
 
   Produto({
     required this.nome,
@@ -209,12 +222,52 @@ class Produto extends HiveObject {
     this.precoPorTamanho,
     this.tipoProduto = 'simples',
     this.itensCombo,
+    this.comboConfig,
     this.updatedAt,
     this.custoEditadoNoCadastro = false,
     this.fornecedor = '',
+    this.categoriasExtras = const [],
+    this.subcategoriasExtras = const [],
   });
 
   bool get ehCombo => tipoProduto == 'combo';
+
+  List<String> get categoriasAssociadas {
+    final out = <String>[];
+    final seen = <String>{};
+    void addRaw(String raw) {
+      final v = raw.trim();
+      if (v.isEmpty) return;
+      final key = v.toLowerCase();
+      if (seen.add(key)) out.add(v);
+    }
+
+    addRaw(categoria);
+    for (final c in categoriasExtras) {
+      addRaw(c);
+    }
+    return out;
+  }
+
+  List<String> get subcategoriasAssociadas {
+    final out = <String>[];
+    final seen = <String>{};
+    void addRaw(String raw) {
+      final v = raw.trim();
+      if (v.isEmpty) return;
+      final key = v.toLowerCase();
+      if (seen.add(key)) out.add(v);
+    }
+
+    addRaw(subcategoria);
+    for (final s in subcategoriasExtras) {
+      addRaw(s);
+    }
+    return out;
+  }
+
+  /// `true` quando [comboConfig] tem `grupos` não vazio (Fase 2+ usa na UI; legado permanece em [itensCombo]).
+  bool get temComboConfigEfetivo => ComboConfigCanonical.isEffective(comboConfig);
 
   /// Calcula o preço com promoção aplicada
   double get precoComPromocao {
@@ -294,6 +347,7 @@ class Produto extends HiveObject {
       precoPorTamanho: null,
       tipoProduto: 'simples',
       itensCombo: null,
+      comboConfig: null,
       custoEditadoNoCadastro: false,
       fornecedor: '',
     );

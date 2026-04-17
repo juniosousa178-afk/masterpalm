@@ -58,6 +58,8 @@ export const RATE_LIMITS = {
   syncPlanSubscription: { maxPerMin: 20, windowMs: 60_000 },
   /** Suporte root: leitura de snapshot de outra conta (sem escrita) */
   getPlanBillingSnapshotForSupport: { maxPerMin: 40, windowMs: 60_000 },
+  /** Suporte root: forense leve catálogo MP (somente leitura) */
+  getMpCatalogPaymentSupportSnapshot: { maxPerMin: 25, windowMs: 60_000 },
 
   // Cliente catálogo: perfil, carrinho, favoritos (uso legítimo frequente)
   getClienteCatalog: { maxPerMin: 60, windowMs: 60_000 },
@@ -66,6 +68,9 @@ export const RATE_LIMITS = {
   // Domínio próprio catálogo (CNAME + catalog_domains)
   catalogDomainSubmitRequest: { maxPerMin: 12, windowMs: 60_000 },
   catalogDomainVerifyDns: { maxPerMin: 24, windowMs: 60_000 },
+
+  /** Catálogo MP: por par loja+pedido (evita replay/spam na mesma ordem) */
+  mpCatalogPayment: { maxPerMin: 8, windowMs: 60_000 },
 
   // IA loja: SEM rate limit (limite fica apenas nas APIs OpenAI/Gemini)
   // Endpoints removidos para evitar bloqueio indevido; usuários que pagam OpenAI não devem ser limitados pelo app.
@@ -168,6 +173,14 @@ export async function checkRateLimit(endpoint, identifier) {
 
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
+/** TTL curto para reutilizar resposta MP sem nova cobrança (QR/link ainda válidos na prática). */
+const IDEMPOTENCY_TTL_MP_CATALOG_MS = 10 * 60 * 1000; // 10 min
+
+export function getIdempotencyTtlMs(endpoint) {
+  if (endpoint === "mpCatalogPayment") return IDEMPOTENCY_TTL_MP_CATALOG_MS;
+  return IDEMPOTENCY_TTL_MS;
+}
+
 /**
  * Verifica idempotência. Se a chave já foi processada, retorna o resultado salvo.
  *
@@ -186,10 +199,12 @@ export async function checkIdempotency(endpoint, idempotencyKey) {
   const ref = getDb().collection(IDEMPOTENCY_COL).doc(docId);
   const doc = await ref.get();
 
+  const ttlMs = getIdempotencyTtlMs(endpoint);
+
   if (doc.exists) {
     const data = doc.data() || {};
     const createdAt = data.createdAt?.toMillis?.() || 0;
-    if (Date.now() - createdAt < IDEMPOTENCY_TTL_MS) {
+    if (Date.now() - createdAt < ttlMs) {
       return { hit: true, result: data.result };
     }
     // TTL expirado: pode reprocessar

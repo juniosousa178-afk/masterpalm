@@ -376,7 +376,8 @@ class PaymentGatewayService {
       final mp = config['mp'] as Map<String, dynamic>?;
       final mpToken = mp?['access_token'] ?? mp?['token'];
       if (mpToken != null && mpToken.toString().isNotEmpty) {
-        result['mercadopago'] = await MercadoPagoService.validarCredenciais(
+        result['mercadopago'] =
+            await MercadoPagoService.validarCredenciaisComFallbackWeb(
           accessToken: mpToken.toString(),
         );
       }

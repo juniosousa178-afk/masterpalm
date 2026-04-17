@@ -18,6 +18,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
 import 'package:flutter/material.dart';
@@ -2334,6 +2335,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         quantidade: p.quantidade,
         precoUnitario: p.precoUnitario,
         categoria: p.categoria,
+        categoriasExtras: List.from(p.categoriasExtras),
         dataEntrada: p.dataEntrada,
         descricao: p.descricao,
         imagens: List.from(p.imagens),
@@ -2341,6 +2343,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         slug: '',
         tamanhos: List.from(p.tamanhos),
         subcategoria: p.subcategoria,
+        subcategoriasExtras: List.from(p.subcategoriasExtras),
         estoquePorTamanho: Map.from(p.estoquePorTamanho),
         cores: List.from(p.cores),
         ativoNoRascunho: p.ativoNoRascunho,
@@ -2365,6 +2368,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         precoPorTamanho: p.precoPorTamanho != null ? Map.from(p.precoPorTamanho!) : null,
         tipoProduto: p.tipoProduto,
         itensCombo: p.itensCombo?.map((e) => Map<String, dynamic>.from(e)).toList(),
+        comboConfig: p.comboConfig != null
+            ? ComboConfigCanonical.copyMap(p.comboConfig)
+            : null,
         custoEditadoNoCadastro: true,
         updatedAt: DateTime.now(),
       );
@@ -3744,13 +3750,25 @@ String _formatGradeTexto(Produto p) {
   // Statistics
   // ---------------------------------------------------------------------------
 
-  int get _totalProdutos => _box.values.length;
-  int get _totalEstoque => _box.values.fold(0, (acc, p) => acc + p.quantidade);
+  /// Itens que compõem inventário físico. Combos (`ehCombo`) não entram: quantidade/valor
+  /// já estão nos produtos componentes.
+  Iterable<Produto> get _produtosInventarioFisico =>
+      _box.values.where((p) => !p.ehCombo);
+
+  int get _totalProdutos => _produtosInventarioFisico.length;
+  int get _totalEstoque =>
+      _produtosInventarioFisico.fold(0, (acc, p) => acc + p.quantidade);
   int get _totalPublicados => _box.values.where((p) => p.publicadoNoCatalogo).length;
-  /// Custo total (custo real × quantidade de todos os produtos)
-  double get _custoTotal => _box.values.fold(0.0, (acc, p) => acc + (p.custoReal * p.quantidade));
-  /// Valor de venda total (preço final × quantidade de todos os produtos)
-  double get _valorTotal => _box.values.fold(0.0, (acc, p) => acc + (p.precoFinal * p.quantidade));
+  /// Custo total (custo real × quantidade; sem combos)
+  double get _custoTotal => _produtosInventarioFisico.fold(
+        0.0,
+        (acc, p) => acc + (p.custoReal * p.quantidade),
+      );
+  /// Valor de venda total (preço final × quantidade; sem combos)
+  double get _valorTotal => _produtosInventarioFisico.fold(
+        0.0,
+        (acc, p) => acc + (p.precoFinal * p.quantidade),
+      );
 
   // ---------------------------------------------------------------------------
   // UI

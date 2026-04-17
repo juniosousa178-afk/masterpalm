@@ -14,12 +14,12 @@ import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../utils/http_client_helper.dart';
+import '../utils/mp_checkout_error_messages.dart';
 import '../widgets/smart_image.dart';
 import '../services/store_resolver_facade.dart';
 import '../widgets/campanha_banner_widget.dart';
 import '../services/catalogo_venda_service.dart';
 import '../services/pre_pedido_service.dart';
-import '../services/mercadopago_service.dart';
 import 'auth/login_screen_cliente.dart';
 import 'package:master_palm/screens/auth/cadastro_screen_cliente.dart';
 import 'auth/perfil_cliente_screen_novo.dart';
@@ -29,10 +29,12 @@ import '../services/catalog_cache_service.dart';
 import '../services/catalog_recent_service.dart';
 import '../services/catalog_share_service.dart';
 import '../services/catalog_visitas_service.dart';
+import '../services/pagamentos_service.dart';
 
 import '../utils/instagram_launcher.dart';
 import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
+import '../core/combo_config_canonical.dart';
 import '../catalog/catalog_layout_config.dart';
 import 'public_catalog/catalog_helpers.dart';
 import 'public_catalog/catalog_best_sellers_helper.dart';
@@ -56,6 +58,7 @@ import 'public_catalog/widgets/catalog_loading_state.dart';
 import 'public_catalog/widgets/catalog_search_filters_bar.dart';
 import 'public_catalog/catalog_variation_filter.dart';
 import 'public_catalog/catalog_url_query_codec.dart';
+import 'public_catalog/catalog_deep_link_resolve.dart';
 import 'public_catalog/catalog_url_variation_sync.dart';
 import 'public_catalog/widgets/catalog_products_grid_sliver.dart';
 import 'public_catalog/widgets/catalog_recent_section_sliver.dart';
@@ -244,6 +247,31 @@ List<Map<String, dynamic>> _processDocsToProducts(
               '')
           .toString()
           .trim();
+      List<String> parseStringList(dynamic raw) {
+        if (raw is! List) return const [];
+        return raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+      }
+
+      List<String> dedupeKeepOrder(Iterable<String> values) {
+        final out = <String>[];
+        final seen = <String>{};
+        for (final v in values) {
+          final n = v.toLowerCase();
+          if (seen.add(n)) out.add(v);
+        }
+        return out;
+      }
+
+      final categoriasAssociadas = dedupeKeepOrder([
+        categoria,
+        ...parseStringList(m['categoriasAssociadas']),
+        ...parseStringList(m['categoriasExtras']),
+      ]);
+      final subcategoriasAssociadas = dedupeKeepOrder([
+        subcategoria,
+        ...parseStringList(m['subcategoriasAssociadas']),
+        ...parseStringList(m['subcategoriasExtras']),
+      ]);
 
       String principal =
           (m['imagem_principal'] ?? m['imageUrl'] ?? '').toString();
@@ -357,6 +385,8 @@ List<Map<String, dynamic>> _processDocsToProducts(
       }
       final tipoProduto =
           (m['tipoProduto'] ?? m['tipo'] ?? 'simples').toString();
+      final comboConfigCatalogo =
+          ComboConfigCanonical.parseFromFirestore(m['comboConfig']);
 
       produtos.add({
         'id': d.id,
@@ -372,6 +402,8 @@ List<Map<String, dynamic>> _processDocsToProducts(
         'imagens': imagens,
         'categoria': categoria,
         'subcategoria': subcategoria,
+        'categoriasAssociadas': categoriasAssociadas,
+        'subcategoriasAssociadas': subcategoriasAssociadas,
         'slug': m['slug'] ?? '',
         'peso': (m['peso'] is num) ? (m['peso'] as num).toDouble() : 0.0,
         'tipoEmbalagem': m['tipoEmbalagem'] ?? 'padrao',
@@ -413,6 +445,7 @@ List<Map<String, dynamic>> _processDocsToProducts(
                 ? (m['descontoComboPercentual'] as num).toDouble()
                 : 0.0,
         },
+        if (comboConfigCatalogo != null) 'comboConfig': comboConfigCatalogo,
         'vendasScoreCatalogo': vendasScoreFromFirestoreMap(m),
       });
     } catch (e, st) {
@@ -892,14 +925,57 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (cat == null || cat.isEmpty) return const [];
     final set = <String>{};
     for (final p in produtos) {
-      final c = (p['categoria'] ?? p['categoriaId'] ?? '').toString().trim();
-      if (c != cat) continue;
-      final s =
-          (p['subcategoria'] ?? p['subcategoriaId'] ?? '').toString().trim();
-      if (s.isNotEmpty) set.add(s);
+      if (!_produtoTemCategoria(p, cat)) continue;
+      for (final s in _produtoSubcategoriasAssociadas(p)) {
+        if (s.isNotEmpty) set.add(s);
+      }
     }
     final list = set.toList()..sort();
     return list;
+  }
+
+  List<String> _stringListFromAny(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
+  List<String> _dedupeLowerKeepOrder(Iterable<String> values) {
+    final out = <String>[];
+    final seen = <String>{};
+    for (final v in values) {
+      final t = v.trim();
+      if (t.isEmpty) continue;
+      final n = t.toLowerCase();
+      if (seen.add(n)) out.add(t);
+    }
+    return out;
+  }
+
+  List<String> _produtoCategoriasAssociadas(Map<String, dynamic> p) {
+    final cat = (p['categoria'] ?? p['categoriaId'] ?? '').toString().trim();
+    final fromAssoc = _stringListFromAny(p['categoriasAssociadas']);
+    final fromExtras = _stringListFromAny(p['categoriasExtras']);
+    return _dedupeLowerKeepOrder([cat, ...fromAssoc, ...fromExtras]);
+  }
+
+  List<String> _produtoSubcategoriasAssociadas(Map<String, dynamic> p) {
+    final sub = (p['subcategoria'] ?? p['subcategoriaId'] ?? '').toString().trim();
+    final fromAssoc = _stringListFromAny(p['subcategoriasAssociadas']);
+    final fromExtras = _stringListFromAny(p['subcategoriasExtras']);
+    return _dedupeLowerKeepOrder([sub, ...fromAssoc, ...fromExtras]);
+  }
+
+  bool _produtoTemCategoria(Map<String, dynamic> p, String? categoria) {
+    if (categoria == null || categoria.isEmpty) return true;
+    return _produtoCategoriasAssociadas(p).contains(categoria);
+  }
+
+  bool _produtoTemSubcategoria(Map<String, dynamic> p, String? subcategoria) {
+    if (subcategoria == null || subcategoria.isEmpty) return true;
+    return _produtoSubcategoriasAssociadas(p).contains(subcategoria);
   }
 
   String? _canonicalSubcategoriaNaLista(String raw, List<String> subs) {
@@ -1215,7 +1291,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final pu = _catalogUrlProd!.trim();
       if (pu.isNotEmpty) {
         for (final p in produtos) {
-          if (_matchesProdutoDeepLink(p, pu)) {
+          if (catalogProdutoMatchesDeepLinkTarget(p, pu)) {
             focused = p;
             break;
           }
@@ -1487,25 +1563,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _syncCatalogQueryToBrowserUri();
   }
 
-  String _normalizeProdutoKey(String raw) {
-    return raw
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-        .replaceAll(RegExp(r'-+'), '-')
-        .replaceAll(RegExp(r'^-|-$'), '');
-  }
-
-  bool _matchesProdutoDeepLink(Map<String, dynamic> produto, String target) {
-    final id = safeStr(produto['id']).trim();
-    final slug = safeStr(produto['slug']).trim();
-    if (id.isNotEmpty && id == target) return true;
-    if (slug.isNotEmpty && slug == target) return true;
-    final normalizedTarget = _normalizeProdutoKey(target);
-    return (id.isNotEmpty && _normalizeProdutoKey(id) == normalizedTarget) ||
-        (slug.isNotEmpty && _normalizeProdutoKey(slug) == normalizedTarget);
-  }
-
   void _tryHandleInitialProdutoDeepLink({
     required List<Map<String, dynamic>> produtos,
     required bool useMinimalLayout,
@@ -1516,10 +1573,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (produtos.isEmpty) return;
     _initialProdutoHandled = true;
 
-    final product = produtos.cast<Map<String, dynamic>?>().firstWhere(
-          (p) => p != null && _matchesProdutoDeepLink(p, target),
-          orElse: () => null,
-        );
+    final product = resolveCatalogDeepLinkProduct(
+      produtos: produtos,
+      targetRaw: target,
+    );
 
     if (product == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2379,7 +2436,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
     final String cfgCol = widget.preview ? 'draft_config' : 'config';
     final configRef = baseRef.collection(cfgCol).doc('config');
-    final paymentsRef = baseRef.collection(cfgCol).doc('payments');
+    final paymentsDocId = cfgCol == 'config' ? 'payments_public' : 'payments';
+    final paymentsRef = baseRef.collection(cfgCol).doc(paymentsDocId);
 
     logD('═══════════════════════════════════════════════════════════');
     logD('🔥 [CATÁLOGO] CONFIGURAÇÃO');
@@ -2700,6 +2758,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       if (draftPaySnap.exists) {
         await livePayRef.set(
             asMapDeep(draftPaySnap.data() ?? {}), SetOptions(merge: true));
+        await PagamentosService.syncPaymentsPublic(lojaId);
       }
 
       _snack('Catálogo publicado com sucesso!');
@@ -3306,198 +3365,75 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     '💰 Criando pagamento - Valor total: R\$ ${valorTotal.toStringAsFixed(2)}');
                 Map<String, dynamic>? paymentData;
 
-                // Na WEB: usar Cloud Function (evita CORS ao chamar api.mercadopago.com)
-                if (kIsWeb) {
-                  try {
-                    final paymentOrigin = Uri.base.origin;
-                    final body = <String, dynamic>{
-                      'lojaId': lojaId,
-                      'type': isPix ? 'pix' : 'preference',
-                      if (isPix) ...{
-                        'valor': valorTotal,
-                        'descricao': 'Pedido #$pedidoId',
-                        'email': customer['email']?.toString(),
-                        'cpf': customer['cpf']?.toString(),
-                        'externalReference': pedidoId,
-                      } else ...{
-                        'titulo': 'Pedido #$pedidoId',
-                        'valor': valorTotal,
-                        'quantidade': 1,
-                        'descricao': 'Compra em $lojaId',
-                        'externalReference': pedidoId,
-                        'payer': customer['email'] != null
-                            ? {'email': customer['email'].toString()}
-                            : null,
-                        if (maxInstallmentsSemJuros != null)
-                          'maxInstallments': maxInstallmentsSemJuros,
-                        if (maxInstallmentsSemJuros != null)
-                          'paymentMethods': {
-                            'installments': maxInstallmentsSemJuros,
-                          },
-                        'backUrls': {
-                          'success':
-                              '$paymentOrigin/pagamento/sucesso?loja=$lojaId',
-                          'failure':
-                              '$paymentOrigin/pagamento/falha?loja=$lojaId',
-                          'pending':
-                              '$paymentOrigin/pagamento/pendente?loja=$lojaId',
+                // Sempre mpCatalogPayment: valor canônico vem do pré-pedido no servidor (sem token no cliente).
+                try {
+                  final paymentOrigin =
+                      kIsWeb ? Uri.base.origin : 'https://app.mastepalm.com.br';
+                  final body = <String, dynamic>{
+                    'lojaId': lojaId,
+                    'orderId': pedidoId,
+                    'externalReference': pedidoId,
+                    'type': isPix ? 'pix' : 'preference',
+                    if (isPix) ...{
+                      'descricao': 'Pedido #$pedidoId',
+                      'email': customer['email']?.toString(),
+                      'cpf': customer['cpf']?.toString(),
+                    } else ...{
+                      'titulo': 'Pedido #$pedidoId',
+                      'quantidade': 1,
+                      'descricao': 'Compra em $lojaId',
+                      'payer': customer['email'] != null
+                          ? {'email': customer['email'].toString()}
+                          : null,
+                      if (maxInstallmentsSemJuros != null)
+                        'maxInstallments': maxInstallmentsSemJuros,
+                      if (maxInstallmentsSemJuros != null)
+                        'paymentMethods': {
+                          'installments': maxInstallmentsSemJuros,
                         },
+                      'backUrls': {
+                        'success':
+                            '$paymentOrigin/pagamento/sucesso?loja=$lojaId',
+                        'failure':
+                            '$paymentOrigin/pagamento/falha?loja=$lojaId',
+                        'pending':
+                            '$paymentOrigin/pagamento/pendente?loja=$lojaId',
                       },
-                    };
-                    final response = await HttpClientHelper.post(
-                      Uri.parse(kMpCatalogPaymentUrl),
-                      headers: {'Content-Type': 'application/json'},
-                      body: jsonEncode(body),
-                      timeout: HttpTimeouts.payment,
-                    );
-                    if (response.statusCode >= 200 &&
-                        response.statusCode < 300) {
-                      final data = asMap(jsonDecode(response.body));
-                      paymentData = data;
-                    } else {
-                      String errMsg =
-                          'Erro ao criar pagamento no Mercado Pago. Tente novamente.';
-                      if (response.body.isNotEmpty) {
-                        try {
-                          final errJson = asMap(jsonDecode(response.body));
-                          if (errJson['error'] != null) {
-                            errMsg = errJson['error'].toString();
-                            if (errMsg.toLowerCase().contains('bad_request') ||
-                                errMsg == 'bad_request') {
-                              errMsg =
-                                  'Dados inválidos para PIX. Verifique e-mail e CPF e tente novamente.';
-                            }
+                    },
+                  };
+                  final response = await HttpClientHelper.post(
+                    Uri.parse(kMpCatalogPaymentUrl),
+                    headers: {'Content-Type': 'application/json'},
+                    body: jsonEncode(body),
+                    timeout: HttpTimeouts.payment,
+                  );
+                  if (response.statusCode >= 200 && response.statusCode < 300) {
+                    paymentData = asMap(jsonDecode(response.body));
+                  } else {
+                    String errMsg =
+                        'Erro ao criar pagamento no Mercado Pago. Tente novamente.';
+                    if (response.body.isNotEmpty) {
+                      try {
+                        final errJson = asMap(jsonDecode(response.body));
+                        final friendly =
+                            userMessageForMpCheckoutErrorJson(errJson);
+                        if (friendly != null) {
+                          errMsg = friendly;
+                        } else if (errJson['error'] != null) {
+                          errMsg = errJson['error'].toString();
+                          if (errMsg.toLowerCase().contains('bad_request') ||
+                              errMsg == 'bad_request') {
+                            errMsg =
+                                'Dados inválidos para PIX. Verifique e-mail e CPF e tente novamente.';
                           }
-                        } catch (_) {}
-                      }
-                      showErr(errMsg);
-                      return;
+                        }
+                      } catch (_) {}
                     }
-                  } catch (e) {
-                    logD('❌ [WEB] mpCatalogPayment (type=${e.runtimeType})');
-                    showErr(
-                        'Erro ao criar pagamento no Mercado Pago. Tente novamente.');
+                    showErr(errMsg);
                     return;
                   }
-                } else {
-                  // APK/App: chamada direta à API; em falha usa Cloud Function (fallback)
-                  try {
-                    final configDoc = await FirebaseFirestore.instance
-                        .collection('lojas')
-                        .doc(lojaId)
-                        .collection('config')
-                        .doc('payments')
-                        .get();
-
-                    if (!configDoc.exists) {
-                      showErr('Configurações de pagamento não encontradas.');
-                      return;
-                    }
-
-                    final config = asMapDeep(configDoc.data() ?? {});
-                    final mp = asMap(config['mp']);
-                    final accessToken = mp['access_token'] ?? mp['token'];
-
-                    if (accessToken == null || accessToken.toString().isEmpty) {
-                      showErr(
-                          'Access Token do Mercado Pago não configurado. Configure em Ajustes > Pagamentos.');
-                      return;
-                    }
-
-                    if (isPix) {
-                      logD('💳 Gerando PIX...');
-                      paymentData = await MercadoPagoService.criarPagamentoPix(
-                        accessToken: accessToken.toString(),
-                        valor: valorTotal,
-                        descricao: 'Pedido #$pedidoId',
-                        email: customer['email']?.toString(),
-                        cpf: customer['cpf']?.toString(),
-                        externalReference: pedidoId,
-                        lojaId: lojaId,
-                      );
-                    } else {
-                      logD('💳 Criando checkout para cartão...');
-                      const baseUrl = 'https://app.mastepalm.com.br';
-                      paymentData = await MercadoPagoService.criarPreferencia(
-                        accessToken: accessToken.toString(),
-                        titulo: 'Pedido #$pedidoId',
-                        valor: valorTotal,
-                        quantidade: 1,
-                        descricao: 'Compra em $lojaId',
-                        externalReference: pedidoId,
-                        lojaId: lojaId,
-                        payer: customer['email'] != null
-                            ? {'email': customer['email'].toString()}
-                            : null,
-                        maxInstallments: maxInstallmentsSemJuros,
-                        backUrls: {
-                          'success': '$baseUrl/pagamento/sucesso?loja=$lojaId',
-                          'failure': '$baseUrl/pagamento/falha?loja=$lojaId',
-                          'pending': '$baseUrl/pagamento/pendente?loja=$lojaId',
-                        },
-                      );
-                    }
-                  } catch (e) {
-                    logD(
-                        '❌ [APK] Mercado Pago direto falhou, usando Cloud Function (type=${e.runtimeType})');
-                    paymentData = null;
-                  }
-                  // Fallback APK: usar proxy (mesma URL da web) se chamada direta falhou
-                  if (paymentData == null) {
-                    try {
-                      final body = <String, dynamic>{
-                        'lojaId': lojaId,
-                        'type': isPix ? 'pix' : 'preference',
-                        if (isPix) ...{
-                          'valor': valorTotal,
-                          'descricao': 'Pedido #$pedidoId',
-                          'email': customer['email']?.toString(),
-                          'cpf': customer['cpf']?.toString(),
-                          'externalReference': pedidoId,
-                        } else ...{
-                          'titulo': 'Pedido #$pedidoId',
-                          'valor': valorTotal,
-                          'quantidade': 1,
-                          'descricao': 'Compra em $lojaId',
-                          'externalReference': pedidoId,
-                          'payer': customer['email'] != null
-                              ? {'email': customer['email'].toString()}
-                              : null,
-                          if (maxInstallmentsSemJuros != null)
-                            'maxInstallments': maxInstallmentsSemJuros,
-                          if (maxInstallmentsSemJuros != null)
-                            'paymentMethods': {
-                              'installments': maxInstallmentsSemJuros,
-                            },
-                          'backUrls': {
-                            'success':
-                                'https://app.mastepalm.com.br/pagamento/sucesso?loja=$lojaId',
-                            'failure':
-                                'https://app.mastepalm.com.br/pagamento/falha?loja=$lojaId',
-                            'pending':
-                                'https://app.mastepalm.com.br/pagamento/pendente?loja=$lojaId',
-                          },
-                        },
-                      };
-                      final response = await HttpClientHelper.post(
-                        Uri.parse(kMpCatalogPaymentUrl),
-                        headers: {'Content-Type': 'application/json'},
-                        body: jsonEncode(body),
-                        timeout: HttpTimeouts.payment,
-                      );
-                      if (response.statusCode >= 200 &&
-                          response.statusCode < 300) {
-                        final data = asMap(jsonDecode(response.body));
-                        paymentData = data;
-                      }
-                    } catch (e2) {
-                      logD(
-                          '❌ [APK] Fallback mpCatalogPayment (type=${e2.runtimeType})');
-                    }
-                  }
-                }
-
-                if (paymentData == null) {
+                } catch (e) {
+                  logD('❌ mpCatalogPayment (type=${e.runtimeType})');
                   showErr(
                       'Erro ao criar pagamento no Mercado Pago. Tente novamente.');
                   return;
@@ -4543,12 +4479,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final categoriasSet = <String>{};
                 final categoryAliasesByName = <String, Set<String>>{};
                 for (final p in produtos) {
-                  final c = (p['categoria'] ?? p['categoriaId'] ?? '')
-                      .toString()
-                      .trim();
-                  if (c.isNotEmpty) {
+                  for (final c in _produtoCategoriasAssociadas(p)) {
                     categoriasSet.add(c);
-                    final aliases = categoryAliasesByName.putIfAbsent(c, () => <String>{});
+                    final aliases =
+                        categoryAliasesByName.putIfAbsent(c, () => <String>{});
                     final cid = (p['categoriaId'] ?? '').toString().trim();
                     if (cid.isNotEmpty) aliases.add(cid);
                     aliases.add(c.toLowerCase());
@@ -4772,18 +4706,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                   ...categoriasMenu.expand((cat) {
                                     final subcategoriasSet = <String>{};
                                     for (final p in produtos) {
-                                      final c = (p['categoria'] ??
-                                              p['categoriaId'] ??
-                                              '')
-                                          .toString()
-                                          .trim();
-                                      final sub = (p['subcategoria'] ??
-                                              p['subcategoriaId'] ??
-                                              '')
-                                          .toString()
-                                          .trim();
-                                      if (c == cat && sub.isNotEmpty) {
-                                        subcategoriasSet.add(sub);
+                                      if (_produtoTemCategoria(p, cat)) {
+                                        for (final sub
+                                            in _produtoSubcategoriasAssociadas(p)) {
+                                          if (sub.isNotEmpty) {
+                                            subcategoriasSet.add(sub);
+                                          }
+                                        }
                                       }
                                     }
                                     final subcategorias =
@@ -5575,28 +5504,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       final isDesktopBody = c.maxWidth >= 1024;
                                       bool matchCategoriaSub(
                                           Map<String, dynamic> p) {
-                                        final cat = (p['categoria'] ??
-                                                p['categoriaId'] ??
-                                                '')
-                                            .toString()
-                                            .trim();
-                                        final matchCat =
-                                            _selectedCategory == null ||
-                                                    _selectedCategory!.isEmpty
-                                                ? true
-                                                : cat == _selectedCategory;
-                                        final subcat = (p['subcategoria'] ??
-                                                p['subcategoriaId'] ??
-                                                '')
-                                            .toString()
-                                            .trim();
+                                        final matchCat = _produtoTemCategoria(
+                                          p,
+                                          _selectedCategory,
+                                        );
                                         final matchSubcat =
-                                            _selectedSubcategory == null ||
-                                                    _selectedSubcategory!
-                                                        .isEmpty
-                                                ? true
-                                                : subcat ==
-                                                    _selectedSubcategory;
+                                            _produtoTemSubcategoria(
+                                          p,
+                                          _selectedSubcategory,
+                                        );
                                         return matchCat && matchSubcat;
                                       }
 
@@ -5796,6 +5712,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           .take(_produtosPorPagina)
                                           .toList();
 
+                                      final minimalSubcats = useMinimalLayout &&
+                                              _selectedCategory != null
+                                          ? _subcategoriasDisponiveisParaCategoria(
+                                              _selectedCategory,
+                                              produtos,
+                                            )
+                                          : <String>[];
+
                                       final scrollBody = CustomScrollView(
                                         controller: _catalogScrollController,
                                         cacheExtent: 800,
@@ -5844,6 +5768,35 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     },
                                                     textColor: textColor,
                                                     fallbackBg: cardColor,
+                                                  ),
+                                                if (useMinimalLayout &&
+                                                    _selectedCategory != null &&
+                                                    minimalSubcats.isNotEmpty)
+                                                  CatalogMinimalSubcategoryStrip(
+                                                    subcategories: minimalSubcats,
+                                                    selectedSubcategory:
+                                                        _selectedSubcategory,
+                                                    primaryColor: primaryColor,
+                                                    textColor: textColor,
+                                                    surfaceColor: cardColor,
+                                                    onSelectAll: () {
+                                                      setState(() {
+                                                        _selectedSubcategory =
+                                                            null;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                      _syncCatalogQueryToBrowserUri();
+                                                    },
+                                                    onSelectSub: (sub) {
+                                                      setState(() {
+                                                        _selectedSubcategory =
+                                                            sub;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                      _syncCatalogQueryToBrowserUri();
+                                                    },
                                                   ),
                                                 if (useMinimalLayout)
                                                   CatalogMinimalHeroBanner(

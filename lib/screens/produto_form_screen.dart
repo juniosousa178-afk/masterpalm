@@ -143,6 +143,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   final _preco = TextEditingController();
   final _categoria = TextEditingController();
   final _subcategoria = TextEditingController();
+  final _categoriaExtraInput = TextEditingController();
+  final _subcategoriaExtraInput = TextEditingController();
+  final Set<String> _categoriasExtrasSelecionadas = <String>{};
+  final Set<String> _subcategoriasExtrasSelecionadas = <String>{};
   final _descricao = TextEditingController();
   final _peso = TextEditingController(text: '0');
   /// Unidade do peso: 'g' (padrão) ou 'kg'
@@ -221,6 +225,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _preco.text = MoedaInputFormatter.format(p.precoFinal);
       _categoria.text = p.categoria;
       _subcategoria.text = p.subcategoria;
+      _categoriasExtrasSelecionadas
+          .addAll(p.categoriasExtras.map((e) => canonicalizeCategoria(e)));
+      _subcategoriasExtrasSelecionadas
+          .addAll(p.subcategoriasExtras.map((e) => canonicalizeCategoria(e)));
       _descricao.text = p.descricao;
       _peso.text = p.peso >= 1000 ? (p.peso / 1000).toStringAsFixed(2) : p.peso.toStringAsFixed(0);
       _pesoUnidade = p.peso >= 1000 ? 'kg' : 'g';
@@ -636,6 +644,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     _preco.dispose();
     _categoria.dispose();
     _subcategoria.dispose();
+    _categoriaExtraInput.dispose();
+    _subcategoriaExtraInput.dispose();
     _descricao.dispose();
     _peso.dispose();
     _codigoBarras.dispose();
@@ -928,6 +938,17 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
       final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
       final maxParcelasSemJuros = (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
+      final categoriaPrincipal = canonicalizeCategoria(_categoria.text.trim());
+      final subcategoriaPrincipal =
+          canonicalizeCategoria(_subcategoria.text.trim());
+      final categoriasExtras = _extrasSemPrincipal(
+        _categoriasExtrasSelecionadas,
+        categoriaPrincipal,
+      );
+      final subcategoriasExtras = _extrasSemPrincipal(
+        _subcategoriasExtrasSelecionadas,
+        subcategoriaPrincipal,
+      );
       double? percentualPromo;
       double? valorPromo;
       if (_emPromocao) {
@@ -943,8 +964,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..custoReal = custo
         ..precoFinal = preco
         ..precoUnitario = preco
-        ..categoria = canonicalizeCategoria(_categoria.text.trim())
-        ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
+        ..categoria = categoriaPrincipal
+        ..subcategoria = subcategoriaPrincipal
+        ..categoriasExtras = categoriasExtras
+        ..subcategoriasExtras = subcategoriasExtras
         ..descricao = _descricao.text.trim()
         ..imagens = List.from(_imagens)
         ..publicadoNoCatalogo = _publicar
@@ -1361,6 +1384,17 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
       final maxParcelasSemJuros =
           (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
+      final categoriaPrincipal = canonicalizeCategoria(_categoria.text.trim());
+      final subcategoriaPrincipal =
+          canonicalizeCategoria(_subcategoria.text.trim());
+      final categoriasExtras = _extrasSemPrincipal(
+        _categoriasExtrasSelecionadas,
+        categoriaPrincipal,
+      );
+      final subcategoriasExtras = _extrasSemPrincipal(
+        _subcategoriasExtrasSelecionadas,
+        subcategoriaPrincipal,
+      );
 
       _initPrecoPorTamanhoControllers();
       final Map<String, double> precoPorTamanhoMap = {};
@@ -1386,7 +1420,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           produtosBox,
           lojaId!,
           nome: capitalizeWords(_nome.text.trim()),
-          categoria: canonicalizeCategoria(_categoria.text.trim()),
+          categoria: categoriaPrincipal,
         );
         if (existente != null) {
           final escolha = await _perguntarDuplicataSalvar(existente);
@@ -1409,8 +1443,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..custoReal = custo
             ..precoFinal = preco
             ..precoUnitario = preco
-            ..categoria = canonicalizeCategoria(_categoria.text.trim())
-            ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
+            ..categoria = categoriaPrincipal
+            ..subcategoria = subcategoriaPrincipal
+            ..categoriasExtras = categoriasExtras
+            ..subcategoriasExtras = subcategoriasExtras
             ..descricao = _descricao.text.trim()
             ..imagens = List.from(_imagens)
             ..publicadoNoCatalogo = _publicar
@@ -1484,8 +1520,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             custoReal: custo,
             precoFinal: preco,
             precoUnitario: preco,
-            categoria: canonicalizeCategoria(_categoria.text.trim()),
-            subcategoria: canonicalizeCategoria(_subcategoria.text.trim()),
+            categoria: categoriaPrincipal,
+            subcategoria: subcategoriaPrincipal,
+            categoriasExtras: categoriasExtras,
+            subcategoriasExtras: subcategoriasExtras,
             descricao: _descricao.text.trim(),
             dataEntrada: DateTime.now(),
             imagens: List.from(_imagens),
@@ -1543,8 +1581,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..custoReal = custo
           ..precoFinal = preco
           ..precoUnitario = preco
-          ..categoria = canonicalizeCategoria(_categoria.text.trim())
-          ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
+          ..categoria = categoriaPrincipal
+          ..subcategoria = subcategoriaPrincipal
+          ..categoriasExtras = categoriasExtras
+          ..subcategoriasExtras = subcategoriasExtras
           ..descricao = _descricao.text.trim()
           ..imagens = List.from(_imagens)
           ..publicadoNoCatalogo = _publicar
@@ -1772,6 +1812,24 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildClassificacaoExtrasEditor(
+                        titulo: 'Categorias adicionais',
+                        icon: Icons.category_outlined,
+                        inputController: _categoriaExtraInput,
+                        selecionados: _categoriasExtrasSelecionadas,
+                        sugestoes: _opcoesUnicasCategoria(produtosBox.values),
+                        principalAtual: _categoria.text,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildClassificacaoExtrasEditor(
+                        titulo: 'Subcategorias adicionais',
+                        icon: Icons.label_outline,
+                        inputController: _subcategoriaExtraInput,
+                        selecionados: _subcategoriasExtrasSelecionadas,
+                        sugestoes: _opcoesUnicasSubcategoria(produtosBox.values),
+                        principalAtual: _subcategoria.text,
                       ),
                       const SizedBox(height: 12),
 
@@ -2948,6 +3006,92 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     final list = normToCanon.values.toList();
     list.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return list;
+  }
+
+  List<String> _extrasSemPrincipal(Set<String> valores, String principal) {
+    final p = normalizeText(principal.trim());
+    final list = valores
+        .where((v) => normalizeText(v) != p)
+        .where((v) => v.trim().isNotEmpty)
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  Widget _buildClassificacaoExtrasEditor({
+    required String titulo,
+    required IconData icon,
+    required TextEditingController inputController,
+    required Set<String> selecionados,
+    required List<String> sugestoes,
+    required String principalAtual,
+  }) {
+    void addFromInput(String raw) {
+      final valor = canonicalizeCategoria(raw.trim());
+      if (valor.isEmpty) return;
+      if (normalizeText(valor) == normalizeText(principalAtual.trim())) {
+        inputController.clear();
+        return;
+      }
+      setState(() {
+        selecionados.add(valor);
+        inputController.clear();
+      });
+    }
+
+    final opcoes = sugestoes
+        .where((s) => normalizeText(s) != normalizeText(principalAtual))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18, color: Colors.grey.shade700),
+            const SizedBox(width: 8),
+            Text(
+              titulo,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildCategoriaAutocomplete(
+                controller: inputController,
+                label: 'Adicionar',
+                icon: icon,
+                opcoes: opcoes,
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              onPressed: () => addFromInput(inputController.text),
+              child: const Text('Adicionar'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (selecionados.isEmpty)
+          const Text('Nenhuma adicional selecionada.')
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: _extrasSemPrincipal(selecionados, principalAtual)
+                .map(
+                  (v) => InputChip(
+                    label: Text(v),
+                    onDeleted: () => setState(() => selecionados.remove(v)),
+                  ),
+                )
+                .toList(),
+          ),
+      ],
+    );
   }
 
   /// Autocomplete para categoria/subcategoria com sugestões existentes

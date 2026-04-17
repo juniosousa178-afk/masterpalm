@@ -4,6 +4,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import '../core/combo_config_canonical.dart';
 import '../core/logger.dart';
 import '../models/produto.dart';
 import 'combo_receita_normalizacao.dart';
@@ -149,6 +150,12 @@ void _mergeProdutoExistente(Produto existente, Produto novo) {
   if (_temTexto(novo.descricao)) existente.descricao = novo.descricao.trim();
   if (_temTexto(novo.categoria)) existente.categoria = novo.categoria.trim();
   if (_temTexto(novo.subcategoria)) existente.subcategoria = novo.subcategoria.trim();
+  if (_listaComDados(novo.categoriasExtras)) {
+    existente.categoriasExtras = List<String>.from(novo.categoriasExtras);
+  }
+  if (_listaComDados(novo.subcategoriasExtras)) {
+    existente.subcategoriasExtras = List<String>.from(novo.subcategoriasExtras);
+  }
   if (_temTexto(novo.codigoBarras)) existente.codigoBarras = novo.codigoBarras.trim();
   if (_temTexto(novo.videoUrl)) existente.videoUrl = novo.videoUrl.trim();
   if (_temTexto(novo.fornecedor)) existente.fornecedor = novo.fornecedor.trim();
@@ -196,6 +203,9 @@ void _mergeProdutoExistente(Produto existente, Produto novo) {
 
   if (_mapaComDados(novo.estoquePorTamanho)) {
     existente.estoquePorTamanho = Map<String, int>.from(novo.estoquePorTamanho);
+  }
+  if (ComboConfigCanonical.isEffective(novo.comboConfig)) {
+    existente.comboConfig = ComboConfigCanonical.copyMap(novo.comboConfig);
   }
 }
 

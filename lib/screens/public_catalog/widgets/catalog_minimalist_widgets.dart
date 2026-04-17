@@ -442,6 +442,143 @@ class _CategoryItem extends StatelessWidget {
   }
 }
 
+/// Chips de subcategoria abaixo da faixa de categorias (layout minimalista).
+class CatalogMinimalSubcategoryStrip extends StatelessWidget {
+  final List<String> subcategories;
+  final String? selectedSubcategory;
+  final Color primaryColor;
+  final Color textColor;
+  final Color surfaceColor;
+  final VoidCallback onSelectAll;
+  final void Function(String sub) onSelectSub;
+
+  const CatalogMinimalSubcategoryStrip({
+    super.key,
+    required this.subcategories,
+    required this.selectedSubcategory,
+    required this.primaryColor,
+    required this.textColor,
+    required this.surfaceColor,
+    required this.onSelectAll,
+    required this.onSelectSub,
+  });
+
+  static Color _onPrimary(Color bg) =>
+      bg.computeLuminance() > 0.55 ? const Color(0xFF1A1A1A) : Colors.white;
+
+  @override
+  Widget build(BuildContext context) {
+    if (subcategories.isEmpty) return const SizedBox.shrink();
+
+    final onPrimary = _onPrimary(primaryColor);
+    final borderIdle = textColor.withOpacity(0.18);
+    final labelMuted = textColor.withOpacity(0.72);
+
+    Widget chip({
+      required String label,
+      required bool selected,
+      required VoidCallback onTap,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 8, bottom: 4),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(22),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(22),
+                color: selected ? primaryColor : surfaceColor,
+                border: Border.all(
+                  color: selected ? primaryColor : borderIdle,
+                  width: selected ? 0 : 1,
+                ),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: primaryColor.withOpacity(0.28),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? onPrimary : textColor,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  letterSpacing: 0.15,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.subdirectory_arrow_right_rounded,
+                  size: 16,
+                  color: labelMuted,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Subcategorias',
+                  style: TextStyle(
+                    color: labelMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              physics: const BouncingScrollPhysics(),
+              children: [
+                chip(
+                  label: 'Todas',
+                  selected: selectedSubcategory == null,
+                  onTap: onSelectAll,
+                ),
+                ...subcategories.map(
+                  (sub) => chip(
+                    label: sub,
+                    selected: selectedSubcategory == sub,
+                    onTap: () => onSelectSub(sub),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class CatalogMinimalHeroBanner extends StatelessWidget {
   final bool enabled;
   final String title;

@@ -17,8 +17,8 @@ import 'package:hive/hive.dart';
 
 import 'package:flutter/services.dart';
 
+import '../../../core/combo_configuravel_resumo.dart';
 import '../../../core/logger.dart';
-import '../../../core/produto_variacao_extra.dart';
 import '../../../core/safe_cast.dart';
 import '../../../utils/http_client_helper.dart';
 import '../../../utils/platform_adaptive.dart';
@@ -32,6 +32,7 @@ import '../../../services/frete_service.dart';
 import '../../../widgets/selecionar_cupom_modal.dart' show mostrarModalSelecionarCupom;
 import '../../../widgets/roleta_web_widget_v3.dart';
 import '../../auth/login_screen_cliente.dart';
+import 'catalog_cart_line_quantity_section.dart';
 import 'catalog_image_placeholder.dart';
 import '../catalog_estoque_helper.dart';
 import '../catalog_cart_checkout_visual_config.dart';
@@ -456,17 +457,49 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     });
   }
 
-  /// Linha secundária: tam/cor/extra (helper central) ou combo.
+  /// Detalhe do item: combo (composição + variações) ou tam/cor/extra do produto.
   String _cartItemVariantSubtitle(Map<String, dynamic> item) {
-    final linha = ProdutoVariacaoExtra.linhaVariacoesParaSeparacao(item);
-    if (linha.isNotEmpty) {
-      return linha.replaceAll(', ', ' · ');
-    }
+    final rich = ComboConfiguravelResumo.textoParaItemMap(item);
+    if (rich.isNotEmpty) return rich;
     final combo = item['itensComboComSelecao'];
     if (combo is List && combo.isNotEmpty) {
       return '${combo.length} itens';
     }
     return '';
+  }
+
+  /// Detalhe sob o nome (combo longo, variações): mais linhas + tooltip com texto integral.
+  Widget _cartItemDetailText(String sub, Map<String, dynamic> item) {
+    final combo = item['itensComboComSelecao'];
+    final nCombo = combo is List ? combo.length : 0;
+    final nLines =
+        sub.split(RegExp(r'[\r\n]+')).where((s) => s.trim().isNotEmpty).length;
+    final longCombo = nCombo > 4 || sub.length > 420 || nLines > 5;
+    final maxLines = longCombo ? 14 : 10;
+    final body = Text(
+      sub,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: 12,
+        height: 1.35,
+        color: _cartUi.mutedTextColor.withOpacity(0.88),
+      ),
+    );
+    if (!longCombo || sub.trim().isEmpty) return body;
+    return Tooltip(
+      message: sub,
+      waitDuration: const Duration(milliseconds: 400),
+      child: body,
+    );
+  }
+
+  int _quantidadeUnidadesCarrinho() {
+    var n = 0;
+    for (final e in widget.items) {
+      n += CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
+    }
+    return n;
   }
 
   Future<void> _maybeShowFirstPurchaseCoupon() async {
@@ -2166,37 +2199,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
   }
 
-  /// Teto de unidades para esta linha (estoque da variação menos outras linhas iguais).
-  int _maxOrderableForCartIndex(int index) {
-    final item = widget.items[index];
-    final comboRaw = item['itensComboComSelecao'];
-    if (comboRaw is List && comboRaw.isNotEmpty) {
-      return 999999;
-    }
-    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
-    if (id.isEmpty) return 999999;
-    final p = CatalogEstoqueHelper.findProductInList(
-        widget.catalogProducts, id);
-    if (p == null) return 999999;
-    final avail = CatalogEstoqueHelper.estoqueDisponivelVariacao(
-      p,
-      (item['tamanho'] ?? '').toString().trim(),
-      (item['cor'] ?? '').toString().trim(),
-      (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim(),
-    );
-    final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
-    var other = 0;
-    for (var i = 0; i < widget.items.length; i++) {
-      if (i == index) continue;
-      if (CatalogEstoqueHelper.cartLineIdentity(widget.items[i]) ==
-          lineKey) {
-        other += CatalogEstoqueHelper.parseCartItemQuantidade(
-            widget.items[i]['quantidade']);
-      }
-    }
-    return math.max(0, avail - other);
-  }
-
   Future<void> _changeLineQuantity(int index, int delta) async {
     final cur = CatalogEstoqueHelper.parseCartItemQuantidade(
         widget.items[index]['quantidade']);
@@ -2282,6 +2284,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
     final productNameColor = widget.productNameColor ?? cu.primaryTextColor;
     final productPriceColor = widget.productPriceColor ?? cu.summaryTotalColor;
+    final tPedido = _totals;
+    final nUnidades = _quantidadeUnidadesCarrinho();
+    // Mesmo valor e formatação que "Total a pagar" no resumo lateral
+    // ([computeCatalogCheckoutTotals] / [_fmt2]).
+    final totalTopoFmt = 'R\$ ${_fmt2(tPedido.total)}';
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -2312,16 +2319,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  '${widget.items.length}',
-                  style: TextStyle(
-                    color: cu.mutedTextColor,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -2333,6 +2330,19 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 color: cu.mutedTextColor,
               ),
             ),
+            if (widget.items.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                '$nUnidades ${nUnidades == 1 ? 'item' : 'itens'} · Total a pagar $totalTopoFmt',
+                style: TextStyle(
+                  fontSize: compact ? 13 : 14,
+                  fontWeight: FontWeight.w700,
+                  height: 1.25,
+                  color: productPriceColor,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
             SizedBox(height: compact ? 14 : 16),
             Divider(height: 1, thickness: 1, color: cu.itemDividerColor),
             SizedBox(height: compact ? 10 : 12),
@@ -2401,8 +2411,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           ? price * (1 - pctPix / 100)
                           : price;
                   final total = precoEfetivo * qty;
-                  final maxQ = _maxOrderableForCartIndex(i);
-                  final canInc = qty < maxQ;
 
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -2441,92 +2449,21 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 ),
                                 if (sub.isNotEmpty) ...[
                                   const SizedBox(height: 4),
-                                  Text(
-                                    sub,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      height: 1.35,
-                                      color: cu.mutedTextColor.withOpacity(0.88,
-                                      ),
-                                    ),
-                                  ),
+                                  _cartItemDetailText(sub, item),
                                 ],
                                 SizedBox(height: compact ? 8 : 10),
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: Color.alphaBlend(
-                                            cu.inputBorderColor
-                                                .withOpacity(0.5),
-                                            cu.inputBackground,
-                                          ),
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                        color: cu.inputBackground,
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            onPressed: () =>
-                                                _changeLineQuantity(i, -1),
-                                            icon: Icon(
-                                              Icons.remove_rounded,
-                                              size: 18,
-                                              color: cu.primaryTextColor,
-                                            ),
-                                            padding: const EdgeInsets.all(4),
-                                            constraints: const BoxConstraints(
-                                              minWidth: 30,
-                                              minHeight: 30,
-                                            ),
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            tooltip: 'Diminuir',
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 6),
-                                            child: Text(
-                                              '$qty',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                                fontSize: 14,
-                                                fontFeatures: const [
-                                                  FontFeature.tabularFigures(),
-                                                ],
-                                                color: cu.primaryTextColor,
-                                              ),
-                                            ),
-                                          ),
-                                          IconButton(
-                                            onPressed: canInc
-                                                ? () =>
-                                                    _changeLineQuantity(i, 1)
-                                                : null,
-                                            icon: Icon(
-                                              Icons.add_rounded,
-                                              size: 18,
-                                              color: canInc
-                                                  ? cu.primaryTextColor
-                                                  : cu.mutedTextColor,
-                                            ),
-                                            padding: const EdgeInsets.all(4),
-                                            constraints: const BoxConstraints(
-                                              minWidth: 30,
-                                              minHeight: 30,
-                                            ),
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            tooltip: 'Aumentar',
-                                          ),
-                                        ],
-                                      ),
+                                    CatalogCartLineQuantitySection(
+                                      items: widget.items,
+                                      catalogProducts: widget.catalogProducts,
+                                      lineIndex: i,
+                                      onQuantityDelta: _changeLineQuantity,
+                                      primaryTextColor: cu.primaryTextColor,
+                                      mutedTextColor: cu.mutedTextColor,
+                                      inputBorderColor: cu.inputBorderColor,
+                                      inputBackground: cu.inputBackground,
                                     ),
                                     const Spacer(),
                                     Text(

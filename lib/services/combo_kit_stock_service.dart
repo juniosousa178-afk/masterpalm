@@ -65,9 +65,11 @@ class ComboKitStockService {
 
   /// Quantos kits completos ainda dá para montar com o estoque atual dos componentes.
   ///
-  /// Regra: para cada item da receita do combo, `capacidade = piso(estoque total do filho / qtd exigida)`;
-  /// o resultado é o **mínimo** entre as capacidades (gargalo). Não usa tamanho/cor da receita para o cálculo
-  /// do teto — apenas identifica qual produto filho entra e em que quantidade por kit.
+  /// **Somente combo legado** com receita fixa em [Produto.itensCombo]. Combos com
+  /// [Produto.temComboConfigEfetivo] não usam este teto (ajuste pós-baixa é ignorado para eles).
+  ///
+  /// Regra: para cada item da receita, `capacidade = piso(estoque total do filho / qtd exigida)`;
+  /// o resultado é o **mínimo** entre as capacidades (gargalo).
   static int maxKitsMontaveis(
     Produto combo,
     Box<Produto> produtosBox,
@@ -182,6 +184,11 @@ class ComboKitStockService {
         continue;
       }
 
+      // Combo configurável: teto por receita fixa em [itensCombo] não reflete a montagem real.
+      if (combo.temComboConfigEfetivo) {
+        continue;
+      }
+
       final k = maxKitsMontaveis(combo, produtosBox, lojaId);
       if (combo.quantidade <= k) continue;
 
@@ -266,6 +273,10 @@ class ComboKitStockService {
       if (combo.lojaId != lojaId || !combo.ehCombo) continue;
 
       if (combo.usaVariacoes || combo.estoquePorTamanho.isNotEmpty) {
+        continue;
+      }
+
+      if (combo.temComboConfigEfetivo) {
         continue;
       }
 

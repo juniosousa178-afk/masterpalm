@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:firebase_storage/firebase_storage.dart';
 
+import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_variacao_extra.dart';
 import 'firestore_paths.dart';
@@ -207,6 +208,8 @@ class ProdutosFirestoreService {
         'quantidade': produto.quantidade,
         'categoria': produto.categoria,
         'subcategoria': produto.subcategoria,
+        'categoriasExtras': produto.categoriasExtras,
+        'subcategoriasExtras': produto.subcategoriasExtras,
         'descricao': produto.descricao,
         'imagens': imagensFinais, // ✅ Usa URLs do Firebase
         'slug': produto.slug,
@@ -246,6 +249,9 @@ class ProdutosFirestoreService {
         // Limpeza remota explícita: enviar []. Pull: applyComboMetadataPullForExisting.
         if (produto.itensCombo != null && produto.itensCombo!.isNotEmpty)
           'itensCombo': produto.itensCombo,
+        if (produto.comboConfig != null &&
+            ComboConfigCanonical.isEffective(produto.comboConfig))
+          'comboConfig': produto.comboConfig,
 
         'divideSemJuros': produto.divideSemJuros,
         'percentualDescontoPix': produto.percentualDescontoPix,
@@ -302,6 +308,10 @@ class ProdutosFirestoreService {
             'variacoesExtraTipo': variacoesExtraPush,
             'estoquePorTamanho': estoquePorTamPush,
             'cores': produto.cores,
+            'categoria': produto.categoria,
+            'subcategoria': produto.subcategoria,
+            'categoriasExtras': produto.categoriasExtras,
+            'subcategoriasExtras': produto.subcategoriasExtras,
             if (produto.precoPorTamanho != null &&
                 produto.precoPorTamanho!.isNotEmpty)
               'precoPorTamanho': produto.precoPorTamanho,
@@ -570,6 +580,16 @@ class ProdutosFirestoreService {
                 (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
             p.categoria = data['categoria'] ?? p.categoria;
             p.subcategoria = data['subcategoria'] ?? p.subcategoria;
+            if (data.containsKey('categoriasExtras')) {
+              final raw = data['categoriasExtras'];
+              p.categoriasExtras =
+                  raw is List ? raw.map((e) => e.toString()).toList() : <String>[];
+            }
+            if (data.containsKey('subcategoriasExtras')) {
+              final raw = data['subcategoriasExtras'];
+              p.subcategoriasExtras =
+                  raw is List ? raw.map((e) => e.toString()).toList() : <String>[];
+            }
             p.descricao = data['descricao'] ?? p.descricao;
             p.imagens = (data['imagens'] as List?)?.cast<String>() ?? p.imagens;
             p.slug = data['slug'] ?? p.slug;
@@ -756,6 +776,10 @@ class ProdutosFirestoreService {
                   0.0,
               quantidade: (data['quantidade'] as num?)?.toInt() ?? 0,
               categoria: data['categoria'] ?? '',
+              categoriasExtras: (data['categoriasExtras'] as List?)
+                      ?.map((e) => e.toString())
+                      .toList() ??
+                  const [],
               dataEntrada: data['dataEntrada'] is Timestamp
                   ? (data['dataEntrada'] as Timestamp).toDate()
                   : DateTime.now(),
@@ -764,6 +788,10 @@ class ProdutosFirestoreService {
               slug: data['slug'] ?? '',
               lojaId: lojaId,
               subcategoria: data['subcategoria'] ?? '',
+              subcategoriasExtras: (data['subcategoriasExtras'] as List?)
+                      ?.map((e) => e.toString())
+                      .toList() ??
+                  const [],
               publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
               tamanhos: (data['tamanhos'] as List?)?.cast<String>() ?? [],
               estoquePorTamanho:
@@ -776,6 +804,7 @@ class ProdutosFirestoreService {
                   _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
               tipoProduto: comboNovo.$1,
               itensCombo: comboNovo.$2,
+              comboConfig: comboNovo.$3,
               divideSemJuros: data['divideSemJuros'] == true,
               percentualDescontoPix: (data['percentualDescontoPix'] is num)
                   ? (data['percentualDescontoPix'] as num).toDouble()
@@ -858,6 +887,9 @@ class ProdutosFirestoreService {
   static bool _receitaLocalNaoVazia(Produto p) =>
       p.itensCombo != null && p.itensCombo!.isNotEmpty;
 
+  static bool _comboConfigLocalEfetivo(Produto p) =>
+      ComboConfigCanonical.isEffective(p.comboConfig);
+
   /// Pull Firestore → Hive: [tipoProduto] + [itensCombo] para produto **já existente** na box.
   ///
   /// Semântica:
@@ -867,6 +899,12 @@ class ProdutosFirestoreService {
   /// - **lista** → parse + aplicar; parse vazio com receita local válida → preservar local.
   /// - **tipoProduto ausente** → não altera tipo local.
   /// - **tipoProduto: simples** com receita local ainda preenchida após merge de itens → força `combo`.
+  ///
+  /// [comboConfig] (mapa):
+  /// - **ausente** → não altera local.
+  /// - **null** (chave presente) → só zera se local já não for efetivo; senão preserva local.
+  /// - **{}** → limpa config no Hive.
+  /// - **mapa** → normaliza; parse inválido preserva local se efetivo.
   static void applyComboMetadataPullForExisting(
     Map<String, dynamic> data,
     Produto p, {
@@ -935,6 +973,61 @@ class ProdutosFirestoreService {
       }
     }
 
+    // --- comboConfig (opcional; legado sem chave não altera Hive)
+    if (!data.containsKey('comboConfig')) {
+      logW(
+        '[COMBO_CONFIG_PULL_GUARD] doc=$docId comboConfig ausente no Firestore — mantendo local '
+        '(efetivo=${_comboConfigLocalEfetivo(p)})',
+        tag: 'COMBO_CONFIG_PULL_GUARD',
+      );
+    } else {
+      final cc = data['comboConfig'];
+      if (cc == null) {
+        if (_comboConfigLocalEfetivo(p)) {
+          logW(
+            '[COMBO_CONFIG_PULL_GUARD] doc=$docId comboConfig remoto=null (chave presente) — '
+            'preservando local',
+            tag: 'COMBO_CONFIG_PULL_GUARD',
+          );
+        } else {
+          p.comboConfig = null;
+          logW(
+            '[COMBO_CONFIG_PULL_CLEAR] doc=$docId comboConfig=null explícito',
+            tag: 'COMBO_CONFIG_PULL_CLEAR',
+          );
+        }
+      } else if (cc is! Map) {
+        logW(
+          '[COMBO_CONFIG_PULL_GUARD] doc=$docId comboConfig tipo inválido (${cc.runtimeType}) — '
+          'mantendo local',
+          tag: 'COMBO_CONFIG_PULL_GUARD',
+        );
+      } else if (cc.isEmpty) {
+        p.comboConfig = null;
+        logW(
+          '[COMBO_CONFIG_PULL_CLEAR] doc=$docId comboConfig={} limpeza explícita',
+          tag: 'COMBO_CONFIG_PULL_CLEAR',
+        );
+      } else {
+        final parsed = ComboConfigCanonical.parseFromFirestore(cc);
+        if (parsed != null) {
+          p.comboConfig = parsed;
+          logD('[COMBO_CONFIG_PULL_APPLY] doc=$docId comboConfig aplicado');
+        } else if (_comboConfigLocalEfetivo(p)) {
+          logW(
+            '[COMBO_CONFIG_PULL_GUARD] doc=$docId parse comboConfig inválido — preservando local',
+            tag: 'COMBO_CONFIG_PULL_GUARD',
+          );
+        } else {
+          p.comboConfig = null;
+          logW(
+            '[COMBO_CONFIG_PULL_APPLY] doc=$docId comboConfig após parse inválido — limpo',
+            tag: 'COMBO_CONFIG_PULL_APPLY',
+          );
+        }
+      }
+    }
+
     // --- tipoProduto (não rebaixar para simples se ainda há receita)
     if (!data.containsKey('tipoProduto')) {
       logW(
@@ -967,7 +1060,8 @@ class ProdutosFirestoreService {
   }
 
   /// Pull para **novo** [Produto] (sem estado local). Ausência de chave → defaults seguros.
-  static (String tipoProduto, List<Map<String, dynamic>>? itensCombo)
+  static (String tipoProduto, List<Map<String, dynamic>>? itensCombo,
+          Map<String, dynamic>? comboConfig)
       comboFieldsForNewProductPull(
     Map<String, dynamic> data, {
     required Box<Produto> produtosBox,
@@ -1028,7 +1122,46 @@ class ProdutosFirestoreService {
         tag: 'COMBO_PULL_GUARD',
       );
     }
-    return (tipoFinal, itensCombo);
+
+    Map<String, dynamic>? comboConfig;
+    if (!data.containsKey('comboConfig')) {
+      comboConfig = null;
+      logD('[COMBO_CONFIG_PULL_APPLY] novo doc=$docId comboConfig ausente — null');
+    } else {
+      final cc = data['comboConfig'];
+      if (cc == null) {
+        comboConfig = null;
+        logD('[COMBO_CONFIG_PULL_APPLY] novo doc=$docId comboConfig=null');
+      } else if (cc is! Map) {
+        comboConfig = null;
+        logW(
+          '[COMBO_CONFIG_PULL_GUARD] novo doc=$docId comboConfig tipo inválido — null',
+          tag: 'COMBO_CONFIG_PULL_GUARD',
+        );
+      } else if (cc.isEmpty) {
+        comboConfig = null;
+        logD('[COMBO_CONFIG_PULL_APPLY] novo doc=$docId comboConfig={}');
+      } else {
+        comboConfig = ComboConfigCanonical.parseFromFirestore(cc);
+        if (comboConfig == null) {
+          logW(
+            '[COMBO_CONFIG_PULL_GUARD] novo doc=$docId comboConfig presente mas parse inválido',
+            tag: 'COMBO_CONFIG_PULL_GUARD',
+          );
+        } else {
+          logD('[COMBO_CONFIG_PULL_APPLY] novo doc=$docId comboConfig ok');
+        }
+      }
+    }
+    if (ComboConfigCanonical.isEffective(comboConfig) && tipoFinal != 'combo') {
+      tipoFinal = 'combo';
+      logW(
+        '[COMBO_PULL_GUARD] novo doc=$docId tipo remoto=$tipoProduto mas há comboConfig — '
+        'ajustando para combo',
+        tag: 'COMBO_PULL_GUARD',
+      );
+    }
+    return (tipoFinal, itensCombo, comboConfig);
   }
 
   static bool _receitaNaoVazia(List<Map<String, dynamic>>? it) =>

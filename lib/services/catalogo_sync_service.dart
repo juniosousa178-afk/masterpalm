@@ -9,6 +9,7 @@ import 'package:hive/hive.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart' show PlatformFile;
 
+import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 import '../models/produto.dart';
@@ -331,6 +332,10 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       'categoriaId': pdt.categoria,
       'subcategoria': pdt.subcategoria,
       'subcategoriaId': pdt.subcategoria,
+      'categoriasExtras': pdt.categoriasExtras,
+      'subcategoriasExtras': pdt.subcategoriasExtras,
+      'categoriasAssociadas': pdt.categoriasAssociadas,
+      'subcategoriasAssociadas': pdt.subcategoriasAssociadas,
 
       'quantidade': pdt.quantidade,
       'estoque_atual': pdt.quantidade,
@@ -348,6 +353,9 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       'tipoProduto': pdt.tipoProduto,
       if (itensComboEnriquecido != null && itensComboEnriquecido.isNotEmpty)
         'itensCombo': itensComboEnriquecido,
+      if (pdt.comboConfig != null &&
+          ComboConfigCanonical.isEffective(pdt.comboConfig))
+        'comboConfig': ComboConfigCanonical.copyMap(pdt.comboConfig)!,
 
       // Campos de promoção
       'emPromocao': pdt.emPromocao,

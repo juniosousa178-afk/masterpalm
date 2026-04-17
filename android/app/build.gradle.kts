@@ -32,7 +32,8 @@ android {
 
     defaultConfig {
         applicationId = "com.masterpalm.app"
-        minSdk = flutter.minSdkVersion  // Firebase Auth 23.x exige mínimo 23
+        // firebase-auth 23.x exige API 23+; flutter.minSdkVersion ainda pode ser 21.
+        minSdk = maxOf(flutter.minSdkVersion, 23)
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName

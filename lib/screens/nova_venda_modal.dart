@@ -1,10 +1,10 @@
 // lib/screens/nova_venda_modal.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
-import 'package:firebase_core/firebase_core.dart' show FirebaseException;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/combo_configuravel_resumo.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/venda_metrics_filter.dart';
@@ -26,6 +26,7 @@ import '../widgets/moeda_text_field.dart';
 import 'nova_venda/variacao_selection_sheet.dart';
 import 'nova_venda/combo_variacao_selection_sheet.dart';
 import 'nova_venda/finalizar_confirmacao_dialog.dart';
+import 'public_catalog/widgets/catalog_combo_configurable_sheet.dart';
 import 'produto_form_screen.dart';
 
 import 'package:flutter_fortune_wheel/flutter_fortune_wheel.dart';
@@ -381,6 +382,122 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   double _precoDoProduto(Produto p) =>
       p.precoFinal > 0 ? p.precoFinal : (p.precoUnitario > 0 ? p.precoUnitario : 0.0);
 
+  Map<String, dynamic> _produtoParaCatalogMap(Produto p) {
+    return <String, dynamic>{
+      'id': p.idFirebase,
+      'produtosId': p.idFirebase,
+      'nome': p.nome,
+      'slug': p.slug,
+      'preco': _precoDoProduto(p),
+      'precoFinal': p.precoFinal,
+      'percentualDescontoPix': p.percentualDescontoPix,
+      'divideSemJuros': p.divideSemJuros,
+      'maxParcelasSemJuros': p.maxParcelasSemJuros,
+      'peso': p.peso,
+      'tipoEmbalagem': p.tipoEmbalagem,
+      if (p.imagens.isNotEmpty) 'imagens': List<String>.from(p.imagens),
+      if (p.variacoes != null && p.variacoes!.isNotEmpty) 'variacoes': p.variacoes,
+      if (p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty)
+        'variacoesExtraTipo': p.variacoesExtraTipo,
+      if (p.precoPorTamanho != null && p.precoPorTamanho!.isNotEmpty)
+        'precoPorTamanho': p.precoPorTamanho,
+      if (p.estoquePorTamanho.isNotEmpty) 'estoquePorTamanho': p.estoquePorTamanho,
+      if (p.cores.isNotEmpty)
+        'estoquePorCor': {
+          for (final c in p.cores) c: p.obterEstoqueVariacao('', c, ''),
+        },
+      if (p.itensCombo != null && p.itensCombo!.isNotEmpty) 'itensCombo': p.itensCombo,
+      if (p.comboConfig != null && p.comboConfig!.isNotEmpty) 'comboConfig': p.comboConfig,
+    };
+  }
+
+  List<Map<String, dynamic>> _catalogProductsDaLoja() {
+    return widget.produtosBox.values
+        .where((p) => p.lojaId == lojaId)
+        .map(_produtoParaCatalogMap)
+        .toList();
+  }
+
+  Future<void> _abrirSeletorCombo({
+    required int index,
+    required Produto combo,
+    required int quantidadeInicial,
+    required double precoFallback,
+  }) async {
+    if (combo.temComboConfigEfetivo) {
+      final comboMap = _produtoParaCatalogMap(combo);
+      final todos = _catalogProductsDaLoja();
+      Map<String, dynamic>? itemCapturado;
+      await showCatalogComboVariationSheet(
+        context: context,
+        comboProduct: comboMap,
+        todosProdutos: todos,
+        showAfterAddChoiceDialog: false,
+        onAdd: (item) {
+          itemCapturado = Map<String, dynamic>.from(item);
+          return true;
+        },
+        onAfterSilentAddWhenAdded: () {},
+      );
+      if (!mounted || itemCapturado == null) return;
+      final item = itemCapturado!;
+      final selecao = (item['itensComboComSelecao'] is List)
+          ? List<Map<String, dynamic>>.from(
+              (item['itensComboComSelecao'] as List).whereType<Map>().map(
+                    (e) => Map<String, dynamic>.from(
+                      e.map((k, v) => MapEntry(k.toString(), v)),
+                    ),
+                  ),
+            )
+          : const <Map<String, dynamic>>[];
+      setState(() {
+        produtosSelecionados[index]['produto'] = combo.nome;
+        produtosSelecionados[index]['productId'] =
+            combo.idFirebase.trim().isNotEmpty ? combo.idFirebase : null;
+        produtosSelecionados[index]['preco'] =
+            (item['preco'] as num?)?.toDouble() ?? precoFallback;
+        produtosSelecionados[index]['quantidade'] =
+            (item['quantidade'] as num?)?.toInt() ?? quantidadeInicial;
+        produtosSelecionados[index]['tamanho'] = '';
+        produtosSelecionados[index]['cor'] = '';
+        produtosSelecionados[index]['extraValor'] = '';
+        produtosSelecionados[index]['variacaoExtraResumo'] = '';
+        if ((item['comboConfiguravelResumo'] ?? '').toString().trim().isNotEmpty) {
+          produtosSelecionados[index]['comboConfiguravelResumo'] =
+              (item['comboConfiguravelResumo'] ?? '').toString().trim();
+        } else {
+          produtosSelecionados[index].remove('comboConfiguravelResumo');
+        }
+        produtosSelecionados[index]['itensComboComSelecao'] = selecao;
+      });
+      return;
+    }
+
+    await ComboVariacaoSelectionSheet.show(
+      context,
+      combo: combo,
+      quantidade: quantidadeInicial,
+      preco: precoFallback,
+      produtosBox: widget.produtosBox,
+      lojaId: lojaId,
+      onConfirmar: (selecao, qtd, preco) {
+        setState(() {
+          produtosSelecionados[index]['produto'] = combo.nome;
+          produtosSelecionados[index]['productId'] =
+              combo.idFirebase.trim().isNotEmpty ? combo.idFirebase : null;
+          produtosSelecionados[index]['preco'] = preco;
+          produtosSelecionados[index]['quantidade'] = qtd;
+          produtosSelecionados[index]['tamanho'] = '';
+          produtosSelecionados[index]['cor'] = '';
+          produtosSelecionados[index]['extraValor'] = '';
+          produtosSelecionados[index]['variacaoExtraResumo'] = '';
+          produtosSelecionados[index].remove('comboConfiguravelResumo');
+          produtosSelecionados[index]['itensComboComSelecao'] = selecao;
+        });
+      },
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // 🔹 BUSCAR CLIENTE PELO NOME (RESTRINGINDO POR LOJA)
   // ---------------------------------------------------------------------------
@@ -494,26 +611,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       child: InkWell(
         onTap: () async {
           if (ehCombo) {
-            await ComboVariacaoSelectionSheet.show(
-              context,
+            await _abrirSeletorCombo(
+              index: index,
               combo: prod,
-              quantidade: (item['quantidade'] ?? 1) as int,
-              preco: (item['preco'] ?? 0.0) as double,
-              produtosBox: widget.produtosBox,
-              lojaId: lojaId,
-              onConfirmar: (selecao, qtd, preco) {
-                setState(() {
-                  produtosSelecionados[index]['produto'] = prod.nome;
-                  produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null;
-                  produtosSelecionados[index]['preco'] = preco;
-                  produtosSelecionados[index]['quantidade'] = qtd;
-                  produtosSelecionados[index]['tamanho'] = '';
-                  produtosSelecionados[index]['cor'] = '';
-                  produtosSelecionados[index]['extraValor'] = '';
-                  produtosSelecionados[index]['variacaoExtraResumo'] = '';
-                  produtosSelecionados[index]['itensComboComSelecao'] = selecao;
-                });
-              },
+              quantidadeInicial: (item['quantidade'] ?? 1) as int,
+              precoFallback: (item['preco'] ?? 0.0) as double,
             );
           } else if (temVariacao) {
             await NovaVendaVariacaoSheet.show(
@@ -528,6 +630,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                   produtosSelecionados[index]['extraValor'] = extraEv;
                   produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
                   produtosSelecionados[index].remove('itensComboComSelecao');
+                  produtosSelecionados[index].remove('comboConfiguravelResumo');
                 });
               },
             );
@@ -1734,30 +1837,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         produtosSelecionados[index]['extraValor'] = '';
                                         produtosSelecionados[index]['variacaoExtraResumo'] = '';
                                         produtosSelecionados[index].remove('itensComboComSelecao');
+                                        produtosSelecionados[index].remove('comboConfiguravelResumo');
                                         produtosSelecionados[index]['quantidade'] = 1;
                                       });
                                     },
                                     onProductIsCombo: (combo) async {
-                                      await ComboVariacaoSelectionSheet.show(
-                                        context,
+                                      await _abrirSeletorCombo(
+                                        index: index,
                                         combo: combo,
-                                        quantidade: 1,
-                                        preco: _precoDoProduto(combo),
-                                        produtosBox: widget.produtosBox,
-                                        lojaId: lojaId,
-                                        onConfirmar: (selecao, qtd, preco) {
-                                          setState(() {
-                                            produtosSelecionados[index]['produto'] = combo.nome;
-                                            produtosSelecionados[index]['productId'] = combo.idFirebase.trim().isNotEmpty ? combo.idFirebase : null;
-                                            produtosSelecionados[index]['preco'] = preco;
-                                            produtosSelecionados[index]['quantidade'] = qtd;
-                                            produtosSelecionados[index]['tamanho'] = '';
-                                            produtosSelecionados[index]['cor'] = '';
-                                            produtosSelecionados[index]['extraValor'] = '';
-                                            produtosSelecionados[index]['variacaoExtraResumo'] = '';
-                                            produtosSelecionados[index]['itensComboComSelecao'] = selecao;
-                                          });
-                                        },
+                                        quantidadeInicial: 1,
+                                        precoFallback: _precoDoProduto(combo),
                                       );
                                     },
                                     onProductNeedsVariation: (produto) async {
@@ -1776,6 +1865,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             produtosSelecionados[index]['extraValor'] = extraEv;
                                             produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
                                             produtosSelecionados[index].remove('itensComboComSelecao');
+                                            produtosSelecionados[index].remove('comboConfiguravelResumo');
                                           });
                                         },
                                       );
@@ -1820,27 +1910,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           return;
                                         }
                                         if (prod.ehCombo) {
-                                          await ComboVariacaoSelectionSheet.show(
-                                            navigator.context,
+                                          await _abrirSeletorCombo(
+                                            index: index,
                                             combo: prod,
-                                            quantidade: 1,
-                                            preco: _precoDoProduto(prod),
-                                            produtosBox: widget.produtosBox,
-                                            lojaId: lojaId,
-                                            onConfirmar: (selecao, qtd, preco) {
-                                              if (!mounted) return;
-                                              setState(() {
-                                                produtosSelecionados[index]['produto'] = prod.nome;
-                                                produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null;
-                                                produtosSelecionados[index]['preco'] = preco;
-                                                produtosSelecionados[index]['quantidade'] = qtd;
-                                                produtosSelecionados[index]['tamanho'] = '';
-                                                produtosSelecionados[index]['cor'] = '';
-                                                produtosSelecionados[index]['extraValor'] = '';
-                                                produtosSelecionados[index]['variacaoExtraResumo'] = '';
-                                                produtosSelecionados[index]['itensComboComSelecao'] = selecao;
-                                              });
-                                            },
+                                            quantidadeInicial: 1,
+                                            precoFallback: _precoDoProduto(prod),
                                           );
                                         } else if (prod.usaVariacoes || prod.estoquePorTamanho.isNotEmpty) {
                                           await NovaVendaVariacaoSheet.show(
@@ -1907,6 +1981,29 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   ],
                                 ),
                               ],
+                            ),
+                            Builder(
+                              builder: (context) {
+                                final comboTxt =
+                                    ComboConfiguravelResumo.textoParaItemMap(
+                                  Map<String, dynamic>.from(item),
+                                );
+                                if (comboTxt.isEmpty) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.only(top: 6, bottom: 2),
+                                  child: Text(
+                                    comboTxt,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[800],
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                             const SizedBox(height: 12),
                             Wrap(

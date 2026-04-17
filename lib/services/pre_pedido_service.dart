@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/combo_configuravel_resumo.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../repositories/cliente_portal_repository.dart';
@@ -20,6 +21,7 @@ import 'cupons_service.dart';
 import 'cliente_auth_service.dart';
 import 'cliente_auth_helpers.dart';
 import 'pre_pedido_helpers.dart';
+import 'catalog_pre_pedido_compute.dart';
 
 /// Serviço para gerenciar pré-pedidos do catálogo
 /// Pré-pedidos são enviados via WhatsApp e aguardam confirmação do vendedor
@@ -332,59 +334,17 @@ class PrePedidoService {
     String? checkoutFingerprint,
   }) async {
     try {
-      // Calcular totais (aplica desconto PIX quando pagamento é PIX)
-      double subtotal = 0.0;
-      final itensList = <Map<String, dynamic>>[];
-      final isPix = pagamento.toUpperCase() == 'PIX';
-
-      for (final item in items) {
-        final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
-        final price = (item['preco'] as num?)?.toDouble() ??
-            (item['price'] as num?)?.toDouble() ??
-            0.0;
-        final pctPix =
-            (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
-        final precoEfetivo =
-            (isPix && pctPix > 0) ? price * (1 - pctPix / 100) : price;
-        final itemTotal = precoEfetivo * qty;
-        subtotal += itemTotal;
-
-        final storedItem = {
-          'id': item['id'] ?? item['produtosId'] ?? '',
-          'produtosId': item['produtosId'] ?? item['id'] ?? '',
-          'nome': item['nome'] ?? item['name'] ?? '',
-          'quantidade': qty,
-          'precoUnitario': precoEfetivo,
-          'tamanho': item['tamanho'] ?? item['size'] ?? '',
-          'cor': item['cor'] ?? item['color'] ?? '',
-          'imagem': item['imageUrl'] ?? item['url_foto'] ?? item['image'] ?? '',
-          'slug': item['slug'] ?? '',
-          'total': itemTotal,
-        };
-        final resumoExtra =
-            (item['variacaoExtraResumo'] ?? '').toString().trim();
-        if (resumoExtra.isNotEmpty) {
-          storedItem['variacaoExtraResumo'] = resumoExtra;
-        }
-        final exVal = (item['extraValor'] ?? item['variacaoExtra'] ?? '')
-            .toString()
-            .trim();
-        if (exVal.isNotEmpty) {
-          storedItem['extraValor'] = exVal;
-        }
-        final exTipo = (item['extraTipo'] ?? '').toString().trim();
-        if (exTipo.isNotEmpty) {
-          storedItem['extraTipo'] = exTipo;
-        }
-        if (item['itensComboComSelecao'] is List) {
-          storedItem['itensComboComSelecao'] = item['itensComboComSelecao'];
-        }
-        itensList.add(storedItem);
-      }
-
+      final money = computeCatalogPrePedidoMoneySnapshot(
+        items: items,
+        entrega: entrega,
+        pagamento: pagamento,
+        desconto: desconto,
+      );
+      final itensList = money.itensList;
+      final subtotal = money.subtotal;
+      final total = money.total;
       final freteGratis = entrega['freteGratis'] == true;
       final freteValor = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
-      final total = subtotal + (freteGratis ? 0 : freteValor) - desconto;
 
       // Criar documento do pré-pedido
       final prePedidoData = {
@@ -1273,6 +1233,11 @@ class PrePedidoService {
         buffer.write('${qty}x $nome ($linhaVar)');
       } else {
         buffer.write('${qty}x $nome');
+      }
+      final comboLegivel = ComboConfiguravelResumo.textoParaItemMap(itemMap);
+      if (comboLegivel.isNotEmpty) {
+        final bloco = comboLegivel.replaceAll('\n', '\n   ');
+        buffer.write('\n   $bloco');
       }
 
       final totalItem = preco * qty;

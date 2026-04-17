@@ -94,6 +94,16 @@ service cloud.firestore {
         || isLojaMemberElevated(lojaId);
     }
 
+    // Dono / admin da loja (não inclui vendedor): pode editar docs em lojas/{id}/config/* (ex.: payments).
+    function canManageStoreConfig(lojaId) {
+      return isSignedIn()
+        && (
+          isOwnerOfStore(lojaId)
+          || userResolvedStoreMatches(lojaId)
+          || isLojaMemberElevated(lojaId)
+        );
+    }
+
     // Módulo financeiro / fechamentos / metas: equipe da loja (dono, admin loja, vendedor) ou admin sistema.
     function canAccessLojaFinanceiro(lojaId) {
       return belongsToStore(lojaId) || isAdminOrSystem();
@@ -358,6 +368,9 @@ service cloud.firestore {
     match /_mp_webhook_processed/{doc} {
       allow read, write: if false;
     }
+    match /_mp_webhook_validation_rejects/{doc} {
+      allow read, write: if false;
+    }
 
     // =========================
     // HEALTHCHECK / DEBUG
@@ -455,13 +468,14 @@ service cloud.firestore {
       allow create: if canCreateFirstStore() || isAdminOrSystem();
       allow update, delete: if isAdminOrSystem();
 
-      // config (e config/payments): leitura sempre permitida (catálogo e app admin);
-      // get() em doc inexistente falhava com PERMISSION_DENIED quando allow read: if resource != null
+      // config/payments: segredos (MP token etc.) — não expor ao catálogo anônimo.
+      // config/payments_public: espelho sem tokens (PagamentosService.syncPaymentsPublic).
       match /config/{configId} {
-        allow read: if true;
-        allow create: if isAdminOrSystem()
-          || (isSignedIn() && isOwnerOfStore(lojaId));
-        allow update, delete: if isAdminOrSystem();
+        allow read: if configId == 'payments'
+          ? (isAdminOrSystem() || (isSignedIn() && canManageStoreConfig(lojaId)))
+          : true;
+        allow create: if isAdminOrSystem() || canManageStoreConfig(lojaId);
+        allow update, delete: if isAdminOrSystem() || canManageStoreConfig(lojaId);
       }
 
       match /settings/{settingsId} {

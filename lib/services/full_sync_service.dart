@@ -207,6 +207,9 @@ class FullSyncService {
                 ..tipoEmbalagem = produto.tipoEmbalagem
                 ..categoria = produto.categoria
                 ..subcategoria = produto.subcategoria
+                ..categoriasExtras = List<String>.from(produto.categoriasExtras)
+                ..subcategoriasExtras =
+                    List<String>.from(produto.subcategoriasExtras)
                 ..imagens = produto.imagens
                 ..tamanhos = produto.tamanhos
                 ..estoquePorTamanho = produto.estoquePorTamanho
@@ -378,6 +381,8 @@ class FullSyncService {
           0,
       categoria: data['categoria']?.toString() ?? '',
       subcategoria: data['subcategoria']?.toString() ?? '',
+      categoriasExtras: _parseListString(data['categoriasExtras']),
+      subcategoriasExtras: _parseListString(data['subcategoriasExtras']),
       imagens: _parseListString(data['imagens']),
       tamanhos: _parseListString(data['tamanhos']),
       estoquePorTamanho: _parseMapStringInt(data['estoquePorTamanho']),
@@ -405,6 +410,7 @@ class FullSyncService {
           (data['custoEditadoNoCadastro'] as bool?) ?? false,
       tipoProduto: combo.$1,
       itensCombo: combo.$2,
+      comboConfig: combo.$3,
     );
   }
 

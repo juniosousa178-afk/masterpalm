@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'loja_id_service.dart';
+import 'pagamentos_mp_firestore_writes.dart';
 import '../utils/http_client_helper.dart';
 
 /// Serviço de Pagamentos (Mercado Pago + outros gateways)
@@ -23,7 +24,8 @@ class PagamentosService {
       final sessao = Hive.isBoxOpen('sessao')
           ? Hive.box('sessao')
           : await Hive.openBox('sessao');
-      storeId = (sessao.get('store_id') ?? sessao.get('storeId'))?.toString().trim();
+      storeId =
+          (sessao.get('store_id') ?? sessao.get('storeId'))?.toString().trim();
       if (storeId != null && storeId.isNotEmpty) return storeId;
     } catch (_) {}
 
@@ -31,7 +33,9 @@ class PagamentosService {
       final config = Hive.isBoxOpen('config')
           ? Hive.box('config')
           : await Hive.openBox('config');
-      storeId = (config.get('store_id') ?? config.get('store_slug') ?? config.get('loja_slug'))
+      storeId = (config.get('store_id') ??
+              config.get('store_slug') ??
+              config.get('loja_slug'))
           ?.toString()
           .trim();
       if (storeId != null && storeId.isNotEmpty) return storeId;
@@ -48,6 +52,54 @@ class PagamentosService {
     return db.doc('lojas/$lojaId/config/payments');
   }
 
+  /// Subconjunto seguro para catálogo público (sem tokens). Regras: leitura world-readable.
+  /// /lojas/{lojaId}/config/payments_public
+  static DocumentReference<Map<String, dynamic>> paymentsPublicDoc(
+      String lojaId) {
+    return db.doc('lojas/$lojaId/config/payments_public');
+  }
+
+  /// Remove segredos antes de expor em [payments_public].
+  static Map<String, dynamic> stripSecretsFromPaymentsMap(
+      Map<String, dynamic> raw) {
+    final out = Map<String, dynamic>.from(raw);
+    if (out['mp'] is Map) {
+      final m = Map<String, dynamic>.from(out['mp'] as Map);
+      m.remove('access_token');
+      m.remove('token');
+      m.remove('refresh_token');
+      out['mp'] = m;
+    }
+    if (out['pagseguro'] is Map) {
+      final p = Map<String, dynamic>.from(out['pagseguro'] as Map);
+      p.remove('token');
+      out['pagseguro'] = p;
+    }
+    if (out['ton'] is Map) {
+      final t = Map<String, dynamic>.from(out['ton'] as Map);
+      t.remove('client_secret');
+      out['ton'] = t;
+    }
+    if (out['infinitpay'] is Map) {
+      final i = Map<String, dynamic>.from(out['infinitpay'] as Map);
+      i.remove('api_key');
+      out['infinitpay'] = i;
+    }
+    return out;
+  }
+
+  /// Espelha [config/payments] sem segredos para [payments_public] (catálogo anônimo).
+  static Future<void> syncPaymentsPublic(String lojaId) async {
+    final snap = await paymentsDoc(lojaId).get();
+    if (!snap.exists || snap.data() == null) {
+      return;
+    }
+    await paymentsPublicDoc(lojaId).set(
+      stripSecretsFromPaymentsMap(Map<String, dynamic>.from(snap.data()!)),
+      SetOptions(merge: true),
+    );
+  }
+
   /// Stream do documento de pagamentos da loja
   /// usado pela tela de configuração.
   static Stream<DocumentSnapshot<Map<String, dynamic>>> paymentsDocStream(
@@ -58,18 +110,29 @@ class PagamentosService {
 
   /// Salva o Access Token do Mercado Pago no doc /lojas/{lojaId}/config/payments
   /// dentro do objeto "mp" e marca como conectado.
+  ///
+  /// Não grava [mp.public_key]: não confundir com chave pública pk_live.
+  /// Limpeza de perfil (email/user_id/nickname) antes de trocar token fica a cargo do
+  /// fluxo chamador (ex.: [limparPerfilMp] + helper manual) para evitar janela incoerente.
   static Future<void> salvarAccessToken(
     String lojaId,
     String accessToken,
   ) async {
     await paymentsDoc(lojaId).set(
       {
-        'mp': {
-          'access_token': accessToken,
-          'token': accessToken, // também salva como 'token' para compatibilidade
-          'connected': true, // marca como conectado
-          'public_key': accessToken, // mantém por compatibilidade
-        },
+        'mp': PagamentosMpFirestoreWrites.manualAccessToken(accessToken),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await syncPaymentsPublic(lojaId);
+  }
+
+  /// Remove apenas dados de exibição da conta MP em [mp] (antes de persistir novo token).
+  static Future<void> limparPerfilMp(String lojaId) async {
+    await paymentsDoc(lojaId).set(
+      {
+        'mp': PagamentosMpFirestoreWrites.clearIdentityFields(),
         'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
@@ -91,6 +154,7 @@ class PagamentosService {
       },
       SetOptions(merge: true),
     );
+    await syncPaymentsPublic(lojaId);
   }
 
   /// Salva configurações de um gateway específico (PagSeguro, Ton, InfinitePay etc)
@@ -117,6 +181,7 @@ class PagamentosService {
       },
       SetOptions(merge: true),
     );
+    await syncPaymentsPublic(lojaId);
   }
 
   /// Inicia o fluxo de conexão OAuth com o Mercado Pago.
@@ -138,16 +203,12 @@ class PagamentosService {
   static Future<void> desconectarLoja(String lojaId) async {
     await paymentsDoc(lojaId).set(
       {
-        'mp': {
-          'connected': false,
-          'user_id': null,
-          'public_key': null,
-          'access_token_hint': null,
-        },
+        'mp': PagamentosMpFirestoreWrites.disconnect(),
         'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
     );
+    await syncPaymentsPublic(lojaId);
   }
 
   /// (Opcional) Exemplo de chamada ao backend para trocar código por tokens.

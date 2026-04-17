@@ -92,6 +92,7 @@ import 'screens/admin_sync_screen.dart';
 import 'screens/admin_usuarios_screen.dart';
 import 'screens/master_login_screen.dart';
 import 'screens/master_config_screen.dart';
+import 'screens/catalog_payment_support_screen.dart';
 import 'screens/site_config_screen.dart';
 import 'screens/metas_comissoes_screen.dart';
 import 'screens/notas_fiscais_screen.dart';
@@ -2234,6 +2235,9 @@ class MyApp extends StatelessWidget {
               '/admin_usuarios': (_) => const AdminUsuariosScreen(),
               '/master_login': (_) => const MasterLoginScreen(),
               '/master_config': (_) => const MasterConfigScreen(),
+              '/catalog_payment_support': (ctx) => CatalogPaymentSupportScreen(
+                    routeArguments: ModalRoute.of(ctx)?.settings.arguments,
+                  ),
               '/site_config': (_) => const SiteConfigScreen(),
               '/cadastro_usuarios': (_) => _planGate(
                     PlanGateFeature.vendedores,

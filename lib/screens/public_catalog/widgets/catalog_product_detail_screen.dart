@@ -14,7 +14,7 @@ import '../../../utils/image_provider.dart';
 import '../../../utils/platform_adaptive.dart';
 import '../../../utils/safe_parse.dart';
 import 'catalog_product_selection_sheet.dart';
-import 'catalog_combo_variation_sheet.dart';
+import 'catalog_combo_configurable_sheet.dart';
 
 Map<String, int> _estoqueMapForDetail(Map<String, dynamic> raw) {
   final result = <String, int>{};

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../core/combo_configuravel_resumo.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../services/pre_pedido_service.dart';
@@ -1357,6 +1358,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
                   final linhaVar = ProdutoVariacaoExtra.linhaVariacoesParaSeparacao(
                       Map<String, dynamic>.from(item));
+                  final comboLegivel =
+                      ComboConfiguravelResumo.textoParaItemMap(
+                          Map<String, dynamic>.from(item));
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1402,6 +1406,17 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                       fontSize: 12, color: Colors.grey[600]),
+                                ),
+                              if (comboLegivel.isNotEmpty)
+                                Text(
+                                  comboLegivel,
+                                  maxLines: 4,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[700],
+                                    fontStyle: FontStyle.italic,
+                                  ),
                                 ),
                             ],
                           ),
@@ -1956,6 +1971,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         final total = (item['total'] as num?)?.toDouble() ?? 0.0;
         final linhaVar = ProdutoVariacaoExtra.linhaVariacoesParaSeparacao(
             Map<String, dynamic>.from(item));
+        final comboLegivelDet =
+            ComboConfiguravelResumo.textoParaItemMap(
+                Map<String, dynamic>.from(item));
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
@@ -1992,6 +2010,17 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                           overflow: TextOverflow.ellipsis,
                           style:
                               TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    if (comboLegivelDet.isNotEmpty)
+                      Text(
+                        comboLegivelDet,
+                        maxLines: 5,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[700],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
                     Text(
                       'R\$ ${preco.toStringAsFixed(2)}',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
@@ -2361,6 +2390,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             'extraValor': (item['extraValor'] ?? '').toString().trim(),
           if ((item['extraTipo'] ?? '').toString().trim().isNotEmpty)
             'extraTipo': (item['extraTipo'] ?? '').toString().trim(),
+          if ((item['comboConfiguravelResumo'] ?? '').toString().trim().isNotEmpty)
+            'comboConfiguravelResumo':
+                (item['comboConfiguravelResumo'] ?? '').toString().trim(),
           ...(() {
             final raw = item['itensComboComSelecao'];
             if (raw is! List || raw.isEmpty) return <String, dynamic>{};

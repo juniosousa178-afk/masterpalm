@@ -19,6 +19,11 @@ import {
   registrarPromocaoPosPagamentoMp,
   registrarPromocaoPosPagamentoMpRecovery,
 } from "./mpWebhookPromo.js";
+import {
+  orderTotalToCents,
+  validateMpPaymentAgainstOrder,
+} from "./catalogMpOrderHelpers.js";
+import { emitWebhookLog } from "./mpStructuredLogsMp.js";
 
 /** Lazy: evita getFirestore() antes de initializeApp() no deploy/analyze */
 function getDb() {
@@ -27,6 +32,46 @@ function getDb() {
 const nowTs = FieldValue.serverTimestamp();
 const COLLECTION_LOJAS = process.env.COLLECTION_LOJAS || "lojas";
 const WEBHOOK_PROCESSED_COL = "_mp_webhook_processed";
+/** Forense suporte: falhas de validação (sem raw MP). Não bloqueia _mp_webhook_processed. */
+const WEBHOOK_VALIDATION_REJECTS_COL = "_mp_webhook_validation_rejects";
+
+/**
+ * Registro mínimo consultável para snapshot (sem PII, sem payload bruto).
+ * merge: reentradas atualizam updatedAt; createdAt preservado na primeira gravação.
+ */
+export async function persistWebhookValidationReject(db, payload) {
+  const {
+    paymentId,
+    lojaId,
+    orderId,
+    externalReference,
+    validationReason,
+    paymentStatus,
+    paymentMethod,
+    amountExpectedCents,
+    amountReceivedCents,
+    currencyId,
+  } = payload;
+  const ref = db.collection(WEBHOOK_VALIDATION_REJECTS_COL).doc(String(paymentId));
+  const existing = await ref.get();
+  const doc = {
+    lojaId: String(lojaId),
+    orderId: String(orderId),
+    paymentId: String(paymentId),
+    externalReference: String(externalReference ?? orderId),
+    validationReason: String(validationReason),
+    paymentStatus: paymentStatus != null ? String(paymentStatus) : null,
+    paymentMethod: paymentMethod != null ? String(paymentMethod) : null,
+    amountExpectedCents: amountExpectedCents != null ? Number(amountExpectedCents) : null,
+    amountReceivedCents: amountReceivedCents != null ? Number(amountReceivedCents) : null,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (currencyId != null && String(currencyId).trim()) {
+    doc.currencyId = String(currencyId).toUpperCase().slice(0, 8);
+  }
+  if (!existing.exists) doc.createdAt = FieldValue.serverTimestamp();
+  await ref.set(doc, { merge: true });
+}
 
 /** fetch com timeout */
 async function fetchWithTimeout(url, opts = {}, timeoutMs = 15000) {
@@ -135,12 +180,26 @@ export async function processMpWebhook(paymentId, globalToken) {
   const { payment, lojaId } = await resolveLojaAndPayment(paymentId, globalToken);
 
   if (!payment) {
-    console.warn("[mpWebhook] Payment não encontrado para:", paymentId);
+    emitWebhookLog({
+      event: "mpWebhook_validation_failed",
+      severity: "warn",
+      reason: "payment_not_found",
+      paymentId: String(paymentId),
+    });
     return false;
   }
 
   const orderId = payment.external_reference;
   const status = payment.status;
+  emitWebhookLog({
+    event: "mpWebhook_received",
+    severity: "info",
+    paymentId: String(paymentId),
+    paymentStatus: status != null ? String(status) : undefined,
+    paymentMethod: payment.payment_method_id != null ? String(payment.payment_method_id) : undefined,
+    externalReference: orderId != null ? String(orderId) : undefined,
+    lojaId: payment?.metadata?.lojaId != null ? String(payment.metadata.lojaId) : undefined,
+  });
 
   let resolvedLojaId = lojaId || payment?.metadata?.lojaId || null;
   if (!resolvedLojaId && orderId) {
@@ -148,7 +207,14 @@ export async function processMpWebhook(paymentId, globalToken) {
   }
 
   if (!orderId || !resolvedLojaId) {
-    console.warn("[mpWebhook] orderId ou lojaId ausente:", { orderId, lojaId: resolvedLojaId });
+    emitWebhookLog({
+      event: "mpWebhook_validation_failed",
+      severity: "warn",
+      reason: "orderId_or_lojaId_missing",
+      paymentId: String(paymentId),
+      externalReference: orderId != null ? String(orderId) : undefined,
+      lojaId: resolvedLojaId != null ? String(resolvedLojaId) : undefined,
+    });
     return false;
   }
 
@@ -174,7 +240,27 @@ export async function processMpWebhook(paymentId, globalToken) {
   // 2) Early check: se já processamos, retornar imediatamente (evita transação desnecessária)
   const existingProcessed = await webhookProcessedRef.get();
   if (existingProcessed.exists) {
-    console.log("[mpWebhook] Idempotente: paymentId já processado:", paymentId);
+    emitWebhookLog({
+      event: "mpWebhook_duplicate_ignored",
+      severity: "info",
+      paymentId: String(paymentId),
+      orderId: String(orderId),
+      lojaId: String(resolvedLojaId),
+      paymentStatus: status != null ? String(status) : undefined,
+      externalReference: String(orderId),
+    });
+    try {
+      await webhookProcessedRef.set(
+        {
+          lastDuplicateWebhookAt: nowTs,
+          lastDuplicateWebhookOutcome: "noop_redelivery_after_processed",
+          updatedAt: nowTs,
+        },
+        { merge: true },
+      );
+    } catch (e) {
+      console.warn("[mpWebhook] merge duplicate delivery meta:", e && e.message);
+    }
     // Recuperação: estoque já foi processado numa entrega anterior; campanha pode ter falhado depois.
     if (status === "approved") {
       const pdata = existingProcessed.data() || {};
@@ -215,7 +301,9 @@ export async function processMpWebhook(paymentId, globalToken) {
     );
 
   // 4) Se aprovado: transação atômica (marca processado + pedido + estoque)
-  if (status !== "approved") return true;
+  if (status !== "approved") {
+    return true;
+  }
 
   let orderSnap = await orderRef.get();
   let isPrePedido = false;
@@ -229,21 +317,104 @@ export async function processMpWebhook(paymentId, globalToken) {
     isPedidoPendente = orderSnap.exists;
   }
   if (!orderSnap.exists) {
-    console.warn(
-      "[MP-WEBHOOK] Pedido não encontrado (pedidos / pre_pedidos / pedidos_pendentes):",
-      orderId,
-    );
+    emitWebhookLog({
+      event: "mpWebhook_validation_failed",
+      severity: "warn",
+      reason: "order_document_not_found",
+      paymentId: String(paymentId),
+      orderId: String(orderId),
+      lojaId: String(resolvedLojaId),
+      externalReference: String(orderId),
+    });
+    try {
+      await persistWebhookValidationReject(getDb(), {
+        paymentId,
+        lojaId: resolvedLojaId,
+        orderId,
+        externalReference: orderId,
+        validationReason: "order_document_not_found",
+        paymentStatus: status,
+        paymentMethod: payment.payment_method_id,
+        amountExpectedCents: null,
+        amountReceivedCents: orderTotalToCents(payment.transaction_amount),
+      });
+    } catch (e) {
+      console.warn("[mpWebhook] persist validation reject (order missing):", e && e.message);
+    }
     return false;
   }
 
   const orderRefToUse = orderSnap.ref;
   const order = orderSnap.data() || {};
+
+  const expectedCents = orderTotalToCents(order.total);
+  const pv = validateMpPaymentAgainstOrder({
+    payment,
+    expectedCents,
+    resolvedLojaId,
+    orderId: String(orderId),
+  });
+  if (!pv.ok) {
+    emitWebhookLog({
+      event: "mpWebhook_payment_validation_failed",
+      severity: "error",
+      reason: pv.code,
+      paymentId: String(paymentId),
+      orderId: String(orderId),
+      lojaId: String(resolvedLojaId),
+      externalReference: String(orderId),
+      amountExpectedCents: expectedCents,
+      amountReceivedCents:
+        pv.paidCents != null ? Number(pv.paidCents) : orderTotalToCents(payment.transaction_amount) ?? undefined,
+    });
+    try {
+      const recv =
+        pv.paidCents != null ? Number(pv.paidCents) : orderTotalToCents(payment.transaction_amount);
+      await persistWebhookValidationReject(getDb(), {
+        paymentId,
+        lojaId: resolvedLojaId,
+        orderId,
+        externalReference: orderId,
+        validationReason: String(pv.code),
+        paymentStatus: status,
+        paymentMethod: payment.payment_method_id,
+        amountExpectedCents: expectedCents,
+        amountReceivedCents: recv != null ? recv : null,
+        currencyId:
+          pv.currency != null ? pv.currency : payment.currency_id != null ? payment.currency_id : null,
+      });
+    } catch (e) {
+      console.warn("[mpWebhook] persist validation reject:", e && e.message);
+    }
+    return false;
+  }
+
+  emitWebhookLog({
+    event: "mpWebhook_payment_approved",
+    severity: "info",
+    paymentId: String(paymentId),
+    orderId: String(orderId),
+    lojaId: String(resolvedLojaId),
+    externalReference: String(orderId),
+    paymentStatus: "approved",
+    amountExpectedCents: expectedCents,
+    amountReceivedCents: expectedCents,
+  });
+
   const alreadyPaid = !!order.paidAt;
 
   if (alreadyPaid) {
     await webhookProcessedRef.set(
-      { processedAt: nowTs, orderId, lojaId: resolvedLojaId, status: "already_paid" },
-      { merge: true }
+      {
+        paymentId: String(paymentId),
+        processedAt: nowTs,
+        orderId,
+        lojaId: resolvedLojaId,
+        status: "already_paid",
+        effectiveOutcome: "noop_order_already_paid",
+        updatedAt: nowTs,
+      },
+      { merge: true },
     );
     if (status === "approved") {
       try {
@@ -261,8 +432,18 @@ export async function processMpWebhook(paymentId, globalToken) {
 
   const items = order.items || order.itens || [];
 
+  emitWebhookLog({
+    event: "mpWebhook_stock_update_started",
+    severity: "info",
+    paymentId: String(paymentId),
+    orderId: String(orderId),
+    lojaId: String(resolvedLojaId),
+    externalReference: String(orderId),
+  });
+
   // Transação atômica: garante que apenas uma execução processa (evita duplicar baixa de estoque)
-  await getDb().runTransaction(async (tx) => {
+  try {
+    await getDb().runTransaction(async (tx) => {
     const procDoc = await tx.get(webhookProcessedRef);
     if (procDoc.exists) {
       return; // Já processado por outra requisição
@@ -271,7 +452,19 @@ export async function processMpWebhook(paymentId, globalToken) {
     const ordDoc = await tx.get(orderRefToUse);
     const ord = ordDoc.exists ? ordDoc.data() : {};
     if (ord.paidAt) {
-      tx.set(webhookProcessedRef, { processedAt: nowTs, orderId, lojaId: resolvedLojaId, status: "already_paid" }, { merge: true });
+      tx.set(
+        webhookProcessedRef,
+        {
+          paymentId: String(paymentId),
+          processedAt: nowTs,
+          orderId,
+          lojaId: resolvedLojaId,
+          status: "already_paid",
+          effectiveOutcome: "noop_concurrent_order_already_paid",
+          updatedAt: nowTs,
+        },
+        { merge: true },
+      );
       return;
     }
 
@@ -281,6 +474,8 @@ export async function processMpWebhook(paymentId, globalToken) {
       lojaId: resolvedLojaId,
       processedAt: nowTs,
       status: "done",
+      effectiveOutcome: "applied_order_paid_new_effect",
+      updatedAt: nowTs,
     }, { merge: true });
 
     const updatePayload = {
@@ -384,6 +579,36 @@ export async function processMpWebhook(paymentId, globalToken) {
       tx.set(produtosRef, updateProdutos, { merge: true });
       tx.set(estoqueRef, updateEstoque, { merge: true });
     }
+    });
+  } catch (txErr) {
+    emitWebhookLog({
+      event: "mpWebhook_stock_update_error",
+      severity: "error",
+      paymentId: String(paymentId),
+      orderId: String(orderId),
+      lojaId: String(resolvedLojaId),
+      externalReference: String(orderId),
+      err: String(txErr?.message || txErr),
+    });
+    throw txErr;
+  }
+
+  emitWebhookLog({
+    event: "mpWebhook_stock_update_success",
+    severity: "info",
+    paymentId: String(paymentId),
+    orderId: String(orderId),
+    lojaId: String(resolvedLojaId),
+    externalReference: String(orderId),
+  });
+  emitWebhookLog({
+    event: "mpWebhook_order_marked_paid",
+    severity: "info",
+    paymentId: String(paymentId),
+    orderId: String(orderId),
+    lojaId: String(resolvedLojaId),
+    externalReference: String(orderId),
+    amountExpectedCents: expectedCents,
   });
 
   // Campanha + número da sorte (fonte oficial MP catálogo). Idempotente por paymentId (_mp_webhook_promo_processed).
@@ -414,12 +639,6 @@ export async function processMpWebhook(paymentId, globalToken) {
       precoTotal: Number((it.precoUnitario || 0) * (it.quantidade || 0)),
     }));
     const vendaId = `mp_${orderId}_${paymentId}`;
-    console.log(
-      "[MP-IDEMPOTENCIA] estoque_vendas doc",
-      vendaId,
-      "origem:",
-      isPrePedido ? "pre_pedidos" : "pedidos_pendentes",
-    );
     const estoqueVendasRef = db
       .collection(COLLECTION_LOJAS)
       .doc(resolvedLojaId)
@@ -560,6 +779,5 @@ Obrigado por comprar conosco! 💜`;
     console.warn("[mpWebhook] Erro ao enviar WhatsApp (não crítico):", whatsappErr.message);
   }
 
-  console.log("[mpWebhook] Processado:", paymentId, "pedido:", orderId, "loja:", resolvedLojaId, isPrePedido ? "(pre_pedido)" : "");
   return true;
 }

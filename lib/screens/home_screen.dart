@@ -74,6 +74,7 @@ import '../widgets/update_app_dialog.dart';
 import '../widgets/notificacao_centro_sheet.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/dashboard_home_cards.dart';
+import '../utils/catalog_payment_support_nav.dart';
 import '../widgets/dashboard_insights_section.dart';
 import '../widgets/home_intelligent_section.dart';
 import '../widgets/painel_crescimento_widget.dart';
@@ -1279,6 +1280,7 @@ class _HomeScreenState extends State<HomeScreen>
     Color? color,
     Color? iconBgColor,
     bool sidebarMode = false,
+    VoidCallback? customOnTap,
   }) {
     final theme = Theme.of(context);
     final itemColor = color ?? theme.colorScheme.onSurface;
@@ -1307,6 +1309,10 @@ class _HomeScreenState extends State<HomeScreen>
       trailing: Icon(Icons.chevron_right, color: trailingColor, size: 20),
       onTap: () {
         if (!sidebarMode) Navigator.pop(context);
+        if (customOnTap != null) {
+          customOnTap();
+          return;
+        }
         // Usar navigatorKey para garantir que a navegação use o root navigator (corrige telas que não abrem no app web)
         final nav = navigatorKey.currentState;
         if (nav == null) return;
@@ -2136,6 +2142,21 @@ class _HomeScreenState extends State<HomeScreen>
           color: _errorColor,
           iconBgColor: _errorColor.withOpacity(0.1),
           sidebarMode: sidebarMode,
+        ),
+      );
+      currentChildren.add(
+        _buildMenuTile(
+          'Suporte pagamento catálogo MP',
+          Icons.receipt_long,
+          '/catalog_payment_support',
+          color: _errorColor,
+          iconBgColor: _errorColor.withOpacity(0.1),
+          sidebarMode: sidebarMode,
+          customOnTap: () {
+            final nav = navigatorKey.currentState;
+            if (nav == null) return;
+            openCatalogPaymentSupport(nav.context);
+          },
         ),
       );
       currentChildren.add(

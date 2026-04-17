@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/master_config.dart';
 import '../services/master_config_service.dart';
 import '../themes/app_colors.dart';
+import '../utils/catalog_payment_support_nav.dart';
 import '../utils/role_utils.dart';
 import '../utils/text_utils.dart';
 
@@ -542,6 +543,8 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             const SizedBox(height: 24),
             _buildMercadoPagoSection(),
             const SizedBox(height: 24),
+            _buildCatalogMpSupportShortcut(),
+            const SizedBox(height: 24),
             _buildMaintenanceSection(),
             const SizedBox(height: 24),
             _buildUnlimitedAccessSection(),
@@ -818,6 +821,53 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                   ),
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Atalho interno (root): mesma rota que o menu Master, via [openCatalogPaymentSupport] (arguments).
+  Widget _buildCatalogMpSupportShortcut() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.receipt_long, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Catálogo web — suporte pagamento MP',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Forense somente leitura (snapshot). Não altera pagamentos.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  _resetSessionTimer();
+                  openCatalogPaymentSupport(context);
+                },
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Abrir suporte pagamento catálogo MP'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primary),
+                ),
+              ),
             ),
           ],
         ),

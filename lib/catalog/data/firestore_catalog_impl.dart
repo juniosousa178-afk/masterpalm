@@ -6,6 +6,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../screens/public_catalog/catalog_estoque_helper.dart';
+import '../../core/combo_config_canonical.dart';
 import '../../core/feature_flags.dart';
 import '../../core/logger.dart';
 import '../../core/safe_cast.dart';
@@ -106,6 +107,29 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
       }
       final categoria = (m['categoria'] ?? m['categoria_nome'] ?? m['categoriaNome'] ?? '').toString().trim();
       final subcategoria = (m['subcategoria'] ?? m['subcategoriaId'] ?? m['subcategoria_nome'] ?? '').toString().trim();
+      List<String> parseStringList(dynamic raw) {
+        if (raw is! List) return const [];
+        return raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+      }
+      List<String> dedupeKeepOrder(Iterable<String> values) {
+        final out = <String>[];
+        final seen = <String>{};
+        for (final v in values) {
+          final n = v.toLowerCase();
+          if (seen.add(n)) out.add(v);
+        }
+        return out;
+      }
+      final categoriasAssociadas = dedupeKeepOrder([
+        categoria,
+        ...parseStringList(m['categoriasAssociadas']),
+        ...parseStringList(m['categoriasExtras']),
+      ]);
+      final subcategoriasAssociadas = dedupeKeepOrder([
+        subcategoria,
+        ...parseStringList(m['subcategoriasAssociadas']),
+        ...parseStringList(m['subcategoriasExtras']),
+      ]);
 
       String principal = (m['imagem_principal'] ?? m['imageUrl'] ?? '').toString();
       final imagens = <String>[];
@@ -149,6 +173,8 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
         }
       }
       final isNovo = dataCriacao != null && DateTime.now().difference(dataCriacao).inDays <= 30;
+      final comboConfigParsed =
+          ComboConfigCanonical.parseFromFirestore(m['comboConfig']);
 
       produtos.add({
         'id': d.id,
@@ -163,6 +189,8 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
         'imagens': imagens,
         'categoria': categoria,
         'subcategoria': subcategoria,
+        'categoriasAssociadas': categoriasAssociadas,
+        'subcategoriasAssociadas': subcategoriasAssociadas,
         'slug': m['slug'] ?? '',
         'peso': (m['peso'] is num) ? (m['peso'] as num).toDouble() : 0.0,
         'tipoEmbalagem': m['tipoEmbalagem'] ?? 'padrao',
@@ -182,6 +210,7 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
         'tipoProduto': (m['tipoProduto'] ?? m['tipo'] ?? 'simples').toString(),
         if (m['itensCombo'] is List && (m['itensCombo'] as List).isNotEmpty)
           'itensCombo': m['itensCombo'],
+        if (comboConfigParsed != null) 'comboConfig': comboConfigParsed,
       });
     }
     return produtos;
@@ -198,7 +227,8 @@ class FirestoreCatalogConfigSource implements CatalogConfigSource {
   @override
   Stream<Map<String, dynamic>> watchConfig(String lojaId) {
     final configRef = _db.collection('lojas').doc(lojaId).collection('config').doc('config');
-    final paymentsRef = _db.collection('lojas').doc(lojaId).collection('config').doc('payments');
+    final paymentsRef =
+        _db.collection('lojas').doc(lojaId).collection('config').doc('payments_public');
     return configRef.snapshots().asyncMap((cfgSnap) async {
       final rawCfg = cfgSnap.data();
       final cfg = asMapDeep(rawCfg);

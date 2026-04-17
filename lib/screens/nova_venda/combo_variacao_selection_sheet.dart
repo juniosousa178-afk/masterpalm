@@ -95,6 +95,66 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
     return ProdutoVariacaoExtra.opcoesExtraPara(p.variacoes, tam, cor);
   }
 
+  double _precoDoProdutoParaSelecao(
+    Produto p,
+    String tamanho,
+    String cor,
+  ) {
+    final base = p.precoFinal;
+    final tam = tamanho.trim();
+    final c = cor.trim();
+    final variacoes = p.variacoes;
+    if (tam.isNotEmpty && variacoes != null && variacoes[tam] is Map) {
+      final mapa = variacoes[tam] as Map;
+      if (c.isNotEmpty && mapa[c] != null) {
+        final pv = mapa[c];
+        if (pv is Map && pv['preco'] is num) {
+          return (pv['preco'] as num).toDouble();
+        }
+      }
+    }
+    if ((tam.isEmpty || tam == 'sem-tamanho') &&
+        variacoes != null &&
+        variacoes['sem-tamanho'] is Map &&
+        c.isNotEmpty) {
+      final st = variacoes['sem-tamanho'] as Map;
+      final pv = st[c];
+      if (pv is Map && pv['preco'] is num) {
+        return (pv['preco'] as num).toDouble();
+      }
+    }
+    if (p.precoPorTamanho != null &&
+        p.precoPorTamanho!.isNotEmpty &&
+        tam.isNotEmpty) {
+      final v = p.precoPorTamanho![tam];
+      if (v != null) return v.toDouble();
+    }
+    return base;
+  }
+
+  double get _subtotalUnidade {
+    final itens = widget.combo.itensCombo ?? [];
+    var soma = 0.0;
+    for (var i = 0; i < itens.length; i++) {
+      final p = _produtoParaLinha(i);
+      if (p == null) continue;
+      final qtdBase = (itens[i]['quantidade'] is num)
+          ? (itens[i]['quantidade'] as num).toInt()
+          : int.tryParse('${itens[i]['quantidade']}') ?? 1;
+      if (qtdBase <= 0) continue;
+      final tam = (_selecoes[i]['tamanho'] ?? '').trim();
+      final cor = (_selecoes[i]['cor'] ?? '').trim();
+      soma += _precoDoProdutoParaSelecao(p, tam, cor) * qtdBase;
+    }
+    return soma;
+  }
+
+  double get _precoFinalUnidade {
+    // Nova venda não possui hoje campos nativos de desconto de combo no modelo Produto.
+    // Mantemos compatível: preço por seleção (tam/cor) + quantidades base do kit.
+    return _subtotalUnidade > 0 ? _subtotalUnidade : widget.preco;
+  }
+
   bool get _podeConfirmar {
     final itens = widget.combo.itensCombo ?? [];
     for (var i = 0; i < itens.length; i++) {
@@ -178,15 +238,16 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
       final corKey = cor.isEmpty ? 'sem-cor' : cor;
       final tamKey = tam.isEmpty ? 'sem-tamanho' : tam;
       String resumo = '';
+      String extraTipo = '';
       if (extra.isNotEmpty && p != null) {
-        final tipo = ProdutoVariacaoExtra.tipoParaCelula(
+        extraTipo = ProdutoVariacaoExtra.tipoParaCelula(
           p.variacoesExtraTipo,
           tamKey,
           corKey,
           extra,
         );
         resumo = ProdutoVariacaoExtra.textoResumoExtra(
-          extraTipo: tipo,
+          extraTipo: extraTipo,
           extraValor: extra,
         );
       }
@@ -198,6 +259,7 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
         'tamanho': tam,
         'cor': cor,
         if (extra.isNotEmpty) 'extraValor': extra,
+        if (extraTipo.isNotEmpty) 'extraTipo': extraTipo,
         if (resumo.isNotEmpty) 'variacaoExtraResumo': resumo,
         if (pid.isNotEmpty) 'productId': pid,
       });
@@ -483,7 +545,11 @@ class _ComboVariacaoSelectionSheetState extends State<ComboVariacaoSelectionShee
                     child: ElevatedButton.icon(
                       onPressed: _podeConfirmar
                           ? () {
-                              widget.onConfirmar(_buildSelecao(), _qtd, widget.preco);
+                              widget.onConfirmar(
+                                _buildSelecao(),
+                                _qtd,
+                                _precoFinalUnidade,
+                              );
                               Navigator.pop(context);
                             }
                           : null,

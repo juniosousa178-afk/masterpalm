@@ -17,7 +17,7 @@ import 'catalog_image_placeholder.dart';
 import 'catalog_product_details_sheet.dart';
 import 'catalog_product_detail_screen.dart';
 import 'catalog_product_selection_sheet.dart';
-import 'catalog_combo_variation_sheet.dart';
+import 'catalog_combo_configurable_sheet.dart';
 
 class CatalogProductCard extends StatefulWidget {
   final String id;
@@ -425,7 +425,9 @@ insetPadding:
       comboProduct: widget.comboProductMap!,
       todosProdutos: widget.todosProdutosForCombo!,
       onAdd: widget.onAdd,
-      onAbrirCarrinho: abrirCarrinhoDepois ? widget.onAbrirCarrinho : null,
+      // Sempre repassar quando existir: o sheet pós-adicionar ("Ir para o carrinho")
+      // precisa do callback mesmo quando a abertura não foi pedida antes do sheet.
+      onAbrirCarrinho: widget.onAbrirCarrinho,
       onAfterSilentAddWhenAdded: (!abrirCarrinhoDepois &&
               widget.minimalLayout &&
               widget.onMinimalSilentAddFeedback != null)

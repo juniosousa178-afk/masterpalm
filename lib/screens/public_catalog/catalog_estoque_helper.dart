@@ -2,6 +2,8 @@
 // Leitura centralizada de estoque no catálogo público (Firestore → UI/carrinho).
 // Retrocompatível: não altera nomes de campos do banco.
 
+import 'dart:math' as math;
+
 import '../../core/produto_variacao_extra.dart';
 import '../../core/safe_cast.dart';
 
@@ -322,6 +324,36 @@ class CatalogEstoqueHelper {
     return parseQtd(p['quantidade']);
   }
 
+  /// Para uma receita **por kit** já resolvida (ex.: seleção do combo configurável),
+  /// estima quantos kits completos cabem usando estoque agregado por SKU (sem tam/cor/extra).
+  /// Retorna `0` se linha inválida, `productId` vazio ou produto ausente no catálogo.
+  static int maxKitsMontaveisParaReceitaCatalogo({
+    required List<Map<String, dynamic>> catalogProducts,
+    required List<Map<String, dynamic>> linhasPorKit,
+  }) {
+    if (linhasPorKit.isEmpty) return 0;
+    int? cap;
+    for (final linha in linhasPorKit) {
+      final pid = (linha['productId'] ?? linha['id'] ?? '').toString().trim();
+      final qtd = linha['quantidade'] is num
+          ? (linha['quantidade'] as num).toInt()
+          : int.tryParse('${linha['quantidade']}') ?? 0;
+      if (pid.isEmpty || qtd <= 0) return 0;
+      final p = findProductInList(catalogProducts, pid);
+      if (p == null) return 0;
+      final tam = (linha['tamanho'] ?? '').toString().trim();
+      final cor = (linha['cor'] ?? '').toString().trim();
+      final ex = (linha['extraValor'] ?? linha['variacaoExtra'] ?? '')
+          .toString()
+          .trim();
+      final avail = estoqueDisponivelVariacao(p, tam, cor, ex);
+      final kits = avail ~/ qtd;
+      final prev = cap;
+      cap = prev == null ? kits : (kits < prev ? kits : prev);
+    }
+    return cap ?? 0;
+  }
+
   /// Identidade de linha do carrinho (merge e validação).
   static String cartLineIdentity(Map<String, dynamic> item) {
     final id = '${item['id'] ?? item['produtosId'] ?? ''}';
@@ -348,6 +380,40 @@ class CatalogEstoqueHelper {
       return buf.toString();
     }
     return '$id|$tam|$cr|$ex';
+  }
+
+  /// Teto de unidades para a linha [index] (estoque da variação menos outras
+  /// linhas com a mesma [cartLineIdentity]). Espelha o carrinho web.
+  static int maxOrderableForCartLine({
+    required List<Map<String, dynamic>> items,
+    required List<Map<String, dynamic>> catalogProducts,
+    required int index,
+  }) {
+    if (index < 0 || index >= items.length) return 0;
+    final item = items[index];
+    final comboRaw = item['itensComboComSelecao'];
+    if (comboRaw is List && comboRaw.isNotEmpty) {
+      return 999999;
+    }
+    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
+    if (id.isEmpty) return 999999;
+    final p = findProductInList(catalogProducts, id);
+    if (p == null) return 999999;
+    final avail = estoqueDisponivelVariacao(
+      p,
+      (item['tamanho'] ?? '').toString().trim(),
+      (item['cor'] ?? '').toString().trim(),
+      (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim(),
+    );
+    final lineKey = cartLineIdentity(item);
+    var other = 0;
+    for (var i = 0; i < items.length; i++) {
+      if (i == index) continue;
+      if (cartLineIdentity(items[i]) == lineKey) {
+        other += parseCartItemQuantidade(items[i]['quantidade']);
+      }
+    }
+    return math.max(0, avail - other);
   }
 
   static Map<String, dynamic>? findProductInList(

@@ -318,6 +318,12 @@ class CatalogoVendaService {
                 'cor': item['cor'] ?? item['color'] ?? '',
                 'imageUrl': item['imageUrl'] ?? item['url_foto'] ?? '',
                 'total': precoEfetivo * qty,
+                if (item['itensComboComSelecao'] is List &&
+                    (item['itensComboComSelecao'] as List).isNotEmpty)
+                  'itensComboComSelecao': item['itensComboComSelecao'],
+                if ((item['comboConfiguravelResumo'] ?? '').toString().trim().isNotEmpty)
+                  'comboConfiguravelResumo':
+                      (item['comboConfiguravelResumo'] ?? '').toString().trim(),
               };
             })
             .toList(),
@@ -696,6 +702,12 @@ class CatalogoVendaService {
                   'cor': item['cor'] ?? item['color'] ?? '',
                   'imageUrl': item['imageUrl'] ?? item['url_foto'] ?? '',
                   'total': precoEfetivo * qty,
+                  if (item['itensComboComSelecao'] is List &&
+                      (item['itensComboComSelecao'] as List).isNotEmpty)
+                    'itensComboComSelecao': item['itensComboComSelecao'],
+                  if ((item['comboConfiguravelResumo'] ?? '').toString().trim().isNotEmpty)
+                    'comboConfiguravelResumo':
+                        (item['comboConfiguravelResumo'] ?? '').toString().trim(),
                 };
               })
               .toList(),

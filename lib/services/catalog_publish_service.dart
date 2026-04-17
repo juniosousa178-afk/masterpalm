@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../services/store_resolver_facade.dart';
+import '../services/pagamentos_service.dart';
 
 const String _keyCatalogoPrecisaAtualizar = 'catalogo_precisa_atualizar';
 
@@ -216,6 +217,7 @@ class CatalogPublishService {
     debugPrint('💾 [PUBLISH-PAYMENTS] Salvando em LIVE: lojas/$lojaId/config/payments (merge: true)');
     debugPrint('   Campos: ${data.keys.length} campos sendo publicados');
     await liveRef.set(data, SetOptions(merge: true));
+    await PagamentosService.syncPaymentsPublic(lojaId);
     debugPrint('✅ [PUBLISH-PAYMENTS] Payments publicado com sucesso!');
   }
 

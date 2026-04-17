@@ -1,6 +1,7 @@
 // lib/screens/public_catalog/widgets/catalog_combo_variation_sheet.dart
 // Modal para selecionar tamanho/cor/variação extra de cada item do combo no catálogo público.
 
+import 'dart:async' show scheduleMicrotask, unawaited;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -12,15 +13,19 @@ import '../../../core/produto_variacao_extra.dart';
 import '../../../core/safe_cast.dart' show asMap, asMapDeep;
 import '../../../widgets/variacao_extras_collapsible.dart';
 import '../catalog_estoque_helper.dart';
+import 'catalog_after_add_choice_dialog.dart';
 
-/// Abre o sheet de seleção de variações do combo e, ao confirmar, chama [onAdd] com o item do carrinho (inclui [itensComboComSelecao]).
-Future<void> showCatalogComboVariationSheet({
+/// Abre o sheet legado (só [itensCombo] plano, sem [comboConfig]).
+/// Para roteamento automático, use [showCatalogComboVariationSheet] em
+/// `catalog_combo_configurable_sheet.dart`.
+Future<void> showCatalogComboVariationSheetLegacy({
   required BuildContext context,
   required Map<String, dynamic> comboProduct,
   required List<Map<String, dynamic>> todosProdutos,
   required bool Function(Map<String, dynamic> item) onAdd,
   VoidCallback? onAbrirCarrinho,
   VoidCallback? onAfterSilentAddWhenAdded,
+  bool showAfterAddChoiceDialog = true,
 }) {
   if (!context.mounted) return Future.value();
   final wideChrome = usePointerFirstChrome(context);
@@ -32,6 +37,7 @@ Future<void> showCatalogComboVariationSheet({
       onAdd: onAdd,
       onAbrirCarrinho: onAbrirCarrinho,
       onAfterSilentAddWhenAdded: onAfterSilentAddWhenAdded,
+      showAfterAddChoiceDialog: showAfterAddChoiceDialog,
     );
   }
 
@@ -78,6 +84,7 @@ class CatalogComboVariationSheet extends StatefulWidget {
   final bool Function(Map<String, dynamic> item) onAdd;
   final VoidCallback? onAbrirCarrinho;
   final VoidCallback? onAfterSilentAddWhenAdded;
+  final bool showAfterAddChoiceDialog;
 
   const CatalogComboVariationSheet({
     super.key,
@@ -86,6 +93,7 @@ class CatalogComboVariationSheet extends StatefulWidget {
     required this.onAdd,
     this.onAbrirCarrinho,
     this.onAfterSilentAddWhenAdded,
+    this.showAfterAddChoiceDialog = true,
   });
 
   @override
@@ -419,7 +427,7 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
     return resultado;
   }
 
-  void _confirmar() {
+  Future<void> _confirmar() async {
     for (var i = 0; i < _itensCombo.length; i++) {
       final item = _itensCombo[i];
       final p = _produtoParaItem(item);
@@ -471,14 +479,32 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
       'itensComboComSelecao': _buildSelecao(),
     };
     final added = widget.onAdd(item);
-    Navigator.of(context).pop();
-    if (widget.onAbrirCarrinho != null) {
+    if (!added) return;
+
+    final onCart = widget.onAbrirCarrinho;
+    final onSilent = widget.onAfterSilentAddWhenAdded;
+    if (!widget.showAfterAddChoiceDialog) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onAbrirCarrinho!();
+        scheduleMicrotask(() {
+          onSilent?.call();
+        });
       });
-    } else if (added && widget.onAfterSilentAddWhenAdded != null) {
-      widget.onAfterSilentAddWhenAdded!();
+      return;
     }
+    final irCarrinho = await showCatalogAfterAddChoiceDialog(context);
+    if (!mounted) return;
+    Navigator.of(context).pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      scheduleMicrotask(() {
+        if (irCarrinho && onCart != null) {
+          onCart();
+        } else if (!irCarrinho && onSilent != null) {
+          onSilent();
+        }
+      });
+    });
   }
 
   @override
@@ -983,7 +1009,9 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                       width: double.infinity,
                       height: 52,
                       child: ElevatedButton.icon(
-                        onPressed: _podeConfirmar ? _confirmar : null,
+                        onPressed: _podeConfirmar
+                            ? () => unawaited(_confirmar())
+                            : null,
                         icon: const Icon(Icons.shopping_cart_checkout, size: 22),
                         label: const Text('Adicionar kit ao carrinho'),
                         style: ElevatedButton.styleFrom(

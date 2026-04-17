@@ -8,7 +8,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/loja_id_service.dart';
 import '../services/pagamentos_service.dart';
 import '../services/payment_gateway_service.dart';
-import '../services/mercadopago_service.dart';
+import '../services/mercadopago_manual_connect_helper.dart';
 import '../services/pagseguro_service.dart';
 import '../services/ton_service.dart';
 import '../services/infinitepay_service.dart';
@@ -26,8 +26,7 @@ class ConfigPagamentosSimplesScreen extends StatefulWidget {
 }
 
 class _ConfigPagamentosSimplesScreenState
-    extends State<ConfigPagamentosSimplesScreen>
-    with WidgetsBindingObserver {
+    extends State<ConfigPagamentosSimplesScreen> with WidgetsBindingObserver {
   String? _lojaId;
   bool _carregando = true;
   String? _erro;
@@ -66,7 +65,8 @@ class _ConfigPagamentosSimplesScreenState
 
   void _checkAlteracoes() {
     final pix = _pixKeyCtrl.text.trim();
-    final alterado = _gatewayAtivo != _gatewayAtivoOriginal || pix != _pixKeyOriginal;
+    final alterado =
+        _gatewayAtivo != _gatewayAtivoOriginal || pix != _pixKeyOriginal;
     if (_alteracoesPendentes != alterado) {
       setState(() => _alteracoesPendentes = alterado);
     }
@@ -136,7 +136,8 @@ class _ConfigPagamentosSimplesScreenState
 
         // InfinitePay (Firestore usa 'infinitpay')
         final infinit = data['infinitpay'] as Map<String, dynamic>? ?? {};
-        _infinitepayConectado = (infinit['api_key']?.toString() ?? '').isNotEmpty;
+        _infinitepayConectado =
+            (infinit['api_key']?.toString() ?? '').isNotEmpty;
         _infinitepayMerchantId = infinit['merchant_id']?.toString();
 
         // Checkout
@@ -226,43 +227,34 @@ class _ConfigPagamentosSimplesScreenState
     );
 
     try {
-      // Valida o token
-      final valido = await MercadoPagoService.validarCredenciais(
-        accessToken: token,
+      final resultado = await MercadoPagoManualConnectHelper.connect(
+        lojaId: _lojaId!,
+        rawToken: token,
       );
 
       if (!mounted) return;
       navigator.pop(); // Fecha loading
 
-      if (!valido) {
-        _mostrarErro(
-          'Token inválido',
-          'Verifique se você copiou o Access Token de PRODUÇÃO corretamente.\n\n'
-              'Dica: O token começa com "APP_USR-"',
-        );
+      if (!resultado.success) {
+        if (resultado.invalidToken) {
+          _mostrarErro(
+            'Token inválido',
+            'Verifique se você copiou o Access Token de PRODUÇÃO corretamente.\n\n'
+                'Dica: cole apenas o token (sem o prefixo "Bearer ").\n'
+                'Exemplo: APP_USR-...',
+          );
+        } else {
+          _mostrarErro(
+            'Erro',
+            'Não foi possível conectar: ${resultado.errorMessage ?? 'erro desconhecido'}',
+          );
+        }
         return;
-      }
-
-      // Obtém info da conta
-      final info = await MercadoPagoService.obterInfoConta(accessToken: token);
-
-      // Salva no Firestore
-      await PagamentosService.salvarAccessToken(_lojaId!, token);
-
-      // Atualiza email se disponível
-      if (info != null) {
-        await PagamentosService.paymentsDoc(_lojaId!).set({
-          'mp': {
-            'email': info['email'],
-            'user_id': info['id']?.toString(),
-            'nickname': info['nickname'],
-          },
-        }, SetOptions(merge: true));
       }
 
       setState(() {
         _mpConectado = true;
-        _mpEmail = info?['email']?.toString();
+        _mpEmail = resultado.profileEmail;
         _gatewayAtivo = 'mp';
       });
       _checkAlteracoes();
@@ -279,13 +271,13 @@ class _ConfigPagamentosSimplesScreenState
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Mercado Pago conectado! ${info?['email'] ?? ''}',
+                  MercadoPagoManualConnectHelper.snackbarMessage(resultado),
                 ),
               ),
             ],
           ),
           backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 4),
         ),
       );
     } catch (e) {
@@ -382,6 +374,7 @@ class _ConfigPagamentosSimplesScreenState
       {'checkout': checkoutData},
       SetOptions(merge: true),
     );
+    await PagamentosService.syncPaymentsPublic(_lojaId!);
 
     // Salva também no doc principal da loja
     await FirebaseFirestore.instance.collection('lojas').doc(_lojaId!).set(
@@ -528,33 +521,39 @@ class _ConfigPagamentosSimplesScreenState
               ),
             ),
           TextButton.icon(
-            onPressed: (_salvando || _sincronizando || _publicando) ? null : () async {
-              HapticFeedback.selectionClick();
-              final messenger = ScaffoldMessenger.of(context);
-              setState(() => _salvando = true);
-              try {
-                await _salvarCheckout();
-                if (!mounted) return;
-                messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Configurações salvas!'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              } finally {
-                if (mounted) setState(() => _salvando = false);
-              }
-            },
+            onPressed: (_salvando || _sincronizando || _publicando)
+                ? null
+                : () async {
+                    HapticFeedback.selectionClick();
+                    final messenger = ScaffoldMessenger.of(context);
+                    setState(() => _salvando = true);
+                    try {
+                      await _salvarCheckout();
+                      if (!mounted) return;
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Configurações salvas!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    } finally {
+                      if (mounted) setState(() => _salvando = false);
+                    }
+                  },
             icon: const Icon(Icons.save_outlined),
             label: const Text('Salvar'),
           ),
           TextButton.icon(
-            onPressed: (_salvando || _sincronizando || _publicando) ? null : _sincronizarTudo,
+            onPressed: (_salvando || _sincronizando || _publicando)
+                ? null
+                : _sincronizarTudo,
             icon: const Icon(Icons.cloud_sync_outlined),
             label: const Text('Sincronizar'),
           ),
           TextButton.icon(
-            onPressed: (_salvando || _sincronizando || _publicando) ? null : _publicarCatalogo,
+            onPressed: (_salvando || _sincronizando || _publicando)
+                ? null
+                : _publicarCatalogo,
             icon: const Icon(Icons.cloud_upload_outlined),
             label: const Text('Publicar'),
           ),
@@ -562,10 +561,14 @@ class _ConfigPagamentosSimplesScreenState
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Center(
-                child: Icon(Icons.cloud_off, color: Colors.orange.shade700, size: 20),
+                child: Icon(Icons.cloud_off,
+                    color: Colors.orange.shade700, size: 20),
               ),
             ),
-          if (_mpConectado || _pagseguroConectado || _tonConectado || _infinitepayConectado)
+          if (_mpConectado ||
+              _pagseguroConectado ||
+              _tonConectado ||
+              _infinitepayConectado)
             IconButton(
               icon: const Icon(Icons.wifi_tethering),
               tooltip: 'Testar conexões',
@@ -611,9 +614,15 @@ class _ConfigPagamentosSimplesScreenState
                   ],
                 ),
               ),
-            if (!_mpConectado && !_pagseguroConectado && !_tonConectado && !_infinitepayConectado)
+            if (!_mpConectado &&
+                !_pagseguroConectado &&
+                !_tonConectado &&
+                !_infinitepayConectado)
               _buildEstadoVazioCard(),
-            if (!_mpConectado && !_pagseguroConectado && !_tonConectado && !_infinitepayConectado)
+            if (!_mpConectado &&
+                !_pagseguroConectado &&
+                !_tonConectado &&
+                !_infinitepayConectado)
               const SizedBox(height: 16),
             // ===== MÉTODO PADRÃO (no topo - mais usado) =====
             _buildGatewaySelector(),
@@ -646,63 +655,65 @@ class _ConfigPagamentosSimplesScreenState
             const SizedBox(height: 24),
 
             // ===== BOTÃO SALVAR =====
-          Semantics(
-            button: true,
-            label: _salvando ? 'Salvando configurações' : 'Salvar configurações',
-            child: SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                icon: _salvando
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(_salvando ? 'Salvando...' : 'Salvar Configurações'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.white,
+            Semantics(
+              button: true,
+              label:
+                  _salvando ? 'Salvando configurações' : 'Salvar configurações',
+              child: SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  icon: _salvando
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save),
+                  label:
+                      Text(_salvando ? 'Salvando...' : 'Salvar Configurações'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: _salvando
+                      ? null
+                      : () async {
+                          HapticFeedback.mediumImpact();
+                          final messenger = ScaffoldMessenger.of(context);
+                          setState(() => _salvando = true);
+                          try {
+                            await _salvarCheckout();
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Configurações salvas!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } finally {
+                            if (mounted) setState(() => _salvando = false);
+                          }
+                        },
                 ),
-                onPressed: _salvando
-                    ? null
-                    : () async {
-                        HapticFeedback.mediumImpact();
-                        final messenger = ScaffoldMessenger.of(context);
-                        setState(() => _salvando = true);
-                        try {
-                          await _salvarCheckout();
-                          if (!mounted) return;
-                          messenger.showSnackBar(
-                            const SnackBar(
-                              content: Text('Configurações salvas!'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        } finally {
-                          if (mounted) setState(() => _salvando = false);
-                        }
-                      },
               ),
             ),
-          ),
 
-          const SizedBox(height: 16),
-          TextButton.icon(
-            icon: const Icon(Icons.tune, size: 18),
-            label: const Text('Configuração avançada'),
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              Navigator.of(context).pushNamed('/config-pagamentos');
-            },
-          ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              icon: const Icon(Icons.tune, size: 18),
+              label: const Text('Configuração avançada'),
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                Navigator.of(context).pushNamed('/config-pagamentos');
+              },
+            ),
 
-          const SizedBox(height: 32),
-        ],
+            const SizedBox(height: 32),
+          ],
         ),
       ),
     );
@@ -728,7 +739,8 @@ class _ConfigPagamentosSimplesScreenState
 
   Widget _buildEstadoVazioCard() {
     return Semantics(
-      label: 'Nenhum método de pagamento conectado. Conecte pelo menos um para receber pagamentos.',
+      label:
+          'Nenhum método de pagamento conectado. Conecte pelo menos um para receber pagamentos.',
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -890,7 +902,8 @@ class _ConfigPagamentosSimplesScreenState
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      icon: const Icon(kIsWeb ? Icons.refresh : Icons.vpn_key, size: 18),
+                      icon: const Icon(kIsWeb ? Icons.refresh : Icons.vpn_key,
+                          size: 18),
                       label: const Text('Reconectar'),
                       onPressed: () {
                         HapticFeedback.mediumImpact();
@@ -995,7 +1008,9 @@ class _ConfigPagamentosSimplesScreenState
       cor: const Color(0xFF00D4AA),
       icone: Icons.point_of_sale,
       conectado: _tonConectado,
-      infoConectado: _tonId != null ? 'ID: ${_tonId!.length > 12 ? '${_tonId!.substring(0, 12)}...' : _tonId}' : null,
+      infoConectado: _tonId != null
+          ? 'ID: ${_tonId!.length > 12 ? '${_tonId!.substring(0, 12)}...' : _tonId}'
+          : null,
       onConectar: _conectarTon,
       onDesconectar: _desconectarTon,
       linkPainel: 'https://www.ton.com.br/desenvolvedores',
@@ -1085,7 +1100,9 @@ class _ConfigPagamentosSimplesScreenState
                 ),
               ],
             ),
-            if (conectado && infoConectado != null && infoConectado.isNotEmpty) ...[
+            if (conectado &&
+                infoConectado != null &&
+                infoConectado.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -1095,7 +1112,8 @@ class _ConfigPagamentosSimplesScreenState
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.check_circle, size: 16, color: Colors.green),
+                    const Icon(Icons.check_circle,
+                        size: 16, color: Colors.green),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -1257,8 +1275,10 @@ class _ConfigPagamentosSimplesScreenState
     if (result == null) return;
     final clientId = result['client_id'];
     final clientSecret = result['client_secret'];
-    if (clientId == null || clientId.isEmpty ||
-        clientSecret == null || clientSecret.isEmpty) {
+    if (clientId == null ||
+        clientId.isEmpty ||
+        clientSecret == null ||
+        clientSecret.isEmpty) {
       return;
     }
 
@@ -1453,8 +1473,8 @@ class _ConfigPagamentosSimplesScreenState
 
   Widget _buildPixCard() {
     final tipoChave = _detectarTipoChavePix(_pixKeyCtrl.text);
-    final pixValido = _pixKeyCtrl.text.trim().isEmpty ||
-        _validarChavePix(_pixKeyCtrl.text);
+    final pixValido =
+        _pixKeyCtrl.text.trim().isEmpty || _validarChavePix(_pixKeyCtrl.text);
     return Semantics(
       label: 'Campo de chave PIX para receber pagamentos',
       child: Card(
@@ -1509,7 +1529,8 @@ class _ConfigPagamentosSimplesScreenState
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (!pixValido && _pixKeyCtrl.text.trim().isNotEmpty)
-                        Icon(Icons.error_outline, color: Colors.red.shade700, size: 20),
+                        Icon(Icons.error_outline,
+                            color: Colors.red.shade700, size: 20),
                       IconButton(
                         icon: const Icon(Icons.paste),
                         tooltip: 'Colar',
@@ -1526,7 +1547,9 @@ class _ConfigPagamentosSimplesScreenState
                                   content: Row(
                                     children: [
                                       Icon(
-                                        valido ? Icons.check_circle : Icons.warning,
+                                        valido
+                                            ? Icons.check_circle
+                                            : Icons.warning,
                                         color: Colors.white,
                                         size: 20,
                                       ),
@@ -1538,7 +1561,8 @@ class _ConfigPagamentosSimplesScreenState
                                       ),
                                     ],
                                   ),
-                                  backgroundColor: valido ? Colors.green : Colors.orange,
+                                  backgroundColor:
+                                      valido ? Colors.green : Colors.orange,
                                   duration: const Duration(seconds: 2),
                                 ),
                               );
@@ -1671,53 +1695,53 @@ class _ConfigPagamentosSimplesScreenState
     return Tooltip(
       message: descricao,
       child: GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        setState(() => _gatewayAtivo = value);
-        _checkAlteracoes();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: selecionado ? color.withOpacity(0.1) : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selecionado ? color : Colors.grey.shade300,
-            width: selecionado ? 2 : 1,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          setState(() => _gatewayAtivo = value);
+          _checkAlteracoes();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: selecionado ? color.withOpacity(0.1) : Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selecionado ? color : Colors.grey.shade300,
+              width: selecionado ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: selecionado ? color : Colors.grey, size: 20),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: selecionado ? color : Colors.grey[700],
+                    ),
+                  ),
+                  Text(
+                    descricao,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+              if (selecionado) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.check_circle, color: color, size: 18),
+              ],
+            ],
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: selecionado ? color : Colors.grey, size: 20),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: selecionado ? color : Colors.grey[700],
-                  ),
-                ),
-                Text(
-                  descricao,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-            if (selecionado) ...[
-              const SizedBox(width: 8),
-              Icon(Icons.check_circle, color: color, size: 18),
-            ],
-          ],
-        ),
       ),
-    ),
     );
   }
 
@@ -1861,7 +1885,8 @@ class _ConfigPagamentosSimplesScreenState
         final c = results['clientes'] as Map<String, int>? ?? {};
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Sincronizado: ${p['synced'] ?? 0} produtos, ${c['synced'] ?? 0} clientes'),
+            content: Text(
+                'Sincronizado: ${p['synced'] ?? 0} produtos, ${c['synced'] ?? 0} clientes'),
             backgroundColor: Colors.green,
           ),
         );
@@ -1869,7 +1894,9 @@ class _ConfigPagamentosSimplesScreenState
         final err = results['errors'] as List<dynamic>?;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(err != null && err.isNotEmpty ? err.first.toString() : 'Erro na sincronização'),
+            content: Text(err != null && err.isNotEmpty
+                ? err.first.toString()
+                : 'Erro na sincronização'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1877,7 +1904,9 @@ class _ConfigPagamentosSimplesScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao sincronizar: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Erro ao sincronizar: $e'),
+              backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1900,7 +1929,9 @@ class _ConfigPagamentosSimplesScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao publicar: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Erro ao publicar: $e'),
+              backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -2134,15 +2165,19 @@ class _DialogConectarPagSeguroState extends State<_DialogConectarPagSeguro> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: Icon(_mostrarToken ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _mostrarToken = !_mostrarToken),
+                      icon: Icon(_mostrarToken
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _mostrarToken = !_mostrarToken),
                     ),
                     IconButton(
                       icon: const Icon(Icons.paste),
                       tooltip: 'Colar',
                       onPressed: () async {
                         final data = await Clipboard.getData('text/plain');
-                        if (data?.text != null) _tokenCtrl.text = data!.text!.trim();
+                        if (data?.text != null)
+                          _tokenCtrl.text = data!.text!.trim();
                       },
                     ),
                   ],
@@ -2253,7 +2288,8 @@ class _DialogConectarTonState extends State<_DialogConectarTon> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Client ID:', style: TextStyle(fontWeight: FontWeight.w500)),
+            const Text('Client ID:',
+                style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             TextField(
               controller: _clientIdCtrl,
@@ -2264,7 +2300,8 @@ class _DialogConectarTonState extends State<_DialogConectarTon> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Client Secret:', style: TextStyle(fontWeight: FontWeight.w500)),
+            const Text('Client Secret:',
+                style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             TextField(
               controller: _clientSecretCtrl,
@@ -2274,8 +2311,10 @@ class _DialogConectarTonState extends State<_DialogConectarTon> {
                 border: const OutlineInputBorder(),
                 prefixIcon: const Icon(Icons.lock),
                 suffixIcon: IconButton(
-                  icon: Icon(_mostrarSecret ? Icons.visibility_off : Icons.visibility),
-                  onPressed: () => setState(() => _mostrarSecret = !_mostrarSecret),
+                  icon: Icon(
+                      _mostrarSecret ? Icons.visibility_off : Icons.visibility),
+                  onPressed: () =>
+                      setState(() => _mostrarSecret = !_mostrarSecret),
                 ),
               ),
             ),
@@ -2344,7 +2383,8 @@ class _DialogConectarInfinitePay extends StatefulWidget {
       _DialogConectarInfinitePayState();
 }
 
-class _DialogConectarInfinitePayState extends State<_DialogConectarInfinitePay> {
+class _DialogConectarInfinitePayState
+    extends State<_DialogConectarInfinitePay> {
   final _apiKeyCtrl = TextEditingController();
   final _merchantIdCtrl = TextEditingController();
   bool _mostrarApiKey = false;
@@ -2371,7 +2411,8 @@ class _DialogConectarInfinitePayState extends State<_DialogConectarInfinitePay> 
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('API Key:', style: TextStyle(fontWeight: FontWeight.w500)),
+            const Text('API Key:',
+                style: TextStyle(fontWeight: FontWeight.w500)),
             const SizedBox(height: 8),
             TextField(
               controller: _apiKeyCtrl,
@@ -2384,15 +2425,19 @@ class _DialogConectarInfinitePayState extends State<_DialogConectarInfinitePay> 
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: Icon(_mostrarApiKey ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _mostrarApiKey = !_mostrarApiKey),
+                      icon: Icon(_mostrarApiKey
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () =>
+                          setState(() => _mostrarApiKey = !_mostrarApiKey),
                     ),
                     IconButton(
                       icon: const Icon(Icons.paste),
                       tooltip: 'Colar',
                       onPressed: () async {
                         final data = await Clipboard.getData('text/plain');
-                        if (data?.text != null) _apiKeyCtrl.text = data!.text!.trim();
+                        if (data?.text != null)
+                          _apiKeyCtrl.text = data!.text!.trim();
                       },
                     ),
                   ],
@@ -2468,4 +2513,3 @@ class _DialogConectarInfinitePayState extends State<_DialogConectarInfinitePay> 
     );
   }
 }
-

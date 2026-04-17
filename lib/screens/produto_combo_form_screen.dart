@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../models/produto.dart';
 import '../utils/moeda_input_formatter.dart';
@@ -58,6 +59,10 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   final _quantidadeDisponivel = TextEditingController(text: '1');
   final _categoria = TextEditingController(text: 'Combo');
   final _subcategoria = TextEditingController();
+  final _categoriaExtraInput = TextEditingController();
+  final _subcategoriaExtraInput = TextEditingController();
+  final Set<String> _categoriasExtrasSelecionadas = <String>{};
+  final Set<String> _subcategoriasExtrasSelecionadas = <String>{};
   final _descricao = TextEditingController();
   final _imagens = <String>[];
   bool _publicar = false;
@@ -72,6 +77,9 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
 
   /// Itens do combo: {nome, slug, quantidade, tamanho, cor, productId}. productId obrigatório ao salvar.
   final List<Map<String, dynamic>> _itensCombo = [];
+
+  /// Configuração avançada (grupos/opções) — [Produto.comboConfig]. Vazio = só modo legado.
+  final List<_GrupoComboUi> _gruposAvancados = [];
 
   void _dlog(String msg) {
     if (kDebugMode) {
@@ -88,6 +96,10 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
 
   @override
   void dispose() {
+    for (final g in _gruposAvancados) {
+      g.dispose();
+    }
+    _gruposAvancados.clear();
     for (final c in _productControllers.values) {
       c.dispose();
     }
@@ -96,6 +108,14 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       f.dispose();
     }
     _productFocusNodes.clear();
+    _nome.dispose();
+    _preco.dispose();
+    _quantidadeDisponivel.dispose();
+    _categoria.dispose();
+    _subcategoria.dispose();
+    _categoriaExtraInput.dispose();
+    _subcategoriaExtraInput.dispose();
+    _descricao.dispose();
     super.dispose();
   }
 
@@ -118,6 +138,10 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       _quantidadeDisponivel.text = c.quantidade > 0 ? '${c.quantidade}' : '1';
       _categoria.text = c.categoria;
       _subcategoria.text = c.subcategoria;
+      _categoriasExtrasSelecionadas
+          .addAll(c.categoriasExtras.map((e) => canonicalizeCategoria(e)));
+      _subcategoriasExtrasSelecionadas
+          .addAll(c.subcategoriasExtras.map((e) => canonicalizeCategoria(e)));
       _descricao.text = c.descricao;
       _imagens.addAll(c.imagens);
       _publicar = c.publicadoNoCatalogo;
@@ -181,7 +205,190 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         }
       } catch (_) {}
     }
+    _hidratarGruposAvancados();
     if (mounted) setState(() => _atualizarPrecoAutomatico());
+  }
+
+  void _hidratarGruposAvancados() {
+    final c = widget.combo;
+    if (c == null || lojaId == null) return;
+    final raw = c.comboConfig;
+    if (!ComboConfigCanonical.isEffective(raw)) return;
+    final grupos = raw![ComboConfigKeys.grupos];
+    if (grupos is! List) return;
+    for (final g in grupos) {
+      if (g is! Map) continue;
+      _gruposAvancados.add(
+        _GrupoComboUi.fromMap(Map<String, dynamic>.from(g.map((k, v) => MapEntry(k.toString(), v)))),
+      );
+    }
+    for (final gr in _gruposAvancados) {
+      gr.resolveNomesProdutos(produtosBox, lojaId!);
+    }
+  }
+
+  void _adicionarGrupoAvancado() {
+    setState(() {
+      _gruposAvancados.add(_GrupoComboUi()..opcoes.add(_OpcaoComboUi()));
+      _atualizarPrecoAutomatico();
+    });
+  }
+
+  void _removerGrupoAvancado(int i) {
+    if (i < 0 || i >= _gruposAvancados.length) return;
+    setState(() {
+      _gruposAvancados[i].dispose();
+      _gruposAvancados.removeAt(i);
+      _atualizarPrecoAutomatico();
+    });
+  }
+
+  void _adicionarOpcaoNoGrupo(_GrupoComboUi g) {
+    setState(() {
+      g.opcoes.add(_OpcaoComboUi());
+      _atualizarPrecoAutomatico();
+    });
+  }
+
+  void _removerOpcaoDoGrupo(_GrupoComboUi g, int i) {
+    if (g.opcoes.length <= 1) return;
+    setState(() {
+      g.opcoes[i].dispose();
+      g.opcoes.removeAt(i);
+      _atualizarPrecoAutomatico();
+    });
+  }
+
+  /// Estimativa de preço quando não há itens legado preenchidos (soma base + adicional por opção).
+  double _somaComboConfigEstimativa() {
+    if (lojaId == null) return 0;
+    var soma = 0.0;
+    for (final g in _gruposAvancados) {
+      for (final o in g.opcoes) {
+        final pid = o.productId?.trim() ?? '';
+        if (pid.isEmpty) continue;
+        final p = produtosBox.values.firstWhereOrNull(
+          (x) => x.lojaId == lojaId && x.idFirebase.trim() == pid,
+        );
+        if (p == null) continue;
+        final qMin = int.tryParse(o.qtdMin.text) ?? 0;
+        final q = qMin > 0 ? qMin : 1;
+        final addTxt = o.precoAdicional.text.trim();
+        final add = addTxt.isEmpty ? 0.0 : MoedaInputFormatter.parse(addTxt);
+        soma += (p.precoFinal + add) * q;
+      }
+    }
+    return soma;
+  }
+
+  String? _validarGruposAvancados() {
+    if (_gruposAvancados.isEmpty) return null;
+    for (var gi = 0; gi < _gruposAvancados.length; gi++) {
+      final g = _gruposAvancados[gi];
+      final titulo = g.titulo.text.trim();
+      if (titulo.isEmpty) {
+        return 'Grupo ${gi + 1}: informe o nome do grupo.';
+      }
+      final smin = int.tryParse(g.selecaoMin.text) ?? 0;
+      final smax = int.tryParse(g.selecaoMax.text) ?? 0;
+      if (smin < 0 || smax < 0) {
+        return 'Grupo "$titulo": seleção mín/máx não pode ser negativa.';
+      }
+      if (smax > 0 && smin > smax) {
+        return 'Grupo "$titulo": seleção mínima não pode ser maior que a máxima.';
+      }
+      var opComId = 0;
+      for (var oi = 0; oi < g.opcoes.length; oi++) {
+        final o = g.opcoes[oi];
+        final pid = o.productId?.trim() ?? '';
+        final nomeDig = o.produtoNomeCtrl.text.trim();
+        if (pid.isEmpty && nomeDig.isNotEmpty) {
+          return 'Grupo "$titulo": opção ${oi + 1} — selecione o produto na lista (ID obrigatório).';
+        }
+        if (pid.isNotEmpty) {
+          opComId++;
+          final p = produtosBox.values.firstWhereOrNull(
+            (x) => x.lojaId == lojaId && x.idFirebase.trim() == pid,
+          );
+          if (p == null) {
+            return 'Grupo "$titulo": produto não encontrado no estoque.';
+          }
+          if (p.idFirebase.trim().isEmpty) {
+            return 'Grupo "$titulo": o produto "${p.nome}" ainda não tem ID sincronizado.';
+          }
+          final qmin = int.tryParse(o.qtdMin.text) ?? 0;
+          final qmax = int.tryParse(o.qtdMax.text) ?? 0;
+          if (qmin < 0 || qmax < 0) {
+            return 'Grupo "$titulo" / "${p.nome}": quantidades não podem ser negativas.';
+          }
+          if (qmax > 0 && qmin > qmax) {
+            return 'Grupo "$titulo" / "${p.nome}": qtd mínima não pode ser maior que a máxima.';
+          }
+        }
+      }
+      if (g.obrigatorio && opComId == 0) {
+        return 'Grupo "$titulo" é obrigatório: adicione ao menos uma opção com produto vinculado.';
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _montarComboConfigParaSalvar() {
+    if (_gruposAvancados.isEmpty) return null;
+    if (lojaId == null) return null;
+    final grupos = <Map<String, dynamic>>[];
+    for (final g in _gruposAvancados) {
+      final gm = g.toMap(produtosBox, lojaId!);
+      final ops = gm[ComboConfigKeys.grupoOpcoes] as List?;
+      if (ops == null || ops.isEmpty) continue;
+      grupos.add(gm);
+    }
+    if (grupos.isEmpty) return null;
+    final raw = <String, dynamic>{
+      ComboConfigKeys.version: kComboConfigSchemaVersion,
+      ComboConfigKeys.grupos: grupos,
+    };
+    return ComboConfigCanonical.parseFromFirestore(raw);
+  }
+
+  List<Map<String, dynamic>> _derivarItensComboDosGrupos() {
+    if (lojaId == null) return [];
+    final acc = <String, Map<String, dynamic>>{};
+    for (final g in _gruposAvancados) {
+      for (final o in g.opcoes) {
+        final pid = o.productId?.trim() ?? '';
+        if (pid.isEmpty) continue;
+        final p = produtosBox.values.firstWhereOrNull(
+          (x) => x.lojaId == lojaId && x.idFirebase.trim() == pid,
+        );
+        if (p == null || p.idFirebase.trim().isEmpty) continue;
+        final qMin = int.tryParse(o.qtdMin.text) ?? 0;
+        final qAdd = qMin > 0 ? qMin : 1;
+        acc.update(
+          pid,
+          (prev) {
+            final pq = (prev['quantidade'] as int) + qAdd;
+            return {
+              'nome': p.nome,
+              'slug': p.slug,
+              'productId': pid,
+              'quantidade': pq,
+              'tamanho': '',
+              'cor': '',
+            };
+          },
+          ifAbsent: () => {
+            'nome': p.nome,
+            'slug': p.slug,
+            'productId': p.idFirebase,
+            'quantidade': qAdd,
+            'tamanho': '',
+            'cor': '',
+          },
+        );
+      }
+    }
+    return acc.values.map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   void _adicionarItem() {
@@ -300,14 +507,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
 
   /// Calcula a soma dos itens (preço × quantidade) e aplica desconto. Retorna o preço final do combo.
   double _calcularPrecoCombo() {
-    if (lojaId == null) return 0;
-    double soma = 0;
-    for (final item in _itensCombo) {
-      final qtd = int.tryParse((item['quantidade'] ?? '0').toString()) ?? 0;
-      if (qtd <= 0) continue;
-      final p = _produtoParaItemCombo(item, lojaId!);
-      if (p != null) soma += p.precoFinal * qtd;
-    }
+    var soma = _somaItensCombo();
+    if (soma <= 0) soma = _somaComboConfigEstimativa();
     if (soma <= 0) return 0;
     if (_descontoComboValor > 0) {
       return (soma - _descontoComboValor).clamp(0.0, double.infinity);
@@ -511,7 +712,15 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     if (!_form.currentState!.validate()) return;
     if (lojaId == null || lojaId!.isEmpty) return;
 
-    final itensValidos = <Map<String, dynamic>>[];
+    final errAv = _validarGruposAvancados();
+    if (errAv != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(errAv)));
+      }
+      return;
+    }
+
+    var itensValidos = <Map<String, dynamic>>[];
     for (final item in _itensCombo) {
       final nome = (item['nome'] ?? '').toString().trim();
       final qtd = int.tryParse((item['quantidade'] ?? '0').toString()) ?? 0;
@@ -556,9 +765,18 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     }
 
     if (itensValidos.isEmpty) {
+      final derived = _derivarItensComboDosGrupos();
+      if (derived.isNotEmpty) itensValidos = derived;
+    }
+
+    if (itensValidos.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Adicione pelo menos um produto ao combo')),
+          const SnackBar(
+            content: Text(
+              'Adicione pelo menos um produto na receita legado ou configure grupos avançados com opções.',
+            ),
+          ),
         );
       }
       return;
@@ -568,6 +786,17 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     try {
       final preco = MoedaInputFormatter.parse(_preco.text);
       final nome = capitalizeWords(_nome.text.trim());
+      final categoriaPrincipal = canonicalizeCategoria(_categoria.text.trim());
+      final subcategoriaPrincipal =
+          canonicalizeCategoria(_subcategoria.text.trim());
+      final categoriasExtras = _extrasSemPrincipal(
+        _categoriasExtrasSelecionadas,
+        categoriaPrincipal,
+      );
+      final subcategoriasExtras = _extrasSemPrincipal(
+        _subcategoriasExtrasSelecionadas,
+        subcategoriaPrincipal,
+      );
       final slug = '${lojaId!}-combo-${_gerarSlug(nome)}';
 
       Produto combo;
@@ -576,17 +805,21 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         final qtd = int.tryParse(_quantidadeDisponivel.text.trim()) ?? 1;
         // Edição de combo: atualiza somente campos explícitos da UI de combo.
         // Campos administrativos não expostos nesta tela permanecem como estavam.
+        final cfgSalvar = _montarComboConfigParaSalvar();
         combo
           ..nome = nome
           ..precoFinal = preco
           ..precoUnitario = preco
-          ..categoria = canonicalizeCategoria(_categoria.text.trim())
-          ..subcategoria = canonicalizeCategoria(_subcategoria.text.trim())
+          ..categoria = categoriaPrincipal
+          ..subcategoria = subcategoriaPrincipal
+          ..categoriasExtras = categoriasExtras
+          ..subcategoriasExtras = subcategoriasExtras
           ..descricao = _descricao.text.trim()
           ..imagens = List.from(_imagens)
           ..publicadoNoCatalogo = _publicar
           ..tipoProduto = 'combo'
           ..itensCombo = itensValidos
+          ..comboConfig = cfgSalvar
           ..quantidade = qtd < 0 ? 0 : qtd
           ..lojaId = lojaId!
           ..custoEditadoNoCadastro = true
@@ -605,6 +838,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         }
 
         final qtd = int.tryParse(_quantidadeDisponivel.text.trim()) ?? 1;
+        final cfgNovo = _montarComboConfigParaSalvar();
         combo = Produto(
           nome: nome,
           custoReal: 0,
@@ -615,8 +849,10 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           precoFinal: preco,
           quantidade: qtd < 0 ? 0 : qtd,
           precoUnitario: preco,
-          categoria: canonicalizeCategoria(_categoria.text.trim()),
-          subcategoria: canonicalizeCategoria(_subcategoria.text.trim()),
+          categoria: categoriaPrincipal,
+          subcategoria: subcategoriaPrincipal,
+          categoriasExtras: categoriasExtras,
+          subcategoriasExtras: subcategoriasExtras,
           dataEntrada: DateTime.now(),
           descricao: _descricao.text.trim(),
           imagens: List.from(_imagens),
@@ -625,6 +861,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
           lojaId: lojaId!,
           tipoProduto: 'combo',
           itensCombo: itensValidos,
+          comboConfig: cfgNovo,
           custoEditadoNoCadastro: true,
           updatedAt: DateTime.now(),
         );
@@ -654,6 +891,161 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
+  }
+
+  List<String> _opcoesUnicasCategoria(Iterable<Produto> produtos) {
+    final normToCanon = <String, String>{};
+    for (final p in produtos) {
+      for (final c in [p.categoria, ...p.categoriasExtras]) {
+        final t = c.trim();
+        if (t.isEmpty) continue;
+        final n = normalizeText(t);
+        normToCanon[n] = canonicalizeCategoria(t);
+      }
+    }
+    final list = normToCanon.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  List<String> _opcoesUnicasSubcategoria(Iterable<Produto> produtos) {
+    final normToCanon = <String, String>{};
+    for (final p in produtos) {
+      for (final s in [p.subcategoria, ...p.subcategoriasExtras]) {
+        final t = s.trim();
+        if (t.isEmpty) continue;
+        final n = normalizeText(t);
+        normToCanon[n] = canonicalizeCategoria(t);
+      }
+    }
+    final list = normToCanon.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  List<String> _extrasSemPrincipal(Set<String> valores, String principal) {
+    final p = normalizeText(principal.trim());
+    final list = valores
+        .where((v) => normalizeText(v) != p)
+        .where((v) => v.trim().isNotEmpty)
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  Widget _buildCategoriaAutocomplete({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required List<String> opcoes,
+  }) {
+    return Autocomplete<String>(
+      initialValue: TextEditingValue(text: controller.text),
+      optionsBuilder: (textEditingValue) {
+        if (textEditingValue.text.isEmpty) return opcoes;
+        final norm = normalizeText(textEditingValue.text);
+        return opcoes.where((s) => normalizeText(s).contains(norm)).toList();
+      },
+      onSelected: (value) {
+        controller.text = value;
+        setState(() {});
+      },
+      fieldViewBuilder: (context, fieldController, focusNode, onSubmit) {
+        if (fieldController.text != controller.text) {
+          fieldController.text = controller.text;
+        }
+        return TextFormField(
+          controller: fieldController,
+          focusNode: focusNode,
+          decoration: InputDecoration(
+            labelText: label,
+            prefixIcon: Icon(icon),
+            border: const OutlineInputBorder(),
+          ),
+          onChanged: (v) {
+            controller.text = v;
+            setState(() {});
+          },
+          onFieldSubmitted: (_) => onSubmit(),
+        );
+      },
+    );
+  }
+
+  Widget _buildClassificacaoExtrasEditor({
+    required String titulo,
+    required IconData icon,
+    required TextEditingController inputController,
+    required Set<String> selecionados,
+    required List<String> sugestoes,
+    required String principalAtual,
+  }) {
+    void addFromInput(String raw) {
+      final valor = canonicalizeCategoria(raw.trim());
+      if (valor.isEmpty) return;
+      if (normalizeText(valor) == normalizeText(principalAtual.trim())) {
+        inputController.clear();
+        return;
+      }
+      setState(() {
+        selecionados.add(valor);
+        inputController.clear();
+      });
+    }
+
+    final opcoes = sugestoes
+        .where((s) => normalizeText(s) != normalizeText(principalAtual))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18, color: Colors.grey.shade700),
+            const SizedBox(width: 8),
+            Text(
+              titulo,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildCategoriaAutocomplete(
+                controller: inputController,
+                label: 'Adicionar',
+                icon: icon,
+                opcoes: opcoes,
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.tonal(
+              onPressed: () => addFromInput(inputController.text),
+              child: const Text('Adicionar'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (selecionados.isEmpty)
+          const Text('Nenhuma adicional selecionada.')
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: _extrasSemPrincipal(selecionados, principalAtual)
+                .map(
+                  (v) => InputChip(
+                    label: Text(v),
+                    onDeleted: () => setState(() => selecionados.remove(v)),
+                  ),
+                )
+                .toList(),
+          ),
+      ],
+    );
   }
 
   @override
@@ -756,25 +1148,41 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                       Row(
                         children: [
                           Expanded(
-                            child: TextFormField(
+                            child: _buildCategoriaAutocomplete(
                               controller: _categoria,
-                              decoration: const InputDecoration(
-                                labelText: 'Categoria',
-                                border: OutlineInputBorder(),
-                              ),
+                              label: 'Categoria',
+                              icon: Icons.category_outlined,
+                              opcoes: _opcoesUnicasCategoria(produtosBox.values),
                             ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: TextFormField(
+                            child: _buildCategoriaAutocomplete(
                               controller: _subcategoria,
-                              decoration: const InputDecoration(
-                                labelText: 'Subcategoria',
-                                border: OutlineInputBorder(),
-                              ),
+                              label: 'Subcategoria',
+                              icon: Icons.label_outline,
+                              opcoes: _opcoesUnicasSubcategoria(produtosBox.values),
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      _buildClassificacaoExtrasEditor(
+                        titulo: 'Categorias adicionais',
+                        icon: Icons.category_outlined,
+                        inputController: _categoriaExtraInput,
+                        selecionados: _categoriasExtrasSelecionadas,
+                        sugestoes: _opcoesUnicasCategoria(produtosBox.values),
+                        principalAtual: _categoria.text,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildClassificacaoExtrasEditor(
+                        titulo: 'Subcategorias adicionais',
+                        icon: Icons.label_outline,
+                        inputController: _subcategoriaExtraInput,
+                        selecionados: _subcategoriasExtrasSelecionadas,
+                        sugestoes: _opcoesUnicasSubcategoria(produtosBox.values),
+                        principalAtual: _subcategoria.text,
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -1033,6 +1441,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              _buildCardConfiguracaoAvancada(produtosDaLoja),
+              const SizedBox(height: 16),
               Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -1196,6 +1606,432 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     );
   }
 
+  Widget _buildCardConfiguracaoAvancada(List<Produto> produtosDaLoja) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.dashboard_customize_outlined, color: Colors.deepPurple.shade700),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Configuração avançada (grupos)',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepPurple.shade900,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _adicionarGrupoAvancado,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Grupo'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Opcional. Monte escolhas (ex.: corrente + pingentes). A receita legado acima '
+              'continua válida para estoque/catálogo. Se preencher só grupos, a receita será '
+              'derivada das opções ao salvar.',
+              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+            ),
+            if (_gruposAvancados.isEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Nenhum grupo. Toque em «Grupo» para começar.',
+                style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic),
+              ),
+            ],
+            ...List.generate(_gruposAvancados.length, (gi) {
+              final g = _gruposAvancados[gi];
+              return _buildGrupoEditorCard(g, gi, produtosDaLoja);
+            }),
+            if (_gruposAvancados.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                _resumoTextualGrupos(),
+                style: TextStyle(fontSize: 12, color: Colors.grey[800], height: 1.35),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _resumoTextualGrupos() {
+    if (_gruposAvancados.isEmpty) return '';
+    final b = StringBuffer('Prévia: ');
+    for (var i = 0; i < _gruposAvancados.length; i++) {
+      final g = _gruposAvancados[i];
+      if (i > 0) b.write(' · ');
+      final tit = g.titulo.text.trim();
+      b.write(tit.isEmpty ? 'Grupo ${i + 1}' : tit);
+      b.write(' (${_labelTipoGrupoUi(g.tipo)})');
+      final n = g.opcoes.where((o) => (o.productId ?? '').trim().isNotEmpty).length;
+      b.write(' — $n opção(ões)');
+    }
+    return b.toString();
+  }
+
+  static String _labelTipoGrupoUi(String t) {
+    switch (t) {
+      case 'unica_obrigatoria':
+        return '1 obrigatória';
+      case 'unica_opcional':
+        return '1 opcional';
+      case 'multipla_opcional':
+        return 'múltipla opc.';
+      case 'multipla_quantidade':
+        return 'múltipla+qtd';
+      case 'fixo':
+        return 'fixo';
+      default:
+        return t;
+    }
+  }
+
+  Widget _buildGrupoEditorCard(_GrupoComboUi g, int gi, List<Produto> produtosDaLoja) {
+    final tipoValor =
+        kComboConfigTiposGrupo.contains(g.tipo) ? g.tipo : 'unica_obrigatoria';
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Material(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Grupo ${gi + 1}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.deepPurple.shade800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.delete_outline, color: Colors.red.shade700),
+                    tooltip: 'Remover grupo',
+                    onPressed: () => _removerGrupoAvancado(gi),
+                  ),
+                ],
+              ),
+              TextField(
+                controller: g.titulo,
+                decoration: const InputDecoration(
+                  labelText: 'Nome do grupo *',
+                  hintText: 'Ex: Corrente, Pingentes',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: tipoValor,
+                decoration: const InputDecoration(
+                  labelText: 'Tipo do grupo',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'unica_obrigatoria',
+                    child: Text('Escolha única obrigatória'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'unica_opcional',
+                    child: Text('Escolha única opcional'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'multipla_opcional',
+                    child: Text('Múltipla opcional'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'multipla_quantidade',
+                    child: Text('Múltipla com quantidade'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'fixo',
+                    child: Text('Item fixo (sempre incluso)'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    g.tipo = v;
+                    if (v == 'fixo') g.obrigatorio = true;
+                    _atualizarPrecoAutomatico();
+                  });
+                },
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Grupo obrigatório'),
+                value: g.obrigatorio,
+                onChanged: g.tipo == 'fixo'
+                    ? null
+                    : (v) => setState(() {
+                          g.obrigatorio = v;
+                        }),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: g.selecaoMin,
+                      decoration: const InputDecoration(
+                        labelText: 'Mín. seleções (opções distintas)',
+                        helperText: 'Ex.: 1',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(() => _atualizarPrecoAutomatico()),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: g.selecaoMax,
+                      decoration: const InputDecoration(
+                        labelText: 'Máx. (0 = sem limite)',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setState(() => _atualizarPrecoAutomatico()),
+                    ),
+                  ),
+                ],
+              ),
+              SwitchListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Permitir repetir a mesma opção (grupo)'),
+                subtitle: const Text(
+                  'Relevante para «múltipla com quantidade».',
+                  style: TextStyle(fontSize: 11),
+                ),
+                value: g.permiteRepetirOpcao,
+                onChanged: (v) => setState(() => g.permiteRepetirOpcao = v),
+              ),
+              TextField(
+                controller: g.observacao,
+                decoration: const InputDecoration(
+                  labelText: 'Observação (opcional)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Text('Opções', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: () => _adicionarOpcaoNoGrupo(g),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Opção'),
+                  ),
+                ],
+              ),
+              ...List.generate(g.opcoes.length, (oi) {
+                final o = g.opcoes[oi];
+                return _buildOpcaoRow(g, o, gi, oi, produtosDaLoja);
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOpcaoRow(
+    _GrupoComboUi g,
+    _OpcaoComboUi o,
+    int gi,
+    int oi,
+    List<Produto> produtosDaLoja,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return RawAutocomplete<Produto>(
+                      textEditingController: o.produtoNomeCtrl,
+                      focusNode: o.focusNode,
+                      displayStringForOption: (p) => p.nome,
+                      optionsBuilder: (value) {
+                        final q = value.text.trim().toLowerCase();
+                        if (q.isEmpty) return produtosDaLoja.take(20);
+                        return produtosDaLoja
+                            .where((p) => p.nome.toLowerCase().contains(q))
+                            .take(20);
+                      },
+                      onSelected: (p) {
+                        setState(() {
+                          o.productId =
+                              p.idFirebase.trim().isNotEmpty ? p.idFirebase : null;
+                          o.produtoNomeCtrl.text = p.nome;
+                          _atualizarPrecoAutomatico();
+                        });
+                      },
+                      fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                        return TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration: const InputDecoration(
+                            labelText: 'Produto da opção',
+                            hintText: 'Buscar...',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onChanged: (v) {
+                            setState(() {
+                              final pid = o.productId ?? '';
+                              if (pid.isNotEmpty) {
+                                final sel = produtosDaLoja.firstWhereOrNull(
+                                  (x) => x.idFirebase.trim() == pid,
+                                );
+                                if (sel != null &&
+                                    sel.nome.trim().toLowerCase() !=
+                                        v.trim().toLowerCase()) {
+                                  o.productId = null;
+                                }
+                              }
+                              _atualizarPrecoAutomatico();
+                            });
+                          },
+                        );
+                      },
+                      optionsViewBuilder: (context, onSelected, options) {
+                        return Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 4,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: constraints.maxWidth,
+                                maxHeight: 200,
+                              ),
+                              child: ListView.builder(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                itemCount: options.length,
+                                itemBuilder: (context, index) {
+                                  final p = options.elementAt(index);
+                                  return InkWell(
+                                    onTap: () => onSelected(p),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 10,
+                                      ),
+                                      child: Text(
+                                        p.nome,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.remove_circle_outline, color: Colors.red.shade700),
+                onPressed: g.opcoes.length > 1 ? () => _removerOpcaoDoGrupo(g, oi) : null,
+                tooltip: 'Remover opção',
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: o.precoAdicional,
+                  decoration: const InputDecoration(
+                    labelText: 'Preço adicional (R\$)',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [MoedaInputFormatter()],
+                  onChanged: (_) => setState(() => _atualizarPrecoAutomatico()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: o.qtdMin,
+                  decoration: const InputDecoration(
+                    labelText: 'Qtd mín',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() => _atualizarPrecoAutomatico()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: o.qtdMax,
+                  decoration: const InputDecoration(
+                    labelText: 'Qtd máx (0=livre)',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() => _atualizarPrecoAutomatico()),
+                ),
+              ),
+            ],
+          ),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Permitir repetir esta opção'),
+            value: o.permiteRepetir,
+            onChanged: (v) => setState(() => o.permiteRepetir = v),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _abrirMenuIaCombo() {
     showModalBottomSheet(
       context: context,
@@ -1230,5 +2066,159 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         ),
       ),
     );
+  }
+}
+
+class _GrupoComboUi {
+  _GrupoComboUi({String? presetId})
+      : id = (presetId != null && presetId.trim().isNotEmpty)
+            ? presetId.trim()
+            : _novoIdGrupo();
+
+  static String _novoIdGrupo() => 'g_${DateTime.now().microsecondsSinceEpoch}';
+
+  final String id;
+  final titulo = TextEditingController();
+  final observacao = TextEditingController();
+  String tipo = 'unica_obrigatoria';
+  bool obrigatorio = true;
+  final selecaoMin = TextEditingController(text: '1');
+  final selecaoMax = TextEditingController(text: '0');
+  bool permiteRepetirOpcao = true;
+  final opcoes = <_OpcaoComboUi>[];
+
+  factory _GrupoComboUi.fromMap(Map<String, dynamic> m) {
+    final idRaw = m[ComboConfigKeys.grupoId]?.toString();
+    final g = _GrupoComboUi(
+      presetId: idRaw != null && idRaw.trim().isNotEmpty ? idRaw : null,
+    );
+    g.titulo.text = (m[ComboConfigKeys.grupoTitulo] ?? '').toString();
+    final tipoRaw = (m[ComboConfigKeys.grupoTipo] ?? 'unica_obrigatoria').toString();
+    g.tipo = kComboConfigTiposGrupo.contains(tipoRaw) ? tipoRaw : 'unica_obrigatoria';
+    g.obrigatorio = m[ComboConfigKeys.grupoObrigatorio] != false;
+    final smin = m[ComboConfigKeys.grupoSelecaoMin];
+    final smax = m[ComboConfigKeys.grupoSelecaoMax];
+    g.selecaoMin.text =
+        '${smin is num ? smin.toInt() : int.tryParse('$smin') ?? 1}';
+    g.selecaoMax.text =
+        '${smax is num ? smax.toInt() : int.tryParse('$smax') ?? 0}';
+    g.permiteRepetirOpcao = m[ComboConfigKeys.grupoPermiteRepetirOpcao] != false;
+    g.observacao.text = (m[ComboConfigKeys.grupoObservacao] ?? '').toString();
+    final op = m[ComboConfigKeys.grupoOpcoes];
+    if (op is List) {
+      for (final e in op) {
+        if (e is Map) {
+          g.opcoes.add(
+            _OpcaoComboUi.fromMap(
+              Map<String, dynamic>.from(
+                e.map((k, v) => MapEntry(k.toString(), v)),
+              ),
+            ),
+          );
+        }
+      }
+    }
+    if (g.opcoes.isEmpty) g.opcoes.add(_OpcaoComboUi());
+    return g;
+  }
+
+  void resolveNomesProdutos(Box<Produto> box, String loja) {
+    for (final o in opcoes) {
+      final pid = o.productId?.trim() ?? '';
+      if (pid.isEmpty) continue;
+      final p = box.values.firstWhereOrNull(
+        (x) => x.lojaId == loja && x.idFirebase.trim() == pid,
+      );
+      if (p != null) o.produtoNomeCtrl.text = p.nome;
+    }
+  }
+
+  Map<String, dynamic> toMap(Box<Produto> box, String lojaId) {
+    final ops = <Map<String, dynamic>>[];
+    for (final o in opcoes) {
+      final om = o.toMap(box, lojaId);
+      if (om.isNotEmpty) ops.add(om);
+    }
+    return {
+      ComboConfigKeys.grupoId: id,
+      ComboConfigKeys.grupoTitulo: titulo.text.trim(),
+      ComboConfigKeys.grupoTipo: tipo,
+      ComboConfigKeys.grupoObrigatorio: obrigatorio,
+      ComboConfigKeys.grupoSelecaoMin: int.tryParse(selecaoMin.text) ?? 0,
+      ComboConfigKeys.grupoSelecaoMax: int.tryParse(selecaoMax.text) ?? 0,
+      ComboConfigKeys.grupoPermiteRepetirOpcao: permiteRepetirOpcao,
+      if (observacao.text.trim().isNotEmpty)
+        ComboConfigKeys.grupoObservacao: observacao.text.trim(),
+      ComboConfigKeys.grupoOpcoes: ops,
+    };
+  }
+
+  void dispose() {
+    titulo.dispose();
+    observacao.dispose();
+    selecaoMin.dispose();
+    selecaoMax.dispose();
+    for (final o in opcoes) {
+      o.dispose();
+    }
+    opcoes.clear();
+  }
+}
+
+class _OpcaoComboUi {
+  _OpcaoComboUi();
+
+  final produtoNomeCtrl = TextEditingController();
+  final focusNode = FocusNode();
+  String? productId;
+  final precoAdicional = TextEditingController();
+  final qtdMin = TextEditingController(text: '0');
+  final qtdMax = TextEditingController(text: '0');
+  bool permiteRepetir = true;
+
+  factory _OpcaoComboUi.fromMap(Map<String, dynamic> m) {
+    final o = _OpcaoComboUi();
+    final pid = (m[ComboConfigKeys.opProductId] ?? '').toString().trim();
+    o.productId = pid.isEmpty ? null : pid;
+    o.produtoNomeCtrl.text = (m[ComboConfigKeys.opNome] ?? '').toString();
+    final pa = m[ComboConfigKeys.opPrecoAdicional];
+    if (pa is num && pa.toDouble() > 0) {
+      o.precoAdicional.text = MoedaInputFormatter.format(pa.toDouble());
+    }
+    final qn = m[ComboConfigKeys.opQtdMin];
+    final qx = m[ComboConfigKeys.opQtdMax];
+    o.qtdMin.text = '${qn is num ? qn.toInt() : int.tryParse('$qn') ?? 0}';
+    o.qtdMax.text = '${qx is num ? qx.toInt() : int.tryParse('$qx') ?? 0}';
+    o.permiteRepetir = m[ComboConfigKeys.opPermiteRepetir] != false;
+    return o;
+  }
+
+  Map<String, dynamic> toMap(Box<Produto> box, String lojaId) {
+    final pid = productId?.trim() ?? '';
+    if (pid.isEmpty) return {};
+    final p = box.values.firstWhereOrNull(
+      (x) => x.lojaId == lojaId && x.idFirebase.trim() == pid,
+    );
+    final nome = (p?.nome ?? produtoNomeCtrl.text).trim();
+    final slug = (p?.slug ?? '').trim();
+    final addTxt = precoAdicional.text.trim();
+    final add = addTxt.isEmpty ? 0.0 : MoedaInputFormatter.parse(addTxt);
+    return {
+      ComboConfigKeys.opProductId: pid,
+      ComboConfigKeys.opNome: nome,
+      if (slug.isNotEmpty) ComboConfigKeys.opSlug: slug,
+      if (add > 0) ComboConfigKeys.opPrecoAdicional: add,
+      ComboConfigKeys.opQtdMin: int.tryParse(qtdMin.text) ?? 0,
+      ComboConfigKeys.opQtdMax: int.tryParse(qtdMax.text) ?? 0,
+      ComboConfigKeys.opPermiteRepetir: permiteRepetir,
+    };
+  }
+
+  void dispose() {
+    produtoNomeCtrl.dispose();
+    focusNode.dispose();
+    precoAdicional.dispose();
+    qtdMin.dispose();
+    qtdMax.dispose();
   }
 }

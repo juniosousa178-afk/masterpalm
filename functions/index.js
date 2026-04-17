@@ -39,6 +39,30 @@ import {
 } from "./src/rateLimiter.js";
 import { processMpWebhook } from "./src/mpWebhookHandler.js";
 import {
+  verifyMpCatalogWebhookNotification,
+  MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS,
+  MP_WEBHOOK_CATALOG_PROCESSING_ERROR_HTTP_STATUS,
+} from "./src/mpWebhookCatalogEdge.js";
+import {
+  resolveCatalogOrderForMp,
+  isOrderPayableForMp,
+  orderTotalToCents,
+} from "./src/catalogMpOrderHelpers.js";
+import { stripPaymentsSecretsForPublic } from "./src/paymentsPublicStrip.js";
+import { resolveStrictLojaMpAccessToken } from "./src/mpLojaTokenPolicy.js";
+import {
+  tryBeginMpCatalogPaymentOrReuse,
+  commitMpCatalogPaymentSuccess,
+  releaseMpCatalogPaymentLock,
+} from "./src/mpCatalogPaymentLock.js";
+import { buildMpCatalogProviderIdempotencyKey } from "./src/mpCatalogProviderIdempotencyKey.js";
+import {
+  emitCatalogPaymentLog,
+  catalogPaymentCorrelationId,
+  truncateProviderErrorText,
+} from "./src/mpStructuredLogsMp.js";
+import { runMpCatalogPaymentSupportSnapshot } from "./src/mpCatalogPaymentSupportRead.js";
+import {
   generatePlanOrderId,
   PLAN_ORDERS_COL,
   tryProcessPlanOrderWebhook,
@@ -381,6 +405,10 @@ function addYears(d, n) {
  * /lojas/{lojaId}/config/payments
  *  - mp_access_token: string (obrigatório pra loja receber)
  *  - mp_public_key: string (opcional, exibição no front)
+ *
+ * Fluxos **pedido/catálogo** (createPreference, mpCatalogPayment) usam
+ * [resolveStrictLojaMpAccessToken] — **sem** fallback para MP_ACCESS_TOKEN global.
+ * Planos/billing da plataforma continuam usando o token global (planCreatePreference, webhooks de plano, etc.).
  */
 async function getLojaPaymentConfig(lojaId) {
   try {
@@ -588,6 +616,24 @@ export const mpOAuthCallback = onRequest(
             token: accessToken,
             refresh_token: refreshToken || null,
             public_key: publicKey || accessToken,
+            user_id: userId ? String(userId) : null,
+            email: email || null,
+            connected: true,
+          },
+          updatedAt: nowTs,
+        },
+        { merge: true }
+      );
+
+      const paymentsPublicRef = db
+        .collection(COLLECTION_LOJAS)
+        .doc(String(lojaId))
+        .collection("config")
+        .doc("payments_public");
+      await paymentsPublicRef.set(
+        {
+          mp: {
+            public_key: publicKey || null,
             user_id: userId ? String(userId) : null,
             email: email || null,
             connected: true,
@@ -1149,10 +1195,26 @@ export const createPreference = onRequest(
         if (itemsForMp.length === 0) return res.status(400).send("No items to pay");
 
         const lojaCfg = await getLojaPaymentConfig(lojaId);
-        const PROJECT_MP_TOKEN = S_MP_ACCESS_TOKEN.value() || process.env.MP_ACCESS_TOKEN || "";
-        const MP_TOKEN = lojaCfg.token && lojaCfg.token.length > 10 ? lojaCfg.token : PROJECT_MP_TOKEN;
-
-        if (!MP_TOKEN) return res.status(500).send("MP token not configured");
+        const mpResolved = resolveStrictLojaMpAccessToken(lojaCfg);
+        if (!mpResolved.ok) {
+          console.warn(
+            JSON.stringify({
+              evt: "mp_loja_token_required",
+              function: "createPreference",
+              domain: "loja_pedido",
+              lojaId: String(lojaId),
+              orderId: String(orderId),
+              reason: mpResolved.reason,
+              tokenLen: mpResolved.tokenLen,
+            }),
+          );
+          return res.status(400).json({
+            error:
+              "Mercado Pago da loja não configurado ou token inválido. Configure o Access Token de produção em Pagamentos.",
+            code: "MP_LOJA_TOKEN_REQUIRED",
+          });
+        }
+        const MP_TOKEN = mpResolved.token;
 
         const WEB_BASE = S_WEB_BASE_URL.value() || process.env.WEB_BASE_URL || PUBLIC_SITE_ORIGIN;
 
@@ -1266,42 +1328,259 @@ export const createPreference = onRequest(
 export const mpCatalogPayment = onRequest(
   { cors: true, secrets: [S_MP_ACCESS_TOKEN, S_WEB_BASE_URL], timeoutSeconds: 30, memory: "256MiB" },
   corsWrap(async (req, res) => {
+    let catalogIdemKey = null;
+    let lockHeld = false;
+    let mpProviderIdempotencyKey = "";
     try {
       if (req.method !== "POST") return res.status(405).send("Method not allowed");
 
       const body = req.body || {};
       const { lojaId, type } = body;
       if (!lojaId || !type) {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_validation_failed",
+          severity: "warn",
+          outcome: "validation_fail",
+          reason: "missing_lojaId_or_type",
+          lojaId: lojaId != null ? String(lojaId) : undefined,
+        });
         return res.status(400).json({ error: "lojaId e type são obrigatórios" });
       }
 
-      const lojaCfg = await getLojaPaymentConfig(lojaId);
-      const PROJECT_MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
-      const MP_TOKEN = lojaCfg.token && lojaCfg.token.length > 10 ? lojaCfg.token : PROJECT_MP_TOKEN;
-
-      if (!MP_TOKEN) {
-        return res.status(500).json({ error: "Access Token do Mercado Pago não configurado para esta loja." });
+      const orderIdRaw = body.orderId != null ? String(body.orderId).trim() : "";
+      const extRef =
+        body.externalReference != null ? String(body.externalReference).trim() : "";
+      const orderId = orderIdRaw || extRef;
+      if (!orderId) {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_validation_failed",
+          severity: "warn",
+          outcome: "validation_fail",
+          reason: "missing_orderId_or_externalReference",
+          lojaId: String(lojaId),
+        });
+        return res.status(400).json({
+          error: "orderId ou externalReference é obrigatório (pré-pedido/pedido canônico).",
+        });
       }
 
+      try {
+        await checkRateLimit("mpCatalogPayment", `${lojaId}:${orderId}`);
+      } catch (rlErr) {
+        if (rlErr instanceof HttpsError && rlErr.code === "resource-exhausted") {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_rate_limited",
+            severity: "warn",
+            outcome: "rate_limited",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            externalReference: String(orderId),
+          });
+          return res.status(429).json({
+            error:
+              rlErr.message || "Muitas tentativas para este pedido. Aguarde e tente novamente.",
+            code: "MP_CATALOG_RATE_LIMIT",
+          });
+        }
+        throw rlErr;
+      }
+
+      const resolvedOrder = await resolveCatalogOrderForMp(db, lojaId, orderId);
+      if (!resolvedOrder) {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_validation_failed",
+          severity: "warn",
+          outcome: "validation_fail",
+          reason: "order_not_found",
+          lojaId: String(lojaId),
+          orderId: String(orderId),
+          externalReference: String(orderId),
+        });
+        return res.status(404).json({ error: "Pedido não encontrado para esta loja." });
+      }
+      if (!isOrderPayableForMp(resolvedOrder.order)) {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_validation_failed",
+          severity: "warn",
+          outcome: "validation_fail",
+          reason: "order_not_payable",
+          lojaId: String(lojaId),
+          orderId: String(orderId),
+          externalReference: String(orderId),
+        });
+        return res.status(400).json({
+          error: "Pedido não disponível para pagamento (inexistente, já pago ou cancelado).",
+        });
+      }
+      const expectedTotal = Number(resolvedOrder.order.total);
+      if (!Number.isFinite(expectedTotal) || expectedTotal < 0.01) {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_validation_failed",
+          severity: "warn",
+          outcome: "validation_fail",
+          reason: "invalid_total",
+          lojaId: String(lojaId),
+          orderId: String(orderId),
+          externalReference: String(orderId),
+        });
+        return res.status(400).json({ error: "Total do pedido inválido no servidor." });
+      }
+      const clientValor = body.valor != null ? Number(body.valor) : null;
+      if (
+        clientValor != null &&
+        Number.isFinite(clientValor) &&
+        orderTotalToCents(clientValor) !== orderTotalToCents(expectedTotal)
+      ) {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_validation_failed",
+          severity: "warn",
+          outcome: "validation_fail",
+          reason: "client_total_divergence_ignored",
+          lojaId: String(lojaId),
+          orderId: String(orderId),
+          externalReference: String(orderId),
+          amountExpectedCents: orderTotalToCents(expectedTotal),
+        });
+      }
+
+      const lojaCfg = await getLojaPaymentConfig(lojaId);
+      const mpResolved = resolveStrictLojaMpAccessToken(lojaCfg);
+      if (!mpResolved.ok) {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_validation_failed",
+          severity: "error",
+          outcome: "validation_fail",
+          reason:
+            mpResolved.reason === "missing"
+              ? "mp_store_token_missing"
+              : "mp_store_token_invalid_format",
+          lojaId: String(lojaId),
+          orderId: String(orderId),
+          externalReference: String(orderId),
+          tokenLen: mpResolved.tokenLen,
+        });
+        return res.status(400).json({
+          error:
+            "Mercado Pago não configurado para esta loja ou token inválido. Configure o Access Token (PRODUÇÃO) em Pagamentos.",
+          code: "MP_LOJA_TOKEN_REQUIRED",
+        });
+      }
+      const MP_TOKEN = mpResolved.token;
+
       const t = String(type).toLowerCase();
+      const correlationId =
+        t === "pix" || t === "preference" ? catalogPaymentCorrelationId(lojaId, orderId, t) : undefined;
+
+      if (t === "pix" || t === "preference") {
+        catalogIdemKey = `${lojaId}:${orderId}:${t}`.slice(0, 128);
+        const { hit, result: idemResult } = await checkIdempotency("mpCatalogPayment", catalogIdemKey);
+        if (hit && idemResult) {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_idempotency_hit",
+            severity: "info",
+            outcome: "reuse",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: t,
+            externalReference: String(orderId),
+            correlationId,
+            idempotencyKeyDigest: correlationId,
+          });
+          return res.json(idemResult);
+        }
+
+        if (t === "pix" && !body.descricao) {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_validation_failed",
+            severity: "warn",
+            outcome: "validation_fail",
+            reason: "missing_descricao",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: t,
+            correlationId,
+            externalReference: String(orderId),
+          });
+          return res.status(400).json({ error: "PIX requer descricao" });
+        }
+        if (t === "preference" && !body.titulo) {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_validation_failed",
+            severity: "warn",
+            outcome: "validation_fail",
+            reason: "missing_titulo",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: t,
+            correlationId,
+            externalReference: String(orderId),
+          });
+          return res.status(400).json({ error: "Preferência requer titulo" });
+        }
+
+        const gate = await tryBeginMpCatalogPaymentOrReuse(db, catalogIdemKey);
+        if (gate.kind === "reuse" && gate.result) {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_idempotency_hit",
+            severity: "info",
+            outcome: "reuse",
+            source: "firestore_lock_doc",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: t,
+            externalReference: String(orderId),
+            correlationId,
+            idempotencyKeyDigest: correlationId,
+          });
+          return res.json(gate.result);
+        }
+        if (gate.kind === "busy") {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_in_progress",
+            severity: "warn",
+            outcome: "busy",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: t,
+            externalReference: String(orderId),
+            correlationId,
+            idempotencyKeyDigest: correlationId,
+          });
+          return res.status(409).json({
+            error: "Pagamento em processamento. Tente novamente em instantes.",
+            code: "MP_CATALOG_PAYMENT_IN_PROGRESS",
+          });
+        }
+        if (gate.kind === "error") {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_validation_failed",
+            severity: "error",
+            outcome: "validation_fail",
+            reason: "lock_acquire_failed",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: t,
+            externalReference: String(orderId),
+            correlationId,
+          });
+          return res.status(500).json({ error: "Erro ao reservar pagamento. Tente novamente." });
+        }
+        lockHeld = true;
+        mpProviderIdempotencyKey = buildMpCatalogProviderIdempotencyKey(lojaId, orderId, t);
+      }
 
       if (t === "pix") {
-        const { valor, descricao, email, cpf, externalReference } = body;
-        if (valor == null || !descricao) {
-          return res.status(400).json({ error: "PIX requer valor e descricao" });
-        }
-        const numValor = Number(valor);
-        if (numValor < 0.01) {
-          return res.status(400).json({ error: "Valor do PIX deve ser maior que R$ 0,01." });
-        }
+        const { descricao, email, cpf } = body;
+        const numValor = expectedTotal;
         const emailStr = email && String(email).trim() ? String(email).trim() : "cliente@mastepalm.com.br";
         const cpfLimpo = cpf ? String(cpf).replace(/\D/g, "") : "";
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
+        // P1.5 trava local (Firestore) + chave determinística no MP: sucesso remoto com falha no commit local não deve gerar nova cobrança no retry.
         const mpBody = {
           transaction_amount: numValor,
           description: String(descricao),
           payment_method_id: "pix",
-          ...(externalReference && { external_reference: String(externalReference) }),
+          external_reference: String(orderId),
           metadata: { lojaId: String(lojaId) },
           ...(notifUrl && { notification_url: notifUrl }),
           payer: {
@@ -1318,7 +1597,9 @@ export const mpCatalogPayment = onRequest(
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${MP_TOKEN}`,
-              "X-Idempotency-Key": String(Date.now()),
+              ...(mpProviderIdempotencyKey && {
+                "X-Idempotency-Key": mpProviderIdempotencyKey,
+              }),
             },
             body: JSON.stringify(mpBody),
           },
@@ -1326,7 +1607,19 @@ export const mpCatalogPayment = onRequest(
         );
         if (!r.ok) {
           const txt = await r.text();
-          console.error("[mpCatalogPayment] PIX error:", r.status, txt);
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_provider_error",
+            severity: "error",
+            outcome: "provider_fail",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: "pix",
+            externalReference: String(orderId),
+            correlationId,
+            idempotencyKeyDigest: correlationId,
+            httpStatus: r.status,
+            providerErrorSnippet: truncateProviderErrorText(txt),
+          });
           let errMsg = "Erro ao gerar PIX. Verifique e-mail e CPF e tente novamente.";
           try {
             const errJson = JSON.parse(txt);
@@ -1340,28 +1633,79 @@ export const mpCatalogPayment = onRequest(
               }
             }
           } catch (_) {}
+          if (lockHeld && catalogIdemKey) await releaseMpCatalogPaymentLock(db, catalogIdemKey);
           return res.status(r.status).json({ error: errMsg });
         }
         const data = await r.json();
-        return res.json({
+        const pixPayload = {
           id: data.id,
           status: data.status,
           qr_code: data.point_of_interaction?.transaction_data?.qr_code,
           qr_code_base64: data.point_of_interaction?.transaction_data?.qr_code_base64,
           ticket_url: data.point_of_interaction?.transaction_data?.ticket_url,
+        };
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_provider_success",
+          severity: "info",
+          outcome: "success",
+          lojaId: String(lojaId),
+          orderId: String(orderId),
+          type: "pix",
+          externalReference: String(orderId),
+          correlationId,
+          idempotencyKeyDigest: correlationId,
+          providerPaymentId: data.id != null ? String(data.id) : undefined,
+          paymentStatus: data.status != null ? String(data.status) : undefined,
         });
+        if (lockHeld && catalogIdemKey) {
+          try {
+            await commitMpCatalogPaymentSuccess(db, catalogIdemKey, pixPayload);
+            emitCatalogPaymentLog({
+              event: "mpCatalogPayment_persist_success",
+              severity: "info",
+              outcome: "success",
+              lojaId: String(lojaId),
+              orderId: String(orderId),
+              type: "pix",
+              externalReference: String(orderId),
+              correlationId,
+              providerPaymentId: data.id != null ? String(data.id) : undefined,
+            });
+          } catch (persistErr) {
+            emitCatalogPaymentLog({
+              event: "mpCatalogPayment_persist_error",
+              severity: "error",
+              outcome: "persist_fail",
+              lojaId: String(lojaId),
+              orderId: String(orderId),
+              type: "pix",
+              externalReference: String(orderId),
+              correlationId,
+              providerPaymentId: data.id != null ? String(data.id) : undefined,
+              err: String(persistErr?.message || persistErr),
+            });
+            throw persistErr;
+          }
+        }
+        return res.json(pixPayload);
       }
 
       if (t === "preference") {
-        const { titulo, valor, quantidade = 1, descricao, externalReference, payer, backUrls } = body;
-        if (valor == null || !titulo) {
-          return res.status(400).json({ error: "Preferência requer titulo e valor" });
-        }
+        const { titulo, quantidade = 1, descricao, payer, backUrls } = body;
         const WEB_BASE = (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
+        const unitPrice = expectedTotal / (Number(quantidade) || 1);
         const mpBody = {
-          items: [{ title: String(titulo), description: descricao || titulo, quantity: Number(quantidade) || 1, currency_id: "BRL", unit_price: Number(valor) }],
-          ...(externalReference && { external_reference: String(externalReference) }),
+          items: [
+            {
+              title: String(titulo),
+              description: descricao || titulo,
+              quantity: Number(quantidade) || 1,
+              currency_id: "BRL",
+              unit_price: unitPrice,
+            },
+          ],
+          external_reference: String(orderId),
           metadata: { lojaId: String(lojaId) },
           ...(notifUrl && { notification_url: notifUrl }),
           ...(payer && { payer: payer }),
@@ -1380,6 +1724,9 @@ export const mpCatalogPayment = onRequest(
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${MP_TOKEN}`,
+              ...(mpProviderIdempotencyKey && {
+                "X-Idempotency-Key": mpProviderIdempotencyKey,
+              }),
             },
             body: JSON.stringify(mpBody),
           },
@@ -1387,20 +1734,106 @@ export const mpCatalogPayment = onRequest(
         );
         if (!r.ok) {
           const txt = await r.text();
-          console.error("[mpCatalogPayment] Preference error:", r.status, txt);
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_provider_error",
+            severity: "error",
+            outcome: "provider_fail",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: "preference",
+            externalReference: String(orderId),
+            correlationId,
+            idempotencyKeyDigest: correlationId,
+            httpStatus: r.status,
+            providerErrorSnippet: truncateProviderErrorText(txt),
+          });
+          if (lockHeld && catalogIdemKey) await releaseMpCatalogPaymentLock(db, catalogIdemKey);
           return res.status(r.status).send(txt);
         }
         const data = await r.json();
-        return res.json({
+        const prefPayload = {
           id: data.id,
           init_point: data.init_point,
           sandbox_init_point: data.sandbox_init_point,
+        };
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_provider_success",
+          severity: "info",
+          outcome: "success",
+          lojaId: String(lojaId),
+          orderId: String(orderId),
+          type: "preference",
+          externalReference: String(orderId),
+          correlationId,
+          idempotencyKeyDigest: correlationId,
+          preferenceId: data.id != null ? String(data.id) : undefined,
         });
+        if (lockHeld && catalogIdemKey) {
+          try {
+            await commitMpCatalogPaymentSuccess(db, catalogIdemKey, prefPayload);
+            emitCatalogPaymentLog({
+              event: "mpCatalogPayment_persist_success",
+              severity: "info",
+              outcome: "success",
+              lojaId: String(lojaId),
+              orderId: String(orderId),
+              type: "preference",
+              externalReference: String(orderId),
+              correlationId,
+              preferenceId: data.id != null ? String(data.id) : undefined,
+            });
+          } catch (persistErr) {
+            emitCatalogPaymentLog({
+              event: "mpCatalogPayment_persist_error",
+              severity: "error",
+              outcome: "persist_fail",
+              lojaId: String(lojaId),
+              orderId: String(orderId),
+              type: "preference",
+              externalReference: String(orderId),
+              correlationId,
+              preferenceId: data.id != null ? String(data.id) : undefined,
+              err: String(persistErr?.message || persistErr),
+            });
+            throw persistErr;
+          }
+        }
+        return res.json(prefPayload);
       }
 
+      emitCatalogPaymentLog({
+        event: "mpCatalogPayment_validation_failed",
+        severity: "warn",
+        outcome: "validation_fail",
+        reason: "invalid_type",
+        lojaId: String(lojaId),
+        orderId: String(orderId),
+        type: t,
+        externalReference: String(orderId),
+      });
       return res.status(400).json({ error: "type deve ser 'pix' ou 'preference'" });
     } catch (e) {
-      console.error("[mpCatalogPayment] error:", e);
+      if (lockHeld && catalogIdemKey) {
+        await releaseMpCatalogPaymentLock(db, catalogIdemKey).catch(() => {});
+      }
+      if (e instanceof HttpsError && e.code === "resource-exhausted") {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_rate_limited",
+          severity: "warn",
+          outcome: "rate_limited",
+          reason: "outer_catch",
+        });
+        return res.status(429).json({
+          error: e.message || "Muitas requisições.",
+          code: "MP_CATALOG_RATE_LIMIT",
+        });
+      }
+      emitCatalogPaymentLog({
+        event: "mpCatalogPayment_processing_error",
+        severity: "error",
+        outcome: "error",
+        err: String(e?.message || e),
+      });
       return res.status(500).json({ error: "Erro ao criar pagamento no Mercado Pago. Tente novamente." });
     }
   })
@@ -1419,9 +1852,15 @@ export const mpCatalogPayment = onRequest(
  *
  * NOTA: mercadopagoWebhook (posPagamento.js) NÃO está em uso; campanhas/números
  * via webhook requerem integração futura se necessário.
+ *
+ * Borda: valida x-signature (MP_WEBHOOK_SECRET) antes de processMpWebhook — alinhado ao planWebhook.
+ * Sem paymentId: 200 ok (ack vazio, sem efeito).
+ * Assinatura inválida: 401 (não entra no handler).
+ * processMpWebhook conclui (retorno booleano): 200 OK (inclui validação de negócio false e noops internos).
+ * Exceção ao processar: 500 (retentativa MP).
  */
 export const mpWebhook = onRequest(
-  { cors: true, secrets: [S_MP_ACCESS_TOKEN], timeoutSeconds: 30, memory: "256MiB" },
+  { cors: true, secrets: [S_MP_ACCESS_TOKEN, S_MP_WEBHOOK_SECRET], timeoutSeconds: 30, memory: "256MiB" },
   corsWrap(async (req, res) => {
     try {
       const body = req.body || {};
@@ -1430,13 +1869,49 @@ export const mpWebhook = onRequest(
 
       if (!paymentId) return res.status(200).send("ok");
 
+      const WEBHOOK_SECRET =
+        (await S_MP_WEBHOOK_SECRET.value()) || process.env.MP_WEBHOOK_SECRET || "";
+      const sig = verifyMpCatalogWebhookNotification(req, WEBHOOK_SECRET);
+      if (!sig.ok) {
+        const reason = sig.reason || "unknown";
+        let evt = "mp_webhook_signature_invalid";
+        if (reason === "header_missing") evt = "mp_webhook_signature_missing";
+        else if (
+          reason === "secret_missing" ||
+          reason === "hmac_error" ||
+          reason === "unknown"
+        ) {
+          evt = "mp_webhook_signature_error";
+        }
+        console.warn(
+          JSON.stringify({
+            service: "mpWebhook",
+            provider: "mercadopago",
+            severity: "warn",
+            event: evt,
+            reason,
+            ...(sig.detail ? { detail: String(sig.detail).slice(0, 200) } : {}),
+          }),
+        );
+        return res.status(MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS).send("Unauthorized");
+      }
+
       const globalToken = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
       await processMpWebhook(paymentId, globalToken);
 
       return res.status(200).send("OK");
     } catch (e) {
+      console.error(
+        JSON.stringify({
+          service: "mpWebhook",
+          provider: "mercadopago",
+          severity: "error",
+          event: "mp_webhook_processing_error",
+          err: String(e?.message || e).slice(0, 500),
+        }),
+      );
       console.error("mpWebhook error:", e);
-      return res.status(200).send("OK");
+      return res.status(MP_WEBHOOK_CATALOG_PROCESSING_ERROR_HTTP_STATUS).send("Internal Server Error");
     }
   })
 );
@@ -2375,6 +2850,24 @@ export const getPlanBillingSnapshotForSupport = onCall(
   }
 );
 
+/** Root: forense operacional leve do pagamento catálogo MP (Firestore persistido; sem logs GCP). */
+export const getMpCatalogPaymentSupportSnapshot = onCall(
+  { timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit(
+        "getMpCatalogPaymentSupportSnapshot",
+        getCallableIdentifier(request),
+      );
+      return await runMpCatalogPaymentSupportSnapshot({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[getMpCatalogPaymentSupportSnapshot]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
+);
+
 // ======================= SUBDOMÍNIOS AUTOMÁTICOS (Firebase Hosting) ==================
 async function createHostingDomain(domainName) {
   if (!PROJECT_ID || !HOSTING_SITE_ID) {
@@ -2643,6 +3136,35 @@ export const syncPedidoStatusPublico = onDocumentWritten(
       console.log("[syncPedidoStatusPublico] Espelho público atualizado:", pedidoId);
     } catch (e) {
       console.error("[syncPedidoStatusPublico] Erro:", e);
+    }
+  },
+);
+
+/** Espelha `config/payments` → `config/payments_public` sem segredos (lojas legadas + qualquer write em payments). */
+export const syncPaymentsPublicFromPaymentsConfig = onDocumentWritten(
+  { document: `${COLLECTION_LOJAS}/{lojaId}/config/payments`, memory: "256MiB" },
+  async (event) => {
+    const lojaId = event?.params?.lojaId;
+    if (!lojaId) return;
+    const after = event.data?.after;
+    const pubRef = db
+      .collection(COLLECTION_LOJAS)
+      .doc(String(lojaId))
+      .collection("config")
+      .doc("payments_public");
+    try {
+      if (!after?.exists) {
+        await pubRef.delete().catch(() => {});
+        return;
+      }
+      const raw = after.data() || {};
+      const stripped = stripPaymentsSecretsForPublic(raw);
+      await pubRef.set(
+        { ...stripped, updatedAt: FieldValue.serverTimestamp() },
+        { merge: false },
+      );
+    } catch (e) {
+      console.error("[syncPaymentsPublicFromPaymentsConfig]", String(lojaId), e);
     }
   },
 );

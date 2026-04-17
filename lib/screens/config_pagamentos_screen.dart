@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/loja_id_service.dart';
+import '../services/mercadopago_manual_connect_helper.dart';
 import '../services/pagamentos_service.dart';
 import '../services/payment_gateway_service.dart';
 import '../services/sync_firestore_script.dart';
@@ -568,14 +569,17 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
       } else {
         final err = results['errors'] as List<dynamic>?;
         _mostrarSnackBarModerno(
-          err != null && err.isNotEmpty ? err.first.toString() : 'Erro na sincronização',
+          err != null && err.isNotEmpty
+              ? err.first.toString()
+              : 'Erro na sincronização',
           Icons.error_outline,
           errorColor,
         );
       }
     } catch (e) {
       if (mounted) {
-        _mostrarSnackBarModerno('Erro ao sincronizar: $e', Icons.error_outline, errorColor);
+        _mostrarSnackBarModerno(
+            'Erro ao sincronizar: $e', Icons.error_outline, errorColor);
       }
     } finally {
       if (mounted) setState(() => _sincronizando = false);
@@ -588,10 +592,12 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
     try {
       await CatalogoSyncService.pushAllToLive(lojaIdOverride: _lojaId);
       if (!mounted) return;
-      _mostrarSnackBarModerno('Catálogo publicado com sucesso!', Icons.cloud_done, successColor);
+      _mostrarSnackBarModerno(
+          'Catálogo publicado com sucesso!', Icons.cloud_done, successColor);
     } catch (e) {
       if (mounted) {
-        _mostrarSnackBarModerno('Erro ao publicar: $e', Icons.error_outline, errorColor);
+        _mostrarSnackBarModerno(
+            'Erro ao publicar: $e', Icons.error_outline, errorColor);
       }
     } finally {
       if (mounted) setState(() => _publicando = false);
@@ -726,7 +732,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                   ),
                   actions: [
                     IconButton(
-                      icon: const Icon(Icons.save_outlined, color: Colors.white),
+                      icon:
+                          const Icon(Icons.save_outlined, color: Colors.white),
                       tooltip: 'Salvar',
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -747,13 +754,15 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         ),
                       )
                     else
                       IconButton(
-                        icon: const Icon(Icons.cloud_sync_outlined, color: Colors.white),
+                        icon: const Icon(Icons.cloud_sync_outlined,
+                            color: Colors.white),
                         tooltip: 'Sincronizar tudo',
                         onPressed: _lojaId == null ? null : _sincronizarTudo,
                       ),
@@ -765,13 +774,15 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(Colors.white),
                           ),
                         ),
                       )
                     else
                       IconButton(
-                        icon: const Icon(Icons.cloud_upload_outlined, color: Colors.white),
+                        icon: const Icon(Icons.cloud_upload_outlined,
+                            color: Colors.white),
                         tooltip: 'Publicar catálogo',
                         onPressed: _lojaId == null ? null : _publicarCatalogo,
                       ),
@@ -915,13 +926,58 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                       );
                                       return;
                                     }
-                                    await PagamentosService.salvarAccessToken(
-                                      _lojaId!,
-                                      token,
+                                    if (_lojaId == null) return;
+                                    showDialog(
+                                      context: context,
+                                      barrierDismissible: false,
+                                      builder: (_) => Center(
+                                        child: Container(
+                                          padding: const EdgeInsets.all(24),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius:
+                                                BorderRadius.circular(16),
+                                          ),
+                                          child: const Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              CircularProgressIndicator(
+                                                  color: primaryColor),
+                                              SizedBox(height: 16),
+                                              Text(
+                                                  'Conectando Mercado Pago...'),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                    final resultado =
+                                        await MercadoPagoManualConnectHelper
+                                            .connect(
+                                      lojaId: _lojaId!,
+                                      rawToken: token,
                                     );
                                     if (!mounted) return;
+                                    Navigator.pop(context);
+                                    if (!resultado.success) {
+                                      if (resultado.invalidToken) {
+                                        _mostrarSnackBarModerno(
+                                          'Access Token inválido. Use PRODUÇÃO (APP_USR-...) sem prefixo Bearer.',
+                                          Icons.error_outline,
+                                          errorColor,
+                                        );
+                                      } else {
+                                        _mostrarSnackBarModerno(
+                                          'Erro: ${resultado.errorMessage ?? 'falha ao conectar'}',
+                                          Icons.error_outline,
+                                          errorColor,
+                                        );
+                                      }
+                                      return;
+                                    }
                                     _mostrarSnackBarModerno(
-                                      'Mercado Pago conectado!',
+                                      MercadoPagoManualConnectHelper
+                                          .snackbarMessage(resultado),
                                       Icons.check_circle_outline,
                                       successColor,
                                     );
@@ -1664,6 +1720,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
       {'checkout': checkoutData},
       SetOptions(merge: true),
     );
+    await PagamentosService.syncPaymentsPublic(_lojaId!);
 
     await FirebaseFirestore.instance.collection('lojas').doc(_lojaId!).set(
       {'checkout': checkoutData},
@@ -1678,4 +1735,3 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
     );
   }
 }
-
