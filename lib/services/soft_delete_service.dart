@@ -150,10 +150,19 @@ class SoftDeleteService {
     final key = produto.key as int?;
     if (key == null) return null;
 
-    final trashBox = await _trashProdutosBox();
     produto.lojaId = lojaId;
-    await produtosBox.delete(key);
-    final trashKey = await trashBox.add(produto);
+
+    // Tombstone remoto antes de esvaziar o Hive: evita janela em que o pull recria o produto.
+    try {
+      await ProdutoExclusaoRemotaService.marcarEstoqueProdutoPendenteSoftDelete(
+        produto: produto,
+        lojaId: lojaId,
+      );
+    } catch (e) {
+      logW(
+        '⚠️ [SOFT-DELETE] Erro ao marcar estoque pendente no Firestore (type=${e.runtimeType})',
+      );
+    }
 
     if (removeFromCatalogo) {
       try {
@@ -165,6 +174,10 @@ class SoftDeleteService {
         logW('⚠️ [SOFT-DELETE] Erro ao remover do catálogo (type=${e.runtimeType})');
       }
     }
+
+    final trashBox = await _trashProdutosBox();
+    await produtosBox.delete(key);
+    final trashKey = await trashBox.add(produto);
 
     final id = const Uuid().v4();
     final deleteAt = DateTime.now().add(_undoWindow);
@@ -322,6 +335,19 @@ class SoftDeleteService {
         }
         _pending.removeAt(idx);
         await _save();
+        final idFb = prod.idFirebase.trim();
+        if (idFb.isNotEmpty) {
+          try {
+            await ProdutoExclusaoRemotaService.limparEstoquePendenteSoftDelete(
+              lojaId: r.lojaId,
+              produtoIdFirebase: idFb,
+            );
+          } catch (e) {
+            logW(
+              '⚠️ [SOFT-DELETE] Erro ao limpar tombstone estoque no undo (type=${e.runtimeType})',
+            );
+          }
+        }
         return true;
       }
       if (r.type == 'venda') {

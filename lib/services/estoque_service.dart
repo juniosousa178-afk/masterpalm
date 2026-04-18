@@ -71,6 +71,13 @@ enum ResultadoAjusteEstoque {
 class EstoqueService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Hive: atualiza [Produto.updatedAt] após mutação de quantidade no ramo **devolução** de [atualizarEstoque].
+  /// Mesmo critério do +/- na lista: se o sync remoto falhar ou atrasar, o pull não deve regredir com snapshot velho.
+  @visibleForTesting
+  static void touchProdutoUpdatedAtParaDevolucaoHive(Produto p) {
+    p.updatedAt = DateTime.now();
+  }
+
   /// Após ajuste manual no filho, recalibra só combos que referenciam esse [productId] (teto ou piso).
   static Future<void> _recalcularCombosDepoisAjusteManual({
     required String lojaId,
@@ -296,6 +303,7 @@ class EstoqueService {
         debugPrint('$tag Estoque DEPOIS: $estoqueDepois');
       }
 
+      touchProdutoUpdatedAtParaDevolucaoHive(produto);
       await produto.save();
       debugPrint('$tag Produto salvo no Hive');
 
@@ -303,6 +311,7 @@ class EstoqueService {
       if (produto.quantidade != estoqueGeralCalculado) {
         debugPrint('$tag AVISO: Corrigindo inconsistência no estoque geral');
         produto.quantidade = estoqueGeralCalculado;
+        touchProdutoUpdatedAtParaDevolucaoHive(produto);
         await produto.save();
       }
 

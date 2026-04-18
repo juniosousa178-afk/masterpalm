@@ -37,6 +37,39 @@ import '../src/blob_fetch_stub.dart'
 class ProdutosFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Tombstone em `estoque_produtos` durante soft delete (antes da exclusão definitiva).
+  /// Evita que [syncFirestoreToHive] recrie o produto no Hive enquanto o doc ainda existir.
+  static const String fieldEstoquePendingSoftDelete = 'pendingSoftDelete';
+  static const String fieldEstoquePendingSoftDeleteAt = 'pendingSoftDeleteAt';
+
+  /// `true` quando o pull deve ignorar o documento (não atualizar nem criar Hive).
+  static bool isEstoqueDocPendingSoftDelete(Map<String, dynamic> data) {
+    final v = data[fieldEstoquePendingSoftDelete];
+    return v == true;
+  }
+
+  /// Pull `estoque_produtos`: evita sobrescrever [Produto.quantidade] local quando o Hive
+  /// foi modificado **depois** do `updatedAt` remoto (push atrasado/falho antes do próximo pull).
+  static bool shouldPreserveLocalQuantidadeOnFirestorePull({
+    required DateTime? localUpdatedAt,
+    required DateTime? remoteUpdatedAt,
+  }) {
+    if (localUpdatedAt == null) return false;
+    if (remoteUpdatedAt == null) return true;
+    return localUpdatedAt.isAfter(remoteUpdatedAt);
+  }
+
+  static DateTime? parseFirestoreUpdatedAt(Map<String, dynamic> data) {
+    final u = data['updatedAt'];
+    return u is Timestamp ? u.toDate() : null;
+  }
+
+  static DateTime? _maxDateTime(DateTime? a, DateTime? b) {
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isAfter(b) ? a : b;
+  }
+
   static void _dlog(String msg) {
     if (kDebugMode) {
       // ignore: avoid_print
@@ -501,6 +534,14 @@ class ProdutosFirestoreService {
           final data = doc.data();
           final produtoId = doc.id;
 
+          // Soft delete pendente: doc ainda existe até a exclusão definitiva; não recriar no Hive.
+          if (isEstoqueDocPendingSoftDelete(data)) {
+            logD(
+              '⏭️ [PRODUTOS-SYNC] Doc $produtoId ignorado no pull (pendingSoftDelete)',
+            );
+            continue;
+          }
+
           // Buscar se já existe no Hive pelo idFirebase OU pelo slug
           final slug = data['slug'] ?? '';
           Produto? produtoExistente;
@@ -529,19 +570,32 @@ class ProdutosFirestoreService {
           if (produtoExistente != null) {
             // Atualizar produto existente com dados do Firestore.
             //
-            // Sempre aplicar o snapshot de `estoque_produtos` no Hive ao puxar da nuvem.
-            // A regra antiga "local mais recente → só estoque" fazia o segundo aparelho
-            // manter custo/peso velhos com frequência (relógio adiantado, qualquer save
-            // local com [updatedAt] alto, ou importação). A nuvem é a fonte de verdade
-            // neste fluxo; edição não enviada volta pela fila de sync / próximo salvamento.
+            // Regra de quantidade: se [Produto.updatedAt] local for **posterior** ao `updatedAt`
+            // remoto, não sobrescrever [quantidade] (evita regressão quando o push ainda não
+            // refletiu no snapshot puxado). Demais campos seguem o merge abaixo; custo manual
+            // e peso mantêm guards existentes.
             final p = produtoExistente;
+
+            final remoteUpdatedAtForPull = parseFirestoreUpdatedAt(data);
+            final preserveLocalQuantidade =
+                shouldPreserveLocalQuantidadeOnFirestorePull(
+              localUpdatedAt: p.updatedAt,
+              remoteUpdatedAt: remoteUpdatedAtForPull,
+            );
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
             final custoManualLocal = p.custoEditadoNoCadastro == true;
             p.nome = data['nome'] ?? p.nome;
-            p.quantidade =
-                (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
+            if (!preserveLocalQuantidade) {
+              p.quantidade =
+                  (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
+            } else {
+              logD(
+                '[QTD_GUARD] sync pull: mantendo quantidade local=${p.quantidade} '
+                '(updatedAt local mais recente que remoto)',
+              );
+            }
             p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
             if (custoManualLocal) {
               logW(
@@ -731,8 +785,14 @@ class ProdutosFirestoreService {
               p.marketplaces = mk.map((e) => e.toString()).toList();
             }
             final updatedAt = data['updatedAt'];
-            if (updatedAt != null && updatedAt is Timestamp) {
-              p.updatedAt = updatedAt.toDate();
+            if (preserveLocalQuantidade) {
+              if (updatedAt is Timestamp) {
+                p.updatedAt = _maxDateTime(p.updatedAt, updatedAt.toDate());
+              }
+            } else {
+              if (updatedAt != null && updatedAt is Timestamp) {
+                p.updatedAt = updatedAt.toDate();
+              }
             }
             if ((p.custoReal - custoAntes).abs() > 0.0001 ||
                 (p.peso - pesoAntes).abs() > 0.0001) {

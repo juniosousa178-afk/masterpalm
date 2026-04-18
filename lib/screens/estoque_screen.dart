@@ -2396,6 +2396,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (nova == p.quantidade) return;
     final qtdMov = nova - p.quantidade;
     p.quantidade = nova;
+    p.updatedAt = DateTime.now();
     await p.save();
     final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
         timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
