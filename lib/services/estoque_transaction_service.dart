@@ -41,6 +41,13 @@ class EstoqueTransactionResult {
 class EstoqueTransactionService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Hive: atualiza [Produto.updatedAt] ao persistir saldo após transação em [atualizarHiveAposTransacao].
+  /// Mesmo critério do +/- na lista e da devolução: evita pull com snapshot remoto velho se Hive e nuvem desalinharem.
+  @visibleForTesting
+  static void touchProdutoUpdatedAtParaHivePosTransacao(Produto p) {
+    p.updatedAt = DateTime.now();
+  }
+
   static Exception _erroProdutoNaoSincronizado({
     required String? produtoId,
     required String? slug,
@@ -1086,6 +1093,7 @@ class EstoqueTransactionService {
       if (result.estoquePorTamanhoAtualizado != null) {
         produto.estoquePorTamanho = result.estoquePorTamanhoAtualizado!;
       }
+      touchProdutoUpdatedAtParaHivePosTransacao(produto);
       await produto.save();
       debugPrint('[ESTOQUE-TX] Hive atualizado: ${produto.nome}');
     }
