@@ -281,7 +281,10 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
             settings: RouteSettings(
               arguments: {'prefillFornecedor': widget.fornecedorNome},
             ),
-            builder: (_) => const ProdutoFormScreen(produto: null),
+            builder: (_) => const ProdutoFormScreen(
+              produto: null,
+              returnProductOnSave: true,
+            ),
           ),
         );
         if (!mounted || salvo == null) return;

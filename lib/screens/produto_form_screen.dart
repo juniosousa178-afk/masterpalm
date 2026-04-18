@@ -116,11 +116,15 @@ class ProdutoFormScreen extends StatefulWidget {
   final Produto? produto;
   /// DocId do pipeline (`compraId_itemCompraId`) — finalização pós-compra.
   final String? compraPipelineDocId;
+  /// Quando true, [Navigator.pop] após salvar devolve o [Produto] salvo (ex.: fluxo de compra).
+  /// O padrão é `false` para compatibilidade com rotas abertas com `push<bool>`.
+  final bool returnProductOnSave;
 
   const ProdutoFormScreen({
     super.key,
     this.produto,
     this.compraPipelineDocId,
+    this.returnProductOnSave = false,
   });
 
   @override
@@ -1652,7 +1656,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ),
       );
 
-      Navigator.pop(context, produtoSalvoParaRetorno);
+      Navigator.pop(
+        context,
+        widget.returnProductOnSave ? produtoSalvoParaRetorno : true,
+      );
     } on TimeoutException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
