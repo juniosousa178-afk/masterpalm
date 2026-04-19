@@ -246,7 +246,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   /// Puxa produtos do Firestore para o celular (atualiza o dispositivo).
-  /// Envia alterações locais ANTES de puxar para não perder quantidade atualizada.
+  /// Não envia o estoque inteiro antes do pull: isso sobrescrevia a nuvem com valores
+  /// antigos do Hive e impedia refletir alterações feitas na web.
   Future<void> _puxarDoFirestore() async {
     setState(() => _sincronizandoEstoque = true);
     try {
@@ -257,10 +258,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         return;
       }
       await SyncQueueService.processPending();
-      await ProdutosFirestoreService.syncTodosProdutos(boxName: _box.name, lojaId: lojaId);
       final n = await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,
         produtosBox: _box,
+        preferRemoteQuantity: true,
       );
       if (!mounted) return;
       await _verificarSeTemDadosParaImportar(lojaId);

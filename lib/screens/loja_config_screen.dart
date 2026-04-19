@@ -27,6 +27,7 @@ import '../services/upload_manager.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import '../services/catalogo_sync_service.dart';
 import '../services/catalog_cache_service.dart';
+import '../services/catalogo_config_service.dart';
 import '../services/limits_guard.dart';
 import '../services/sync_firestore_script.dart';
 import '../core/logger.dart';
@@ -3639,6 +3640,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // 2.0) Invalida cache do catálogo no APK/Web para a próxima abertura usar config publicada
       CatalogCacheService.invalidate(loja, preview: false);
       if (kDebugMode) logD('🔄 [PUBLICAR] Cache do catálogo invalidado (APK/Web verá alterações na próxima abertura).');
+
+      // 2.0b) Paleta legada: mantém `config_catalogo_live/main` alinhado ao [theme] publicado em config/config.
+      await CatalogoConfigService.mirrorOfficialThemePaletteToLegacyLive(loja);
 
       // 2.1) Publica config/fretes para o FreteService (Melhor Envio, SuperFrete, etc.)
       final fc = data['frete_config'] as Map<String, dynamic>?;

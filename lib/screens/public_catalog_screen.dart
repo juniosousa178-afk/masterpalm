@@ -2492,10 +2492,79 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _cfgPermissionDeniedLogged = false;
           final cfg = asMapDeep(cfgSnap.data() ?? {});
 
+          bool isMissing(dynamic v) {
+            if (v == null) return true;
+            if (v is String) return v.trim().isEmpty;
+            if (v is Map) return v.isEmpty;
+            if (v is List) return v.isEmpty;
+            return false;
+          }
+
+          void putIfMissing(Map<String, dynamic> target, Map<String, dynamic> source, String key) {
+            if (isMissing(target[key]) && !isMissing(source[key])) {
+              target[key] = source[key];
+            }
+          }
+
           try {
             final paySnap = await paymentsRef.get();
             if (paySnap.exists) {
               cfg['payments'] = asMapDeep(paySnap.data());
+            }
+          } catch (_) {}
+
+          // Fallback cirúrgico: mantém config/config como principal e
+          // preenche faltantes com config_catalogo_live/main quando necessário.
+          try {
+            final legacyLiveSnap =
+                await baseRef.collection('config_catalogo_live').doc('main').get();
+            if (legacyLiveSnap.exists) {
+              final legacy = asMapDeep(legacyLiveSnap.data());
+              for (final k in const [
+                'nomeLoja',
+                'nome_loja',
+                'nome',
+                'name',
+                'media',
+                'logoUrl',
+                'logoDesktopUrl',
+                'logoMobileUrl',
+                'banners',
+                'bannersDesktop',
+                'bannersMobile',
+                'theme',
+                'uiColors',
+                'layout',
+                'layoutType',
+                'layoutPreset',
+                'links',
+                'rodape',
+                'empresa',
+              ]) {
+                putIfMissing(cfg, legacy, k);
+              }
+            }
+          } catch (_) {}
+
+          // Último fallback: identidade básica no doc raiz da loja.
+          try {
+            final lojaSnap = await baseRef.get();
+            final lojaMap = asMapDeep(lojaSnap.data());
+            for (final k in const [
+              'nome',
+              'nomeLoja',
+              'nome_loja',
+              'logoUrl',
+              'logoDesktopUrl',
+              'logoMobileUrl',
+              'banners',
+              'bannersDesktop',
+              'bannersMobile',
+              'theme',
+              'uiColors',
+              'layout',
+            ]) {
+              putIfMissing(cfg, lojaMap, k);
             }
           } catch (_) {}
 

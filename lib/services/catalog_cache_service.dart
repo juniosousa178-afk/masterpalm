@@ -177,18 +177,102 @@ class CatalogCacheService {
   ) async {
     final baseRef = _db.collection('lojas').doc(lojaId);
     final configRef = baseRef.collection(cfgCol).doc('config');
-    final paymentsRef = baseRef.collection(cfgCol).doc('payments');
+    final primaryPaymentsRef = baseRef
+        .collection(cfgCol)
+        .doc(cfgCol == 'config' ? 'payments_public' : 'payments');
+    final fallbackPaymentsRef = baseRef.collection(cfgCol).doc('payments');
+
+    bool _isMissing(dynamic v) {
+      if (v == null) return true;
+      if (v is String) return v.trim().isEmpty;
+      if (v is Map) return v.isEmpty;
+      if (v is List) return v.isEmpty;
+      return false;
+    }
+
+    void _putIfMissing(Map<String, dynamic> target, Map<String, dynamic> source, String key) {
+      if (_isMissing(target[key]) && !_isMissing(source[key])) {
+        target[key] = source[key];
+      }
+    }
+
+    void _mergePublicVisualFallback(Map<String, dynamic> source, Map<String, dynamic> target) {
+      for (final k in const [
+        'nomeLoja',
+        'nome_loja',
+        'nome',
+        'name',
+        'media',
+        'logoUrl',
+        'logoDesktopUrl',
+        'logoMobileUrl',
+        'banners',
+        'bannersDesktop',
+        'bannersMobile',
+        'theme',
+        'uiColors',
+        'layout',
+        'layoutType',
+        'layoutPreset',
+        'links',
+        'rodape',
+        'empresa',
+      ]) {
+        _putIfMissing(target, source, k);
+      }
+    }
 
     // Busca config e payments em paralelo (reduz latência)
-    final results = await Future.wait([configRef.get(), paymentsRef.get()]);
+    final results = await Future.wait([
+      configRef.get(),
+      primaryPaymentsRef.get(),
+      fallbackPaymentsRef.get(),
+    ]);
     final cfgSnap = results[0];
-    final paySnap = results[1];
+    final payPrimarySnap = results[1];
+    final payFallbackSnap = results[2];
     final data = cfgSnap.data();
     final cfg = asMap(data);
 
+    // Fallback cirúrgico: algumas lojas publicam em config_catalogo_live/main.
+    // Mantém config/config como fonte principal; só preenche o que faltar.
     try {
-      if (paySnap.exists) {
-        final payData = paySnap.data();
+      final legacyLiveSnap =
+          await baseRef.collection('config_catalogo_live').doc('main').get();
+      if (legacyLiveSnap.exists) {
+        final legacyLive = asMap(legacyLiveSnap.data());
+        if (cfg.isEmpty) {
+          cfg.addAll(legacyLive);
+        } else {
+          _mergePublicVisualFallback(legacyLive, cfg);
+        }
+      }
+    } catch (_) {}
+
+    // Último fallback de identidade visual no doc raiz da loja.
+    try {
+      final lojaSnap = await baseRef.get();
+      final lojaMap = asMap(lojaSnap.data());
+      _putIfMissing(cfg, lojaMap, 'nome');
+      _putIfMissing(cfg, lojaMap, 'nomeLoja');
+      _putIfMissing(cfg, lojaMap, 'nome_loja');
+      _putIfMissing(cfg, lojaMap, 'logoUrl');
+      _putIfMissing(cfg, lojaMap, 'logoDesktopUrl');
+      _putIfMissing(cfg, lojaMap, 'logoMobileUrl');
+      _putIfMissing(cfg, lojaMap, 'banners');
+      _putIfMissing(cfg, lojaMap, 'bannersDesktop');
+      _putIfMissing(cfg, lojaMap, 'bannersMobile');
+      _putIfMissing(cfg, lojaMap, 'theme');
+      _putIfMissing(cfg, lojaMap, 'uiColors');
+      _putIfMissing(cfg, lojaMap, 'layout');
+    } catch (_) {}
+
+    try {
+      if (payPrimarySnap.exists) {
+        final payData = payPrimarySnap.data();
+        cfg['payments'] = payData != null ? asMap(payData) : null;
+      } else if (payFallbackSnap.exists) {
+        final payData = payFallbackSnap.data();
         cfg['payments'] = payData != null ? asMap(payData) : null;
       }
     } catch (_) {}

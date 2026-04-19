@@ -539,6 +539,10 @@ class ProdutosFirestoreService {
   static Future<int> syncFirestoreToHive({
     required String lojaId,
     required Box<Produto> produtosBox,
+    /// Quando verdadeiro (ex.: "Baixar da nuvem"), aplica [quantidade] do Firestore mesmo
+    /// com sync pendente na fila ou `updatedAt` local mais recente — evita ficar preso
+    /// em valor antigo no dispositivo após alterações na web.
+    bool preferRemoteQuantity = false,
   }) async {
     ProdutoRemoteSyncGuard.applyingRemoteToHive = true;
     try {
@@ -626,12 +630,12 @@ class ProdutosFirestoreService {
                     includeDeadLetter: true,
                   )
                 : false;
-            final preserveLocalQuantidade =
-                pendingProdutoSync ||
-                shouldPreserveLocalQuantidadeOnFirestorePull(
-              localUpdatedAt: p.updatedAt,
-              remoteUpdatedAt: remoteUpdatedAtForPull,
-            );
+            final preserveLocalQuantidade = !preferRemoteQuantity &&
+                (pendingProdutoSync ||
+                    shouldPreserveLocalQuantidadeOnFirestorePull(
+                      localUpdatedAt: p.updatedAt,
+                      remoteUpdatedAt: remoteUpdatedAtForPull,
+                    ));
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
