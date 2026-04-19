@@ -869,16 +869,31 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         _dlog('[ProdutoCombo] novo combo criado com defaults seguros');
       }
 
-      await ProdutosFirestoreService.syncProduto(combo, lojaId: lojaId);
-      await CatalogoSyncService.upsertFromProduto(combo, target: SyncTarget.draft);
-      await CatalogoSyncService.upsertFromProduto(combo, target: SyncTarget.live);
-      await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
-      final docIdCatalogo = CatalogoSyncService.catalogFirestoreDocId(combo);
-      await _persistirDescontoFirestore(lojaId!, docIdCatalogo);
+      final remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
+        combo,
+        lojaId: lojaId,
+        enqueueOnFailure: true,
+      );
+      if (remoteStatus == ProdutoSyncRemotoStatus.confirmado) {
+        await CatalogoSyncService.upsertFromProduto(combo, target: SyncTarget.draft);
+        await CatalogoSyncService.upsertFromProduto(combo, target: SyncTarget.live);
+        await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        final docIdCatalogo = CatalogoSyncService.catalogFirestoreDocId(combo);
+        await _persistirDescontoFirestore(lojaId!, docIdCatalogo);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Combo salvo com sucesso')),
+          SnackBar(
+            content: Text(
+              remoteStatus == ProdutoSyncRemotoStatus.confirmado
+                  ? 'Combo salvo e sincronizado com sucesso'
+                  : 'Combo salvo localmente e marcado como pendente de sincronização',
+            ),
+            backgroundColor: remoteStatus == ProdutoSyncRemotoStatus.confirmado
+                ? null
+                : Colors.orange,
+          ),
         );
         Navigator.pop(context, true);
       }
@@ -1295,10 +1310,15 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
                       const SizedBox(height: 16),
                       ...List.generate(_itensCombo.length, (i) {
                         final item = _itensCombo[i];
-                        final nomeAtual = (item['nome'] ?? '').trim();
+                        final nomeAtual = (item['nome'] ?? '').toString();
                         _productControllers[i] ??= TextEditingController(text: nomeAtual);
-                        if (_productControllers[i]!.text != nomeAtual) {
-                          _productControllers[i]!.text = nomeAtual;
+                        if (_productControllers[i]!.text != nomeAtual &&
+                            !(_productFocusNodes[i]?.hasFocus ?? false)) {
+                          _productControllers[i]!.value = TextEditingValue(
+                            text: nomeAtual,
+                            selection:
+                                TextSelection.collapsed(offset: nomeAtual.length),
+                          );
                         }
                         final ctrl = _productControllers[i]!;
                         _productFocusNodes.putIfAbsent(i, FocusNode.new);

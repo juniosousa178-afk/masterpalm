@@ -11,6 +11,11 @@ import 'firestore_paths.dart';
 import 'produto_imagens_storage_cleanup.dart';
 import 'produtos_firestore_service.dart';
 
+enum ProdutoExclusaoRemotaStatus {
+  confirmada,
+  pendente,
+}
+
 /// Exclusão remota coerente entre fluxos de estoque (soft delete e v2).
 class ProdutoExclusaoRemotaService {
   ProdutoExclusaoRemotaService._();
@@ -122,21 +127,33 @@ class ProdutoExclusaoRemotaService {
 
   /// Exclusão permanente (após janela de undo) ou fluxo sem soft delete: imagens + `estoque_produtos`.
   /// Catálogo já deve ter sido removido na fase imediata do soft delete; chamadas repetidas são idempotentes.
-  static Future<void> apagarImagensEEstoqueRemoto({
+  static Future<ProdutoExclusaoRemotaStatus> apagarImagensEEstoqueRemotoComStatus({
     required Produto produto,
     required String lojaId,
   }) async {
-    if (lojaId.isEmpty) return;
-    await ProdutoImagensStorageCleanup.apagarTodasImagensGerenciadasDoProduto(
-      produto,
-      lojaId,
-    );
+    if (lojaId.isEmpty) return ProdutoExclusaoRemotaStatus.pendente;
+    var ok = true;
+    try {
+      await ProdutoImagensStorageCleanup.apagarTodasImagensGerenciadasDoProduto(
+        produto,
+        lojaId,
+      );
+    } catch (e, st) {
+      ok = false;
+      logE(
+        '[EXCLUSAO_REMOTA] Falha ao apagar imagens gerenciadas',
+        tag: 'EXCLUSAO',
+        error: e,
+        st: st,
+      );
+    }
     try {
       await ProdutosFirestoreService.deleteProdutoRobusto(
         produto: produto,
         lojaId: lojaId,
       );
     } catch (e, st) {
+      ok = false;
       logE(
         '[EXCLUSAO_REMOTA] Falha deleteProdutoRobusto',
         tag: 'EXCLUSAO',
@@ -144,6 +161,19 @@ class ProdutoExclusaoRemotaService {
         st: st,
       );
     }
+    return ok
+        ? ProdutoExclusaoRemotaStatus.confirmada
+        : ProdutoExclusaoRemotaStatus.pendente;
+  }
+
+  static Future<void> apagarImagensEEstoqueRemoto({
+    required Produto produto,
+    required String lojaId,
+  }) async {
+    await apagarImagensEEstoqueRemotoComStatus(
+      produto: produto,
+      lojaId: lojaId,
+    );
   }
 
   /// Fluxo **imediato** (ex.: estoque v2): catálogo canônico + imagens + estoque, sem alterar Hive.

@@ -107,8 +107,11 @@ class SoftDeleteService {
         for (final e in list) {
           if (e is! Map) continue;
           final rec = _PendingRecord.fromJsonSafe(Map<String, dynamic>.from(e));
-          if (rec != null) _pending.add(rec);
-          else if (kDebugMode) logW('⚠️ [SOFT-DELETE] Registro de pendência inválido ignorado');
+          if (rec != null) {
+            _pending.add(rec);
+          } else if (kDebugMode) {
+            logW('⚠️ [SOFT-DELETE] Registro de pendência inválido ignorado');
+          }
         }
       } catch (e) {
         if (kDebugMode) logW('⚠️ [SOFT-DELETE] Erro ao carregar pendências: $e');
@@ -501,10 +504,16 @@ class SoftDeleteService {
       final trashBox = await _trashProdutosBox();
       final prod = trashBox.get(r.trashKey);
       if (prod != null) {
-        await ProdutoExclusaoRemotaService.apagarImagensEEstoqueRemoto(
+        final status =
+            await ProdutoExclusaoRemotaService.apagarImagensEEstoqueRemotoComStatus(
           produto: prod,
           lojaId: r.lojaId,
         );
+        if (status != ProdutoExclusaoRemotaStatus.confirmada) {
+          throw StateError(
+            'Exclusão remota de produto pendente (status=$status)',
+          );
+        }
       }
       await trashBox.delete(r.trashKey);
       logD('🗑️ [SOFT-DELETE] Produto excluído permanentemente (Firestore + lixeira local)');

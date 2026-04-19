@@ -34,9 +34,26 @@ import '../src/blob_fetch_stub.dart'
 /// - Baixas de venda devem ser feitas via `EstoqueTransactionService` (transações atômicas).
 /// - Este serviço reflete o estado local (Hive) para o Firestore e deve ser usado com cuidado
 ///   após operações de venda para não sobrescrever saldos já atualizados por transações.
+enum ProdutoSyncRemotoStatus {
+  confirmado,
+  pendenteFila,
+  falhaRemota,
+  lojaInvalida,
+  produtoInvalido,
+  semMudancas,
+}
+
 class ProdutosFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Estado explícito da persistência remota de produto.
+  /// - confirmado: escrita remota concluída
+  /// - pendenteFila: falhou remoto, item foi enfileirado para retry
+  /// - falhaRemota: falhou remoto e não houve enfileiramento
+  /// - lojaInvalida: sem contexto de loja para sincronizar
+  /// - produtoInvalido: chave local inválida para enfileirar retry
+  /// - semMudancas: reservado para uso futuro
+  ///
   /// Tombstone em `estoque_produtos` durante soft delete (antes da exclusão definitiva).
   /// Evita que [syncFirestoreToHive] recrie o produto no Hive enquanto o doc ainda existir.
   static const String fieldEstoquePendingSoftDelete = 'pendingSoftDelete';
@@ -112,11 +129,25 @@ class ProdutosFirestoreService {
     /// [Produto.idFirebase] continuam persistindo no Hive.
     bool bumpHiveTimestamp = true,
   }) async {
+    await syncProdutoComStatus(
+      produto,
+      lojaId: lojaId,
+      bumpHiveTimestamp: bumpHiveTimestamp,
+      enqueueOnFailure: true,
+    );
+  }
+
+  static Future<ProdutoSyncRemotoStatus> syncProdutoComStatus(
+    Produto produto, {
+    String? lojaId,
+    bool bumpHiveTimestamp = true,
+    bool enqueueOnFailure = true,
+  }) async {
     try {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) {
         logD('❌ [PRODUTOS-SYNC] LojaId vazio, não pode sincronizar');
-        return;
+        return ProdutoSyncRemotoStatus.lojaInvalida;
       }
 
       final produtoId = produto.idFirebase.isNotEmpty
@@ -391,23 +422,33 @@ class ProdutosFirestoreService {
       }
 
       logD('✅ [PRODUTOS-SYNC] Produto ${produto.nome} sincronizado');
+      return ProdutoSyncRemotoStatus.confirmado;
     } catch (e, st) {
       logE(
           '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})',
           error: e,
           st: st);
+      if (!enqueueOnFailure) {
+        return ProdutoSyncRemotoStatus.falhaRemota;
+      }
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       final key = produto.key;
       final boxName = produto.box?.name ??
           (storeId != null ? HiveBoxNames.produtos(storeId) : null);
       if (storeId != null && key != null && boxName != null) {
+        final parsedKey = key is int ? key : int.tryParse(key.toString());
+        if (parsedKey == null) {
+          return ProdutoSyncRemotoStatus.produtoInvalido;
+        }
         await SyncQueueService.enqueue(
           type: SyncOperationType.upsertProduto,
           lojaId: storeId,
           boxName: boxName,
-          entityKey: key is int ? key : int.tryParse(key.toString()) ?? 0,
+          entityKey: parsedKey,
         );
+        return ProdutoSyncRemotoStatus.pendenteFila;
       }
+      return ProdutoSyncRemotoStatus.falhaRemota;
     }
   }
 
@@ -577,7 +618,16 @@ class ProdutosFirestoreService {
             final p = produtoExistente;
 
             final remoteUpdatedAtForPull = parseFirestoreUpdatedAt(data);
+            final localHiveKey = p.key;
+            final pendingProdutoSync = localHiveKey is int
+                ? await SyncQueueService.hasPendingProdutoSync(
+                    lojaId: lojaId,
+                    entityKey: localHiveKey,
+                    includeDeadLetter: true,
+                  )
+                : false;
             final preserveLocalQuantidade =
+                pendingProdutoSync ||
                 shouldPreserveLocalQuantidadeOnFirestorePull(
               localUpdatedAt: p.updatedAt,
               remoteUpdatedAt: remoteUpdatedAtForPull,
@@ -591,9 +641,11 @@ class ProdutosFirestoreService {
               p.quantidade =
                   (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
             } else {
+              final motivo = pendingProdutoSync
+                  ? 'sync pendente na fila'
+                  : 'updatedAt local mais recente que remoto';
               logD(
-                '[QTD_GUARD] sync pull: mantendo quantidade local=${p.quantidade} '
-                '(updatedAt local mais recente que remoto)',
+                '[QTD_GUARD] sync pull: mantendo quantidade local=${p.quantidade} ($motivo)',
               );
             }
             p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;

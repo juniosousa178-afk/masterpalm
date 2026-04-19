@@ -131,9 +131,15 @@ class _HomeScreenState extends State<HomeScreen>
     _carregarSessao();
 
     // Sincronização automática ao entrar (paridade Web/APK – vendas de qualquer plataforma aparecem em todas)
-    AutoSyncService.syncCompleto().then((r) {
-      if (mounted) setState(() {}); // Atualiza dashboard quando sync terminar
-    }).catchError((_) {});
+    // Executa após o 1º frame para não competir com o first paint da Home.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 180), () {
+        if (!mounted) return;
+        AutoSyncService.syncCompleto().then((r) {
+          if (mounted) setState(() {}); // Atualiza dashboard quando sync terminar
+        }).catchError((_) {});
+      });
+    });
 
     // 🔐 Checagem de licença só para ADMIN (não afeta programador/root)
     WidgetsBinding.instance.addPostFrameCallback((_) async {

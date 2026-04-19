@@ -201,6 +201,42 @@ class SyncQueueService {
     return _instance._processPending();
   }
 
+  /// Verifica se existe item pendente/dead-letter para uma entidade específica.
+  /// Usado como guard para evitar pull remoto sobrescrever alteração local ainda não confirmada.
+  static Future<bool> hasPendingEntity({
+    required SyncOperationType type,
+    required String lojaId,
+    required int entityKey,
+    bool includeDeadLetter = true,
+  }) async {
+    await _instance._ensureBox();
+    for (final k in _instance._box!.keys) {
+      final map = _instance._rawToMap(_instance._box!.get(k));
+      if (map == null) continue;
+      final item = SyncQueueItem.fromMap(map);
+      if (item.type != type) continue;
+      if (item.lojaId != lojaId) continue;
+      if (item.entityKey != entityKey) continue;
+      if (!includeDeadLetter && item.deadLetter) continue;
+      return true;
+    }
+    return false;
+  }
+
+  /// Atalho para o tipo mais crítico no estoque.
+  static Future<bool> hasPendingProdutoSync({
+    required String lojaId,
+    required int entityKey,
+    bool includeDeadLetter = true,
+  }) {
+    return hasPendingEntity(
+      type: SyncOperationType.upsertProduto,
+      lojaId: lojaId,
+      entityKey: entityKey,
+      includeDeadLetter: includeDeadLetter,
+    );
+  }
+
   Future<SyncQueueResult> _processPending() async {
     if (_isProcessing) {
       return SyncQueueResult(
@@ -398,7 +434,21 @@ class SyncQueueService {
       return true;
     }
 
-    await ProdutosFirestoreService.syncProduto(produto, lojaId: item.lojaId);
+    final status = await ProdutosFirestoreService.syncProdutoComStatus(
+      produto,
+      lojaId: item.lojaId,
+      enqueueOnFailure: false,
+    );
+    if (status != ProdutoSyncRemotoStatus.confirmado) {
+      await _incrementAttempt(
+        item,
+        'syncProdutoComStatus=$status para produtoKey=${item.entityKey}',
+      );
+      logW(
+        '⚠️ [SYNC-QUEUE] Produto pendente sem ACK remoto (status=$status, operationId=${item.operationId})',
+      );
+      return false;
+    }
     return true;
   }
 

@@ -742,9 +742,15 @@ class EstoqueService {
           );
           // Doc ausente, regra de segurança ou ID órfão: recria / alinha com Hive.
           try {
-            await ProdutosFirestoreService.syncProduto(produto, lojaId: lojaId);
-            persistiuRemoto = true;
-            debugPrint('$tag syncProduto OK após falha no update parcial');
+            final status = await ProdutosFirestoreService.syncProdutoComStatus(
+              produto,
+              lojaId: lojaId,
+              enqueueOnFailure: true,
+            );
+            persistiuRemoto = status == ProdutoSyncRemotoStatus.confirmado;
+            debugPrint(
+              '$tag syncProduto após falha no update parcial: status=$status',
+            );
           } catch (e2) {
             debugPrint(
               '$tag Erro também em syncProduto (type=${e2.runtimeType})',
@@ -754,9 +760,13 @@ class EstoqueService {
       } else {
         // Sem idFirebase: único caminho confiável é documento completo na nuvem.
         try {
-          await ProdutosFirestoreService.syncProduto(produto, lojaId: lojaId);
-          persistiuRemoto = true;
-          debugPrint('$tag Produto enviado ao Firestore (idFirebase atribuído)');
+          final status = await ProdutosFirestoreService.syncProdutoComStatus(
+            produto,
+            lojaId: lojaId,
+            enqueueOnFailure: true,
+          );
+          persistiuRemoto = status == ProdutoSyncRemotoStatus.confirmado;
+          debugPrint('$tag Produto enviado ao Firestore: status=$status');
         } catch (e) {
           debugPrint('$tag Erro ao sincronizar produto sem idFirebase (type=${e.runtimeType})');
         }

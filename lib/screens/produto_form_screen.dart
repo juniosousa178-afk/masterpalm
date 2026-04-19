@@ -1331,7 +1331,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
     setState(() => _salvando = true);
 
-    late final Produto produtoSalvoParaRetorno;
+      late final Produto produtoSalvoParaRetorno;
+      var remoteStatus = ProdutoSyncRemotoStatus.confirmado;
 
     try {
       final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
@@ -1485,13 +1486,19 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
           existente.updatedAt = DateTime.now();
           await existente.save();
-          await ProdutosFirestoreService.syncProduto(existente, lojaId: lojaId)
+          remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
+            existente,
+            lojaId: lojaId,
+            enqueueOnFailure: true,
+          )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-          await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.draft, lojaIdOverride: lojaId)
-              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-          await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.live, lojaIdOverride: lojaId)
-              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-          await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+          if (remoteStatus == ProdutoSyncRemotoStatus.confirmado) {
+            await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.draft, lojaIdOverride: lojaId)
+                .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+            await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.live, lojaIdOverride: lojaId)
+                .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+            await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+          }
           await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
             anteriores: imagensAntesExistente,
             atuais: List<String>.from(existente.imagens),
@@ -1565,13 +1572,19 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           );
 
           await produtosBox.add(novo);
-          await ProdutosFirestoreService.syncProduto(novo, lojaId: lojaId)
+          remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
+            novo,
+            lojaId: lojaId,
+            enqueueOnFailure: true,
+          )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-          await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.draft, lojaIdOverride: lojaId)
-              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-          await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.live, lojaIdOverride: lojaId)
-              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-          await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+          if (remoteStatus == ProdutoSyncRemotoStatus.confirmado) {
+            await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.draft, lojaIdOverride: lojaId)
+                .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+            await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.live, lojaIdOverride: lojaId)
+                .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+            await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+          }
           await _vincularCompraPipelineAposSalvar(novo);
           produtoSalvoParaRetorno = novo;
         }
@@ -1628,13 +1641,19 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
         p.updatedAt = DateTime.now();
         await p.save();
-        await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId)
+        remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
+          p,
+          lojaId: lojaId,
+          enqueueOnFailure: true,
+        )
             .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-        await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft, lojaIdOverride: lojaId)
-            .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-        await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live, lojaIdOverride: lojaId)
-            .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-        await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        if (remoteStatus == ProdutoSyncRemotoStatus.confirmado) {
+          await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft, lojaIdOverride: lojaId)
+              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+          await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live, lojaIdOverride: lojaId)
+              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
+          await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+        }
         await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
           anteriores: imagensAntesEdit,
           atuais: List<String>.from(p.imagens),
@@ -1649,10 +1668,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _publicar
-                ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
-                : 'Produto salvo e sincronizado com Hive e Firestore.',
+            remoteStatus == ProdutoSyncRemotoStatus.confirmado
+                ? (_publicar
+                    ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
+                    : 'Produto salvo e sincronizado com Hive e Firestore.')
+                : 'Produto salvo localmente e marcado como pendente de sincronização com a nuvem.',
           ),
+          backgroundColor: remoteStatus == ProdutoSyncRemotoStatus.confirmado
+              ? null
+              : Colors.orange,
         ),
       );
 

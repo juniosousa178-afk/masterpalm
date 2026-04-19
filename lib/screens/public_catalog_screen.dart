@@ -629,6 +629,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _isOffline = false;
   List<String> _recentIds = [];
   List<String> _favoritosIds = [];
+  String _lastProdutosDocsSig = '';
+  List<Map<String, dynamic>> _lastProdutosProcessados = const [];
+  String _lastCartCleanupSig = '';
   String? _clienteId;
   String? _clienteEmail;
   bool _modoEscuro = false;
@@ -652,6 +655,37 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool get _previewHideAvaliacoesForAdmin {
     if (!widget.preview || widget.adminPreviewTier == null) return false;
     return widget.adminPreviewTier == PlanAccessTier.freeLimited;
+  }
+
+  String _buildProdutosDocsSig(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    if (docs.isEmpty) return 'empty';
+    final b = StringBuffer()..write(docs.length);
+    for (final d in docs) {
+      final m = d.data();
+      final updatedAt = m['updatedAt'];
+      final qty = m['quantidade'];
+      b
+        ..write('|')
+        ..write(d.id)
+        ..write(':')
+        ..write(updatedAt is Timestamp ? updatedAt.millisecondsSinceEpoch : 0)
+        ..write(':')
+        ..write(qty ?? '');
+    }
+    return b.toString();
+  }
+
+  List<Map<String, dynamic>> _processDocsToProductsCached(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final sig = _buildProdutosDocsSig(docs);
+    if (sig == _lastProdutosDocsSig) return _lastProdutosProcessados;
+    final processed = docs.isEmpty
+        ? <Map<String, dynamic>>[]
+        : _processDocsToProducts(docs);
+    _lastProdutosDocsSig = sig;
+    _lastProdutosProcessados = processed;
+    return processed;
   }
 
   List<Map<String, dynamic>> _cuponsParaPreviaCart(
@@ -4282,14 +4316,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     ? prodSnap.data!.docs
                     : <QueryDocumentSnapshot<Map<String, dynamic>>>[];
 
-                final produtos = docs.isEmpty
-                    ? <Map<String, dynamic>>[]
-                    : _processDocsToProducts(docs);
+                final produtos = _processDocsToProductsCached(docs);
 
                 if (produtos.isNotEmpty && _cart.isNotEmpty) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) _limparCartDeProdutosRemovidos(produtos);
-                  });
+                  final cleanupSig = '${_lastProdutosDocsSig}|cart:${_cart.length}';
+                  if (_lastCartCleanupSig != cleanupSig) {
+                    _lastCartCleanupSig = cleanupSig;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _limparCartDeProdutosRemovidos(produtos);
+                    });
+                  }
                 }
 
                 const badgeSSL = 'assets/badges/ssl.png';
