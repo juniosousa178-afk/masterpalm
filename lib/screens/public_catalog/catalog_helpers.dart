@@ -33,6 +33,30 @@ const String kLiveProdutosCol = 'produtos';
 const String kDraftProdutosCol = 'draft_produtos';
 
 // ===================================================================
+// IDENTIDADE NO HEADER (nome exibido)
+// ===================================================================
+
+/// Placeholder padrão do app; não deve vencer [nome] real vindo do Firestore.
+bool _catalogHeaderNameIsPlaceholder(String s) {
+  final t = s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  return t == 'minha loja';
+}
+
+/// Campos que o [PublicCatalogScreen] usa para o título do topo. Ignora `null`,
+/// vazio, whitespace e placeholders ("Minha Loja"). Ordem: nome → nomeLoja → nome_loja → name.
+String? catalogHeaderStoreNameFromCfg(Map<String, dynamic> cfg) {
+  for (final k in const ['nome', 'nomeLoja', 'nome_loja', 'name']) {
+    final v = cfg[k];
+    if (v == null) continue;
+    final s = v.toString().trim();
+    if (s.isEmpty) continue;
+    if (_catalogHeaderNameIsPlaceholder(s)) continue;
+    return s;
+  }
+  return null;
+}
+
+// ===================================================================
 // CORES
 // ===================================================================
 Color readColor(dynamic v, Color fallback) {

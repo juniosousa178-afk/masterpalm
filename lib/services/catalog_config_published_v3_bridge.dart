@@ -3,7 +3,18 @@
 // em `published` (ex.: StoreService._ensureDefaultSettings: identidade.nome, theme.primary).
 // O catálogo público lê chaves planas (nomeLoja, theme.primaria, etc.) — sem isto cai em "Minha Loja".
 
+import 'package:flutter/foundation.dart' show kDebugMode;
+
+import '../core/logger.dart';
 import '../core/safe_cast.dart';
+
+int? _schemaVersionAsInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  if (v is String) return int.tryParse(v.trim());
+  return null;
+}
 
 bool _isEffectivelyEmpty(dynamic v) {
   if (v == null) return true;
@@ -19,8 +30,18 @@ void bridgeStoreConfigV3PublishedIntoPublicCatalogFlat(
   Map<String, dynamic> cfg, {
   bool preferDraft = false,
 }) {
-  final sv = cfg['schemaVersion'];
-  if (sv is! num || sv.toInt() != 3) return;
+  final svRaw = cfg['schemaVersion'];
+  final sv = _schemaVersionAsInt(svRaw);
+  if (sv != 3) {
+    if (kDebugMode &&
+        (cfg['published'] != null || cfg['draft'] != null)) {
+      logD(
+        '⚠️ [V3-BRIDGE] ignorado: schemaVersion bruto=$svRaw (parsed=$sv); '
+        'há published/draft mas identidade plana não será aplicada',
+      );
+    }
+    return;
+  }
   final published = cfg['published'] is Map ? asMap(cfg['published']) : <String, dynamic>{};
   final draft = cfg['draft'] is Map ? asMap(cfg['draft']) : <String, dynamic>{};
   final Map<String, dynamic> pub;
@@ -34,11 +55,24 @@ void bridgeStoreConfigV3PublishedIntoPublicCatalogFlat(
   final ident = pub['identidade'];
   if (ident is Map) {
     final id = asMap(ident);
-    final nome = (id['nome'] ?? '').toString().trim();
+    final nome = (id['nome'] ?? id['name'] ?? '').toString().trim();
     if (nome.isNotEmpty) {
       if (_isEffectivelyEmpty(cfg['nomeLoja'])) cfg['nomeLoja'] = nome;
       if (_isEffectivelyEmpty(cfg['nome'])) cfg['nome'] = nome;
       if (_isEffectivelyEmpty(cfg['nome_loja'])) cfg['nome_loja'] = nome;
+    }
+    for (final key in const [
+      'logoUrl',
+      'logoDesktopUrl',
+      'logoMobileUrl',
+      'logo',
+      'banners',
+      'bannersDesktop',
+      'bannersMobile',
+    ]) {
+      if (!_isEffectivelyEmpty(id[key]) && _isEffectivelyEmpty(cfg[key])) {
+        cfg[key] = id[key];
+      }
     }
   }
 

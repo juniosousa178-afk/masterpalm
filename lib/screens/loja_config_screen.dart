@@ -2252,6 +2252,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           : {};
 
       if (headerColors.isNotEmpty) {
+        // Fundo do cabeçalho: mesma chave que o catálogo público usa em catalogHeaderColors.background.
+        // Sem isso, só theme.cabecalho era aplicado e o editor podia voltar “antigo” se os dois divergirem.
+        final headerBg = colorToInt(headerColors['background']);
+        if (headerBg != null) _cCabecalho = Color(headerBg);
+
         final headerText = colorToInt(headerColors['text']);
         final headerIcon = colorToInt(headerColors['icon']);
         final searchBg = colorToInt(headerColors['searchBackground']);

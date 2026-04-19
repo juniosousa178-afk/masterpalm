@@ -38,6 +38,7 @@ import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
 import '../core/combo_config_canonical.dart';
 import '../catalog/catalog_layout_config.dart';
 import 'public_catalog/catalog_helpers.dart';
+import 'public_catalog/catalog_public_header_debug.dart';
 import 'public_catalog/catalog_best_sellers_helper.dart';
 import 'public_catalog/catalog_product_card_size.dart';
 import 'public_catalog/catalog_estoque_helper.dart';
@@ -2049,6 +2050,24 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
   }
 
+  /// Diagnóstico web: origem provável do slug/id (path, query, fragment ou host).
+  String _catalogResolveSourceHint() {
+    if (!kIsWeb) return 'native_app_route';
+    final u = Uri.base;
+    if (u.path.contains('/loja/') ||
+        (u.pathSegments.isNotEmpty && u.pathSegments.first == 'loja')) {
+      return 'web_path_/loja/';
+    }
+    final q = (u.queryParameters['loja'] ??
+            u.queryParameters['slug'] ??
+            u.queryParameters['store_id'] ??
+            '')
+        .trim();
+    if (q.isNotEmpty) return 'web_query_slug_store_id';
+    if (u.fragment.contains('loja')) return 'web_fragment_hash';
+    return 'web_host_custom_domain_or_root';
+  }
+
   Future<void> _resolveLojaId() async {
     try {
       final widgetId = widget.lojaId.trim();
@@ -2126,6 +2145,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           CatalogVisitasService.incrementarVisita(_resolvedLojaId!);
         }
         logD('✅ [CATÁLOGO] lojaId FINAL (público): $_resolvedLojaId');
+        catalogDebugLogStoreResolution(
+          widgetLojaIdRaw: widgetId,
+          resolvedCanonicalId: _resolvedLojaId,
+          preview: widget.preview,
+          resolveSourceHint: _catalogResolveSourceHint(),
+        );
       } else {
         // ════════════════════════════════════════════════════════════
         // CONTEXTO ADMIN/PREVIEW: Usa loja do usuário logado
@@ -2168,6 +2193,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           CatalogVisitasService.incrementarVisita(_resolvedLojaId!);
         }
         logD('✅ [CATÁLOGO] lojaId FINAL (admin): $_resolvedLojaId');
+        catalogDebugLogStoreResolution(
+          widgetLojaIdRaw: widgetId,
+          resolvedCanonicalId: _resolvedLojaId,
+          preview: widget.preview,
+          resolveSourceHint: 'admin_preview_dashboard',
+        );
       }
 
       logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -2492,10 +2523,26 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         (cfgSnap) async {
           _cfgPermissionDeniedLogged = false;
           final cfg = asMapDeep(cfgSnap.data() ?? {});
+          if (kDebugMode) {
+            catalogDebugLogConfigPipeline(
+              phase: 'direct_stream_pre_bridge',
+              lojaId: lojaId,
+              cfgCol: cfgCol,
+              cfg: Map<String, dynamic>.from(cfg),
+            );
+          }
           bridgeStoreConfigV3PublishedIntoPublicCatalogFlat(
             cfg,
             preferDraft: widget.preview,
           );
+          if (kDebugMode) {
+            catalogDebugLogConfigPipeline(
+              phase: 'direct_stream_post_bridge_v3',
+              lojaId: lojaId,
+              cfgCol: cfgCol,
+              cfg: Map<String, dynamic>.from(cfg),
+            );
+          }
 
           bool isMissing(dynamic v) {
             if (v == null) return true;
@@ -2550,6 +2597,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               }
             }
           } catch (_) {}
+          if (kDebugMode) {
+            catalogDebugLogConfigPipeline(
+              phase: 'direct_stream_post_legacy_live',
+              lojaId: lojaId,
+              cfgCol: cfgCol,
+              cfg: Map<String, dynamic>.from(cfg),
+            );
+          }
 
           // Último fallback: identidade básica no doc raiz da loja.
           try {
@@ -2559,6 +2614,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               'nome',
               'nomeLoja',
               'nome_loja',
+              'name',
               'logoUrl',
               'logoDesktopUrl',
               'logoMobileUrl',
@@ -2571,7 +2627,22 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             ]) {
               putIfMissing(cfg, lojaMap, k);
             }
+            final lojaName = lojaMap['name'];
+            if (isMissing(cfg['nome']) && !isMissing(lojaName)) {
+              cfg['nome'] = lojaName;
+            }
+            if (isMissing(cfg['nomeLoja']) && !isMissing(lojaName)) {
+              cfg['nomeLoja'] = lojaName;
+            }
           } catch (_) {}
+          if (kDebugMode) {
+            catalogDebugLogConfigPipeline(
+              phase: 'direct_stream_post_loja_doc_root',
+              lojaId: lojaId,
+              cfgCol: cfgCol,
+              cfg: Map<String, dynamic>.from(cfg),
+            );
+          }
 
           // Fallback: carregar cupons da collection se config vazio (sincronização FretesCuponsScreen)
           final cuponsCfg = cfg['cupons'];
@@ -2643,6 +2714,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             }
           }
 
+          if (kDebugMode) {
+            catalogDebugLogConfigPipeline(
+              phase: 'direct_stream_final_emit',
+              lojaId: lojaId,
+              cfgCol: cfgCol,
+              cfg: Map<String, dynamic>.from(cfg),
+            );
+          }
           controller.add(cfg);
         },
         onError: (error) {
@@ -2651,12 +2730,28 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               _cfgPermissionDeniedLogged = true;
               logD('⚠️ [CATÁLOGO] Sem permissão para config - usando padrões');
             }
+            if (kDebugMode) {
+              catalogDebugLogConfigStreamEmit(
+                source: 'permission_denied_empty_cfg',
+                lojaId: lojaId,
+                preview: widget.preview,
+                cfg: const {},
+              );
+            }
             // Retorna config vazio para UI usar padrões
             controller.add(<String, dynamic>{});
             subscription?.cancel();
           } else {
             logD(
                 '❌ [CATÁLOGO] Erro no stream de config (type=${error.runtimeType})');
+            if (kDebugMode) {
+              catalogDebugLogConfigStreamEmit(
+                source: 'stream_error_empty_cfg',
+                lojaId: lojaId,
+                preview: widget.preview,
+                cfg: const {},
+              );
+            }
             controller.add(<String, dynamic>{});
           }
         },
@@ -4066,13 +4161,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           final productPriceColor = priceHighlightColor;
 
           // =================== IDENTIDADE / LINKS ===================
-          final lojaNome = (cfg['nomeLoja'] ??
-                  cfg['nome_loja'] ??
-                  cfg['nome'] ?? // ✅ CORRIGIDO: adiciona 'nome'
-                  cfg['name'] ??
-                  'Minha Loja')
-              .toString()
-              .trim();
+          final lojaNome =
+              catalogHeaderStoreNameFromCfg(cfg) ?? 'Minha Loja';
 
           final links = mpMapDyn(cfg['links']);
           final rodapeLinks = mpMapDyn(cfg['rodape']);
@@ -4312,6 +4402,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           final size = MediaQuery.of(context).size;
           final isWide = size.width >= 900;
           final mediaConfig = parseMedia(cfg, isWide: isWide);
+          catalogDebugLogHeaderUi(
+            lojaId: lojaId,
+            cfg: cfg,
+            isWide: isWide,
+          );
           final logoUrl = mediaConfig.logoUrl;
           final banners = mediaConfig.banners;
           final bannerH = mediaConfig.bannerH;

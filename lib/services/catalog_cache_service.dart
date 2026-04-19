@@ -13,6 +13,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
+
+import '../screens/public_catalog/catalog_public_header_debug.dart';
 import 'catalog_cache_disk_store.dart';
 import 'catalog_config_published_v3_bridge.dart';
 
@@ -86,6 +89,14 @@ class CatalogCacheService {
         }
         if (isDifferent && !controller.isClosed) {
           lastEmitted = cfg;
+          if (kDebugMode) {
+            catalogDebugLogConfigStreamEmit(
+              source: 'firestore_refresh_tick',
+              lojaId: lojaId,
+              preview: preview,
+              cfg: Map<String, dynamic>.from(cfg),
+            );
+          }
           controller.add(cfg);
         }
       } on TimeoutException catch (e) {
@@ -101,6 +112,14 @@ class CatalogCacheService {
         if (cached != null && !cached.isExpired(_configTtlSeconds)) {
           logD('📦 [CACHE] Config servido do cache');
           lastEmitted = cached.data;
+          if (kDebugMode) {
+            catalogDebugLogConfigStreamEmit(
+              source: 'memory_ttl',
+              lojaId: lojaId,
+              preview: preview,
+              cfg: Map<String, dynamic>.from(cached.data),
+            );
+          }
           controller.add(cached.data);
           timer = Timer.periodic(
             const Duration(seconds: _configTtlSeconds),
@@ -122,6 +141,14 @@ class CatalogCacheService {
               lastEmitted = disk.cfg;
               if (!controller.isClosed) {
                 logD('📦 [CACHE] Config servido do disco');
+                if (kDebugMode) {
+                  catalogDebugLogConfigStreamEmit(
+                    source: 'disk_ttl',
+                    lojaId: lojaId,
+                    preview: preview,
+                    cfg: Map<String, dynamic>.from(disk.cfg!),
+                  );
+                }
                 controller.add(disk.cfg!);
               }
               timer = Timer.periodic(
@@ -139,8 +166,24 @@ class CatalogCacheService {
             final nowMs = DateTime.now().millisecondsSinceEpoch;
             _disk.writeConfig(lojaId, cfg, updatedAtMs: nowMs, preview: preview);
             lastEmitted = cfg;
+            if (kDebugMode) {
+              catalogDebugLogConfigStreamEmit(
+                source: 'firestore_initial',
+                lojaId: lojaId,
+                preview: preview,
+                cfg: Map<String, dynamic>.from(cfg),
+              );
+            }
             if (!controller.isClosed) controller.add(cfg);
           } else if (!_configCache.containsKey(cacheKey) && !controller.isClosed) {
+            if (kDebugMode) {
+              catalogDebugLogConfigStreamEmit(
+                source: 'empty_config_no_cache',
+                lojaId: lojaId,
+                preview: preview,
+                cfg: const {},
+              );
+            }
             controller.add({});
           }
         } catch (e) {
@@ -148,8 +191,24 @@ class CatalogCacheService {
           final fallback = _configCache[cacheKey]?.data;
           if (!controller.isClosed) {
             if (fallback != null) {
+              if (kDebugMode) {
+                catalogDebugLogConfigStreamEmit(
+                  source: 'error_fallback_memory',
+                  lojaId: lojaId,
+                  preview: preview,
+                  cfg: Map<String, dynamic>.from(fallback),
+                );
+              }
               controller.add(fallback);
             } else {
+              if (kDebugMode) {
+                catalogDebugLogConfigStreamEmit(
+                  source: 'error_empty_fallback',
+                  lojaId: lojaId,
+                  preview: preview,
+                  cfg: const {},
+                );
+              }
               controller.add({});
             }
           }
@@ -234,17 +293,33 @@ class CatalogCacheService {
     final payFallbackSnap = results[2];
     final data = cfgSnap.data();
     final cfg = asMap(data);
+    if (kDebugMode) {
+      catalogDebugLogConfigPipeline(
+        phase: 'fetch_pre_bridge',
+        lojaId: lojaId,
+        cfgCol: cfgCol,
+        cfg: Map<String, dynamic>.from(cfg),
+      );
+    }
     bridgeStoreConfigV3PublishedIntoPublicCatalogFlat(
       cfg,
       preferDraft: cfgCol == 'draft_config',
     );
+    if (kDebugMode) {
+      catalogDebugLogConfigPipeline(
+        phase: 'fetch_post_bridge_v3',
+        lojaId: lojaId,
+        cfgCol: cfgCol,
+        cfg: Map<String, dynamic>.from(cfg),
+      );
+    }
 
     // Fallback cirúrgico: algumas lojas publicam em config_catalogo_live/main.
     // Mantém config/config como fonte principal; só preenche o que faltar.
     try {
       final legacyLiveSnap =
           await baseRef.collection('config_catalogo_live').doc('main').get();
-      if (legacyLiveSnap.exists) {
+        if (legacyLiveSnap.exists) {
         final legacyLive = asMap(legacyLiveSnap.data());
         if (cfg.isEmpty) {
           cfg.addAll(legacyLive);
@@ -253,6 +328,14 @@ class CatalogCacheService {
         }
       }
     } catch (_) {}
+    if (kDebugMode) {
+      catalogDebugLogConfigPipeline(
+        phase: 'fetch_post_legacy_config_catalogo_live',
+        lojaId: lojaId,
+        cfgCol: cfgCol,
+        cfg: Map<String, dynamic>.from(cfg),
+      );
+    }
 
     // Último fallback de identidade visual no doc raiz da loja.
     try {
@@ -261,6 +344,14 @@ class CatalogCacheService {
       _putIfMissing(cfg, lojaMap, 'nome');
       _putIfMissing(cfg, lojaMap, 'nomeLoja');
       _putIfMissing(cfg, lojaMap, 'nome_loja');
+      // Doc raiz costuma usar `name` (StoreService); o catálogo também lê `name`.
+      _putIfMissing(cfg, lojaMap, 'name');
+      if (_isMissing(cfg['nome']) && !_isMissing(lojaMap['name'])) {
+        cfg['nome'] = lojaMap['name'];
+      }
+      if (_isMissing(cfg['nomeLoja']) && !_isMissing(lojaMap['name'])) {
+        cfg['nomeLoja'] = lojaMap['name'];
+      }
       _putIfMissing(cfg, lojaMap, 'logoUrl');
       _putIfMissing(cfg, lojaMap, 'logoDesktopUrl');
       _putIfMissing(cfg, lojaMap, 'logoMobileUrl');
@@ -271,6 +362,14 @@ class CatalogCacheService {
       _putIfMissing(cfg, lojaMap, 'uiColors');
       _putIfMissing(cfg, lojaMap, 'layout');
     } catch (_) {}
+    if (kDebugMode) {
+      catalogDebugLogConfigPipeline(
+        phase: 'fetch_post_loja_doc_root',
+        lojaId: lojaId,
+        cfgCol: cfgCol,
+        cfg: Map<String, dynamic>.from(cfg),
+      );
+    }
 
     try {
       if (payPrimarySnap.exists) {
@@ -344,6 +443,14 @@ class CatalogCacheService {
       }
     }
 
+    if (kDebugMode) {
+      catalogDebugLogConfigPipeline(
+        phase: 'fetch_final_return',
+        lojaId: lojaId,
+        cfgCol: cfgCol,
+        cfg: Map<String, dynamic>.from(cfg),
+      );
+    }
     return cfg;
   }
 

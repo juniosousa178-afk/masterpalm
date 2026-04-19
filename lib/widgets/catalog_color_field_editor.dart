@@ -74,12 +74,21 @@ class CatalogColorFieldEditor extends StatefulWidget {
 
 class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
   late final TextEditingController _hexCtrl;
+  late final FocusNode _hexFocus;
   String? _hexError;
 
   @override
   void initState() {
     super.initState();
     _hexCtrl = TextEditingController(text: formatCatalogHexRgb(widget.color));
+    _hexFocus = FocusNode();
+    _hexFocus.addListener(_onHexFocusChange);
+  }
+
+  void _onHexFocusChange() {
+    if (!_hexFocus.hasFocus) {
+      _applyHexInput();
+    }
   }
 
   @override
@@ -96,6 +105,8 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
 
   @override
   void dispose() {
+    _hexFocus.removeListener(_onHexFocusChange);
+    _hexFocus.dispose();
     _hexCtrl.dispose();
     super.dispose();
   }
@@ -563,6 +574,7 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
             const SizedBox(height: 12),
             TextField(
               controller: _hexCtrl,
+              focusNode: _hexFocus,
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 14,
@@ -603,7 +615,8 @@ class _CatalogColorFieldEditorState extends State<CatalogColorFieldEditor> {
                 FilteringTextInputFormatter.allow(RegExp(r'[#0-9a-fA-F]*')),
                 LengthLimitingTextInputFormatter(10),
               ],
-              onSubmitted: (_) => _applyHexInput,
+              onEditingComplete: _applyHexInput,
+              onSubmitted: (_) => _applyHexInput(),
             ),
             if (suggestions.isNotEmpty) ...[
               if (widget.suggestionsLayout == CatalogColorSuggestionsLayout.inline) ...[
