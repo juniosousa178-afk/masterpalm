@@ -1072,6 +1072,27 @@ class _SnappyScrollBehavior extends MaterialScrollBehavior {
 // ===========================================================================
 Uri? _initialWebUri;
 
+/// Web: abertura só como visitante do catálogo (sem precisar do bootstrap pesado do app).
+/// Usa o mesmo critério do roteamento pós-bootstrap: path `/loja` ou host em [catalog_domains].
+Future<bool> _webShouldMinimalBootstrapForPublicCatalogViewer() async {
+  if (!kIsWeb) return false;
+  if (Firebase.apps.isEmpty) return false;
+  final uri = _initialWebUri ?? Uri.base;
+  if (_uriIsPagamentoPublicPath(uri)) return false;
+  if (_isPublicCatalogUrl()) return true;
+  if (_uriHasLojaPathPriority(uri) || _uriHasExplicitCatalogQueryOrFragment(uri)) {
+    return true;
+  }
+  try {
+    final hostNorm = normalizeCatalogDomainHost(uri.host);
+    if (hostNorm.isEmpty) return false;
+    final lojaId = await resolveLojaIdFromCatalogDomainMap(hostNorm);
+    return lojaId != null && lojaId.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
+}
+
 bool _isPublicCatalogUrl() {
   if (!kIsWeb) return false;
   final uri = _initialWebUri ?? Uri.base;
@@ -1360,8 +1381,16 @@ class _BootApp extends StatelessWidget {
   const _BootApp();
   @override
   Widget build(BuildContext context) {
-    final isCatalog =
-        kIsWeb && (Uri.base.pathSegments.isNotEmpty && Uri.base.pathSegments.first == 'loja');
+    final uri = Uri.base;
+    final path = uri.path;
+    final isCatalogPath = path.startsWith('/loja/') ||
+        path.contains('/loja/') ||
+        (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'loja');
+    final host = uri.host.toLowerCase();
+    // Heurística só para texto da splash (antes do Firestore): domínios dedicados ao catálogo.
+    final looksLikeDedicatedCatalogHost =
+        host.contains('catalogo.') || host.startsWith('catalogo.');
+    final isCatalog = kIsWeb && (isCatalogPath || looksLikeDedicatedCatalogHost);
     final splash = Scaffold(
       body: Center(
         child: Column(
@@ -1650,6 +1679,15 @@ Future<void> _bootstrapSafe() async {
   final firebaseOk = await _initFirebaseCore();
   logD('[BOOT-AUTH] firebaseOk=$firebaseOk');
 
+  final webCatalogMinimalBoot = kIsWeb &&
+      firebaseOk &&
+      await _webShouldMinimalBootstrapForPublicCatalogViewer();
+  if (webCatalogMinimalBoot) {
+    logD(
+      '[BOOT-CATALOG-WEB] Catálogo público na web → bootstrap mínimo (sem aguardar auth 5s nem RemoteConfig/AppCheck antes do catálogo)',
+    );
+  }
+
   if (firebaseOk && kIsWeb && kDebugMode) {
     logD(
       'ℹ️ [WEB] OAuth: em Authentication → Settings → Authorized domains, inclua '
@@ -1662,7 +1700,7 @@ Future<void> _bootstrapSafe() async {
   bool hasUser = false;
   if (firebaseOk) {
     var u = FirebaseAuth.instance.currentUser;
-    if (u == null && kIsWeb) {
+    if (!webCatalogMinimalBoot && u == null && kIsWeb) {
       logD('🟡 [BOOT] Web: currentUser null, aguardando auth (até 5s)...');
       try {
         await FirebaseAuth.instance.authStateChanges()
@@ -1676,8 +1714,12 @@ Future<void> _bootstrapSafe() async {
     logD('[BOOT-AUTH] currentUser → hasUser=$hasUser');
   }
   final isNoUser = !hasUser;
-  if (isNoUser) {
-    logD('[BOOT-OFFLINE] Fast path: sem usuário → bootstrap mínimo para login');
+  if (webCatalogMinimalBoot || isNoUser) {
+    if (webCatalogMinimalBoot) {
+      logD('[BOOT-CATALOG-WEB] Fast path: catálogo público (visitante ou admin na mesma origem)');
+    } else {
+      logD('[BOOT-OFFLINE] Fast path: sem usuário → bootstrap mínimo para login');
+    }
     boot.mark('auth.no_user');
     boot.mark('appcheck.skip_fastpath');
     boot.mark('remoteconfig.defer');

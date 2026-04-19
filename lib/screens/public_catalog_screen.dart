@@ -26,6 +26,7 @@ import 'auth/perfil_cliente_screen_novo.dart';
 import '../services/cliente_auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/catalog_cache_service.dart';
+import '../services/catalog_config_published_v3_bridge.dart';
 import '../services/catalog_recent_service.dart';
 import '../services/catalog_share_service.dart';
 import '../services/catalog_visitas_service.dart';
@@ -2491,6 +2492,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         (cfgSnap) async {
           _cfgPermissionDeniedLogged = false;
           final cfg = asMapDeep(cfgSnap.data() ?? {});
+          bridgeStoreConfigV3PublishedIntoPublicCatalogFlat(
+            cfg,
+            preferDraft: widget.preview,
+          );
 
           bool isMissing(dynamic v) {
             if (v == null) return true;

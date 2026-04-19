@@ -14,6 +14,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
 import 'catalog_cache_disk_store.dart';
+import 'catalog_config_published_v3_bridge.dart';
 
 /// Cache em memória para config e produtos do catálogo público.
 /// TTL configurável; ao expirar, busca Firestore em background e emite.
@@ -233,6 +234,10 @@ class CatalogCacheService {
     final payFallbackSnap = results[2];
     final data = cfgSnap.data();
     final cfg = asMap(data);
+    bridgeStoreConfigV3PublishedIntoPublicCatalogFlat(
+      cfg,
+      preferDraft: cfgCol == 'draft_config',
+    );
 
     // Fallback cirúrgico: algumas lojas publicam em config_catalogo_live/main.
     // Mantém config/config como fonte principal; só preenche o que faltar.
