@@ -929,7 +929,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'Status da integração: $mpStatusLabel',
+                                        'Status da integração: $mpStatusLabel (salvo na loja)',
                                         style: TextStyle(
                                           color: mpStatusColor,
                                           fontWeight: FontWeight.w600,
@@ -1011,7 +1011,86 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                   ),
                                 ),
                               ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _lojaId == null
+                                      ? null
+                                      : () async {
+                                          if (_lojaId == null) return;
+                                          showDialog(
+                                            context: context,
+                                            barrierDismissible: false,
+                                            builder: (_) => Center(
+                                              child: Container(
+                                                padding: const EdgeInsets.all(24),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius:
+                                                      BorderRadius.circular(16),
+                                                ),
+                                                child: const Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    CircularProgressIndicator(
+                                                        color: primaryColor),
+                                                    SizedBox(height: 16),
+                                                    Text(
+                                                      'Validando conexão Mercado Pago...',
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                          try {
+                                            final health = await PagamentosService
+                                                .validarConexaoMercadoPago(
+                                              lojaId: _lojaId!,
+                                            );
+                                            if (!context.mounted) return;
+                                            Navigator.of(context).pop();
+                                            final ok = health['ok'] == true;
+                                            final msg = (health['message'] ??
+                                                    (ok
+                                                        ? 'Conexão validada com sucesso.'
+                                                        : 'Falha ao validar conexão.'))
+                                                .toString();
+                                            _mostrarSnackBarModerno(
+                                              msg,
+                                              ok
+                                                  ? Icons.verified_outlined
+                                                  : Icons.error_outline,
+                                              ok ? successColor : errorColor,
+                                            );
+                                          } catch (e) {
+                                            if (!context.mounted) return;
+                                            Navigator.of(context).pop();
+                                            _mostrarSnackBarModerno(
+                                              'Erro ao validar conexão: $e',
+                                              Icons.error_outline,
+                                              errorColor,
+                                            );
+                                          }
+                                        },
+                                  icon: const Icon(Icons.verified_user_outlined),
+                                  label: const Text(
+                                    'Validar conexão Mercado Pago',
+                                  ),
+                                ),
+                              ),
                               const SizedBox(height: 16),
+                              Text(
+                                'Modo avançado (fallback): token manual',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
                               Text(
                                 'Access Token de PRODUÇÃO:',
                                 style: TextStyle(
@@ -1100,8 +1179,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                   label:
                                       const Text('Conectar por token manual'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF00BCFF),
-                                    foregroundColor: Colors.white,
+                                    backgroundColor: Colors.grey[200],
+                                    foregroundColor: Colors.black87,
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 14),
                                     shape: RoundedRectangleBorder(

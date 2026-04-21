@@ -499,6 +499,39 @@ async function getLojaPaymentsRaw(lojaId) {
   }
 }
 
+async function canManageStoreConfigServerSide({ lojaId, uid, email }) {
+  const emailNorm = String(email || "").trim().toLowerCase();
+  if (!uid) return false;
+  if (ROOT_EMAILS.has(emailNorm)) return true;
+
+  const lojaRef = db.collection(COLLECTION_LOJAS).doc(String(lojaId));
+  const [lojaSnap, userSnap, memberSnap] = await Promise.all([
+    lojaRef.get(),
+    db.collection("users").doc(String(uid)).get(),
+    lojaRef.collection("members").doc(String(uid)).get(),
+  ]);
+
+  const lojaData = lojaSnap.exists ? (lojaSnap.data() || {}) : {};
+  if (String(lojaData.ownerUid || "") === String(uid)) {
+    return true;
+  }
+
+  const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+  const storeId = String(userData.store_id || userData.storeId || "").trim();
+  if (storeId && storeId === String(lojaId)) {
+    if (!lojaData.ownerUid || String(lojaData.ownerUid) === String(uid)) {
+      return true;
+    }
+  }
+
+  if (memberSnap.exists) {
+    const role = String((memberSnap.data() || {}).role || "").trim().toLowerCase();
+    if (role === "owner" || role === "admin") return true;
+  }
+
+  return false;
+}
+
 // ============================================================================
 // MERCADO PAGO – OAuth (Conectar com 1 clique)
 // ============================================================================
@@ -754,6 +787,88 @@ export const mpOAuthExchangeCode = onRequest(
       }
       console.error("[mpOAuthExchangeCode] erro interno:", e?.message || e);
       res.status(500).json({ error: "Erro interno ao conectar Mercado Pago." });
+    }
+  }
+);
+
+/**
+ * Healthcheck mínimo OAuth MP: valida token salvo da loja via GET /users/me.
+ * Não retorna segredos; apenas status seguro para UI.
+ */
+export const mpOAuthHealthcheck = onCall(
+  { timeoutSeconds: 20, memory: "256MiB" },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "Faça login para validar a conexão.");
+    }
+
+    const lojaId = String(request.data?.lojaId || "").trim();
+    if (!lojaId) {
+      throw new HttpsError("invalid-argument", "lojaId é obrigatório.");
+    }
+
+    const allowed = await canManageStoreConfigServerSide({
+      lojaId,
+      uid: request.auth.uid,
+      email: request.auth.token?.email || "",
+    });
+    if (!allowed) {
+      throw new HttpsError("permission-denied", "Sem permissão para validar esta loja.");
+    }
+
+    const payments = await getLojaPaymentsRaw(lojaId);
+    const mp = payments?.mp && typeof payments.mp === "object" ? payments.mp : {};
+    const accessToken = String(mp.access_token || mp.token || "").trim();
+    if (!accessToken) {
+      return {
+        ok: false,
+        connected: false,
+        message: "Loja sem token Mercado Pago salvo.",
+      };
+    }
+
+    try {
+      const userResp = await fetch("https://api.mercadopago.com/users/me", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!userResp.ok) {
+        const bodyText = await userResp.text();
+        const msg = userResp.status === 401 || userResp.status === 403
+          ? "Token Mercado Pago inválido ou expirado."
+          : "Não foi possível validar com o Mercado Pago.";
+        console.warn(
+          `[mpOAuthHealthcheck] MP users/me status=${userResp.status} loja=${lojaId} uid=${request.auth.uid}`
+        );
+        return {
+          ok: false,
+          connected: false,
+          message: msg,
+          mpStatusCode: userResp.status,
+          mpError: String(bodyText || "").slice(0, 120),
+        };
+      }
+
+      const userData = await userResp.json();
+      return {
+        ok: true,
+        connected: true,
+        mp_user_id: userData?.id != null ? String(userData.id) : null,
+        nickname: userData?.nickname ? String(userData.nickname) : null,
+        email: userData?.email ? String(userData.email) : null,
+        message: "Conexão validada com sucesso.",
+      };
+    } catch (e) {
+      console.warn(
+        `[mpOAuthHealthcheck] falha comunicação loja=${lojaId} uid=${request.auth.uid} type=${e?.name || typeof e}`
+      );
+      return {
+        ok: false,
+        connected: false,
+        message: "Falha de comunicação ao validar com o Mercado Pago.",
+      };
     }
   }
 );

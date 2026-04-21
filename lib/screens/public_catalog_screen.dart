@@ -37,6 +37,7 @@ import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
 import '../core/combo_config_canonical.dart';
 import '../catalog/catalog_layout_config.dart';
+import '../debug/catalog_startup_trace.dart';
 import 'public_catalog/catalog_helpers.dart';
 import 'public_catalog/catalog_public_header_debug.dart';
 import 'public_catalog/catalog_best_sellers_helper.dart';
@@ -626,6 +627,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   // ✅ FONTE ÚNICA: lojaId resolvido de forma assíncrona
   String? _resolvedLojaId;
   bool _loadingLojaId = true;
+  bool _traceFirstUsefulPaintLogged = false;
+  bool _traceInteractiveLogged = false;
+  bool _traceConfigFirstDataLogged = false;
+  bool _traceProdutosFirstDataLogged = false;
 
   final List<Map<String, dynamic>> _cart = [];
   bool _publicando = false;
@@ -800,6 +805,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   @override
   void initState() {
     super.initState();
+    CatalogStartupTrace.mark(
+      'CAT_START.public_screen.init_state',
+      data: <String, Object?>{
+        'loja_id_raw': widget.lojaId,
+        'preview': widget.preview,
+        'is_web': kIsWeb,
+      },
+    );
     _initPendingCatalogFiltersFromUrl();
     _currentPageNotifier.addListener(_onCatalogPageNotifierChanged);
     _catalogScrollController.addListener(_onCatalogScroll);
@@ -2124,6 +2137,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   }
 
   Future<void> _resolveLojaId() async {
+    var traceOk = false;
+    String? traceResolvedId;
+    String? traceErrorType;
+    CatalogStartupTrace.spanStart(
+      'CAT_START.resolve_loja_id',
+      data: <String, Object?>{
+        'loja_id_raw': widget.lojaId,
+        'preview': widget.preview,
+      },
+    );
     try {
       final widgetId = widget.lojaId.trim();
 
@@ -2186,6 +2209,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _resolvedLojaId = result.canonicalStoreId;
           _loadingLojaId = false;
         });
+        traceOk = true;
+        traceResolvedId = _resolvedLojaId;
         _loadMostrarEstoqueNoCatalogo(
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadMostrarQuantidadeNoCatalogo(
@@ -2234,6 +2259,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _resolvedLojaId = result.canonicalStoreId ?? result.storeId;
           _loadingLojaId = false;
         });
+        traceOk = true;
+        traceResolvedId = _resolvedLojaId;
         _loadMostrarEstoqueNoCatalogo(
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadMostrarQuantidadeNoCatalogo(
@@ -2258,6 +2285,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
       logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     } catch (e) {
+      traceErrorType = e.runtimeType.toString();
       logD('❌ Erro ao resolver lojaId (type=${e.runtimeType})');
       if (mounted) {
         setState(() {
@@ -2271,6 +2299,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           SnackBar(content: Text(msg), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      CatalogStartupTrace.spanEnd(
+        'CAT_START.resolve_loja_id',
+        data: <String, Object?>{
+          'ok': traceOk,
+          'resolved_loja_id': traceResolvedId,
+          'error_type': traceErrorType,
+        },
+      );
     }
   }
 
@@ -2574,6 +2611,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? subscription;
 
     void startListening() {
+      CatalogStartupTrace.mark(
+        'CAT_START.cfg_stream.subscribe',
+        data: <String, Object?>{
+          'loja_id': lojaId,
+          'preview': widget.preview,
+        },
+      );
       subscription = configRef.snapshots().listen(
         (cfgSnap) async {
           _cfgPermissionDeniedLogged = false;
@@ -2616,6 +2660,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           // Emite já com o doc publicado + bridge V3 — o StreamBuilder sai de `waiting`
           // sem esperar payments, fretes subdoc, legado, doc raiz e cupons (antes em série).
           if (!controller.isClosed) {
+            if (!_traceConfigFirstDataLogged) {
+              _traceConfigFirstDataLogged = true;
+              CatalogStartupTrace.mark(
+                'CAT_START.cfg_stream.first_data',
+                data: <String, Object?>{
+                  'loja_id': lojaId,
+                  'cfg_keys': cfg.length,
+                },
+              );
+            }
             controller.add(Map<String, dynamic>.from(cfg));
           }
 
@@ -2806,6 +2860,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             );
           }
           if (!controller.isClosed) {
+            CatalogStartupTrace.mark(
+              'CAT_START.cfg_stream.enriched_data',
+              data: <String, Object?>{
+                'loja_id': lojaId,
+                'cfg_keys': cfg.length,
+              },
+            );
             controller.add(Map<String, dynamic>.from(cfg));
           }
         },
@@ -2861,6 +2922,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subscription;
 
     void startListening() {
+      CatalogStartupTrace.mark(
+        'CAT_START.produtos_stream.subscribe',
+        data: <String, Object?>{
+          'loja_id': lojaId,
+          'preview': widget.preview,
+        },
+      );
       subscription = FirebaseFirestore.instance
           .collection('lojas')
           .doc(lojaId)
@@ -2871,6 +2939,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           .listen(
         (snapshot) {
           _produtosPermissionDeniedLogged = false;
+          if (!_traceProdutosFirstDataLogged) {
+            _traceProdutosFirstDataLogged = true;
+            CatalogStartupTrace.mark(
+              'CAT_START.produtos_stream.first_data',
+              data: <String, Object?>{
+                'loja_id': lojaId,
+                'doc_count': snapshot.docs.length,
+              },
+            );
+          }
           controller.add(snapshot);
         },
         onError: (error) {
@@ -4009,6 +4087,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
       return CatalogErrorLojaState(themeData: themeForStates);
     }
+    if (!_traceFirstUsefulPaintLogged) {
+      _traceFirstUsefulPaintLogged = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        CatalogStartupTrace.mark(
+          'CAT_START.first_useful_paint',
+          data: <String, Object?>{'loja_id': _resolvedLojaId},
+        );
+      });
+    }
 
     if (kDebugMode) {
       logD('📱 [CATALOG] Renderizando loja: $_resolvedLojaId');
@@ -4530,6 +4617,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               key: ValueKey('produtos_${lojaId}_$_refreshCounter'),
               stream: _getProdutosStream(lojaId),
               builder: (context, prodSnap) {
+                if (!_traceInteractiveLogged &&
+                    cfgSnap.hasData &&
+                    prodSnap.hasData) {
+                  _traceInteractiveLogged = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    CatalogStartupTrace.mark(
+                      'CAT_START.catalog_interactive',
+                      data: <String, Object?>{
+                        'loja_id': lojaId,
+                        'produtos_count': prodSnap.data?.docs.length ?? 0,
+                      },
+                    );
+                  });
+                }
                 if (prodSnap.hasError) {
                   return Scaffold(
                     body: Center(
@@ -6185,7 +6286,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                         heroBannerCardRadius,
                                                     height: safeDouble(
                                                         heroBannerCfg['height'],
-                                                        isDesktop ? 210 : 164),
+                                                        isDesktop ? 240 : 180),
                                                     overlayOpacity: safeDouble(
                                                         heroBannerCfg[
                                                             'overlayOpacity'],

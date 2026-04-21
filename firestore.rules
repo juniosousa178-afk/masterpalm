@@ -347,6 +347,32 @@ service cloud.firestore {
         );
     }
 
+    // `payments_public` é lido pelo cliente/UI e nunca deve conter segredos.
+    // Ao adicionar novos gateways, campos ou estruturas em pagamentos públicos,
+    // revisar esta função para bloquear tokens, secrets, api_keys e credenciais sensíveis.
+    function paymentsPublicWithoutSecrets() {
+      return (
+        !request.resource.data.keys().hasAny(['mp'])
+        || !(request.resource.data.mp is map)
+        || !request.resource.data.mp.keys().hasAny(['access_token', 'token', 'refresh_token'])
+      )
+      && (
+        !request.resource.data.keys().hasAny(['pagseguro'])
+        || !(request.resource.data.pagseguro is map)
+        || !request.resource.data.pagseguro.keys().hasAny(['token'])
+      )
+      && (
+        !request.resource.data.keys().hasAny(['ton'])
+        || !(request.resource.data.ton is map)
+        || !request.resource.data.ton.keys().hasAny(['client_secret'])
+      )
+      && (
+        !request.resource.data.keys().hasAny(['infinitpay'])
+        || !(request.resource.data.infinitpay is map)
+        || !request.resource.data.infinitpay.keys().hasAny(['api_key'])
+      );
+    }
+
     // Delete em temp: documento deve ter lojaId coerente com path (evita delete cruzado).
     function resourceLojaIdMatchesPathIfPresent(lojaId) {
       return !resource.data.keys().hasAny(['lojaId'])
@@ -477,8 +503,13 @@ service cloud.firestore {
         allow read: if configId == 'payments'
           ? (isAdminOrSystem() || (isSignedIn() && canManageStoreConfig(lojaId)))
           : true;
-        allow create: if isAdminOrSystem() || canManageStoreConfig(lojaId);
-        allow update, delete: if isAdminOrSystem() || canManageStoreConfig(lojaId);
+        allow create: if configId == 'payments_public'
+          ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && paymentsPublicWithoutSecrets())
+          : (isAdminOrSystem() || canManageStoreConfig(lojaId));
+        allow update: if configId == 'payments_public'
+          ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && paymentsPublicWithoutSecrets())
+          : (isAdminOrSystem() || canManageStoreConfig(lojaId));
+        allow delete: if isAdminOrSystem() || canManageStoreConfig(lojaId);
       }
 
       match /settings/{settingsId} {

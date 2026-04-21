@@ -2,6 +2,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:hive/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -236,5 +237,26 @@ class PagamentosService {
       } catch (_) {}
       throw Exception(msg);
     }
+  }
+
+  /// Healthcheck server-side do token OAuth MP salvo na loja.
+  /// Retorna apenas dados seguros para UI (sem token).
+  static Future<Map<String, dynamic>> validarConexaoMercadoPago({
+    required String lojaId,
+  }) async {
+    final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('mpOAuthHealthcheck');
+    final result = await callable.call(<String, dynamic>{
+      'lojaId': lojaId,
+    });
+    final data = result.data;
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return <String, dynamic>{
+      'ok': false,
+      'connected': false,
+      'message': 'Resposta inválida do servidor.',
+    };
   }
 }

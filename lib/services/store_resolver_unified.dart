@@ -16,6 +16,7 @@ import 'package:hive/hive.dart';
 
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
+import '../debug/catalog_startup_trace.dart';
 import '../utils/last_route_observer.dart';
 import 'loja_id_service.dart';
 import 'store_resolver_service.dart';
@@ -165,16 +166,30 @@ class StoreResolverUnified {
   /// REGRA: SEMPRE usa storeId da URL, NUNCA do usuário logado
   static Future<StoreResolveResult> _resolvePublicCatalog(String? urlStoreId) async {
     final rawId = (urlStoreId ?? '').trim();
+    CatalogStartupTrace.spanStart(
+      'CAT_START.store_resolver_public',
+      data: <String, Object?>{'raw_id': rawId},
+    );
 
     if (rawId.isEmpty) {
       logD('❌ [STORE-RESOLVER] URL sem storeId - não pode usar catálogo público');
+      CatalogStartupTrace.spanEnd(
+        'CAT_START.store_resolver_public',
+        data: <String, Object?>{'ok': false, 'mode': 'empty_raw_id'},
+      );
       return StoreResolveResult.error(
         'Nenhuma loja especificada na URL. Acesse: /loja/{id-da-loja}',
       );
     }
 
     final cached = _publicCatalogResolveFromCache(rawId);
-    if (cached != null) return cached;
+    if (cached != null) {
+      CatalogStartupTrace.spanEnd(
+        'CAT_START.store_resolver_public',
+        data: <String, Object?>{'ok': true, 'mode': 'cache_hit'},
+      );
+      return cached;
+    }
 
     // Verificar se a loja existe no Firestore (timeout curto na web para não travar)
     try {
@@ -201,6 +216,10 @@ class StoreResolverUnified {
         logD('✅ [STORE-RESOLVER] Loja encontrada: $rawId');
         final ok = StoreResolveResult.ok(rawId);
         _publicCatalogResolvePutCache(rawId, ok);
+        CatalogStartupTrace.spanEnd(
+          'CAT_START.store_resolver_public',
+          data: <String, Object?>{'ok': true, 'mode': 'doc_exact'},
+        );
         return ok;
       }
 
@@ -219,6 +238,10 @@ class StoreResolverUnified {
           logD('🔀 [STORE-RESOLVER] Encontrada versão lowercase, redirecionando');
           final r = StoreResolveResult.redirect(rawId, normalizedId);
           _publicCatalogResolvePutCache(rawId, r);
+          CatalogStartupTrace.spanEnd(
+            'CAT_START.store_resolver_public',
+            data: <String, Object?>{'ok': true, 'mode': 'doc_lowercase_redirect'},
+          );
           return r;
         }
       }
@@ -229,6 +252,10 @@ class StoreResolverUnified {
         logD('🔀 [STORE-RESOLVER] Encontrado por slug: $slugResult');
         final r = StoreResolveResult.redirect(rawId, slugResult);
         _publicCatalogResolvePutCache(rawId, r);
+        CatalogStartupTrace.spanEnd(
+          'CAT_START.store_resolver_public',
+          data: <String, Object?>{'ok': true, 'mode': 'slug_redirect'},
+        );
         return r;
       }
 
@@ -238,6 +265,10 @@ class StoreResolverUnified {
       );
     } on TimeoutException catch (_) {
       logW('⚠️ [STORE-RESOLVER] Timeout ao buscar loja. Usando id da URL: $rawId');
+      CatalogStartupTrace.spanEnd(
+        'CAT_START.store_resolver_public',
+        data: <String, Object?>{'ok': true, 'mode': 'timeout_fallback_url_id'},
+      );
       return StoreResolveResult.ok(rawId);
     } catch (e) {
       // Qualquer erro (rede, Firestore indisponível, etc.): fallback com id da URL
@@ -251,9 +282,17 @@ class StoreResolverUnified {
           msg.contains('offline');
       if (isNetworkOrTimeout) {
         logW('⚠️ [STORE-RESOLVER] Erro de rede/Firestore. Usando id da URL: $rawId');
+        CatalogStartupTrace.spanEnd(
+          'CAT_START.store_resolver_public',
+          data: <String, Object?>{'ok': true, 'mode': 'network_fallback_url_id'},
+        );
         return StoreResolveResult.ok(rawId);
       }
       logD('❌ [STORE-RESOLVER] Erro ao buscar loja (type=${e.runtimeType})');
+      CatalogStartupTrace.spanEnd(
+        'CAT_START.store_resolver_public',
+        data: <String, Object?>{'ok': false, 'error_type': e.runtimeType.toString()},
+      );
       return StoreResolveResult.error('Erro ao carregar loja: $e');
     }
   }

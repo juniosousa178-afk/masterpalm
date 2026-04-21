@@ -5959,19 +5959,21 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     final currentTotal = _bannersDesktop.length + _bannersMobile.length;
     final guard = LimitsGuard();
-    final canAdd = await guard.canAddBanner(loja, currentTotalBanners: currentTotal);
-    if (!canAdd) {
-      final max = await guard.maxBanners(null);
-      _snack('Limite de $max banners atingido. Remova algum ou faça upgrade.', isError: true);
-      return;
-    }
-
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
       allowMultiple: true,
       withData: kIsWeb,
     );
     if (result == null || result.files.isEmpty) return;
+
+    // iOS Safari/Chrome exige que o file picker seja acionado diretamente do gesto
+    // do usuário; por isso as validações assíncronas ficam após o pickFiles.
+    final canAdd = await guard.canAddBanner(loja, currentTotalBanners: currentTotal);
+    if (!canAdd) {
+      final max = await guard.maxBanners(null);
+      _snack('Limite de $max banners atingido. Remova algum ou faça upgrade.', isError: true);
+      return;
+    }
 
     final maxBanners = await guard.maxBanners(null);
     final slotsLeft = maxBanners - currentTotal;

@@ -188,6 +188,7 @@ import 'models/categoria.dart';
 // 🔍 Debug helpers
 import 'debug/bootstrap_diagnostics.dart'; // boot, FirebaseGuard
 import 'debug/global_error_hook.dart'; // runWithGlobalErrorHook
+import 'debug/catalog_startup_trace.dart';
 
 // ===========================================================================
 // ✅ App Check (proteção contra abuso de API)
@@ -1471,6 +1472,7 @@ class _BootError extends StatelessWidget {
 // 🔥 Inicialização do Firebase com fallback OFFLINE
 // ===========================================================================
 Future<bool> _initFirebaseCore() async {
+  CatalogStartupTrace.spanStart('CAT_START.firebase_init');
   logD('➡️ Firebase.initializeApp...');
   boot.mark('firebase.init.begin');
   try {
@@ -1489,6 +1491,7 @@ Future<bool> _initFirebaseCore() async {
     }
 
     boot.mark('firebase.init.ok');
+    CatalogStartupTrace.spanEnd('CAT_START.firebase_init', data: {'ok': true});
     logD('✅ Firebase inicializado');
     return true;
   } on TimeoutException catch (e) {
@@ -1497,6 +1500,7 @@ Future<bool> _initFirebaseCore() async {
     logD(
         '! Não foi possível inicializar o Firebase. Continuando em modo OFFLINE.');
     boot.mark('firebase.init.offline', e);
+    CatalogStartupTrace.spanEnd('CAT_START.firebase_init', data: {'ok': false, 'timeout': true});
     return false;
   } on FirebaseException catch (e) {
     if (e.code == 'duplicate-app') {
@@ -1504,9 +1508,11 @@ Future<bool> _initFirebaseCore() async {
           'ℹ️ Firebase já estava inicializado (duplicate-app). Usando instância existente.');
       Firebase.app();
       boot.mark('firebase.init.duplicate');
+      CatalogStartupTrace.spanEnd('CAT_START.firebase_init', data: {'ok': true, 'duplicate': true});
       return true;
     } else {
       boot.mark('firebase.init.fail', e);
+      CatalogStartupTrace.spanEnd('CAT_START.firebase_init', data: {'ok': false, 'error_type': e.runtimeType.toString()});
       rethrow;
     }
   }
@@ -1516,8 +1522,10 @@ Future<bool> _initFirebaseCore() async {
 // ▶️ MAIN
 // ===========================================================================
 Future<void> main() async {
+  CatalogStartupTrace.mark('CAT_START.main.enter');
   await runWithGlobalErrorHook(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    CatalogStartupTrace.mark('CAT_START.flutter_binding.ready');
 
     // Web: usar path na URL (/loja/slug) em vez de hash (#/loja/slug) para o lojaId ser lido corretamente
     if (kIsWeb) {
@@ -1533,11 +1541,14 @@ Future<void> main() async {
     logD('🚀 [MAIN] Iniciando MasterPalm');
     logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+    CatalogStartupTrace.mark('CAT_START.runApp.boot_app');
     runApp(const _BootApp());
 
     try {
       logD('🟦 [MAIN] Chamando _bootstrapSafe()...');
+      CatalogStartupTrace.spanStart('CAT_START.bootstrap_safe');
       await _bootstrapSafe();
+      CatalogStartupTrace.spanEnd('CAT_START.bootstrap_safe');
       logD('🟩 [MAIN] _bootstrapSafe() concluído com sucesso');
 
       try {
@@ -1552,12 +1563,14 @@ Future<void> main() async {
         final uri = Uri.base;
         if (uri.path == '/mp-oauth-callback') {
           logD('🌐 [MAIN] Callback OAuth MP detectado em /mp-oauth-callback');
+          CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_callback');
           runApp(MpOAuthCallbackScreen(uri: uri));
           return;
         }
         final mpOAuth = uri.queryParameters['mp_oauth'];
         if (mpOAuth == 'ok' || mpOAuth == 'error') {
           logD('🌐 [MAIN] Redirect OAuth MP detectado: $mpOAuth');
+          CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_result');
           runApp(MpOAuthResultPage(
             success: mpOAuth == 'ok',
             lojaId: uri.queryParameters['loja'],
@@ -1577,6 +1590,7 @@ Future<void> main() async {
         if (_uriIsPagamentoPublicPath(uriWeb)) {
           logD(
               '🌐 [MAIN] Path /pagamento/* → MyApp (fluxo MP; não CatalogWebRoot)');
+          CatalogStartupTrace.mark('CAT_START.runApp.my_app.pagamento_path');
           runApp(const MyApp());
           registerWebPopStateLogger();
           return;
@@ -1601,6 +1615,7 @@ Future<void> main() async {
           final produtoRef = _produtoRefFromUrl();
 
           logD('🌐 [MAIN] Public Catalog slug/id resolvido');
+          CatalogStartupTrace.mark('CAT_START.runApp.catalog_web_root');
           runApp(CatalogWebRoot(
             lojaId: lojaIdResolvido,
             vendedorRef: vendedorRef,
@@ -1631,6 +1646,7 @@ Future<void> main() async {
             final produtoRef = _produtoRefFromUrl();
             logD(
                 '🌐 [MAIN] Public Catalog via catalog_domains host=$hostNorm → $lojaIdResolvido');
+            CatalogStartupTrace.mark('CAT_START.runApp.catalog_web_root.domain_map');
             runApp(CatalogWebRoot(
               lojaId: lojaIdResolvido,
               vendedorRef: vendedorRef,
@@ -1640,26 +1656,32 @@ Future<void> main() async {
           } else if (_isPublicMarketingSite()) {
             logD(
                 '🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
+            CatalogStartupTrace.mark('CAT_START.runApp.marketing_web_app');
             runApp(const PublicMarketingWebApp());
           } else {
             logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
+            CatalogStartupTrace.mark('CAT_START.runApp.my_app.web_default');
             runApp(const MyApp());
             registerWebPopStateLogger();
           }
         } else if (_isPublicMarketingSite()) {
           logD('🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
+          CatalogStartupTrace.mark('CAT_START.runApp.marketing_web_app');
           runApp(const PublicMarketingWebApp());
         } else {
           logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
+          CatalogStartupTrace.mark('CAT_START.runApp.my_app.web_default');
           runApp(const MyApp());
           registerWebPopStateLogger();
         }
       } else {
         logD('📱 [MAIN] Rodando em Mobile/Desktop → iniciando MyApp()');
+        CatalogStartupTrace.mark('CAT_START.runApp.my_app.native');
         runApp(const MyApp());
       }
     } catch (e, st) {
       logE('❌ Bootstrap ERROR (type=${e.runtimeType})', error: e, st: st);
+      CatalogStartupTrace.mark('CAT_START.runApp.boot_error', data: {'error_type': e.runtimeType.toString()});
       runApp(_BootError(message: e.toString()));
     }
   });

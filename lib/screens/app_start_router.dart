@@ -1005,6 +1005,13 @@ class _AppStartRouterState extends State<AppStartRouter> {
     Navigator.pushNamedAndRemoveUntil(context, route, (_) => false);
   }
 
+  /// No Web, evita zerar totalmente a pilha para que o botão voltar
+  /// do navegador não "feche" o app ao entrar na home.
+  void _goWebReplace(String route) {
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(context, route);
+  }
+
   /// Abre sempre na home. No APK o app não restaura a última tela (evita abrir em vendas/outra tela e voltar não levar à home).
   /// Na Web: se o usuário abriu um link direto (ex: /clientes), também vai para home.
   Future<void> _goHomeOrRestore() async {
@@ -1023,19 +1030,19 @@ class _AppStartRouterState extends State<AppStartRouter> {
     if (path.isNotEmpty && path != '/') {
       logD('🔄 [ROUTER] Web com path "$path" → indo para home');
       LastRouteObserver.getAndClearLastRoute();
-      _go(_routeHome);
+      _goWebReplace(_routeHome);
       return;
     }
     final lastRoute = await LastRouteObserver.getAndClearLastRoute();
     if (lastRoute != null && lastRoute.isNotEmpty && mounted) {
       logD('🔄 [ROUTER] Web: restaurando última tela: $lastRoute');
       // Coloca home na pilha primeiro para o botão voltar do navegador não deixar tela branca
-      _go(_routeHome);
+      _goWebReplace(_routeHome);
       if (!mounted) return;
       Navigator.pushNamed(context, lastRoute);
       return;
     }
-    _go(_routeHome);
+    _goWebReplace(_routeHome);
   }
 
   @override

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../widgets/smart_image.dart';
 import '../catalog_helpers.dart';
 
-/// Letreiro promocional; com [marqueeWhenOverflow] rola o texto quando não couber (layout minimalista).
+/// Letreiro promocional; com [marqueeWhenOverflow] mantém rolagem contínua.
 class CatalogPromoBar extends StatefulWidget {
   final bool enabled;
   final String text;
@@ -99,9 +99,7 @@ class _CatalogPromoBarState extends State<CatalogPromoBar> {
                           maxLines: 1,
                           textDirection: Directionality.of(context),
                         )..layout(maxWidth: double.infinity);
-                        final maxW = constraints.maxWidth.clamp(40.0, 9999.0);
-                        final useMarquee = widget.marqueeWhenOverflow &&
-                            tp.width > maxW + 4;
+                        final useMarquee = widget.marqueeWhenOverflow;
 
                         if (!useMarquee) {
                           return FittedBox(
@@ -641,6 +639,8 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!enabled) return const SizedBox.shrink();
+    final screenW = MediaQuery.sizeOf(context).width;
+    final isDesktop = screenW >= 900;
     final hasImage = imageUrl.trim().isNotEmpty;
     final hasCopy = title.trim().isNotEmpty ||
         subtitle.trim().isNotEmpty ||
@@ -648,8 +648,10 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
     if (!hasImage && !hasCopy) {
       return const SizedBox.shrink();
     }
+    final minBannerH = isDesktop ? 180.0 : 140.0;
+    final maxBannerH = isDesktop ? 320.0 : 260.0;
     final boxH = hasImage
-        ? height.clamp(120, 360).toDouble()
+        ? height.clamp(minBannerH, maxBannerH).toDouble()
         : (hasCopy ? 96.0 : 0.0);
     final titleDisplay = applyHeroLetterCase(title.trim(), titleLetterCase);
     final subtitleDisplay =
