@@ -17,6 +17,7 @@
  */
 
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import nodemailer from "nodemailer";
 import {
   registrarPromocaoPosPagamentoMp,
   registrarPromocaoPosPagamentoMpRecovery,
@@ -166,8 +167,15 @@ async function findLojaIdByOrderId(orderId) {
  * Idempotência: transação atômica garante que paymentId é processado apenas uma vez.
  * Token: resolve estritamente por loja (OAuth/legado da própria loja).
  */
-export async function processMpWebhook(paymentId) {
+/**
+ * @param {string} paymentId
+ * @param {{ smtpUser?: string; smtpPass?: string }} [mailOpts] — e-mail pós-aprovação (secrets no index mpWebhook)
+ */
+export async function processMpWebhook(paymentId, mailOpts = {}) {
   if (!paymentId) return false;
+
+  const smtpUser = (mailOpts.smtpUser || "").trim();
+  const smtpPass = (mailOpts.smtpPass || "").trim();
 
   // 1) Resolver loja e buscar payment (token correto por loja)
   const { payment, lojaId } = await resolveLojaAndPayment(paymentId);
@@ -792,6 +800,73 @@ Obrigado por comprar conosco! 💜`;
     }
   } catch (whatsappErr) {
     console.warn("[mpWebhook] Erro ao enviar WhatsApp (não crítico):", whatsappErr.message);
+  }
+
+  // E-mail: pagamento aprovado — cliente + vendedor (SMTP igual onPrePedidoCreated)
+  if (smtpUser && smtpPass) {
+    try {
+      const cliente = order.cliente || {};
+      const clienteNome = (cliente.nome || "Cliente").toString().trim() || "Cliente";
+      const clienteEmail = (cliente.email || "").toString().trim().toLowerCase();
+      const total = Number(order.total || 0);
+      const valorStr = total.toFixed(2).replace(".", ",");
+
+      const lojaDoc = await getDb().collection(COLLECTION_LOJAS).doc(resolvedLojaId).get();
+      const lojaData = lojaDoc.exists ? lojaDoc.data() || {} : {};
+      const lojaNome = (lojaData.nome || "Loja").toString().trim() || "Loja";
+      let adminEmail = (lojaData.ownerEmail || lojaData.adminEmail || "").toString().trim();
+      if (!adminEmail && lojaData.owner && typeof lojaData.owner === "object") {
+        adminEmail = (lojaData.owner.email || "").toString().trim();
+      }
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: smtpUser, pass: smtpPass },
+      });
+
+      if (clienteEmail && clienteEmail.includes("@")) {
+        const corpoCliente =
+          `Olá, ${clienteNome}!\n\n` +
+          `Seu pagamento foi aprovado e o pedido foi confirmado.\n\n` +
+          `Pedido: ${orderId}\n` +
+          `Total: R$ ${valorStr}\n\n` +
+          `Em breve a loja pode entrar em contato com atualizações do envio.\n\n` +
+          `Obrigado por comprar conosco!`;
+        await transporter.sendMail({
+          from: `"${lojaNome}" <${smtpUser}>`,
+          to: clienteEmail,
+          subject: `Pagamento confirmado — pedido ${orderId}`,
+          text: corpoCliente,
+        });
+        console.log("[mpWebhook] E-mail cliente (pagamento aprovado):", clienteEmail);
+      } else {
+        console.log("[mpWebhook] Cliente sem e-mail válido — e-mail de confirmação não enviado ao comprador");
+      }
+
+      if (adminEmail && adminEmail.includes("@")) {
+        const corpoAdmin =
+          `Pagamento aprovado no Mercado Pago.\n\n` +
+          `Pedido / referência: ${orderId}\n` +
+          `Cliente: ${clienteNome}\n` +
+          `E-mail do cliente: ${clienteEmail || "(não informado)"}\n` +
+          `Valor: R$ ${valorStr}\n` +
+          `ID pagamento MP: ${paymentId}\n\n` +
+          `Consulte os detalhes no painel da loja.`;
+        await transporter.sendMail({
+          from: `"MasterPalm" <${smtpUser}>`,
+          to: adminEmail.toLowerCase(),
+          subject: `Pedido pago — ${orderId} — ${lojaNome}`,
+          text: corpoAdmin,
+        });
+        console.log("[mpWebhook] E-mail vendedor (pagamento aprovado):", adminEmail);
+      } else {
+        console.log("[mpWebhook] Loja sem e-mail do dono — e-mail ao vendedor não enviado");
+      }
+    } catch (mailErr) {
+      console.warn("[mpWebhook] E-mail pós-aprovacao (não crítico):", mailErr && mailErr.message);
+    }
+  } else {
+    console.log("[mpWebhook] SMTP não configurado — e-mails de pagamento aprovado não enviados");
   }
 
   return true;

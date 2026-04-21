@@ -2310,7 +2310,12 @@ export const mpCatalogPayment = onRequest(
  * Exceção ao processar: 500 (retentativa MP).
  */
 export const mpWebhook = onRequest(
-  { cors: true, secrets: [S_MP_ACCESS_TOKEN, S_MP_WEBHOOK_SECRET], timeoutSeconds: 30, memory: "256MiB" },
+  {
+    cors: true,
+    secrets: [S_MP_ACCESS_TOKEN, S_MP_WEBHOOK_SECRET, S_SMTP_EMAIL, S_SMTP_PASSWORD],
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
   corsWrap(async (req, res) => {
     try {
       const body = req.body || {};
@@ -2318,6 +2323,9 @@ export const mpWebhook = onRequest(
       const paymentId = body?.data?.id || query["data.id"] || body?.id || query?.id;
 
       if (!paymentId) return res.status(200).send("ok");
+
+      const smtpUser = ((await S_SMTP_EMAIL.value()) || process.env.SMTP_EMAIL || "").trim();
+      const smtpPass = ((await S_SMTP_PASSWORD.value()) || process.env.SMTP_PASSWORD || "").trim();
 
       const WEBHOOK_SECRET =
         (await S_MP_WEBHOOK_SECRET.value()) || process.env.MP_WEBHOOK_SECRET || "";
@@ -2346,7 +2354,7 @@ export const mpWebhook = onRequest(
         return res.status(MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS).send("Unauthorized");
       }
 
-      await processMpWebhook(paymentId);
+      await processMpWebhook(paymentId, { smtpUser, smtpPass });
 
       return res.status(200).send("OK");
     } catch (e) {

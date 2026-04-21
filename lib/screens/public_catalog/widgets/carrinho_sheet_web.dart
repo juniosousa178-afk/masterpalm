@@ -31,6 +31,7 @@ import '../../../services/cupons_service.dart';
 import '../../../services/frete_service.dart';
 import '../../../widgets/selecionar_cupom_modal.dart' show mostrarModalSelecionarCupom;
 import '../../../widgets/roleta_web_widget_v3.dart';
+import 'package:master_palm/screens/auth/cadastro_screen_cliente.dart';
 import 'catalog_cart_line_quantity_section.dart';
 import 'catalog_image_placeholder.dart';
 import '../catalog_estoque_helper.dart';
@@ -255,6 +256,61 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   late List<Map<String, dynamic>> _fretesLocal;
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  /// Visitante: avisa benefícios do cadastro antes de pagar. Cliente logado: segue direto.
+  Future<bool> _dialogBeneficioCadastroOuSeguir() async {
+    final cliente = await ClienteAuthService.getClienteLogado();
+    if (!mounted) return false;
+    if (cliente != null) return true;
+
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final maxW = math.min(
+          kMaxContentWidth,
+          MediaQuery.sizeOf(ctx).width - 40,
+        );
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxW),
+          child: AlertDialog(
+            title: const Text('Antes de pagar'),
+            content: const SingleChildScrollView(
+              child: Text(
+                'Com cadastro na loja você pode acompanhar seus pedidos, cupons e '
+                'sorteios quando a loja oferecer.\n\n'
+                'Você também pode seguir sem cadastro: seus dados abaixo serão usados '
+                'só para entrega e pagamento.',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cadastro'),
+                child: const Text('Cadastrar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, 'seguir'),
+                child: const Text('Seguir sem cadastro'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted) return false;
+    if (choice == 'seguir') return true;
+    if (choice == 'cadastro') {
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => CadastroScreenCliente(lojaId: widget.lojaId),
+        ),
+      );
+      return false;
+    }
+    return false;
+  }
 
   /// Resumo financeiro (card escuro): vem do config ou fallback dos demais checkout colors.
   CatalogCheckoutSummaryTokens get _summaryTokens =>
@@ -4014,6 +4070,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     : () async {
                         if (!_validarItensComPreco()) return;
                         if (!_validarCampos()) return;
+                        if (!await _dialogBeneficioCadastroOuSeguir()) return;
+                        if (!mounted) return;
 
                         // ✅ MARCA COMO PROCESSANDO
                         setState(() {
@@ -4088,7 +4146,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 }
                                 final cRoleta = _cupomPorOrigem('roleta_sorte');
                                 if (cRoleta != null) {
-                                  final email = (clienteLogado?['email'] ?? '').toString().trim();
+                                  final email = (clienteLogado?['email'] ??
+                                          customer['email'] ??
+                                          '')
+                                      .toString()
+                                      .trim();
                                   final codigo = _codigoCupomMap(cRoleta);
                                   if (email.isNotEmpty && codigo.isNotEmpty) {
                                     await ClienteAuthService.marcarCupomRoletaComoUsado(
@@ -4168,14 +4230,16 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   onPressed: _processandoCheckout
                       ? null
                       : () async {
+                          if (!_validarItensComPreco()) return;
+                          if (!_validarCampos()) return;
+                          if (!await _dialogBeneficioCadastroOuSeguir()) return;
+                          if (!mounted) return;
                           setState(() {
                             _processandoCheckout = true;
                             _checkoutError = null;
                           });
                           try {
                             await Future.delayed(Duration.zero);
-                            if (!_validarItensComPreco()) return;
-                            if (!_validarCampos()) return;
                             final customer = _customerPayload();
                             final freteSelecionado = _fretesLocal.isNotEmpty &&
                                     _freteIndex >= 0 &&
@@ -4239,7 +4303,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 }
                                 final cRoleta = _cupomPorOrigem('roleta_sorte');
                                 if (cRoleta != null) {
-                                  final email = (clienteLogadoPix?['email'] ?? '').toString().trim();
+                                  final email = (clienteLogadoPix?['email'] ??
+                                          customer['email'] ??
+                                          '')
+                                      .toString()
+                                      .trim();
                                   final cod = _codigoCupomMap(cRoleta);
                                   if (email.isNotEmpty && cod.isNotEmpty) {
                                     await ClienteAuthService.marcarCupomRoletaComoUsado(
@@ -4323,18 +4391,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   onPressed: _processandoCheckout
                       ? null
                       : () async {
-                          // ⭐ EVITA MÚLTIPLAS VENDAS: desabilita botão durante processamento
+                          if (!_validarItensComPreco()) return;
+                          if (!_validarCampos()) return;
+                          if (!await _dialogBeneficioCadastroOuSeguir()) return;
+                          if (!mounted) return;
                           setState(() {
                             _processandoCheckout = true;
                             _checkoutError = null;
                           });
-                          // Força o Flutter a repintar o loading antes de iniciar o processamento pesado
                           await Future.delayed(Duration.zero);
                           try {
                             if (!mounted) return;
                             if (!context.mounted) return;
-                            if (!_validarItensComPreco()) return;
-                            if (!_validarCampos()) return;
                             final customer = _customerPayload();
 
                             // ✅ Pega o frete selecionado completo
