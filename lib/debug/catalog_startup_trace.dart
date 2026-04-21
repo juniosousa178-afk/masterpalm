@@ -16,10 +16,14 @@ class CatalogStartupTrace {
   static final Map<String, int> _openSpansMs = <String, int>{};
   static final List<Map<String, Object?>> _simpleEvents =
       <Map<String, Object?>>[];
+  static final ValueNotifier<int> _revision = ValueNotifier<int>(0);
   static int _seq = 0;
   static bool _summaryPrinted = false;
 
   static int nowMs() => _sw.elapsedMilliseconds;
+  static ValueListenable<int> get revisionListenable => _revision;
+  static List<Map<String, Object?>> eventsSnapshot() =>
+      List<Map<String, Object?>>.unmodifiable(_simpleEvents);
 
   static void mark(
     String event, {
@@ -69,6 +73,7 @@ class CatalogStartupTrace {
       'event': event,
       't_ms': tMs,
     });
+    _revision.value = _revision.value + 1;
     web_sink.publishCatStartTrace(_simpleEvents);
   }
 

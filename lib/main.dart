@@ -1394,6 +1394,84 @@ class MpOAuthResultPage extends StatelessWidget {
 // ===========================================================================
 class _BootApp extends StatelessWidget {
   const _BootApp();
+
+  Widget _withCatStartDiagOverlay(Widget child) {
+    final enabled = kIsWeb && Uri.base.queryParameters['diag'] == '1';
+    if (!enabled) return child;
+    const trackedEvents = <String>[
+      'CAT_START.main.enter',
+      'CAT_START.runApp.catalog_web_root.fast_path',
+      'CAT_START.first_useful_paint',
+      'CAT_START.produtos_stream.first_data',
+      'CAT_START.products_grid.first_viewport_frame',
+      'CAT_START.catalog_interactive',
+    ];
+    return Stack(
+      children: [
+        Positioned.fill(child: child),
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: IgnorePointer(
+            child: ValueListenableBuilder<int>(
+              valueListenable: CatalogStartupTrace.revisionListenable,
+              builder: (_, __, ___) {
+                final events = CatalogStartupTrace.eventsSnapshot();
+                final tracked = <Map<String, Object?>>[];
+                for (final name in trackedEvents) {
+                  int? tMs;
+                  for (final e in events) {
+                    if (e['event'] == name) tMs = e['t_ms'] as int?;
+                  }
+                  tracked.add(<String, Object?>{'event': name, 't_ms': tMs});
+                }
+                final tail = events.reversed.take(6).toList().reversed.toList();
+                return Container(
+                  width: 360,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.72),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: DefaultTextStyle(
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      height: 1.25,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('CAT_START DIAG (temporário)'),
+                        const SizedBox(height: 6),
+                        for (final e in tracked)
+                          Text(
+                            '${e['event']}: ${e['t_ms'] ?? '--'}ms',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        const SizedBox(height: 6),
+                        const Text('Últimos eventos:'),
+                        for (final e in tail)
+                          Text(
+                            '- ${e['event']} @ ${e['t_ms']}ms',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final uri = Uri.base;
@@ -1406,7 +1484,7 @@ class _BootApp extends StatelessWidget {
     final looksLikeDedicatedCatalogHost =
         host.contains('catalogo.') || host.startsWith('catalogo.');
     final isCatalog = kIsWeb && (isCatalogPath || looksLikeDedicatedCatalogHost);
-    final splash = Scaffold(
+    final splash = _withCatStartDiagOverlay(Scaffold(
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1425,7 +1503,7 @@ class _BootApp extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       initialRoute: '/',

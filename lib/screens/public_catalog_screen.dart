@@ -640,6 +640,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _traceProductsVisibleLogged = false;
   bool _traceProductsGridFirstViewportLogged = false;
   bool _traceEssentialActionsEnabledLogged = false;
+  late final bool _diagCatStartOverlayEnabled =
+      kIsWeb && Uri.base.queryParameters['diag'] == '1';
 
   final List<Map<String, dynamic>> _cart = [];
   bool _publicando = false;
@@ -4084,6 +4086,99 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
   }
 
+  Widget _wrapWithCatStartDiagOverlay(Widget child) {
+    if (!_diagCatStartOverlayEnabled) return child;
+    const trackedEvents = <String>[
+      'CAT_START.main.enter',
+      'CAT_START.runApp.catalog_web_root.fast_path',
+      'CAT_START.public_screen.init_state',
+      'CAT_START.resolve_loja_id.end',
+      'CAT_START.cfg_stream.first_data',
+      'CAT_START.produtos_stream.first_data',
+      'CAT_START.first_useful_paint',
+      'CAT_START.products_grid.first_viewport_frame',
+      'CAT_START.catalog_interactive',
+    ];
+    return Stack(
+      children: [
+        Positioned.fill(child: child),
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: IgnorePointer(
+            child: ValueListenableBuilder<int>(
+              valueListenable: CatalogStartupTrace.revisionListenable,
+              builder: (_, __, ___) {
+                final events = CatalogStartupTrace.eventsSnapshot();
+                final tracked = <Map<String, Object?>>[];
+                for (final name in trackedEvents) {
+                  int? tMs;
+                  for (final e in events.reversed) {
+                    if (e['event'] == name) {
+                      tMs = e['t_ms'] as int?;
+                      break;
+                    }
+                  }
+                  tracked.add(<String, Object?>{
+                    'event': name,
+                    't_ms': tMs,
+                  });
+                }
+                final tail = events
+                    .where((e) => (e['event']?.toString() ?? '')
+                        .startsWith('CAT_START.'))
+                    .toList()
+                    .reversed
+                    .take(10)
+                    .toList()
+                    .reversed
+                    .toList();
+                return Container(
+                  width: 360,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.72),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: DefaultTextStyle(
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      height: 1.25,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('CAT_START DIAG (temporário)'),
+                        const SizedBox(height: 6),
+                        for (final e in tracked)
+                          Text(
+                            '${e['event']}: ${e['t_ms'] ?? '--'}ms',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        const SizedBox(height: 6),
+                        const Text('Últimos CAT_START:'),
+                        for (final e in tail)
+                          Text(
+                            '- ${e['event']} @ ${e['t_ms']}ms',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_traceBuildEnteredLogged) {
@@ -4100,11 +4195,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     // Usar tema do contexto (ex.: web) para loading/erro, evitando tela branca
     final themeForStates = Theme.of(context);
     if (_loadingLojaId) {
-      return CatalogLoadingState(themeData: themeForStates);
+      return _wrapWithCatStartDiagOverlay(
+        CatalogLoadingState(themeData: themeForStates),
+      );
     }
 
     if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
-      return CatalogErrorLojaState(themeData: themeForStates);
+      return _wrapWithCatStartDiagOverlay(
+        CatalogErrorLojaState(themeData: themeForStates),
+      );
     }
     if (!_traceFirstUsefulPaintLogged) {
       _traceFirstUsefulPaintLogged = true;
@@ -4120,9 +4219,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       logD('📱 [CATALOG] Renderizando loja: $_resolvedLojaId');
     }
 
-    return Theme(
-      data: themeData,
-      child: StreamBuilder<Map<String, dynamic>>(
+    return _wrapWithCatStartDiagOverlay(
+      Theme(
+        data: themeData,
+        child: StreamBuilder<Map<String, dynamic>>(
         stream: _getConfigStream(lojaId),
         builder: (context, cfgSnap) {
           // Usar tema do MaterialApp (themeForStates) para evitar tela branca na web
@@ -7238,6 +7338,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             ),
           );
         },
+      ),
       ),
     );
   }
