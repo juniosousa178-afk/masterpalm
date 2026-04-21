@@ -371,6 +371,9 @@ service cloud.firestore {
     match /_mp_webhook_validation_rejects/{doc} {
       allow read, write: if false;
     }
+    match /_mp_oauth_states/{doc} {
+      allow read, write: if false;
+    }
 
     // =========================
     // HEALTHCHECK / DEBUG

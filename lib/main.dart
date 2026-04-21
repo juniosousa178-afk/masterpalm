@@ -91,6 +91,7 @@ import 'screens/fretes_cupons_screen.dart';
 import 'screens/admin_sync_screen.dart';
 import 'screens/admin_usuarios_screen.dart';
 import 'screens/master_login_screen.dart';
+import 'screens/mp_oauth_callback_screen.dart';
 import 'screens/master_config_screen.dart';
 import 'screens/catalog_payment_support_screen.dart';
 import 'screens/site_config_screen.dart';
@@ -1549,6 +1550,11 @@ Future<void> main() async {
 
       if (kIsWeb) {
         final uri = Uri.base;
+        if (uri.path == '/mp-oauth-callback') {
+          logD('🌐 [MAIN] Callback OAuth MP detectado em /mp-oauth-callback');
+          runApp(MpOAuthCallbackScreen(uri: uri));
+          return;
+        }
         final mpOAuth = uri.queryParameters['mp_oauth'];
         if (mpOAuth == 'ok' || mpOAuth == 'error') {
           logD('🌐 [MAIN] Redirect OAuth MP detectado: $mpOAuth');

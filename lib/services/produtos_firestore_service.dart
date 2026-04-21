@@ -1474,6 +1474,15 @@ class ProdutosFirestoreService {
           mapaCor[cor] = qtd;
         }
       }
+      if (mapaCor.containsKey('sem-cor')) {
+        final temCorReal = mapaCor.keys.any((k) => k.trim().isNotEmpty && k != 'sem-cor');
+        if (temCorReal) {
+          mapaCor.remove('sem-cor');
+          logD(
+            '[VARIACAO_CLEANUP] removendo sem-cor duplicado no tamanho "$tamanho"',
+          );
+        }
+      }
       if (mapaCor.isNotEmpty) result[tamanho] = mapaCor;
     }
     return result.isEmpty ? null : result;

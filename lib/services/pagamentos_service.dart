@@ -217,10 +217,7 @@ class PagamentosService {
     required String code,
     required String state,
   }) async {
-    // Ajuste a URL do seu backend/Function
-    final uri = Uri.parse(
-      'https://app.mastepalm.com.br/api/mp/oauth/callback',
-    );
+    final uri = Uri.parse('https://app.mastepalm.com.br/api/mp/oauth/callback');
 
     final resp = await HttpClientHelper.post(
       uri,
@@ -230,9 +227,14 @@ class PagamentosService {
     );
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception(
-        'Falha ao finalizar OAuth no backend (${resp.statusCode}): ${resp.body}',
-      );
+      String msg = 'Falha ao finalizar OAuth no backend (${resp.statusCode}).';
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map && data['error'] != null) {
+          msg = data['error'].toString();
+        }
+      } catch (_) {}
+      throw Exception(msg);
     }
   }
 }

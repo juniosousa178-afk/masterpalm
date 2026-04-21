@@ -503,7 +503,11 @@ class Produto extends HiveObject {
     if (tam.isNotEmpty) {
       final mapaTamanho = variacoes![tam];
       if (mapaTamanho == null || mapaTamanho is! Map) return 0;
-      final corKey = corTrim.isEmpty ? 'sem-cor' : corTrim;
+      final corKey = _resolverCorKeyParaTamanho(
+        variacoes: variacoes!,
+        tamanho: tam,
+        corInformada: corTrim,
+      );
       final cell = mapaTamanho[corKey];
       return ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
     }
@@ -542,7 +546,11 @@ class Produto extends HiveObject {
     if (!usaVariacoes) return;
 
     final tam = tamanho.trim();
-    final corKey = cor.trim().isEmpty ? 'sem-cor' : cor.trim();
+    final corKey = _resolverCorKeyParaTamanho(
+      variacoes: variacoes!,
+      tamanho: tam,
+      corInformada: cor,
+    );
     final chaveTamanho = tam.isEmpty ? 'sem-tamanho' : tam;
     final ex = variacaoExtra.trim();
 
@@ -579,7 +587,11 @@ class Produto extends HiveObject {
     if (!usaVariacoes) return;
 
     final tam = tamanho.trim();
-    final corKey = cor.trim().isEmpty ? 'sem-cor' : cor.trim();
+    final corKey = _resolverCorKeyParaTamanho(
+      variacoes: variacoes!,
+      tamanho: tam,
+      corInformada: cor,
+    );
     final chaveTamanho = tam.isEmpty ? 'sem-tamanho' : tam;
     final ex = variacaoExtra.trim();
 
@@ -616,6 +628,31 @@ class Produto extends HiveObject {
     } else if (estoquePorTamanho.isNotEmpty) {
       _recalcularQuantidadeAPartirDoMapa();
     }
+  }
+
+  /// Evita usar/criar `sem-cor` quando um tamanho tem apenas uma cor real.
+  static String _resolverCorKeyParaTamanho({
+    required Map<String, dynamic> variacoes,
+    required String tamanho,
+    required String corInformada,
+  }) {
+    final tam = tamanho.trim();
+    final cor = corInformada.trim();
+
+    if (tam.isEmpty) return cor.isEmpty ? 'sem-cor' : cor;
+    if (cor.isNotEmpty) return cor;
+
+    final mapaCor = variacoes[tam];
+    if (mapaCor is! Map) return 'sem-cor';
+
+    final coresValidas = mapaCor.keys
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty && e != 'sem-cor')
+        .toSet()
+        .toList();
+
+    if (coresValidas.length == 1) return coresValidas.first;
+    return 'sem-cor';
   }
 
 }

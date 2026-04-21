@@ -215,7 +215,11 @@ class EstoqueTransactionService {
         );
         novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
       } else if (usaVariacoes && tam.isNotEmpty) {
-        final chaveCor = corTrim.isEmpty ? 'sem-cor' : corTrim;
+        final chaveCor = _resolverCorKeyParaTamanho(
+          variacoes: variacoes,
+          tamanho: tam,
+          corInformada: corTrim,
+        );
         novasVariacoes = _mapaAposDebitoVariacao(
           variacoes: variacoes,
           chaveTamanho: tam,
@@ -443,6 +447,28 @@ class EstoqueTransactionService {
       }
     }
     return false;
+  }
+
+  /// Evita criar `sem-cor` quando o tamanho possui uma única cor real.
+  static String _resolverCorKeyParaTamanho({
+    required Map<String, dynamic> variacoes,
+    required String tamanho,
+    required String corInformada,
+  }) {
+    final cor = corInformada.trim();
+    if (cor.isNotEmpty) return cor;
+
+    final mapaCor = variacoes[tamanho];
+    if (mapaCor is! Map) return 'sem-cor';
+
+    final coresValidas = mapaCor.keys
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty && e != 'sem-cor')
+        .toSet()
+        .toList();
+
+    if (coresValidas.length == 1) return coresValidas.first;
+    return 'sem-cor';
   }
 
   static Map<String, dynamic> _mapaAposDebitoVariacao({
@@ -791,7 +817,11 @@ class EstoqueTransactionService {
           );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (usaVariacoes && tamanho.isNotEmpty) {
-          final chaveCor = cor.isEmpty ? 'sem-cor' : cor;
+          final chaveCor = _resolverCorKeyParaTamanho(
+            variacoes: variacoes,
+            tamanho: tamanho,
+            corInformada: cor,
+          );
           novasVariacoes = _mapaAposDebitoVariacao(
             variacoes: variacoes,
             chaveTamanho: tamanho,
@@ -1010,7 +1040,11 @@ class EstoqueTransactionService {
           );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (usaVariacoes && tamanho.isNotEmpty) {
-          final chaveCor = cor.isEmpty ? 'sem-cor' : cor;
+          final chaveCor = _resolverCorKeyParaTamanho(
+            variacoes: variacoes,
+            tamanho: tamanho,
+            corInformada: cor,
+          );
           novasVariacoes = _mapaAposDevolverVariacao(
             variacoes: variacoes,
             chaveTamanho: tamanho,

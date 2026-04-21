@@ -30,6 +30,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
   String? _lojaId;
   bool _sincronizando = false;
   bool _publicando = false;
+  bool _mpOAuthConnecting = false;
+  String? _mpOAuthError;
 
   // Mercado Pago
   final _publicKeyCtrl = TextEditingController();
@@ -657,6 +659,21 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
           final connectedMp = mp['connected'] == true;
           final userIdMp = (mp['user_id'] ?? '').toString();
           final publicKeyMp = (mp['public_key'] ?? '').toString();
+          final String mpStatusLabel;
+          final Color mpStatusColor;
+          if (connectedMp) {
+            mpStatusLabel = 'Conectado com sucesso';
+            mpStatusColor = successColor;
+          } else if (_mpOAuthConnecting) {
+            mpStatusLabel = 'Conectando...';
+            mpStatusColor = warningColor;
+          } else if (_mpOAuthError != null && _mpOAuthError!.isNotEmpty) {
+            mpStatusLabel = 'Erro ao conectar';
+            mpStatusColor = errorColor;
+          } else {
+            mpStatusLabel = 'Não conectado';
+            mpStatusColor = Colors.grey;
+          }
 
           // Mantido para quando reativar gateways (PagSeguro, Ton, InfinitePay)
           final pagseguro = (data['pagseguro'] as Map<String, dynamic>?) ?? {};
@@ -898,6 +915,103 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                           formContent: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: mpStatusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.info_outline,
+                                        size: 18, color: mpStatusColor),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Status da integração: $mpStatusLabel',
+                                        style: TextStyle(
+                                          color: mpStatusColor,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_mpOAuthError != null &&
+                                  _mpOAuthError!.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  _mpOAuthError!,
+                                  style: const TextStyle(
+                                    color: errorColor,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: (_lojaId == null || _mpOAuthConnecting)
+                                      ? null
+                                      : () async {
+                                          setState(() {
+                                            _mpOAuthConnecting = true;
+                                            _mpOAuthError = null;
+                                          });
+                                          try {
+                                            await PagamentosService.abrirConexaoOAuth(
+                                                _lojaId!);
+                                          } catch (e) {
+                                            if (!mounted) return;
+                                            setState(() {
+                                              _mpOAuthError = e.toString();
+                                            });
+                                            _mostrarSnackBarModerno(
+                                              'Erro ao abrir OAuth: $e',
+                                              Icons.error_outline,
+                                              errorColor,
+                                            );
+                                          } finally {
+                                            if (mounted) {
+                                              setState(() {
+                                                _mpOAuthConnecting = false;
+                                              });
+                                            }
+                                          }
+                                        },
+                                  icon: _mpOAuthConnecting
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                          ),
+                                        )
+                                      : const Icon(Icons.open_in_new),
+                                  label: Text(
+                                    _mpOAuthConnecting
+                                        ? 'Conectando...'
+                                        : 'Conectar Mercado Pago (OAuth)',
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF00BCFF),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 14),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
                               Text(
                                 'Access Token de PRODUÇÃO:',
                                 style: TextStyle(
@@ -957,8 +1071,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                       lojaId: _lojaId!,
                                       rawToken: token,
                                     );
-                                    if (!mounted) return;
-                                    Navigator.pop(context);
+                                    if (!context.mounted) return;
+                                    Navigator.of(context).pop();
                                     if (!resultado.success) {
                                       if (resultado.invalidToken) {
                                         _mostrarSnackBarModerno(
@@ -983,7 +1097,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                     );
                                   },
                                   icon: const Icon(Icons.link),
-                                  label: const Text('Conectar Mercado Pago'),
+                                  label:
+                                      const Text('Conectar por token manual'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF00BCFF),
                                     foregroundColor: Colors.white,
