@@ -2111,11 +2111,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                       keyboardType: TextInputType.number,
                                     ),
                                   ),
-                                  if (_variacaoControllers.length > 1)
-                                    IconButton(
-                                      icon: const Icon(Icons.remove_circle, color: Colors.red),
-                                      onPressed: () async {
-                                        setState(() {
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_circle, color: Colors.red),
+                                    tooltip: _variacaoControllers.length > 1
+                                        ? 'Remover variação'
+                                        : 'Limpar última variação',
+                                    onPressed: () async {
+                                      setState(() {
+                                        if (_variacaoControllers.length > 1) {
                                           c['tamanho']?.dispose();
                                           c['cor']?.dispose();
                                           c['extraTipo']?.dispose();
@@ -2123,13 +2126,30 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                           c['qtd']?.dispose();
                                           _variacaoControllers.removeAt(i);
                                           _gradeVariacoes.removeAt(i);
-                                          _initPrecoPorTamanhoControllers();
-                                        });
-                                        if (widget.produto != null) {
-                                          await _persistirProdutoAtual(widget.produto!);
+                                        } else {
+                                          // Permite "apagar tudo" sem manter variação fantasma.
+                                          c['tamanho']?.clear();
+                                          c['cor']?.clear();
+                                          c['extraTipo']?.clear();
+                                          c['extraValor']?.clear();
+                                          c['qtd']?.clear();
+                                          if (_gradeVariacoes.isNotEmpty) {
+                                            _gradeVariacoes[0] = {
+                                              'tamanho': '',
+                                              'cor': '',
+                                              'extraTipo': '',
+                                              'extraValor': '',
+                                              'qtd': '',
+                                            };
+                                          }
                                         }
-                                      },
-                                    ),
+                                        _initPrecoPorTamanhoControllers();
+                                      });
+                                      if (widget.produto != null) {
+                                        await _persistirProdutoAtual(widget.produto!);
+                                      }
+                                    },
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 8),

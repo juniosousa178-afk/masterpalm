@@ -94,6 +94,29 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     _init();
   }
 
+  Produto _comboMaisRecenteNoBox(Produto base) {
+    final key = base.key;
+    if (key is int) {
+      final byKey = produtosBox.get(key);
+      if (byKey != null) return byKey;
+    }
+    final idFb = base.idFirebase.trim();
+    if (idFb.isNotEmpty) {
+      final byId = produtosBox.values.firstWhereOrNull(
+        (p) => p.lojaId == lojaId && p.idFirebase.trim() == idFb,
+      );
+      if (byId != null) return byId;
+    }
+    final slug = base.slug.trim();
+    if (slug.isNotEmpty) {
+      final bySlug = produtosBox.values.firstWhereOrNull(
+        (p) => p.lojaId == lojaId && p.slug.trim() == slug,
+      );
+      if (bySlug != null) return bySlug;
+    }
+    return base;
+  }
+
   @override
   void dispose() {
     for (final g in _gruposAvancados) {
@@ -132,7 +155,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     produtosBox = Hive.box<Produto>(HiveBoxNames.produtos(lojaId!));
 
     if (widget.combo != null) {
-      final c = widget.combo!;
+      final c = _comboMaisRecenteNoBox(widget.combo!);
       _nome.text = c.nome;
       _preco.text = MoedaInputFormatter.format(c.precoFinal);
       _quantidadeDisponivel.text = c.quantidade > 0 ? '${c.quantidade}' : '1';
@@ -185,7 +208,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
     // Carregar desconto do combo (mesmo docId do catálogo: idFirebase > slug > slugify(nome))
     if (widget.combo != null && lojaId != null) {
       try {
-        final docId = CatalogoSyncService.catalogFirestoreDocId(widget.combo!);
+        final comboAtual = _comboMaisRecenteNoBox(widget.combo!);
+        final docId = CatalogoSyncService.catalogFirestoreDocId(comboAtual);
         Future<Map<String, dynamic>?> fetchDesconto(String collection) async {
           final snap = await FirebaseFirestore.instance
               .collection('lojas')

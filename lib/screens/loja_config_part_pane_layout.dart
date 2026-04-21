@@ -170,6 +170,14 @@ class _PaneLayoutWidget extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
               ),
               const SizedBox(height: 8),
+              Text(
+                'Tamanho ideal do banner: Desktop 1280×256  |  Mobile 562×300',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: host._heroBannerTitleCtrl,
                 decoration: const InputDecoration(

@@ -45,6 +45,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   final TextEditingController _loginController = TextEditingController();
   final TextEditingController _senhaController = TextEditingController();
+  final FocusNode _loginFocusNode = FocusNode();
+  final FocusNode _senhaFocusNode = FocusNode();
 
   bool _carregando = false;
   bool _mostrarSenha = false;
@@ -147,6 +149,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _googleUserSub?.cancel();
     _loginController.dispose();
     _senhaController.dispose();
+    _loginFocusNode.dispose();
+    _senhaFocusNode.dispose();
     _animController.dispose();
     _shakeController.dispose();
     super.dispose();
@@ -1310,24 +1314,32 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           // Email/Phone Field
           _buildModernTextField(
             controller: _loginController,
+            focusNode: _loginFocusNode,
             label: 'E-mail ou telefone',
             icon: Icons.person_outline,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
             autofillHints: const [AutofillHints.email, AutofillHints.username],
-            autofocus: true,
+            onTap: () {
+              if (!_loginFocusNode.hasFocus) {
+                _loginFocusNode.requestFocus();
+              }
+            },
+            onSubmitted: (_) => _senhaFocusNode.requestFocus(),
           ),
           const SizedBox(height: 16),
 
           // Password Field
           _buildModernTextField(
             controller: _senhaController,
+            focusNode: _senhaFocusNode,
             label: 'Senha',
             icon: Icons.lock_outline,
             obscureText: !_mostrarSenha,
             keyboardType: TextInputType.visiblePassword,
             textInputAction: TextInputAction.done,
             autofillHints: const [AutofillHints.password],
+            onSubmitted: (_) => _login(),
             suffixIcon: IconButton(
               icon: Icon(
                 _mostrarSenha ? Icons.visibility : Icons.visibility_off,
@@ -1442,6 +1454,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   Widget _buildModernTextField({
     required TextEditingController controller,
+    required FocusNode focusNode,
     required String label,
     required IconData icon,
     bool obscureText = false,
@@ -1450,6 +1463,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     TextInputAction? textInputAction,
     Iterable<String>? autofillHints,
     bool autofocus = false,
+    VoidCallback? onTap,
+    ValueChanged<String>? onSubmitted,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1461,11 +1476,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       ),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
         obscureText: obscureText,
         keyboardType: keyboardType,
         textInputAction: textInputAction,
         autofillHints: autofillHints,
         autofocus: autofocus,
+        onTap: onTap,
+        onSubmitted: onSubmitted,
         style: const TextStyle(color: Colors.white, fontSize: 15),
         decoration: InputDecoration(
           labelText: label,

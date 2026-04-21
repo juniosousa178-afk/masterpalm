@@ -639,11 +639,13 @@ class CatalogSortFiltersSection extends StatelessWidget {
               filtroVariacaoExtra!.trim().isNotEmpty);
       return SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               Container(
                 width: 44,
                 height: 4,
@@ -860,6 +862,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
                 },
               ),
             ],
+            ),
           ),
         ),
       );
@@ -879,7 +882,7 @@ class CatalogSortFiltersSection extends StatelessWidget {
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: maxW,
-                maxHeight: mq.size.height * 0.65,
+                maxHeight: mq.size.height * 0.78,
               ),
               child: Material(
                 color: cardColor,

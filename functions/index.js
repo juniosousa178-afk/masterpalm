@@ -2143,6 +2143,12 @@ export const mpCatalogPayment = onRequest(
         const WEB_BASE = (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         const unitPrice = expectedTotal / (Number(quantidade) || 1);
+        const lojaQ = encodeURIComponent(String(lojaId));
+        const backFallback = {
+          success: `${WEB_BASE}/pagamento/sucesso?loja=${lojaQ}`,
+          failure: `${WEB_BASE}/pagamento/falha?loja=${lojaQ}`,
+          pending: `${WEB_BASE}/pagamento/pendente?loja=${lojaQ}`,
+        };
         const mpBody = {
           items: [
             {
@@ -2157,11 +2163,7 @@ export const mpCatalogPayment = onRequest(
           metadata: { lojaId: String(lojaId) },
           ...(notifUrl && { notification_url: notifUrl }),
           ...(payer && { payer: payer }),
-          back_urls: backUrls || {
-            success: `${WEB_BASE}/pagamento/sucesso`,
-            failure: `${WEB_BASE}/pagamento/falha`,
-            pending: `${WEB_BASE}/pagamento/pendente`,
-          },
+          back_urls: backUrls || backFallback,
           auto_return: "approved",
           statement_descriptor: "MASTERPALM",
         };

@@ -3036,6 +3036,10 @@ Future<void> _despublicarTodosProdutos() async {
     return false;
   }
 
+  String _nomeCompletoUnificacaoKey(String nome) {
+    return nome.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+  }
+
 Future<void> _unificarDuplicados() async {
   final confirmar = await _showConfirmSheet(
     'Unificar duplicados?',
@@ -3058,7 +3062,8 @@ Future<void> _unificarDuplicados() async {
     final grupos = <String, List<Produto>>{};
     for (final p in _box.values) {
       if (p.lojaId != lojaId) continue;
-      final key = normalizeKey(p.nome);
+      // Só unifica quando o nome completo for igual.
+      final key = _nomeCompletoUnificacaoKey(p.nome);
       if (key.isEmpty) continue;
       grupos.putIfAbsent(key, () => []).add(p);
     }

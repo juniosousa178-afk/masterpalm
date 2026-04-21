@@ -1,9 +1,11 @@
 // lib/screens/pagamento_resultado_screen.dart
 // Tela exibida após retorno do Mercado Pago (sucesso, falha ou pendente)
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
-class PagamentoResultadoScreen extends StatelessWidget {
+class PagamentoResultadoScreen extends StatefulWidget {
   final String status; // 'sucesso' | 'falha' | 'pendente'
   final String? orderId;
   final String? lojaId;
@@ -30,13 +32,60 @@ class PagamentoResultadoScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final isSuccess = status == 'sucesso';
-    final isPending = status == 'pendente';
-    final isPlano = planoId != null && planoId!.isNotEmpty;
+  State<PagamentoResultadoScreen> createState() =>
+      _PagamentoResultadoScreenState();
+}
 
-    final cs = collectionStatus?.toLowerCase().trim();
-    final ps = paymentStatusQuery?.toLowerCase().trim();
+class _PagamentoResultadoScreenState extends State<PagamentoResultadoScreen> {
+  Timer? _redirectTimer;
+
+  @override
+  void dispose() {
+    _redirectTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleAutoReturnToCatalog();
+  }
+
+  void _scheduleAutoReturnToCatalog() {
+    final loja = widget.lojaId?.trim();
+    if (loja == null || loja.isEmpty) return;
+    final isPlano =
+        widget.planoId != null && widget.planoId!.trim().isNotEmpty;
+    if (isPlano) return;
+    if (widget.status != 'sucesso' && widget.status != 'pendente') return;
+
+    _redirectTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/loja/${Uri.encodeComponent(loja)}',
+        (route) => false,
+      );
+    });
+  }
+
+  void _voltarAoCatalogoAgora() {
+    final loja = widget.lojaId?.trim();
+    if (loja == null || loja.isEmpty) return;
+    _redirectTimer?.cancel();
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      '/loja/${Uri.encodeComponent(loja)}',
+      (route) => false,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSuccess = widget.status == 'sucesso';
+    final isPending = widget.status == 'pendente';
+    final isPlano = widget.planoId != null && widget.planoId!.isNotEmpty;
+
+    final cs = widget.collectionStatus?.toLowerCase().trim();
+    final ps = widget.paymentStatusQuery?.toLowerCase().trim();
     final mpApproved = cs == 'approved' || ps == 'approved';
     final mpPending = cs == 'pending' ||
         cs == 'in_process' ||
@@ -46,10 +95,10 @@ class PagamentoResultadoScreen extends StatelessWidget {
     final successExplicitPending = isSuccess && mpPending;
     final successExplicitApproved = isSuccess && mpApproved;
 
-    final refPedido = (externalReference?.trim().isNotEmpty == true)
-        ? externalReference!.trim()
-        : (orderId?.trim().isNotEmpty == true)
-            ? orderId!.trim()
+    final refPedido = (widget.externalReference?.trim().isNotEmpty == true)
+        ? widget.externalReference!.trim()
+        : (widget.orderId?.trim().isNotEmpty == true)
+            ? widget.orderId!.trim()
             : null;
 
     final icon = isSuccess
@@ -98,13 +147,13 @@ class PagamentoResultadoScreen extends StatelessWidget {
     } else if (isSuccess) {
       if (successExplicitPending) {
         message =
-            'Seu pagamento está em análise. Você receberá a confirmação quando for aprovado. Acompanhe seu pedido na aba "Meus Pedidos" do seu perfil.';
+            'Seu pagamento está em análise. Você receberá a confirmação quando for aprovado. Com cadastro no catálogo, você pode acompanhar pedidos no menu.';
       } else if (successExplicitApproved) {
         message =
-            'Obrigado pela sua compra! Seu pagamento foi confirmado. Você receberá a confirmação por e-mail ou WhatsApp. Acompanhe seu pedido na aba "Meus Pedidos" do seu perfil.';
+            'Obrigado pela sua compra! Seu pagamento foi confirmado. Você receberá a confirmação por e-mail ou WhatsApp. Com cadastro no catálogo, use o menu para ver seus pedidos.';
       } else {
         message =
-            'Obrigado! Recebemos o retorno do pagamento. Se a cobrança foi aprovada, você receberá a confirmação em instantes. Acompanhe seu pedido na aba "Meus Pedidos" do seu perfil.';
+            'Obrigado! Recebemos o retorno do pagamento. Se a cobrança foi aprovada, você receberá a confirmação em instantes. Você voltará ao catálogo da loja em alguns segundos.';
       }
     } else if (isPending) {
       message =
@@ -113,6 +162,12 @@ class PagamentoResultadoScreen extends StatelessWidget {
       message =
           'O prazo para pagar pode ter expirado, o pagamento pode ter sido recusado ou reembolsado. Tente novamente ou escolha outra forma de pagamento.';
     }
+
+    final lojaTrim = widget.lojaId?.trim();
+    final mostrarVoltarCatalogo =
+        !isPlano && lojaTrim != null && lojaTrim.isNotEmpty;
+    final autoRedirectCatalogo =
+        mostrarVoltarCatalogo && (isSuccess || isPending);
 
     return Scaffold(
       body: SafeArea(
@@ -148,6 +203,16 @@ class PagamentoResultadoScreen extends StatelessWidget {
                     textAlign: TextAlign.center,
                   ),
                 ],
+                if (autoRedirectCatalogo) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Redirecionando ao catálogo em instantes…',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontStyle: FontStyle.italic,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 const SizedBox(height: 32),
                 if (isPlano)
                   TextButton.icon(
@@ -158,14 +223,11 @@ class PagamentoResultadoScreen extends StatelessWidget {
                     icon: const Icon(Icons.home),
                     label: const Text('Ir para o app'),
                   )
-                else if (lojaId != null && lojaId!.isNotEmpty)
+                else if (mostrarVoltarCatalogo)
                   TextButton.icon(
-                    onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(
-                      '/loja/${lojaId!}',
-                      (route) => false,
-                    ),
+                    onPressed: _voltarAoCatalogoAgora,
                     icon: const Icon(Icons.storefront),
-                    label: const Text('Voltar ao catálogo'),
+                    label: const Text('Voltar ao catálogo agora'),
                   ),
               ],
             ),

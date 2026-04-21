@@ -1,6 +1,6 @@
 // lib/screens/public_catalog_screen.dart
 // Catálogo público (WEB/Mobile) – carrinho funcional, banners rolando,
-// checkout com cadastro obrigatório e botão WhatsApp / Mercado Pago.
+// checkout (login opcional) e botão WhatsApp / Mercado Pago.
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -56,6 +56,7 @@ import 'public_catalog/catalog_theme.dart';
 import 'public_catalog/catalog_checkout_summary_tokens.dart';
 import 'public_catalog/catalog_cart_checkout_visual_config.dart';
 import 'public_catalog/widgets/catalog_banner_carousel.dart';
+import 'public_catalog/widgets/catalog_guest_optional_login_banner.dart';
 import 'public_catalog/widgets/catalog_config_error_state.dart';
 import 'public_catalog/widgets/catalog_config_loading_state.dart';
 import 'public_catalog/widgets/catalog_empty_products_state.dart';
@@ -2081,7 +2082,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             builder: (_) =>
                                 LoginScreenCliente(lojaId: lojaIdAuth),
                           ),
-                        ).then((_) => _loadClienteAndFavoritos());
+                        ).then((_) async {
+                          await _loadClienteAndFavoritos();
+                          if (!mounted) return;
+                          setState(() => _menuClienteAuthRetryKey++);
+                        });
                       },
                       icon: const Icon(Icons.login),
                       label: const Text('Entrar'),
@@ -2098,7 +2103,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             builder: (_) =>
                                 CadastroScreenCliente(lojaId: lojaIdAuth),
                           ),
-                        ).then((_) => _loadClienteAndFavoritos());
+                        ).then((_) async {
+                          await _loadClienteAndFavoritos();
+                          if (!mounted) return;
+                          setState(() => _menuClienteAuthRetryKey++);
+                        });
                       },
                       icon: const Icon(Icons.person_add),
                       label: const Text('Cadastrar'),
@@ -5466,8 +5475,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               clienteId: clienteId,
                                             ),
                                           ),
-                                        ).then(
-                                            (_) => _loadClienteAndFavoritos());
+                                        ).then((_) async {
+                                          await _loadClienteAndFavoritos();
+                                          if (!mounted) return;
+                                          setState(() =>
+                                              _menuClienteAuthRetryKey++);
+                                        });
                                       },
                                     ),
                                     if (indicacaoAtivo && clienteId.isNotEmpty)
@@ -5512,8 +5525,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             builder: (_) => LoginScreenCliente(
                                                 lojaId: lojaIdAuth),
                                           ),
-                                        ).then(
-                                            (_) => _loadClienteAndFavoritos());
+                                        ).then((_) async {
+                                          await _loadClienteAndFavoritos();
+                                          if (!mounted) return;
+                                          setState(
+                                              () => _menuClienteAuthRetryKey++);
+                                        });
                                       },
                                     ),
                                     ListTile(
@@ -5530,8 +5547,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 CadastroScreenCliente(
                                                     lojaId: lojaIdAuth),
                                           ),
-                                        ).then(
-                                            (_) => _loadClienteAndFavoritos());
+                                        ).then((_) async {
+                                          await _loadClienteAndFavoritos();
+                                          if (!mounted) return;
+                                          setState(
+                                              () => _menuClienteAuthRetryKey++);
+                                        });
                                       },
                                     ),
                                   ],
@@ -6370,6 +6391,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           SliverToBoxAdapter(
                                             child: Column(
                                               children: [
+                                                CatalogGuestOptionalLoginBanner(
+                                                  authRetryKey:
+                                                      _menuClienteAuthRetryKey,
+                                                  textColor: textColor,
+                                                  cardColor: cardColor,
+                                                  primaryColor: primaryColor,
+                                                ),
                                                 if (banners.isNotEmpty)
                                                   CatalogBannerCarousel(
                                                     banners: banners,

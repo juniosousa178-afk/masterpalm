@@ -113,13 +113,15 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                       borderRadius: BorderRadius.circular(borderRadiusDesktop),
                       child: Container(
                         color: Colors.black.withOpacity(0.04),
-                        child: Center(
+                        // cover + expand: preenche o card (sem faixas como no contain);
+                        // o excesso é cortado pelo ClipRRect.
+                        child: SizedBox.expand(
                           child: CatalogImagePlaceholder(
                             url: url,
                             resolvedLojaId: widget.resolvedLojaId,
-                            fit: BoxFit.contain,
-                            cacheWidth: 1600,
-                            cacheHeight: 800,
+                            fit: BoxFit.cover,
+                            cacheWidth: 1920,
+                            cacheHeight: 960,
                           ),
                         ),
                       ),

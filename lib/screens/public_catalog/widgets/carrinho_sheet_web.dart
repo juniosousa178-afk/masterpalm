@@ -31,7 +31,6 @@ import '../../../services/cupons_service.dart';
 import '../../../services/frete_service.dart';
 import '../../../widgets/selecionar_cupom_modal.dart' show mostrarModalSelecionarCupom;
 import '../../../widgets/roleta_web_widget_v3.dart';
-import '../../auth/login_screen_cliente.dart';
 import 'catalog_cart_line_quantity_section.dart';
 import 'catalog_image_placeholder.dart';
 import '../catalog_estoque_helper.dart';
@@ -4013,57 +4012,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 onPressed: _processandoCheckout
                     ? null
                     : () async {
-                        // ⭐ VERIFICAR LOGIN OBRIGATÓRIO
-                        final cliente =
-                            await ClienteAuthService.getClienteLogado();
-                        if (!mounted) return;
-                        if (!context.mounted) return;
-                        if (cliente == null) {
-                          showDialog(
-                            context: context,
-                            builder: (context) {
-                              final maxW = math.min(
-                                kMaxContentWidth,
-                                MediaQuery.sizeOf(context).width - 40,
-                              );
-                              return ConstrainedBox(
-                                constraints: BoxConstraints(maxWidth: maxW),
-                                child: AlertDialog(
-                                  title: const Text('Login Necessário'),
-                                  content: const Text(
-                                    'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
-                                    'Assim você poderá:\n'
-                                    '• Receber cupons de desconto\n'
-                                    '• Concorrer a prêmios com números da sorte\n'
-                                    '• Acompanhar seus pedidos',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text('Cancelar'),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () {
-                                        Navigator.pop(context);
-                                        if (!context.mounted) return;
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => LoginScreenCliente(
-                                                lojaId: widget.lojaId),
-                                          ),
-                                        );
-                                      },
-                                      child: const Text('Fazer Login'),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                          return;
-                        }
-
                         if (!_validarItensComPreco()) return;
                         if (!_validarCampos()) return;
 
@@ -4226,50 +4174,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           });
                           try {
                             await Future.delayed(Duration.zero);
-                            final cliente =
-                                await ClienteAuthService.getClienteLogado();
-                            if (!mounted) return;
-                            if (!context.mounted) return;
-                            if (cliente == null) {
-                              showDialog(
-                                context: context,
-                                builder: (ctx) {
-                                  final maxW = math.min(
-                                    kMaxContentWidth,
-                                    MediaQuery.sizeOf(ctx).width - 40,
-                                  );
-                                  return ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: maxW),
-                                    child: AlertDialog(
-                                      title: const Text('Login Necessário'),
-                                      content: const Text(
-                                        'Para finalizar sua compra, você precisa fazer login ou criar uma conta.',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx),
-                                          child: const Text('Cancelar'),
-                                        ),
-                                        ElevatedButton(
-                                          onPressed: () {
-                                            Navigator.pop(ctx);
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) => LoginScreenCliente(
-                                                    lojaId: widget.lojaId),
-                                              ),
-                                            );
-                                          },
-                                          child: const Text('Fazer Login'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              );
-                              return;
-                            }
                             if (!_validarItensComPreco()) return;
                             if (!_validarCampos()) return;
                             final customer = _customerPayload();
@@ -4427,56 +4331,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           // Força o Flutter a repintar o loading antes de iniciar o processamento pesado
                           await Future.delayed(Duration.zero);
                           try {
-                            // ⭐ VERIFICAR LOGIN OBRIGATÓRIO
-                            final cliente =
-                                await ClienteAuthService.getClienteLogado();
                             if (!mounted) return;
                             if (!context.mounted) return;
-                            if (cliente == null) {
-                              showDialog(
-                                context: context,
-                                builder: (context) {
-                                  final maxW = math.min(
-                                    kMaxContentWidth,
-                                    MediaQuery.sizeOf(context).width - 40,
-                                  );
-                                  return ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: maxW),
-                                    child: AlertDialog(
-                                      title: const Text('Login Necessário'),
-                                      content: const Text(
-                                        'Para finalizar sua compra, você precisa fazer login ou criar uma conta.\n\n'
-                                        'Assim você poderá:\n'
-                                        '• Receber cupons de desconto\n'
-                                        '• Concorrer a prêmios com números da sorte\n'
-                                        '• Acompanhar seus pedidos',
-                                      ),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(context),
-                                          child: const Text('Cancelar'),
-                                        ),
-                                        ElevatedButton(
-                                          onPressed: () {
-                                            Navigator.pop(context);
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) => LoginScreenCliente(
-                                                    lojaId: widget.lojaId),
-                                              ),
-                                            );
-                                          },
-                                          child: const Text('Fazer Login'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              );
-                              return;
-                            }
-
                             if (!_validarItensComPreco()) return;
                             if (!_validarCampos()) return;
                             final customer = _customerPayload();
@@ -4526,7 +4382,13 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             );
                             final cRoletaMp = _cupomPorOrigem('roleta_sorte');
                             if (cRoletaMp != null) {
-                              final emailMp = (cliente['email'] ?? '').toString().trim();
+                              final clientePosMp =
+                                  await ClienteAuthService.getClienteLogado();
+                              final emailMp = (clientePosMp?['email'] ??
+                                      customer['email'] ??
+                                      '')
+                                  .toString()
+                                  .trim();
                               final codigoMp = _codigoCupomMap(cRoletaMp);
                               if (emailMp.isNotEmpty && codigoMp.isNotEmpty) {
                                 await ClienteAuthService.marcarCupomRoletaComoUsado(
