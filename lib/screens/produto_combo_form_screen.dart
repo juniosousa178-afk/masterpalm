@@ -57,7 +57,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   final _nome = TextEditingController();
   final _preco = TextEditingController();
   final _quantidadeDisponivel = TextEditingController(text: '1');
-  final _categoria = TextEditingController(text: 'Combo');
+  final _categoria = TextEditingController();
   final _subcategoria = TextEditingController();
   final _categoriaExtraInput = TextEditingController();
   final _subcategoriaExtraInput = TextEditingController();
@@ -138,6 +138,9 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       _quantidadeDisponivel.text = c.quantidade > 0 ? '${c.quantidade}' : '1';
       _categoria.text = c.categoria;
       _subcategoria.text = c.subcategoria;
+      // Legado: categoria padrão "Combo" não é categoria de negócio.
+      if (normalizeText(c.categoria.trim()) == 'combo') _categoria.clear();
+      if (normalizeText(c.subcategoria.trim()) == 'combo') _subcategoria.clear();
       _categoriasExtrasSelecionadas
           .addAll(c.categoriasExtras.map((e) => canonicalizeCategoria(e)));
       _subcategoriasExtrasSelecionadas
@@ -914,6 +917,8 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       for (final c in [p.categoria, ...p.categoriasExtras]) {
         final t = c.trim();
         if (t.isEmpty) continue;
+        // Combo não usa "Combo" como categoria implícita; não sugerir valor legado do tipo.
+        if (p.ehCombo && normalizeText(t) == 'combo') continue;
         final n = normalizeText(t);
         normToCanon[n] = canonicalizeCategoria(t);
       }
@@ -929,6 +934,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
       for (final s in [p.subcategoria, ...p.subcategoriasExtras]) {
         final t = s.trim();
         if (t.isEmpty) continue;
+        if (p.ehCombo && normalizeText(t) == 'combo') continue;
         final n = normalizeText(t);
         normToCanon[n] = canonicalizeCategoria(t);
       }

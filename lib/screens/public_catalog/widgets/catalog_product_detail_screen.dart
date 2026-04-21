@@ -481,28 +481,25 @@ class CatalogProductDetailScreen extends StatelessWidget {
                       ],
                     ),
                   ],
-                  const SizedBox(height: 16),
-                  Text(
-                    'Descrição',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
+                  if (descricao.trim().isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Descrição',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    descricao.trim().isEmpty
-                        ? 'Sem descrição disponível para este produto.'
-                        : descricao,
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 14,
-                      height: 1.5,
-                      fontStyle: descricao.trim().isEmpty
-                          ? FontStyle.italic
-                          : FontStyle.normal,
+                    const SizedBox(height: 6),
+                    Text(
+                      descricao,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                        height: 1.5,
+                      ),
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
@@ -644,6 +641,13 @@ class _CatalogInlineGalleryState extends State<_CatalogInlineGallery> {
               child: Image(
                 image: mpImageProvider(_imgs[i]),
                 fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.grey[400],
+                    size: 64,
+                  ),
+                ),
               ),
             ),
           ),
@@ -783,6 +787,13 @@ class _CatalogFullscreenGalleryState extends State<_CatalogFullscreenGallery> {
                     child: Image(
                       image: mpImageProvider(widget.images[i]),
                       fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.white54,
+                          size: 64,
+                        ),
+                      ),
                     ),
                   ),
                 ),

@@ -820,7 +820,7 @@ class VendasService {
   }
 
   /// Executa devolução de estoque e exclusão do Firestore.
-  /// Usado pelo SoftDeleteService quando a exclusão se torna definitiva após 30 s.
+  /// Usado pelo SoftDeleteService quando a exclusão se torna definitiva após 5 s.
   /// Não altera vendasBox nem clientesBox (venda já está na lixeira).
   ///
   /// Se a devolução de estoque (incl. ajuste piso combo) falhar, propaga erro:

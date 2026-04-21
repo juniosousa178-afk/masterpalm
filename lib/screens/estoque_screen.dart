@@ -54,8 +54,7 @@ import '../src/file_saver.dart' as file_saver;
 import 'historico_movimentacao_estoque_screen.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
-import '../services/soft_delete_service.dart';
-import '../main.dart' show scaffoldMessengerKey;
+import '../services/produto_exclusao_remota_service.dart';
 import '../widgets/app_help_icon_button.dart';
 
 const bool kAutoSyncOnStart = false;
@@ -215,14 +214,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       final boxName = _box.name;
       await SyncQueueService.processPending();
       await ProdutosFirestoreService.syncTodosProdutos(boxName: boxName, lojaId: lojaId);
-      final removidos = await ProdutosFirestoreService.limparProdutosExcedentesNoFirestore(
-        lojaId: lojaId,
-        produtosBox: _box,
-      );
+      // Não chamar limparProdutosExcedentesNoFirestore aqui: box incompleta apagaria docs válidos na nuvem.
+      // Prune remoto só com opt-in explícito no futuro (ex. confirmação forte no UI).
       if (!mounted) return;
-      _showSnackBar(removidos > 0
-          ? 'Envio concluído. $removidos produto(s) excedente(s) removido(s) do Firestore.'
-          : 'Envio concluído com sucesso');
+      _showSnackBar('Envio concluído com sucesso');
       setState(() {});
     } catch (e) {
       if (!mounted) return;
@@ -428,14 +423,11 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     } catch (_) {}
 
     try {
-      // Envia alterações locais (custo/preço) antes de puxar — evita sobrescrever Hive com snapshot velho.
-      await ProdutosFirestoreService.syncTodosProdutos(
-        boxName: _box.name,
-        lojaId: lojaId,
-      );
+      // Só pull na abertura: não enviar Hive inteiro antes (evita nuvem ser sobrescrita por base local velha/incompleta).
       await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,
         produtosBox: _box,
+        preferRemoteQuantity: true,
       );
       logD('Produtos sincronizados do Firestore');
     } catch (e, st) {
@@ -550,6 +542,44 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     return ids;
   }
 
+  /// Atualiza `draft_produtos` e `produtos` com os dados atuais do Hive (categoria, subcategoria, etc.).
+  Future<void> _syncCatalogoWebParaChavesHive({
+    required String lojaId,
+    required List<int> hiveKeys,
+  }) async {
+    var any = false;
+    for (final key in hiveKeys) {
+      final p = _box.get(key);
+      if (p == null || !p.publicadoNoCatalogo) continue;
+      p.updatedAt = DateTime.now();
+      await p.save();
+      try {
+        await CatalogoSyncService.syncProduto(
+          p,
+          target: SyncTarget.draft,
+          lojaIdOverride: lojaId,
+        );
+        await CatalogoSyncService.syncProduto(
+          p,
+          target: SyncTarget.live,
+          lojaIdOverride: lojaId,
+          removerSeSemEstoque: true,
+        );
+        any = true;
+      } catch (e, st) {
+        logE(
+          '[ESTOQUE_LOTE] Falha ao sincronizar catálogo web (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
+      }
+    }
+    if (any && mounted) {
+      await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+      setState(() => _catalogoPrecisaAtualizar = true);
+    }
+  }
+
   void _selecionarTodos() {
     setState(() {
       _searchDebounce?.cancel();
@@ -613,6 +643,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     for (final p in _box.values) {
       final c = p.categoria.trim();
       if (c.isEmpty) continue;
+      if (p.ehCombo && _norm(c) == 'combo') continue;
       final n = _norm(c);
       catNormToCanon[n] = canonicalizeCategoria(c);
     }
@@ -689,11 +720,13 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       }
       final lojaIdSync = await _lojaIdParaLote();
       if (lojaIdSync != null && lojaIdSync.trim().isNotEmpty) {
+        final keys = _hiveKeysSelecionados();
         await ProdutosFirestoreService.syncProdutosPorChavesHive(
           box: _box,
           lojaId: lojaIdSync,
-          hiveKeys: _hiveKeysSelecionados(),
+          hiveKeys: keys,
         );
+        await _syncCatalogoWebParaChavesHive(lojaId: lojaIdSync, hiveKeys: keys);
         if (kDebugMode) {
           logD('[ESTOQUE_LOTE] categoria: sync estoque_produtos ${_hiveKeysSelecionados().length} item(ns)');
         }
@@ -724,6 +757,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     for (final p in _box.values) {
       final s = p.subcategoria.trim();
       if (s.isEmpty) continue;
+      if (p.ehCombo && _norm(s) == 'combo') continue;
       final n = _norm(s);
       subNormToCanon[n] = canonicalizeCategoria(s);
     }
@@ -800,11 +834,13 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       }
       final lojaIdSync = await _lojaIdParaLote();
       if (lojaIdSync != null && lojaIdSync.trim().isNotEmpty) {
+        final keys = _hiveKeysSelecionados();
         await ProdutosFirestoreService.syncProdutosPorChavesHive(
           box: _box,
           lojaId: lojaIdSync,
-          hiveKeys: _hiveKeysSelecionados(),
+          hiveKeys: keys,
         );
+        await _syncCatalogoWebParaChavesHive(lojaId: lojaIdSync, hiveKeys: keys);
         if (kDebugMode) {
           logD('[ESTOQUE_LOTE] subcategoria: sync estoque_produtos ${_hiveKeysSelecionados().length} item(ns)');
         }
@@ -1224,7 +1260,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
     final confirmar = await _showConfirmSheet(
       'Excluir ${_produtosSelecionados.length} produto(s)?',
-      'Os produtos serão removidos. Você pode desfazer em até 30 segundos.',
+      'Esta ação não pode ser desfeita. Os produtos serão removidos do estoque, catálogo e Firebase.',
       confirmText: 'Excluir',
       confirmColor: _errorColor,
     );
@@ -1242,7 +1278,6 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
       int sucesso = 0;
       int erro = 0;
-      final undoIds = <String>[];
 
       for (var keyStr in _produtosSelecionados) {
         final key = int.tryParse(keyStr);
@@ -1251,13 +1286,11 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         if (produto == null) continue;
 
         try {
-          final id = await SoftDeleteService.scheduleProdutoDelete(
+          await ProdutoExclusaoRemotaService.exclusaoRemotaCompletaImediata(
             produto: produto,
-            produtosBox: _box,
             lojaId: lojaId,
-            removeFromCatalogo: true,
           );
-          if (id != null) undoIds.add(id);
+          await _box.delete(key);
           sucesso++;
         } catch (e, st) {
           erro++;
@@ -1270,9 +1303,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           _produtosSelecionados.clear();
           _modoSelecao = false;
         });
-        _showSnackBarWithUndo(
-          '$sucesso produto(s) excluído(s)${erro > 0 ? ' ($erro erro(s))' : ''}. Desfazer?',
-          onUndo: undoIds.isNotEmpty ? () => _undoProdutosBatch(undoIds) : null,
+        _showSnackBar(
+          '$sucesso produto(s) excluído(s) definitivamente${erro > 0 ? ' ($erro erro(s))' : ''}.',
         );
       }
     } catch (e) {
@@ -2210,7 +2242,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   Future<void> _remover(Produto p) async {
     final confirmar = await _showConfirmSheet(
       'Remover Produto?',
-      'O produto "${p.nome}" será removido. Você pode desfazer em até 30 segundos.',
+      'Esta ação não pode ser desfeita. O produto "${p.nome}" será removido do estoque, catálogo e Firebase.',
       confirmText: 'Remover',
       confirmColor: _errorColor,
     );
@@ -2225,46 +2257,18 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
       }
-      final id = await SoftDeleteService.scheduleProdutoDelete(
+      await ProdutoExclusaoRemotaService.exclusaoRemotaCompletaImediata(
         produto: p,
-        produtosBox: _box,
         lojaId: lojaId,
-        removeFromCatalogo: true,
       );
+      await _box.delete(p.key);
       if (mounted) setState(() {});
-      _showSnackBarWithUndo(
-        'Produto removido. Desfazer?',
-        onUndo: id != null ? () => _undoProduto(id) : null,
-      );
+      _showSnackBar('Produto removido definitivamente.');
     } catch (e) {
       _showSnackBar("Erro ao remover: $e", isError: true);
     } finally {
       if (mounted) setState(() => _publicando = false);
     }
-  }
-
-  Future<void> _undoProduto(String id) async {
-    final ok = await SoftDeleteService.undo(id);
-    if (mounted) setState(() {});
-    scaffoldMessengerKey.currentState?.showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'Produto restaurado' : 'Não foi possível desfazer'),
-        backgroundColor: ok ? null : Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _undoProdutosBatch(List<String> ids) async {
-    final n = await SoftDeleteService.undoBatch(ids);
-    if (mounted) setState(() {});
-    scaffoldMessengerKey.currentState?.showSnackBar(
-      SnackBar(
-        content: Text(n > 0 ? '$n produto(s) restaurado(s)' : 'Não foi possível desfazer'),
-        backgroundColor: n > 0 ? null : Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   Future<void> _exportarEstoque() async {
@@ -2389,7 +2393,11 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   Future<void> _ajustarQuantidade(Produto p, int delta) async {
-    if (p.estoquePorTamanho.isNotEmpty) {
+    final extraTipo =
+        p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty;
+    final temEstoqueEstruturado =
+        p.estoquePorTamanho.isNotEmpty || p.usaVariacoes || extraTipo;
+    if (temEstoqueEstruturado) {
       _showSnackBar('Use Editar para ajustar produtos com grade', isError: true);
       return;
     }
@@ -2440,26 +2448,6 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       return;
     }
     if (mounted) setState(() {});
-  }
-
-  void _showSnackBarWithUndo(String message, {VoidCallback? onUndo}) {
-    if (!mounted) return;
-    scaffoldMessengerKey.currentState?.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 30),
-        action: onUndo != null
-            ? SnackBarAction(
-                label: 'Desfazer',
-                onPressed: () {
-                  scaffoldMessengerKey.currentState?.hideCurrentSnackBar();
-                  onUndo();
-                },
-              )
-            : null,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   void _showSnackBar(String message, {bool isError = false, Duration? duration}) {
@@ -3034,6 +3022,20 @@ Future<void> _despublicarTodosProdutos() async {
   }
 }
 
+  /// Unificação por nome só soma quantidade: não funde grade/variações/combo.
+  bool _produtoTemEstruturaEstoqueRica(Produto p) {
+    if (p.usaVariacoes) return true;
+    if (p.estoquePorTamanho.isNotEmpty) return true;
+    final vet = p.variacoesExtraTipo;
+    if (vet != null && vet.isNotEmpty) return true;
+    final ppt = p.precoPorTamanho;
+    if (ppt != null && ppt.isNotEmpty) return true;
+    if (p.tipoProduto == 'combo') return true;
+    if (p.itensCombo != null && p.itensCombo!.isNotEmpty) return true;
+    if (ComboConfigCanonical.isEffective(p.comboConfig)) return true;
+    return false;
+  }
+
 Future<void> _unificarDuplicados() async {
   final confirmar = await _showConfirmSheet(
     'Unificar duplicados?',
@@ -3064,9 +3066,15 @@ Future<void> _unificarDuplicados() async {
     int unificados = 0;
     int deletados = 0;
     int falhasFirestore = 0;
+    int gruposIgnoradosRicos = 0;
 
     for (final lista in grupos.values) {
       if (lista.length < 2) continue;
+
+      if (lista.any((p) => _produtoTemEstruturaEstoqueRica(p))) {
+        gruposIgnoradosRicos++;
+        continue;
+      }
 
       lista.sort((a, b) {
         final ka = a.key ?? -1;
@@ -3104,11 +3112,32 @@ Future<void> _unificarDuplicados() async {
     }
 
     if (!mounted) return;
-    final msg = unificados > 0
-        ? '$unificados grupo(s) unificado(s) ? $deletados duplicata(s) removida(s)'
-        : 'Nenhum duplicado encontrado';
+    final partes = <String>[];
+    if (unificados > 0) {
+      partes.add(
+          '$unificados grupo(s) unificado(s) — $deletados duplicata(s) removida(s)');
+    }
+    if (gruposIgnoradosRicos > 0) {
+      partes.add(
+        '$gruposIgnoradosRicos grupo(s) com variações, grade por tamanho ou combo não foram unificados. '
+        'Revise manualmente no cadastro (unificação automática só é segura para produtos simples).',
+      );
+    }
+    if (partes.isEmpty) {
+      partes.add('Nenhum duplicado encontrado');
+    }
+    var msg = partes.join(' ');
+    if (falhasFirestore > 0) {
+      msg = '$msg (${falhasFirestore} falha(s) ao sincronizar com a nuvem)';
+    }
+    final soRicos =
+        gruposIgnoradosRicos > 0 && unificados == 0 && deletados == 0;
     _showSnackBar(
-      falhasFirestore > 0 ? '$msg ($falhasFirestore falha(s) ao sincronizar com a nuvem)' : msg,
+      msg,
+      isError: soRicos,
+      duration: gruposIgnoradosRicos > 0
+          ? const Duration(seconds: 8)
+          : null,
     );
     setState(() {});
   } catch (e) {

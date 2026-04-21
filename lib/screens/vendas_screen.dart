@@ -1841,7 +1841,7 @@ class _VendasScreenState extends State<VendasScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              'A venda será removida. Você pode desfazer em até 30 segundos.',
+              'A venda será removida. Você pode desfazer em até 5 segundos.',
               style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               textAlign: TextAlign.center,
             ),
@@ -1896,7 +1896,7 @@ class _VendasScreenState extends State<VendasScreen>
           scaffoldMessengerKey.currentState?.showSnackBar(
             SnackBar(
               content: const Text('Venda excluída. Desfazer?'),
-              duration: const Duration(seconds: 30),
+              duration: const Duration(seconds: 5),
               action: id != null
                   ? SnackBarAction(
                       label: 'Desfazer',

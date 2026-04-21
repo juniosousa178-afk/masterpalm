@@ -2,7 +2,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:hive/hive.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -124,6 +124,11 @@ class _HomeScreenState extends State<HomeScreen>
   bool _vendedorSemPermissao =
       false; // ✅ Vendedor sem nenhuma permissão liberada
 
+  /// Recria [FutureBuilder]s após falha em [_buildCardsPrincipais] / [_buildMenuLateral].
+  int _homeCardsRetryKey = 0;
+  int _homeSidebarMenuRetryKey = 0;
+  int _homeDrawerMenuRetryKey = 0;
+
   @override
   void initState() {
     super.initState();
@@ -131,9 +136,10 @@ class _HomeScreenState extends State<HomeScreen>
     _carregarSessao();
 
     // Sincronização automática ao entrar (paridade Web/APK – vendas de qualquer plataforma aparecem em todas)
-    // Executa após o 1º frame para não competir com o first paint da Home.
+    // Web: atraso maior para não competir com scroll/gestos logo após o login.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<void>.delayed(const Duration(milliseconds: 180), () {
+      final delayMs = kIsWeb ? 900 : 220;
+      Future<void>.delayed(Duration(milliseconds: delayMs), () {
         if (!mounted) return;
         AutoSyncService.syncCompleto().then((r) {
           if (mounted) setState(() {}); // Atualiza dashboard quando sync terminar
@@ -181,28 +187,14 @@ class _HomeScreenState extends State<HomeScreen>
         (emailAuth.isNotEmpty ? emailAuth : 'Usuário');
     _tipo = (sessao.get('tipo_usuario') as String?) ?? 'vendedor';
 
-    // 🔹 contexto de loja: SEMPRE resolver do Firestore (users/usuarios) para evitar
-    // contaminação: no Web, Hive/IndexedDB é compartilhado; store_id em sessao pode
-    // ser de outro usuário (juniosousa178 vs trindadejunio70).
-    String? sessaoStore;
-    try {
-      sessaoStore = (await StoreResolverFacade.resolveForAdminApp()
-              .timeout(const Duration(seconds: 8), onTimeout: () => null))
-          ?.trim();
-      if (sessaoStore != null && sessaoStore.isNotEmpty && isValidForPublicLink(sessaoStore)) {
-        sessao.put('store_id', sessaoStore);
-        logD('📋 [HOME] store_id resolvido (Firestore): $sessaoStore');
-      } else {
-        sessaoStore = null;
-      }
-    } catch (_) {
-      sessaoStore = null;
-    }
+    // 🔹 contexto de loja: [resolveHomeStoreContext] já chama StoreResolverFacade (Firestore)
+    // e Hive com validação de usuário — evitar segunda chamada duplicada (dobrava latência/jank).
     final ctx = await resolveHomeStoreContext();
     _lojaIdInterno = ctx.lojaIdInterno;
     _lojaSlugPublico = ctx.slugPublico;
-    if (_lojaIdInterno.isEmpty && sessaoStore != null && sessaoStore.isNotEmpty) {
-      _lojaIdInterno = sessaoStore.trim();
+    if (_lojaIdInterno.isNotEmpty && isValidForPublicLink(_lojaIdInterno)) {
+      sessao.put('store_id', _lojaIdInterno);
+      logD('📋 [HOME] store_id persistido na sessão: $_lojaIdInterno');
     }
     if (_lojaSlugPublico.isEmpty && _lojaIdInterno.isNotEmpty && isValidForPublicLink(_lojaIdInterno)) {
       _lojaSlugPublico = _lojaIdInterno;
@@ -243,7 +235,14 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     if (mounted) setState(() => _carregando = false);
-    await _alertarContasReceberPendentes();
+
+    // Contas a receber: abrir box + varrer valores no isolate principal atrasa scroll/UI —
+    // rodar após 1º frame + pequeno delay (dialog continua igual quando necessário).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) unawaited(_alertarContasReceberPendentes());
+      });
+    });
 
     // ✅ Onboarding (primeira vez): exibir após sessão carregada
     if (mounted) {
@@ -2540,6 +2539,60 @@ class _HomeScreenState extends State<HomeScreen>
     return fullName.split(' ').first;
   }
 
+  /// [FutureBuilder] de listas (atalhos / menu) — erro, loading e retry sem tela vazia.
+  Widget _futureListOrError({
+    required AsyncSnapshot<List<Widget>> snap,
+    required VoidCallback onRetry,
+    required Widget Function(List<Widget> items) onData,
+  }) {
+    final theme = Theme.of(context);
+    if (snap.hasError) {
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.cloud_off_outlined,
+                size: 48,
+                color: theme.colorScheme.error,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Não foi possível carregar',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                kDebugMode
+                    ? snap.error.toString()
+                    : 'Verifique a conexão e tente novamente.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall,
+                maxLines: 5,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Tentar novamente'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (snap.connectionState == ConnectionState.waiting) {
+      return const Center(
+        child: CircularProgressIndicator(color: _primaryColor),
+      );
+    }
+    return onData(snap.data ?? const <Widget>[]);
+  }
+
   @override
   Widget build(BuildContext context) {
     // 🔥 CORREÇÃO: Mostrar landing page apenas se estiver na web E não tiver usuário logado
@@ -2642,22 +2695,21 @@ class _HomeScreenState extends State<HomeScreen>
                 // Grid de acesso (Loja, Estoque, Vendas, etc.)
                 Expanded(
                   child: FutureBuilder<List<Widget>>(
+                    key: ValueKey(_homeCardsRetryKey),
                     future: _buildCardsPrincipais(),
                     builder: (context, snap) {
-                      if (snap.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                            child: CircularProgressIndicator(
-                                color: _primaryColor));
-                      }
-                      final children = snap.data ?? const <Widget>[];
-                      return GridView.count(
-                        crossAxisCount: responsiveGridCount(context,
-                            mobile: 2, tablet: 3, desktop: 4),
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        childAspectRatio: desktopWeb ? 1.4 : 1.35,
-                        padding: EdgeInsets.zero,
-                        children: children,
+                      return _futureListOrError(
+                        snap: snap,
+                        onRetry: () => setState(() => _homeCardsRetryKey++),
+                        onData: (children) => GridView.count(
+                          crossAxisCount: responsiveGridCount(context,
+                              mobile: 2, tablet: 3, desktop: 4),
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          childAspectRatio: desktopWeb ? 1.4 : 1.35,
+                          padding: EdgeInsets.zero,
+                          children: children,
+                        ),
                       );
                     },
                   ),
@@ -2684,18 +2736,19 @@ class _HomeScreenState extends State<HomeScreen>
                 color: bgColor,
                 elevation: 2,
                 child: FutureBuilder<List<Widget>>(
+                  key: ValueKey(_homeSidebarMenuRetryKey),
                   future: _buildMenuLateral(sidebarMode: true),
                   builder: (context, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                          child:
-                              CircularProgressIndicator(color: _primaryColor));
-                    }
-                    return AdminSidebar(
-                      usuario: _usuario,
-                      tipo: _tipo,
-                      menuItems: snap.data ?? const [],
-                      onLogout: () => fazerLogout(context),
+                    return _futureListOrError(
+                      snap: snap,
+                      onRetry: () =>
+                          setState(() => _homeSidebarMenuRetryKey++),
+                      onData: (items) => AdminSidebar(
+                        usuario: _usuario,
+                        tipo: _tipo,
+                        menuItems: items,
+                        onLogout: () => fazerLogout(context),
+                      ),
                     );
                   },
                 ),
@@ -2975,68 +3028,69 @@ class _HomeScreenState extends State<HomeScreen>
       drawer: Drawer(
         backgroundColor: theme.colorScheme.surface,
         child: FutureBuilder<List<Widget>>(
+          key: ValueKey(_homeDrawerMenuRetryKey),
           future: _buildMenuLateral(),
           builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(
-                  child: CircularProgressIndicator(color: _primaryColor));
-            }
-            return ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
+            return _futureListOrError(
+              snap: snap,
+              onRetry: () => setState(() => _homeDrawerMenuRetryKey++),
+              onData: (items) => ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
+                      ),
                     ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.person,
+                              size: 32, color: Colors.white),
                         ),
-                        child: const Icon(Icons.person,
-                            size: 32, color: Colors.white),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _usuario,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          _tipo.toUpperCase(),
+                        const SizedBox(height: 16),
+                        Text(
+                          _usuario,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _tipo.toUpperCase(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                ...(snap.data ?? const []),
-              ],
+                  ...items,
+                ],
+              ),
             );
           },
         ),

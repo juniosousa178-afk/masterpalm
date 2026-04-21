@@ -10,6 +10,17 @@ import 'package:path/path.dart' as path;
 class ImageUploadService {
   static final FirebaseStorage _storage = FirebaseStorage.instance;
 
+  static bool _isStorageObjectMissing(Object e) {
+    if (e is FirebaseException) {
+      final c = e.code.toLowerCase();
+      if (c == 'object-not-found' || c == 'not-found') return true;
+    }
+    final s = e.toString().toLowerCase();
+    return s.contains('object-not-found') ||
+        s.contains('404') ||
+        s.contains('not found');
+  }
+
   /// Faz upload de uma imagem e retorna a URL pública
   ///
   /// [imagePath]: Caminho local da imagem
@@ -125,6 +136,10 @@ class ImageUploadService {
       debugPrint('🗑️ [IMAGE-UPLOAD] Imagem deletada: $imageUrl');
       return true;
     } catch (e) {
+      if (_isStorageObjectMissing(e)) {
+        debugPrint('🗑️ [IMAGE-UPLOAD] Já removida (404): $imageUrl');
+        return true;
+      }
       debugPrint('❌ [IMAGE-UPLOAD] Erro ao deletar imagem (type=${e.runtimeType})');
       return false;
     }
@@ -139,18 +154,23 @@ class ImageUploadService {
       debugPrint('⚠️ [IMAGE-UPLOAD] skip delete (não é URL Firebase gerenciada): ${imageUrl.length > 80 ? "${imageUrl.substring(0, 80)}..." : imageUrl}');
       return false;
     }
+    String? fullPath;
     try {
       final ref = _storage.refFromURL(imageUrl);
-      final full = ref.fullPath;
+      fullPath = ref.fullPath;
       final prefix = 'lojas/$lojaId/';
-      if (!full.startsWith(prefix)) {
-        debugPrint('⚠️ [IMAGE-UPLOAD] skip delete (path fora da loja): $full');
+      if (!fullPath.startsWith(prefix)) {
+        debugPrint('⚠️ [IMAGE-UPLOAD] skip delete (path fora da loja): $fullPath');
         return false;
       }
       await ref.delete();
-      debugPrint('🗑️ [IMAGE-UPLOAD] Removido objeto gerenciado: $full');
+      debugPrint('🗑️ [IMAGE-UPLOAD] Removido objeto gerenciado: $fullPath');
       return true;
     } catch (e) {
+      if (_isStorageObjectMissing(e)) {
+        debugPrint('🗑️ [IMAGE-UPLOAD] Objeto já inexistente (ok): ${fullPath ?? imageUrl}');
+        return true;
+      }
       debugPrint('❌ [IMAGE-UPLOAD] Falha delete seguro (type=${e.runtimeType}) url=${imageUrl.length > 60 ? "${imageUrl.substring(0, 60)}..." : imageUrl}');
       return false;
     }
@@ -167,7 +187,8 @@ class ImageUploadService {
   static bool isFirebaseUrl(String? url) {
     if (url == null || url.isEmpty) return false;
     return url.contains('firebasestorage.googleapis.com') ||
-           url.contains('firebase');
+        url.contains('.firebasestorage.app') ||
+        url.contains('firebase');
   }
 
   /// Verifica se é um caminho local de arquivo

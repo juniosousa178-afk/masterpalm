@@ -1,6 +1,8 @@
 // lib/screens/public_catalog/catalog_config_service.dart
 // Parsing de fretes, cupons e mídia do config – extraído do public_catalog_screen.
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../../core/safe_cast.dart';
 
 double _parseNum(dynamic v) =>
@@ -110,6 +112,57 @@ List<Map<String, dynamic>> parseFretes(Map<String, dynamic> cfg) {
   }
 
   return fretes;
+}
+
+/// A tela **Fretes e Cupons** grava os fretes manuais em
+/// `lojas/{lojaId}/{config|draft_config}/fretes` no campo [manualFretes] (e em Hive no app).
+/// O doc principal `.../config` muitas vezes **não** repete a chave [fretes], que o catálogo
+/// usa em [parseFretes]. Sem este merge, o **link web** não via os fretes cadastrados; o app
+/// às vezes via por cache Hive ou rascunho local.
+Future<void> mergeCatalogFretesManualFromFirestoreSubdoc({
+  required String lojaId,
+  required String cfgCol,
+  required Map<String, dynamic> cfg,
+}) async {
+  final db = FirebaseFirestore.instance;
+
+  Future<List<Map<String, dynamic>>?> readManualFretes(String col) async {
+    try {
+      final snap = await db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(col)
+          .doc('fretes')
+          .get();
+      if (!snap.exists) return null;
+      final raw = snap.data();
+      if (raw == null) return null;
+      final manual = raw['manualFretes'] ?? raw['fretes'];
+      if (manual is! List) return null;
+      return manual
+          .map((e) => asMap(e))
+          .where((m) => m.isNotEmpty)
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final fromCurrent = await readManualFretes(cfgCol);
+  if (fromCurrent != null) {
+    // Sempre usa o subdoc de fretes quando existir (inclusive lista vazia),
+    // evitando catálogo web ficar preso em frete antigo.
+    cfg['fretes'] = fromCurrent;
+    return;
+  }
+
+  if (cfgCol == 'draft_config') {
+    final fromPublished = await readManualFretes('config');
+    if (fromPublished != null) {
+      cfg['fretes'] = fromPublished;
+    }
+  }
 }
 
 // ===================================================================

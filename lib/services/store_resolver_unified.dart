@@ -21,6 +21,13 @@ import 'loja_id_service.dart';
 import 'store_resolver_service.dart';
 import 'store_context.dart';
 
+class _PublicCatalogResolveCacheEntry {
+  final StoreResolveResult result;
+  final DateTime cachedAt;
+
+  _PublicCatalogResolveCacheEntry(this.result, this.cachedAt);
+}
+
 /// Contexto de resolução de loja
 enum StoreResolveContext {
   /// Página pública (catálogo do cliente) - usa storeId da URL
@@ -80,6 +87,49 @@ class StoreResolverUnified {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Evita 2ª ida ao Firestore logo após o [main] resolver slug → id (mesma aba / recarregar).
+  static final Map<String, _PublicCatalogResolveCacheEntry>
+      _publicCatalogResolveCache = {};
+  static const Duration _publicCatalogResolveTtl = Duration(minutes: 2);
+
+  static StoreResolveResult? _publicCatalogResolveFromCache(String rawId) {
+    final key = rawId.toLowerCase();
+    final hit = _publicCatalogResolveCache[key];
+    if (hit == null) return null;
+    if (DateTime.now().difference(hit.cachedAt) > _publicCatalogResolveTtl) {
+      _publicCatalogResolveCache.remove(key);
+      return null;
+    }
+    logD('✅ [STORE-RESOLVER] Cache público (TTL ${_publicCatalogResolveTtl.inSeconds}s): $key');
+    return hit.result;
+  }
+
+  static void _publicCatalogResolvePutCache(String rawId, StoreResolveResult r) {
+    if (!r.success) return;
+    _publicCatalogResolveCache[rawId.toLowerCase()] =
+        _PublicCatalogResolveCacheEntry(r, DateTime.now());
+  }
+
+  /// [main] Web: após [slug/query → id canônico], alimenta o cache para [PublicCatalogScreen]
+  /// não repetir `lojas/{id}.get()` na primeira pintura.
+  static void seedPublicCatalogResolveFromBootstrap({
+    required String urlSlugOrId,
+    required String resolvedCanonicalStoreId,
+  }) {
+    final can = resolvedCanonicalStoreId.trim();
+    final raw = urlSlugOrId.trim();
+    if (can.isEmpty || raw.isEmpty) return;
+    if (can.toLowerCase() == raw.toLowerCase()) {
+      _publicCatalogResolvePutCache(raw, StoreResolveResult.ok(can));
+      return;
+    }
+    _publicCatalogResolvePutCache(
+      raw,
+      StoreResolveResult.redirect(raw, can),
+    );
+    _publicCatalogResolvePutCache(can, StoreResolveResult.ok(can));
+  }
+
   // ============================================================
   // RESOLUÇÃO PRINCIPAL
   // ============================================================
@@ -123,6 +173,9 @@ class StoreResolverUnified {
       );
     }
 
+    final cached = _publicCatalogResolveFromCache(rawId);
+    if (cached != null) return cached;
+
     // Verificar se a loja existe no Firestore (timeout curto na web para não travar)
     try {
       const timeoutSeconds = 5;
@@ -140,11 +193,15 @@ class StoreResolverUnified {
         final redirectTo = (lojaData['redirectTo'] ?? '').toString().trim();
         if (redirectTo.isNotEmpty && redirectTo != rawId) {
           logD('🔀 [STORE-RESOLVER] Loja $rawId redireciona para $redirectTo');
-          return StoreResolveResult.redirect(rawId, redirectTo);
+          final r = StoreResolveResult.redirect(rawId, redirectTo);
+          _publicCatalogResolvePutCache(rawId, r);
+          return r;
         }
 
         logD('✅ [STORE-RESOLVER] Loja encontrada: $rawId');
-        return StoreResolveResult.ok(rawId);
+        final ok = StoreResolveResult.ok(rawId);
+        _publicCatalogResolvePutCache(rawId, ok);
+        return ok;
       }
 
       // Loja não existe com esse ID exato
@@ -160,7 +217,9 @@ class StoreResolverUnified {
             .timeout(const Duration(seconds: 5));
         if (normalizedDoc.exists) {
           logD('🔀 [STORE-RESOLVER] Encontrada versão lowercase, redirecionando');
-          return StoreResolveResult.redirect(rawId, normalizedId);
+          final r = StoreResolveResult.redirect(rawId, normalizedId);
+          _publicCatalogResolvePutCache(rawId, r);
+          return r;
         }
       }
 
@@ -168,7 +227,9 @@ class StoreResolverUnified {
       final slugResult = await _findBySlug(rawId);
       if (slugResult != null) {
         logD('🔀 [STORE-RESOLVER] Encontrado por slug: $slugResult');
-        return StoreResolveResult.redirect(rawId, slugResult);
+        final r = StoreResolveResult.redirect(rawId, slugResult);
+        _publicCatalogResolvePutCache(rawId, r);
+        return r;
       }
 
       logD('❌ [STORE-RESOLVER] Loja não encontrada: $rawId');
@@ -257,6 +318,8 @@ class StoreResolverUnified {
   /// DEVE ser chamado no logout para evitar mistura de dados entre usuários
   static Future<void> clearAllCaches() async {
     logD('🧹 [STORE-RESOLVER] Limpando TODOS os caches de loja...');
+
+    _publicCatalogResolveCache.clear();
 
     // 1. Limpar StoreResolverService
     StoreResolverService.invalidate();

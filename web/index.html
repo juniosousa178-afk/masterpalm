@@ -17,9 +17,12 @@
   <base href="$FLUTTER_BASE_HREF">
   <!-- Em /loja/xxx os assets devem vir da raiz (evita ServiceWorker/JS com MIME text/html) -->
   <script>(function(){if(location.pathname.indexOf('/loja/')===0){var d=document,b=d.querySelector('base');if(b)b.href='/';}})();</script>
+  <!-- Em localhost, não forçar update de SW: evita misturar caches e quebrar dart_sdk (ex. Symbol(_privateNames)). -->
   <script>
     (function () {
       if (!('serviceWorker' in navigator)) return;
+      var h = location.hostname;
+      if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') return;
       window.addEventListener('load', function () {
         navigator.serviceWorker.getRegistrations().then(function (regs) {
           for (var i = 0; i < regs.length; i++) {
@@ -100,7 +103,7 @@
   <!-- App Check: reCAPTCHA v3 (chave via Remote Config). Para debug local, adicione:
        <script>self.FIREBASE_APPCHECK_DEBUG_TOKEN=true;</script> e registre o token no Console. -->
 
-  <!-- Script principal do Flutter -->
-  <script src="flutter_bootstrap.js" async></script>
+  <!-- Script principal do Flutter (sem async: ordem de carregamento do require.js / dart_sdk) -->
+  <script src="flutter_bootstrap.js"></script>
 </body>
 </html>

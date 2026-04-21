@@ -118,6 +118,17 @@ bool _temTexto(String? v) => v != null && v.trim().isNotEmpty;
 bool _listaComDados(List<dynamic>? v) => v != null && v.isNotEmpty;
 bool _mapaComDados(Map<dynamic, dynamic>? v) => v != null && v.isNotEmpty;
 
+/// Import sem mapa de variações, sem grade por tamanho e sem preço por tamanho (não é combo).
+bool _importNovoIndicaProdutoSimples(Produto novo) {
+  if (novo.tipoProduto == 'combo') return false;
+  if (_mapaComDados(novo.variacoes)) return false;
+  if (_mapaComDados(novo.estoquePorTamanho)) return false;
+  if (novo.precoPorTamanho != null && novo.precoPorTamanho!.isNotEmpty) {
+    return false;
+  }
+  return true;
+}
+
 void _mergeProdutoExistente(Produto existente, Produto novo) {
   // Campos numéricos principais (importação traz valores concretos)
   existente.quantidade = novo.quantidade;
@@ -206,6 +217,23 @@ void _mergeProdutoExistente(Produto existente, Produto novo) {
   }
   if (ComboConfigCanonical.isEffective(novo.comboConfig)) {
     existente.comboConfig = ComboConfigCanonical.copyMap(novo.comboConfig);
+  }
+
+  if (_importNovoIndicaProdutoSimples(novo)) {
+    final tinhaVariacaoOuExtra = (existente.variacoes != null &&
+            existente.variacoes!.isNotEmpty) ||
+        (existente.variacoesExtraTipo != null &&
+            existente.variacoesExtraTipo!.isNotEmpty);
+    final tinhaGrade = existente.estoquePorTamanho.isNotEmpty;
+    if (tinhaVariacaoOuExtra || tinhaGrade) {
+      logW(
+        '[VARIACAO_CLEAR] import merge: payload simples → removendo variações/extras/grade antigas',
+        tag: 'VARIACAO_CLEAR',
+      );
+    }
+    existente.variacoes = null;
+    existente.variacoesExtraTipo = null;
+    existente.estoquePorTamanho = <String, int>{};
   }
 }
 

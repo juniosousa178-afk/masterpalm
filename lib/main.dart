@@ -563,6 +563,19 @@ Future<void> initFirebaseMonitoring() async {
         unwrappedStack = error.stackTrace;
       }
       logE('💥 [PlatformDispatcher/Web] $unwrapped', error: unwrapped, st: unwrappedStack);
+      // Web não tem Crashlytics: contagem agregada no Analytics (só tipo, sem mensagem/PII).
+      if (Firebase.apps.isNotEmpty) {
+        final typeStr = unwrapped.runtimeType.toString();
+        final typeParam = typeStr.length > 36 ? typeStr.substring(0, 36) : typeStr;
+        unawaited(
+          FirebaseAnalytics.instance
+              .logEvent(
+                name: 'web_uncaught_error',
+                parameters: {'exception_type': typeParam},
+              )
+              .catchError((Object _) {}),
+        );
+      }
       return true;
     };
   }
@@ -1573,6 +1586,10 @@ Future<void> main() async {
           } catch (e) {
             logW('⚠️ [MAIN] Resolver slug falhou, usando slug da URL (type=${e.runtimeType})');
           }
+          StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+            urlSlugOrId: slugOuId,
+            resolvedCanonicalStoreId: lojaIdResolvido,
+          );
           final vendedorRef = _vendedorRefFromUrl();
           final indicacaoRef = _indicacaoRefFromUrl();
           final produtoRef = _produtoRefFromUrl();
@@ -1599,6 +1616,10 @@ Future<void> main() async {
               logW(
                   '⚠️ [MAIN] Resolver lojaId (domínio mapeado) falhou (type=${e.runtimeType})');
             }
+            StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+              urlSlugOrId: fromMappedHost,
+              resolvedCanonicalStoreId: lojaIdResolvido,
+            );
             final vendedorRef = _vendedorRefFromUrl();
             final indicacaoRef = _indicacaoRefFromUrl();
             final produtoRef = _produtoRefFromUrl();
@@ -1663,6 +1684,48 @@ Future<void> resetHiveIfSchemaChanged() async {
 }
 
 // ===========================================================================
+// HIVE: adapters ERP (sincronamente pesado — centenas de registros no isolate)
+// ===========================================================================
+
+void _registerAllHiveAdaptersBootstrap() {
+  if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ClienteAdapter());
+  if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(VendaAdapter());
+  if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(ProdutoAdapter());
+  if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(FornecedorAdapter());
+  if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(UsuarioAdapter());
+  if (!Hive.isAdapterRegistered(5)) Hive.registerAdapter(ProdutoCatalogoAdapter());
+  if (!Hive.isAdapterRegistered(6)) Hive.registerAdapter(CatalogoConfigAdapter());
+  if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(VendaItemAdapter());
+  if (!Hive.isAdapterRegistered(8)) Hive.registerAdapter(FechamentoMensalAdapter());
+  if (!Hive.isAdapterRegistered(13)) Hive.registerAdapter(SubcategoriaAdapter());
+  if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(CupomPremioAdapter());
+  if (!Hive.isAdapterRegistered(15)) Hive.registerAdapter(MasterConfigAdapter());
+  if (!Hive.isAdapterRegistered(16)) Hive.registerAdapter(MetaAdapter());
+  if (!Hive.isAdapterRegistered(17)) Hive.registerAdapter(CategoriaAdapter());
+  if (!Hive.isAdapterRegistered(18)) Hive.registerAdapter(EstoqueItemAdapter());
+  if (!Hive.isAdapterRegistered(25)) Hive.registerAdapter(ComissaoConfigAdapter());
+  if (!Hive.isAdapterRegistered(26)) Hive.registerAdapter(ComissaoVendedorAdapter());
+  if (!Hive.isAdapterRegistered(27)) Hive.registerAdapter(VendaTrackingAdapter());
+  if (!Hive.isAdapterRegistered(28)) Hive.registerAdapter(ComissaoVendaAdapter());
+  if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(NotaFiscalAdapter());
+  if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(NotaFiscalItemAdapter());
+  if (!Hive.isAdapterRegistered(29)) Hive.registerAdapter(ContaReceberAdapter());
+  if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(LancamentoFinanceiroAdapter());
+  if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(GastoFixoMensalAdapter());
+  if (!Hive.isAdapterRegistered(32)) Hive.registerAdapter(CompraFornecedorAdapter());
+  if (!Hive.isAdapterRegistered(33)) Hive.registerAdapter(CompraFornecedorItemAdapter());
+  if (!Hive.isAdapterRegistered(34)) Hive.registerAdapter(CompraItemPipelineAdapter());
+}
+
+/// Catálogo web: não bloquear [main] com dezenas de [registerAdapter] síncronos
+/// antes do 2º [runApp(CatalogWebRoot)] — agenda após o próximo event loop.
+Future<void> _registerHiveAdaptersBootstrapDeferred() async {
+  await Future<void>.delayed(Duration.zero);
+  _registerAllHiveAdaptersBootstrap();
+  boot.mark('hive.adapters.ok');
+}
+
+// ===========================================================================
 // 🧰 BOOTSTRAP
 // ===========================================================================
 Future<void> _bootstrapSafe() async {
@@ -1672,9 +1735,19 @@ Future<void> _bootstrapSafe() async {
 
   boot.mark('intl.start');
   Intl.defaultLocale = 'pt_BR';
-  await initializeDateFormatting('pt_BR');
-  boot.mark('intl.ok');
-  logD('🟢 [BOOT] Intl / Locale configurados (pt_BR)');
+  // Carregar padrões de data pt_BR em background: no Web o asset é grande e atrasa
+  // o primeiro frame (login/splash) se aguardar aqui.
+  unawaited(
+    initializeDateFormatting('pt_BR').then((_) {
+      boot.mark('intl.ok');
+      logD('🟢 [BOOT] Intl date symbols pt_BR carregados (deferred)');
+    }).catchError((Object e, StackTrace st) {
+      boot.mark('intl.fail', e);
+      logW('⚠️ [BOOT] initializeDateFormatting falhou (type=${e.runtimeType})');
+      if (kDebugMode) logD('$st');
+    }),
+  );
+  logD('🟢 [BOOT] Intl defaultLocale=pt_BR (date symbols em background)');
 
   final firebaseOk = await _initFirebaseCore();
   logD('[BOOT-AUTH] firebaseOk=$firebaseOk');
@@ -1684,7 +1757,7 @@ Future<void> _bootstrapSafe() async {
       await _webShouldMinimalBootstrapForPublicCatalogViewer();
   if (webCatalogMinimalBoot) {
     logD(
-      '[BOOT-CATALOG-WEB] Catálogo público na web → bootstrap mínimo (sem aguardar auth 5s nem RemoteConfig/AppCheck antes do catálogo)',
+      '[BOOT-CATALOG-WEB] Catálogo público na web → bootstrap mínimo (sem aguardar auth longa nem RemoteConfig/AppCheck antes do catálogo)',
     );
   }
 
@@ -1701,12 +1774,14 @@ Future<void> _bootstrapSafe() async {
   if (firebaseOk) {
     var u = FirebaseAuth.instance.currentUser;
     if (!webCatalogMinimalBoot && u == null && kIsWeb) {
-      logD('🟡 [BOOT] Web: currentUser null, aguardando auth (até 5s)...');
+      // Sessão persistida costuma aparecer no 1º evento; visitante sem login nunca
+      // recebe usuário não-anônimo — não pode esperar 5s (atrasava muito o 1º acesso).
+      logD('🟡 [BOOT] Web: currentUser null, aguardando restauração auth (até 900ms)...');
       try {
         await FirebaseAuth.instance.authStateChanges()
             .where((x) => x != null && !x.isAnonymous)
             .first
-            .timeout(const Duration(seconds: 5), onTimeout: () => null);
+            .timeout(const Duration(milliseconds: 900), onTimeout: () => null);
         u = FirebaseAuth.instance.currentUser;
       } catch (_) {}
     }
@@ -1732,34 +1807,10 @@ Future<void> _bootstrapSafe() async {
       await Hive.initFlutter(dirPath);
     }
     boot.mark('hive.init.ok');
-    if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ClienteAdapter());
-    if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(VendaAdapter());
-    if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(ProdutoAdapter());
-    if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(FornecedorAdapter());
-    if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(UsuarioAdapter());
-    if (!Hive.isAdapterRegistered(5)) Hive.registerAdapter(ProdutoCatalogoAdapter());
-    if (!Hive.isAdapterRegistered(6)) Hive.registerAdapter(CatalogoConfigAdapter());
-    if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(VendaItemAdapter());
-    if (!Hive.isAdapterRegistered(8)) Hive.registerAdapter(FechamentoMensalAdapter());
-    if (!Hive.isAdapterRegistered(13)) Hive.registerAdapter(SubcategoriaAdapter());
-    if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(CupomPremioAdapter());
-    if (!Hive.isAdapterRegistered(15)) Hive.registerAdapter(MasterConfigAdapter());
-    if (!Hive.isAdapterRegistered(16)) Hive.registerAdapter(MetaAdapter());
-    if (!Hive.isAdapterRegistered(17)) Hive.registerAdapter(CategoriaAdapter());
-    if (!Hive.isAdapterRegistered(18)) Hive.registerAdapter(EstoqueItemAdapter());
-    if (!Hive.isAdapterRegistered(25)) Hive.registerAdapter(ComissaoConfigAdapter());
-    if (!Hive.isAdapterRegistered(26)) Hive.registerAdapter(ComissaoVendedorAdapter());
-    if (!Hive.isAdapterRegistered(27)) Hive.registerAdapter(VendaTrackingAdapter());
-    if (!Hive.isAdapterRegistered(28)) Hive.registerAdapter(ComissaoVendaAdapter());
-    if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(NotaFiscalAdapter());
-    if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(NotaFiscalItemAdapter());
-    if (!Hive.isAdapterRegistered(29)) Hive.registerAdapter(ContaReceberAdapter());
-    if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(LancamentoFinanceiroAdapter());
-    if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(GastoFixoMensalAdapter());
-    if (!Hive.isAdapterRegistered(32)) Hive.registerAdapter(CompraFornecedorAdapter());
-    if (!Hive.isAdapterRegistered(33)) Hive.registerAdapter(CompraFornecedorItemAdapter());
-    if (!Hive.isAdapterRegistered(34)) Hive.registerAdapter(CompraItemPipelineAdapter());
-    boot.mark('hive.adapters.ok');
+    logD(
+      '[BOOT-FASTPATH] adapters ERP em background (sem bloquear 1º frame; visitante/login)',
+    );
+    unawaited(_registerHiveAdaptersBootstrapDeferred());
     await Hive.openBox('sessao');
     await Hive.openBox('config');
     boot.mark('hive.boxes.critical');
@@ -1767,9 +1818,12 @@ Future<void> _bootstrapSafe() async {
     initDarkModeFromHive();
     boot.mark('local.fix.ok');
     scheduleBootstrapDeferredWork(
-      delay: const Duration(milliseconds: 120),
-      logTag: 'fastpath_full',
-      work: () => _bootstrapDeferredFull(firebaseOk: firebaseOk),
+      delay: Duration(milliseconds: webCatalogMinimalBoot ? 0 : 120),
+      logTag: webCatalogMinimalBoot ? 'catalog_web_deferred_min' : 'fastpath_full',
+      work: () => _bootstrapDeferredFull(
+        firebaseOk: firebaseOk,
+        publicCatalogWebVisitor: webCatalogMinimalBoot,
+      ),
     );
     logD('✅ [BOOT] Bootstrap fast path concluído – mostrando login');
     logD(boot.dump());
@@ -1840,54 +1894,7 @@ Future<void> _bootstrapSafe() async {
   }
   boot.mark('hive.init.ok');
 
-  if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ClienteAdapter());
-  if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(VendaAdapter());
-  if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(ProdutoAdapter());
-  if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(FornecedorAdapter());
-  if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(UsuarioAdapter());
-  if (!Hive.isAdapterRegistered(5)) {
-    Hive.registerAdapter(ProdutoCatalogoAdapter());
-  }
-  if (!Hive.isAdapterRegistered(6)) {
-    Hive.registerAdapter(CatalogoConfigAdapter());
-  }
-  if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(VendaItemAdapter());
-  if (!Hive.isAdapterRegistered(8)) {
-    Hive.registerAdapter(FechamentoMensalAdapter());
-  }
-  if (!Hive.isAdapterRegistered(13)) {
-    Hive.registerAdapter(SubcategoriaAdapter());
-  }
-  if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(CupomPremioAdapter());
-  if (!Hive.isAdapterRegistered(15)) {
-    Hive.registerAdapter(MasterConfigAdapter());
-  }
-  if (!Hive.isAdapterRegistered(16)) Hive.registerAdapter(MetaAdapter());
-  if (!Hive.isAdapterRegistered(17)) Hive.registerAdapter(CategoriaAdapter());
-  if (!Hive.isAdapterRegistered(18)) Hive.registerAdapter(EstoqueItemAdapter());
-  // ✅ NOVO: Adapters do sistema de comissões
-  if (!Hive.isAdapterRegistered(25)) {
-    Hive.registerAdapter(ComissaoConfigAdapter());
-  }
-  if (!Hive.isAdapterRegistered(26)) {
-    Hive.registerAdapter(ComissaoVendedorAdapter());
-  }
-  if (!Hive.isAdapterRegistered(27)) {
-    Hive.registerAdapter(VendaTrackingAdapter());
-  }
-  if (!Hive.isAdapterRegistered(28)) {
-    Hive.registerAdapter(ComissaoVendaAdapter());
-  }
-  if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(NotaFiscalAdapter());
-  if (!Hive.isAdapterRegistered(11)) {
-    Hive.registerAdapter(NotaFiscalItemAdapter());
-  }
-  if (!Hive.isAdapterRegistered(29)) Hive.registerAdapter(ContaReceberAdapter());
-  if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(LancamentoFinanceiroAdapter());
-  if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(GastoFixoMensalAdapter());
-  if (!Hive.isAdapterRegistered(32)) Hive.registerAdapter(CompraFornecedorAdapter());
-  if (!Hive.isAdapterRegistered(33)) Hive.registerAdapter(CompraFornecedorItemAdapter());
-  if (!Hive.isAdapterRegistered(34)) Hive.registerAdapter(CompraItemPipelineAdapter());
+  _registerAllHiveAdaptersBootstrap();
   boot.mark('hive.adapters.ok');
   logD('🟢 [BOOT] Adapters Hive registrados');
 
@@ -1989,8 +1996,40 @@ Future<void> _bootstrapDeferred({required bool firebaseOk}) async {
 }
 
 /// Bootstrap completo em background (fast path web + mobile): RemoteConfig, App Check, boxes Hive, SyncQueue, etc.
-Future<void> _bootstrapDeferredFull({required bool firebaseOk}) async {
+///
+/// [publicCatalogWebVisitor]: visitante abrindo só `/loja/...` (ou host mapeado) — não abre dezenas de
+/// boxes Hive nem SyncQueue/auto-sync; isso deixava o catálogo web lento sem benefício.
+Future<void> _bootstrapDeferredFull({
+  required bool firebaseOk,
+  bool publicCatalogWebVisitor = false,
+}) async {
   try {
+    if (publicCatalogWebVisitor) {
+      logD(
+        '[BOOT-CATALOG-WEB] deferred mínimo: sem Hive extra, SyncQueue, auto-sync '
+        '(visitante catálogo público)',
+      );
+      if (firebaseOk) {
+        unawaited(
+          RemoteConfigService.init()
+              .timeout(const Duration(seconds: 8), onTimeout: () {})
+              .catchError((Object _, StackTrace __) {}),
+        );
+        unawaited(
+          initFirebaseAppCheck()
+              .timeout(const Duration(seconds: 5), onTimeout: () {})
+              .catchError((Object _, StackTrace __) {}),
+        );
+        unawaited(
+          initFirebaseMonitoring()
+              .timeout(const Duration(seconds: 3), onTimeout: () {})
+              .catchError((Object _, StackTrace __) {}),
+        );
+      }
+      logD('🟢 [BOOT] _bootstrapDeferredFull() concluído (catálogo web mínimo)');
+      return;
+    }
+
     if (firebaseOk) {
       await RemoteConfigService.init();
       try {

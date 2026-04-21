@@ -2424,6 +2424,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             height: compact ? 64 : 68,
                             child: CatalogImagePlaceholder(
                               url: fixedImageUrl,
+                              resolvedLojaId: widget.lojaId,
                               fit: BoxFit.cover,
                             ),
                           ),

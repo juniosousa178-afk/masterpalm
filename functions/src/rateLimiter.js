@@ -27,6 +27,7 @@ export const RATE_LIMITS = {
   calcularMelhorEnvio: { maxPerMin: 30, windowMs: 60_000 },
   calcularFrenet: { maxPerMin: 30, windowMs: 60_000 },
   calcularSuperFrete: { maxPerMin: 30, windowMs: 60_000 },
+  testarMelhorEnvioToken: { maxPerMin: 20, windowMs: 60_000 },
 
   // Pagamento: criar preferência é raro por sessão
   createPreference: { maxPerMin: 10, windowMs: 60_000 },

@@ -35,6 +35,17 @@ class StoreResolverFacade {
     );
   }
 
+  /// Web [main]: após resolver slug → id antes de [CatalogWebRoot], evita 2ª leitura Firestore no catálogo.
+  static void seedPublicCatalogResolveFromBootstrap({
+    required String urlSlugOrId,
+    required String resolvedCanonicalStoreId,
+  }) {
+    StoreResolverUnified.seedPublicCatalogResolveFromBootstrap(
+      urlSlugOrId: urlSlugOrId,
+      resolvedCanonicalStoreId: resolvedCanonicalStoreId,
+    );
+  }
+
   /// Resolve a loja para o dashboard/admin (preview no app, usuário logado).
   /// Retorna [StoreResolveResult] para manter redirects, canonicalStoreId, errorMessage.
   /// Delega a [StoreResolverUnified.resolve] com contexto adminDashboard.

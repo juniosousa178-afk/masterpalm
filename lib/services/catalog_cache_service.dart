@@ -15,6 +15,8 @@ import '../core/logger.dart';
 import '../core/safe_cast.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 
+import '../screens/public_catalog/catalog_config_service.dart'
+    show mergeCatalogFretesManualFromFirestoreSubdoc;
 import '../screens/public_catalog/catalog_public_header_debug.dart';
 import 'catalog_cache_disk_store.dart';
 import 'catalog_config_published_v3_bridge.dart';
@@ -109,7 +111,10 @@ class CatalogCacheService {
     void onListen() {
       if (!forceRefresh) {
         final cached = _configCache[cacheKey];
-        if (cached != null && !cached.isExpired(_configTtlSeconds)) {
+        // Nunca servir mapa vazio do cache: produtos podem carregar e o header fica em "Minha Loja".
+        if (cached != null &&
+            !cached.isExpired(_configTtlSeconds) &&
+            cached.data.isNotEmpty) {
           logD('📦 [CACHE] Config servido do cache');
           lastEmitted = cached.data;
           if (kDebugMode) {
@@ -132,6 +137,7 @@ class CatalogCacheService {
         if (!forceRefresh) {
           final disk = await _disk.readConfig(lojaId, preview: preview);
           if (disk.cfg != null &&
+              disk.cfg!.isNotEmpty &&
               disk.updatedAtMs != null &&
               (DateTime.now().millisecondsSinceEpoch - disk.updatedAtMs!) <= ttlMs) {
             final inMemory = _configCache[cacheKey];
@@ -292,7 +298,9 @@ class CatalogCacheService {
     final payPrimarySnap = results[1];
     final payFallbackSnap = results[2];
     final data = cfgSnap.data();
-    final cfg = asMap(data);
+    // Mesmo critério de [_cfgStream] (public_catalog_screen): asMapDeep evita
+    // Map<dynamic,dynamic> aninhado no Web e garante que o bridge V3 veja published/draft igual ao preview.
+    final cfg = asMapDeep(data);
     if (kDebugMode) {
       catalogDebugLogConfigPipeline(
         phase: 'fetch_pre_bridge',
@@ -320,7 +328,7 @@ class CatalogCacheService {
       final legacyLiveSnap =
           await baseRef.collection('config_catalogo_live').doc('main').get();
         if (legacyLiveSnap.exists) {
-        final legacyLive = asMap(legacyLiveSnap.data());
+        final legacyLive = asMapDeep(legacyLiveSnap.data());
         if (cfg.isEmpty) {
           cfg.addAll(legacyLive);
         } else {
@@ -380,6 +388,12 @@ class CatalogCacheService {
         cfg['payments'] = payData != null ? asMap(payData) : null;
       }
     } catch (_) {}
+
+    await mergeCatalogFretesManualFromFirestoreSubdoc(
+      lojaId: lojaId,
+      cfgCol: cfgCol,
+      cfg: cfg,
+    );
 
     // Fallback cupons se config vazio
     final cuponsCfg = cfg['cupons'];

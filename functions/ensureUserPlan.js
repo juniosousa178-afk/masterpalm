@@ -517,7 +517,11 @@ export async function computePlanState({ db, uid, email }) {
 
 // =============== CALLABLE PRINCIPAL ===============
 export const ensureUserPlan = onCall(
-  { cors: MASTERPALM_APP_WEB_ORIGINS },
+  {
+    cors: MASTERPALM_APP_WEB_ORIGINS,
+    // Gen2: sem invoker público, o preflight OPTIONS pode falhar no browser (CORS “sem header”).
+    invoker: "public",
+  },
   async (request) => {
   try {
     const origin =

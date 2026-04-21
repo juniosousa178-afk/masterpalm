@@ -50,9 +50,8 @@ export const mercadopagoWebhook = onRequest(async (req, res) => {
 
       console.log(`💳 Processando pagamento ID: ${paymentId}`);
 
-      // Buscar detalhes do pagamento no Mercado Pago (multi-loja: tenta token global, depois cada loja)
-      const globalToken = process.env.MP_ACCESS_TOKEN || (functions.config().mp?.access_token || "") || "";
-      const { payment, lojaId } = await resolveLojaAndPayment(paymentId, globalToken);
+      // Buscar detalhes do pagamento no Mercado Pago (estritamente por token de loja)
+      const { payment, lojaId } = await resolveLojaAndPayment(paymentId);
 
       if (!payment) {
         console.error('❌ Não foi possível buscar detalhes do pagamento');

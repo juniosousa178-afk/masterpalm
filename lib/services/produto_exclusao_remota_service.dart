@@ -67,12 +67,13 @@ class ProdutoExclusaoRemotaService {
 
   /// Marca o doc em `estoque_produtos` como soft delete pendente (não apaga o doc — permite desfazer).
   /// [syncFirestoreToHive] ignora docs assim para não recriar o item no Hive durante a janela de undo.
-  static Future<void> marcarEstoqueProdutoPendenteSoftDelete({
+  /// Retorna `false` se não houve escrita (sem id, erro de rede, permissão).
+  static Future<bool> marcarEstoqueProdutoPendenteSoftDelete({
     required Produto produto,
     required String lojaId,
   }) async {
     final id = produto.idFirebase.trim();
-    if (lojaId.isEmpty || id.isEmpty) return;
+    if (lojaId.isEmpty || id.isEmpty) return false;
     try {
       await FirebaseFirestore.instance
           .collection('lojas')
@@ -87,6 +88,7 @@ class ProdutoExclusaoRemotaService {
             },
             SetOptions(merge: true),
           );
+      return true;
     } catch (e, st) {
       logE(
         '[EXCLUSAO_REMOTA] Falha ao marcar pendingSoftDelete em estoque_produtos',
@@ -94,6 +96,7 @@ class ProdutoExclusaoRemotaService {
         error: e,
         st: st,
       );
+      return false;
     }
   }
 
@@ -185,6 +188,14 @@ class ProdutoExclusaoRemotaService {
       produto: produto,
       lojaId: lojaId,
     );
-    await apagarImagensEEstoqueRemoto(produto: produto, lojaId: lojaId);
+    final status = await apagarImagensEEstoqueRemotoComStatus(
+      produto: produto,
+      lojaId: lojaId,
+    );
+    if (status != ProdutoExclusaoRemotaStatus.confirmada) {
+      throw StateError(
+        'Exclusão remota do produto não foi confirmada. Tente novamente com conexão estável.',
+      );
+    }
   }
 }

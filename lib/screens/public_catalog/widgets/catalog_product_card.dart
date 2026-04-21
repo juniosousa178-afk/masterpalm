@@ -1573,6 +1573,7 @@ insetPadding:
                                   ? widget.imagens.first
                                   : widget.imageUrl)
                               : '',
+                          resolvedLojaId: widget.lojaId,
                           radius: BorderRadius.zero,
                           // Padrão: contain + topCenter = foto inteira, cola no topo do card,
                           // letterbox só embaixo (sem crop, sem zoom exagerado).

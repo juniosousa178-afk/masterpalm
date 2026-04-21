@@ -20,6 +20,13 @@ import 'catalog_order_sink.dart';
 const String _kLiveProdutosCol = 'produtos';
 const String _kDraftProdutosCol = 'draft_produtos';
 
+/// Kit/combo: o texto "Combo" não deve ser tratado como categoria real (legado do cadastro).
+bool _omitComboPlaceholderCategoria(String value, bool isComboProduct) {
+  final t = value.trim();
+  if (t.isEmpty) return false;
+  return isComboProduct && t.toLowerCase() == 'combo';
+}
+
 /// Implementação Firestore de [CatalogProductSource].
 class FirestoreCatalogProductSource implements CatalogProductSource {
   FirestoreCatalogProductSource({FirebaseFirestore? db})
@@ -105,8 +112,17 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
           priceMax = precos.reduce((a, b) => a > b ? a : b);
         }
       }
-      final categoria = (m['categoria'] ?? m['categoria_nome'] ?? m['categoriaNome'] ?? '').toString().trim();
-      final subcategoria = (m['subcategoria'] ?? m['subcategoriaId'] ?? m['subcategoria_nome'] ?? '').toString().trim();
+      final categoriaRaw =
+          (m['categoria'] ?? m['categoria_nome'] ?? m['categoriaNome'] ?? '').toString().trim();
+      final subcategoriaRaw =
+          (m['subcategoria'] ?? m['subcategoriaId'] ?? m['subcategoria_nome'] ?? '').toString().trim();
+      // Combo: "Combo" não é categoria implícita do tipo produto (legado do cadastro).
+      final categoria = (isComboEarly && categoriaRaw.toLowerCase() == 'combo')
+          ? ''
+          : categoriaRaw;
+      final subcategoria = (isComboEarly && subcategoriaRaw.toLowerCase() == 'combo')
+          ? ''
+          : subcategoriaRaw;
       List<String> parseStringList(dynamic raw) {
         if (raw is! List) return const [];
         return raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
@@ -120,15 +136,20 @@ class FirestoreCatalogProductSource implements CatalogProductSource {
         }
         return out;
       }
+
       final categoriasAssociadas = dedupeKeepOrder([
-        categoria,
-        ...parseStringList(m['categoriasAssociadas']),
-        ...parseStringList(m['categoriasExtras']),
+        if (categoria.isNotEmpty) categoria,
+        ...parseStringList(m['categoriasAssociadas'])
+            .where((s) => !_omitComboPlaceholderCategoria(s, isComboEarly)),
+        ...parseStringList(m['categoriasExtras'])
+            .where((s) => !_omitComboPlaceholderCategoria(s, isComboEarly)),
       ]);
       final subcategoriasAssociadas = dedupeKeepOrder([
-        subcategoria,
-        ...parseStringList(m['subcategoriasAssociadas']),
-        ...parseStringList(m['subcategoriasExtras']),
+        if (subcategoria.isNotEmpty) subcategoria,
+        ...parseStringList(m['subcategoriasAssociadas'])
+            .where((s) => !_omitComboPlaceholderCategoria(s, isComboEarly)),
+        ...parseStringList(m['subcategoriasExtras'])
+            .where((s) => !_omitComboPlaceholderCategoria(s, isComboEarly)),
       ]);
 
       String principal = (m['imagem_principal'] ?? m['imageUrl'] ?? '').toString();

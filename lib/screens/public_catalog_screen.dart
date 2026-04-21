@@ -42,7 +42,12 @@ import 'public_catalog/catalog_public_header_debug.dart';
 import 'public_catalog/catalog_best_sellers_helper.dart';
 import 'public_catalog/catalog_product_card_size.dart';
 import 'public_catalog/catalog_estoque_helper.dart';
-import 'public_catalog/catalog_config_service.dart';
+import 'public_catalog/catalog_config_service.dart'
+    show
+        mergeCatalogFretesManualFromFirestoreSubdoc,
+        parseCupons,
+        parseFretes,
+        parseMedia;
 import '../utils/platform_adaptive.dart';
 import '../utils/safe_parse.dart';
 import 'public_catalog/catalog_theme_extension.dart';
@@ -80,9 +85,11 @@ import '../models/catalog_sobre_loja_config.dart';
 
 // ===================================================================
 // CACHE CATÁLOGO – Reduz leituras Firestore (TTL 3–5 min)
+// Web público: [_cfgStream] emite o config do doc assim que o snapshot chega (pós-bridge V3)
+// e, em seguida, reaplica merge de payments/fretes/legado/loja/cupons em paralelo.
 // ===================================================================
 const bool _useCatalogCache =
-    true; // Produção: cache; Preview: Firestore direto
+    true; // Mobile/desktop público: cache; Preview e Web público: stream direto
 
 class PublicCatalogScreen extends StatefulWidget {
   final String lojaId;
@@ -239,16 +246,22 @@ List<Map<String, dynamic>> _processDocsToProducts(
         }
       }
 
-      final categoria =
+      final categoriaRaw =
           (m['categoria'] ?? m['categoria_nome'] ?? m['categoriaNome'] ?? '')
               .toString()
               .trim();
-      final subcategoria = (m['subcategoria'] ??
+      final subcategoriaRaw = (m['subcategoria'] ??
               m['subcategoriaId'] ??
               m['subcategoria_nome'] ??
               '')
           .toString()
           .trim();
+      final categoria = (isComboEarly && categoriaRaw.toLowerCase() == 'combo')
+          ? ''
+          : categoriaRaw;
+      final subcategoria = (isComboEarly && subcategoriaRaw.toLowerCase() == 'combo')
+          ? ''
+          : subcategoriaRaw;
       List<String> parseStringList(dynamic raw) {
         if (raw is! List) return const [];
         return raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
@@ -264,15 +277,21 @@ List<Map<String, dynamic>> _processDocsToProducts(
         return out;
       }
 
+      bool omitarRotuloCombo(String s) {
+        final t = s.trim();
+        if (t.isEmpty) return false;
+        return isComboEarly && t.toLowerCase() == 'combo';
+      }
+
       final categoriasAssociadas = dedupeKeepOrder([
-        categoria,
-        ...parseStringList(m['categoriasAssociadas']),
-        ...parseStringList(m['categoriasExtras']),
+        if (categoria.isNotEmpty) categoria,
+        ...parseStringList(m['categoriasAssociadas']).where((s) => !omitarRotuloCombo(s)),
+        ...parseStringList(m['categoriasExtras']).where((s) => !omitarRotuloCombo(s)),
       ]);
       final subcategoriasAssociadas = dedupeKeepOrder([
-        subcategoria,
-        ...parseStringList(m['subcategoriasAssociadas']),
-        ...parseStringList(m['subcategoriasExtras']),
+        if (subcategoria.isNotEmpty) subcategoria,
+        ...parseStringList(m['subcategoriasAssociadas']).where((s) => !omitarRotuloCombo(s)),
+        ...parseStringList(m['subcategoriasExtras']).where((s) => !omitarRotuloCombo(s)),
       ]);
 
       String principal =
@@ -628,6 +647,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _freteGratisRoleta = false;
 
   int _refreshCounter = 0;
+  /// Recria o [FutureBuilder] do menu (sessão cliente) após falha de rede/leitura.
+  int _menuClienteAuthRetryKey = 0;
   bool _isOffline = false;
   List<String> _recentIds = [];
   List<String> _favoritosIds = [];
@@ -753,12 +774,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       return _cachedConfigStream!;
     }
     _cachedConfigStreamKey = key;
-    _cachedConfigStream = _useCatalogCache && !widget.preview
-        ? CatalogCacheService.getConfigStream(
-            lojaId: lojaId,
-            preview: widget.preview,
-          )
-        : _cfgStream(lojaId);
+    _cachedConfigStream =
+        _useCatalogCache && !widget.preview && !kIsWeb
+            ? CatalogCacheService.getConfigStream(
+                lojaId: lojaId,
+                preview: widget.preview,
+              )
+            : _cfgStream(lojaId);
     return _cachedConfigStream!;
   }
 
@@ -770,7 +792,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
     _cachedProdutosStreamKey = key;
     // Estoque/disponibilidade: snapshots em tempo real (sem TTL do cache de produtos).
-    // Config continua podendo usar CatalogCacheService em [_getConfigStream].
+    // Config: na Web pública usa [_cfgStream]; em app nativo pode usar CatalogCacheService.
     _cachedProdutosStream = _produtosStream(lojaId);
     return _cachedProdutosStream!;
   }
@@ -994,14 +1016,41 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final cat = (p['categoria'] ?? p['categoriaId'] ?? '').toString().trim();
     final fromAssoc = _stringListFromAny(p['categoriasAssociadas']);
     final fromExtras = _stringListFromAny(p['categoriasExtras']);
-    return _dedupeLowerKeepOrder([cat, ...fromAssoc, ...fromExtras]);
+    final tipo =
+        (p['tipoProduto'] ?? p['tipo'] ?? 'simples').toString().trim().toLowerCase();
+    final ehComboTipo = tipo == 'combo';
+    bool skipRotuloComboImplicito(String s) {
+      final t = s.trim();
+      if (t.isEmpty) return false;
+      // Produto combo: "Combo" não é categoria do tipo — só entra no menu se o lojista escolher outro nome.
+      return ehComboTipo && t.toLowerCase() == 'combo';
+    }
+
+    return _dedupeLowerKeepOrder([
+      if (!skipRotuloComboImplicito(cat)) cat,
+      ...fromAssoc.where((s) => !skipRotuloComboImplicito(s)),
+      ...fromExtras.where((s) => !skipRotuloComboImplicito(s)),
+    ]);
   }
 
   List<String> _produtoSubcategoriasAssociadas(Map<String, dynamic> p) {
     final sub = (p['subcategoria'] ?? p['subcategoriaId'] ?? '').toString().trim();
     final fromAssoc = _stringListFromAny(p['subcategoriasAssociadas']);
     final fromExtras = _stringListFromAny(p['subcategoriasExtras']);
-    return _dedupeLowerKeepOrder([sub, ...fromAssoc, ...fromExtras]);
+    final tipo =
+        (p['tipoProduto'] ?? p['tipo'] ?? 'simples').toString().trim().toLowerCase();
+    final ehComboTipo = tipo == 'combo';
+    bool skipRotuloComboImplicito(String s) {
+      final t = s.trim();
+      if (t.isEmpty) return false;
+      return ehComboTipo && t.toLowerCase() == 'combo';
+    }
+
+    return _dedupeLowerKeepOrder([
+      if (!skipRotuloComboImplicito(sub)) sub,
+      ...fromAssoc.where((s) => !skipRotuloComboImplicito(s)),
+      ...fromExtras.where((s) => !skipRotuloComboImplicito(s)),
+    ]);
   }
 
   bool _produtoTemCategoria(Map<String, dynamic> p, String? categoria) {
@@ -1442,9 +1491,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   }
 
   void _onCatalogScroll() {
-    if (_catalogScrollController.hasClients) {
-      _scrollOffsetNotifier.value = _catalogScrollController.offset;
-    }
+    if (!_catalogScrollController.hasClients) return;
+    final offset = _catalogScrollController.offset;
+    // O botão "voltar ao topo" só depende de estar acima/abaixo do limiar.
+    // Atualizar o notifier a cada pixel reconstrói o ValueListenableBuilder o tempo todo
+    // e degrada o scroll na Web (jank / "travadas").
+    const threshold = 300.0;
+    final prev = _scrollOffsetNotifier.value;
+    if ((prev >= threshold) == (offset >= threshold)) return;
+    _scrollOffsetNotifier.value = offset;
   }
 
   void _onCatalogPageNotifierChanged() {
@@ -2098,7 +2153,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         final result = await StoreResolverFacade.resolveForPublicCatalog(
                 lojaIdFromUrl: widgetId)
             .timeout(
-          const Duration(seconds: 12),
+          const Duration(seconds: 7),
           onTimeout: () => throw TimeoutException(
             'O catálogo demorou muito para carregar. Verifique sua conexão e tente novamente.',
           ),
@@ -2558,19 +2613,31 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             }
           }
 
-          try {
-            final paySnap = await paymentsRef.get();
-            if (paySnap.exists) {
-              cfg['payments'] = asMapDeep(paySnap.data());
-            }
-          } catch (_) {}
+          // Emite já com o doc publicado + bridge V3 — o StreamBuilder sai de `waiting`
+          // sem esperar payments, fretes subdoc, legado, doc raiz e cupons (antes em série).
+          if (!controller.isClosed) {
+            controller.add(Map<String, dynamic>.from(cfg));
+          }
 
-          // Fallback cirúrgico: mantém config/config como principal e
-          // preenche faltantes com config_catalogo_live/main quando necessário.
-          try {
-            final legacyLiveSnap =
-                await baseRef.collection('config_catalogo_live').doc('main').get();
-            if (legacyLiveSnap.exists) {
+          Future<void> mergePayments() async {
+            try {
+              final paySnap = await paymentsRef
+                  .get()
+                  .timeout(const Duration(seconds: 8));
+              if (paySnap.exists) {
+                cfg['payments'] = asMapDeep(paySnap.data());
+              }
+            } catch (_) {}
+          }
+
+          Future<void> mergeLegacyLive() async {
+            try {
+              final legacyLiveSnap = await baseRef
+                  .collection('config_catalogo_live')
+                  .doc('main')
+                  .get()
+                  .timeout(const Duration(seconds: 6));
+              if (!legacyLiveSnap.exists) return;
               final legacy = asMapDeep(legacyLiveSnap.data());
               for (final k in const [
                 'nomeLoja',
@@ -2595,59 +2662,45 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               ]) {
                 putIfMissing(cfg, legacy, k);
               }
-            }
-          } catch (_) {}
-          if (kDebugMode) {
-            catalogDebugLogConfigPipeline(
-              phase: 'direct_stream_post_legacy_live',
-              lojaId: lojaId,
-              cfgCol: cfgCol,
-              cfg: Map<String, dynamic>.from(cfg),
-            );
+            } catch (_) {}
           }
 
-          // Último fallback: identidade básica no doc raiz da loja.
-          try {
-            final lojaSnap = await baseRef.get();
-            final lojaMap = asMapDeep(lojaSnap.data());
-            for (final k in const [
-              'nome',
-              'nomeLoja',
-              'nome_loja',
-              'name',
-              'logoUrl',
-              'logoDesktopUrl',
-              'logoMobileUrl',
-              'banners',
-              'bannersDesktop',
-              'bannersMobile',
-              'theme',
-              'uiColors',
-              'layout',
-            ]) {
-              putIfMissing(cfg, lojaMap, k);
-            }
-            final lojaName = lojaMap['name'];
-            if (isMissing(cfg['nome']) && !isMissing(lojaName)) {
-              cfg['nome'] = lojaName;
-            }
-            if (isMissing(cfg['nomeLoja']) && !isMissing(lojaName)) {
-              cfg['nomeLoja'] = lojaName;
-            }
-          } catch (_) {}
-          if (kDebugMode) {
-            catalogDebugLogConfigPipeline(
-              phase: 'direct_stream_post_loja_doc_root',
-              lojaId: lojaId,
-              cfgCol: cfgCol,
-              cfg: Map<String, dynamic>.from(cfg),
-            );
+          Future<void> mergeLojaRoot() async {
+            try {
+              final lojaSnap =
+                  await baseRef.get().timeout(const Duration(seconds: 6));
+              final lojaMap = asMapDeep(lojaSnap.data());
+              for (final k in const [
+                'nome',
+                'nomeLoja',
+                'nome_loja',
+                'name',
+                'logoUrl',
+                'logoDesktopUrl',
+                'logoMobileUrl',
+                'banners',
+                'bannersDesktop',
+                'bannersMobile',
+                'theme',
+                'uiColors',
+                'layout',
+              ]) {
+                putIfMissing(cfg, lojaMap, k);
+              }
+              final lojaName = lojaMap['name'];
+              if (isMissing(cfg['nome']) && !isMissing(lojaName)) {
+                cfg['nome'] = lojaName;
+              }
+              if (isMissing(cfg['nomeLoja']) && !isMissing(lojaName)) {
+                cfg['nomeLoja'] = lojaName;
+              }
+            } catch (_) {}
           }
 
-          // Fallback: carregar cupons da collection se config vazio (sincronização FretesCuponsScreen)
-          final cuponsCfg = cfg['cupons'];
-          final cuponsListCfg = cuponsCfg is List ? cuponsCfg : null;
-          if (cuponsListCfg == null || cuponsListCfg.isEmpty) {
+          Future<void> mergeCuponsFromCollectionIfNeeded() async {
+            final cuponsCfg = cfg['cupons'];
+            final cuponsListCfg = cuponsCfg is List ? cuponsCfg : null;
+            if (cuponsListCfg != null && cuponsListCfg.isNotEmpty) return;
             try {
               final cuponsSnap = await FirebaseFirestore.instance
                   .collection('lojas')
@@ -2714,7 +2767,37 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             }
           }
 
+          Future<void> mergeFretesManual() async {
+            try {
+              await mergeCatalogFretesManualFromFirestoreSubdoc(
+                lojaId: lojaId,
+                cfgCol: cfgCol,
+                cfg: cfg,
+              ).timeout(const Duration(seconds: 8));
+            } catch (_) {}
+          }
+
+          await Future.wait<void>([
+            mergePayments(),
+            mergeFretesManual(),
+            mergeLegacyLive(),
+            mergeLojaRoot(),
+            mergeCuponsFromCollectionIfNeeded(),
+          ]);
+
           if (kDebugMode) {
+            catalogDebugLogConfigPipeline(
+              phase: 'direct_stream_post_legacy_live',
+              lojaId: lojaId,
+              cfgCol: cfgCol,
+              cfg: Map<String, dynamic>.from(cfg),
+            );
+            catalogDebugLogConfigPipeline(
+              phase: 'direct_stream_post_loja_doc_root',
+              lojaId: lojaId,
+              cfgCol: cfgCol,
+              cfg: Map<String, dynamic>.from(cfg),
+            );
             catalogDebugLogConfigPipeline(
               phase: 'direct_stream_final_emit',
               lojaId: lojaId,
@@ -2722,7 +2805,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               cfg: Map<String, dynamic>.from(cfg),
             );
           }
-          controller.add(cfg);
+          if (!controller.isClosed) {
+            controller.add(Map<String, dynamic>.from(cfg));
+          }
         },
         onError: (error) {
           if (error is FirebaseException && error.code == 'permission-denied') {
@@ -4983,8 +5068,69 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                           // ENTRAR/CADASTRAR ou PERFIL - depende se está logado (NOVO SISTEMA)
                           FutureBuilder<Map<String, dynamic>?>(
+                            key: ValueKey(_menuClienteAuthRetryKey),
                             future: ClienteAuthService.getClienteLogado(),
                             builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      ListTile(
+                                        leading: Icon(
+                                          Icons.cloud_off_outlined,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .error,
+                                        ),
+                                        title: const Text(
+                                          'Não foi possível carregar sua sessão',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        subtitle: Text(
+                                          kDebugMode
+                                              ? snapshot.error.toString()
+                                              : 'Verifique a conexão e tente de novo.',
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
+                                        ),
+                                      ),
+                                      TextButton.icon(
+                                        onPressed: () {
+                                          setState(() =>
+                                              _menuClienteAuthRetryKey++);
+                                        },
+                                        icon: const Icon(Icons.refresh,
+                                            size: 20),
+                                        label: const Text('Tentar novamente'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    ),
+                                  ),
+                                );
+                              }
+
                               final cliente = snapshot.data;
 
                               if (cliente != null) {
@@ -5927,7 +6073,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                                       final scrollBody = CustomScrollView(
                                         controller: _catalogScrollController,
-                                        cacheExtent: 800,
+                                        // Web: área maior fora da viewport reduz descarte/rebuild de cards ao rolar.
+                                        cacheExtent: kIsWeb ? 2400 : 800,
                                         physics: const ClampingScrollPhysics(
                                             parent:
                                                 AlwaysScrollableScrollPhysics()),
@@ -5939,6 +6086,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   CatalogBannerCarousel(
                                                     banners: banners,
                                                     height: bannerH,
+                                                    resolvedLojaId:
+                                                        _resolvedLojaId ??
+                                                            widget.lojaId,
                                                   ),
                                                 if (useMinimalLayout)
                                                   CatalogMinimalCategoryImageStrip(

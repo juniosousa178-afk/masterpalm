@@ -21,6 +21,7 @@ import 'catalog_thumbnail_service.dart';
 import 'combo_receita_normalizacao.dart';
 import 'image_upload_service.dart';
 import 'sync_queue_service.dart';
+import 'produto_pull_skip_guard.dart';
 import '../src/blob_fetch_stub.dart'
     if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 
@@ -63,6 +64,52 @@ class ProdutosFirestoreService {
   static bool isEstoqueDocPendingSoftDelete(Map<String, dynamic> data) {
     final v = data[fieldEstoquePendingSoftDelete];
     return v == true;
+  }
+
+  /// Resolve o documento em `estoque_produtos` quando o Hive ainda não tem [idFirebase].
+  static Future<String?> findEstoqueProdutoDocIdBySlug({
+    required String lojaId,
+    required String slug,
+  }) async {
+    final s = slug.trim();
+    if (lojaId.trim().isEmpty || s.isEmpty) return null;
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .where('slug', isEqualTo: s)
+          .limit(3)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      if (snap.docs.length > 1) {
+        logW(
+          '[PRODUTOS-SYNC] slug duplicado em estoque_produtos (slug=$s, n=${snap.docs.length})',
+          tag: 'PRODUTO_MATCH_GUARD',
+        );
+      }
+      return snap.docs.first.id;
+    } catch (e, st) {
+      logW(
+        '[PRODUTOS-SYNC] findEstoqueProdutoDocIdBySlug falhou (type=${e.runtimeType})',
+        tag: 'PRODUTO_MATCH_GUARD',
+      );
+      if (kDebugMode) logD('$st');
+      return null;
+    }
+  }
+
+  static List<String> _dedupeStringListPreserveOrder(List<String>? raw) {
+    if (raw == null || raw.isEmpty) return const [];
+    final seen = <String>{};
+    final out = <String>[];
+    for (final e in raw) {
+      final t = e.trim();
+      if (t.isEmpty || seen.contains(t)) continue;
+      seen.add(t);
+      out.add(t);
+    }
+    return out;
   }
 
   /// Pull `estoque_produtos`: evita sobrescrever [Produto.quantidade] local quando o Hive
@@ -373,9 +420,13 @@ class ProdutosFirestoreService {
             'estoquePorTamanho': estoquePorTamPush,
             'cores': produto.cores,
             'categoria': produto.categoria,
+            'categoriaId': produto.categoria,
             'subcategoria': produto.subcategoria,
+            'subcategoriaId': produto.subcategoria,
             'categoriasExtras': produto.categoriasExtras,
             'subcategoriasExtras': produto.subcategoriasExtras,
+            'categoriasAssociadas': produto.categoriasAssociadas,
+            'subcategoriasAssociadas': produto.subcategoriasAssociadas,
             if (produto.precoPorTamanho != null &&
                 produto.precoPorTamanho!.isNotEmpty)
               'precoPorTamanho': produto.precoPorTamanho,
@@ -587,6 +638,22 @@ class ProdutosFirestoreService {
             continue;
           }
 
+          if (await ProdutoPullSkipGuard.shouldSkipDoc(
+              lojaId: lojaId, docId: produtoId)) {
+            for (final k in produtosBox.keys.toList()) {
+              final loc = produtosBox.get(k);
+              if (loc != null &&
+                  loc.lojaId == lojaId &&
+                  loc.idFirebase == produtoId) {
+                await produtosBox.delete(k);
+                logD(
+                  '🗑️ [PRODUTOS-SYNC] Hive: removido (pull skip pós-exclusão local) key=$k doc=$produtoId',
+                );
+              }
+            }
+            continue;
+          }
+
           // Buscar se já existe no Hive pelo idFirebase OU pelo slug
           final slug = data['slug'] ?? '';
           Produto? produtoExistente;
@@ -636,212 +703,225 @@ class ProdutosFirestoreService {
                       localUpdatedAt: p.updatedAt,
                       remoteUpdatedAt: remoteUpdatedAtForPull,
                     ));
+            final preserveLocalEdits = preserveLocalQuantidade;
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
             final custoManualLocal = p.custoEditadoNoCadastro == true;
-            p.nome = data['nome'] ?? p.nome;
-            if (!preserveLocalQuantidade) {
-              p.quantidade =
-                  (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
-            } else {
+            if (preserveLocalEdits) {
               final motivo = pendingProdutoSync
                   ? 'sync pendente na fila'
                   : 'updatedAt local mais recente que remoto';
               logD(
-                '[QTD_GUARD] sync pull: mantendo quantidade local=${p.quantidade} ($motivo)',
+                '[PULL_EDIT_GUARD] doc=$produtoId mantendo edição local ($motivo)',
               );
-            }
-            p.precoFinal = (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
-            if (custoManualLocal) {
-              logW(
-                '[CUSTO_GUARD] sync pull: mantendo custoReal local '
-                '${custoAntes.toStringAsFixed(2)} (cadastro manual)',
-                tag: 'CUSTO_GUARD',
-              );
-              p.custoEditadoNoCadastro = true;
             } else {
-              p.custoReal =
-                  (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
-              final ce = data['custoEditadoNoCadastro'];
-              p.custoEditadoNoCadastro = ce is bool ? ce : false;
-            }
-            p.frete = (data['frete'] as num?)?.toDouble() ?? p.frete;
-            p.gastosFixos =
-                (data['gastosFixos'] as num?)?.toDouble() ?? p.gastosFixos;
-            p.gastosVariaveis = (data['gastosVariaveis'] as num?)?.toDouble() ??
-                p.gastosVariaveis;
-            p.precoSugerido =
-                (data['precoSugerido'] as num?)?.toDouble() ?? p.precoSugerido;
-            final pesoDados = data['peso'];
-            if (pesoDados is num) {
-              final pr = pesoDados.toDouble();
-              if (pr == 0.0 && pesoAntes > 0.0) {
+              p.nome = data['nome'] ?? p.nome;
+              p.quantidade =
+                  (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
+              p.precoFinal =
+                  (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
+              if (custoManualLocal) {
                 logW(
-                  '[PESO_GUARD] sync pull: ignorando peso remoto 0 (local '
-                  '${pesoAntes.toStringAsFixed(1)} g)',
-                  tag: 'PESO_GUARD',
+                  '[CUSTO_GUARD] sync pull: mantendo custoReal local '
+                  '${custoAntes.toStringAsFixed(2)} (cadastro manual)',
+                  tag: 'CUSTO_GUARD',
                 );
+                p.custoEditadoNoCadastro = true;
               } else {
-                p.peso = pr;
+                p.custoReal =
+                    (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
+                final ce = data['custoEditadoNoCadastro'];
+                p.custoEditadoNoCadastro = ce is bool ? ce : false;
               }
-            }
-            p.tipoEmbalagem =
-                (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
-            p.categoria = data['categoria'] ?? p.categoria;
-            p.subcategoria = data['subcategoria'] ?? p.subcategoria;
-            if (data.containsKey('categoriasExtras')) {
-              final raw = data['categoriasExtras'];
-              p.categoriasExtras =
-                  raw is List ? raw.map((e) => e.toString()).toList() : <String>[];
-            }
-            if (data.containsKey('subcategoriasExtras')) {
-              final raw = data['subcategoriasExtras'];
-              p.subcategoriasExtras =
-                  raw is List ? raw.map((e) => e.toString()).toList() : <String>[];
-            }
-            p.descricao = data['descricao'] ?? p.descricao;
-            p.imagens = (data['imagens'] as List?)?.cast<String>() ?? p.imagens;
-            p.slug = data['slug'] ?? p.slug;
-            p.codigoBarras =
-                (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
-            p.estoqueMinimo = (data['estoqueMinimo'] is num)
-                ? (data['estoqueMinimo'] as num).toInt()
-                : p.estoqueMinimo;
-            if (data['dataEntrada'] is Timestamp) {
-              p.dataEntrada = (data['dataEntrada'] as Timestamp).toDate();
-            }
-            if (data.containsKey('ativoNoRascunho')) {
-              p.ativoNoRascunho = data['ativoNoRascunho'] == true;
-            }
-            if (data.containsKey('fornecedor')) {
-              p.fornecedor = (data['fornecedor'] ?? '').toString().trim();
-            }
-            p.publicadoNoCatalogo =
-                data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
-            p.tamanhos =
-                (data['tamanhos'] as List?)?.cast<String>() ?? p.tamanhos;
-            p.cores = (data['cores'] as List?)?.cast<String>() ?? p.cores;
-
-            // estoquePorTamanho / variações: semântica explícita (ausência = doc legado)
-            if (data.containsKey('estoquePorTamanho')) {
-              final rawE = data['estoquePorTamanho'];
-              if (rawE == null) {
-                p.estoquePorTamanho = {};
-                logD('[VARIACAO_PULL] estoquePorTamanho remoto null → limpo');
-              } else if (rawE is Map) {
-                if (rawE.isEmpty) {
-                  p.estoquePorTamanho = {};
-                  logD('[VARIACAO_PULL] estoquePorTamanho remoto {} → limpo');
-                } else {
-                  p.estoquePorTamanho = rawE.map(
-                    (k, v) => MapEntry(
-                      k.toString(),
-                      ProdutoVariacaoExtra.valorFirestoreComoInt(v),
-                    ),
+              p.frete = (data['frete'] as num?)?.toDouble() ?? p.frete;
+              p.gastosFixos =
+                  (data['gastosFixos'] as num?)?.toDouble() ?? p.gastosFixos;
+              p.gastosVariaveis =
+                  (data['gastosVariaveis'] as num?)?.toDouble() ??
+                      p.gastosVariaveis;
+              p.precoSugerido =
+                  (data['precoSugerido'] as num?)?.toDouble() ??
+                      p.precoSugerido;
+              final pesoDados = data['peso'];
+              if (pesoDados is num) {
+                final pr = pesoDados.toDouble();
+                if (pr == 0.0 && pesoAntes > 0.0) {
+                  logW(
+                    '[PESO_GUARD] sync pull: ignorando peso remoto 0 (local '
+                    '${pesoAntes.toStringAsFixed(1)} g)',
+                    tag: 'PESO_GUARD',
                   );
+                } else {
+                  p.peso = pr;
                 }
               }
-            } else {
-              logW(
-                '[VARIACAO_PULL] estoquePorTamanho ausente no doc — mantendo local (legado)',
-                tag: 'VARIACAO_GUARD',
+              p.tipoEmbalagem =
+                  (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
+              p.categoria = data['categoria'] ?? p.categoria;
+              p.subcategoria = data['subcategoria'] ?? p.subcategoria;
+              if (data.containsKey('categoriasExtras')) {
+                final raw = data['categoriasExtras'];
+                p.categoriasExtras = raw is List
+                    ? raw.map((e) => e.toString()).toList()
+                    : <String>[];
+              }
+              if (data.containsKey('subcategoriasExtras')) {
+                final raw = data['subcategoriasExtras'];
+                p.subcategoriasExtras = raw is List
+                    ? raw.map((e) => e.toString()).toList()
+                    : <String>[];
+              }
+              p.descricao = data['descricao'] ?? p.descricao;
+              p.imagens =
+                  (data['imagens'] as List?)?.cast<String>() ?? p.imagens;
+              p.slug = data['slug'] ?? p.slug;
+              p.codigoBarras =
+                  (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
+              p.estoqueMinimo = (data['estoqueMinimo'] is num)
+                  ? (data['estoqueMinimo'] as num).toInt()
+                  : p.estoqueMinimo;
+              if (data['dataEntrada'] is Timestamp) {
+                p.dataEntrada = (data['dataEntrada'] as Timestamp).toDate();
+              }
+              if (data.containsKey('ativoNoRascunho')) {
+                p.ativoNoRascunho = data['ativoNoRascunho'] == true;
+              }
+              if (data.containsKey('fornecedor')) {
+                p.fornecedor = (data['fornecedor'] ?? '').toString().trim();
+              }
+              p.publicadoNoCatalogo =
+                  data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
+              p.tamanhos = _dedupeStringListPreserveOrder(
+                (data['tamanhos'] as List?)?.map((e) => e.toString()).toList() ??
+                    p.tamanhos,
               );
-            }
+              p.cores = _dedupeStringListPreserveOrder(
+                (data['cores'] as List?)?.map((e) => e.toString()).toList() ??
+                    p.cores,
+              );
 
-            if (data.containsKey('variacoes')) {
-              final varData = data['variacoes'];
-              if (varData == null) {
-                p.variacoes = null;
-                logD('[VARIACAO_PULL] variacoes remotas null → limpo local');
-              } else if (varData is Map) {
-                if (varData.isEmpty) {
+              // estoquePorTamanho / variações: semântica explícita (ausência = doc legado)
+              if (data.containsKey('estoquePorTamanho')) {
+                final rawE = data['estoquePorTamanho'];
+                if (rawE == null) {
+                  p.estoquePorTamanho = {};
+                  logD('[VARIACAO_PULL] estoquePorTamanho remoto null → limpo');
+                } else if (rawE is Map) {
+                  if (rawE.isEmpty) {
+                    p.estoquePorTamanho = {};
+                    logD('[VARIACAO_PULL] estoquePorTamanho remoto {} → limpo');
+                  } else {
+                    p.estoquePorTamanho = rawE.map(
+                      (k, v) => MapEntry(
+                        k.toString(),
+                        ProdutoVariacaoExtra.valorFirestoreComoInt(v),
+                      ),
+                    );
+                  }
+                }
+              } else {
+                logW(
+                  '[VARIACAO_PULL] estoquePorTamanho ausente no doc — mantendo local (legado)',
+                  tag: 'VARIACAO_GUARD',
+                );
+              }
+
+              if (data.containsKey('variacoes')) {
+                final varData = data['variacoes'];
+                if (varData == null) {
                   p.variacoes = null;
-                  logD('[VARIACAO_PULL] variacoes remotas {} → limpo local');
-                } else {
-                  p.variacoes = _parseVariacoesFromFirestore(varData);
+                  logD('[VARIACAO_PULL] variacoes remotas null → limpo local');
+                } else if (varData is Map) {
+                  if (varData.isEmpty) {
+                    p.variacoes = null;
+                    logD('[VARIACAO_PULL] variacoes remotas {} → limpo local');
+                  } else {
+                    p.variacoes = _parseVariacoesFromFirestore(varData);
+                  }
                 }
+              } else {
+                logW(
+                  '[VARIACAO_PULL] variacoes ausente no doc — mantendo local (legado)',
+                  tag: 'VARIACAO_GUARD',
+                );
               }
-            } else {
-              logW(
-                '[VARIACAO_PULL] variacoes ausente no doc — mantendo local (legado)',
-                tag: 'VARIACAO_GUARD',
-              );
-            }
 
-            if (data.containsKey('variacoesExtraTipo')) {
-              final vet = data['variacoesExtraTipo'];
-              if (vet == null) {
-                p.variacoesExtraTipo = null;
-                logD('[VARIACAO_PULL] variacoesExtraTipo remoto null → limpo');
-              } else if (vet is Map) {
-                if (vet.isEmpty) {
+              if (data.containsKey('variacoesExtraTipo')) {
+                final vet = data['variacoesExtraTipo'];
+                if (vet == null) {
                   p.variacoesExtraTipo = null;
-                  logD('[VARIACAO_PULL] variacoesExtraTipo remoto {} → limpo');
-                } else {
-                  p.variacoesExtraTipo =
-                      _parseVariacoesExtraTipoFromFirestore(vet);
+                  logD('[VARIACAO_PULL] variacoesExtraTipo remoto null → limpo');
+                } else if (vet is Map) {
+                  if (vet.isEmpty) {
+                    p.variacoesExtraTipo = null;
+                    logD('[VARIACAO_PULL] variacoesExtraTipo remoto {} → limpo');
+                  } else {
+                    p.variacoesExtraTipo =
+                        _parseVariacoesExtraTipoFromFirestore(vet);
+                  }
                 }
+              } else {
+                logW(
+                  '[VARIACAO_PULL] variacoesExtraTipo ausente — mantendo local (legado)',
+                  tag: 'VARIACAO_GUARD',
+                );
               }
-            } else {
-              logW(
-                '[VARIACAO_PULL] variacoesExtraTipo ausente — mantendo local (legado)',
-                tag: 'VARIACAO_GUARD',
+              final ppt = data['precoPorTamanho'];
+              if (ppt != null && ppt is Map) {
+                p.precoPorTamanho = Map<String, double>.from(
+                  ppt.map((k, v) =>
+                      MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0)),
+                );
+              } else if (ppt == null) {
+                p.precoPorTamanho = null;
+              }
+              p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
+                  (data['preco'] as num?)?.toDouble() ??
+                  p.precoUnitario;
+              applyComboMetadataPullForExisting(
+                data,
+                p,
+                produtosBox: produtosBox,
+                lojaId: lojaId,
+                docId: produtoId,
               );
-            }
-            final ppt = data['precoPorTamanho'];
-            if (ppt != null && ppt is Map) {
-              p.precoPorTamanho = Map<String, double>.from(
-                ppt.map((k, v) =>
-                    MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0)),
-              );
-            } else if (ppt == null) {
-              p.precoPorTamanho = null;
-            }
-            p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
-                (data['preco'] as num?)?.toDouble() ??
-                p.precoUnitario;
-            applyComboMetadataPullForExisting(
-              data,
-              p,
-              produtosBox: produtosBox,
-              lojaId: lojaId,
-              docId: produtoId,
-            );
-            p.divideSemJuros = data['divideSemJuros'] ?? p.divideSemJuros;
-            p.percentualDescontoPix = (data['percentualDescontoPix'] is num)
-                ? (data['percentualDescontoPix'] as num).toDouble()
-                : p.percentualDescontoPix;
-            p.maxParcelasSemJuros = (data['maxParcelasSemJuros'] is num)
-                ? (data['maxParcelasSemJuros'] as num).toInt()
-                : p.maxParcelasSemJuros;
-            if (data.containsKey('emPromocao')) {
-              p.emPromocao = data['emPromocao'] == true;
-            }
-            if (data.containsKey('percentualPromo')) {
-              p.percentualPromo = (data['percentualPromo'] as num?)?.toDouble();
-            }
-            if (data.containsKey('valorPromo')) {
-              p.valorPromo = (data['valorPromo'] as num?)?.toDouble();
-            }
-            if (data.containsKey('dataInicioPromo')) {
-              final dip = data['dataInicioPromo'];
-              p.dataInicioPromo = dip is Timestamp ? dip.toDate() : null;
-            }
-            if (data.containsKey('dataFimPromo')) {
-              final dfp = data['dataFimPromo'];
-              p.dataFimPromo = dfp is Timestamp ? dfp.toDate() : null;
-            }
-            final vu = data['videoUrl'];
-            if (vu != null && vu.toString().trim().isNotEmpty) {
-              p.videoUrl = vu.toString().trim();
-            }
-            final mk = data['marketplaces'];
-            if (mk is List) {
-              p.marketplaces = mk.map((e) => e.toString()).toList();
+              p.divideSemJuros = data['divideSemJuros'] ?? p.divideSemJuros;
+              p.percentualDescontoPix = (data['percentualDescontoPix'] is num)
+                  ? (data['percentualDescontoPix'] as num).toDouble()
+                  : p.percentualDescontoPix;
+              p.maxParcelasSemJuros = (data['maxParcelasSemJuros'] is num)
+                  ? (data['maxParcelasSemJuros'] as num).toInt()
+                  : p.maxParcelasSemJuros;
+              if (data.containsKey('emPromocao')) {
+                p.emPromocao = data['emPromocao'] == true;
+              }
+              if (data.containsKey('percentualPromo')) {
+                p.percentualPromo =
+                    (data['percentualPromo'] as num?)?.toDouble();
+              }
+              if (data.containsKey('valorPromo')) {
+                p.valorPromo = (data['valorPromo'] as num?)?.toDouble();
+              }
+              if (data.containsKey('dataInicioPromo')) {
+                final dip = data['dataInicioPromo'];
+                p.dataInicioPromo = dip is Timestamp ? dip.toDate() : null;
+              }
+              if (data.containsKey('dataFimPromo')) {
+                final dfp = data['dataFimPromo'];
+                p.dataFimPromo = dfp is Timestamp ? dfp.toDate() : null;
+              }
+              final vu = data['videoUrl'];
+              if (vu != null && vu.toString().trim().isNotEmpty) {
+                p.videoUrl = vu.toString().trim();
+              }
+              final mk = data['marketplaces'];
+              if (mk is List) {
+                p.marketplaces = mk.map((e) => e.toString()).toList();
+              }
             }
             final updatedAt = data['updatedAt'];
-            if (preserveLocalQuantidade) {
+            if (preserveLocalEdits) {
               if (updatedAt is Timestamp) {
                 p.updatedAt = _maxDateTime(p.updatedAt, updatedAt.toDate());
               }
@@ -861,10 +941,21 @@ class ProdutosFirestoreService {
             if (p.idFirebase.isEmpty) {
               p.idFirebase = produtoId;
             }
+            p.recalcularQuantidadeTotal();
             await p.save();
             atualizados++;
             logD('🔄 Produto $produtoId atualizado');
           } else {
+            final slugNovo = (data['slug'] ?? '').toString().trim();
+            if (await ProdutoPullSkipGuard.shouldSkipNewBySlug(
+              lojaId: lojaId,
+              slug: slugNovo,
+            )) {
+              logD(
+                '⏭️ [PRODUTOS-SYNC] Doc $produtoId ignorado no pull (slug excluído localmente: $slugNovo)',
+              );
+              continue;
+            }
             // Criar novo produto
             final uAt = data['updatedAt'];
             final updatedAtDt =
@@ -909,10 +1000,14 @@ class ProdutosFirestoreService {
                       .toList() ??
                   const [],
               publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
-              tamanhos: (data['tamanhos'] as List?)?.cast<String>() ?? [],
+              tamanhos: _dedupeStringListPreserveOrder(
+                (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),
+              ),
               estoquePorTamanho:
                   Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
-              cores: (data['cores'] as List?)?.cast<String>() ?? [],
+              cores: _dedupeStringListPreserveOrder(
+                (data['cores'] as List?)?.map((e) => e.toString()).toList(),
+              ),
               variacoes: _parseVariacoesFromFirestore(data['variacoes']),
               variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
                   data['variacoesExtraTipo']),
@@ -955,6 +1050,7 @@ class ProdutosFirestoreService {
               ativoNoRascunho: data['ativoNoRascunho'] == true,
             );
 
+            produto.recalcularQuantidadeTotal();
             await produtosBox.add(produto);
             sincronizados++;
             logD('✅ Produto $produtoId sincronizado');
@@ -966,6 +1062,12 @@ class ProdutosFirestoreService {
               st: st);
         }
       }
+
+      await ProdutoPullSkipGuard.pruneAfterPull(
+        lojaId: lojaId,
+        remoteDocIds: allDocs.map((d) => d.id).toSet(),
+        remoteDocData: allDocs.map((d) => d.data()).toList(),
+      );
 
       // Remover locais que não existem mais no Firestore (excluídos em outro aparelho)
       final firestoreIds = allDocs.map((d) => d.id).toSet();

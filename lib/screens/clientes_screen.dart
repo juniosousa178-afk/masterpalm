@@ -2148,7 +2148,7 @@ class _ClientesScreenState extends State<ClientesScreen>
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Excluir venda'),
-        content: const Text('A venda será removida. Você pode desfazer em até 30 segundos.'),
+        content: const Text('A venda será removida. Você pode desfazer em até 5 segundos.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -2177,7 +2177,7 @@ class _ClientesScreenState extends State<ClientesScreen>
         scaffoldMessengerKey.currentState?.showSnackBar(
           SnackBar(
             content: const Text('Venda excluída. Desfazer?'),
-            duration: const Duration(seconds: 30),
+            duration: const Duration(seconds: 5),
             action: id != null
                 ? SnackBarAction(
                     label: 'Desfazer',
@@ -2624,7 +2624,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                               ),
                               title: const Text('Excluir cliente'),
                               content: Text(
-                                'Deseja excluir "${cliente.nome}"?\nVocê pode desfazer em até 30 segundos.',
+                                'Deseja excluir "${cliente.nome}"?\nVocê pode desfazer em até 5 segundos.',
                               ),
                               actions: [
                                 TextButton(
@@ -2653,7 +2653,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                                 scaffoldMessengerKey.currentState?.showSnackBar(
                                   SnackBar(
                                     content: const Text('Cliente excluído. Desfazer?'),
-                                    duration: const Duration(seconds: 30),
+                                    duration: const Duration(seconds: 5),
                                     action: id != null
                                         ? SnackBarAction(
                                             label: 'Desfazer',

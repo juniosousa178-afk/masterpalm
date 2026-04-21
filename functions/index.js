@@ -74,6 +74,7 @@ import {
 import {
   handlePreapprovalWebhookNotification,
   isRecurringPlanBillingEnabled,
+  parseExternalReferenceMpRecurring,
   runCancelPlanSubscription,
   runCreatePlanSubscription,
   runReactivatePlanSubscription,
@@ -139,6 +140,53 @@ const COLLECTION_LOJAS = process.env.COLLECTION_LOJAS || "lojas";
 const COLLECTION_CLIENTES = "clientes";
 const COLLECTION_CLIENTES_PORTAL = "clientes_portal";
 const COLLECTION_PEDIDO_STATUS_PUBLICO = "pedido_status_publico";
+
+function maskTokenForAudit(token) {
+  const t = String(token || "").trim();
+  if (!t) return "empty";
+  if (t.length <= 10) return `${t[0] || "*"}***(${t.length})`;
+  return `${t.slice(0, 6)}…${t.slice(-4)}(${t.length})`;
+}
+
+async function getPlatformMpAccessTokenStrict({ flow }) {
+  const token = String((await S_MP_ACCESS_TOKEN.value()) || "").trim();
+  if (!token) {
+    console.error(
+      JSON.stringify({
+        evt: "mp_platform_token_missing",
+        flow,
+        credentialScope: "platform",
+        source: "secret_manager",
+      }),
+    );
+    return { ok: false, token: "" };
+  }
+  console.log(
+    JSON.stringify({
+      evt: "mp_platform_token_resolved",
+      flow,
+      credentialScope: "platform",
+      source: "secret_manager",
+      tokenMasked: maskTokenForAudit(token),
+    }),
+  );
+  return { ok: true, token };
+}
+
+function hasStoreContextInPlanPayload(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  const keys = [
+    "lojaId",
+    "storeId",
+    "tenantId",
+    "mpAccessToken",
+    "accessToken",
+    "mpToken",
+    "payments",
+    "payments_public",
+  ];
+  return keys.some((k) => payload[k] != null && String(payload[k]).trim() !== "");
+}
 
 // ============================== HELPERS GERAIS ==============================
 function corsWrap(handler) {
@@ -408,7 +456,7 @@ function addYears(d, n) {
  *
  * Fluxos **pedido/catálogo** (createPreference, mpCatalogPayment) usam
  * [resolveStrictLojaMpAccessToken] — **sem** fallback para MP_ACCESS_TOKEN global.
- * Planos/billing da plataforma continuam usando o token global (planCreatePreference, webhooks de plano, etc.).
+ * Planos/billing da plataforma usam token estrito da plataforma (Secret Manager).
  */
 async function getLojaPaymentConfig(lojaId) {
   try {
@@ -825,6 +873,80 @@ export const calcularMelhorEnvio = onCall(
     if (err instanceof HttpsError) throw err;
     throw new HttpsError("internal", "Erro ao consultar frete via Melhor Envio.");
   }
+  }
+);
+
+/** Teste do token /me no servidor (navegador não pode chamar Melhor Envio direto — CORS). */
+export const testarMelhorEnvioToken = onCall(
+  { timeoutSeconds: 20, memory: "256MiB" },
+  async (request) => {
+    try {
+      const identifier = getCallableIdentifier(request);
+      await checkRateLimit("testarMelhorEnvioToken", identifier);
+
+      const { token } = request.data || {};
+      const t = typeof token === "string" ? token.trim() : "";
+      if (!t) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Informe o token do Melhor Envio."
+        );
+      }
+
+      const url = "https://www.melhorenvio.com.br/api/v2/me";
+      const resp = await fetchWithTimeout(
+        url,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${t}`,
+            "User-Agent": "MasterPalm (contato@mastepalm.com.br)",
+          },
+        },
+        15000
+      );
+
+      const txt = await resp.text();
+      if (resp.status === 401) {
+        throw new HttpsError(
+          "permission-denied",
+          "Token inválido ou expirado."
+        );
+      }
+      if (!resp.ok) {
+        console.error(
+          "[testarMelhorEnvioToken] HTTP",
+          resp.status,
+          txt?.slice?.(0, 300)
+        );
+        throw new HttpsError(
+          "internal",
+          `Melhor Envio retornou ${resp.status}. Confira o token.`
+        );
+      }
+
+      let data;
+      try {
+        data = JSON.parse(txt);
+      } catch (e) {
+        console.error("[testarMelhorEnvioToken] JSON inválido");
+        throw new HttpsError(
+          "internal",
+          "Resposta inválida do Melhor Envio."
+        );
+      }
+
+      const firstname = data.firstname || data.name || "Usuário";
+      return { ok: true, firstname: String(firstname) };
+    } catch (err) {
+      console.error("[testarMelhorEnvioToken] error:", err);
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError(
+        "internal",
+        err?.message || "Erro ao testar token do Melhor Envio."
+      );
+    }
   }
 );
 
@@ -1896,8 +2018,7 @@ export const mpWebhook = onRequest(
         return res.status(MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS).send("Unauthorized");
       }
 
-      const globalToken = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
-      await processMpWebhook(paymentId, globalToken);
+      await processMpWebhook(paymentId);
 
       return res.status(200).send("OK");
     } catch (e) {
@@ -2346,13 +2467,21 @@ export const planCreatePreference = onRequest(
       const tokenUid = decoded.uid;
       const tokenEmail = normalizeEmail(decoded.email || "");
 
-      const MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
-      if (!MP_TOKEN) return res.status(500).send("MP token not configured");
+      const platformToken = await getPlatformMpAccessTokenStrict({
+        flow: "planCreatePreference",
+      });
+      if (!platformToken.ok) return res.status(500).send("MP platform token not configured");
 
       const WEB_BASE =
         (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
 
       const { plan, returnUrl, notificationUrl, installationId } = req.body || {};
+      if (hasStoreContextInPlanPayload(req.body || {})) {
+        return res.status(400).json({
+          error: "Payload inválido para plano: contexto de loja não é permitido.",
+          code: "PLAN_STORE_CONTEXT_FORBIDDEN",
+        });
+      }
       if (!plan) {
         return res.status(400).json({
           error:
@@ -2368,7 +2497,7 @@ export const planCreatePreference = onRequest(
           installationId,
           returnUrl,
           notificationUrl,
-          mpToken: MP_TOKEN,
+          mpToken: platformToken.token,
           webBase: WEB_BASE,
         });
         return res.json(payload);
@@ -2421,9 +2550,20 @@ export const planCreatePreferenceCall = onCall(
         "plan é obrigatório (mensal|anual|basic_monthly|intermediate_monthly|pro_monthly|pro_yearly)",
       );
     }
-    const MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
+    const platformToken = await getPlatformMpAccessTokenStrict({
+      flow: "planCreatePreferenceCall",
+    });
+    if (!platformToken.ok) {
+      throw new HttpsError("failed-precondition", "MP platform token não configurado");
+    }
     const WEB_BASE =
       (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
+    if (hasStoreContextInPlanPayload(request.data || {})) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Payload inválido para plano: contexto de loja não é permitido.",
+      );
+    }
     try {
       return await executePlanPreferenceCheckout({
         tokenUid: uid,
@@ -2432,7 +2572,7 @@ export const planCreatePreferenceCall = onCall(
         installationId,
         returnUrl,
         notificationUrl,
-        mpToken: MP_TOKEN,
+        mpToken: platformToken.token,
         webBase: WEB_BASE,
       });
     } catch (bizErr) {
@@ -2496,20 +2636,26 @@ export const planWebhook = onRequest(
         }),
       );
 
-      const MP_TOKEN = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
-      if (!MP_TOKEN) return res.status(200).send("OK");
+      const platformToken = await getPlatformMpAccessTokenStrict({
+        flow: "planWebhook",
+      });
+      if (!platformToken.ok) return res.status(200).send("OK");
 
-      const qTopic = String(req.query?.topic || "").toLowerCase();
-      if (
-        qTopic &&
-        qTopic !== "payment" &&
-        (qTopic === "subscription" || qTopic.includes("preapproval"))
-      ) {
+      const qTopic = String(req.query?.topic || req.query?.type || "").toLowerCase();
+      const bodyType = String(req.body?.type || "").toLowerCase();
+      const bodyAction = String(req.body?.action || "").toLowerCase();
+      const isPreapprovalEvent =
+        qTopic === "subscription" ||
+        qTopic.includes("preapproval") ||
+        bodyType === "subscription" ||
+        bodyType.includes("preapproval") ||
+        bodyAction.includes("preapproval");
+      if (isPreapprovalEvent) {
         const preId = extractMercadoPagoWebhookDataId(req);
         if (preId && isRecurringPlanBillingEnabled()) {
           await handlePreapprovalWebhookNotification({
             db,
-            token: MP_TOKEN,
+            token: platformToken.token,
             preapprovalId: preId,
             nowTs,
             normalizePlanId,
@@ -2525,7 +2671,7 @@ export const planWebhook = onRequest(
 
       const r = await fetchWithTimeout(
         `https://api.mercadopago.com/v1/payments/${paymentId}`,
-        { headers: { Authorization: `Bearer ${MP_TOKEN}` } },
+        { headers: { Authorization: `Bearer ${platformToken.token}` } },
         15000
       );
 
@@ -2536,6 +2682,19 @@ export const planWebhook = onRequest(
       }
 
       const payment = await r.json();
+      if (String(payment?.metadata?.lojaId || "").trim()) {
+        console.warn(
+          JSON.stringify({
+            evt: "plan_webhook_store_event_ignored",
+            flow: "planWebhook",
+            domain: "planos_app",
+            credentialScope: "platform",
+            paymentId: String(paymentId),
+            lojaId: String(payment.metadata.lojaId),
+          }),
+        );
+        return res.status(200).send("OK");
+      }
 
       const consumed = await tryProcessPlanOrderWebhook({
         db,
@@ -2588,8 +2747,15 @@ export const planWebhook = onRequest(
         console.warn("[PlanosWebhook] Falha ao localizar checkout_planos:", e?.message || e);
       }
 
-      // Formato 1: uid|plan (planCreatePreference)
-      if ((!uid || !plan) && externalRef.includes("|")) {
+      // Formato recorrente: mprec|uid|plan (createPlanSubscription)
+      const recurringExternalRef = parseExternalReferenceMpRecurring(externalRef);
+      if ((!uid || !plan) && recurringExternalRef) {
+        uid = uid || recurringExternalRef.uid;
+        plan = plan || recurringExternalRef.canonicalPlanId;
+      }
+
+      // Formato legado: uid|plan (planCreatePreference)
+      if ((!uid || !plan) && externalRef.includes("|") && !externalRef.startsWith("mprec|")) {
         const parts = externalRef.split("|");
         uid = uid || parts[0];
         plan = plan || parts[1];
@@ -2752,8 +2918,18 @@ export const createPlanSubscription = onCall(
   async (request) => {
     try {
       await checkRateLimit("createPlanSubscription", getCallableIdentifier(request));
-      const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
-      if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
+      const platformToken = await getPlatformMpAccessTokenStrict({
+        flow: "createPlanSubscription",
+      });
+      if (!platformToken.ok) {
+        throw new HttpsError("failed-precondition", "MP platform token não configurado");
+      }
+      if (hasStoreContextInPlanPayload(request.data || {})) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Payload inválido para plano: contexto de loja não é permitido.",
+        );
+      }
       const webBase =
         (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || PUBLIC_SITE_ORIGIN;
       const prices = {
@@ -2765,7 +2941,7 @@ export const createPlanSubscription = onCall(
       return await runCreatePlanSubscription({
         db,
         request,
-        token,
+        token: platformToken.token,
         webBase,
         prices,
         planTitleForMp,
@@ -2784,9 +2960,13 @@ export const cancelPlanSubscription = onCall(
   async (request) => {
     try {
       await checkRateLimit("cancelPlanSubscription", getCallableIdentifier(request));
-      const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
-      if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
-      return await runCancelPlanSubscription({ db, request, token });
+      const platformToken = await getPlatformMpAccessTokenStrict({
+        flow: "cancelPlanSubscription",
+      });
+      if (!platformToken.ok) {
+        throw new HttpsError("failed-precondition", "MP platform token não configurado");
+      }
+      return await runCancelPlanSubscription({ db, request, token: platformToken.token });
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("[cancelPlanSubscription]", e);
@@ -2800,9 +2980,13 @@ export const reactivatePlanSubscription = onCall(
   async (request) => {
     try {
       await checkRateLimit("reactivatePlanSubscription", getCallableIdentifier(request));
-      const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
-      if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
-      return await runReactivatePlanSubscription({ db, request, token });
+      const platformToken = await getPlatformMpAccessTokenStrict({
+        flow: "reactivatePlanSubscription",
+      });
+      if (!platformToken.ok) {
+        throw new HttpsError("failed-precondition", "MP platform token não configurado");
+      }
+      return await runReactivatePlanSubscription({ db, request, token: platformToken.token });
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("[reactivatePlanSubscription]", e);
@@ -2816,9 +3000,18 @@ export const syncPlanSubscription = onCall(
   async (request) => {
     try {
       await checkRateLimit("syncPlanSubscription", getCallableIdentifier(request));
-      const token = (await S_MP_ACCESS_TOKEN.value()) || process.env.MP_ACCESS_TOKEN || "";
-      if (!token) throw new HttpsError("failed-precondition", "MP token não configurado");
-      return await runSyncPlanSubscription({ db, request, token, normalizePlanId });
+      const platformToken = await getPlatformMpAccessTokenStrict({
+        flow: "syncPlanSubscription",
+      });
+      if (!platformToken.ok) {
+        throw new HttpsError("failed-precondition", "MP platform token não configurado");
+      }
+      return await runSyncPlanSubscription({
+        db,
+        request,
+        token: platformToken.token,
+        normalizePlanId,
+      });
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("[syncPlanSubscription]", e);

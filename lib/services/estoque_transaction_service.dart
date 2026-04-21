@@ -258,12 +258,19 @@ class EstoqueTransactionService {
         novaQuantidadeTotal = quantidadeTotal - quantidade;
       }
 
+      Map<String, int>? estoquePorTamanhoParaVariacao;
+      if (novasVariacoes != null) {
+        estoquePorTamanhoParaVariacao =
+            _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
+      }
+
       final updateData = <String, dynamic>{
         'quantidade': novaQuantidadeTotal,
         'updatedAt': FieldValue.serverTimestamp(),
       };
       if (novasVariacoes != null) {
         updateData['variacoes'] = novasVariacoes;
+        updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
       }
       if (novoEstoquePorTamanho != null) {
         updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
@@ -299,7 +306,8 @@ class EstoqueTransactionService {
         produtoSlug: slugVal.isNotEmpty ? slugVal : null,
         quantidadeDebitada: quantidade,
         variacoesAtualizadas: novasVariacoes,
-        estoquePorTamanhoAtualizado: novoEstoquePorTamanho,
+        estoquePorTamanhoAtualizado:
+            estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
         quantidadeTotalAtualizada: novaQuantidadeTotal,
       );
       }).timeout(
@@ -512,6 +520,25 @@ class EstoqueTransactionService {
       }
     }
     return total;
+  }
+
+  /// Soma todas as células (cor/extras) por chave de tamanho — espelha o cadastro e alinha [quantidade].
+  static Map<String, int> _estoquePorTamanhoAgregadoDeVariacoes(
+    Map<String, dynamic> variacoes,
+  ) {
+    final out = <String, int>{};
+    for (final e in variacoes.entries) {
+      final mapaTamanho = e.value;
+      if (mapaTamanho is! Map) continue;
+      var total = 0;
+      for (final v in mapaTamanho.values) {
+        total += ProdutoVariacaoExtra.somarCelula(v);
+      }
+      if (total > 0) {
+        out[e.key.toString()] = total;
+      }
+    }
+    return out;
   }
 
   /// Limite do Firestore: 500 operações por transação (~2 ops/item = 250 itens seguros)
@@ -807,12 +834,19 @@ class EstoqueTransactionService {
           novaQuantidadeTotal = quantidadeTotal - quantidade;
         }
 
+        Map<String, int>? estoquePorTamanhoParaVariacao;
+        if (novasVariacoes != null) {
+          estoquePorTamanhoParaVariacao =
+              _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
+        }
+
         final updateData = <String, dynamic>{
           'quantidade': novaQuantidadeTotal,
           'updatedAt': FieldValue.serverTimestamp(),
         };
         if (novasVariacoes != null) {
           updateData['variacoes'] = novasVariacoes;
+          updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
         }
         if (novoEstoquePorTamanho != null) {
           updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
@@ -835,7 +869,8 @@ class EstoqueTransactionService {
             produtoSlug: slugVal.isNotEmpty ? slugVal : null,
             quantidadeDebitada: quantidade,
             variacoesAtualizadas: novasVariacoes,
-            estoquePorTamanhoAtualizado: novoEstoquePorTamanho,
+            estoquePorTamanhoAtualizado:
+                estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
             quantidadeTotalAtualizada: novaQuantidadeTotal,
           ),
         ));
@@ -993,12 +1028,23 @@ class EstoqueTransactionService {
           novaQuantidadeTotal = qtdAtual + quantidade;
         }
 
+        Map<String, int>? estoquePorTamanhoParaVariacao;
+        if (novasVariacoes != null) {
+          estoquePorTamanhoParaVariacao =
+              _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
+        }
+
         final updateData = <String, dynamic>{
           'quantidade': novaQuantidadeTotal,
           'updatedAt': FieldValue.serverTimestamp(),
         };
-        if (novasVariacoes != null) updateData['variacoes'] = novasVariacoes;
-        if (novoEstoquePorTamanho != null) updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
+        if (novasVariacoes != null) {
+          updateData['variacoes'] = novasVariacoes;
+          updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
+        }
+        if (novoEstoquePorTamanho != null) {
+          updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
+        }
 
         final estoqueRef = _db.collection('lojas').doc(lojaId).collection(FSPaths.estoqueProdutosCol).doc(docId);
         final slugVal = (data['slug'] ?? '').toString().trim();
@@ -1012,7 +1058,8 @@ class EstoqueTransactionService {
             produtoSlug: slugVal.isNotEmpty ? slugVal : null,
             quantidadeDebitada: -quantidade,
             variacoesAtualizadas: novasVariacoes,
-            estoquePorTamanhoAtualizado: novoEstoquePorTamanho,
+            estoquePorTamanhoAtualizado:
+                estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
             quantidadeTotalAtualizada: novaQuantidadeTotal,
           ),
         ));

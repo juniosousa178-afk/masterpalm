@@ -5,6 +5,8 @@
  * - Idempotência por paymentId (reenvios não duplicam processamento)
  * - Token correto por lojaId (multi-tenant)
  * - Baixa de estoque apenas uma vez (transação atômica)
+ * - Gravação de auditoria em payments/ e espelho estoque_vendas: falhas são logadas
+ *   e não impedem o restante (transação já commitada; admin/WhatsApp seguem quando aplicável)
  *
  * Fluxo:
  * 1. Verifica se paymentId já foi processado (early return 200)
@@ -128,20 +130,11 @@ async function fetchPaymentFromMp(paymentId, token) {
 
 /**
  * Resolve lojaId e payment.
- * Ordem: 1) token global (se houver) 2) busca em todas as lojas com token MP
+ * Ordem: busca estritamente em tokens de lojas (sem credencial de plataforma).
  * Exportado para uso em posPagamento.js (multi-loja).
  */
-export async function resolveLojaAndPayment(paymentId, globalToken) {
-  // 1) Tentar token global primeiro (fallback para lojas sem OAuth)
-  if (globalToken && globalToken.length > 10) {
-    const payment = await fetchPaymentFromMp(paymentId, globalToken);
-    if (payment) {
-      const lojaId = payment?.metadata?.lojaId || null;
-      return { payment, lojaId };
-    }
-  }
-
-  // 2) Iterar lojas para encontrar a que tem o payment
+export async function resolveLojaAndPayment(paymentId) {
+  // Iterar lojas para encontrar a que tem o payment
   const lojasSnap = await getDb().collection(COLLECTION_LOJAS).select().get();
 
   for (const lojaDoc of lojasSnap.docs) {
@@ -171,13 +164,13 @@ async function findLojaIdByOrderId(orderId) {
  * Retorna true se processou (ou já estava processado), false se ignorado.
  *
  * Idempotência: transação atômica garante que paymentId é processado apenas uma vez.
- * Token: resolve por loja (OAuth) ou global (fallback).
+ * Token: resolve estritamente por loja (OAuth/legado da própria loja).
  */
-export async function processMpWebhook(paymentId, globalToken) {
+export async function processMpWebhook(paymentId) {
   if (!paymentId) return false;
 
   // 1) Resolver loja e buscar payment (token correto por loja)
-  const { payment, lojaId } = await resolveLojaAndPayment(paymentId, globalToken);
+  const { payment, lojaId } = await resolveLojaAndPayment(paymentId);
 
   if (!payment) {
     emitWebhookLog({
@@ -281,24 +274,35 @@ export async function processMpWebhook(paymentId, globalToken) {
     return true;
   }
 
-  // 3) Registrar status no payments (auditoria)
-  await getDb()
-    .collection(COLLECTION_LOJAS)
-    .doc(resolvedLojaId)
-    .collection("payments")
-    .doc(String(paymentId))
-    .set(
-      {
-        kind: "payment",
-        orderId,
-        lojaId: resolvedLojaId,
-        status,
-        amount: payment.transaction_amount,
-        raw: payment,
-        updatedAt: nowTs,
-      },
-      { merge: true }
-    );
+  // 3) Registrar status no payments (auditoria) — não bloquear fluxo principal se falhar (regras/tamanho).
+  try {
+    await getDb()
+      .collection(COLLECTION_LOJAS)
+      .doc(resolvedLojaId)
+      .collection("payments")
+      .doc(String(paymentId))
+      .set(
+        {
+          kind: "payment",
+          orderId,
+          lojaId: resolvedLojaId,
+          status,
+          amount: payment.transaction_amount,
+          raw: payment,
+          updatedAt: nowTs,
+        },
+        { merge: true }
+      );
+  } catch (auditErr) {
+    emitWebhookLog({
+      event: "mpWebhook_payments_audit_write_failed",
+      severity: "warn",
+      paymentId: String(paymentId),
+      orderId: String(orderId),
+      lojaId: String(resolvedLojaId),
+      err: String(auditErr?.message || auditErr),
+    });
+  }
 
   // 4) Se aprovado: transação atômica (marca processado + pedido + estoque)
   if (status !== "approved") {
@@ -644,42 +648,53 @@ export async function processMpWebhook(paymentId, globalToken) {
       .doc(resolvedLojaId)
       .collection("estoque_vendas")
       .doc(vendaId);
-    await estoqueVendasRef.set(
-      {
-        id: vendaId,
-        lojaId: resolvedLojaId,
-        data: nowTs,
-        total,
-        desconto: 0,
-        descontoValor: 0,
-        formasPagamento: "Mercado Pago",
-        frete: Number((order.frete || {}).valor || 0),
-        clienteNome,
-        produtosDescricao: itensVenda.map((i) => `${i.quantidade}x ${i.produtoNome}`).join(", "),
-        quantidade: itensVenda.reduce((s, i) => s + i.quantidade, 0),
-        preco: total - Number((order.frete || {}).valor || 0),
-        tamanho: "",
-        vendedor: "Catálogo Web",
-        observacao: order.observacao || "",
-        pagamentoDinheiro: 0,
-        pagamentoPix: 0,
-        pagamentoCartao: total,
-        taxas: 0,
-        custoProdutos: 0,
-        itens: itensVenda,
-        clienteId: (cliente.id || "").toString(),
-        createdAt: nowTs,
-        updatedAt: nowTs,
-        status: "concluida",
-        statusVenda: "concluida",
+    try {
+      await estoqueVendasRef.set(
+        {
+          id: vendaId,
+          lojaId: resolvedLojaId,
+          data: nowTs,
+          total,
+          desconto: 0,
+          descontoValor: 0,
+          formasPagamento: "Mercado Pago",
+          frete: Number((order.frete || {}).valor || 0),
+          clienteNome,
+          produtosDescricao: itensVenda.map((i) => `${i.quantidade}x ${i.produtoNome}`).join(", "),
+          quantidade: itensVenda.reduce((s, i) => s + i.quantidade, 0),
+          preco: total - Number((order.frete || {}).valor || 0),
+          tamanho: "",
+          vendedor: "Catálogo Web",
+          observacao: order.observacao || "",
+          pagamentoDinheiro: 0,
+          pagamentoPix: 0,
+          pagamentoCartao: total,
+          taxas: 0,
+          custoProdutos: 0,
+          itens: itensVenda,
+          clienteId: (cliente.id || "").toString(),
+          createdAt: nowTs,
+          updatedAt: nowTs,
+          status: "concluida",
+          statusVenda: "concluida",
+          paymentId: String(paymentId),
+          orderId: String(orderId),
+          prePedidoId: String(orderId),
+          origemPrePedido: orderId,
+          origemVenda: "mp_webhook",
+        },
+        { merge: true }
+      );
+    } catch (mirrorErr) {
+      emitWebhookLog({
+        event: "mpWebhook_estoque_vendas_mirror_failed",
+        severity: "error",
         paymentId: String(paymentId),
         orderId: String(orderId),
-        prePedidoId: String(orderId),
-        origemPrePedido: orderId,
-        origemVenda: "mp_webhook",
-      },
-      { merge: true }
-    );
+        lojaId: String(resolvedLojaId),
+        err: String(mirrorErr?.message || mirrorErr),
+      });
+    }
 
     // Notificar admin
     try {

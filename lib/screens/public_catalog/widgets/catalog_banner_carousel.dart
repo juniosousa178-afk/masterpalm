@@ -12,12 +12,15 @@ class CatalogBannerCarousel extends StatefulWidget {
   final double height;
   /// Layout premium: overlay sutil e indicadores maiores
   final bool premium;
+  /// ID canónico da loja para corrigir paths do Storage (`lojas/{id}/…`).
+  final String? resolvedLojaId;
 
   const CatalogBannerCarousel({
     super.key,
     required this.banners,
     required this.height,
     this.premium = false,
+    this.resolvedLojaId,
   });
 
   @override
@@ -113,6 +116,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                         child: Center(
                           child: CatalogImagePlaceholder(
                             url: url,
+                            resolvedLojaId: widget.resolvedLojaId,
                             fit: BoxFit.contain,
                             cacheWidth: 1600,
                             cacheHeight: 800,
@@ -132,6 +136,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                     child: Center(
                       child: CatalogImagePlaceholder(
                         url: url,
+                        resolvedLojaId: widget.resolvedLojaId,
                         fit: BoxFit.contain,
                         cacheWidth: 800,
                         cacheHeight: 600,

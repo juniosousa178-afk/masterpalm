@@ -23,10 +23,20 @@ class IndicacaoConfig {
         'validadeDias': validadeDias,
       };
 
+  static bool _readBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.toLowerCase().trim();
+      return s == 'true' || s == '1' || s == 'sim' || s == 'yes';
+    }
+    return false;
+  }
+
   static IndicacaoConfig fromMap(Map<String, dynamic>? map) {
     if (map == null) return IndicacaoConfig();
     return IndicacaoConfig(
-      ativo: map['ativo'] as bool? ?? false,
+      ativo: _readBool(map['ativo']),
       tipo: (map['tipo'] ?? 'percentual').toString(),
       valor: (map['valor'] as num?)?.toDouble() ?? 10.0,
       validadeDias: (map['validadeDias'] as int?) ?? 60,
@@ -56,13 +66,16 @@ class IndicacaoConfigService {
     }
   }
 
-  /// Salva a config de indicação (merge no doc config do catálogo)
+  /// Salva a config de indicação (merge em LIVE e em rascunho).
+  ///
+  /// O rascunho precisa refletir [ativo] desligado; senão, ao publicar o catálogo,
+  /// `draft_config` sobrescreve `config` com `indicacao.ativo: true` de novo.
   static Future<void> setConfig(String lojaId, IndicacaoConfig config) async {
-    await _db
-        .collection('lojas')
-        .doc(lojaId)
-        .collection('config')
-        .doc('config')
-        .set({'indicacao': config.toMap()}, SetOptions(merge: true));
+    final patch = {'indicacao': config.toMap()};
+    final base = _db.collection('lojas').doc(lojaId);
+    await Future.wait([
+      base.collection('config').doc('config').set(patch, SetOptions(merge: true)),
+      base.collection('draft_config').doc('config').set(patch, SetOptions(merge: true)),
+    ]);
   }
 }

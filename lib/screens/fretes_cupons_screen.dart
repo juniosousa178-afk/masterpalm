@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -57,6 +58,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
   String _freteProvider = 'manual';
   final TextEditingController _cepOrigemCtrl = TextEditingController();
   final TextEditingController _melhorEnvioTokenCtrl = TextEditingController();
+  final FocusNode _melhorEnvioTokenFocus = FocusNode();
 
   // Programa de indicação (indicar amigo)
   bool _indicacaoAtivo = false;
@@ -108,6 +110,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     _freteValorCtrl.dispose();
     _cepOrigemCtrl.dispose();
     _melhorEnvioTokenCtrl.dispose();
+    _melhorEnvioTokenFocus.dispose();
     _correiosUserCtrl.dispose();
     _correiosSenhaCtrl.dispose();
     _frenetTokenCtrl.dispose();
@@ -446,6 +449,19 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
   // =================== FUNÇÕES DE TESTE DE APIs ===================
 
+  Future<void> _colarTokenMelhorEnvio() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final t = data?.text?.trim();
+    if (t == null || t.isEmpty) {
+      _snack('⚠️ Área de transferência vazia — copie o token no site do Melhor Envio');
+      return;
+    }
+    _melhorEnvioTokenCtrl.text = t;
+    _melhorEnvioTokenCtrl.selection = TextSelection.collapsed(offset: t.length);
+    if (mounted) _melhorEnvioTokenFocus.requestFocus();
+    _snack('✅ Token colado');
+  }
+
   Future<void> _testarMelhorEnvio() async {
     final token = _melhorEnvioTokenCtrl.text.trim();
     if (token.isEmpty) {
@@ -456,23 +472,30 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     _snack('🔄 Testando conexão com Melhor Envio...');
 
     try {
-      final response = await http.get(
-        Uri.parse('https://melhorenvio.com.br/api/v2/me'),
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-          'User-Agent': 'MasterPalm (contato@mastepalm.com.br)',
-        },
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final nome = data['firstname'] ?? 'Usuário';
+      final functions =
+          FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+      final callable = functions.httpsCallable('testarMelhorEnvioToken');
+      final result = await callable
+          .call(<String, dynamic>{'token': token})
+          .timeout(const Duration(seconds: 22));
+      final raw = result.data;
+      if (raw is Map && raw['ok'] == true) {
+        final nome = raw['firstname'] ?? 'Usuário';
         _snack('✅ Conectado com sucesso! Bem-vindo, $nome');
-      } else if (response.statusCode == 401) {
-        _snack('❌ Token inválido ou expirado');
       } else {
-        _snack('❌ Erro: ${response.statusCode}');
+        _snack('❌ Resposta inesperada do servidor');
+      }
+    } on FirebaseFunctionsException catch (e) {
+      final code = e.code;
+      final msg = e.message ?? '';
+      if (code == 'permission-denied' ||
+          msg.toLowerCase().contains('inválido') ||
+          msg.toLowerCase().contains('expirado')) {
+        _snack('❌ Token inválido ou expirado');
+      } else if (code == 'invalid-argument') {
+        _snack('⚠️ $msg');
+      } else {
+        _snack('❌ $msg');
       }
     } catch (e) {
       _snack('❌ Erro ao conectar: $e');
@@ -1034,9 +1057,19 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
             Expanded(
               child: TextField(
                 controller: _melhorEnvioTokenCtrl,
+                focusNode: _melhorEnvioTokenFocus,
+                keyboardType: TextInputType.visiblePassword,
+                autocorrect: false,
+                enableSuggestions: false,
+                textInputAction: TextInputAction.done,
                 decoration: InputDecoration(
                   labelText: 'Token da API',
                   prefixIcon: const Icon(Icons.vpn_key),
+                  suffixIcon: IconButton(
+                    tooltip: 'Colar da área de transferência',
+                    icon: const Icon(Icons.content_paste_go_outlined),
+                    onPressed: _colarTokenMelhorEnvio,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1928,6 +1961,13 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               'Cliente indica um amigo; quando o amigo comprar, os dois ganham cupom. O cupom de quem indicou só vale após o amigo usar o dele.',
               style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
             ),
+            if (!_indicacaoAtivo) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Para desativar no catálogo, desligue o interruptor e toque em salvar abaixo.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+              ),
+            ],
             if (_indicacaoAtivo) ...[
               const SizedBox(height: 16),
               const Divider(),
@@ -1972,16 +2012,20 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _indicacaoSalvando ? null : _salvarIndicacaoConfig,
-                icon: _indicacaoSalvando
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.save, size: 20),
-                label: Text(_indicacaoSalvando ? 'Salvando...' : 'Salvar indicação'),
-                style: ElevatedButton.styleFrom(backgroundColor: _successColor, foregroundColor: Colors.white),
-              ),
             ],
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _indicacaoSalvando ? null : _salvarIndicacaoConfig,
+              icon: _indicacaoSalvando
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.save, size: 20),
+              label: Text(
+                _indicacaoSalvando
+                    ? 'Salvando...'
+                    : (_indicacaoAtivo ? 'Salvar indicação' : 'Salvar (programa desativado)'),
+              ),
+              style: ElevatedButton.styleFrom(backgroundColor: _successColor, foregroundColor: Colors.white),
+            ),
           ],
         ),
       ),

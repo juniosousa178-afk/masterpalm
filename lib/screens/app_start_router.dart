@@ -33,6 +33,8 @@ class AppStartRouter extends StatefulWidget {
 class _AppStartRouterState extends State<AppStartRouter> {
   bool _busy = true;
   bool _webLojaMissing = false;
+  /// Firebase não inicializado (ex.: rede na subida) — mostrar retry em vez de loading infinito.
+  bool _firebaseInitFailed = false;
   String _msg = 'Iniciando...';
 
   // ✅ CORREÇÃO: Usar const (lowercase)
@@ -82,7 +84,13 @@ class _AppStartRouterState extends State<AppStartRouter> {
     logW(
       '⚠️ [ROUTE_GUARD] Firebase indisponível. Entrando em modo seguro sem Auth.',
     );
-    _setBusy('Conexão com Firebase indisponível. Tente novamente em instantes.');
+    if (!mounted) return;
+    setState(() {
+      _firebaseInitFailed = true;
+      _busy = false;
+      _msg =
+          'Conexão com Firebase indisponível. Verifique a rede e tente de novo.';
+    });
   }
 
   Future<void> _run() async {
@@ -90,6 +98,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
       if (mounted) {
         setState(() {
           _webLojaMissing = false;
+          _firebaseInitFailed = false;
         });
       }
       logD(
@@ -1031,6 +1040,61 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
   @override
   Widget build(BuildContext context) {
+    if (_firebaseInitFailed) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF101010),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_off_outlined,
+                        size: 48, color: Colors.red.shade200),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Sem conexão com o servidor',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(color: Colors.white),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      _msg,
+                      style: TextStyle(color: Colors.white.withOpacity(0.85)),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton(
+                      onPressed: () {
+                        setState(() {
+                          _firebaseInitFailed = false;
+                          _busy = true;
+                          _msg = 'Tentando novamente...';
+                        });
+                        _run();
+                      },
+                      child: const Text('Tentar novamente'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () => _go(_routeLogin),
+                      child: const Text('Voltar ao login'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     if (_webLojaMissing) {
       return Scaffold(
         backgroundColor: const Color(0xFF101010),

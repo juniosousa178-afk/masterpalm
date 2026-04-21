@@ -1,8 +1,8 @@
 // lib/services/soft_delete_service.dart
 //
-// Exclusão suave: ao excluir produto/venda/cliente, move para "lixeira" por 30 segundos.
-// Dentro de 30 s: botão Desfazer restaura. Após 30 s: exclui do Hive e Firebase.
-// Excluir em lote: cada item pode ser desfeito individualmente em até 30 segundos.
+// Exclusão suave: ao excluir produto/venda/cliente, move para "lixeira" por 5 segundos.
+// Dentro de 5 s: botão Desfazer restaura. Após 5 s: exclui do Hive e Firebase.
+// Excluir em lote: cada item pode ser desfeito individualmente em até 5 segundos.
 
 import 'dart:async';
 import 'dart:convert';
@@ -18,12 +18,14 @@ import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
 import 'produto_exclusao_remota_service.dart';
+import 'produto_pull_skip_guard.dart';
+import 'produtos_firestore_service.dart';
 import 'clientes_firestore_service.dart';
 import 'vendas_firestore_service.dart';
 import 'vendas_service.dart';
 
-const _undoWindow = Duration(seconds: 30);
-const _checkInterval = Duration(seconds: 10);
+const _undoWindow = Duration(seconds: 5);
+const _checkInterval = Duration(seconds: 1);
 const _prefsKey = 'soft_delete_pending';
 
 /// Registro de exclusão pendente (persistido em SharedPreferences).
@@ -155,16 +157,31 @@ class SoftDeleteService {
 
     produto.lojaId = lojaId;
 
+    var docIdResolved = produto.idFirebase.trim();
+    if (docIdResolved.isEmpty && produto.slug.trim().isNotEmpty) {
+      final found = await ProdutosFirestoreService.findEstoqueProdutoDocIdBySlug(
+        lojaId: lojaId,
+        slug: produto.slug,
+      );
+      if (found != null && found.trim().isNotEmpty) {
+        docIdResolved = found.trim();
+        produto.idFirebase = docIdResolved;
+      }
+    }
+
     // Tombstone remoto antes de esvaziar o Hive: evita janela em que o pull recria o produto.
-    try {
-      await ProdutoExclusaoRemotaService.marcarEstoqueProdutoPendenteSoftDelete(
+    var tombstoneOk = docIdResolved.isEmpty;
+    if (!tombstoneOk) {
+      tombstoneOk =
+          await ProdutoExclusaoRemotaService.marcarEstoqueProdutoPendenteSoftDelete(
         produto: produto,
         lojaId: lojaId,
       );
-    } catch (e) {
-      logW(
-        '⚠️ [SOFT-DELETE] Erro ao marcar estoque pendente no Firestore (type=${e.runtimeType})',
-      );
+    }
+    if (!tombstoneOk && docIdResolved.isNotEmpty) {
+      await ProdutoPullSkipGuard.addDocId(lojaId, docIdResolved);
+    } else if (docIdResolved.isEmpty && produto.slug.trim().isNotEmpty) {
+      await ProdutoPullSkipGuard.addSlug(lojaId, produto.slug.trim());
     }
 
     if (removeFromCatalogo) {
@@ -351,6 +368,11 @@ class SoftDeleteService {
             );
           }
         }
+        await ProdutoPullSkipGuard.removeForProduct(
+          lojaId: r.lojaId,
+          docId: prod.idFirebase,
+          slug: prod.slug,
+        );
         return true;
       }
       if (r.type == 'venda') {
@@ -514,6 +536,16 @@ class SoftDeleteService {
             'Exclusão remota de produto pendente (status=$status)',
           );
         }
+        await ProdutoPullSkipGuard.removeForProduct(
+          lojaId: r.lojaId,
+          docId: prod.idFirebase,
+          slug: prod.slug,
+        );
+      } else if (r.idFirebase.trim().isNotEmpty) {
+        await ProdutoPullSkipGuard.removeForProduct(
+          lojaId: r.lojaId,
+          docId: r.idFirebase,
+        );
       }
       await trashBox.delete(r.trashKey);
       logD('🗑️ [SOFT-DELETE] Produto excluído permanentemente (Firestore + lixeira local)');
