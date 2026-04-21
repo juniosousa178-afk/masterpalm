@@ -28,6 +28,7 @@ node_modules/
 # Temp
 *.tmp
 *.cache
+.tmp_chrome_p1_trace/
 
 # Assinatura release (NUNCA commitar)
 **/key.properties

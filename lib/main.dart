@@ -1419,7 +1419,7 @@ class _BootApp extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               isCatalog
-                  ? 'Carregando catálogo...'
+                  ? 'Estamos preparando uma experiência incrível para você.'
                   : 'Iniciando o sistema MasterPalm...',
             ),
           ],
@@ -1540,6 +1540,78 @@ Future<void> main() async {
     logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logD('🚀 [MAIN] Iniciando MasterPalm');
     logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // FAST PATH CIRÚRGICO: catálogo público via /loja/* deve abrir imediatamente.
+    // Evita bloquear o primeiro paint por bootstrap/admin/auth do app interno.
+    if (kIsWeb) {
+      final uriWeb = _initialWebUri ?? Uri.base;
+      final isPublicCatalogPath = _uriHasLojaPathPriority(uriWeb) &&
+          !_uriIsPagamentoPublicPath(uriWeb);
+      if (isPublicCatalogPath) {
+        // Guardrail mínimo do fast path: Firestore do catálogo precisa de Firebase pronto.
+        // Mantém o ganho de startup sem reintroduzir bootstrap admin.
+        CatalogStartupTrace.spanStart('CAT_START.fast_path.firebase_min_init');
+        try {
+          await _initFirebaseCore();
+          CatalogStartupTrace.spanEnd(
+            'CAT_START.fast_path.firebase_min_init',
+            data: {'ok': true},
+          );
+        } catch (e) {
+          CatalogStartupTrace.spanEnd(
+            'CAT_START.fast_path.firebase_min_init',
+            data: {'ok': false, 'error_type': e.runtimeType.toString()},
+          );
+          // Mesmo em falha, seguimos com catálogo para manter comportamento resiliente.
+          logW(
+            '⚠️ [MAIN] Fast path: init mínima Firebase falhou (type=${e.runtimeType})',
+          );
+        }
+
+        final lojaSlugOrId = _lojaSlugOrIdFromUrl();
+        final vendedorRef = _vendedorRefFromUrl();
+        final indicacaoRef = _indicacaoRefFromUrl();
+        final produtoRef = _produtoRefFromUrl();
+        // Guardrail mínimo: semear cache do resolver público evita falha transitória
+        // de validação no primeiro frame do fast path.
+        StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+          urlSlugOrId: lojaSlugOrId,
+          resolvedCanonicalStoreId: lojaSlugOrId,
+        );
+        CatalogStartupTrace.mark(
+          'CAT_START.fast_path.public_resolver_seeded',
+          data: {'loja_slug_or_id': lojaSlugOrId},
+        );
+        CatalogStartupTrace.mark(
+          'CAT_START.runApp.catalog_web_root.fast_path',
+          data: {
+            'loja_slug_or_id': lojaSlugOrId,
+          },
+        );
+        runApp(CatalogWebRoot(
+          lojaId: lojaSlugOrId,
+          vendedorRef: vendedorRef,
+          indicacaoRef: indicacaoRef,
+          produtoRef: produtoRef,
+        ));
+        unawaited(() async {
+          try {
+            CatalogStartupTrace.spanStart('CAT_START.bootstrap_safe.background');
+            await _bootstrapSafe();
+            CatalogStartupTrace.spanEnd('CAT_START.bootstrap_safe.background');
+          } catch (e, st) {
+            CatalogStartupTrace.mark(
+              'CAT_START.bootstrap_safe.background.error',
+              data: {'error_type': e.runtimeType.toString()},
+            );
+            logW(
+                '⚠️ [MAIN] Bootstrap em background (catálogo fast path) falhou (type=${e.runtimeType})');
+            if (kDebugMode) logD('$st');
+          }
+        }());
+        return;
+      }
+    }
 
     CatalogStartupTrace.mark('CAT_START.runApp.boot_app');
     runApp(const _BootApp());

@@ -22,6 +22,10 @@ Widget buildCatalogProductsGridSliver({
   void Function(String productId)? onProductViewed,
   void Function(String prodUrlValue)? onProductUrlFocus,
   VoidCallback? onProductUrlBlur,
+  /// Observabilidade: chamado uma vez no frame após o primeiro layout do tile 0.
+  /// O [SliverGrid] só constrói filhos na região visível (+ cache), então isso
+  /// aproxima o momento em que o grid entra no viewport útil.
+  VoidCallback? onProductsGridFirstViewportFrame,
   void Function(String productId)? onToggleFavorito,
   VoidCallback? onAbrirLoginParaFavorito,
   VoidCallback? onAbrirCarrinho,
@@ -69,6 +73,10 @@ Widget buildCatalogProductsGridSliver({
       gridDelegate: gridDelegate,
       delegate: SliverChildBuilderDelegate(
         (context, index) {
+          final cb = onProductsGridFirstViewportFrame;
+          if (index == 0 && cb != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) => cb());
+          }
           final p = products[index];
           return RepaintBoundary(
             child: PublicCatalogProductCard(

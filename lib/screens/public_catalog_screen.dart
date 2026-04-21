@@ -631,6 +631,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _traceInteractiveLogged = false;
   bool _traceConfigFirstDataLogged = false;
   bool _traceProdutosFirstDataLogged = false;
+  bool _traceBuildEnteredLogged = false;
+  bool _traceConfigWaitingLogged = false;
+  bool _traceConfigReadyLogged = false;
+  bool _traceHeaderReadyLogged = false;
+  bool _traceProductsWaitingLogged = false;
+  bool _traceProductsDataReadyLogged = false;
+  bool _traceProductsVisibleLogged = false;
+  bool _traceProductsGridFirstViewportLogged = false;
+  bool _traceEssentialActionsEnabledLogged = false;
 
   final List<Map<String, dynamic>> _cart = [];
   bool _publicando = false;
@@ -4077,6 +4086,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_traceBuildEnteredLogged) {
+      _traceBuildEnteredLogged = true;
+      CatalogStartupTrace.mark(
+        'CAT_START.public_screen.build_enter',
+        data: <String, Object?>{
+          'loja_id_raw': widget.lojaId,
+          'preview': widget.preview,
+        },
+      );
+    }
     final themeData = _modoEscuro ? ThemeData.dark() : ThemeData.light();
     // Usar tema do contexto (ex.: web) para loading/erro, evitando tela branca
     final themeForStates = Theme.of(context);
@@ -4108,10 +4127,27 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         builder: (context, cfgSnap) {
           // Usar tema do MaterialApp (themeForStates) para evitar tela branca na web
           if (cfgSnap.connectionState == ConnectionState.waiting) {
+            if (!_traceConfigWaitingLogged) {
+              _traceConfigWaitingLogged = true;
+              CatalogStartupTrace.mark(
+                'CAT_START.cfg_builder.waiting',
+                data: <String, Object?>{'loja_id': lojaId},
+              );
+            }
             return CatalogConfigLoadingState(themeData: themeForStates);
           }
           if (!cfgSnap.hasData) {
             return CatalogConfigErrorState(themeData: themeForStates);
+          }
+          if (!_traceConfigReadyLogged) {
+            _traceConfigReadyLogged = true;
+            CatalogStartupTrace.mark(
+              'CAT_START.cfg_builder.ready',
+              data: <String, Object?>{
+                'loja_id': lojaId,
+                'cfg_keys': (cfgSnap.data ?? const <String, dynamic>{}).length,
+              },
+            );
           }
 
           final Map<String, dynamic> cfg =
@@ -4582,6 +4618,18 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           final logoUrl = mediaConfig.logoUrl;
           final banners = mediaConfig.banners;
           final bannerH = mediaConfig.bannerH;
+                if (!_traceHeaderReadyLogged) {
+                  _traceHeaderReadyLogged = true;
+                  CatalogStartupTrace.mark(
+                    'CAT_START.header_structure.ready',
+                    data: <String, Object?>{
+                      'loja_id': lojaId,
+                      'logo_present': logoUrl.isNotEmpty,
+                      'banners_count': banners.length,
+                      'banner_h': bannerH,
+                    },
+                  );
+                }
           return Theme(
             data: Theme.of(context).copyWith(
               scaffoldBackgroundColor: bgColor,
@@ -4617,6 +4665,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               key: ValueKey('produtos_${lojaId}_$_refreshCounter'),
               stream: _getProdutosStream(lojaId),
               builder: (context, prodSnap) {
+                if (prodSnap.connectionState == ConnectionState.waiting &&
+                    !_traceProductsWaitingLogged) {
+                  _traceProductsWaitingLogged = true;
+                  CatalogStartupTrace.mark(
+                    'CAT_START.products_builder.waiting',
+                    data: <String, Object?>{'loja_id': lojaId},
+                  );
+                }
                 if (!_traceInteractiveLogged &&
                     cfgSnap.hasData &&
                     prodSnap.hasData) {
@@ -4670,8 +4726,28 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final docs = prodSnap.hasData && prodSnap.data != null
                     ? prodSnap.data!.docs
                     : <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                if (prodSnap.hasData && !_traceProductsDataReadyLogged) {
+                  _traceProductsDataReadyLogged = true;
+                  CatalogStartupTrace.mark(
+                    'CAT_START.products_builder.ready',
+                    data: <String, Object?>{
+                      'loja_id': lojaId,
+                      'docs_count': docs.length,
+                    },
+                  );
+                }
 
                 final produtos = _processDocsToProductsCached(docs);
+                if (!_traceProductsVisibleLogged) {
+                  _traceProductsVisibleLogged = true;
+                  CatalogStartupTrace.mark(
+                    'CAT_START.products_visible.ready',
+                    data: <String, Object?>{
+                      'loja_id': lojaId,
+                      'produtos_count': produtos.length,
+                    },
+                  );
+                }
 
                 if (produtos.isNotEmpty && _cart.isNotEmpty) {
                   final cleanupSig = '${_lastProdutosDocsSig}|cart:${_cart.length}';
@@ -4754,6 +4830,17 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         s +
                         CatalogEstoqueHelper.parseCartItemQuantidade(
                             e['quantidade']));
+                if (!_traceEssentialActionsEnabledLogged) {
+                  _traceEssentialActionsEnabledLogged = true;
+                  CatalogStartupTrace.mark(
+                    'CAT_START.essential_actions.enabled',
+                    data: <String, Object?>{
+                      'loja_id': lojaId,
+                      'cart_count': cartCount,
+                      'has_whatsapp': whatsappVendedor.trim().isNotEmpty,
+                    },
+                  );
+                }
 
                 final layoutCatalogo = CatalogLayoutConfig.normalize(
                   cfg['layoutCatalogo'] ?? cfg['layout_catalogo'],
@@ -6673,6 +6760,28 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   _onProductUrlFocus,
                                               onProductUrlBlur:
                                                   _onProductUrlBlur,
+                                              onProductsGridFirstViewportFrame:
+                                                  _traceProductsGridFirstViewportLogged
+                                                      ? null
+                                                      : () {
+                                                          if (_traceProductsGridFirstViewportLogged) {
+                                                            return;
+                                                          }
+                                                          _traceProductsGridFirstViewportLogged =
+                                                              true;
+                                                          CatalogStartupTrace
+                                                              .mark(
+                                                            'CAT_START.products_grid.first_viewport_frame',
+                                                            data: <String,
+                                                                Object?>{
+                                                              'loja_id':
+                                                                  lojaId,
+                                                              'grid_item_count':
+                                                                  listaPaginated
+                                                                      .length,
+                                                            },
+                                                          );
+                                                        },
                                               onToggleFavorito: _toggleFavorito,
                                               onAbrirLoginParaFavorito:
                                                   _abrirLoginParaFavorito,
