@@ -200,8 +200,12 @@ class LicenseManager {
   }
 
   // ========== VERIFICAÇÃO PRINCIPAL ==========
-  /// Ordem: root (RoleUtils) → users/{uid} → subscriptions só se **não** houver doc
-  /// canônico em users/{uid} (histórico não promove acesso acima do espelho).
+  /// Mesma regra canônica da UI de planos e do [AppStartRouter]: deriva de
+  /// [PlanosService.fetchCurrentPlan] para não haver “trial válido em /planos”
+  /// e “sem plano” no Splash/Home.
+  ///
+  /// Depois: espelho rápido em users/{uid}; subscriptions só se não houver doc
+  /// **ou** se o doc existir sem `currentPlanId` (espelho incompleto).
   static Future<bool> hasValidAccessFallbackLegacy() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return false;
@@ -210,22 +214,36 @@ class LicenseManager {
       return true;
     }
 
+    try {
+      final email = (user.email ?? '').trim().toLowerCase();
+      final plan = await PlanosService()
+          .fetchCurrentPlan(uid: user.uid, email: email)
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
+      if (plan != null) {
+        if (plan.manualOverride) return true;
+        if (plan.isLifetime) return true;
+        if (plan.isFreeLimited) {
+          return plan.status == 'active' || plan.status == 'trialing';
+        }
+        return plan.isActive && !plan.isExpired;
+      }
+    } catch (_) {}
+
     if (await _checkMirrorUserDoc(user)) return true;
 
     final userSnap = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
         .get();
-    if (userSnap.exists) {
-      return false;
+    if (!userSnap.exists) {
+      if (await _checkSubscriptions(user)) return true;
+    } else {
+      final d = userSnap.data() ?? <String, dynamic>{};
+      final raw =
+          (d['currentPlanId'] ?? d['current_plan_id'] ?? '').toString().trim();
+      if (raw.isEmpty && await _checkSubscriptions(user)) return true;
     }
 
-    if (await _checkSubscriptions(user)) return true;
-
-    // 3) Não liberar premium só por Hive — evita APK modificado / cache adulterado.
-
-    // 4) DEPRECATED: `licenca.codigo` aposentado para liberação funcional.
-    // Mantido apenas para leitura passiva/compatibilidade de dados antigos.
     try {
       final box = await Hive.openBox('licenca');
       box.get('codigo');

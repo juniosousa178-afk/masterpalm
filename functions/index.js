@@ -619,7 +619,16 @@ export const mpOAuthInit = onRequest(
       return;
     }
 
-    const appId = (await S_MP_APP_ID.value()) || process.env.MP_APP_ID;
+    const secretAppIdRaw = await S_MP_APP_ID.value();
+    const envAppIdRaw = process.env.MP_APP_ID;
+    const appId = secretAppIdRaw || envAppIdRaw;
+    const appIdStr = String(appId || "").trim();
+    const appIdMasked = appIdStr
+      ? (appIdStr.length <= 8
+          ? `${appIdStr.slice(0, 1)}***${appIdStr.slice(-1)}`
+          : `${appIdStr.slice(0, 4)}***${appIdStr.slice(-4)}`)
+      : "empty";
+    const appIdSource = secretAppIdRaw ? "S_MP_APP_ID.value()" : (envAppIdRaw ? "process.env.MP_APP_ID" : "fallback");
     if (!appId) {
       console.error("[mpOAuthInit] MP_APP_ID não configurado");
       res.status(500).send(
@@ -656,6 +665,24 @@ export const mpOAuthInit = onRequest(
     });
 
     const authUrl = `${MP_AUTH_URL}?${params.toString()}`;
+    const authUrlDiag = authUrl.replace(
+      `client_id=${encodeURIComponent(appIdStr)}`,
+      `client_id=${encodeURIComponent(appIdMasked)}`
+    );
+    const authorizeHost = (() => {
+      try {
+        return new URL(authUrl).host;
+      } catch (_) {
+        return "invalid_url";
+      }
+    })();
+    console.log(`[MP_OAUTH_DIAG] public_site_origin=${PUBLIC_SITE_ORIGIN}`);
+    console.log(`[MP_OAUTH_DIAG] redirect_uri=${callbackUrl}`);
+    console.log(`[MP_OAUTH_DIAG] client_id_masked=${appIdMasked}`);
+    console.log(`[MP_OAUTH_DIAG] app_id_source=${appIdSource}`);
+    console.log(`[MP_OAUTH_DIAG] authorize_host=${authorizeHost}`);
+    console.log(`[MP_OAUTH_DIAG] code_challenge_generated=${codeChallenge ? "true" : "false"}`);
+    console.log(`[MP_OAUTH_DIAG] authorization_url_masked=${authUrlDiag}`);
     res.redirect(302, authUrl);
   }
 );

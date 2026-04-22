@@ -118,9 +118,14 @@ class _AppStartRouterState extends State<AppStartRouter> {
         '[ROUTE_GUARD] auth uid=${user?.uid ?? "null"} email=${user?.email ?? "null"}',
       );
 
-      // Usuário só desloga ao clicar em Sair, limpar dados do app ou reinstalar
-      if (user == null) {
-        logD('[BOOT-BLOCK] Sem usuário logado → /login');
+      // Sessão anônima não é login válido para o app admin.
+      if (user == null || user.isAnonymous) {
+        logD('[BOOT-BLOCK] Usuário ausente/anônimo → /login');
+        if (user?.isAnonymous == true) {
+          try {
+            await auth.signOut();
+          } catch (_) {}
+        }
         _go(_routeLogin);
         return;
       }

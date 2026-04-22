@@ -787,6 +787,20 @@ String _normalizeSlug(String v) => v.trim().toLowerCase();
 Widget _planGate(PlanGateFeature f, Widget child) =>
     PlanGatedScreen(feature: f, child: child);
 
+/// Guard de autenticação para rotas acessadas direto por URL no Web
+/// (ex.: /planos em janela anônima).
+Widget _authRoute(Widget child) {
+  return StreamBuilder<User?>(
+    stream: FirebaseAuth.instance.authStateChanges(),
+    initialData: FirebaseAuth.instance.currentUser,
+    builder: (context, snap) {
+      final u = snap.data;
+      if (u != null && !u.isAnonymous) return child;
+      return const LoginScreen();
+    },
+  );
+}
+
 Widget _lojaIdRouteGated(
   PlanGateFeature f,
   Widget Function(String lojaId) builder,
@@ -2493,8 +2507,8 @@ class MyApp extends StatelessWidget {
               '/cadastro': (_) => const CadastroScreen(),
               '/permissao': (_) => const PermissoesScreen(),
               '/permissoes': (_) => const PermissoesScreen(),
-              '/plano': (_) => const PlanoScreen(),
-              '/planos': (_) => const PlanosScreen(),
+              '/plano': (_) => _authRoute(const PlanoScreen()),
+              '/planos': (_) => _authRoute(const PlanosScreen()),
               '/admin_usuarios': (_) => const AdminUsuariosScreen(),
               '/master_login': (_) => const MasterLoginScreen(),
               '/master_config': (_) => const MasterConfigScreen(),

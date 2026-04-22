@@ -447,7 +447,10 @@ class PlanosService {
         }
         String status = (d['status'] ?? 'active').toString();
         bool trialing = (d['trialing'] ?? false) == true;
-        DateTime? end = _parseEnd(d['currentPeriodEnd']);
+        // Paridade com backend/LicenseManager: alguns docs usam só snake_case.
+        DateTime? end = _parseEnd(
+          d['currentPeriodEnd'] ?? d['current_period_end'],
+        );
         bool trialUsed = (d['trialUsed'] ?? false) == true;
         final cancelAtPeriodEnd =
             (d['cancelAtPeriodEnd'] ?? d['cancel_at_period_end']) == true;

@@ -44,7 +44,14 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _decidir() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return _go('/login');
+      if (user == null || user.isAnonymous) {
+        if (user?.isAnonymous == true) {
+          try {
+            await FirebaseAuth.instance.signOut();
+          } catch (_) {}
+        }
+        return _go('/login');
+      }
 
       final sessao = await Hive.openBox('sessao');
       if (sessao.get('auth_context') == 'cliente') return _go('/router');
