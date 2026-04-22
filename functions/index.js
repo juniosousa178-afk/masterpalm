@@ -583,6 +583,13 @@ const MP_TOKEN_URL = "https://api.mercadopago.com/oauth/token";
 const MP_OAUTH_STATE_COL = "_mp_oauth_states";
 const MP_OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
 
+/** RFC 7636 PKCE — obrigatório quando a aplicação MP está com PKCE ativado. */
+function generateMpPkcePair() {
+  const codeVerifier = crypto.randomBytes(32).toString("base64url");
+  const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+  return { codeVerifier, codeChallenge };
+}
+
 function mapMpOAuthExchangeError(msgRaw) {
   const msg = String(msgRaw || "").toLowerCase();
   if (msg.includes("state inválido") || msg.includes("state invalido") || msg.includes("state")) {
@@ -626,11 +633,13 @@ export const mpOAuthInit = onRequest(
     const nonce = crypto.randomBytes(24).toString("base64url");
     const issuedAt = Date.now();
     const expiresAt = issuedAt + MP_OAUTH_STATE_TTL_MS;
+    const { codeVerifier, codeChallenge } = generateMpPkcePair();
     await db.collection(MP_OAUTH_STATE_COL).doc(nonce).set({
       lojaId: String(lojaId),
       createdAt: Timestamp.now(),
       expiresAt: Timestamp.fromMillis(expiresAt),
       used: false,
+      code_verifier: codeVerifier,
     });
     const state = Buffer.from(
       JSON.stringify({ l: String(lojaId), n: nonce, t: issuedAt })
@@ -642,6 +651,8 @@ export const mpOAuthInit = onRequest(
       platform_id: "mp",
       state,
       redirect_uri: callbackUrl,
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
     });
 
     const authUrl = `${MP_AUTH_URL}?${params.toString()}`;
@@ -727,6 +738,11 @@ export const mpOAuthExchangeCode = onRequest(
       throw e;
     });
 
+    const stateSnapAfter = await stateRef.get();
+    const codeVerifierForToken = String(
+      (stateSnapAfter.exists ? stateSnapAfter.data() || {} : {}).code_verifier || ""
+    ).trim();
+
     const appId = (await S_MP_APP_ID.value()) || process.env.MP_APP_ID;
     const clientSecret = (await S_MP_CLIENT_SECRET.value()) || process.env.MP_CLIENT_SECRET;
     if (!appId || !clientSecret) {
@@ -737,16 +753,20 @@ export const mpOAuthExchangeCode = onRequest(
 
     try {
       const callbackUrl = `${PUBLIC_SITE_ORIGIN}/mp-oauth-callback`;
+      const tokenPayload = {
+        client_id: appId,
+        client_secret: clientSecret,
+        code,
+        grant_type: "authorization_code",
+        redirect_uri: callbackUrl,
+      };
+      if (codeVerifierForToken) {
+        tokenPayload.code_verifier = codeVerifierForToken;
+      }
       const tokenResp = await fetch(MP_TOKEN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: appId,
-          client_secret: clientSecret,
-          code,
-          grant_type: "authorization_code",
-          redirect_uri: callbackUrl,
-        }),
+        body: JSON.stringify(tokenPayload),
         signal: AbortSignal.timeout(12000),
       });
       const tokenData = await tokenResp.json();
