@@ -3133,7 +3133,7 @@ Future<void> _unificarDuplicados() async {
     }
     var msg = partes.join(' ');
     if (falhasFirestore > 0) {
-      msg = '$msg (${falhasFirestore} falha(s) ao sincronizar com a nuvem)';
+      msg = '$msg ($falhasFirestore falha(s) ao sincronizar com a nuvem)';
     }
     final soRicos =
         gruposIgnoradosRicos > 0 && unificados == 0 && deletados == 0;

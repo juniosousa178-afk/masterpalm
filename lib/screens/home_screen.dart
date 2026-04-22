@@ -138,8 +138,7 @@ class _HomeScreenState extends State<HomeScreen>
     // Sincronização automática ao entrar (paridade Web/APK – vendas de qualquer plataforma aparecem em todas)
     // Web: atraso maior para não competir com scroll/gestos logo após o login.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final delayMs = kIsWeb ? 900 : 220;
-      Future<void>.delayed(Duration(milliseconds: delayMs), () {
+      Future<void>.delayed(Duration(milliseconds: kIsWeb ? 900 : 220), () {
         if (!mounted) return;
         AutoSyncService.syncCompleto().then((r) {
           if (mounted) setState(() {}); // Atualiza dashboard quando sync terminar

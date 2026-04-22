@@ -2176,8 +2176,9 @@ class _DialogConectarPagSeguroState extends State<_DialogConectarPagSeguro> {
                       tooltip: 'Colar',
                       onPressed: () async {
                         final data = await Clipboard.getData('text/plain');
-                        if (data?.text != null)
+                        if (data?.text != null) {
                           _tokenCtrl.text = data!.text!.trim();
+                        }
                       },
                     ),
                   ],
@@ -2436,8 +2437,9 @@ class _DialogConectarInfinitePayState
                       tooltip: 'Colar',
                       onPressed: () async {
                         final data = await Clipboard.getData('text/plain');
-                        if (data?.text != null)
+                        if (data?.text != null) {
                           _apiKeyCtrl.text = data!.text!.trim();
+                        }
                       },
                     ),
                   ],

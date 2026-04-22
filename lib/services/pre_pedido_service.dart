@@ -455,14 +455,12 @@ class PrePedidoService {
         String? portalTokenParaPedido = portalTokenFromSession?.trim().isNotEmpty == true
             ? portalTokenFromSession!.trim()
             : null;
-        if (portalTokenParaPedido == null) {
-          portalTokenParaPedido = await _ensureClienteComPortalToken(
-            lojaId: lojaId,
-            email: emailParaPortal,
-            nome: (customer['nome'] ?? 'Cliente').toString().trim(),
-            telefone: (customer['telefone'] ?? '').toString().trim(),
-          );
-        }
+        portalTokenParaPedido ??= await _ensureClienteComPortalToken(
+          lojaId: lojaId,
+          email: emailParaPortal,
+          nome: (customer['nome'] ?? 'Cliente').toString().trim(),
+          telefone: (customer['telefone'] ?? '').toString().trim(),
+        );
         if (portalTokenParaPedido != null) {
           final clienteAtual = Map<String, dynamic>.from(prePedidoData['cliente'] as Map);
           clienteAtual['portalToken'] = portalTokenParaPedido;

@@ -2395,10 +2395,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   const Icon(Icons.card_giftcard,
                       color: _successColor, size: 28),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Indicar amigo',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -2407,9 +2407,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Quando seu amigo comprar pelo link abaixo, você e ele ganham um cupom de desconto. Seu cupom será ativado quando ele usar o cupom dele na primeira compra.',
-                style: const TextStyle(fontSize: 14, color: Colors.black87),
+                style: TextStyle(fontSize: 14, color: Colors.black87),
               ),
               const SizedBox(height: 16),
               Container(
@@ -4833,7 +4833,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 }
 
                 if (produtos.isNotEmpty && _cart.isNotEmpty) {
-                  final cleanupSig = '${_lastProdutosDocsSig}|cart:${_cart.length}';
+                  final cleanupSig = '$_lastProdutosDocsSig|cart:${_cart.length}';
                   if (_lastCartCleanupSig != cleanupSig) {
                     _lastCartCleanupSig = cleanupSig;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -6292,7 +6292,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             _categoryAliasesSignature(
                                                 categoryAliasesByName);
                                         final sig =
-                                            '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$_selectedCategory|$_selectedSubcategory|$_ordenacaoProdutos|${_precoMin}_${_precoMax}|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|${variacaoExtrasOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$_filtroVariacaoExtra|$totalPaginas';
+                                            '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$_selectedCategory|$_selectedSubcategory|$_ordenacaoProdutos|${_precoMin}_$_precoMax|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|${variacaoExtrasOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$_filtroVariacaoExtra|$totalPaginas';
                                         if (sig != _lastCatalogSanitizeSig) {
                                           _lastCatalogSanitizeSig = sig;
                                           final gen = ++_catalogSanitizeGen;

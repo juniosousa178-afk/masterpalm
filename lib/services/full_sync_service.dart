@@ -462,8 +462,8 @@ class SyncResult {
   String toString() {
     if (sucesso) {
       return 'Sincronização OK: $produtosSincronizados produtos, $clientesSincronizados clientes, '
-          '$vendasSincronizadas vendas; financeiro enviados ${financeiroLancamentosEnviados}+${financeiroGastosFixosEnviados}, '
-          'importados ${financeiroLancamentosImportados}+${financeiroGastosFixosImportados}';
+          '$vendasSincronizadas vendas; financeiro enviados $financeiroLancamentosEnviados+$financeiroGastosFixosEnviados, '
+          'importados $financeiroLancamentosImportados+$financeiroGastosFixosImportados';
     }
     return 'Erro: $erro';
   }

@@ -248,7 +248,7 @@ class CatalogCacheService {
         .doc(cfgCol == 'config' ? 'payments_public' : 'payments');
     final fallbackPaymentsRef = baseRef.collection(cfgCol).doc('payments');
 
-    bool _isMissing(dynamic v) {
+    bool isMissing(dynamic v) {
       if (v == null) return true;
       if (v is String) return v.trim().isEmpty;
       if (v is Map) return v.isEmpty;
@@ -256,13 +256,13 @@ class CatalogCacheService {
       return false;
     }
 
-    void _putIfMissing(Map<String, dynamic> target, Map<String, dynamic> source, String key) {
-      if (_isMissing(target[key]) && !_isMissing(source[key])) {
+    void putIfMissing(Map<String, dynamic> target, Map<String, dynamic> source, String key) {
+      if (isMissing(target[key]) && !isMissing(source[key])) {
         target[key] = source[key];
       }
     }
 
-    void _mergePublicVisualFallback(Map<String, dynamic> source, Map<String, dynamic> target) {
+    void mergePublicVisualFallback(Map<String, dynamic> source, Map<String, dynamic> target) {
       for (final k in const [
         'nomeLoja',
         'nome_loja',
@@ -284,7 +284,7 @@ class CatalogCacheService {
         'rodape',
         'empresa',
       ]) {
-        _putIfMissing(target, source, k);
+        putIfMissing(target, source, k);
       }
     }
 
@@ -332,7 +332,7 @@ class CatalogCacheService {
         if (cfg.isEmpty) {
           cfg.addAll(legacyLive);
         } else {
-          _mergePublicVisualFallback(legacyLive, cfg);
+          mergePublicVisualFallback(legacyLive, cfg);
         }
       }
     } catch (_) {}
@@ -349,26 +349,26 @@ class CatalogCacheService {
     try {
       final lojaSnap = await baseRef.get();
       final lojaMap = asMap(lojaSnap.data());
-      _putIfMissing(cfg, lojaMap, 'nome');
-      _putIfMissing(cfg, lojaMap, 'nomeLoja');
-      _putIfMissing(cfg, lojaMap, 'nome_loja');
+      putIfMissing(cfg, lojaMap, 'nome');
+      putIfMissing(cfg, lojaMap, 'nomeLoja');
+      putIfMissing(cfg, lojaMap, 'nome_loja');
       // Doc raiz costuma usar `name` (StoreService); o catálogo também lê `name`.
-      _putIfMissing(cfg, lojaMap, 'name');
-      if (_isMissing(cfg['nome']) && !_isMissing(lojaMap['name'])) {
+      putIfMissing(cfg, lojaMap, 'name');
+      if (isMissing(cfg['nome']) && !isMissing(lojaMap['name'])) {
         cfg['nome'] = lojaMap['name'];
       }
-      if (_isMissing(cfg['nomeLoja']) && !_isMissing(lojaMap['name'])) {
+      if (isMissing(cfg['nomeLoja']) && !isMissing(lojaMap['name'])) {
         cfg['nomeLoja'] = lojaMap['name'];
       }
-      _putIfMissing(cfg, lojaMap, 'logoUrl');
-      _putIfMissing(cfg, lojaMap, 'logoDesktopUrl');
-      _putIfMissing(cfg, lojaMap, 'logoMobileUrl');
-      _putIfMissing(cfg, lojaMap, 'banners');
-      _putIfMissing(cfg, lojaMap, 'bannersDesktop');
-      _putIfMissing(cfg, lojaMap, 'bannersMobile');
-      _putIfMissing(cfg, lojaMap, 'theme');
-      _putIfMissing(cfg, lojaMap, 'uiColors');
-      _putIfMissing(cfg, lojaMap, 'layout');
+      putIfMissing(cfg, lojaMap, 'logoUrl');
+      putIfMissing(cfg, lojaMap, 'logoDesktopUrl');
+      putIfMissing(cfg, lojaMap, 'logoMobileUrl');
+      putIfMissing(cfg, lojaMap, 'banners');
+      putIfMissing(cfg, lojaMap, 'bannersDesktop');
+      putIfMissing(cfg, lojaMap, 'bannersMobile');
+      putIfMissing(cfg, lojaMap, 'theme');
+      putIfMissing(cfg, lojaMap, 'uiColors');
+      putIfMissing(cfg, lojaMap, 'layout');
     } catch (_) {}
     if (kDebugMode) {
       catalogDebugLogConfigPipeline(

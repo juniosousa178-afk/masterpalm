@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_web_libraries_in_flutter
+// Web-only: replaceState / location (Flutter web plugin pattern).
 import 'dart:html' as html;
 
 import 'catalog_url_query_codec.dart';
