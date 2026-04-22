@@ -135,16 +135,16 @@ class ProdutoExclusaoRemotaService {
     required String lojaId,
   }) async {
     if (lojaId.isEmpty) return ProdutoExclusaoRemotaStatus.pendente;
-    var ok = true;
+    // Imagens no Storage: best-effort. Se falhar, o produto ainda some do estoque
+    // (evita "exclusão não confirmada" só por timeout/CORS no Storage no web).
     try {
       await ProdutoImagensStorageCleanup.apagarTodasImagensGerenciadasDoProduto(
         produto,
         lojaId,
       );
     } catch (e, st) {
-      ok = false;
       logE(
-        '[EXCLUSAO_REMOTA] Falha ao apagar imagens gerenciadas',
+        '[EXCLUSAO_REMOTA] Falha ao apagar imagens gerenciadas (estoque seguirá)',
         tag: 'EXCLUSAO',
         error: e,
         st: st,
@@ -156,17 +156,15 @@ class ProdutoExclusaoRemotaService {
         lojaId: lojaId,
       );
     } catch (e, st) {
-      ok = false;
       logE(
         '[EXCLUSAO_REMOTA] Falha deleteProdutoRobusto',
         tag: 'EXCLUSAO',
         error: e,
         st: st,
       );
+      return ProdutoExclusaoRemotaStatus.pendente;
     }
-    return ok
-        ? ProdutoExclusaoRemotaStatus.confirmada
-        : ProdutoExclusaoRemotaStatus.pendente;
+    return ProdutoExclusaoRemotaStatus.confirmada;
   }
 
   static Future<void> apagarImagensEEstoqueRemoto({

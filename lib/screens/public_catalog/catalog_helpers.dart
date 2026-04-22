@@ -94,6 +94,32 @@ Color? readColorFromCfg(dynamic v) {
 // ===================================================================
 // CHECKOUT CONFIG
 // ===================================================================
+
+/// Lê [cfg['payments']] (unificado com `payments_public` no stream do catálogo).
+/// Com Mercado Pago conectado, o PIX deve ir para [onCheckoutMercadoPago], não chave estática.
+bool catalogConfigMercadoPagoAtivo(Map<String, dynamic> cfg) {
+  final pay = cfg['payments'];
+  if (pay is! Map) return false;
+  final p = pay.map((k, v) => MapEntry(k.toString(), v));
+  final dg = (p['defaultGateway'] ?? '').toString().toLowerCase().trim();
+  if (dg == 'mp' || dg == 'mercadopago') return true;
+  final mp = p['mp'];
+  if (mp is! Map) return false;
+  final m = mp.map((k, v) => MapEntry(k.toString(), v));
+  if (m['connected'] == true) return true;
+  final pk = (m['public_key'] ?? m['publicKey'] ?? '').toString().trim();
+  if (pk.isNotEmpty) return true;
+  final hint = (m['access_token_hint'] ?? '').toString().trim();
+  if (hint.isNotEmpty) return true;
+  if ((m['email'] ?? m['user_id'] ?? m['nickname'] ?? '')
+      .toString()
+      .trim()
+      .isNotEmpty) {
+    return true;
+  }
+  return false;
+}
+
 String deepFindString(dynamic root, String keyContains) {
   if (root is Map) {
     for (final entry in root.entries) {

@@ -378,18 +378,30 @@ class FreteService {
         final tokenME2 = (config['melhorEnvio']?['token'] ?? '').toString().trim();
         final tokenSF2 = (config['superfrete']?['token'] ?? '').toString().trim();
         if (tokenME2.isEmpty || tokenSF2.isEmpty) {
-          final draftRef = FirebaseFirestore.instance
-              .collection('lojas')
-              .doc(docId)
-              .collection('draft_config')
-              .doc('config');
-          final docDraft = await draftRef.get();
-          if (docDraft.exists && docDraft.data() != null) {
-            applyTokensFrom(docDraft.data()!);
-            if (((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) ||
-                ((config['superfrete']?['token'] ?? '').toString().isNotEmpty)) {
-              debugPrint('✅ [FRETE] Tokens obtidos de draft_config/config');
+          // draft_config só o dono/admin lê. Visitante do catálogo: permission-denied —
+          // não pode derrubar o fluxo (config/fretes com Melhor Envio já estaria carregada).
+          try {
+            final draftRef = FirebaseFirestore.instance
+                .collection('lojas')
+                .doc(docId)
+                .collection('draft_config')
+                .doc('config');
+            final docDraft = await draftRef.get();
+            if (docDraft.exists && docDraft.data() != null) {
+              applyTokensFrom(docDraft.data()!);
+              if (((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) ||
+                  ((config['superfrete']?['token'] ?? '').toString().isNotEmpty)) {
+                debugPrint('✅ [FRETE] Tokens obtidos de draft_config/config');
+              }
             }
+          } on FirebaseException catch (e) {
+            debugPrint(
+              '⚠️ [FRETE] draft_config não aplicado (${e.code}) — seguindo com config já carregada',
+            );
+          } catch (e) {
+            debugPrint(
+              '⚠️ [FRETE] draft_config: $e',
+            );
           }
         }
         // Fallback 3: doc raiz da loja (config/config às vezes espelhado aqui)

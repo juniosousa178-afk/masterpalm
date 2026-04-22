@@ -125,6 +125,10 @@ class CarrinhoSheetWeb extends StatefulWidget {
     Future<void> Function(String? pedidoId)? onPedidoCriado,
   })? onCheckoutPix;
 
+  /// Quando a loja tem MP no `payments` público, o fluxo de PIX é o do Mercado Pago
+  /// (não o botão de chave estática, mesmo com gateway `whatsapp` + chave cadastrada).
+  final bool pixPreferMercadoPago;
+
   final void Function(String message) showSnack;
 
   /// Estado persistente da roleta (do parent) — prevalece ao fechar/reabrir carrinho
@@ -198,6 +202,7 @@ class CarrinhoSheetWeb extends StatefulWidget {
     this.checkoutSummaryStyle,
     this.cartUiTokens,
     this.firstPurchaseCoupon,
+    this.pixPreferMercadoPago = false,
   });
 
   @override
@@ -417,6 +422,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       _totals.subtotalConformePagamento;
 
   bool get _freteGratis => _totals.freteGratis;
+
+  /// PIX com chave na loja (WhatsApp/PIX) — o botão dedicado cobre; não exibir
+  /// outro CTA de PIX (gateway). Com **cartão** ou outras formas, o MP segue visível.
+  bool get _pixApenasComChaveDaLoja {
+    if (_pagamento.toUpperCase() != 'PIX') return false;
+    if (widget.pixPreferMercadoPago) return false;
+    if (widget.pixKey.trim().isEmpty || widget.onCheckoutPix == null) {
+      return false;
+    }
+    return widget.checkoutGateway == 'pix' ||
+        widget.checkoutGateway == 'whatsapp';
+  }
 
   @override
   void initState() {
@@ -4192,11 +4209,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             ),
 
             // BOTÃO PAGAR COM PIX (chave PIX da loja - gateway pix ou whatsapp)
-            if ((widget.checkoutGateway == 'pix' ||
-                    widget.checkoutGateway == 'whatsapp') &&
-                widget.pixKey.trim().isNotEmpty &&
-                widget.onCheckoutPix != null &&
-                _pagamento.toUpperCase() == 'PIX') ...[
+            if (_pixApenasComChaveDaLoja) ...[
               SizedBox(height: compact ? 10 : 12),
               SizedBox(
                 width: double.infinity,
@@ -4344,9 +4357,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 ),
               ),
             ],
-            // BOTÃO MERCADO PAGO / OUTROS GATEWAYS (mp, pagseguro, ton, infinitepay)
-            if (widget.checkoutGateway != 'whatsapp' &&
-                widget.checkoutGateway != 'pix' &&
+            // MERCADO PAGO / integração: não duplicar PIX (chave já exibida acima).
+            if (!_pixApenasComChaveDaLoja &&
                 _pagamento.toUpperCase() != 'DINHEIRO') ...[
               SizedBox(height: compact ? 10 : 12),
               SizedBox(

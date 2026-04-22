@@ -3181,6 +3181,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required String checkoutButtonLabel,
     required String pixKey,
     required String freightToken,
+    required bool mercadoPagoAtivo,
     required CatalogCheckoutSummaryTokens checkoutSummaryTokens,
     required CatalogCartUiTokens catalogCartUiTokens,
     CatalogFirstPurchaseCouponOffer? catalogFirstPurchaseCouponOffer,
@@ -3282,13 +3283,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             checkoutButtonLabel: checkoutButtonLabel,
             pixKey: pixKey,
             freightToken: freightToken,
+            pixPreferMercadoPago: mercadoPagoAtivo,
             onRemove: _removeFromCart,
             onSetItemQuantity: (i, q) =>
                 _setCartItemQuantity(i, q, catalogProducts),
             showSnack: showCartSnack,
             onCheckoutPix:
                 (gatewayEff == 'pix' || gatewayEff == 'whatsapp') &&
-                        pixKey.trim().isNotEmpty
+                        pixKey.trim().isNotEmpty &&
+                        !mercadoPagoAtivo
                     ? ({
                         required Map<String, dynamic> customer,
                         required Map<String, dynamic> entrega,
@@ -4240,15 +4243,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             logD('📄 [CATÁLOGO] Config carregado: ${cfg.keys.length} chaves');
           }
 
-          final whatsappVendedor =
-              (cfg['whatsapp_vendedor'] ?? cfg['whatsapp'] ?? '').toString();
-
-          // ✅ WhatsApp do rodapé: usa rodape['whatsapp'] quando configurado (sincronizado com Loja Config)
+          // Número único: rodapé (Loja Config) > campos legados no root — o checkout
+          // usava só o root; se o WhatsApp estava só em rodape.whatsapp, o carrinho
+          // dizia "não configurado" mesmo com o rodapé exibindo o contato.
           final rodapeForWhatsapp = mpMapDyn(cfg['rodape']);
           final whatsappRodape =
               (rodapeForWhatsapp['whatsapp'] ?? '').toString().trim();
-          final atendimentoWhatsapp =
-              whatsappRodape.isNotEmpty ? whatsappRodape : whatsappVendedor;
+          final whatsappNoRoot = (cfg['whatsapp_vendedor'] ?? cfg['whatsapp'] ?? '')
+              .toString()
+              .trim();
+          final atendimentoWhatsapp = whatsappRodape.isNotEmpty
+              ? whatsappRodape
+              : whatsappNoRoot;
+          final whatsappVendedor = atendimentoWhatsapp;
+          final mercadoPagoAtivo = catalogConfigMercadoPagoAtivo(cfg);
 
           // =================== CONFIGURAÇÕES DE LAYOUT ===================
           final cardShowShadow = safeBool(cfg['cardShowShadow'], true);
@@ -5903,6 +5911,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       checkoutButtonLabel: checkoutButtonLabel,
                                       pixKey: pixKey,
                                       freightToken: freightToken,
+                                      mercadoPagoAtivo: mercadoPagoAtivo,
                                       checkoutSummaryTokens:
                                           catalogCheckoutSummaryTokens,
                                       catalogCartUiTokens: catalogCartUiTokens,
@@ -6056,6 +6065,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             checkoutButtonLabel: checkoutButtonLabel,
                             pixKey: pixKey,
                             freightToken: freightToken,
+                            mercadoPagoAtivo: mercadoPagoAtivo,
                             checkoutSummaryTokens: catalogCheckoutSummaryTokens,
                             catalogCartUiTokens: catalogCartUiTokens,
                             catalogFirstPurchaseCouponOffer:
@@ -6571,6 +6581,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       pixKey: pixKey,
                                                       freightToken:
                                                           freightToken,
+                                                      mercadoPagoAtivo:
+                                                          mercadoPagoAtivo,
                                                       checkoutSummaryTokens:
                                                           catalogCheckoutSummaryTokens,
                                                       catalogCartUiTokens:
@@ -6790,6 +6802,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       checkoutButtonLabel,
                                                   pixKey: pixKey,
                                                   freightToken: freightToken,
+                                                  mercadoPagoAtivo:
+                                                      mercadoPagoAtivo,
                                                   checkoutSummaryTokens:
                                                       catalogCheckoutSummaryTokens,
                                                   catalogCartUiTokens:
@@ -6919,6 +6933,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     checkoutButtonLabel,
                                                 pixKey: pixKey,
                                                 freightToken: freightToken,
+                                                mercadoPagoAtivo:
+                                                    mercadoPagoAtivo,
                                                 checkoutSummaryTokens:
                                                     catalogCheckoutSummaryTokens,
                                                 catalogCartUiTokens:
