@@ -56,7 +56,6 @@ import 'public_catalog/catalog_theme.dart';
 import 'public_catalog/catalog_checkout_summary_tokens.dart';
 import 'public_catalog/catalog_cart_checkout_visual_config.dart';
 import 'public_catalog/widgets/catalog_banner_carousel.dart';
-import 'public_catalog/widgets/catalog_guest_optional_login_banner.dart';
 import 'public_catalog/widgets/catalog_config_error_state.dart';
 import 'public_catalog/widgets/catalog_config_loading_state.dart';
 import 'public_catalog/widgets/catalog_empty_products_state.dart';
@@ -3762,15 +3761,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     'type': isPix ? 'pix' : 'preference',
                     if (isPix) ...{
                       'descricao': 'Pedido #$pedidoId',
-                      'email': customer['email']?.toString(),
+                      if (catalogIsPlausibleMpBuyerEmail(
+                          customer['email']?.toString()))
+                        'email': customer['email']!.toString().trim(),
                       'cpf': customer['cpf']?.toString(),
                     } else ...{
                       'titulo': 'Pedido #$pedidoId',
                       'quantidade': 1,
                       'descricao': 'Compra em $lojaId',
-                      'payer': customer['email'] != null
-                          ? {'email': customer['email'].toString()}
-                          : null,
+                      // payer montado no servidor (mpCatalogPayment) a partir do pré-pedido em Firestore
                       if (maxInstallmentsSemJuros != null)
                         'maxInstallments': maxInstallmentsSemJuros,
                       if (maxInstallmentsSemJuros != null)
@@ -6391,13 +6390,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           SliverToBoxAdapter(
                                             child: Column(
                                               children: [
-                                                CatalogGuestOptionalLoginBanner(
-                                                  authRetryKey:
-                                                      _menuClienteAuthRetryKey,
-                                                  textColor: textColor,
-                                                  cardColor: cardColor,
-                                                  primaryColor: primaryColor,
-                                                ),
                                                 if (banners.isNotEmpty)
                                                   CatalogBannerCarousel(
                                                     banners: banners,

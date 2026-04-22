@@ -461,35 +461,69 @@ class FreteService {
     ];
   }
 
+  /// Aceita número, string com ponto ou vírgula (ex.: Melhor Envio em pt-BR).
+  static double? _parseMoneyMelhorEnvio(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is num) return raw.toDouble();
+    var s = raw.toString().trim();
+    if (s.isEmpty) return null;
+    if (s.contains(',') && !s.contains('.')) {
+      s = s.replaceAll('.', '').replaceAll(',', '.');
+    }
+    return double.tryParse(s);
+  }
+
   static List<Map<String, dynamic>> _parsearOpcoesMelhorEnvio(
     List<dynamic> data,
     Map<String, dynamic> config,
   ) {
-    final opcoes = data.map<Map<String, dynamic>>((item) {
-      final nome = item['name'] ?? 'Melhor Envio';
-      final priceRaw = item['price'];
-      final deliveryTime = item['delivery_time'];
-      final companyName = item['company']?['name'] ?? 'Melhor Envio';
+    final opcoes = <Map<String, dynamic>>[];
+    for (final raw in data) {
+      if (raw is! Map) continue;
+      final item = Map<String, dynamic>.from(raw);
+      if (item['error'] == true) continue;
+
+      final company = item['company'];
+      final companyName = company is Map
+          ? (company['name'] ?? 'Melhor Envio').toString()
+          : 'Melhor Envio';
+      final nome = (item['name'] ??
+              item['service_name'] ??
+              item['title'] ??
+              companyName)
+          .toString()
+          .trim();
+      if (nome.isEmpty) continue;
 
       double valor = 0.0;
-      if (priceRaw is num) {
-        valor = priceRaw.toDouble();
-      } else if (priceRaw is String) {
-        valor = double.tryParse(priceRaw) ?? 0.0;
+      for (final key in const [
+        'price',
+        'custom_price',
+        'customPrice',
+        'total',
+        'final_price',
+      ]) {
+        final v = _parseMoneyMelhorEnvio(item[key]);
+        if (v != null && v > 0) {
+          valor = v;
+          break;
+        }
       }
 
+      final deliveryTime = item['delivery_time'] ?? item['custom_delivery_time'];
       final rawId = item['id'];
-      final serviceId = rawId is num ? rawId.toInt() : (rawId != null ? int.tryParse(rawId.toString()) : null);
+      final serviceId =
+          rawId is num ? rawId.toInt() : (rawId != null ? int.tryParse(rawId.toString()) : null);
 
-      return {
-        'nome': nome,
+      opcoes.add({
+        'nome': nome.isEmpty ? 'Melhor Envio' : nome,
         'valor': valor,
-        'prazo': (deliveryTime is num) ? deliveryTime.toInt() : 0,
+        'prazo': (deliveryTime is num) ? deliveryTime.toInt() : int.tryParse('$deliveryTime') ?? 0,
         'empresa': companyName,
-        'tipo': nome.toString().toLowerCase().replaceAll(' ', '_'),
+        'tipo': nome.toLowerCase().replaceAll(' ', '_'),
         if (serviceId != null) 'service_id': serviceId,
-      };
-    }).toList();
+      });
+    }
 
     debugPrint('✅ [MELHOR_ENVIO] Processou ${opcoes.length} opções');
     return opcoes;

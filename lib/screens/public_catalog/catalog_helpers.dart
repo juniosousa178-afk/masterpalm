@@ -7,6 +7,16 @@ import 'package:hive/hive.dart';
 
 import '../../core/safe_cast.dart';
 
+/// E-mail mínimo aceitável para enviar ao Mercado Pago (evita erros de "e-mail inválido").
+bool catalogIsPlausibleMpBuyerEmail(String? raw) {
+  final s = (raw ?? '').trim();
+  if (s.length < 6 || !s.contains('@')) return false;
+  final parts = s.split('@');
+  if (parts.length != 2 || parts[0].isEmpty) return false;
+  final dom = parts[1];
+  return dom.contains('.') && dom.length >= 4;
+}
+
 // ===================================================================
 // ENDPOINTS HTTP (Cloud Functions) – Mercado Pago + Fretes
 // ===================================================================

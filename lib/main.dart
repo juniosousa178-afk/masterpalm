@@ -1495,10 +1495,14 @@ class _BootApp extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 3),
             ),
             const SizedBox(height: 16),
-            Text(
-              isCatalog
-                  ? 'Estamos preparando uma experiência incrível para você.'
-                  : 'Iniciando o sistema MasterPalm...',
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Text(
+                isCatalog
+                    ? 'Estamos preparando uma experiência incrível para você.'
+                    : 'Preparando tudo para você ter a melhor experiência…',
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ),

@@ -47,6 +47,7 @@ import {
   resolveCatalogOrderForMp,
   isOrderPayableForMp,
   orderTotalToCents,
+  extractCatalogOrderBuyer,
 } from "./src/catalogMpOrderHelpers.js";
 import { stripPaymentsSecretsForPublic } from "./src/paymentsPublicStrip.js";
 import { resolveStrictLojaMpAccessToken } from "./src/mpLojaTokenPolicy.js";
@@ -133,7 +134,7 @@ const MP_PUBLIC_KEY = process.env.MP_PUBLIC_KEY || null; // opcional (front)
 const WEBHOOK_URL = process.env.WEBHOOK_URL || ""; // opcional (fallback)
 const ROOT_DOMAIN = process.env.ROOT_DOMAIN || "mastepalm.com.br";
 /** Site público / hosting (OAuth, return URLs). Subdomínios de loja continuam em [ROOT_DOMAIN]. */
-const PUBLIC_SITE_ORIGIN = process.env.PUBLIC_SITE_ORIGIN || "https://gestao.mastepalm.com.br";
+const PUBLIC_SITE_ORIGIN = process.env.PUBLIC_SITE_ORIGIN || "https://app.mastepalm.com.br";
 const HOSTING_SITE_ID = process.env.HOSTING_SITE_ID || "";
 const PROJECT_ID = process.env.PROJECT_ID || "";
 const COLLECTION_LOJAS = process.env.COLLECTION_LOJAS || "lojas";
@@ -210,6 +211,47 @@ function normalizeOptionalString(value) {
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+/** E-mail mínimo aceitável pelo Checkout/PIX MP (evita invalid_params por formato). */
+function isPlausibleBuyerEmailForMp(s) {
+  const e = normalizeEmail(s);
+  if (e.length < 6 || e.length > 254) return false;
+  const at = e.indexOf("@");
+  if (at < 1) return false;
+  const domain = e.slice(at + 1);
+  if (domain.length < 3 || !domain.includes(".")) return false;
+  return true;
+}
+
+/**
+ * Monta objeto [payer] para API MP a partir do pedido catálogo (Firestore).
+ * CPF só se tiver 11 dígitos; telefone BR só com DDD+número válidos.
+ */
+function buildMpBuyerPayerForCatalog(order, orderId) {
+  const { name, email, cpf, telefone } = extractCatalogOrderBuyer(order);
+  const displayName = (name || "Cliente").trim().slice(0, 100) || "Cliente";
+  let payerEmail = normalizeEmail(email);
+  if (!isPlausibleBuyerEmailForMp(payerEmail)) {
+    const id = String(orderId || "pedido").replace(/[^a-z0-9_-]/gi, "").slice(0, 48) || "pedido";
+    payerEmail = `catalogo+${id}@mastepalm.com.br`;
+  }
+  const cpfDigits = String(cpf || "").replace(/\D/g, "");
+  const payer = { name: displayName, email: payerEmail };
+  if (cpfDigits.length === 11) {
+    payer.identification = { type: "CPF", number: cpfDigits };
+  }
+  const tel = String(telefone || "").replace(/\D/g, "");
+  let d = tel;
+  if (d.startsWith("55") && d.length > 11) d = d.slice(2);
+  if (d.length >= 10 && d.length <= 11) {
+    const ac = d.slice(0, 2);
+    const num = d.slice(2);
+    if (/^\d{2}$/.test(ac) && num.length >= 8 && num.length <= 9) {
+      payer.phone = { area_code: ac, number: num };
+    }
+  }
+  return payer;
 }
 
 function createPortalToken() {
@@ -1151,6 +1193,9 @@ export const calcularMelhorEnvio = onCall(
 
     const url = "https://www.melhorenvio.com.br/api/v2/me/shipment/calculate";
 
+    const vProd = Number(valorProdutos);
+    const insuranceValue = Number.isFinite(vProd) && vProd > 0 ? vProd : 10;
+
     const payload = {
       from: { postal_code: String(origem) },
       to: { postal_code: String(destino) },
@@ -1161,7 +1206,11 @@ export const calcularMelhorEnvio = onCall(
         length: Number(comprimento),
       },
       services: servico || "1,2,3,4,17", // PAC, SEDEX, Jadlog .Package, .Com, Mini Envios (17)
-      options: { insurance_value: valorProdutos || 0 },
+      options: {
+        insurance_value: insuranceValue,
+        receipt: false,
+        own_hand: false,
+      },
     };
 
     const resp = await fetchWithTimeout(
@@ -1672,16 +1721,7 @@ export const createPreference = onRequest(
           WEBHOOK_URL ||
           `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook`;
 
-        const payer = {
-          name: order.customerName || "",
-          email: order.email || undefined,
-          identification: order.cpf
-            ? { type: "CPF", number: String(order.cpf).replace(/\D/g, "") }
-            : undefined,
-          phone: order.telefone
-            ? { area_code: "", number: String(order.telefone).replace(/\D/g, "") }
-            : undefined,
-        };
+        const payer = buildMpBuyerPayerForCatalog(order, orderId);
 
         const mpBody = {
           items: itemsForMp,
@@ -2020,8 +2060,15 @@ export const mpCatalogPayment = onRequest(
       if (t === "pix") {
         const { descricao, email, cpf } = body;
         const numValor = expectedTotal;
-        const emailStr = email && String(email).trim() ? String(email).trim() : "cliente@mastepalm.com.br";
-        const cpfLimpo = cpf ? String(cpf).replace(/\D/g, "") : "";
+        const serverPayer = buildMpBuyerPayerForCatalog(resolvedOrder.order, orderId);
+        const emailBody = normalizeEmail(email);
+        const emailStr = isPlausibleBuyerEmailForMp(emailBody) ? emailBody : serverPayer.email;
+        const cpfBody = cpf ? String(cpf).replace(/\D/g, "") : "";
+        const fromServerId = serverPayer.identification?.number
+          ? String(serverPayer.identification.number).replace(/\D/g, "")
+          : "";
+        const cpfLimpo =
+          cpfBody.length === 11 ? cpfBody : fromServerId.length === 11 ? fromServerId : "";
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         // P1.5 trava local (Firestore) + chave determinística no MP: sucesso remoto com falha no commit local não deve gerar nova cobrança no retry.
         const mpBody = {
@@ -2033,8 +2080,8 @@ export const mpCatalogPayment = onRequest(
           ...(notifUrl && { notification_url: notifUrl }),
           payer: {
             email: emailStr,
-            ...(cpfLimpo.length >= 11 && {
-              identification: { type: "CPF", number: cpfLimpo.slice(0, 11) },
+            ...(cpfLimpo.length === 11 && {
+              identification: { type: "CPF", number: cpfLimpo },
             }),
           },
         };
@@ -2139,7 +2186,8 @@ export const mpCatalogPayment = onRequest(
       }
 
       if (t === "preference") {
-        const { titulo, quantidade = 1, descricao, payer, backUrls } = body;
+        const { titulo, quantidade = 1, descricao, backUrls } = body;
+        const payerPref = buildMpBuyerPayerForCatalog(resolvedOrder.order, orderId);
         const WEB_BASE = (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         const unitPrice = expectedTotal / (Number(quantidade) || 1);
@@ -2162,7 +2210,7 @@ export const mpCatalogPayment = onRequest(
           external_reference: String(orderId),
           metadata: { lojaId: String(lojaId) },
           ...(notifUrl && { notification_url: notifUrl }),
-          ...(payer && { payer: payer }),
+          payer: payerPref,
           back_urls: backUrls || backFallback,
           auto_return: "approved",
           statement_descriptor: "MASTERPALM",

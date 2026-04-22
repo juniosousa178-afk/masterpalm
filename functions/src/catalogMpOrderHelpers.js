@@ -15,6 +15,27 @@ export function orderTotalToCents(total) {
 /**
  * Resolve pedido do catálogo (mesma ordem do mpWebhook): pedidos → pre_pedidos → pedidos_pendentes.
  */
+/**
+ * Extrai nome/e-mail/CPF/telefone do pedido ou pré-pedido do catálogo (campo aninhado [cliente]).
+ * Usado pelo Mercado Pago (PIX / Checkout Pro) para montar [payer] válido.
+ */
+export function extractCatalogOrderBuyer(order) {
+  if (!order || typeof order !== "object") {
+    return { name: "", email: "", cpf: "", telefone: "" };
+  }
+  const c =
+    order.cliente && typeof order.cliente === "object" && !Array.isArray(order.cliente)
+      ? order.cliente
+      : {};
+  const name = String(c.nome ?? order.customerName ?? order.nomeCliente ?? "").trim();
+  const email = String(c.email ?? order.clienteEmail ?? order.email ?? "").trim();
+  const cpf = String(c.cpf ?? order.cpf ?? "").trim();
+  const telefone = String(
+    c.telefone ?? c.whatsapp ?? order.telefone ?? order.telefoneContato ?? "",
+  ).trim();
+  return { name, email, cpf, telefone };
+}
+
 export async function resolveCatalogOrderForMp(db, lojaId, orderId) {
   const lid = String(lojaId);
   const oid = String(orderId);

@@ -13,6 +13,7 @@ import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 
 import '../services/cloud_sync_service.dart';
+import '../services/catalog_publish_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/cupom_desconto_service.dart';
 import '../services/indicacao_config_service.dart';
@@ -45,6 +46,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
   String? _slug;
   bool _salvando = false;
+  bool _publicandoCatalogo = false;
 
   // FRETES
   final List<Map<String, dynamic>> _fretes = [
@@ -897,6 +899,37 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     }
   }
 
+  /// Salva fretes/tokens no Firestore e promove o rascunho da loja (`draft_config/config`)
+  /// para o catálogo publicado (`config/config`), alinhado à publicação geral do app.
+  Future<void> _publicarFretesCuponsNoCatalogo() async {
+    if (_salvando || _publicandoCatalogo) return;
+    setState(() => _publicandoCatalogo = true);
+    try {
+      await _salvarFretesECupons();
+      try {
+        await CatalogPublishService.publishConfig();
+        await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+      } catch (e) {
+        debugPrint('[FRETES/CUPONS] publishConfig (type=${e.runtimeType})');
+        if (mounted) {
+          _snack(
+            '⚠️ Fretes salvos, mas não foi possível publicar o rascunho geral. '
+            'Abra Configurações da loja e use Publicar catálogo, ou verifique se há rascunho em draft_config.',
+          );
+        }
+        return;
+      }
+      if (mounted) {
+        _snack('✅ Fretes e configurações do rascunho publicados no catálogo web.');
+      }
+    } catch (e) {
+      debugPrint('[FRETES/CUPONS] _publicarFretesCuponsNoCatalogo (type=${e.runtimeType})');
+      if (mounted) _snack('❌ Falha ao publicar: $e');
+    } finally {
+      if (mounted) setState(() => _publicandoCatalogo = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -909,8 +942,28 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           'Fretes & Cupons',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        actions: const [
-          AppHelpIconButton(iconColor: Colors.white),
+        actions: [
+          if (!_salvando && !_publicandoCatalogo)
+            TextButton.icon(
+              onPressed: _publicarFretesCuponsNoCatalogo,
+              icon: const Icon(Icons.cloud_upload_outlined, color: Colors.white),
+              label: const Text(
+                'Publicar no catálogo',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            )
+          else if (_publicandoCatalogo)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+              ),
+            ),
+          const AppHelpIconButton(iconColor: Colors.white),
         ],
         bottom: TabBar(
           controller: _tabController,
