@@ -5,6 +5,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../app_routes.dart' as app_routes;
+import '../services/catalog_cart_persistence.dart';
+
 class PagamentoResultadoScreen extends StatefulWidget {
   final String status; // 'sucesso' | 'falha' | 'pendente'
   final String? orderId;
@@ -51,6 +54,38 @@ class _PagamentoResultadoScreenState extends State<PagamentoResultadoScreen> {
     _scheduleAutoReturnToCatalog();
   }
 
+  bool _pagamentoCatalogoAprovadoMp() {
+    final isPlano =
+        widget.planoId != null && widget.planoId!.trim().isNotEmpty;
+    if (isPlano) return false;
+    if (widget.status != 'sucesso') return false;
+    final cs = widget.collectionStatus?.toLowerCase().trim();
+    final ps = widget.paymentStatusQuery?.toLowerCase().trim();
+    return cs == 'approved' || ps == 'approved';
+  }
+
+  Future<void> _maybeClearCartSePagamentoCatalogoAprovado() async {
+    if (!_pagamentoCatalogoAprovadoMp()) return;
+    final loja = widget.lojaId?.trim();
+    if (loja == null || loja.isEmpty) return;
+    await CatalogCartPersistence.clearAfterSuccessfulCatalogPayment(loja);
+  }
+
+  void _navegarAoCatalogoWeb() {
+    final loja = widget.lojaId?.trim();
+    if (loja == null || loja.isEmpty) return;
+    _redirectTimer?.cancel();
+    final path = '/loja/${Uri.encodeComponent(loja)}';
+    final generated =
+        app_routes.onGenerateRoute(RouteSettings(name: path));
+    if (!mounted) return;
+    if (generated != null) {
+      Navigator.of(context).pushAndRemoveUntil(generated, (_) => false);
+    } else {
+      Navigator.of(context).pushNamedAndRemoveUntil(path, (_) => false);
+    }
+  }
+
   void _scheduleAutoReturnToCatalog() {
     final loja = widget.lojaId?.trim();
     if (loja == null || loja.isEmpty) return;
@@ -59,12 +94,11 @@ class _PagamentoResultadoScreenState extends State<PagamentoResultadoScreen> {
     if (isPlano) return;
     if (widget.status != 'sucesso' && widget.status != 'pendente') return;
 
-    _redirectTimer = Timer(const Duration(seconds: 3), () {
+    _redirectTimer = Timer(const Duration(seconds: 3), () async {
       if (!mounted) return;
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/loja/${Uri.encodeComponent(loja)}',
-        (route) => false,
-      );
+      await _maybeClearCartSePagamentoCatalogoAprovado();
+      if (!mounted) return;
+      _navegarAoCatalogoWeb();
     });
   }
 
@@ -72,10 +106,10 @@ class _PagamentoResultadoScreenState extends State<PagamentoResultadoScreen> {
     final loja = widget.lojaId?.trim();
     if (loja == null || loja.isEmpty) return;
     _redirectTimer?.cancel();
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      '/loja/${Uri.encodeComponent(loja)}',
-      (route) => false,
-    );
+    unawaited(_maybeClearCartSePagamentoCatalogoAprovado().then((_) {
+      if (!mounted) return;
+      _navegarAoCatalogoWeb();
+    }));
   }
 
   @override

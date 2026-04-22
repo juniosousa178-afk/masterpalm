@@ -1058,9 +1058,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     return d2 == int.parse(cpfDigits[10]);
   }
 
-  /// Valida formato de e-mail quando preenchido. Simples e segura.
+  /// Valida formato de e-mail (obrigatório no checkout). Simples e segura.
   static bool _validarEmailFormato(String email) {
-    if (email.trim().isEmpty) return true;
+    if (email.trim().isEmpty) return false;
     final e = email.trim();
     if (e.length < 5) return false;
     final atIdx = e.indexOf('@');
@@ -1106,7 +1106,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       _camposComErro.add('tel');
       _erroValidacao ??= 'Telefone deve ter no mínimo 10 dígitos (DDD + número).';
     }
-    if (_email.text.trim().isNotEmpty && !_validarEmailFormato(_email.text)) {
+    if (_email.text.trim().isEmpty) {
+      _camposComErro.add('email');
+      obrigatorios.add('E-mail');
+    } else if (!_validarEmailFormato(_email.text)) {
       _camposComErro.add('email');
       _erroValidacao ??= 'E-mail inválido.';
     }
@@ -2760,7 +2763,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             height: 1.25,
                           ),
                           decoration:
-                              deco('E-mail (opcional)', campoKey: 'email'),
+                              deco('E-mail *', campoKey: 'email'),
                           onChanged: (_) {
                             _limparErroCampo('email');
                             _scheduleFormSave();
@@ -2849,7 +2852,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 height: 1.25,
                               ),
                               decoration: deco(
-                                  'E-mail (opcional)',
+                                  'E-mail *',
                                   campoKey: 'email'),
                               onChanged: (_) {
                                 _limparErroCampo('email');

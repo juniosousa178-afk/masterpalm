@@ -3835,20 +3835,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final ticketUrl = paymentData['ticket_url']?.toString();
                 final initPoint = paymentData['init_point']?.toString();
 
-                // Se tiver init_point (checkout), abrir
+                // Se tiver init_point (checkout), abrir — NÃO limpar carrinho até pagamento aprovado
+                // (retorno em PagamentoResultadoScreen + CatalogCartPersistence).
                 if (initPoint != null && initPoint.isNotEmpty) {
                   final uri = Uri.tryParse(initPoint);
                   if (uri != null) {
-                    if (mounted) {
-                      await _runStateAfterFrame(() {
-                        setState(() {
-                          _cart.clear();
-                          _resetRoletaState();
-                          _clearPrePedidoReuseSession();
-                        });
-                        _saveCarrinho();
-                      });
-                    }
                     final ok = await _launchPaymentUrl(uri);
                     if (!mounted) return;
                     if (!ok) {
@@ -3860,20 +3851,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   }
                 }
 
-                // Se tiver ticket_url (PIX direto), abrir
+                // Se tiver ticket_url (PIX direto), abrir — carrinho permanece até confirmação
                 if (ticketUrl != null && ticketUrl.isNotEmpty) {
                   final uri = Uri.tryParse(ticketUrl);
                   if (uri != null) {
-                    if (mounted) {
-                      await _runStateAfterFrame(() {
-                        setState(() {
-                          _cart.clear();
-                          _resetRoletaState();
-                          _clearPrePedidoReuseSession();
-                        });
-                        _saveCarrinho();
-                      });
-                    }
                     final ok = await _launchPaymentUrl(uri);
                     if (!mounted) return;
                     if (!ok) {
@@ -3885,16 +3866,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   }
                 }
 
-                // Se tiver QR Code, mostrar dialog PIX
+                // Se tiver QR Code, mostrar dialog PIX — carrinho só zera após aprovação no retorno MP
                 if (qrCode != null && qrCode.isNotEmpty) {
                   if (mounted) {
                     await _runStateAfterFrame(() {
-                      setState(() {
-                        _cart.clear();
-                        _resetRoletaState();
-                        _clearPrePedidoReuseSession();
-                      });
-                      _saveCarrinho();
                       if (!mounted) return;
                       if (showErrorInCart == null) {
                         showCartSnack(
