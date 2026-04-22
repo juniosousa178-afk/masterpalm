@@ -307,6 +307,18 @@ class PlanSubscriptionSyncResult {
 class PlanosService {
   final _db = FirebaseFirestore.instance;
 
+  /// Regra única: admin pode usar o app (Home) sem ser redirecionado a Planos.
+  /// Alinha Splash, Home e [LicenseManager] — não duplicar lógica em outro lugar.
+  static bool planGrantsAdminAppAccess(PlanInfo? plan) {
+    if (plan == null) return false;
+    if (plan.manualOverride) return true;
+    if (plan.isLifetime) return true;
+    if (plan.isFreeLimited) {
+      return plan.status == 'active' || plan.status == 'trialing';
+    }
+    return plan.isActive && !plan.isExpired;
+  }
+
   DocumentReference<Map<String, dynamic>> _userRef(String uid) =>
       _db.collection('users').doc(uid);
 

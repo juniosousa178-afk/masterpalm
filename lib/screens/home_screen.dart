@@ -352,27 +352,49 @@ class _HomeScreenState extends State<HomeScreen>
       final svc = PlanosService();
 
       // Só lê (não cria automaticamente aqui).
-      final plan = await svc.fetchCurrentPlan(uid: user.uid, email: email);
+      PlanInfo? plan =
+          await svc.fetchCurrentPlan(uid: user.uid, email: email);
       if (!mounted) return;
 
-      // Se não tem plano, manda pra /planos (lá pode ativar grátis 90d 1x)
+      // fetch null (timeout/rede) não pode sobrepor o mesmo critério do Splash/LicenseManager.
       if (plan == null) {
-        Navigator.pushReplacementNamed(context, '/planos');
+        final stillOk = await LicenseManager.hasValidAccessFallbackLegacy();
+        if (!mounted) return;
+        if (!stillOk) {
+          Navigator.pushReplacementNamed(context, '/planos');
+        }
         return;
       }
 
       if (plan.isLifetime) return;
 
-      final end = plan.currentPeriodEnd;
+      DateTime? end = plan.currentPeriodEnd;
       if (end == null) {
         // free_limited não usa currentPeriodEnd (limites numéricos) — mesmo critério que [app_start_router].
         if (plan.planId == 'free_limited') return;
+        if (PlanosService.planGrantsAdminAppAccess(plan)) return;
 
-        // sem end e não lifetime = considera inválido
-        await FirebaseAuth.instance.signOut();
+        final rescue = await LicenseManager.hasValidAccessFallbackLegacy();
         if (!mounted) return;
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
-        return;
+        if (!rescue) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+          return;
+        }
+        final refreshed =
+            await svc.fetchCurrentPlan(uid: user.uid, email: email);
+        if (!mounted) return;
+        if (refreshed != null) plan = refreshed;
+        end = plan.currentPeriodEnd ?? await LicenseManager.getCachedExpiry();
+        if (end == null &&
+            !PlanosService.planGrantsAdminAppAccess(plan)) {
+          await FirebaseAuth.instance.signOut();
+          if (!mounted) return;
+          Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+          return;
+        }
+        if (end == null) return;
       }
 
       final daysLeft = end.difference(DateTime.now()).inDays;

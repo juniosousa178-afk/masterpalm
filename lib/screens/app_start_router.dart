@@ -14,6 +14,7 @@ import '../core/logger.dart';
 import '../core/web_store_context_policy.dart';
 import '../core/remote_config_keys.dart';
 import '../models/user_profile.dart';
+import '../services/license_manager.dart' show LicenseManager;
 import '../services/planos_service.dart';
 import '../services/user_profile_resolver.dart';
 import '../services/remote_config_safe_service.dart';
@@ -560,6 +561,19 @@ class _AppStartRouterState extends State<AppStartRouter> {
           );
         }
         if (plan == null) {
+          if (await LicenseManager.hasValidAccessFallbackLegacy()) {
+            logD(
+              '✅ [ROUTER] Resgate: fetch null mas acesso válido — nova leitura do plano',
+            );
+            plan = await planos
+                .fetchCurrentPlan(uid: uid, email: email)
+                .timeout(
+                  const Duration(seconds: 8),
+                  onTimeout: () => null,
+                );
+          }
+        }
+        if (plan == null) {
           logD('❌ [ROUTER] Sem plano e sem cache → /planos');
           _go(_routePlanos);
           return;
@@ -572,12 +586,56 @@ class _AppStartRouterState extends State<AppStartRouter> {
         if (!plan.isLifetime) {
           final semDataOk = plan.planId == PlanId.freeLimited;
           if (plan.currentPeriodEnd == null && !semDataOk) {
-            logW(
-              '⚠️ [ROUTER] Plano sem currentPeriodEnd para ${plan.planId}; redirecionando para /planos sem deslogar',
-            );
-            if (!mounted) return;
-            _go(_routePlanos);
-            return;
+            if (PlanosService.planGrantsAdminAppAccess(plan)) {
+              logD(
+                '✅ [ROUTER] Plano sem data mas acesso canônico OK (${plan.planId})',
+              );
+            } else if (await LicenseManager.hasValidAccessFallbackLegacy()) {
+              logD(
+                '✅ [ROUTER] Resgate: fim de período ausente no fetch — recarrega plano',
+              );
+              final refreshed = await planos
+                  .fetchCurrentPlan(uid: uid, email: email)
+                  .timeout(
+                    const Duration(seconds: 8),
+                    onTimeout: () => null,
+                  );
+              if (refreshed != null) plan = refreshed;
+              var end = plan.currentPeriodEnd ??
+                  await LicenseManager.getCachedExpiry();
+              if (end != null &&
+                  plan.currentPeriodEnd == null &&
+                  mounted) {
+                plan = PlanInfo(
+                  planId: plan.planId,
+                  status: plan.status,
+                  trialing: plan.trialing,
+                  currentPeriodEnd: end,
+                  trialUsed: plan.trialUsed,
+                  manualOverride: plan.manualOverride,
+                  cancelAtPeriodEnd: plan.cancelAtPeriodEnd,
+                  billingVersion: plan.billingVersion,
+                  billingSource: plan.billingSource,
+                  providerSubscriptionId: plan.providerSubscriptionId,
+                );
+              }
+              if (plan.currentPeriodEnd == null &&
+                  !PlanosService.planGrantsAdminAppAccess(plan)) {
+                logW(
+                  '⚠️ [ROUTER] Plano sem currentPeriodEnd para ${plan.planId}; redirecionando para /planos sem deslogar',
+                );
+                if (!mounted) return;
+                _go(_routePlanos);
+                return;
+              }
+            } else {
+              logW(
+                '⚠️ [ROUTER] Plano sem currentPeriodEnd para ${plan.planId}; redirecionando para /planos sem deslogar',
+              );
+              if (!mounted) return;
+              _go(_routePlanos);
+              return;
+            }
           }
 
           if (plan.isExpired) {

@@ -1645,17 +1645,26 @@ class ProdutosFirestoreService {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return;
 
-      await _db
+      final ref = _db
           .collection('lojas')
           .doc(storeId)
           .collection(FSPaths.estoqueProdutosCol)
-          .doc(produtoId)
-          .delete();
+          .doc(produtoId);
+
+      await ref.delete();
+
+      final stillThere = await ref.get();
+      if (stillThere.exists) {
+        throw StateError(
+          'estoque_produtos/$produtoId ainda existe após delete() — verifique permissões/rede.',
+        );
+      }
 
       logD('🗑️ [PRODUTOS-SYNC] Produto $produtoId deletado do Firestore');
     } catch (e, st) {
       logE('❌ [PRODUTOS-SYNC] Erro ao deletar produto (type=${e.runtimeType})',
           error: e, st: st);
+      rethrow;
     }
   }
 
@@ -1712,17 +1721,39 @@ class ProdutosFirestoreService {
         return false;
       }
       await ref.delete();
+      final verify = await ref.get();
+      if (verify.exists) {
+        throw StateError(
+          '[DELETE_FALLBACK] docId=$d ainda existe após delete — rede/permissão?',
+        );
+      }
       logD(
           '[DELETE_FALLBACK] estoque removido docId=$d (idFirebase vazio, match forte)');
       return true;
+    }
+
+    final slugL = produto.slug.trim();
+    if (slugL.isNotEmpty) {
+      final remoteId = await findEstoqueProdutoDocIdBySlug(
+        lojaId: lojaId,
+        slug: slugL,
+      );
+      if (remoteId == null) {
+        logD(
+          '[DELETE_FALLBACK] Nenhum estoque_produtos com slug=$slugL — nuvem já sem este item',
+        );
+        return;
+      }
     }
 
     if (await tryDeleteDoc(produto.slug)) return;
     final fromNome = CatalogoSyncService.slugify(produto.nome);
     if (await tryDeleteDoc(fromNome)) return;
 
-    logW(
-      '[DELETE_FALLBACK] Sem remoção em estoque_produtos (idFirebase vazio e sem match forte slug/barras/docId=slug) loja=$lojaId nome=${produto.nome}',
+    throw StateError(
+      '[DELETE_FALLBACK] Não foi possível remover estoque_produtos com segurança '
+      '(idFirebase vazio; sem match forte por slug/barras/docId). '
+      'loja=$lojaId nome=${produto.nome}',
     );
   }
 }

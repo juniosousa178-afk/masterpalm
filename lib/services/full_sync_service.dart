@@ -11,6 +11,7 @@ import 'firestore_paths.dart';
 import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
+import 'produto_pull_skip_guard.dart';
 import 'produto_remote_sync_guard.dart';
 import 'produtos_firestore_service.dart';
 import 'importar_vendas_firestore_service.dart';
@@ -159,6 +160,8 @@ class FullSyncService {
       const int pageSize = 500;
       DocumentSnapshot? lastDoc;
       bool hasMore = true;
+      final remoteIdsAccum = <String>{};
+      final remoteDataAccum = <Map<String, dynamic>>[];
 
       while (hasMore) {
         Query query = _db
@@ -182,6 +185,32 @@ class FullSyncService {
         for (final doc in snapshot.docs) {
           try {
             final data = doc.data() as Map<String, dynamic>;
+            remoteIdsAccum.add(doc.id);
+            remoteDataAccum.add(data);
+
+            if (ProdutosFirestoreService.isEstoqueDocPendingSoftDelete(data)) {
+              logD(
+                '⏭️ [FULL-SYNC] Doc ${doc.id} ignorado (pendingSoftDelete)',
+              );
+              continue;
+            }
+
+            if (await ProdutoPullSkipGuard.shouldSkipDoc(
+                lojaId: lojaId, docId: doc.id)) {
+              for (final k in box.keys.toList()) {
+                final loc = box.get(k);
+                if (loc != null &&
+                    loc.lojaId == lojaId &&
+                    loc.idFirebase == doc.id) {
+                  await box.delete(k);
+                  logD(
+                    '🗑️ [FULL-SYNC] Hive removido (pull skip pós-exclusão) key=$k doc=${doc.id}',
+                  );
+                }
+              }
+              continue;
+            }
+
             final produto = _produtoFromFirestore(data, doc.id, lojaId, box);
 
             // Verificar se já existe pelo idFirebase ou slug (whereType evita crash por typeId inválido)
@@ -232,6 +261,17 @@ class FullSyncService {
               );
               await existente.save();
             } else {
+              final slugNovo = produto.slug.trim();
+              if (slugNovo.isNotEmpty &&
+                  await ProdutoPullSkipGuard.shouldSkipNewBySlug(
+                    lojaId: lojaId,
+                    slug: slugNovo,
+                  )) {
+                logD(
+                  '⏭️ [FULL-SYNC] Doc ${doc.id} ignorado (slug excluído localmente: $slugNovo)',
+                );
+                continue;
+              }
               // Adicionar novo
               produto.idFirebase = doc.id;
               await box.add(produto);
@@ -250,6 +290,12 @@ class FullSyncService {
         logD(
             '📦 [FULL-SYNC] Lote processado: ${snapshot.docs.length} produtos');
       }
+
+      await ProdutoPullSkipGuard.pruneAfterPull(
+        lojaId: lojaId,
+        remoteDocIds: remoteIdsAccum,
+        remoteDocData: remoteDataAccum,
+      );
 
       logD('✅ [FULL-SYNC] Produtos sincronizados: $totalSincronizados');
       return totalSincronizados;

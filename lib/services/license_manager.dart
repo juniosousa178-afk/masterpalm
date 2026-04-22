@@ -219,14 +219,7 @@ class LicenseManager {
       final plan = await PlanosService()
           .fetchCurrentPlan(uid: user.uid, email: email)
           .timeout(const Duration(seconds: 5), onTimeout: () => null);
-      if (plan != null) {
-        if (plan.manualOverride) return true;
-        if (plan.isLifetime) return true;
-        if (plan.isFreeLimited) {
-          return plan.status == 'active' || plan.status == 'trialing';
-        }
-        return plan.isActive && !plan.isExpired;
-      }
+      if (PlanosService.planGrantsAdminAppAccess(plan)) return true;
     } catch (_) {}
 
     if (await _checkMirrorUserDoc(user)) return true;
