@@ -347,48 +347,171 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     }
   }
 
+  /// Parseia lista de fretes manuais vindas do Firestore (vários formatos legados).
+  List<Map<String, dynamic>> _parseFretesManuaisFromList(List? raw) {
+    return (raw ?? const [])
+        .whereType<Map>()
+        .map<Map<String, dynamic>>((e) {
+      final m = Map<String, dynamic>.from(e);
+      final nome = (m['nome'] ?? '').toString();
+      final val = (m['valor'] is num)
+          ? (m['valor'] as num).toDouble()
+          : double.tryParse('${m['valor']}') ?? 0.0;
+      return {'nome': nome, 'valor': val};
+    }).toList();
+  }
+
   Future<void> _loadFreteConfigFromFirestore(String lojaId) async {
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('draft_config')
-          .doc('fretes')
-          .get();
+      final base = FirebaseFirestore.instance.collection('lojas').doc(lojaId);
 
-      if (!snap.exists) return;
-      final data = snap.data() ?? {};
+      // Mesmos caminhos que o save e o FreteService: config/fretes + draft_config/config (frete_config).
+      // Antigo: draft_config/fretes com submap "config" — não batia com o save, tokens sumiam ao reabrir.
+      final liveSnap = await base.collection('config').doc('fretes').get();
+      final draftSnap = await base.collection('draft_config').doc('config').get();
+      final legacySnap = await base.collection('draft_config').doc('fretes').get();
 
-      final Map<String, dynamic> config =
-          (data['config'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-      final itensRaw = data['itens'];
+      if (!liveSnap.exists && !draftSnap.exists && !legacySnap.exists) return;
+
+      String provider = _freteProvider;
+      String cep = _cepOrigemCtrl.text;
+      String melhor = _melhorEnvioTokenCtrl.text;
+      String corUser = _correiosUserCtrl.text;
+      String corSenha = _correiosSenhaCtrl.text;
+      String frenet = _frenetTokenCtrl.text;
+      String superF = _superFreteTokenCtrl.text;
+      List<Map<String, dynamic>> fretesManuais =
+          List<Map<String, dynamic>>.from(_fretes);
+      var manualFretesVeioDoLive = false;
+
+      void applyLiveFretesDoc(Map<String, dynamic> d) {
+        provider = (d['provider'] ?? provider).toString();
+        final c0 = (d['cepOrigem'] ?? d['cep_origem'] ?? '').toString();
+        if (c0.isNotEmpty) cep = c0;
+
+        final me = d['melhorEnvio'];
+        if (me is Map && (me['token'] ?? '').toString().trim().isNotEmpty) {
+          melhor = me['token'].toString();
+        } else {
+          final root =
+              (d['melhorEnvioToken'] ?? d['melhor_envio_token'] ?? '').toString();
+          if (root.trim().isNotEmpty) melhor = root;
+        }
+
+        final fr = d['frenet'];
+        if (fr is Map && (fr['token'] ?? '').toString().trim().isNotEmpty) {
+          frenet = fr['token'].toString();
+        }
+
+        final sf = d['superfrete'];
+        if (sf is Map && (sf['token'] ?? '').toString().trim().isNotEmpty) {
+          superF = sf['token'].toString();
+        }
+
+        final co = d['correios'];
+        if (co is Map) {
+          final u = (co['usuario'] ?? '').toString();
+          final s = (co['senha'] ?? '').toString();
+          if (u.isNotEmpty) corUser = u;
+          if (s.isNotEmpty) corSenha = s;
+        }
+
+        final manual = d['manualFretes'] ?? d['fretes'];
+        if (manual is List && manual.isNotEmpty) {
+          fretesManuais = _parseFretesManuaisFromList(manual);
+          manualFretesVeioDoLive = true;
+        }
+      }
+
+      void applyFreteConfigMap(Map<String, dynamic> fc) {
+        provider = (fc['provider'] ?? provider).toString();
+        final c0 = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString();
+        if (c0.isNotEmpty) cep = c0;
+        final tMe = (fc['melhor_envio_token'] ?? '').toString().trim();
+        if (tMe.isNotEmpty) melhor = tMe;
+        final tFr = (fc['frenet_token'] ?? '').toString().trim();
+        if (tFr.isNotEmpty) frenet = tFr;
+        final tSf = (fc['superfrete_token'] ?? '').toString().trim();
+        if (tSf.isNotEmpty) superF = tSf;
+        final u = (fc['correios_user'] ?? '').toString();
+        final s = (fc['correios_senha'] ?? '').toString();
+        if (u.isNotEmpty) corUser = u;
+        if (s.isNotEmpty) corSenha = s;
+      }
+
+      if (liveSnap.exists) {
+        applyLiveFretesDoc(liveSnap.data() ?? {});
+      }
+
+      if (draftSnap.exists) {
+        final root = draftSnap.data() ?? {};
+        final fc = root['frete_config'];
+        if (fc is Map<String, dynamic>) {
+          applyFreteConfigMap(fc);
+        }
+        if (!manualFretesVeioDoLive) {
+          final draftFretes = root['fretes'];
+          if (draftFretes is List && draftFretes.isNotEmpty) {
+            fretesManuais = _parseFretesManuaisFromList(draftFretes);
+          }
+        }
+      }
+
+      if (legacySnap.exists) {
+        final data = legacySnap.data() ?? {};
+        final Map<String, dynamic> legacyCfg =
+            (data['config'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+        if (legacyCfg.isNotEmpty) {
+          applyFreteConfigMap({
+            'provider': legacyCfg['provider'] ?? provider,
+            'cep_origem': legacyCfg['cep_origem'] ?? '',
+            'melhor_envio_token': legacyCfg['melhor_envio_token'] ?? '',
+            'frenet_token': legacyCfg['frenet_token'] ?? '',
+            'superfrete_token': legacyCfg['superfrete_token'] ?? '',
+            'correios_user': legacyCfg['correios_user'] ?? '',
+            'correios_senha': legacyCfg['correios_senha'] ?? '',
+          });
+        }
+        if (!manualFretesVeioDoLive) {
+          final itensRaw = data['itens'];
+          if (itensRaw is List && itensRaw.isNotEmpty) {
+            fretesManuais = _parseFretesManuaisFromList(itensRaw);
+          }
+        }
+      }
 
       setState(() {
-        _freteProvider = (config['provider'] ?? 'manual').toString();
-        _cepOrigemCtrl.text = (config['cep_origem'] ?? '').toString();
-        _melhorEnvioTokenCtrl.text =
-            (config['melhor_envio_token'] ?? '').toString();
-        _correiosUserCtrl.text = (config['correios_user'] ?? '').toString();
-        _correiosSenhaCtrl.text = (config['correios_senha'] ?? '').toString();
-        _frenetTokenCtrl.text = (config['frenet_token'] ?? '').toString();
-        _superFreteTokenCtrl.text =
-            (config['superfrete_token'] ?? '').toString();
-
+        _freteProvider = provider;
+        _cepOrigemCtrl.text = cep;
+        _melhorEnvioTokenCtrl.text = melhor;
+        _correiosUserCtrl.text = corUser;
+        _correiosSenhaCtrl.text = corSenha;
+        _frenetTokenCtrl.text = frenet;
+        _superFreteTokenCtrl.text = superF;
         _fretes
           ..clear()
-          ..addAll(
-            (itensRaw is List ? itensRaw : const [])
-                .whereType<Map>()
-                .map<Map<String, dynamic>>((e) {
-              final m = Map<String, dynamic>.from(e);
-              final nome = (m['nome'] ?? '').toString();
-              final val = (m['valor'] is num)
-                  ? (m['valor'] as num).toDouble()
-                  : double.tryParse('${m['valor']}') ?? 0.0;
-              return {'nome': nome, 'valor': val};
-            }),
-          );
+          ..addAll(fretesManuais);
       });
+
+      await _putConfig('frete_provider', _freteProvider);
+      await _putConfig('frete_cep_origem', _cepOrigemCtrl.text.trim());
+      await _putConfig('frete_melhor_envio_token', _melhorEnvioTokenCtrl.text.trim());
+      await _putConfig('frete_correios_user', _correiosUserCtrl.text.trim());
+      await _putConfig('frete_correios_senha', _correiosSenhaCtrl.text.trim());
+      await _putConfig('frete_frenet_token', _frenetTokenCtrl.text.trim());
+      await _putConfig('frete_superfrete_token', _superFreteTokenCtrl.text.trim());
+      await _putConfig(
+        'fretes',
+        _fretes.map((f) {
+          final nome = (f['nome'] ?? '').toString();
+          final val = (f['valor'] is num)
+              ? (f['valor'] as num).toDouble()
+              : double.tryParse('${f['valor']}') ?? 0.0;
+          return {'nome': nome, 'valor': val};
+        }).toList(),
+      );
+      await _config.flush();
+      await configPerStore.flush();
     } catch (e) {
       debugPrint('[FRETES/CUPONS] Erro ao carregar frete do Firestore (type=${e.runtimeType})');
     }

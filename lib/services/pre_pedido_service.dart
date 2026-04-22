@@ -218,10 +218,17 @@ class PrePedidoService {
       }
 
       final portalToken = _gerarPortalToken();
+      var nomeFirestore = nome.trim();
+      if (nomeFirestore.isEmpty) {
+        nomeFirestore = emailNorm.split('@').first;
+      }
+      if (nomeFirestore.length < 2) {
+        nomeFirestore = nomeFirestore.isEmpty ? 'Cliente' : '$nomeFirestore·';
+      }
       tx.set(docRef, {
         'id': docId,
         'email': emailNorm,
-        'nome': nome.isNotEmpty ? nome : emailNorm.split('@').first,
+        'nome': nomeFirestore,
         'telefone': telefone,
         'portalToken': portalToken,
         'dataCadastro': FieldValue.serverTimestamp(),

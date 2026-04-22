@@ -149,6 +149,39 @@ service cloud.firestore {
         && request.resource.data.email.size() <= 128;
     }
 
+    /// Doc id de cliente criado pelo catálogo sem login (PrePedidoService.clienteIdPorEmail).
+    /// Permite get/update mínimos só nesse padrão, sem abrir leitura de todos os clientes.
+    function isClienteDocIdPortalBootstrap(clienteId) {
+      return clienteId is string
+        && clienteId.size() >= 8
+        && clienteId.size() <= 40
+        && clienteId.matches('ec_.+');
+    }
+
+    function clientePortalTokenMissingOrEmpty(data) {
+      return !data.keys().hasAny(['portalToken'])
+        || data.portalToken == null
+        || (data.portalToken is string && data.portalToken.size() == 0);
+    }
+
+    function isCatalogGuestLikeAuth() {
+      return request.auth == null
+        || request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function isGuestBootstrapClienteGet(clienteId) {
+      return isCatalogGuestLikeAuth() && isClienteDocIdPortalBootstrap(clienteId);
+    }
+
+    function isGuestBootstrapClientePortalTokenFill(clienteId) {
+      return isCatalogGuestLikeAuth()
+        && isClienteDocIdPortalBootstrap(clienteId)
+        && clientePortalTokenMissingOrEmpty(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['portalToken'])
+        && request.resource.data.portalToken is string
+        && request.resource.data.portalToken.size() >= 16;
+    }
+
     function isValidPrePedidoCreate() {
       return request.resource.data.size() <= 45
         && request.resource.data.lojaId is string
@@ -607,16 +640,17 @@ service cloud.firestore {
         allow update, delete: if isAdminOrSystem();
       }
 
-      // clientes: admin/vendedor leem; catálogo usa CF getClienteCatalog (sem get público).
+      // clientes: admin/vendedor leem; visitante sem auth pode get/update só em doc ec_* (bootstrap portal).
       // list: só admin/vendedor OU limit 1 (login/cadastro por email — reduz vazamento).
       match /clientes/{clienteId} {
-        allow get: if belongsToStore(lojaId);
+        allow get: if belongsToStore(lojaId) || isGuestBootstrapClienteGet(clienteId);
         allow list: if belongsToStore(lojaId) || request.query.limit <= 1;
         allow create: if isValidClienteCreate();
         allow update: if belongsToStore(lojaId)
           || (request.resource.data.portalToken is string
               && request.resource.data.portalToken == resource.data.portalToken
-              && request.resource.data.size() <= 30);
+              && request.resource.data.size() <= 30)
+          || isGuestBootstrapClientePortalTokenFill(clienteId);
         allow delete: if isAdminOrSystem();
       }
 
