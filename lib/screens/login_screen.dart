@@ -456,6 +456,38 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           loginRaw,
           senhaDigitada,
         );
+
+        // Login por telefone/usuário local precisa materializar sessão no Firebase.
+        // Sem isso, o AppStartRouter recebe currentUser == null e volta para /login.
+        if (usuario != null) {
+          final emailLocal = usuario.email.trim().toLowerCase();
+          if (emailLocal.isEmpty || !emailLocal.contains('@')) {
+            throw Exception(
+              'Conta local sem e-mail válido para autenticação no servidor.',
+            );
+          }
+
+          final cred = await FirebaseAuth.instance
+              .signInWithEmailAndPassword(
+                email: emailLocal,
+                password: senhaDigitada,
+              )
+              .timeout(const Duration(seconds: 20), onTimeout: () {
+            throw TimeoutException('Login demorou demais. Verifique a conexão.');
+          });
+
+          final uid = cred.user?.uid ?? '';
+          if (uid.isNotEmpty) {
+            final usuarioFirestore = await _carregarUsuarioDoFirestore(
+              uid: uid,
+              email: emailLocal,
+            );
+            if (usuarioFirestore != null) {
+              usuario = usuarioFirestore;
+              await usuariosBox.put(usuario.email, usuario);
+            }
+          }
+        }
       }
     } on FirebaseAuthException catch (e) {
       if (kDebugMode) {
@@ -673,6 +705,16 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
     setState(() => _carregando = false);
     if (!mounted) return;
+
+    final authUser = FirebaseAuth.instance.currentUser;
+    if (authUser == null) {
+      setState(() => _carregando = false);
+      _showModernSnackBar(
+        'Sessão não iniciada no servidor. Tente entrar com e-mail e senha.',
+        isError: true,
+      );
+      return;
+    }
 
     _safeReplaceNamed('/router');
     } catch (e, st) {

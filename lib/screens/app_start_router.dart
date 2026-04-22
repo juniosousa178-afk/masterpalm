@@ -567,9 +567,11 @@ class _AppStartRouterState extends State<AppStartRouter> {
         if (!plan.isLifetime) {
           final semDataOk = plan.planId == PlanId.freeLimited;
           if (plan.currentPeriodEnd == null && !semDataOk) {
-            await FirebaseAuth.instance.signOut();
+            logW(
+              '⚠️ [ROUTER] Plano sem currentPeriodEnd para ${plan.planId}; redirecionando para /planos sem deslogar',
+            );
             if (!mounted) return;
-            _go(_routeLogin);
+            _go(_routePlanos);
             return;
           }
 
