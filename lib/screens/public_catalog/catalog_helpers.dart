@@ -51,6 +51,24 @@ bool _catalogHeaderNameIsPlaceholder(String s) {
   return t == 'minha loja';
 }
 
+/// URL de ação do hero (layout minimal) — Loja Config pode usar chaves legadas.
+String? catalogHeroBannerActionUrl(Map<String, dynamic> hero) {
+  if (hero.isEmpty) return null;
+  for (final k in const [
+    'buttonLink',
+    'link',
+    'url',
+    'href',
+    'buttonUrl',
+    'destino',
+    'actionUrl',
+  ]) {
+    final s = (hero[k] ?? '').toString().trim();
+    if (s.isNotEmpty) return s;
+  }
+  return null;
+}
+
 String? catalogHeaderStoreNameFromCfg(Map<String, dynamic> cfg) {
   for (final k in const ['nome', 'nomeLoja', 'nome_loja', 'name']) {
     final v = cfg[k];

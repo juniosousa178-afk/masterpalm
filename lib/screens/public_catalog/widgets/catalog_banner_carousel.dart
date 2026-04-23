@@ -15,12 +15,16 @@ class CatalogBannerCarousel extends StatefulWidget {
   /// ID canónico da loja para corrigir paths do Storage (`lojas/{id}/…`).
   final String? resolvedLojaId;
 
+  /// Toque no slide (ex.: abrir o URL da imagem ou link configurado). Web depende de abrir em nova aba.
+  final void Function(int index, String imageUrl)? onBannerPressed;
+
   const CatalogBannerCarousel({
     super.key,
     required this.banners,
     required this.height,
     this.premium = false,
     this.resolvedLojaId,
+    this.onBannerPressed,
   });
 
   @override
@@ -96,7 +100,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
               const borderRadiusDesktop = 24.0;
               const borderRadiusMobile = 20.0;
               if (isDesktop) {
-                return Padding(
+                Widget page = Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Container(
                     decoration: BoxDecoration(
@@ -128,8 +132,18 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                     ),
                   ),
                 );
+                if (widget.onBannerPressed != null && url.trim().isNotEmpty) {
+                  page = Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => widget.onBannerPressed!(i, url),
+                      child: page,
+                    ),
+                  );
+                }
+                return page;
               }
-              return Padding(
+              Widget page = Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(borderRadiusMobile),
@@ -147,6 +161,16 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                   ),
                 ),
               );
+              if (widget.onBannerPressed != null && url.trim().isNotEmpty) {
+                page = Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => widget.onBannerPressed!(i, url),
+                    child: page,
+                  ),
+                );
+              }
+              return page;
             },
           ),
               if (widget.premium)

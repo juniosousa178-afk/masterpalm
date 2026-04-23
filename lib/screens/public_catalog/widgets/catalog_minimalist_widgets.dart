@@ -770,6 +770,16 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
           ),
         );
 
+        final wrapped = onTap == null
+            ? inner
+            : Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  child: inner,
+                ),
+              );
+
         return Padding(
           padding: EdgeInsets.fromLTRB(
             isWide ? 16 : 12,
@@ -781,10 +791,10 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
               ? Center(
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: cardMaxW),
-                    child: inner,
+                    child: wrapped,
                   ),
                 )
-              : inner,
+              : wrapped,
         );
       },
     );

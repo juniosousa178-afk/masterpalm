@@ -4017,6 +4017,18 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       _snack('Link inválido.');
       return;
     }
+    // Web: `externalApplication` costuma falhar no navegador; usar janela explícita.
+    if (kIsWeb) {
+      final ok = await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_blank',
+      );
+      if (!ok) {
+        _snack('Não foi possível abrir o link.');
+      }
+      return;
+    }
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       _snack('Não foi possível abrir o link.');
     }
@@ -4065,7 +4077,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final url = Uri.parse(
         'https://wa.me/$phone?text=${Uri.encodeComponent(msg.trim())}',
       );
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+      if (kIsWeb) {
+        await launchUrl(
+          url,
+          mode: LaunchMode.platformDefault,
+          webOnlyWindowName: '_blank',
+        );
+      } else {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
     } catch (e) {
       logD('❌ Erro ao abrir WhatsApp (type=${e.runtimeType})');
       _snack('Não foi possível abrir o WhatsApp. Tente novamente.');
@@ -4951,6 +4971,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 final minimalSearchCfg = mpMapDyn(cfg['minimalSearch']);
                 final categoryVisualsCfg = mpMapDyn(cfg['categoryVisuals']);
                 final heroBannerCfg = mpMapDyn(cfg['heroBanner']);
+                final heroBannerActionLink =
+                    catalogHeroBannerActionUrl(heroBannerCfg);
                 final minimalGridCfg = mpMapDyn(cfg['minimalProductGrid']);
                 final productCardSize = CatalogProductCardSize.normalize(
                   cfg['productCardSize'],
@@ -6382,6 +6404,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     resolvedLojaId:
                                                         _resolvedLojaId ??
                                                             widget.lojaId,
+                                                    onBannerPressed: (i, url) {
+                                                      if (url.trim().isEmpty) {
+                                                        return;
+                                                      }
+                                                      _openUrl(url);
+                                                    },
                                                   ),
                                                 if (useMinimalLayout)
                                                   CatalogMinimalCategoryImageStrip(
@@ -6511,15 +6539,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                         heroBannerBtnRadius,
                                                     buttonLetterCase:
                                                         heroBannerBtnCase,
-                                                    onTap: () {
-                                                      final link = (heroBannerCfg[
-                                                                  'buttonLink'] ??
-                                                              '')
-                                                          .toString()
-                                                          .trim();
-                                                      if (link.isEmpty) return;
-                                                      _openUrl(link);
-                                                    },
+                                                    onTap: heroBannerActionLink !=
+                                                                null &&
+                                                            heroBannerActionLink
+                                                                .isNotEmpty
+                                                        ? () => _openUrl(
+                                                            heroBannerActionLink,
+                                                          )
+                                                        : null,
                                                   ),
                                                 if (useMinimalLayout &&
                                                     bestSellersSectionEnabled &&
