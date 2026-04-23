@@ -3,7 +3,7 @@
 // Qualidade otimizada para web e iPhone (sem distorção, sem zoom esticado).
 // Web: Image.network + errorBuilder (evita exceção não tratada com ResizeImage/404).
 
-import 'package:flutter/foundation.dart' show kIsWeb, SynchronousFuture;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../catalog_helpers.dart';
@@ -61,22 +61,13 @@ class _CatalogImagePlaceholderState extends State<CatalogImagePlaceholder> {
 
   Future<String> _computeEffectiveUrlFuture() {
     final url = widget.url;
-    final canon = widget.resolvedLojaId?.trim();
-    if (canon == null || canon.isEmpty || !isValidHttpUrl(url)) {
-      return SynchronousFuture<String>(url);
+    if (!isValidHttpUrl(url)) {
+      return Future.value(url);
     }
-    if (!isCatalogFirebaseStorageMediaUrl(url)) {
-      return SynchronousFuture<String>(url);
-    }
-    final decoded = firebaseStorageDecodedObjectPath(url);
-    if (decoded == null) {
-      return SynchronousFuture<String>(url);
-    }
-    final parts = decoded.split('/').where((p) => p.isNotEmpty).toList();
-    if (parts.length < 3 || parts[0] != 'lojas' || parts[1] == canon) {
-      return SynchronousFuture<String>(url);
-    }
-    return resolveCatalogFirebaseStorageDownloadUrl(url, canon);
+    return resolveCatalogImageUrlForDisplay(
+      url,
+      canonicalLojaId: widget.resolvedLojaId?.trim(),
+    );
   }
 
   static Widget _brokenPlaceholder() => Container(

@@ -1,8 +1,11 @@
 // lib/screens/public_catalog/catalog_storage_image_url_resolver.dart
 // Corrige URLs do Firebase Storage quando o path usa slug/ID antigo em `lojas/{id}/…`
 // e o catálogo já resolveu o ID canónico da loja (evita 404 + exceções na Web).
+// Também obtém token de download atual (evita 403/404 intermitente em URL antiga).
 
 import 'package:firebase_storage/firebase_storage.dart';
+
+import 'catalog_helpers.dart' show isValidHttpUrl;
 
 /// URLs de mídia servidas pelo Firebase Storage (formato clássico ou `*.firebasestorage.app`).
 bool isCatalogFirebaseStorageMediaUrl(String url) {
@@ -74,4 +77,56 @@ Future<String> resolveCatalogFirebaseStorageDownloadUrl(
       _resolveInflight.remove(memoKey);
     }
   });
+}
+
+final Map<String, String> _refreshedDownloadUrlMemo = {};
+final Map<String, Future<String>> _refreshedDownloadInflight = {};
+
+Future<String> _refreshedFirebaseStorageDownloadUrl(String u) {
+  final c = _refreshedDownloadUrlMemo[u];
+  if (c != null) {
+    return Future.value(c);
+  }
+  return _refreshedDownloadInflight.putIfAbsent(u, () async {
+    try {
+      final ref = FirebaseStorage.instance.refFromURL(u);
+      final fresh = await ref.getDownloadURL();
+      _refreshedDownloadUrlMemo[u] = fresh;
+      if (_refreshedDownloadUrlMemo.length > 500) {
+        _refreshedDownloadUrlMemo.clear();
+      }
+      return fresh;
+    } catch (_) {
+      _refreshedDownloadUrlMemo[u] = u;
+      return u;
+    } finally {
+      _refreshedDownloadInflight.remove(u);
+    }
+  });
+}
+
+/// (1) Se [canonicalLojaId] difere de `lojas/…/`, ajusta o path. (2) Para qualquer
+/// URL conhecida do Storage, gera download URL com token actual (mesmo com ID já correcto).
+Future<String> resolveCatalogImageUrlForDisplay(
+  String originalUrl, {
+  String? canonicalLojaId,
+}) async {
+  if (originalUrl.isEmpty) return originalUrl;
+  var u = originalUrl;
+  final canon = canonicalLojaId?.trim() ?? '';
+  if (canon.isNotEmpty &&
+      isValidHttpUrl(u) &&
+      isCatalogFirebaseStorageMediaUrl(u)) {
+    final decoded = firebaseStorageDecodedObjectPath(u);
+    if (decoded != null) {
+      final parts = decoded.split('/').where((p) => p.isNotEmpty).toList();
+      if (parts.length >= 3 && parts[0] == 'lojas' && parts[1] != canon) {
+        u = await resolveCatalogFirebaseStorageDownloadUrl(u, canon);
+      }
+    }
+  }
+  if (!isValidHttpUrl(u) || !isCatalogFirebaseStorageMediaUrl(u)) {
+    return u;
+  }
+  return _refreshedFirebaseStorageDownloadUrl(u);
 }

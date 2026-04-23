@@ -287,6 +287,40 @@ String _firstNonEmpty(List<dynamic> candidates) {
   return '';
 }
 
+/// Um item de lista de banners no Firestore pode ser String ou Map (`url`/`image`/etc.).
+String? _urlFromBannerListItem(dynamic e) {
+  if (e == null) return null;
+  if (e is String) {
+    final t = e.trim();
+    return t.isEmpty ? null : t;
+  }
+  if (e is Map) {
+    for (final k in const [
+      'url', 'src', 'image', 'imageUrl', 'image_url', 'href', 'link', 'u',
+    ]) {
+      final v = e[k];
+      if (v is String) {
+        final t = v.trim();
+        if (t.isNotEmpty) return t;
+      }
+    }
+  }
+  final raw = e.toString().trim();
+  if (raw.isEmpty) return null;
+  if (raw.length > 10 &&
+      (raw.startsWith('http://') || raw.startsWith('https://'))) {
+    return raw;
+  }
+  return null;
+}
+
+void _addParsedBannerList(List<dynamic> raw, List<String> out) {
+  for (final e in raw) {
+    final u = _urlFromBannerListItem(e);
+    if (u != null) out.add(u);
+  }
+}
+
 /// Parseia mídia do config (cfg['media']) e retorna logo, banners e altura.
 CatalogMediaConfig parseMedia(Map<String, dynamic> cfg, {required bool isWide}) {
   final Map<String, dynamic> media = asMap(cfg['media']);
@@ -321,23 +355,23 @@ CatalogMediaConfig parseMedia(Map<String, dynamic> cfg, {required bool isWide}) 
   final banners = <String>[];
   final mediaBanners = mediaPlat['banners'];
   if (mediaBanners is List && mediaBanners.isNotEmpty) {
-    banners.addAll(mediaBanners.map((e) => e.toString()));
+    _addParsedBannerList(mediaBanners, banners);
   } else {
     final specificBanners =
         platformKey == 'mobile' ? cfg['bannersMobile'] : cfg['bannersDesktop'];
     if (specificBanners is List && specificBanners.isNotEmpty) {
-      banners.addAll(specificBanners.map((e) => e.toString()));
+      _addParsedBannerList(specificBanners, banners);
     } else {
       final mobileBanners = cfg['bannersMobile'];
       final desktopBanners = cfg['bannersDesktop'];
       if (mobileBanners is List && mobileBanners.isNotEmpty) {
-        banners.addAll(mobileBanners.map((e) => e.toString()));
+        _addParsedBannerList(mobileBanners, banners);
       } else if (desktopBanners is List && desktopBanners.isNotEmpty) {
-        banners.addAll(desktopBanners.map((e) => e.toString()));
+        _addParsedBannerList(desktopBanners, banners);
       } else {
         final legacy = cfg['banners'];
         if (legacy is List && legacy.isNotEmpty) {
-          banners.addAll(legacy.map((e) => e.toString()));
+          _addParsedBannerList(legacy, banners);
         }
       }
     }
