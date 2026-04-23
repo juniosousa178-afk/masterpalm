@@ -314,10 +314,20 @@ String? _urlFromBannerListItem(dynamic e) {
   return null;
 }
 
+String _normalizeBannerUrlString(String s) {
+  var t = s.trim();
+  if (t.isEmpty) return t;
+  t = t.replaceAll('&amp;', '&');
+  if (t.startsWith('//') && t.length > 2) {
+    t = 'https:$t';
+  }
+  return t;
+}
+
 void _addParsedBannerList(List<dynamic> raw, List<String> out) {
   for (final e in raw) {
     final u = _urlFromBannerListItem(e);
-    if (u != null) out.add(u);
+    if (u != null) out.add(_normalizeBannerUrlString(u));
   }
 }
 
@@ -353,10 +363,21 @@ CatalogMediaConfig parseMedia(Map<String, dynamic> cfg, {required bool isWide}) 
       : (double.tryParse('$bannerHRaw') ?? (isWide ? 260.0 : 220.0));
 
   final banners = <String>[];
+  // 1) Banners da plataforma (desktop/mobile) conforme largura; 2) se vazio, tenta
+  // a outra entrada em `media` (muito comum: só preencher mobile ou só desktop);
+  // 3) chaves planas do cfg (legado/compat).
   final mediaBanners = mediaPlat['banners'];
   if (mediaBanners is List && mediaBanners.isNotEmpty) {
     _addParsedBannerList(mediaBanners, banners);
-  } else {
+  }
+  if (banners.isEmpty) {
+    final alt = platformKey == 'desktop' ? mediaMobile : mediaDesktop;
+    final altBanners = alt['banners'];
+    if (altBanners is List && altBanners.isNotEmpty) {
+      _addParsedBannerList(altBanners, banners);
+    }
+  }
+  if (banners.isEmpty) {
     final specificBanners =
         platformKey == 'mobile' ? cfg['bannersMobile'] : cfg['bannersDesktop'];
     if (specificBanners is List && specificBanners.isNotEmpty) {

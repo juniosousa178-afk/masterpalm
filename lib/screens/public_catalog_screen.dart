@@ -4719,7 +4719,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           final cupons = parseCupons(cfg);
 
           final size = MediaQuery.of(context).size;
-          final isWide = size.width >= 900;
+          // Mesmo breakpoint de `CatalogBannerCarousel` (1024): evita carregar
+          // banners de desktop no layout mobile (ou o contrário) em resoluções médias.
+          final isWide = size.width >= 1024;
           final mediaConfig = parseMedia(cfg, isWide: isWide);
           catalogDebugLogHeaderUi(
             lojaId: lojaId,

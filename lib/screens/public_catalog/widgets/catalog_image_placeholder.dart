@@ -92,8 +92,10 @@ class _CatalogImagePlaceholderState extends State<CatalogImagePlaceholder> {
 
   @override
   Widget build(BuildContext context) {
-    final cw = widget.cacheWidth ?? (kIsWeb ? 900 : 600);
-    final ch = widget.cacheHeight ?? (kIsWeb ? 900 : 600);
+    // Web: `cacheWidth`/`cacheHeight` com Firebase/CanvasKit costuma quebrar decode;
+    // mobile/desktop app: manter limites para memória.
+    final cw = kIsWeb ? null : (widget.cacheWidth ?? 600);
+    final ch = kIsWeb ? null : (widget.cacheHeight ?? 600);
 
     Widget core(Future<String> future) {
       return FutureBuilder<String>(

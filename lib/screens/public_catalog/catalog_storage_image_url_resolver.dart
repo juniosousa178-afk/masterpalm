@@ -4,6 +4,7 @@
 // Também obtém token de download atual (evita 403/404 intermitente em URL antiga).
 
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'catalog_helpers.dart' show isValidHttpUrl;
 
@@ -126,6 +127,11 @@ Future<String> resolveCatalogImageUrlForDisplay(
     }
   }
   if (!isValidHttpUrl(u) || !isCatalogFirebaseStorageMediaUrl(u)) {
+    return u;
+  }
+  // No web, refresh via SDK por vezes atrapalha (CORS/CanvasKit) — URL já traz
+  // token; slug fixo acima é o que importa. Android/iOS: token fresco.
+  if (kIsWeb) {
     return u;
   }
   return _refreshedFirebaseStorageDownloadUrl(u);
