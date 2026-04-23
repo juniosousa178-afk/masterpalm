@@ -99,6 +99,154 @@ class ProdutosFirestoreService {
     }
   }
 
+  /// Pull pontual de `estoque_produtos` para o Hive quando o aparelho ainda não tem o produto
+  /// (ex.: lojista confirma pagamento de pedido web sem ter aberto o estoque local).
+  static Future<void> ensureEstoqueProdutoDocsInHive({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    required Iterable<String> firebaseDocIds,
+  }) async {
+    final lid = lojaId.trim();
+    if (lid.isEmpty) return;
+
+    for (final raw in firebaseDocIds) {
+      final produtoId = raw.trim();
+      if (produtoId.isEmpty) continue;
+
+      final already = produtosBox.values.any(
+        (p) => p.lojaId == lid && p.idFirebase == produtoId,
+      );
+      if (already) continue;
+
+      try {
+        final snap = await _db
+            .collection('lojas')
+            .doc(lid)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc(produtoId)
+            .get();
+        if (!snap.exists) {
+          logW(
+            '[ESTOQUE_HYDRATE] Doc estoque_produtos ausente: $produtoId',
+            tag: 'ESTOQUE_HYDRATE',
+          );
+          continue;
+        }
+        final data = Map<String, dynamic>.from(snap.data() ?? {});
+        if (isEstoqueDocPendingSoftDelete(data)) {
+          logW(
+            '[ESTOQUE_HYDRATE] Doc em soft-delete, ignorando: $produtoId',
+            tag: 'ESTOQUE_HYDRATE',
+          );
+          continue;
+        }
+
+        final uAt = data['updatedAt'];
+        final updatedAtDt =
+            uAt != null && uAt is Timestamp ? uAt.toDate() : null;
+        final comboNovo = comboFieldsForNewProductPull(
+          data,
+          produtosBox: produtosBox,
+          lojaId: lid,
+          docId: produtoId,
+        );
+        final produto = Produto(
+          idFirebase: produtoId,
+          nome: data['nome'] ?? 'Produto sem nome',
+          custoReal: (data['custoReal'] as num?)?.toDouble() ?? 0.0,
+          frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
+          gastosFixos: (data['gastosFixos'] as num?)?.toDouble() ?? 0.0,
+          gastosVariaveis:
+              (data['gastosVariaveis'] as num?)?.toDouble() ?? 0.0,
+          precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ??
+              (data['preco'] as num?)?.toDouble() ??
+              0.0,
+          precoFinal: (data['preco'] as num?)?.toDouble() ?? 0.0,
+          precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ??
+              (data['preco'] as num?)?.toDouble() ??
+              0.0,
+          quantidade: (data['quantidade'] as num?)?.toInt() ?? 0,
+          categoria: data['categoria'] ?? '',
+          categoriasExtras: (data['categoriasExtras'] as List?)
+                  ?.map((e) => e.toString())
+                  .toList() ??
+              const [],
+          dataEntrada: data['dataEntrada'] is Timestamp
+              ? (data['dataEntrada'] as Timestamp).toDate()
+              : DateTime.now(),
+          descricao: data['descricao'] ?? '',
+          imagens: (data['imagens'] as List?)?.cast<String>() ?? [],
+          slug: data['slug'] ?? '',
+          lojaId: lid,
+          subcategoria: data['subcategoria'] ?? '',
+          subcategoriasExtras: (data['subcategoriasExtras'] as List?)
+                  ?.map((e) => e.toString())
+                  .toList() ??
+              const [],
+          publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
+          tamanhos: _dedupeStringListPreserveOrder(
+            (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),
+          ),
+          estoquePorTamanho:
+              Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
+          cores: _dedupeStringListPreserveOrder(
+            (data['cores'] as List?)?.map((e) => e.toString()).toList(),
+          ),
+          variacoes: _parseVariacoesFromFirestore(data['variacoes']),
+          variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
+              data['variacoesExtraTipo']),
+          precoPorTamanho:
+              _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
+          tipoProduto: comboNovo.$1,
+          itensCombo: comboNovo.$2,
+          comboConfig: comboNovo.$3,
+          divideSemJuros: data['divideSemJuros'] == true,
+          percentualDescontoPix: (data['percentualDescontoPix'] is num)
+              ? (data['percentualDescontoPix'] as num).toDouble()
+              : 0.0,
+          maxParcelasSemJuros: (data['maxParcelasSemJuros'] is num)
+              ? (data['maxParcelasSemJuros'] as num).toInt()
+              : 12,
+          codigoBarras: (data['codigoBarras'] ?? '').toString(),
+          estoqueMinimo: (data['estoqueMinimo'] is num)
+              ? (data['estoqueMinimo'] as num).toInt()
+              : 0,
+          fornecedor: (data['fornecedor'] ?? '').toString().trim(),
+          peso: (data['peso'] as num?)?.toDouble() ?? 0.0,
+          tipoEmbalagem: (data['tipoEmbalagem'] ?? 'padrao').toString(),
+          updatedAt: updatedAtDt,
+          custoEditadoNoCadastro:
+              (data['custoEditadoNoCadastro'] as bool?) ?? false,
+          emPromocao: data['emPromocao'] == true,
+          percentualPromo: (data['percentualPromo'] as num?)?.toDouble(),
+          valorPromo: (data['valorPromo'] as num?)?.toDouble(),
+          dataInicioPromo: data['dataInicioPromo'] is Timestamp
+              ? (data['dataInicioPromo'] as Timestamp).toDate()
+              : null,
+          dataFimPromo: data['dataFimPromo'] is Timestamp
+              ? (data['dataFimPromo'] as Timestamp).toDate()
+              : null,
+          videoUrl: (data['videoUrl'] ?? '').toString(),
+          marketplaces: (data['marketplaces'] as List?)
+                  ?.map((e) => e.toString())
+                  .toList() ??
+              const [],
+          ativoNoRascunho: data['ativoNoRascunho'] == true,
+        );
+
+        produto.recalcularQuantidadeTotal();
+        await produtosBox.add(produto);
+        logD('[ESTOQUE_HYDRATE] Produto $produtoId carregado do Firestore → Hive');
+      } catch (e, st) {
+        logW(
+          '[ESTOQUE_HYDRATE] Falha ao hidratar $produtoId (type=${e.runtimeType})',
+          tag: 'ESTOQUE_HYDRATE',
+        );
+        if (kDebugMode) logD('$st');
+      }
+    }
+  }
+
   static List<String> _dedupeStringListPreserveOrder(List<String>? raw) {
     if (raw == null || raw.isEmpty) return const [];
     final seen = <String>{};

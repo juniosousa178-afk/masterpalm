@@ -15,6 +15,7 @@ import 'catalogo_venda_service.dart';
 import 'catalogo_web_apos_estoque_service.dart';
 import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
+import 'produtos_firestore_service.dart';
 import 'venda_combo_estoque_expansion.dart';
 import 'firestore_paths.dart';
 import 'pedido_collection_resolver.dart';
@@ -167,10 +168,11 @@ class PosPagamentoService {
 
       debugPrint('✅ [PÓS-PAGAMENTO] Processamento concluído com sucesso!');
       return true;
-    } catch (e) {
+    } catch (e, st) {
       debugPrint(
-        '❌ [PÓS-PAGAMENTO] Erro ao processar (type=${e.runtimeType}) | lojaId=$lojaId | vendaId=$vendaId',
+        '❌ [PÓS-PAGAMENTO] Erro ao processar (type=${e.runtimeType}) | lojaId=$lojaId | vendaId=$vendaId | $e',
       );
+      debugPrint('$st');
       return false;
     }
   }
@@ -228,6 +230,31 @@ class PosPagamentoService {
   /// [itensComboComSelecao] e [extraValor] por componente.
   static Future<void> _baixarEstoque(String lojaId, List<Map<String, dynamic>> items) async {
     final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
+
+    final docIdsParaHive = <String>{};
+    for (final raw in items) {
+      var pid = (raw['productId'] ?? raw['id'] ?? raw['produtosId'] ?? '')
+          .toString()
+          .trim();
+      if (pid.isEmpty) {
+        final slug = (raw['slug'] ?? '').toString().trim();
+        if (slug.isNotEmpty) {
+          final resolved = await ProdutosFirestoreService.findEstoqueProdutoDocIdBySlug(
+            lojaId: lojaId,
+            slug: slug,
+          );
+          if (resolved != null) pid = resolved;
+        }
+      }
+      if (pid.isNotEmpty) docIdsParaHive.add(pid);
+    }
+    if (docIdsParaHive.isNotEmpty) {
+      await ProdutosFirestoreService.ensureEstoqueProdutoDocsInHive(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        firebaseDocIds: docIdsParaHive,
+      );
+    }
 
     final (vendaItens, comboPorIndice) =
         VendaComboEstoqueExpansion.carrinhoMapsParaVendaItensComComboSelecao(items);

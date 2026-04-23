@@ -224,6 +224,23 @@ function isPlausibleBuyerEmailForMp(s) {
   return true;
 }
 
+/** CPF brasileiro: 11 dígitos com dígitos verificadores válidos (evita 400 do MP com CPF "formatado" mas inválido). */
+function isValidCpfDigits(digits) {
+  const s = String(digits || "").replace(/\D/g, "");
+  if (s.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(s)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(s[i], 10) * (10 - i);
+  let r = (sum * 10) % 11;
+  if (r === 10) r = 0;
+  if (r !== parseInt(s[9], 10)) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(s[i], 10) * (11 - i);
+  r = (sum * 10) % 11;
+  if (r === 10) r = 0;
+  return r === parseInt(s[10], 10);
+}
+
 /**
  * Monta objeto [payer] para API MP a partir do pedido catálogo (Firestore).
  * CPF só se tiver 11 dígitos; telefone BR só com DDD+número válidos.
@@ -238,7 +255,7 @@ function buildMpBuyerPayerForCatalog(order, orderId) {
   }
   const cpfDigits = String(cpf || "").replace(/\D/g, "");
   const payer = { name: displayName, email: payerEmail };
-  if (cpfDigits.length === 11) {
+  if (cpfDigits.length === 11 && isValidCpfDigits(cpfDigits)) {
     payer.identification = { type: "CPF", number: cpfDigits };
   }
   const tel = String(telefone || "").replace(/\D/g, "");
@@ -2114,8 +2131,12 @@ export const mpCatalogPayment = onRequest(
         const fromServerId = serverPayer.identification?.number
           ? String(serverPayer.identification.number).replace(/\D/g, "")
           : "";
-        const cpfLimpo =
-          cpfBody.length === 11 ? cpfBody : fromServerId.length === 11 ? fromServerId : "";
+        let cpfLimpo = "";
+        if (cpfBody.length === 11 && isValidCpfDigits(cpfBody)) {
+          cpfLimpo = cpfBody;
+        } else if (fromServerId.length === 11 && isValidCpfDigits(fromServerId)) {
+          cpfLimpo = fromServerId;
+        }
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         // P1.5 trava local (Firestore) + chave determinística no MP: sucesso remoto com falha no commit local não deve gerar nova cobrança no retry.
         const mpBody = {
