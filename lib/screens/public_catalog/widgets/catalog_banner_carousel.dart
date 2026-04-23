@@ -3,6 +3,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'catalog_image_placeholder.dart';
@@ -95,8 +96,13 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
             controller: _ctrl,
             itemCount: banners.length,
             onPageChanged: (i) => setState(() => _idx = i),
-            itemBuilder: (_, i) {
+            itemBuilder: (context, i) {
               final url = banners[i];
+              final dpr = MediaQuery.devicePixelRatioOf(context);
+              final slotW =
+                  (isDesktop ? w - 32.0 : w - 16.0).clamp(120.0, 4096.0);
+              final decodeW =
+                  kIsWeb ? null : (slotW * dpr).round().clamp(720, 2800);
               const borderRadiusDesktop = 24.0;
               const borderRadiusMobile = 20.0;
               if (isDesktop) {
@@ -117,15 +123,14 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                       borderRadius: BorderRadius.circular(borderRadiusDesktop),
                       child: Container(
                         color: Colors.black.withOpacity(0.04),
-                        // cover + expand: preenche o card (sem faixas como no contain);
-                        // o excesso é cortado pelo ClipRRect.
+                        // Contain: arte completa (sem crop); faixas discretas no card.
                         child: SizedBox.expand(
                           child: CatalogImagePlaceholder(
                             url: url,
                             resolvedLojaId: widget.resolvedLojaId,
-                            fit: BoxFit.cover,
-                            cacheWidth: 1920,
-                            cacheHeight: 960,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.center,
+                            cacheWidth: decodeW,
                           ),
                         ),
                       ),
@@ -149,13 +154,15 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                   borderRadius: BorderRadius.circular(borderRadiusMobile),
                   child: Container(
                     color: Colors.black.withOpacity(0.04),
-                    child: Center(
+                    // Igual ao desktop: sem `SizedBox.expand`, o placeholder (sem width/height)
+                    // recebe constraints fracas e a imagem pode ficar com área 0 no mobile.
+                    child: SizedBox.expand(
                       child: CatalogImagePlaceholder(
                         url: url,
                         resolvedLojaId: widget.resolvedLojaId,
                         fit: BoxFit.contain,
-                        cacheWidth: 800,
-                        cacheHeight: 600,
+                        alignment: Alignment.center,
+                        cacheWidth: decodeW,
                       ),
                     ),
                   ),

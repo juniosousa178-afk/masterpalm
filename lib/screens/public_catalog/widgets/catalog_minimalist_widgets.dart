@@ -696,7 +696,7 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                       : null,
                 ),
                 child: hasImage
-                    ? SmartImage(src: imageUrl, fit: BoxFit.cover)
+                    ? SmartImage(src: imageUrl, fit: BoxFit.contain)
                     : null,
               ),
               Container(

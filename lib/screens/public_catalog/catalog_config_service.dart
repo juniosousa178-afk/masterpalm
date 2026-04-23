@@ -358,9 +358,12 @@ CatalogMediaConfig parseMedia(Map<String, dynamic> cfg, {required bool isWide}) 
   ]);
 
   final bannerHRaw = mediaPlat['bannerH'];
-  final bannerH = (bannerHRaw is num)
+  double bannerH = (bannerHRaw is num)
       ? bannerHRaw.toDouble()
       : (double.tryParse('$bannerHRaw') ?? (isWide ? 260.0 : 220.0));
+  if (!bannerH.isFinite || bannerH < 120) {
+    bannerH = isWide ? 260.0 : 220.0;
+  }
 
   final banners = <String>[];
   // 1) Banners da plataforma (desktop/mobile) conforme largura; 2) se vazio, tenta
