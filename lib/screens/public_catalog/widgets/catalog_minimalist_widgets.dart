@@ -696,24 +696,11 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                       : null,
                 ),
                 child: hasImage
-                    ? Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          // Fundo ocupa todo o quadro para evitar "vazios" quando a proporção
-                          // da arte não bate com o card.
-                          Opacity(
-                            opacity: 0.32,
-                            child: SmartImage(src: imageUrl, fit: BoxFit.cover),
-                          ),
-                          // Arte principal completa (sem corte e sem zoom).
-                          Padding(
-                            padding: const EdgeInsets.all(2),
-                            child: SmartImage(
-                              src: imageUrl,
-                              fit: BoxFit.contain,
-                            ),
-                          ),
-                        ],
+                    // Apenas uma imagem no quadro (sem camada de fundo duplicada).
+                    // `contain` preserva a arte inteira, sem zoom e sem cortes.
+                    ? SmartImage(
+                        src: imageUrl,
+                        fit: BoxFit.contain,
                       )
                     : null,
               ),
