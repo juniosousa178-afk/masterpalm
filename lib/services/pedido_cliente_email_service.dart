@@ -30,15 +30,20 @@ class PedidoClienteEmailService {
       return;
     }
     try {
-      final assunto = 'Você recebeu um novo pedido: $codigoPedido';
+      final assunto = '🎉 Novo pedido no catálogo! #$codigoPedido';
       final dataStr = dataCriacao != null
           ? '${dataCriacao.day} de ${_mesNome(dataCriacao.month)} às ${dataCriacao.hour.toString().padLeft(2, '0')}:${dataCriacao.minute.toString().padLeft(2, '0')}h'
           : '';
       final totalStr = total.toStringAsFixed(2).replaceAll('.', ',');
 
       final buffer = StringBuffer();
-      buffer.writeln('Você recebeu um novo pedido:');
-      buffer.writeln('Veja abaixo os dados do pedido');
+      buffer.writeln('Parabéns! Sua loja acaba de receber um novo pedido feito pelo catálogo. 🎉');
+      buffer.writeln('');
+      buffer.writeln('Que notícia boa — isso mostra que seu negócio está atraindo clientes. Acesse a tela de Pré-pedidos no app, revisite os itens e confirme o pedido quando estiver tudo certo.');
+      buffer.writeln('');
+      buffer.writeln('⚠️ Antes de confirmar: confira se o valor caiu na sua conta bancária (ou se o meio de pagamento foi compensado de acordo com a sua operação). Só confirme o pedido depois de ter certeza de que recebeu o pagamento.');
+      buffer.writeln('');
+      buffer.writeln('--- Dados do pedido ---');
       buffer.writeln('');
       buffer.writeln('Cliente: $clienteNome');
       buffer.writeln('');
