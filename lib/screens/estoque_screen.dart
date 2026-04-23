@@ -253,6 +253,18 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         return;
       }
       await SyncQueueService.processPending();
+      final stillPending =
+          await SyncQueueService.hasPendingProdutoSyncForStore(
+        lojaId: lojaId,
+        includeDeadLetter: true,
+      );
+      if (stillPending) {
+        _showSnackBar(
+          'Sincronização local pendente. Primeiro o app confirma suas edições/exclusões; depois importe da nuvem.',
+          isError: true,
+        );
+        return;
+      }
       final n = await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,
         produtosBox: _box,
@@ -423,6 +435,16 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     } catch (_) {}
 
     try {
+      final stillPending =
+          await SyncQueueService.hasPendingProdutoSyncForStore(
+        lojaId: lojaId,
+        includeDeadLetter: true,
+      );
+      if (stillPending) {
+        logW(
+          '[ESTOQUE] Pull em background adiado: há sync local de produto pendente/dead-letter (loja=$lojaId)',
+        );
+      } else {
       // Só pull na abertura: não enviar Hive inteiro antes (evita nuvem ser sobrescrita por base local velha/incompleta).
       await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,
@@ -430,6 +452,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         preferRemoteQuantity: true,
       );
       logD('Produtos sincronizados do Firestore');
+      }
     } catch (e, st) {
       logE('[ESTOQUE] Erro ao sincronizar produtos do Firestore em background (type=${e.runtimeType})', error: e, st: st);
     }

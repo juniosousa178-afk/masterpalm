@@ -11,6 +11,7 @@ import 'package:hive/hive.dart';
 import 'firestore_paths.dart';
 import 'produtos_firestore_service.dart';
 import 'permissao_service.dart';
+import 'sync_queue_service.dart';
 import '../models/produto.dart';
 
 class FirestoreCriticalListenerService {
@@ -65,6 +66,17 @@ class FirestoreCriticalListenerService {
     if (box == null || lojaId == null) return;
 
     try {
+      await SyncQueueService.processPending();
+      final stillPending = await SyncQueueService.hasPendingProdutoSyncForStore(
+        lojaId: lojaId,
+        includeDeadLetter: true,
+      );
+      if (stillPending) {
+        debugPrint(
+          '⏸️ [LISTENER_SYNC] Pull adiado: há sync local de produto pendente/dead-letter (loja=$lojaId)',
+        );
+        return;
+      }
       await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,
         produtosBox: box,

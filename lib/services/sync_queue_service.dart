@@ -237,6 +237,25 @@ class SyncQueueService {
     );
   }
 
+  /// Existe qualquer sync pendente de produto para a loja.
+  /// Usado para bloquear pull remoto até confirmar alterações locais.
+  static Future<bool> hasPendingProdutoSyncForStore({
+    required String lojaId,
+    bool includeDeadLetter = true,
+  }) async {
+    await _instance._ensureBox();
+    for (final k in _instance._box!.keys) {
+      final map = _instance._rawToMap(_instance._box!.get(k));
+      if (map == null) continue;
+      final item = SyncQueueItem.fromMap(map);
+      if (item.type != SyncOperationType.upsertProduto) continue;
+      if (item.lojaId != lojaId) continue;
+      if (!includeDeadLetter && item.deadLetter) continue;
+      return true;
+    }
+    return false;
+  }
+
   Future<SyncQueueResult> _processPending() async {
     if (_isProcessing) {
       return SyncQueueResult(

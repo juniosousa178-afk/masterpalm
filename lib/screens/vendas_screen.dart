@@ -450,15 +450,35 @@ class _VendasScreenState extends State<VendasScreen>
     try {
       // Enviar alterações locais ANTES de puxar (evita sobrescrever quantidade atualizada no estoque)
       await SyncQueueService.processPending();
+      final stillPending = await SyncQueueService.hasPendingProdutoSyncForStore(
+        lojaId: lojaId!,
+        includeDeadLetter: true,
+      );
+      if (stillPending) {
+        logW(
+          '[SYNC] Pull de produtos adiado: ainda há alterações locais pendentes/dead-letter na fila (loja=$lojaId)',
+        );
+      }
       await ProdutosFirestoreService.syncTodosProdutos(
         boxName: produtosBox.name,
         lojaId: lojaId!,
       );
-      await ProdutosFirestoreService.syncFirestoreToHive(
+      final pendingAfterPush =
+          await SyncQueueService.hasPendingProdutoSyncForStore(
         lojaId: lojaId!,
-        produtosBox: produtosBox,
+        includeDeadLetter: true,
       );
-      logD('Produtos sincronizados (enviados + puxados)');
+      if (!pendingAfterPush) {
+        await ProdutosFirestoreService.syncFirestoreToHive(
+          lojaId: lojaId!,
+          produtosBox: produtosBox,
+        );
+        logD('Produtos sincronizados (enviados + puxados)');
+      } else {
+        logW(
+          '[SYNC] Pull pós-push adiado: pendências locais de produto ainda não confirmadas',
+        );
+      }
     } catch (e, st) {
       logE('Erro ao sincronizar produtos (type=${e.runtimeType})', error: e, st: st);
       if (mounted) setState(() => _syncFalhou = true);

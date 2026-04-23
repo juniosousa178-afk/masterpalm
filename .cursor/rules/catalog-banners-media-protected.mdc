@@ -1,0 +1,33 @@
+---
+description: >-
+  Mídia do catálogo público (banners, carrossel, hero, URLs Storage) — não alterar
+  sem pedido explícito do utilizador.
+alwaysApply: true
+---
+
+# Catálogo público — mídia e banners (zona protegida)
+
+Esta área foi estabilizada com comportamento acordado (imagem completa, layout mobile/desktop, resolução de URLs Firebase Storage, parse de listas de banners). **Não modificar** ficheiros, funções ou fluxos listados abaixo em trabalhos gerais, refactors ou outras features — **só** quando o utilizador pedir **explicitamente** alterações a **banners do catálogo**, **carrossel de banners**, **hero / banner minimalista (imagem)**, **placeholder de imagens do catálogo**, ou **resolução de URLs de imagens do Storage no catálogo**.
+
+## Ficheiros intocáveis por defeito
+
+| Ficheiro | Notas |
+|----------|--------|
+| `lib/screens/public_catalog/widgets/catalog_banner_carousel.dart` | Carrossel, `BoxFit`, decode, breakpoints |
+| `lib/screens/public_catalog/widgets/catalog_image_placeholder.dart` | `Image.network`, cache decode, URL efectiva |
+| `lib/screens/public_catalog/catalog_storage_image_url_resolver.dart` | Slug/ID canónico, refresh token (web vs nativo) |
+| `lib/screens/public_catalog/catalog_config_service.dart` | Apenas bloco de **mídia/banners**: `CatalogMediaConfig`, `parseMedia` (logo/banners/`bannerH`), `_urlFromBannerListItem`, `_normalizeBannerUrlString`, `_addParsedBannerList` |
+
+## Ficheiros parciais
+
+- `lib/screens/public_catalog/widgets/catalog_minimalist_widgets.dart`: **não alterar** `CatalogMinimalHeroBanner` (imagem do hero, `SmartImage`, altura/layout do card) nem o comportamento visual do letreiro `CatalogPromoBar` / `_CatalogPromoMarqueeLine` sem pedido explícito.
+- `lib/screens/public_catalog_screen.dart`: **não alterar** o ramo que obtém `mediaConfig` via `parseMedia`, variáveis `banners`, `bannerH`, `logoUrl` usadas no header/carrossel, nem o widget `CatalogBannerCarousel` e os seus argumentos, salvo pedido explícito para essa parte.
+
+## Se o pedido for noutra coisa mas tocar estes ficheiros
+
+- **Parar** e manter o diff fora desta lista; ou pedir confirmação ao utilizador se a mudança for inevitável.
+- Não “melhorar” `BoxFit`, `cacheWidth`, fallback `media` mobile/desktop, nem resolver Storage por iniciativa própria.
+
+## Quando pode alterar
+
+- O utilizador pede de forma **clara** mudança nesta zona (copy, layout, bug, nova feature de banner, etc.).
