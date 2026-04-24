@@ -709,7 +709,9 @@ class _CatalogMinimalHeroBannerState extends State<CatalogMinimalHeroBanner> {
   @override
   Widget build(BuildContext context) {
     if (!widget.enabled) return const SizedBox.shrink();
-    final screenW = MediaQuery.sizeOf(context).width;
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenW = screenSize.width;
+    final screenH = screenSize.height;
     final isDesktop = screenW >= 900;
     final hasImage = widget.imageUrl.trim().isNotEmpty;
     final hasCopy = widget.title.trim().isNotEmpty ||
@@ -719,7 +721,11 @@ class _CatalogMinimalHeroBannerState extends State<CatalogMinimalHeroBanner> {
       return const SizedBox.shrink();
     }
     final minBannerH = isDesktop ? 180.0 : 140.0;
-    final maxBannerH = isDesktop ? 320.0 : 260.0;
+    // Desktop: libera mais altura para o quadro acompanhar o aspecto da arte
+    // (evita faixas laterais em imagens menos panorâmicas).
+    final maxBannerH = isDesktop
+        ? (screenH * 0.72).clamp(360.0, 620.0).toDouble()
+        : 260.0;
     final configH = hasImage
         ? widget.height.clamp(minBannerH, maxBannerH).toDouble()
         : (hasCopy ? 96.0 : 0.0);

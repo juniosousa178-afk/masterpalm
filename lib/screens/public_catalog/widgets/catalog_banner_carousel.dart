@@ -36,12 +36,53 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
   late final PageController _ctrl;
   int _idx = 0;
   Timer? _timer;
+  final Map<String, double> _aspectRatioByUrl = <String, double>{};
+  final Set<String> _aspectProbeInFlight = <String>{};
 
   @override
   void initState() {
     super.initState();
     _ctrl = PageController();
+    _prefetchBannerAspectRatios();
     _startAuto();
+  }
+
+  void _prefetchBannerAspectRatios() {
+    for (final raw in widget.banners) {
+      _resolveBannerAspect(raw);
+    }
+  }
+
+  void _resolveBannerAspect(String rawUrl) {
+    final url = rawUrl.trim();
+    if (url.isEmpty ||
+        _aspectRatioByUrl.containsKey(url) ||
+        _aspectProbeInFlight.contains(url)) {
+      return;
+    }
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return;
+    }
+    _aspectProbeInFlight.add(url);
+    final stream = NetworkImage(url).resolve(const ImageConfiguration());
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (ImageInfo info, bool syncCall) {
+        stream.removeListener(listener);
+        _aspectProbeInFlight.remove(url);
+        final w = info.image.width.toDouble();
+        final h = info.image.height.toDouble();
+        if (!mounted || w <= 0 || h <= 0) return;
+        setState(() {
+          _aspectRatioByUrl[url] = w / h;
+        });
+      },
+      onError: (_, __) {
+        stream.removeListener(listener);
+        _aspectProbeInFlight.remove(url);
+      },
+    );
+    stream.addListener(listener);
   }
 
   void _startAuto() {
@@ -62,7 +103,15 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
   @override
   void didUpdateWidget(covariant CatalogBannerCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.banners.length != widget.banners.length) {
+    final bannersChanged =
+        oldWidget.banners.join('|') != widget.banners.join('|');
+    if (bannersChanged) {
+      _prefetchBannerAspectRatios();
+      if (_idx >= widget.banners.length) {
+        _idx = 0;
+      }
+    }
+    if (oldWidget.banners.length != widget.banners.length || bannersChanged) {
       _startAuto();
     }
   }
@@ -81,28 +130,39 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
 
     final w = MediaQuery.sizeOf(context).width;
     final isDesktop = w >= 1024;
-    // Desktop: altura em estilo Mercado Livre (~40% da tela); mobile inalterado
-    final effectiveHeight = isDesktop
-        ? (MediaQuery.sizeOf(context).height * 0.40).clamp(320.0, 520.0)
-        : widget.height;
+    final slotW = (isDesktop ? w - 32.0 : w - 16.0).clamp(120.0, 4096.0);
+    final minHeight = isDesktop ? 220.0 : 140.0;
+    final maxHeight = isDesktop ? 520.0 : 360.0;
+    final fallbackHeight = widget.height.clamp(minHeight, maxHeight).toDouble();
+    final currentBanner = banners[_idx.clamp(0, banners.length - 1)].trim();
+    final currentAspect = _aspectRatioByUrl[currentBanner];
+    // Altura automática pelo aspecto real da arte: sem corte/zoom.
+    final effectiveHeight = (currentAspect != null && currentAspect > 0)
+        ? (slotW / currentAspect).clamp(minHeight, maxHeight).toDouble()
+        : fallbackHeight;
 
     return Column(
       children: [
-        SizedBox(
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
           height: effectiveHeight,
           child: Stack(
             children: [
               PageView.builder(
             controller: _ctrl,
             itemCount: banners.length,
-            onPageChanged: (i) => setState(() => _idx = i),
+            onPageChanged: (i) {
+              _resolveBannerAspect(banners[i]);
+              setState(() => _idx = i);
+            },
             itemBuilder: (context, i) {
               final url = banners[i];
               final dpr = MediaQuery.devicePixelRatioOf(context);
-              final slotW =
-                  (isDesktop ? w - 32.0 : w - 16.0).clamp(120.0, 4096.0);
               final decodeW =
                   kIsWeb ? null : (slotW * dpr).round().clamp(720, 2800);
+              final decodeH =
+                  kIsWeb ? null : (effectiveHeight * dpr).round().clamp(400, 2400);
               const borderRadiusDesktop = 24.0;
               const borderRadiusMobile = 20.0;
               if (isDesktop) {
@@ -131,6 +191,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                             fit: BoxFit.contain,
                             alignment: Alignment.center,
                             cacheWidth: decodeW,
+                            cacheHeight: decodeH,
                           ),
                         ),
                       ),
@@ -163,6 +224,7 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                         fit: BoxFit.contain,
                         alignment: Alignment.center,
                         cacheWidth: decodeW,
+                        cacheHeight: decodeH,
                       ),
                     ),
                   ),
