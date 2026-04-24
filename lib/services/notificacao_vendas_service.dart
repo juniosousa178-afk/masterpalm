@@ -140,7 +140,15 @@ class NotificacaoVendasService {
 
       final lojaData = lojaDoc.data() ?? {};
       final adminUid = lojaData['ownerUid'] ?? lojaData['adminUid'] ?? '';
-      final adminEmail = lojaData['ownerEmail'] ?? lojaData['adminEmail'] ?? '';
+      var adminEmail = (lojaData['ownerEmail'] ?? lojaData['adminEmail'] ?? '')
+          .toString()
+          .trim();
+      if (adminEmail.isEmpty) {
+        final owner = lojaData['owner'];
+        if (owner is Map && owner['email'] != null) {
+          adminEmail = owner['email'].toString().trim();
+        }
+      }
 
       if (adminUid.isEmpty) {
         logW('⚠️ [NOTIF] Admin não encontrado para loja $storeId');

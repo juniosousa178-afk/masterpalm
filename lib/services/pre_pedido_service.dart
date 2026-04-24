@@ -674,80 +674,9 @@ class PrePedidoService {
         );
       }
 
-      // Email ao cliente: pedido recebido (em background, não bloqueia)
-      final emailCliente =
-          (customer['email'] ?? '').toString().trim().toLowerCase();
-      if (emailCliente.isNotEmpty) {
-        unawaited((() async {
-          try {
-            final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
-            final lojaData = lojaDoc.data();
-            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
-            final logoUrl = _extrairLogoUrl(lojaData);
-            await PedidoClienteEmailService.enviarPedidoRecebido(
-              clienteEmail: emailCliente,
-              clienteNome: (customer['nome'] ?? 'Cliente').toString(),
-              pedidoId: docRef.id,
-              total: total,
-              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
-              logoUrl: logoUrl,
-            );
-          } catch (e) {
-            logW('⚠️ [PRE-PEDIDO] Erro ao enviar email pedido recebido (type=${e.runtimeType})');
-          }
-        })());
-      }
-
-      // Email ao admin/vendedor: novo pedido (remetente MasterPalm)
-      unawaited((() async {
-        try {
-          final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
-          if (!lojaDoc.exists) {
-            logW('⚠️ [PRE-PEDIDO] Loja não existe, não envia email admin');
-            return;
-          }
-          final lojaData = lojaDoc.data() ?? {};
-          // ownerEmail, adminEmail ou owner.email (quando owner é Map)
-          var adminEmail = (lojaData['ownerEmail'] ?? lojaData['adminEmail'] ?? '').toString().trim();
-          if (adminEmail.isEmpty) {
-            final owner = lojaData['owner'];
-            if (owner is Map && owner['email'] != null) {
-              adminEmail = owner['email'].toString().trim();
-            }
-          }
-          if (adminEmail.isEmpty) {
-            logW('⚠️ [PRE-PEDIDO] Loja sem ownerEmail/adminEmail/owner.email, não envia email admin');
-            return;
-          }
-
-          final codigo = docRef.id.length >= 8
-              ? docRef.id.substring(0, 8).toUpperCase()
-              : docRef.id.toUpperCase();
-          final endereco = customer['endereco'] as Map<String, dynamic>?;
-          final cep = endereco?['cep'] ?? endereco?['postalCode'] ?? '';
-
-          await PedidoClienteEmailService.enviarNovoPedidoParaAdmin(
-            adminEmail: adminEmail,
-            clienteNome: (customer['nome'] ?? 'Cliente').toString(),
-            pedidoId: docRef.id,
-            codigoPedido: codigo,
-            itens: itensList,
-            total: total,
-            pagamento: pagamento,
-            statusPagamento: determinarStatusPagamento(pagamento) == 'pendente'
-                ? 'Pagamento pendente'
-                : 'Aprovado',
-            entregaNome: (entrega['nome'] ?? 'Entrega').toString(),
-            enderecoFormatado: (customer['enderecoFormatado'] ?? '').toString().trim().isEmpty
-                ? null
-                : (customer['enderecoFormatado'] ?? '').toString(),
-            cep: cep.toString().trim().isEmpty ? null : cep.toString(),
-            dataCriacao: DateTime.now(),
-          );
-        } catch (e) {
-          logW('⚠️ [PRE-PEDIDO] Erro ao enviar email novo pedido para admin (type=${e.runtimeType})');
-        }
-      })());
+      // E-mail ao cliente e ao vendedor: Cloud Function onPrePedidoCreated (SMTP no
+      // servidor; catálogo web não consegue enviar SMTP a partir do browser).
+      // Ver functions/index.js — evita duplicar e mantém a mesma mensagem em todas as plataformas.
 
       // Retorna dados completos (evita buscarPrePedido - regras não permitem read público)
       return {

@@ -213,6 +213,34 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+/** Código curto para exibir no assunto (8 primeiros caracteres do id). */
+function pedidoCodigoCurto(pedidoId) {
+  const s = String(pedidoId || "");
+  if (s.length >= 8) return s.slice(0, 8).toUpperCase();
+  return s.toUpperCase();
+}
+
+/** Texto com lista de itens para o e-mail do vendedor. */
+function formatPrePedidoItensResumoEmail(itens) {
+  if (!Array.isArray(itens) || itens.length === 0) {
+    return "  (detalhe completo no app)\n";
+  }
+  const lines = [];
+  for (const it of itens) {
+    if (!it || typeof it !== "object") continue;
+    const q = Math.max(1, Number(it.quantidade ?? it.qty ?? 1) || 1);
+    const nome = String(it.nome ?? it.name ?? "Item").trim() || "Item";
+    const pu = Number(it.precoUnitario ?? it.preco ?? 0) || 0;
+    let tot = it.total != null && it.total !== "" ? Number(it.total) : Number.NaN;
+    if (!Number.isFinite(tot)) tot = pu * q;
+    const t = String(it.tamanho ?? it.size ?? "").trim();
+    const varN = t ? ` - ${t}` : "";
+    const totStr = tot.toFixed(2).replace(".", ",");
+    lines.push(`  ${q}x ${nome}${varN} — R$ ${totStr}`);
+  }
+  return lines.length > 0 ? lines.join("\n") : "  (detalhe completo no app)\n";
+}
+
 /** E-mail mínimo aceitável pelo Checkout/PIX MP (evita invalid_params por formato). */
 function isPlausibleBuyerEmailForMp(s) {
   const e = normalizeEmail(s);
@@ -3647,11 +3675,17 @@ export const onPrePedidoCreated = onDocumentCreated(
       if (!lojaDoc.exists) return;
       const lojaData = lojaDoc.data() || {};
       const adminUid = lojaData.ownerUid ?? lojaData.adminUid ?? "";
-      const adminEmail = lojaData.ownerEmail ?? lojaData.adminEmail ?? "";
+      let adminEmail = (lojaData.ownerEmail ?? lojaData.adminEmail ?? "").toString().trim();
+      if (!adminEmail && lojaData.owner && typeof lojaData.owner === "object") {
+        adminEmail = (lojaData.owner.email ?? "").toString().trim();
+      }
       if (!adminUid) {
         console.warn("[onPrePedidoCreated] Admin não encontrado para loja", lojaId);
         return;
       }
+      const lojaNome = String(lojaData.nome || lojaData.name || "Sua loja").trim() || "Sua loja";
+      const codRef = pedidoCodigoCurto(pedidoId);
+      const itensTexto = formatPrePedidoItensResumoEmail(data.itens);
       let titulo;
       if (isWhatsApp) {
         titulo = "📱 Pedido finalizado por WhatsApp";
@@ -3705,30 +3739,76 @@ export const onPrePedidoCreated = onDocumentCreated(
         console.warn("[onPrePedidoCreated] FCM push (não bloqueia):", fcmErr.message || fcmErr);
       }
 
-      // Email para o dono da loja
-      if (adminEmail && adminEmail.trim().length > 0) {
-        try {
-          const smtpUser = ((await S_SMTP_EMAIL.value()) || process.env.SMTP_EMAIL || "").trim();
-          const smtpPass = ((await S_SMTP_PASSWORD.value()) || process.env.SMTP_PASSWORD || "").trim();
-          if (smtpUser && smtpPass) {
-            const transporter = nodemailer.createTransport({
-              service: "gmail",
-              auth: { user: smtpUser, pass: smtpPass },
-            });
-            const valorStr = valorTotal.toFixed(2).replace(".", ",");
-            const assunto = titulo;
-            const corpo = `${mensagem}\n\nAcesse o app para ver os detalhes do pedido.`;
+      // E-mails (servidor: funciona no catálogo web; SMTP no app não roda no browser)
+      const smtpUser = ((await S_SMTP_EMAIL.value()) || process.env.SMTP_EMAIL || "").trim();
+      const smtpPass = ((await S_SMTP_PASSWORD.value()) || process.env.SMTP_PASSWORD || "").trim();
+      if (smtpUser && smtpPass) {
+        const transporter = nodemailer.createTransport({
+          service: "gmail",
+          auth: { user: smtpUser, pass: smtpPass },
+        });
+        const origemPedido = isWhatsApp
+          ? "O cliente concluiu a compra pelo WhatsApp. Acesse a tela de Pré-pedidos no MasterPalm, revise com calma e confirme quando fizer sentido."
+          : pagamentoConfirmado
+            ? "O pedido entrou com pagamento confirmado no gateway. Aproveite esse resultado e siga com a separação e o envio no seu ritmo."
+            : "O pedido chegou pelo catálogo. Abra Pré-pedidos no MasterPalm, confira itens, forma de pagamento e só confirme após checar o recebimento no banco.";
+        const corpoVendedor =
+          `Parabéns! A loja "${lojaNome}" acabou de receber um novo pedido — e isso merece comemorar! Cada venda é um voto de confiança no seu negócio.\n\n` +
+          `${origemPedido}\n\n` +
+          `Antes de confirmar o pedido, confira se o valor caiu na sua conta (PIX, cartão ou o meio que vocês combinaram) e se tudo bate com a venda. Só avance com segurança após isso.\n\n` +
+          `--- Dados do pedido ---\n` +
+          `Código: ${codRef}\n` +
+          `ID do pedido: ${pedidoId}\n` +
+          `Cliente: ${clienteNome}\n` +
+          (vendedorNome ? `Indicação / vendedor: ${vendedorNome}\n` : "") +
+          `Valor total: R$ ${valorStr}\n` +
+          `Forma de pagamento: ${pagamento || "—"}\n\n` +
+          `Itens:\n${itensTexto}\n` +
+          `Acesse o app MasterPalm e abra Pré-pedidos para endereço completo e detalhes.\n\n` +
+          `Boa venda! — MasterPalm`;
+        const assuntoVendedor = isWhatsApp
+          ? `🎉 ${lojaNome}: novo pedido via WhatsApp (#${codRef})`
+          : pagamentoConfirmado
+            ? `🎉 Venda confirmada! ${lojaNome} (#${codRef})`
+            : `🎉 Novo pedido no catálogo — ${lojaNome} (#${codRef})`;
+        if (adminEmail && adminEmail.trim().length > 0) {
+          try {
             await transporter.sendMail({
               from: `"MasterPalm" <${smtpUser}>`,
               to: adminEmail.trim(),
-              subject: assunto,
-              text: corpo,
+              subject: assuntoVendedor,
+              text: corpoVendedor,
             });
             console.log("[onPrePedidoCreated] Email enviado para admin:", adminEmail);
+          } catch (mailErr) {
+            console.warn("[onPrePedidoCreated] Email admin (não bloqueia):", mailErr.message || mailErr);
           }
-        } catch (mailErr) {
-          console.warn("[onPrePedidoCreated] Email (não bloqueia):", mailErr.message || mailErr);
         }
+        const clienteEmail = normalizeEmail(cliente.email || "");
+        if (clienteEmail && clienteEmail.includes("@") && !clienteEmail.startsWith("catalogo+")) {
+          try {
+            const corpoCliente =
+              `Olá, ${clienteNome}!\n\n` +
+              `Recebemos o seu pedido com sucesso. Obrigado por escolher a ${lojaNome}! 🎉\n\n` +
+              `Valor total: R$ ${valorStr}\n` +
+              `Referência do pedido: ${pedidoId}\n\n` +
+              `Você receberá atualizações enquanto o pedido for preparado. Se precisar, fale com a loja pelo contato do catálogo.\n\n` +
+              `Atenciosamente,\n${lojaNome}`;
+            await transporter.sendMail({
+              from: `"${lojaNome}" <${smtpUser}>`,
+              to: clienteEmail,
+              subject: `Pedido recebido – R$ ${valorStr}`,
+              text: corpoCliente,
+            });
+            console.log("[onPrePedidoCreated] Email enviado para cliente:", clienteEmail);
+          } catch (mailClienteErr) {
+            console.warn("[onPrePedidoCreated] Email cliente (não bloqueia):", mailClienteErr.message || mailClienteErr);
+          }
+        } else {
+          console.log("[onPrePedidoCreated] Cliente sem e-mail válido — e-mail de confirmação ao comprador não enviado");
+        }
+      } else {
+        console.log("[onPrePedidoCreated] SMTP não configurado — e-mails de pré-pedido não enviados");
       }
     } catch (e) {
       console.error("[onPrePedidoCreated] Erro:", e);
@@ -3865,7 +3945,10 @@ export const onPedidoPendenteCreated = onDocumentCreated(
       if (!lojaDoc.exists) return;
       const lojaData = lojaDoc.data() || {};
       const adminUid = lojaData.ownerUid ?? lojaData.adminUid ?? "";
-      const adminEmail = lojaData.ownerEmail ?? lojaData.adminEmail ?? "";
+      let adminEmail = (lojaData.ownerEmail ?? lojaData.adminEmail ?? "").toString().trim();
+      if (!adminEmail && lojaData.owner && typeof lojaData.owner === "object") {
+        adminEmail = (lojaData.owner.email ?? "").toString().trim();
+      }
       if (!adminUid) {
         console.warn("[onPedidoPendenteCreated] Admin não encontrado para loja", lojaId);
         return;
