@@ -131,15 +131,17 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
     final w = MediaQuery.sizeOf(context).width;
     final isDesktop = w >= 1024;
     final slotW = (isDesktop ? w - 32.0 : w - 16.0).clamp(120.0, 4096.0);
-    final minHeight = isDesktop ? 220.0 : 140.0;
-    final maxHeight = isDesktop ? 520.0 : 360.0;
-    final fallbackHeight = widget.height.clamp(minHeight, maxHeight).toDouble();
+    final minHeight = 220.0;
+    final maxHeight = 520.0;
     final currentBanner = banners[_idx.clamp(0, banners.length - 1)].trim();
     final currentAspect = _aspectRatioByUrl[currentBanner];
-    // Altura automática pelo aspecto real da arte: sem corte/zoom.
-    final effectiveHeight = (currentAspect != null && currentAspect > 0)
-        ? (slotW / currentAspect).clamp(minHeight, maxHeight).toDouble()
-        : fallbackHeight;
+    // Mobile volta ao comportamento anterior (altura fixa configurada).
+    // Desktop usa altura automática pelo aspecto real da arte.
+    final effectiveHeight = !isDesktop
+        ? widget.height
+        : ((currentAspect != null && currentAspect > 0)
+            ? (slotW / currentAspect).clamp(minHeight, maxHeight).toDouble()
+            : (MediaQuery.sizeOf(context).height * 0.40).clamp(320.0, 520.0).toDouble());
 
     return Column(
       children: [
