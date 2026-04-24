@@ -554,6 +554,11 @@ class ProdutosFirestoreService {
               .collection('produtos')
               .doc(produtoId);
           await publicoRef.set({
+            // Campos mínimos para o stream/filtros do catálogo web.
+            // Sem esses campos, o doc pode ser ignorado por filtros de publicação.
+            'ativo': true,
+            'publicar': true,
+            'publicadoNoCatalogo': true,
             'nome': produto.nome,
             'descricao': produto.descricao,
             'preco': produto.precoFinal,
@@ -561,6 +566,8 @@ class ProdutosFirestoreService {
             'precoFinal': produto.precoFinal,
             'quantidade': produto.quantidade,
             'estoque': produto.quantidade,
+            'estoque_atual': produto.quantidade,
+            'qtdEstoque': produto.quantidade,
             'imagens': imagensFinais,
             'slug': produto.slug,
             'variacoes': variacoesPush,
