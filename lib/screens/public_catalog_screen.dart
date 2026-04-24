@@ -5721,9 +5721,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     elevation: 0,
                     // Altura dinâmica: desktop maior; mobile inalterado
                     // Margem extra vs conteúdo do título (busca + chips) para evitar overflow vertical residual.
-                    // Minimal: mais espaço para a faixa da logo (evita FittedBox esmagar logo + busca).
+                    // Minimal: altura do AppBar equilibrada com ícones + busca (logo não domina a faixa).
                     toolbarHeight: useMinimalLayout
-                        ? (isDesktop ? 120 : 108)
+                        ? (isDesktop ? 112 : 100)
                         : (isDesktop
                             ? (categoriasMenu.isEmpty
                                 ? 152
@@ -5982,9 +5982,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             return topBarRow;
                           }
                           final dpr = MediaQuery.devicePixelRatioOf(context);
-                          final logoMaxH = isDesktop ? 80.0 : 66.0;
+                          // Proporção ao catálogo: altura próxima à linha de ícones; largura limitada
+                          // (evita logos horizontais ocuparem a faixa inteira como no screenshot).
+                          final logoMaxH = isDesktop ? 52.0 : 44.0;
+                          final topBarH = isDesktop ? 56.0 : 48.0;
                           return SizedBox(
-                            height: isDesktop ? 86 : 72,
+                            height: topBarH,
                             width: double.infinity,
                             child: Stack(
                               clipBehavior: Clip.none,
@@ -5994,23 +5997,35 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                   Positioned.fill(
                                     child: LayoutBuilder(
                                       builder: (context, b) {
-                                        final maxW = b.maxWidth;
+                                        final fullW = b.maxWidth;
+                                        final logoCapW = math.min(
+                                          fullW *
+                                              (isDesktop ? 0.42 : 0.48),
+                                          isDesktop ? 300.0 : 220.0,
+                                        );
                                         return Center(
                                           child: Padding(
                                             padding: const EdgeInsets.symmetric(horizontal: 6),
-                                            child: Image(
-                                              image: ResizeImage(
-                                                mpImageProvider(logoUrl),
-                                                width: (maxW * dpr).round().clamp(64, 2048),
-                                                height:
-                                                    (logoMaxH * dpr).round().clamp(64, 1024),
-                                                allowUpscaling: true,
-                                              ),
-                                              width: maxW,
+                                            child: SizedBox(
+                                              width: logoCapW,
                                               height: logoMaxH,
-                                              fit: BoxFit.contain,
-                                              filterQuality: FilterQuality.high,
-                                              isAntiAlias: true,
+                                              child: Image(
+                                                image: ResizeImage(
+                                                  mpImageProvider(logoUrl),
+                                                  width: (logoCapW * dpr)
+                                                      .round()
+                                                      .clamp(64, 2048),
+                                                  height: (logoMaxH * dpr)
+                                                      .round()
+                                                      .clamp(64, 1024),
+                                                  allowUpscaling: false,
+                                                ),
+                                                width: logoCapW,
+                                                height: logoMaxH,
+                                                fit: BoxFit.contain,
+                                                filterQuality: FilterQuality.high,
+                                                isAntiAlias: true,
+                                              ),
                                             ),
                                           ),
                                         );
@@ -6052,7 +6067,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           controller: _searchController,
                           headerSearchText: headerSearchText,
                           headerSearchHint: headerSearchHint,
-headerSearchBg: useMinimalLayout
+                          headerSearchBg: useMinimalLayout
                               ? (readColorFromCfg(minimalSearchCfg['background']) ??
                                   Colors.white)
                               : headerSearchBg,
