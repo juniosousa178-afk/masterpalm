@@ -5721,8 +5721,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     elevation: 0,
                     // Altura dinâmica: desktop maior; mobile inalterado
                     // Margem extra vs conteúdo do título (busca + chips) para evitar overflow vertical residual.
+                    // Minimal: mais espaço para a faixa da logo (evita FittedBox esmagar logo + busca).
                     toolbarHeight: useMinimalLayout
-                        ? (isDesktop ? 100 : 88)
+                        ? (isDesktop ? 120 : 108)
                         : (isDesktop
                             ? (categoriasMenu.isEmpty
                                 ? 152
@@ -5750,7 +5751,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                         // ======= LINHA SUPERIOR: MENU + LOGO + PUBLICAR + CARRINHO =======
-                        Row(
+                        () {
+                          // Minimal: logo no centro *global* do AppBar (Stack);
+                          // a Row só reserva a faixa central; sem logo duplicar offset dos ícones.
+                          final topBarRow = Row(
                           children: [
                             // ☰ MENU – abre o drawer à esquerda
                             Builder(
@@ -5765,9 +5769,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               ),
                             ),
 
-                            // LOGO CENTRALIZADA (desktop: maior e nítida; mobile: inalterado)
+                            // Clássico: logo no Expanded. Minimal: vazio — layer de logo abaixo.
                             Expanded(
-                              child: Center(
+                              child: useMinimalLayout
+                                  ? const SizedBox.shrink()
+                                  : Center(
                                 child: logoUrl.isNotEmpty
                                     ? SizedBox(
                                         height: isDesktop ? 68 : 56,
@@ -5775,6 +5781,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           image: mpImageProvider(logoUrl),
                                           fit: BoxFit.contain,
                                           filterQuality: FilterQuality.high,
+                                          isAntiAlias: true,
                                         ),
                                       )
                                     : Text(
@@ -5788,7 +5795,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                              ),
+                                ),
                             ),
 
                             // 🌐 BOTÃO ABRIR CATÁLOGO WEB (sempre visível)
@@ -5969,7 +5976,74 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               ),
                             ),
                           ],
-                        ),
+                        );
+
+                          if (!useMinimalLayout) {
+                            return topBarRow;
+                          }
+                          final dpr = MediaQuery.devicePixelRatioOf(context);
+                          final logoMaxH = isDesktop ? 80.0 : 66.0;
+                          return SizedBox(
+                            height: isDesktop ? 86 : 72,
+                            width: double.infinity,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.center,
+                              children: [
+                                if (logoUrl.isNotEmpty)
+                                  Positioned.fill(
+                                    child: LayoutBuilder(
+                                      builder: (context, b) {
+                                        final maxW = b.maxWidth;
+                                        return Center(
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                                            child: Image(
+                                              image: ResizeImage(
+                                                mpImageProvider(logoUrl),
+                                                width: (maxW * dpr).round().clamp(64, 2048),
+                                                height:
+                                                    (logoMaxH * dpr).round().clamp(64, 1024),
+                                                allowUpscaling: true,
+                                              ),
+                                              width: maxW,
+                                              height: logoMaxH,
+                                              fit: BoxFit.contain,
+                                              filterQuality: FilterQuality.high,
+                                              isAntiAlias: true,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  )
+                                else
+                                  Positioned.fill(
+                                    child: Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            lojaNome,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 22,
+                                              color: headerTextColor,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                topBarRow,
+                              ],
+                            ),
+                          );
+                        }(),
 
                         const SizedBox(height: 8),
 
@@ -5978,7 +6052,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           controller: _searchController,
                           headerSearchText: headerSearchText,
                           headerSearchHint: headerSearchHint,
-                          headerSearchBg: useMinimalLayout
+headerSearchBg: useMinimalLayout
                               ? (readColorFromCfg(minimalSearchCfg['background']) ??
                                   Colors.white)
                               : headerSearchBg,

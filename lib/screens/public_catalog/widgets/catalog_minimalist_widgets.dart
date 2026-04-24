@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../../widgets/smart_image.dart';
+import '../../../widgets/smart_image.dart' show mpImageProvider, SmartImage;
 import '../catalog_helpers.dart';
 
 /// Letreiro promocional; com [marqueeWhenOverflow] mantém rolagem contínua.
@@ -577,7 +577,7 @@ class CatalogMinimalSubcategoryStrip extends StatelessWidget {
   }
 }
 
-class CatalogMinimalHeroBanner extends StatelessWidget {
+class CatalogMinimalHeroBanner extends StatefulWidget {
   final bool enabled;
   final String title;
   final String subtitle;
@@ -637,78 +637,175 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   });
 
   @override
+  State<CatalogMinimalHeroBanner> createState() =>
+      _CatalogMinimalHeroBannerState();
+}
+
+class _CatalogMinimalHeroBannerState extends State<CatalogMinimalHeroBanner> {
+  /// Largura/altura da imagem em pixels; null até [ImageStream] entregar o frame.
+  double? _imageAspectWOverH;
+  ImageStream? _imageStream;
+  ImageStreamListener? _imageListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _attachImageStream();
+  }
+
+  @override
+  void didUpdateWidget(covariant CatalogMinimalHeroBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl ||
+        oldWidget.enabled != widget.enabled) {
+      _detachImageStream();
+      setState(() => _imageAspectWOverH = null);
+      _attachImageStream();
+    }
+  }
+
+  void _detachImageStream() {
+    if (_imageStream != null && _imageListener != null) {
+      _imageStream!.removeListener(_imageListener!);
+    }
+    _imageStream = null;
+    _imageListener = null;
+  }
+
+  void _attachImageStream() {
+    if (!widget.enabled) return;
+    if (widget.imageUrl.trim().isEmpty) return;
+    _detachImageStream();
+    final provider = mpImageProvider(widget.imageUrl);
+    final stream = provider.resolve(const ImageConfiguration());
+    _imageListener = ImageStreamListener(
+      (ImageInfo info, bool syncCall) {
+        if (!mounted) return;
+        final w = info.image.width.toDouble();
+        final h = info.image.height.toDouble();
+        if (w > 0 && h > 0) {
+          setState(() {
+            _imageAspectWOverH = w / h;
+          });
+        }
+      },
+      onError: (_, __) {
+        if (!mounted) return;
+        setState(() {
+          _imageAspectWOverH = null;
+        });
+      },
+    );
+    _imageStream = stream;
+    _imageStream!.addListener(_imageListener!);
+  }
+
+  @override
+  void dispose() {
+    _detachImageStream();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (!enabled) return const SizedBox.shrink();
+    if (!widget.enabled) return const SizedBox.shrink();
     final screenW = MediaQuery.sizeOf(context).width;
     final isDesktop = screenW >= 900;
-    final hasImage = imageUrl.trim().isNotEmpty;
-    final hasCopy = title.trim().isNotEmpty ||
-        subtitle.trim().isNotEmpty ||
-        buttonText.trim().isNotEmpty;
+    final hasImage = widget.imageUrl.trim().isNotEmpty;
+    final hasCopy = widget.title.trim().isNotEmpty ||
+        widget.subtitle.trim().isNotEmpty ||
+        widget.buttonText.trim().isNotEmpty;
     if (!hasImage && !hasCopy) {
       return const SizedBox.shrink();
     }
     final minBannerH = isDesktop ? 180.0 : 140.0;
     final maxBannerH = isDesktop ? 320.0 : 260.0;
-    final boxH = hasImage
-        ? height.clamp(minBannerH, maxBannerH).toDouble()
+    final configH = hasImage
+        ? widget.height.clamp(minBannerH, maxBannerH).toDouble()
         : (hasCopy ? 96.0 : 0.0);
-    final titleDisplay = applyHeroLetterCase(title.trim(), titleLetterCase);
-    final subtitleDisplay =
-        applyHeroLetterCase(subtitle.trim(), subtitleLetterCase);
-    final buttonDisplay =
-        applyHeroLetterCase(buttonText.trim(), buttonLetterCase);
+    final titleDisplay =
+        applyHeroLetterCase(widget.title.trim(), widget.titleLetterCase);
+    final subtitleDisplay = applyHeroLetterCase(
+        widget.subtitle.trim(), widget.subtitleLetterCase);
+    final buttonDisplay = applyHeroLetterCase(
+        widget.buttonText.trim(), widget.buttonLetterCase);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxW = constraints.maxWidth;
-        // Tablet/desktop largo: largura máxima centralizada e altura proporcional (mobile inalterado).
+        final dpr = MediaQuery.devicePixelRatioOf(context);
+        // Tablet/desktop largo: card central; mobile: mesma regra de largura útil do conteúdo.
         final isWide = maxW >= 900;
         final double cardMaxW =
             isWide ? math.min(960.0, maxW - 24.0) : maxW - 24.0;
-        final double layoutH = (!isWide || !hasImage)
-            ? boxH
-            : (cardMaxW / 2.38).clamp(148.0, 252.0);
+        // Largura real do slot da imagem (alinhada ao padding horizontal do return).
+        final double padH = isWide ? 32.0 : 24.0;
+        final double imageSlotW =
+            (isWide ? math.min(cardMaxW, maxW - padH) : (maxW - padH))
+                .clamp(1.0, 10000.0);
+
+        /// Altura do quadro: segue a proporção real da arte; se estourar [min..max], `contain` encaixa sem corte.
+        final double layoutH;
+        if (!hasImage) {
+          layoutH = configH;
+        } else if (_imageAspectWOverH == null) {
+          layoutH = configH;
+        } else {
+          final naturalH = imageSlotW / _imageAspectWOverH!;
+          layoutH = naturalH.clamp(minBannerH, maxBannerH);
+        }
         final double overlayBlend = isWide && hasImage
-            ? (overlayOpacity + 0.06).clamp(0.0, 0.55)
-            : overlayOpacity.clamp(0.0, 0.8);
+            ? (widget.overlayOpacity + 0.06).clamp(0.0, 0.55)
+            : widget.overlayOpacity.clamp(0.0, 0.8);
 
         final inner = ClipRRect(
           borderRadius: BorderRadius.circular(
-            borderRadius.clamp(8, 36).toDouble(),
+            widget.borderRadius.clamp(8, 36).toDouble(),
           ),
           child: Stack(
             children: [
               Container(
                 height: layoutH,
                 width: double.infinity,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: backgroundColor,
+                  color: widget.backgroundColor,
                   gradient: !hasImage && hasCopy
                       ? LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            backgroundColor,
-                            backgroundColor.withOpacity(0.88),
+                            widget.backgroundColor,
+                            widget.backgroundColor.withOpacity(0.88),
                           ],
                         )
                       : null,
                 ),
                 child: hasImage
-                    // Apenas uma imagem no quadro (sem camada de fundo duplicada).
-                    // `contain` preserva a arte inteira, sem zoom e sem cortes.
-                    ? SmartImage(
-                        src: imageUrl,
+                    ? Image(
+                        image: ResizeImage(
+                          mpImageProvider(widget.imageUrl),
+                          width: (imageSlotW * dpr).round().clamp(64, 4096),
+                          height: (layoutH * dpr).round().clamp(64, 4096),
+                          // Evita decodificar acima do tamanho nativo (parece "zoom" e perde nitidez).
+                          allowUpscaling: false,
+                        ),
+                        width: imageSlotW,
+                        height: layoutH,
                         fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        isAntiAlias: true,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Icon(Icons.broken_image_outlined, size: 40),
+                        ),
                       )
                     : null,
               ),
               Container(
                 height: layoutH,
                 width: double.infinity,
-                color:
-                    Colors.black.withOpacity(overlayBlend),
+                color: Colors.black.withOpacity(overlayBlend),
               ),
               Positioned.fill(
                 child: Padding(
@@ -723,9 +820,9 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: titleColor,
-                            fontSize: titleFontSize.clamp(10, 40),
-                            fontWeight: titleFontWeight,
+                            color: widget.titleColor,
+                            fontSize: widget.titleFontSize.clamp(10, 40),
+                            fontWeight: widget.titleFontWeight,
                           ),
                         ),
                       if (subtitleDisplay.isNotEmpty) ...[
@@ -735,34 +832,34 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: subtitleColor,
-                            fontSize: subtitleFontSize.clamp(9, 32),
-                            fontWeight: subtitleFontWeight,
+                            color: widget.subtitleColor,
+                            fontSize: widget.subtitleFontSize.clamp(9, 32),
+                            fontWeight: widget.subtitleFontWeight,
                           ),
                         ),
                       ],
                       if (buttonDisplay.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         FilledButton(
-                          onPressed: onTap,
+                          onPressed: widget.onTap,
                           style: FilledButton.styleFrom(
-                            backgroundColor: buttonBackgroundColor,
-                            foregroundColor: buttonTextColor,
+                            backgroundColor: widget.buttonBackgroundColor,
+                            foregroundColor: widget.buttonTextColor,
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 10),
                             minimumSize: const Size(0, 36),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(
-                                buttonBorderRadius.clamp(0, 28),
+                                widget.buttonBorderRadius.clamp(0, 28),
                               ),
                             ),
                           ),
                           child: Text(
                             buttonDisplay,
                             style: TextStyle(
-                              fontSize: buttonFontSize.clamp(9, 24),
-                              fontWeight: buttonFontWeight,
-                              color: buttonTextColor,
+                              fontSize: widget.buttonFontSize.clamp(9, 24),
+                              fontWeight: widget.buttonFontWeight,
+                              color: widget.buttonTextColor,
                             ),
                           ),
                         ),
@@ -775,12 +872,12 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
           ),
         );
 
-        final wrapped = onTap == null
+        final wrapped = widget.onTap == null
             ? inner
             : Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: onTap,
+                  onTap: widget.onTap,
                   child: inner,
                 ),
               );
