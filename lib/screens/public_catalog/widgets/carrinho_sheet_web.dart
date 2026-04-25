@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:hive/hive.dart';
+import 'package:diacritic/diacritic.dart';
 
 import 'package:flutter/services.dart';
 
@@ -38,6 +39,8 @@ import '../catalog_estoque_helper.dart';
 import '../catalog_cart_checkout_visual_config.dart';
 import '../checkout_total_helper.dart';
 import '../catalog_checkout_summary_tokens.dart';
+import '../catalog_helpers.dart'
+    show catalogIsPlausibleMpBuyerEmail, catalogIsValidCpfForMpPayer;
 import 'catalog_first_purchase_coupon_dialog.dart';
 
 // ==================== CARRINHO (BottomSheet) ====================
@@ -76,6 +79,7 @@ class CarrinhoSheetWeb extends StatefulWidget {
   final String checkoutButtonLabel;
   final String pixKey;
   final String freightToken;
+  final String freteMelhorEnvioModoExibicao;
 
   final Future<void> Function({
     required Map<String, dynamic> customer,
@@ -185,6 +189,7 @@ class CarrinhoSheetWeb extends StatefulWidget {
     required this.checkoutButtonLabel,
     required this.pixKey,
     required this.freightToken,
+    this.freteMelhorEnvioModoExibicao = 'todas_transportadoras',
     required this.onRemove,
     required this.onSetItemQuantity,
     required this.showSnack,
@@ -370,6 +375,51 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
   String _pagamento = 'PIX';
   int _freteIndex = 0;
+
+  String _normalizarTextoIdentificacaoFrete(String? raw) {
+    if (raw == null) return '';
+    var s = removeDiacritics(raw.toLowerCase().trim());
+    s = s.replaceAll(RegExp(r'\s+'), ' ');
+    return s;
+  }
+
+  bool _ehOpcaoIdentificavelComoMelhorEnvio(Map<String, dynamic> f) {
+    final plat = (f['plataforma'] ?? '').toString().trim();
+    if (plat == 'melhor_envio') return true;
+    final companyId = (f['company_id'] ?? f['companyId'])?.toString().trim() ?? '';
+    if (companyId.isNotEmpty) return true;
+    final serviceId = (f['service_id'] ?? f['serviceId'])?.toString().trim() ?? '';
+    if (serviceId.isNotEmpty) return true;
+    return false;
+  }
+
+  /// Opções identificadas como Melhor Envio tratadas como Correios (PAC/SEDEX/company).
+  bool _ehOpcaoMelhorEnvioCorreios(Map<String, dynamic> f) {
+    if (!_ehOpcaoIdentificavelComoMelhorEnvio(f)) return false;
+    final empresa = _normalizarTextoIdentificacaoFrete(
+      (f['empresa'] ?? '').toString(),
+    );
+    final nome = _normalizarTextoIdentificacaoFrete(
+      (f['nome'] ?? f['label'] ?? '').toString(),
+    );
+    final companyId =
+        (f['company_id'] ?? f['companyId'] ?? '').toString().trim();
+    if (empresa.contains('correios')) return true;
+    if (companyId == '1') return true;
+    if (nome.contains('sedex')) return true;
+    // "PAC" como token/palavra: aceita "PAC", "PAC Mini", "PAC Correios",
+    // mas evita falso positivo em strings como ".package".
+    if (RegExp(r'(^|[^a-z0-9])pac([^a-z0-9]|$)').hasMatch(nome)) return true;
+    return false;
+  }
+
+  bool _deveExibirFreteNoModal(Map<String, dynamic> f) {
+    final modo = widget.freteMelhorEnvioModoExibicao.trim().toLowerCase();
+    final somenteCorreios = modo == 'somente_correios';
+    if (!somenteCorreios) return true;
+    if (!_ehOpcaoIdentificavelComoMelhorEnvio(f)) return true;
+    return _ehOpcaoMelhorEnvioCorreios(f);
+  }
 
   /// Mesma base de fretes do `build` (fallback quando vazio).
   List<Map<String, dynamic>> _fretesExibirSnapshot() {
@@ -1054,39 +1104,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
   }
 
-  /// Valida CPF com dígitos verificadores. Rejeita sequências repetidas.
-  static bool _validarCpf(String cpfDigits) {
-    if (cpfDigits.length != 11) return false;
-    final allSame = cpfDigits.split('').toSet().length == 1;
-    if (allSame) return false;
-    int sum = 0;
-    for (var i = 0; i < 9; i++) {
-      sum += int.parse(cpfDigits[i]) * (10 - i);
-    }
-    int d1 = (sum * 10) % 11;
-    if (d1 == 10) d1 = 0;
-    if (d1 != int.parse(cpfDigits[9])) return false;
-    sum = 0;
-    for (var i = 0; i < 10; i++) {
-      sum += int.parse(cpfDigits[i]) * (11 - i);
-    }
-    int d2 = (sum * 10) % 11;
-    if (d2 == 10) d2 = 0;
-    return d2 == int.parse(cpfDigits[10]);
-  }
-
-  /// Valida formato de e-mail (obrigatório no checkout). Simples e segura.
-  static bool _validarEmailFormato(String email) {
-    if (email.trim().isEmpty) return false;
-    final e = email.trim();
-    if (e.length < 5) return false;
-    final atIdx = e.indexOf('@');
-    if (atIdx <= 0 || atIdx >= e.length - 1) return false;
-    final dotIdx = e.lastIndexOf('.');
-    if (dotIdx <= atIdx + 1 || dotIdx >= e.length - 1) return false;
-    return true;
-  }
-
   bool _validarCampos() {
     _camposComErro.clear();
     _erroValidacao = null;
@@ -1112,7 +1129,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     } else if (cpf.length != 11) {
       _camposComErro.add('cpf');
       _erroValidacao = 'CPF deve ter 11 dígitos.';
-    } else if (!_validarCpf(cpf)) {
+    } else if (!catalogIsValidCpfForMpPayer(_cpf.text)) {
       _camposComErro.add('cpf');
       _erroValidacao = 'CPF inválido.';
     }
@@ -1126,9 +1143,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     if (_email.text.trim().isEmpty) {
       _camposComErro.add('email');
       obrigatorios.add('E-mail');
-    } else if (!_validarEmailFormato(_email.text)) {
+    } else if (!catalogIsPlausibleMpBuyerEmail(_email.text)) {
       _camposComErro.add('email');
-      _erroValidacao ??= 'E-mail inválido.';
+      _erroValidacao ??=
+          'E-mail no formato exigido pelo pagamento (ex.: nome@dominio.com.br).';
     }
     if (!isRetirada) {
       if (_cep.text.trim().isEmpty) {
@@ -1703,6 +1721,16 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 // MODAL PARA SELECIONAR FRETE
 // -------------------------------------------------------------
   Future<void> _mostrarOpcoesDeFrete(BuildContext context) async {
+    if (_fretesLocal.isEmpty) {
+      final snapshot = _fretesExibirSnapshot();
+      if (snapshot.isNotEmpty) {
+        setState(() {
+          _fretesLocal = List<Map<String, dynamic>>.from(snapshot);
+          _freteIndex = _freteIndex.clamp(0, _fretesLocal.length - 1);
+        });
+      }
+    }
+
     // Se CEP já tem 8 dígitos e só temos fretes manuais, recalcular para buscar Melhor Envio/SuperFrete
     final cep = _cep.text.replaceAll(RegExp(r'[^0-9]'), '');
     // Considerar "só manuais" quando nenhum item veio de API (melhor_envio, frenet, correios, superfrete)
@@ -1735,6 +1763,12 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       return StatefulBuilder(
           builder: (context, setModalState) {
             final modalH = MediaQuery.of(context).size.height * 0.65;
+            final indicesVisiveis = <int>[];
+            for (var i = 0; i < _fretesLocal.length; i++) {
+              if (_deveExibirFreteNoModal(_fretesLocal[i])) {
+                indicesVisiveis.add(i);
+              }
+            }
             return SizedBox(
               height: modalH,
               child: Padding(
@@ -1769,7 +1803,26 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: SingleChildScrollView(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        children: List.generate(_fretesLocal.length, (i) {
+                        children: indicesVisiveis.isEmpty
+                            ? <Widget>[
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 32),
+                                  child: Center(
+                                    child: Text(
+                                      'Nenhuma opção dos Correios para este CEP. '
+                                      'Selecione "Todas" para ver as demais transportadoras.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: textoSecundario,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ]
+                            : List.generate(indicesVisiveis.length, (j) {
+                          final i = indicesVisiveis[j];
                           final f = _fretesLocal[i];
                           final nome =
                               (f['nome'] ?? f['label'] ?? 'Frete').toString();

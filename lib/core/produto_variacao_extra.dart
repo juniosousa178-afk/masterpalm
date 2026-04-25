@@ -12,6 +12,11 @@ const String kVariacaoExtraLabelFiltroGlobal = 'Variação';
 const String kVariacaoExtraLabelNeutra = 'Variação';
 
 abstract final class ProdutoVariacaoExtra {
+  /// Chave reservada dentro da célula de variação para custo por variação.
+  static const String kMetaCustoUnitarioKey = '__custoUnitario';
+
+  static bool isMetaKey(String key) => key.trim() == kMetaCustoUnitarioKey;
+
   static String normKey(String s) {
     var t = s.toLowerCase().trim();
     t = t.replaceAll(RegExp(r'\s+'), ' ');
@@ -40,8 +45,10 @@ abstract final class ProdutoVariacaoExtra {
     if (cell is num) return cell.toInt();
     if (cell is Map) {
       var s = 0;
-      for (final v in cell.values) {
-        s += _asInt(v);
+      for (final e in cell.entries) {
+        final k = e.key.toString();
+        if (isMetaKey(k)) continue;
+        s += _asInt(e.value);
       }
       return s;
     }
@@ -85,9 +92,19 @@ abstract final class ProdutoVariacaoExtra {
   static bool celulaTemExtrasNaoVazios(dynamic cell) {
     if (cell is! Map || cell.isEmpty) return false;
     for (final k in cell.keys) {
-      if (k.toString().trim().isNotEmpty) return true;
+      final key = k.toString().trim();
+      if (key.isEmpty || isMetaKey(key)) continue;
+      return true;
     }
     return false;
+  }
+
+  /// Custo unitário da célula (quando definido no mapa da variação).
+  static double? custoUnitarioNaCelula(dynamic cell) {
+    if (cell is! Map) return null;
+    final raw = cell[kMetaCustoUnitarioKey];
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString() ?? '');
   }
 
   /// Estoque para combinação tamanho/cor/extraValor ([extraValor] vazio = legado ou chave '' no mapa).
@@ -101,10 +118,14 @@ abstract final class ProdutoVariacaoExtra {
     if (cell is Map) {
       if (extraValorTrim.isEmpty) {
         if (cell.containsKey('')) return _asInt(cell['']);
-        if (cell.length == 1) return _asInt(cell.values.first);
+        final semMeta = cell.entries
+            .where((e) => !isMetaKey(e.key.toString()))
+            .toList(growable: false);
+        if (semMeta.length == 1) return _asInt(semMeta.first.value);
         return 0;
       }
       for (final e in cell.entries) {
+        if (isMetaKey(e.key.toString())) continue;
         if (keysMatch(e.key.toString(), extraValorTrim)) {
           return _asInt(e.value);
         }
@@ -134,6 +155,7 @@ abstract final class ProdutoVariacaoExtra {
     if (cell is! Map) return const [];
     final out = <String>[];
     cell.forEach((k, v) {
+      if (isMetaKey(k.toString())) return;
       if (_asInt(v) <= 0) return;
       final ks = k.toString();
       if (ks.trim().isEmpty) return;
@@ -180,10 +202,14 @@ abstract final class ProdutoVariacaoExtra {
   static String? _resolveMapKeyForExtra(Map<String, dynamic> m, String extraTrim) {
     if (extraTrim.isEmpty) {
       if (m.containsKey('')) return '';
-      if (m.length == 1) return m.keys.first;
+      final keysValidas = m.keys
+          .where((k) => !isMetaKey(k.toString()))
+          .toList(growable: false);
+      if (keysValidas.length == 1) return keysValidas.first;
       return null;
     }
     for (final k in m.keys) {
+      if (isMetaKey(k.toString())) continue;
       if (keysMatch(k, extraTrim)) return k;
     }
     return null;
@@ -216,7 +242,9 @@ abstract final class ProdutoVariacaoExtra {
       } else {
         m[rk] = n;
       }
-      if (m.isEmpty) return (ok: true, newCell: removeCorCell);
+      final sobrouQtd = m.entries
+          .any((e) => !isMetaKey(e.key.toString()) && _asInt(e.value) > 0);
+      if (!sobrouQtd) return (ok: true, newCell: removeCorCell);
       return (ok: true, newCell: m);
     }
     return (ok: false, newCell: cell);
@@ -255,6 +283,7 @@ abstract final class ProdutoVariacaoExtra {
           if (cell is! Map) continue;
           for (final k in cell.keys) {
             final s = k.toString().trim();
+          if (isMetaKey(s)) continue;
             if (s.isNotEmpty) set.add(s);
           }
         }

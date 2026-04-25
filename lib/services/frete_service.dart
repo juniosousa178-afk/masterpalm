@@ -499,6 +499,8 @@ class FreteService {
       final companyName = company is Map
           ? (company['name'] ?? 'Melhor Envio').toString()
           : 'Melhor Envio';
+      final companyId =
+          company is Map ? company['id'] : null;
       final nome = (item['name'] ??
               item['service_name'] ??
               item['title'] ??
@@ -532,6 +534,7 @@ class FreteService {
         'valor': valor,
         'prazo': (deliveryTime is num) ? deliveryTime.toInt() : int.tryParse('$deliveryTime') ?? 0,
         'empresa': companyName,
+        if (companyId != null) 'company_id': companyId,
         'tipo': nome.toLowerCase().replaceAll(' ', '_'),
         if (serviceId != null) 'service_id': serviceId,
       });

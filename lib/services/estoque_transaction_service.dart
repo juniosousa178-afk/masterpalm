@@ -15,6 +15,7 @@ import '../core/strict_product_resolution.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
 import 'catalog_cache_service.dart';
+import 'produto_exclusao_tombstone_service.dart';
 
 /// Resultado da baixa de estoque via transação
 class EstoqueTransactionResult {
@@ -134,6 +135,25 @@ class EstoqueTransactionService {
         produtoId: produtoId,
         slug: slug,
         nome: nome,
+      );
+    }
+
+    await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+    if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+        lojaId: lojaId, estoqueDocId: produtoRef.id)) {
+      throw Exception(
+        'Produto removido do estoque. Atualize a lista de produtos e tente novamente.',
+      );
+    }
+    if (await ProdutoExclusaoTombstoneService.isVendaBloqueadaParaCelula(
+      lojaId: lojaId,
+      estoqueDocId: produtoRef.id,
+      tamanho: tam,
+      cor: corTrim,
+      variacaoExtra: extraTrim,
+    )) {
+      throw Exception(
+        'Esta variação foi removida do cadastro. Sincronize o app e selecione o produto novamente.',
       );
     }
 
@@ -734,6 +754,27 @@ class EstoqueTransactionService {
       );
     }
 
+    await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+    for (final r in resolvedItems) {
+      if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+          lojaId: lojaId, estoqueDocId: r.ref.id)) {
+        throw Exception(
+          'Produto removido do estoque. Atualize a lista e tente novamente (id=${r.ref.id}).',
+        );
+      }
+      if (await ProdutoExclusaoTombstoneService.isVendaBloqueadaParaCelula(
+        lojaId: lojaId,
+        estoqueDocId: r.ref.id,
+        tamanho: r.tamanho,
+        cor: r.cor,
+        variacaoExtra: r.variacaoExtra,
+      )) {
+        throw Exception(
+          'Uma variação desta venda foi removida do cadastro. Sincronize o app.',
+        );
+      }
+    }
+
     Future<List<EstoqueTransactionResult>> executarTransacao() {
       return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
       // FASE 1: Todas as leituras antes de qualquer escrita (regra do Firestore)
@@ -983,6 +1024,27 @@ class EstoqueTransactionService {
     final resolvedItems = await _resolverItensMescladosDevolucao(lojaId, itens);
 
     if (resolvedItems.isEmpty) return [];
+
+    await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+    for (final r in resolvedItems) {
+      if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+          lojaId: lojaId, estoqueDocId: r.ref.id)) {
+        throw Exception(
+          'Devolução indisponível: produto foi excluído (id=${r.ref.id}).',
+        );
+      }
+      if (await ProdutoExclusaoTombstoneService.isVendaBloqueadaParaCelula(
+        lojaId: lojaId,
+        estoqueDocId: r.ref.id,
+        tamanho: r.tamanho,
+        cor: r.cor,
+        variacaoExtra: r.variacaoExtra,
+      )) {
+        throw Exception(
+          'Devolução indisponível: variação removida do cadastro. Sincronize o app.',
+        );
+      }
+    }
 
     return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
       if (vendaIdParaIdempotencia != null && vendaIdParaIdempotencia.trim().isNotEmpty) {

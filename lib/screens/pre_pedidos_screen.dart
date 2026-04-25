@@ -1148,9 +1148,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         statusLabel = 'Confirmado';
         break;
       case 'embalando':
+      case 'em_preparacao':
         statusColor = Colors.blue;
         statusIcon = Icons.inventory_2;
-        statusLabel = 'Embalando';
+        statusLabel = 'Em preparação';
         break;
       case 'enviado':
         statusColor = Colors.blue.shade700;
@@ -1587,6 +1588,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             )
           else if (status == 'confirmado' ||
               status == 'embalando' ||
+              status == 'em_preparacao' ||
               status == 'enviado')
             Container(
               padding: const EdgeInsets.all(16),
@@ -2101,13 +2103,13 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     final opcoes = <Map<String, String>>[];
     if (statusAtual == 'confirmado') {
       opcoes.addAll([
-        {'valor': 'embalando', 'label': 'Embalando'},
-        {'valor': 'enviado', 'label': 'Enviado'},
+        {'valor': 'em_preparacao', 'label': 'Em preparação'},
+        {'valor': 'enviado', 'label': 'Enviado / postado'},
         {'valor': 'entregue', 'label': 'Entregue'},
       ]);
-    } else if (statusAtual == 'embalando') {
+    } else if (statusAtual == 'embalando' || statusAtual == 'em_preparacao') {
       opcoes.addAll([
-        {'valor': 'enviado', 'label': 'Enviado'},
+        {'valor': 'enviado', 'label': 'Enviado / postado'},
         {'valor': 'entregue', 'label': 'Entregue'},
       ]);
     } else if (statusAtual == 'enviado') {
@@ -2146,7 +2148,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             const SizedBox(height: 20),
             ...opcoes.map((opt) => ListTile(
                   leading: Icon(
-                    opt['valor'] == 'embalando'
+                    opt['valor'] == 'em_preparacao' || opt['valor'] == 'embalando'
                         ? Icons.inventory_2
                         : opt['valor'] == 'enviado'
                             ? Icons.local_shipping
@@ -2164,19 +2166,30 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
     if (selecionado == null || selecionado.isEmpty) return;
 
-    // Ao marcar como "Enviado", perguntar código de rastreio (opcional) e se envia por email
+    // Enviado/postado: tipo explícito (Correios vs entrega local) + código se necessário
     Map<String, dynamic>? extraUpdates;
-    bool enviarEmailCliente = true;
     if (selecionado == 'enviado') {
       if (!mounted) return;
-      final rastreioResult = await _mostrarDialogoCodigoRastreio(context);
+      final envioResult = await _mostrarDialogoTipoEnvioEnviado(context);
       if (!mounted) return;
-      if (rastreioResult != null) {
-        final codigo = (rastreioResult['codigo'] as String?)?.trim() ?? '';
-        if (codigo.isNotEmpty) {
-          extraUpdates = {'codigoRastreio': codigo};
-        }
-        enviarEmailCliente = rastreioResult['enviarEmail'] as bool? ?? true;
+      if (envioResult == null) return;
+      final tipo = envioResult['tipoEntregaEnvio'] as String? ?? '';
+      if (tipo == 'rastreio') {
+        final codigo = (envioResult['codigoRastreio'] as String?)?.trim() ?? '';
+        extraUpdates = {
+          'tipoEntregaEnvio': 'rastreio',
+          'codigoRastreio': codigo,
+        };
+      } else if (tipo == 'local') {
+        extraUpdates = {
+          'tipoEntregaEnvio': 'local',
+        };
+      } else if (tipo == 'retirada') {
+        extraUpdates = {
+          'tipoEntregaEnvio': 'retirada',
+        };
+      } else {
+        return;
       }
     }
 
@@ -2186,7 +2199,6 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         prePedidoId: prePedidoId,
         novoStatus: selecionado,
         extraUpdates: extraUpdates,
-        enviarEmailCliente: enviarEmailCliente,
       );
       if (!mounted) return;
       if (ok) {
@@ -2214,68 +2226,132 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     }
   }
 
-  /// Dialog para informar código de rastreio ao marcar como Enviado e opção de enviar por email
-  Future<Map<String, dynamic>?> _mostrarDialogoCodigoRastreio(BuildContext context) async {
+  /// Tipo de envio ao marcar "Enviado / postado" (e-mail via Cloud Function).
+  /// `tipoEntregaEnvio`: rastreio | local | retirada
+  Future<Map<String, dynamic>?> _mostrarDialogoTipoEnvioEnviado(
+    BuildContext context,
+  ) async {
     final controller = TextEditingController();
-    bool enviarEmail = true;
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Código de rastreio'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Cole o código de rastreio para que o cliente possa acompanhar a entrega (opcional).',
-                  style: TextStyle(fontSize: 14),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    labelText: 'Código (ex: AA123456789BR)',
-                    hintText: 'Colar ou digitar código',
-                    border: OutlineInputBorder(),
+    String? modo; // rastreio | local | retirada
+    try {
+      final result = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (_, setDialogState) => AlertDialog(
+            title: const Text('Enviado / postado'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Tipo de envio',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                   ),
-                  textCapitalization: TextCapitalization.characters,
-                ),
-                const SizedBox(height: 16),
-                CheckboxListTile(
-                  value: enviarEmail,
-                  onChanged: (v) => setDialogState(() => enviarEmail = v ?? true),
-                  title: const Text(
-                    'Enviar código de rastreio por email ao cliente',
-                    style: TextStyle(fontSize: 14),
+                  const SizedBox(height: 8),
+                  RadioListTile<String>(
+                    title: const Text('Correios / transportadora'),
+                    value: 'rastreio',
+                    groupValue: modo,
+                    onChanged: (v) => setDialogState(() => modo = v),
+                    contentPadding: EdgeInsets.zero,
                   ),
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ],
+                  RadioListTile<String>(
+                    title: const Text('Entrega local'),
+                    subtitle: const Text(
+                      'Motoboy ou entrega própria, sem rastreio dos Correios.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: 'local',
+                    groupValue: modo,
+                    onChanged: (v) => setDialogState(() => modo = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  RadioListTile<String>(
+                    title: const Text('Retirada / combinar com a loja'),
+                    subtitle: const Text(
+                      'Cliente busca no endereço combinado; mensagem de e-mail sem “saiu para entrega”.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: 'retirada',
+                    groupValue: modo,
+                    onChanged: (v) => setDialogState(() => modo = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (modo == 'rastreio') ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Código de rastreio (obrigatório)',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Código (ex: AA123456789BR)',
+                        border: OutlineInputBorder(),
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                    ),
+                  ],
+                ],
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (modo == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Selecione o tipo de envio.'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+                  if (modo == 'rastreio') {
+                    final codigo = controller.text.trim();
+                    if (codigo.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Informe o código de rastreio para envio pelos Correios ou transportadora.',
+                          ),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.pop(dialogContext, {
+                      'tipoEntregaEnvio': 'rastreio',
+                      'codigoRastreio': codigo,
+                    });
+                    return;
+                  }
+                  if (modo == 'retirada') {
+                    Navigator.pop(dialogContext, {
+                      'tipoEntregaEnvio': 'retirada',
+                    });
+                    return;
+                  }
+                  Navigator.pop(dialogContext, {
+                    'tipoEntregaEnvio': 'local',
+                  });
+                },
+                child: const Text('Salvar'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Pular'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final codigo = controller.text.trim();
-                Navigator.pop(context, {
-                  'codigo': codigo.isEmpty ? null : codigo,
-                  'enviarEmail': enviarEmail,
-                });
-              },
-              child: const Text('Salvar'),
-            ),
-          ],
         ),
-      ),
-    );
-    return result;
+      );
+      return result;
+    } finally {
+      controller.dispose();
+    }
   }
 
   Future<void> _confirmarPedido(Map<String, dynamic> prePedido) async {

@@ -14,6 +14,9 @@ class FSPaths {
   static const String estoqueVendasCol = 'estoque_vendas';
   static const String draftProdutosCol = 'draft_produtos';
 
+  /// Exclusão definitiva (tombstone) p/ impedir ressurreição pós sync multi‑dispositivo.
+  static const String exclusaoProdutoCol = 'exclusao_produto';
+
   /// Coleções de clientes (auth catálogo, cupons, perfil) — use com .collection(lojas).doc(lojaId).collection(...)
   /// FASE 4: clientes = FONTE PRINCIPAL; clientes_portal = espelho; clientes_catalogo = cupons/roleta; clientes_web = legado.
   static const String clientesCol = 'clientes';

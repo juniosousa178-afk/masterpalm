@@ -515,6 +515,52 @@ class Produto extends HiveObject {
     return 0;
   }
 
+  /// Custo unitário para a combinação informada (variação -> custoReal fallback).
+  double custoUnitarioVariacao(String tamanho, String cor, [String variacaoExtra = '']) {
+    if (!usaVariacoes) return custoReal;
+
+    final tam = tamanho.trim();
+    final corTrim = cor.trim();
+
+    dynamic cell;
+    if (tam.isEmpty && corTrim.isNotEmpty) {
+      final mapaCor = variacoes!['sem-tamanho'];
+      if (mapaCor is Map) cell = mapaCor[corTrim];
+    } else if (tam.isNotEmpty) {
+      final mapaTamanho = variacoes![tam];
+      if (mapaTamanho is Map) {
+        final corKey = _resolverCorKeyParaTamanho(
+          variacoes: variacoes!,
+          tamanho: tam,
+          corInformada: corTrim,
+        );
+        cell = mapaTamanho[corKey];
+      }
+    }
+
+    final custoDaCelula = ProdutoVariacaoExtra.custoUnitarioNaCelula(cell);
+    if (custoDaCelula != null && custoDaCelula > 0) return custoDaCelula;
+    return custoReal;
+  }
+
+  /// Custo total do estoque (sem combo): soma por variação quando disponível.
+  double custoTotalEstoque() {
+    if (usaVariacoes && variacoes != null && variacoes!.isNotEmpty) {
+      var total = 0.0;
+      for (final mapaTamanho in variacoes!.values) {
+        if (mapaTamanho is! Map) continue;
+        for (final cell in mapaTamanho.values) {
+          final qtd = ProdutoVariacaoExtra.somarCelula(cell);
+          if (qtd <= 0) continue;
+          final custo = ProdutoVariacaoExtra.custoUnitarioNaCelula(cell) ?? custoReal;
+          total += qtd * custo;
+        }
+      }
+      return total;
+    }
+    return custoReal * quantidade;
+  }
+
   /// Obtém todas as cores disponíveis para um tamanho específico
   /// Se tamanho vazio e temVariacaoSoloCor: retorna cores de variacoes['sem-tamanho']
   List<String> obterCoresPorTamanho(String tamanho) {

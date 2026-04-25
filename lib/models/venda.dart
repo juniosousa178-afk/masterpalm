@@ -188,6 +188,7 @@ class Venda extends HiveObject {
       final resumoExtra =
           (item['variacaoExtraResumo'] ?? '').toString().trim();
       final extraValor = (item['extraValor'] ?? '').toString().trim();
+      final custoUnitario = (item['custoUnitario'] as num?)?.toDouble();
 
       return VendaItem(
         produtoNome: nome,
@@ -198,6 +199,7 @@ class Venda extends HiveObject {
         productId: pid.isNotEmpty ? pid : null,
         variacaoExtraResumo: resumoExtra,
         extraValor: extraValor,
+        custoUnitario: custoUnitario,
       );
     }).toList();
 

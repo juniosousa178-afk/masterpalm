@@ -736,7 +736,8 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
     switch (status.toLowerCase()) {
       case 'pendente': return 'Pendente';
       case 'confirmado': return 'Confirmado';
-      case 'embalando': return 'Embalando';
+      case 'embalando':
+      case 'em_preparacao': return 'Em preparação';
       case 'enviado': return 'Enviado';
       case 'entregue': return 'Entregue';
       case 'cancelado': return 'Cancelado';
@@ -748,7 +749,8 @@ class _PerfilClienteScreenNovoState extends State<PerfilClienteScreenNovo> {
     switch (status.toLowerCase()) {
       case 'pendente': return Colors.orange;
       case 'confirmado': return Colors.green;
-      case 'embalando': return Colors.blue;
+      case 'embalando':
+      case 'em_preparacao': return Colors.blue;
       case 'enviado': return Colors.blue.shade700;
       case 'entregue': return Colors.green.shade700;
       case 'cancelado': return Colors.red;

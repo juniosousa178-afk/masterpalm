@@ -19,6 +19,7 @@ import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'combo_kit_stock_service.dart';
 import 'firestore_paths.dart';
+import 'produto_exclusao_tombstone_service.dart';
 import 'produtos_firestore_service.dart';
 import 'vendas_service.dart';
 import 'catalogo_web_apos_estoque_service.dart';
@@ -740,6 +741,15 @@ class EstoqueService {
           debugPrint(
             '$tag Erro ao atualizar estoque_produtos (type=${e.runtimeType}) — tentando syncProduto completo',
           );
+          if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+            lojaId: lojaId,
+            estoqueDocId: produto.idFirebase,
+          )) {
+            debugPrint(
+              '$tag [DELETE_GUARD] recriação via syncProduto bloqueada (tombstone de exclusão)',
+            );
+            return ResultadoAjusteEstoque.erro;
+          }
           // Doc ausente, regra de segurança ou ID órfão: recria / alinha com Hive.
           try {
             final status = await ProdutosFirestoreService.syncProdutoComStatus(
@@ -760,6 +770,16 @@ class EstoqueService {
       } else {
         // Sem idFirebase: único caminho confiável é documento completo na nuvem.
         try {
+          if (produto.slug.trim().isNotEmpty &&
+              await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+                lojaId: lojaId,
+                estoqueDocId: produto.slug.trim(),
+              )) {
+            debugPrint(
+              '$tag [DELETE_GUARD] syncProduto bloqueado (tombstone) slug=${produto.slug}',
+            );
+            return ResultadoAjusteEstoque.erro;
+          }
           final status = await ProdutosFirestoreService.syncProdutoComStatus(
             produto,
             lojaId: lojaId,

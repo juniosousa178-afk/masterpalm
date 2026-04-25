@@ -47,8 +47,12 @@ import {
   resolveCatalogOrderForMp,
   isOrderPayableForMp,
   orderTotalToCents,
-  extractCatalogOrderBuyer,
 } from "./src/catalogMpOrderHelpers.js";
+import {
+  normalizeEmail,
+  buildMpBuyerPayerForCatalog,
+  resolveCatalogPixPayerForMp,
+} from "./src/mpCatalogPayerBrasil.js";
 import { stripPaymentsSecretsForPublic } from "./src/paymentsPublicStrip.js";
 import { resolveStrictLojaMpAccessToken } from "./src/mpLojaTokenPolicy.js";
 import {
@@ -97,6 +101,7 @@ import {
   sugerirPrecoCombo as aiSugerirPrecoCombo,
 } from "./src/aiLoja.js";
 import { runCatalogDomainSubmit, runCatalogDomainVerify } from "./src/catalogDomainWorkflow.js";
+import { createOnPrePedidoClienteEmail } from "./src/pedidoClienteStatusEmail.js";
 
 // ✅ Webhooks Canais Meta (WhatsApp, Instagram, Messenger)
 export { webhookWhatsApp, webhookInstagram, webhookMessenger } from "./canaisMetaWebhooks.js";
@@ -209,10 +214,6 @@ function normalizeOptionalString(value) {
   return resolved.length > 0 ? resolved : null;
 }
 
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
 /** Código curto para exibir no assunto (8 primeiros caracteres do id). */
 function pedidoCodigoCurto(pedidoId) {
   const s = String(pedidoId || "");
@@ -239,64 +240,6 @@ function formatPrePedidoItensResumoEmail(itens) {
     lines.push(`  ${q}x ${nome}${varN} — R$ ${totStr}`);
   }
   return lines.length > 0 ? lines.join("\n") : "  (detalhe completo no app)\n";
-}
-
-/** E-mail mínimo aceitável pelo Checkout/PIX MP (evita invalid_params por formato). */
-function isPlausibleBuyerEmailForMp(s) {
-  const e = normalizeEmail(s);
-  if (e.length < 6 || e.length > 254) return false;
-  const at = e.indexOf("@");
-  if (at < 1) return false;
-  const domain = e.slice(at + 1);
-  if (domain.length < 3 || !domain.includes(".")) return false;
-  return true;
-}
-
-/** CPF brasileiro: 11 dígitos com dígitos verificadores válidos (evita 400 do MP com CPF "formatado" mas inválido). */
-function isValidCpfDigits(digits) {
-  const s = String(digits || "").replace(/\D/g, "");
-  if (s.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(s)) return false;
-  let sum = 0;
-  for (let i = 0; i < 9; i++) sum += parseInt(s[i], 10) * (10 - i);
-  let r = (sum * 10) % 11;
-  if (r === 10) r = 0;
-  if (r !== parseInt(s[9], 10)) return false;
-  sum = 0;
-  for (let i = 0; i < 10; i++) sum += parseInt(s[i], 10) * (11 - i);
-  r = (sum * 10) % 11;
-  if (r === 10) r = 0;
-  return r === parseInt(s[10], 10);
-}
-
-/**
- * Monta objeto [payer] para API MP a partir do pedido catálogo (Firestore).
- * CPF só se tiver 11 dígitos; telefone BR só com DDD+número válidos.
- */
-function buildMpBuyerPayerForCatalog(order, orderId) {
-  const { name, email, cpf, telefone } = extractCatalogOrderBuyer(order);
-  const displayName = (name || "Cliente").trim().slice(0, 100) || "Cliente";
-  let payerEmail = normalizeEmail(email);
-  if (!isPlausibleBuyerEmailForMp(payerEmail)) {
-    const id = String(orderId || "pedido").replace(/[^a-z0-9_-]/gi, "").slice(0, 48) || "pedido";
-    payerEmail = `catalogo+${id}@mastepalm.com.br`;
-  }
-  const cpfDigits = String(cpf || "").replace(/\D/g, "");
-  const payer = { name: displayName, email: payerEmail };
-  if (cpfDigits.length === 11 && isValidCpfDigits(cpfDigits)) {
-    payer.identification = { type: "CPF", number: cpfDigits };
-  }
-  const tel = String(telefone || "").replace(/\D/g, "");
-  let d = tel;
-  if (d.startsWith("55") && d.length > 11) d = d.slice(2);
-  if (d.length >= 10 && d.length <= 11) {
-    const ac = d.slice(0, 2);
-    const num = d.slice(2);
-    if (/^\d{2}$/.test(ac) && num.length >= 8 && num.length <= 9) {
-      payer.phone = { area_code: ac, number: num };
-    }
-  }
-  return payer;
 }
 
 function createPortalToken() {
@@ -2152,19 +2095,27 @@ export const mpCatalogPayment = onRequest(
       if (t === "pix") {
         const { descricao, email, cpf } = body;
         const numValor = expectedTotal;
-        const serverPayer = buildMpBuyerPayerForCatalog(resolvedOrder.order, orderId);
-        const emailBody = normalizeEmail(email);
-        const emailStr = isPlausibleBuyerEmailForMp(emailBody) ? emailBody : serverPayer.email;
-        const cpfBody = cpf ? String(cpf).replace(/\D/g, "") : "";
-        const fromServerId = serverPayer.identification?.number
-          ? String(serverPayer.identification.number).replace(/\D/g, "")
-          : "";
-        let cpfLimpo = "";
-        if (cpfBody.length === 11 && isValidCpfDigits(cpfBody)) {
-          cpfLimpo = cpfBody;
-        } else if (fromServerId.length === 11 && isValidCpfDigits(fromServerId)) {
-          cpfLimpo = fromServerId;
+        const pixPayer = resolveCatalogPixPayerForMp({
+          body: { email, cpf },
+          order: resolvedOrder.order,
+          orderId,
+        });
+        if (!pixPayer.ok) {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_validation_failed",
+            severity: "warn",
+            outcome: "validation_fail",
+            reason: "cpf_invalid_for_pix",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: t,
+            correlationId,
+            externalReference: String(orderId),
+          });
+          if (lockHeld && catalogIdemKey) await releaseMpCatalogPaymentLock(db, catalogIdemKey);
+          return res.status(400).json({ error: pixPayer.error, code: pixPayer.code });
         }
+        const { emailStr, cpfLimpo } = pixPayer;
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         // P1.5 trava local (Firestore) + chave determinística no MP: sucesso remoto com falha no commit local não deve gerar nova cobrança no retry.
         const mpBody = {
@@ -3784,28 +3735,14 @@ export const onPrePedidoCreated = onDocumentCreated(
             console.warn("[onPrePedidoCreated] Email admin (não bloqueia):", mailErr.message || mailErr);
           }
         }
+        // E-mail "recebido" ao cliente: onPrePedidoClienteEmail (deduplicação + templates)
         const clienteEmail = normalizeEmail(cliente.email || "");
         if (clienteEmail && clienteEmail.includes("@") && !clienteEmail.startsWith("catalogo+")) {
-          try {
-            const corpoCliente =
-              `Olá, ${clienteNome}!\n\n` +
-              `Recebemos o seu pedido com sucesso. Obrigado por escolher a ${lojaNome}! 🎉\n\n` +
-              `Valor total: R$ ${valorStr}\n` +
-              `Referência do pedido: ${pedidoId}\n\n` +
-              `Você receberá atualizações enquanto o pedido for preparado. Se precisar, fale com a loja pelo contato do catálogo.\n\n` +
-              `Atenciosamente,\n${lojaNome}`;
-            await transporter.sendMail({
-              from: `"${lojaNome}" <${smtpUser}>`,
-              to: clienteEmail,
-              subject: `Pedido recebido – R$ ${valorStr}`,
-              text: corpoCliente,
-            });
-            console.log("[onPrePedidoCreated] Email enviado para cliente:", clienteEmail);
-          } catch (mailClienteErr) {
-            console.warn("[onPrePedidoCreated] Email cliente (não bloqueia):", mailClienteErr.message || mailClienteErr);
-          }
+          console.log("[onPrePedidoCreated] E-mail ao cliente será tratado por onPrePedidoClienteEmail");
         } else {
-          console.log("[onPrePedidoCreated] Cliente sem e-mail válido — e-mail de confirmação ao comprador não enviado");
+          console.log(
+            "[onPrePedidoCreated] Cliente sem e-mail válido — onPrePedidoClienteEmail não enviará ao comprador",
+          );
         }
       } else {
         console.log("[onPrePedidoCreated] SMTP não configurado — e-mails de pré-pedido não enviados");
@@ -3815,6 +3752,9 @@ export const onPrePedidoCreated = onDocumentCreated(
     }
   }
 );
+
+/** E-mails ao cliente por etapa de status (catálogo) + deduplicação em emailsStatusEnviados* */
+export const onPrePedidoClienteEmail = createOnPrePedidoClienteEmail(S_SMTP_EMAIL, S_SMTP_PASSWORD);
 
 // ======================================================================
 // ESPELHO PÚBLICO SANITIZADO DE STATUS DE PEDIDO

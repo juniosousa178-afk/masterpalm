@@ -38,6 +38,7 @@ class VendasFirestoreService {
         productId: pid != null && pid.trim().isNotEmpty ? pid : null,
         variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString().trim(),
         extraValor: (m['extraValor'] ?? '').toString().trim(),
+        custoUnitario: (m['custoUnitario'] as num?)?.toDouble(),
       );
     }).toList();
 
@@ -219,6 +220,7 @@ class VendasFirestoreService {
           if (item.variacaoExtraResumo.trim().isNotEmpty)
             'variacaoExtraResumo': item.variacaoExtraResumo.trim(),
           if (item.extraValor.trim().isNotEmpty) 'extraValor': item.extraValor.trim(),
+          if ((item.custoUnitario ?? 0) > 0) 'custoUnitario': item.custoUnitario,
         }).toList(),
 
         // Cliente estável (para consultas)

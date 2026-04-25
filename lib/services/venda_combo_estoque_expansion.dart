@@ -111,6 +111,11 @@ class VendaComboEstoqueExpansion {
       if (p == null) {
         throw Exception('Produto não encontrado no estoque: ${it.produtoNome}');
       }
+      it.custoUnitario = p.custoUnitarioVariacao(
+        it.tamanho,
+        it.cor,
+        it.extraValor,
+      );
 
       final selecaoNoMapa = itensComboSelecaoPorIndice?[idx];
       final listaCombo = selecaoNoMapa ?? p.itensCombo;
@@ -203,6 +208,8 @@ class VendaComboEstoqueExpansion {
               productId: pComp.idFirebase.trim().isNotEmpty ? pComp.idFirebase : null,
               variacaoExtraResumo: resumoExtra,
               extraValor: extraTrim,
+              custoUnitario:
+                  pComp.custoUnitarioVariacao(tam, cor, extraTrim),
             ),
           );
           produtosExpandidos.add(pComp);

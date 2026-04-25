@@ -458,6 +458,13 @@ class SyncQueueService {
       lojaId: item.lojaId,
       enqueueOnFailure: false,
     );
+    if (status == ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone) {
+      logD(
+        '[TOMBSTONE_BLOCK] fila descartou upsert (entityKey=${item.entityKey})',
+        tag: 'TOMBSTONE',
+      );
+      return true;
+    }
     if (status != ProdutoSyncRemotoStatus.confirmado) {
       await _incrementAttempt(
         item,

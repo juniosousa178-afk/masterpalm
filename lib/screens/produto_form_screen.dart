@@ -10,6 +10,7 @@ import 'package:hive/hive.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/compra_item_pipeline_constants.dart';
+import '../core/logger.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/compra_item_pipeline.dart';
@@ -20,6 +21,7 @@ import '../utils/text_utils.dart';
 import '../services/catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
 import '../services/catalog_publish_service.dart';
 import '../services/limits_guard.dart';
+import '../services/produto_exclusao_tombstone_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/produto_imagens_storage_cleanup.dart';
 import '../services/produto_upsert_service.dart';
@@ -51,7 +53,7 @@ String gerarSlug(String texto) {
 ({Map<String, dynamic> variacoes, Map<String, dynamic>? variacoesExtraTipo})
     produtoFormMergeVariacoesGrade(
         List<Map<String, TextEditingController>> rows) {
-  final acc = <String, Map<String, Map<String, int>>>{};
+  final acc = <String, Map<String, Map<String, dynamic>>>{};
   final tiposAcc = <String, Map<String, Map<String, String>>>{};
 
   for (final c in rows) {
@@ -59,6 +61,7 @@ String gerarSlug(String texto) {
     final cor = (c['cor']?.text ?? '').trim();
     final extraTipo = (c['extraTipo']?.text ?? '').trim();
     final extraValor = (c['extraValor']?.text ?? '').trim();
+    final custoStr = (c['custo']?.text ?? '').trim();
     final qStr = (c['qtd']?.text ?? '').trim();
     if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
     final qtd = int.tryParse(qStr) ?? 0;
@@ -70,6 +73,11 @@ String gerarSlug(String texto) {
     acc.putIfAbsent(chaveTamanho, () => {});
     acc[chaveTamanho]!.putIfAbsent(corFinal, () => {});
     acc[chaveTamanho]![corFinal]![ek] = qtd;
+    final custoUnitario = MoedaInputFormatter.parse(custoStr);
+    if (custoUnitario > 0) {
+      acc[chaveTamanho]![corFinal]![ProdutoVariacaoExtra.kMetaCustoUnitarioKey] =
+          custoUnitario;
+    }
 
     if (ek.isNotEmpty) {
       tiposAcc.putIfAbsent(chaveTamanho, () => {});
@@ -86,7 +94,9 @@ String gerarSlug(String texto) {
     for (final ce in te.value.entries) {
       final m = ce.value;
       if (m.isEmpty) continue;
-      if (m.length == 1 && m.containsKey('')) {
+      final hasMetaCusto =
+          m.containsKey(ProdutoVariacaoExtra.kMetaCustoUnitarioKey);
+      if (!hasMetaCusto && m.length == 1 && m.containsKey('')) {
         innerOut[ce.key] = m[''] ?? 0;
       } else {
         innerOut[ce.key] = Map<String, dynamic>.from(m);
@@ -166,6 +176,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       'extraTipo': '',
       'extraValor': '',
       'qtd': '',
+      'custo': '',
     },
   ];
 
@@ -195,6 +206,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
   /// Produto só com estoque/tamanhos legados (sem [variacoes] persistidas).
   bool _legadoEstoqueSemVariacoesCadastradas = false;
+
+  /// Baseline de chaves `V::` / `T::` ao abrir o form (só quando havia [variacoes] persistidas).
+  /// Usado para tombstone explícito ao remover linha(s) da grade e salvar — não é diff remoto/local.
+  bool _tombSessaoAplicaVarTomb = false;
+  Set<String> _tombSessaoV = {};
+  Set<String> _tombSessaoT = {};
 
   // Marketplaces selecionados
   final Set<String> _marketplacesSelecionados = {};
@@ -282,9 +299,18 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                   'extraTipo': '',
                   'extraValor': '',
                   'qtd': raw.toInt().toString(),
+                  'custo': '',
                 });
               } else if (raw is Map) {
+                final custoCelula = ProdutoVariacaoExtra.custoUnitarioNaCelula(raw);
+                final custoTexto =
+                    (custoCelula != null && custoCelula > 0)
+                        ? MoedaInputFormatter.format(custoCelula)
+                        : '';
                 for (final ie in raw.entries) {
+                  if (ProdutoVariacaoExtra.isMetaKey(ie.key.toString())) {
+                    continue;
+                  }
                   final ev = ie.key.toString();
                   final q = ie.value is num
                       ? (ie.value as num).toInt()
@@ -297,6 +323,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                     'extraTipo': tipoPara(evDisp),
                     'extraValor': evDisp,
                     'qtd': q.toString(),
+                    'custo': custoTexto,
                   });
                 }
               }
@@ -312,6 +339,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             'extraTipo': '',
             'extraValor': '',
             'qtd': '',
+            'custo': '',
           });
         }
       } else {
@@ -347,8 +375,82 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           );
         }
       }
+      _initTombSessaoBaseline(p);
     }
     _initVariacaoControllers();
+  }
+
+  void _initTombSessaoBaseline(Produto p) {
+    if (p.variacoes != null && p.variacoes!.isNotEmpty) {
+      _tombSessaoAplicaVarTomb = true;
+      _tombSessaoV = ProdutoExclusaoTombstoneService.chavesCelulaDeVariacoes(
+        Map<String, dynamic>.from(p.variacoes!),
+      );
+      _tombSessaoT = ProdutoExclusaoTombstoneService.chavesSoloTamanhoDeEstoquePorTamanho(
+        p.estoquePorTamanho,
+      );
+    } else {
+      _tombSessaoAplicaVarTomb = false;
+      _tombSessaoV = {};
+      _tombSessaoT = {};
+    }
+  }
+
+  void _atualizarTombSessaoAposTombstoneOk(
+    Map<String, dynamic> variacoesMap,
+    Map<String, int> estoqueMapa,
+  ) {
+    _tombSessaoV = ProdutoExclusaoTombstoneService.chavesCelulaDeVariacoes(
+      variacoesMap,
+    );
+    _tombSessaoT = ProdutoExclusaoTombstoneService.chavesSoloTamanhoDeEstoquePorTamanho(
+      estoqueMapa,
+    );
+  }
+
+  String? _estoqueDocIdParaTombstone(Produto p) {
+    final a = p.idFirebase.trim();
+    if (a.isNotEmpty) return a;
+    final s = p.slug.trim();
+    return s.isNotEmpty ? s : null;
+  }
+
+  /// Antes de [save]/sync: `exclusao_produto` com [p: false] e chaves em [v] — só com prova (grade persistida + remoção de chave).
+  Future<bool> _tentarTombstoneVarRemovidaSessaoSeNecessario({
+    required Produto pBase,
+    required Map<String, dynamic> variacoesMap,
+    required Map<String, int> estoqueMapa,
+  }) async {
+    if (lojaId == null) return true;
+    if (!_tombSessaoAplicaVarTomb) {
+      return true;
+    }
+    final novoV = ProdutoExclusaoTombstoneService.chavesCelulaDeVariacoes(variacoesMap);
+    final novoT = ProdutoExclusaoTombstoneService.chavesSoloTamanhoDeEstoquePorTamanho(
+      estoqueMapa,
+    );
+    final remV = _tombSessaoV.difference(novoV);
+    final remT = _tombSessaoT.difference(novoT);
+    if (remV.isEmpty && remT.isEmpty) return true;
+    final chaves = <String>{...remV, ...remT};
+    final doc = _estoqueDocIdParaTombstone(pBase);
+    if (doc == null) {
+      logE(
+        '[TOMBSTONE_VAR_FAIL] sem idFirebase/slug; nao e possivel gravar v',
+        tag: 'TOMBSTONE',
+      );
+      return false;
+    }
+    final ok = await ProdutoExclusaoTombstoneService
+        .registrarTombstoneExclusaoVarSessaoExplicita(
+      lojaId: lojaId!,
+      estoqueDocId: doc,
+      chaves: chaves,
+    );
+    if (!ok) return false;
+    await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId!);
+    _atualizarTombSessaoAposTombstoneOk(variacoesMap, estoqueMapa);
+    return true;
   }
 
   /// Retorna os tamanhos únicos da grade de variações.
@@ -382,6 +484,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       c['cor']?.dispose();
       c['extraTipo']?.dispose();
       c['extraValor']?.dispose();
+      c['custo']?.dispose();
       c['qtd']?.dispose();
     }
     _variacaoControllers.clear();
@@ -391,6 +494,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         'cor': TextEditingController(text: row['cor'] ?? ''),
         'extraTipo': TextEditingController(text: row['extraTipo'] ?? ''),
         'extraValor': TextEditingController(text: row['extraValor'] ?? ''),
+        'custo': TextEditingController(text: row['custo'] ?? ''),
         'qtd': TextEditingController(text: row['qtd'] ?? ''),
       });
     }
@@ -658,6 +762,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       c['cor']?.dispose();
       c['extraTipo']?.dispose();
       c['extraValor']?.dispose();
+      c['custo']?.dispose();
       c['qtd']?.dispose();
     }
     _variacaoControllers.clear();
@@ -1006,6 +1111,23 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
       p.precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
       if (variacoesMap.isNotEmpty) p.recalcularQuantidadeTotal();
+      if (!await _tentarTombstoneVarRemovidaSessaoSeNecessario(
+        pBase: p,
+        variacoesMap: Map<String, dynamic>.from(variacoesMap),
+        estoqueMapa: estoqueMapa,
+      )) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Não foi possível confirmar a remoção da variação na nuvem. Verifique a conexão e tente de novo.',
+              ),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+        }
+        return;
+      }
       p.updatedAt = DateTime.now();
       await p.save();
       await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId)
@@ -1639,6 +1761,24 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           debugPrint('[VARIACAO_CLEAR] save: grade vazia → variacoes/extra limpos no Hive');
         }
 
+        if (!await _tentarTombstoneVarRemovidaSessaoSeNecessario(
+          pBase: p,
+          variacoesMap: Map<String, dynamic>.from(variacoesMap),
+          estoqueMapa: estoqueMapa,
+        )) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'Não foi possível confirmar a remoção da variação na nuvem. Verifique a conexão e tente de novo.',
+                ),
+                backgroundColor: Colors.red.shade700,
+              ),
+            );
+          }
+          return;
+        }
+
         p.updatedAt = DateTime.now();
         await p.save();
         remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
@@ -2111,6 +2251,32 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                       keyboardType: TextInputType.number,
                                     ),
                                   ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    flex: 2,
+                                    child: TextFormField(
+                                      controller: c['custo'],
+                                      decoration: InputDecoration(
+                                        labelText: 'Preço de custo',
+                                        hintText: _custo.text.isNotEmpty
+                                            ? 'Geral: ${_custo.text}'
+                                            : '0,00',
+                                        filled: true,
+                                        fillColor: Colors.grey.shade50,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 14,
+                                        ),
+                                      ),
+                                      keyboardType: const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                      inputFormatters: [MoedaInputFormatter()],
+                                    ),
+                                  ),
                                   IconButton(
                                     icon: const Icon(Icons.remove_circle, color: Colors.red),
                                     tooltip: _variacaoControllers.length > 1
@@ -2123,6 +2289,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                           c['cor']?.dispose();
                                           c['extraTipo']?.dispose();
                                           c['extraValor']?.dispose();
+                                          c['custo']?.dispose();
                                           c['qtd']?.dispose();
                                           _variacaoControllers.removeAt(i);
                                           _gradeVariacoes.removeAt(i);
@@ -2132,6 +2299,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                           c['cor']?.clear();
                                           c['extraTipo']?.clear();
                                           c['extraValor']?.clear();
+                                          c['custo']?.clear();
                                           c['qtd']?.clear();
                                           if (_gradeVariacoes.isNotEmpty) {
                                             _gradeVariacoes[0] = {
@@ -2139,6 +2307,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                               'cor': '',
                                               'extraTipo': '',
                                               'extraValor': '',
+                                              'custo': '',
                                               'qtd': '',
                                             };
                                           }
@@ -2216,6 +2385,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                 'cor': '',
                                 'extraTipo': '',
                                 'extraValor': '',
+                                'custo': '',
                                 'qtd': '',
                               });
                               _variacaoControllers.add({
@@ -2223,6 +2393,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                 'cor': TextEditingController(),
                                 'extraTipo': TextEditingController(),
                                 'extraValor': TextEditingController(),
+                                'custo': TextEditingController(),
                                 'qtd': TextEditingController(),
                               });
                               _initPrecoPorTamanhoControllers();

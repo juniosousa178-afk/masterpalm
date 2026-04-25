@@ -750,9 +750,14 @@ class _CatalogMinimalHeroBannerState extends State<CatalogMinimalHeroBanner> {
             (isWide ? math.min(cardMaxW, maxW - padH) : (maxW - padH))
                 .clamp(1.0, 10000.0);
 
-        /// Altura do quadro: segue a proporção real da arte; se estourar [min..max], `contain` encaixa sem corte.
+        /// Altura do quadro: desktop segue a proporção real da arte.
+        /// Mobile: **só** [configH] — se usássemos o aspecto após o [ImageStream], a altura
+        /// mudava (configH → naturalH) e o [BoxFit.contain] refazia o encaixe: ora “100%” na
+        /// largura, ora faixas laterais (oscilação ao abrir o catálogo).
         final double layoutH;
         if (!hasImage) {
+          layoutH = configH;
+        } else if (!isWide) {
           layoutH = configH;
         } else if (_imageAspectWOverH == null) {
           layoutH = configH;

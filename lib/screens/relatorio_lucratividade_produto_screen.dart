@@ -6,9 +6,9 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/relatorio_margem_bruta_custo.dart';
 import '../core/venda_metrics_filter.dart';
 import '../models/venda.dart';
-import '../models/produto.dart';
 
 const Color _primaryColor = Color(0xFF6366F1);
 const Color _successColor = Color(0xFF22C55E);
@@ -72,14 +72,6 @@ class _RelatorioLucratividadeProdutoScreenState
       } else {
         vendasBox = await Hive.openBox<Venda>(boxName);
       }
-      final prodBoxName = HiveBoxNames.produtos(widget.lojaId);
-      Box<Produto> prodBox;
-      if (Hive.isBoxOpen(prodBoxName)) {
-        prodBox = Hive.box<Produto>(prodBoxName);
-      } else {
-        prodBox = await Hive.openBox<Produto>(prodBoxName);
-      }
-
       final inicio = _dataInicio ?? DateTime(2020);
       final fim = _dataFim ?? DateTime.now().add(const Duration(days: 365));
 
@@ -92,37 +84,31 @@ class _RelatorioLucratividadeProdutoScreenState
       final map = <String, _ProdutoLucro>{};
       for (final venda in vendas) {
         final itens = venda.itens ?? [];
-        for (final item in itens) {
+        if (itens.isEmpty) continue;
+        final custoPorLinha = custoRelatorioPorLinhasVenda(
+          venda,
+          itens,
+        );
+        for (var i = 0; i < itens.length; i++) {
+          final item = itens[i];
           final key = item.produtoNome.trim().toLowerCase();
           if (key.isEmpty) continue;
           final receita = item.quantidade * item.precoUnitario;
+          final custoLinha =
+              i < custoPorLinha.length ? custoPorLinha[i] : 0.0;
           final p = map[key];
           if (p == null) {
             map[key] = _ProdutoLucro(
               nome: item.produtoNome.trim(),
               qtdVendida: item.quantidade,
               receita: receita,
-              custo: 0, // preenchido depois
+              custo: custoLinha,
             );
           } else {
             p.qtdVendida += item.quantidade;
             p.receita += receita;
+            p.custo += custoLinha;
           }
-        }
-      }
-
-      // Associar custo do produto (match por nome)
-      final produtos = prodBox.values.where((p) => p.lojaId == widget.lojaId).toList();
-      for (final p in map.values) {
-        Produto? encontrado;
-        for (final x in produtos) {
-          if (x.nome.trim().toLowerCase() == p.nome.trim().toLowerCase()) {
-            encontrado = x;
-            break;
-          }
-        }
-        if (encontrado != null) {
-          p.custo = p.qtdVendida * encontrado.custoReal;
         }
       }
 

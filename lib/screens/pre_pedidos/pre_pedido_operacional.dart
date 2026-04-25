@@ -49,6 +49,7 @@ bool _isStatusHistoricoEncerrado(String st) {
     'paid',
     'pago',
     'embalando',
+    'em_preparacao',
     'enviado',
     'entregue',
     'cancelado',

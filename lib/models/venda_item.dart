@@ -35,6 +35,10 @@ class VendaItem {
   @HiveField(8, defaultValue: '')
   String extraValor;
 
+  /// Custo unitário efetivo aplicado ao item na venda (congelado para relatório/lucro).
+  @HiveField(9)
+  double? custoUnitario;
+
   VendaItem({
     required this.produtoNome,
     required this.quantidade,
@@ -45,5 +49,6 @@ class VendaItem {
     this.productId,
     this.variacaoExtraResumo = '',
     this.extraValor = '',
+    this.custoUnitario,
   });
 }

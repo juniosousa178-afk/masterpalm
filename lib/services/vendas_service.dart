@@ -41,6 +41,17 @@ class VendasService {
     );
   }
 
+  static double _resolverCustoItem(Produto produto, VendaItem item) {
+    final custoVariacao = produto.custoUnitarioVariacao(
+      item.tamanho,
+      item.cor,
+      item.extraValor,
+    );
+    if (custoVariacao > 0) return custoVariacao;
+    if (produto.custoReal > 0) return produto.custoReal;
+    return custoVariacao;
+  }
+
   /// Remove contas a receber criadas para esta venda (mesmo [vendaKey] Hive).
   static Future<void> removerContasReceberVinculadasAVenda({
     required String lojaId,
@@ -262,6 +273,7 @@ class VendasService {
       tamanho: tamanho,
       cor: cor,
       productId: produto.idFirebase.trim().isNotEmpty ? produto.idFirebase : null,
+      custoUnitario: produto.custoUnitarioVariacao(tamanho, cor),
     );
 
     if (dinheiro == 0 && pix == 0 && cartao == 0) {
@@ -351,6 +363,23 @@ class VendasService {
       lojaId: lojaEfetiva,
       clienteExistente: clienteExistente,
     );
+
+    for (var i = 0; i < itensParaEstoque.length; i++) {
+      final itemExp = itensParaEstoque[i];
+      final pExp = produtosEncontrados[i];
+      itemExp.custoUnitario = _resolverCustoItem(pExp, itemExp);
+    }
+    for (final itemOriginal in itens) {
+      final pLocal = encontrarProdutoNoEstoque(
+        produtosBox: produtosBox,
+        productId: itemOriginal.productId,
+        nome: itemOriginal.produtoNome,
+        lojaId: lojaEfetiva,
+      );
+      if (pLocal != null) {
+        itemOriginal.custoUnitario = _resolverCustoItem(pLocal, itemOriginal);
+      }
+    }
 
     // 3) baixa estoque via transação Firestore (OBRIGATÓRIO - sem fallback Hive)
     // Usa itensParaEstoque (combos já expandidos) para dar baixa em cada produto individual

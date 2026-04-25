@@ -126,7 +126,7 @@ Future<void> mergeCatalogFretesManualFromFirestoreSubdoc({
 }) async {
   final db = FirebaseFirestore.instance;
 
-  Future<List<Map<String, dynamic>>?> readManualFretes(String col) async {
+  Future<Map<String, dynamic>?> readFretesDoc(String col) async {
     try {
       final snap = await db
           .collection('lojas')
@@ -137,30 +137,39 @@ Future<void> mergeCatalogFretesManualFromFirestoreSubdoc({
       if (!snap.exists) return null;
       final raw = snap.data();
       if (raw == null) return null;
-      final manual = raw['manualFretes'] ?? raw['fretes'];
-      if (manual is! List) return null;
-      return manual
-          .map((e) => asMap(e))
-          .where((m) => m.isNotEmpty)
-          .map((m) => Map<String, dynamic>.from(m))
-          .toList();
+      return raw;
     } catch (_) {
       return null;
     }
   }
 
-  final fromCurrent = await readManualFretes(cfgCol);
+  void applyFretesDoc(Map<String, dynamic> rawDoc) {
+    final manual = rawDoc['manualFretes'] ?? rawDoc['fretes'];
+    if (manual is List) {
+      cfg['fretes'] = manual
+          .map((e) => asMap(e))
+          .where((m) => m.isNotEmpty)
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+    }
+    final modoRaw =
+        (rawDoc['freteMelhorEnvioModoExibicao'] ?? '').toString().trim().toLowerCase();
+    cfg['freteMelhorEnvioModoExibicao'] =
+        modoRaw == 'somente_correios' ? 'somente_correios' : 'todas_transportadoras';
+  }
+
+  final fromCurrent = await readFretesDoc(cfgCol);
   if (fromCurrent != null) {
     // Sempre usa o subdoc de fretes quando existir (inclusive lista vazia),
     // evitando catálogo web ficar preso em frete antigo.
-    cfg['fretes'] = fromCurrent;
+    applyFretesDoc(fromCurrent);
     return;
   }
 
   if (cfgCol == 'draft_config') {
-    final fromPublished = await readManualFretes('config');
+    final fromPublished = await readFretesDoc('config');
     if (fromPublished != null) {
-      cfg['fretes'] = fromPublished;
+      applyFretesDoc(fromPublished);
     }
   }
 }

@@ -685,6 +685,11 @@ service cloud.firestore {
         allow read, write: if belongsToStore(lojaId);
       }
 
+      // Exclusão definitiva (tombstone): mesma regra de estoque — nunca cruza loja.
+      match /exclusao_produto/{tombId} {
+        allow read, write: if belongsToStore(lojaId);
+      }
+
       match /estoque_clientes/{clienteId} {
         allow read, write: if belongsToStore(lojaId);
 

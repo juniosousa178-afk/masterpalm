@@ -13,5 +13,8 @@ String? userMessageForMpCheckoutErrorJson(Map<String, dynamic>? errJson) {
         'Quem administra a loja precisa informar o Access Token de produção em '
         'Configurações de pagamentos para habilitar o checkout.';
   }
+  if (code == 'PIX_CPF_INVALID') {
+    return 'CPF inválido para gerar o PIX. Confira os 11 dígitos no checkout e tente novamente.';
+  }
   return null;
 }

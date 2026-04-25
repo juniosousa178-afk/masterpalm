@@ -77,6 +77,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
   final TextEditingController _correiosSenhaCtrl = TextEditingController();
   final TextEditingController _frenetTokenCtrl = TextEditingController();
   final TextEditingController _superFreteTokenCtrl = TextEditingController();
+  String _freteMelhorEnvioModoExibicao = 'somente_correios';
 
   // =================== EMBALAGENS ===================
   List<Map<String, dynamic>> _embalagens = [
@@ -201,6 +202,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     _frenetTokenCtrl.text = (_config.get('frete_frenet_token') ?? '').toString();
     _superFreteTokenCtrl.text =
         (_config.get('frete_superfrete_token') ?? '').toString();
+    final modoLocal =
+        (_config.get('freteMelhorEnvioModoExibicao') ?? '').toString();
+    _freteMelhorEnvioModoExibicao =
+        _normalizarModoExibicaoMelhorEnvio(modoLocal);
 
     final rawEmbalagens = _config.get('embalagens');
     if (rawEmbalagens is List && rawEmbalagens.isNotEmpty) {
@@ -215,6 +220,13 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     }
 
     if (mounted) setState(() {});
+  }
+
+  String _normalizarModoExibicaoMelhorEnvio(String? raw) {
+    final v = (raw ?? '').trim().toLowerCase();
+    return v == 'somente_correios'
+        ? 'somente_correios'
+        : 'todas_transportadoras';
   }
 
   Future<void> _loadIndicacaoConfig(String lojaId) async {
@@ -382,6 +394,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       String corSenha = _correiosSenhaCtrl.text;
       String frenet = _frenetTokenCtrl.text;
       String superF = _superFreteTokenCtrl.text;
+      String modoExibicao = _freteMelhorEnvioModoExibicao;
       List<Map<String, dynamic>> fretesManuais =
           List<Map<String, dynamic>>.from(_fretes);
       var manualFretesVeioDoLive = false;
@@ -423,6 +436,12 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           fretesManuais = _parseFretesManuaisFromList(manual);
           manualFretesVeioDoLive = true;
         }
+        final modoRaw =
+            (d['freteMelhorEnvioModoExibicao'] ??
+                    d['frete_melhor_envio_modo_exibicao'] ??
+                    '')
+                .toString();
+        modoExibicao = _normalizarModoExibicaoMelhorEnvio(modoRaw);
       }
 
       void applyFreteConfigMap(Map<String, dynamic> fc) {
@@ -439,6 +458,12 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         final s = (fc['correios_senha'] ?? '').toString();
         if (u.isNotEmpty) corUser = u;
         if (s.isNotEmpty) corSenha = s;
+        final modoRaw =
+            (fc['freteMelhorEnvioModoExibicao'] ??
+                    fc['frete_melhor_envio_modo_exibicao'] ??
+                    '')
+                .toString();
+        modoExibicao = _normalizarModoExibicaoMelhorEnvio(modoRaw);
       }
 
       if (liveSnap.exists) {
@@ -490,6 +515,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         _correiosSenhaCtrl.text = corSenha;
         _frenetTokenCtrl.text = frenet;
         _superFreteTokenCtrl.text = superF;
+        _freteMelhorEnvioModoExibicao = modoExibicao;
         _fretes
           ..clear()
           ..addAll(fretesManuais);
@@ -502,6 +528,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       await _putConfig('frete_correios_senha', _correiosSenhaCtrl.text.trim());
       await _putConfig('frete_frenet_token', _frenetTokenCtrl.text.trim());
       await _putConfig('frete_superfrete_token', _superFreteTokenCtrl.text.trim());
+      await _putConfig(
+        'freteMelhorEnvioModoExibicao',
+        _freteMelhorEnvioModoExibicao,
+      );
       await _putConfig(
         'fretes',
         _fretes.map((f) {
@@ -809,6 +839,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       await _putConfig('frete_frenet_token', _frenetTokenCtrl.text.trim());
       await _putConfig(
           'frete_superfrete_token', _superFreteTokenCtrl.text.trim());
+      await _putConfig(
+        'freteMelhorEnvioModoExibicao',
+        _freteMelhorEnvioModoExibicao,
+      );
       await _putConfig('embalagens', _embalagens);
 
       await _config.flush();
@@ -853,6 +887,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           'superfrete': {
             'token': _superFreteTokenCtrl.text.trim(),
           },
+          'freteMelhorEnvioModoExibicao': _freteMelhorEnvioModoExibicao,
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
@@ -876,6 +911,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           'correios_senha': _correiosSenhaCtrl.text.trim(),
           'frenet_token': _frenetTokenCtrl.text.trim(),
           'superfrete_token': _superFreteTokenCtrl.text.trim(),
+          'freteMelhorEnvioModoExibicao': _freteMelhorEnvioModoExibicao,
         },
         'embalagens': _embalagens,
       };
@@ -1269,6 +1305,34 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: _freteMelhorEnvioModoExibicao,
+          decoration: InputDecoration(
+            labelText: 'Transportadoras exibidas no carrinho',
+            prefixIcon: const Icon(Icons.filter_list),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            filled: true,
+            fillColor: _surfaceColor,
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: 'somente_correios',
+              child: Text('Somente Correios'),
+            ),
+            DropdownMenuItem(
+              value: 'todas_transportadoras',
+              child: Text('Todas as transportadoras'),
+            ),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            setState(() {
+              _freteMelhorEnvioModoExibicao =
+                  _normalizarModoExibicaoMelhorEnvio(value);
+            });
+          },
         ),
       ],
     );

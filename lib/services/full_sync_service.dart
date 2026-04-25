@@ -12,6 +12,7 @@ import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
 import 'produto_pull_skip_guard.dart';
+import 'produto_exclusao_tombstone_service.dart';
 import 'produto_remote_sync_guard.dart';
 import 'produtos_firestore_service.dart';
 import 'importar_vendas_firestore_service.dart';
@@ -184,9 +185,35 @@ class FullSyncService {
 
         for (final doc in snapshot.docs) {
           try {
-            final data = doc.data() as Map<String, dynamic>;
-            remoteIdsAccum.add(doc.id);
-            remoteDataAccum.add(data);
+            final did = doc.id;
+            final rawMap = Map<String, dynamic>.from(doc.data() as Map);
+            remoteIdsAccum.add(did);
+            remoteDataAccum.add(rawMap);
+            var data = Map<String, dynamic>.from(rawMap);
+
+            await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+            if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+              lojaId: lojaId,
+              estoqueDocId: did,
+            )) {
+              for (final k in box.keys.toList()) {
+                final loc = box.get(k);
+                if (loc != null &&
+                    loc.lojaId == lojaId &&
+                    loc.idFirebase == did) {
+                  await box.delete(k);
+                  logD(
+                    '🗑️ [FULL-SYNC] Hive removido (tombstone p) key=$k doc=$did',
+                  );
+                }
+              }
+              continue;
+            }
+            data = ProdutoExclusaoTombstoneService.filtrarDocEstoqueParaPull(
+              lojaId,
+              did,
+              data,
+            );
 
             if (ProdutosFirestoreService.isEstoqueDocPendingSoftDelete(data)) {
               logD(

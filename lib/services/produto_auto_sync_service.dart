@@ -8,6 +8,7 @@ import '../models/produto.dart';
 import 'catalogo_sync_service.dart';
 import 'catalog_cache_service.dart';
 import 'produto_remote_sync_guard.dart';
+import 'produto_exclusao_tombstone_service.dart';
 import 'produtos_firestore_service.dart';
 import 'store_resolver_facade.dart';
 
@@ -155,6 +156,20 @@ class ProdutoAutoSyncService {
   Future<void> _syncProduto(Produto produto, String lojaId) async {
     try {
       debugPrint('📤 [AUTO-SYNC] Sincronizando: ${produto.nome}');
+
+      final eid = produto.idFirebase.trim().isNotEmpty
+          ? produto.idFirebase.trim()
+          : produto.slug.trim();
+      if (eid.isNotEmpty) {
+        await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+        if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+            lojaId: lojaId, estoqueDocId: eid)) {
+          debugPrint(
+            '[TOMBSTONE_BLOCK] auto-sync ignorado: produto excluído ($eid)',
+          );
+          return;
+        }
+      }
 
       // Sempre refletir Hive em estoque_produtos (peso, custo, etc.). Antes só o catálogo era atualizado.
       try {

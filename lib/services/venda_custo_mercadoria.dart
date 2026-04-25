@@ -25,7 +25,8 @@ class VendaCustoMercadoria {
     var total = 0.0;
     for (var i = 0; i < itens.length; i++) {
       if (!linhaContaCustoMercadoria[i]) continue;
-      total += produtos[i].custoReal * itens[i].quantidade;
+      final custoUnit = itens[i].custoUnitario ?? produtos[i].custoReal;
+      total += custoUnit * itens[i].quantidade;
     }
     return total;
   }

@@ -14,6 +14,7 @@ import '../core/hive_box_names.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 import '../models/produto.dart';
 import 'catalog_cache_service.dart';
+import 'produto_exclusao_tombstone_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/upload_manager.dart';
 
@@ -498,6 +499,16 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
 
     final docId = catalogFirestoreDocId(pdt);
+    await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+    if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+        lojaId: lojaId, estoqueDocId: docId)) {
+      if (kDebugMode) {
+        debugPrint(
+          '[TOMBSTONE_BLOCK] catálogo sync ignorado: docId=$docId (excluído)',
+        );
+      }
+      return;
+    }
 
     final publicado = pdt.publicadoNoCatalogo == true;
     // Combo: quantidade = quantos combos disponíveis; produto simples: quantidade em estoque

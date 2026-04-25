@@ -6,6 +6,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../catalog_helpers.dart' show isValidHttpUrl;
+import '../catalog_storage_image_url_resolver.dart'
+    show resolveCatalogImageUrlForDisplay;
 import 'catalog_image_placeholder.dart';
 
 class CatalogBannerCarousel extends StatefulWidget {
@@ -54,6 +57,12 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
   }
 
   void _resolveBannerAspect(String rawUrl) {
+    _resolveBannerAspectAsync(rawUrl);
+  }
+
+  /// Mede o aspecto com a **mesma** URL de exibição do [CatalogImagePlaceholder]
+  /// (Storage / token), evitando “hora carrega, hora não” e leitura errada.
+  Future<void> _resolveBannerAspectAsync(String rawUrl) async {
     final url = rawUrl.trim();
     if (url.isEmpty ||
         _aspectRatioByUrl.containsKey(url) ||
@@ -64,7 +73,25 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
       return;
     }
     _aspectProbeInFlight.add(url);
-    final stream = NetworkImage(url).resolve(const ImageConfiguration());
+    late final String display;
+    try {
+      display = await resolveCatalogImageUrlForDisplay(
+        url,
+        canonicalLojaId: widget.resolvedLojaId?.trim(),
+      );
+    } catch (_) {
+      _aspectProbeInFlight.remove(url);
+      return;
+    }
+    if (!mounted) {
+      _aspectProbeInFlight.remove(url);
+      return;
+    }
+    if (display.isEmpty || !isValidHttpUrl(display)) {
+      _aspectProbeInFlight.remove(url);
+      return;
+    }
+    final stream = NetworkImage(display).resolve(const ImageConfiguration());
     late final ImageStreamListener listener;
     listener = ImageStreamListener(
       (ImageInfo info, bool syncCall) {
@@ -128,26 +155,29 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
     final banners = widget.banners;
     if (banners.isEmpty) return const SizedBox.shrink();
 
-    final w = MediaQuery.sizeOf(context).width;
+    final mq = MediaQuery.sizeOf(context);
+    final w = mq.width;
+    final screenH = mq.height;
     final isDesktop = w >= 1024;
-    final slotW = (isDesktop ? w - 32.0 : w - 16.0).clamp(120.0, 4096.0);
-    final minHeight = 220.0;
-    final maxHeight = 520.0;
+    // Largura útil do slide (desktop: padding 16+16 no card; mobile: full-bleed no PageView).
+    final slotW = (isDesktop ? w - 32.0 : w).clamp(120.0, 4096.0);
+    const minHeight = 220.0;
+    // Teto mais alto: reduz o clamp que gera “pilares” laterais (contain) em artes altas.
+    final maxHeight =
+        (screenH * 0.72).clamp(420.0, 800.0).toDouble();
     final currentBanner = banners[_idx.clamp(0, banners.length - 1)].trim();
     final currentAspect = _aspectRatioByUrl[currentBanner];
-    // Mobile volta ao comportamento anterior (altura fixa configurada).
-    // Desktop usa altura automática pelo aspecto real da arte.
+    // Mobile: altura fixa da config. Desktop: aspecto = slot; até medir, usa a mesma config
+    // (evita salto 40% tela → proporção e sensação de “instável”).
     final effectiveHeight = !isDesktop
         ? widget.height
         : ((currentAspect != null && currentAspect > 0)
             ? (slotW / currentAspect).clamp(minHeight, maxHeight).toDouble()
-            : (MediaQuery.sizeOf(context).height * 0.40).clamp(320.0, 520.0).toDouble());
+            : widget.height.clamp(minHeight, maxHeight).toDouble());
 
     return Column(
       children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
+        SizedBox(
           height: effectiveHeight,
           child: Stack(
             children: [
@@ -211,8 +241,10 @@ class _CatalogBannerCarouselState extends State<CatalogBannerCarousel> {
                 }
                 return page;
               }
+              // Mobile: sem padding horizontal — mesma largura útil da faixa de conteúdo
+              // (evita banner visualmente “mais estreito” que a busca e sensação de instável).
               Widget page = Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 8),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(borderRadiusMobile),
                   child: Container(

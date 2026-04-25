@@ -3181,6 +3181,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     required String checkoutButtonLabel,
     required String pixKey,
     required String freightToken,
+    required String freteMelhorEnvioModoExibicao,
     required bool mercadoPagoAtivo,
     required CatalogCheckoutSummaryTokens checkoutSummaryTokens,
     required CatalogCartUiTokens catalogCartUiTokens,
@@ -3283,6 +3284,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             checkoutButtonLabel: checkoutButtonLabel,
             pixKey: pixKey,
             freightToken: freightToken,
+            freteMelhorEnvioModoExibicao: freteMelhorEnvioModoExibicao,
             pixPreferMercadoPago: mercadoPagoAtivo,
             onRemove: _removeFromCart,
             onSetItemQuantity: (i, q) =>
@@ -3735,6 +3737,17 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   return;
                 }
                 final isPix = pagamento.toUpperCase() == 'PIX';
+                if (isPix &&
+                    !catalogCheckoutBuyerValidForMpPix(
+                      email: customer['email']?.toString(),
+                      cpf: customer['cpf']?.toString(),
+                    )) {
+                  showErr(
+                    'E-mail ou CPF inválidos para PIX. Use um e-mail completo (ex.: '
+                    'nome@provedor.com) e CPF com dígitos corretos.',
+                  );
+                  return;
+                }
                 int? maxInstallmentsSemJuros;
                 if (!isPix) {
                   final limites = _cart
@@ -3764,9 +3777,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     'type': isPix ? 'pix' : 'preference',
                     if (isPix) ...{
                       'descricao': 'Pedido #$pedidoId',
-                      if (catalogIsPlausibleMpBuyerEmail(
-                          customer['email']?.toString()))
-                        'email': customer['email']!.toString().trim(),
+                      'email': (customer['email'] ?? '').toString().trim(),
                       'cpf': customer['cpf']?.toString(),
                     } else ...{
                       'titulo': 'Pedido #$pedidoId',
@@ -4517,6 +4528,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   '')
               .toString()
               .trim();
+          final freteMelhorEnvioModoExibicaoRaw =
+              (cfg['freteMelhorEnvioModoExibicao'] ?? '')
+                  .toString()
+                  .trim()
+                  .toLowerCase();
+          final freteMelhorEnvioModoExibicao =
+              freteMelhorEnvioModoExibicaoRaw == 'somente_correios'
+                  ? 'somente_correios'
+                  : 'todas_transportadoras';
 
           // ✅ CORRIGIDO: Lê payments de 'rodape' (onde o LojaConfig salva)
           final rodapeRaw = cfg['rodape'];
@@ -5942,6 +5962,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       checkoutButtonLabel: checkoutButtonLabel,
                                       pixKey: pixKey,
                                       freightToken: freightToken,
+                                      freteMelhorEnvioModoExibicao:
+                                          freteMelhorEnvioModoExibicao,
                                       mercadoPagoAtivo: mercadoPagoAtivo,
                                       checkoutSummaryTokens:
                                           catalogCheckoutSummaryTokens,
@@ -6178,6 +6200,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             checkoutButtonLabel: checkoutButtonLabel,
                             pixKey: pixKey,
                             freightToken: freightToken,
+                            freteMelhorEnvioModoExibicao:
+                                freteMelhorEnvioModoExibicao,
                             mercadoPagoAtivo: mercadoPagoAtivo,
                             checkoutSummaryTokens: catalogCheckoutSummaryTokens,
                             catalogCartUiTokens: catalogCartUiTokens,
@@ -6699,6 +6723,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       pixKey: pixKey,
                                                       freightToken:
                                                           freightToken,
+                                                      freteMelhorEnvioModoExibicao:
+                                                          freteMelhorEnvioModoExibicao,
                                                       mercadoPagoAtivo:
                                                           mercadoPagoAtivo,
                                                       checkoutSummaryTokens:
@@ -6920,6 +6946,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       checkoutButtonLabel,
                                                   pixKey: pixKey,
                                                   freightToken: freightToken,
+                                                  freteMelhorEnvioModoExibicao:
+                                                      freteMelhorEnvioModoExibicao,
                                                   mercadoPagoAtivo:
                                                       mercadoPagoAtivo,
                                                   checkoutSummaryTokens:
@@ -7051,6 +7079,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     checkoutButtonLabel,
                                                 pixKey: pixKey,
                                                 freightToken: freightToken,
+                                                freteMelhorEnvioModoExibicao:
+                                                    freteMelhorEnvioModoExibicao,
                                                 mercadoPagoAtivo:
                                                     mercadoPagoAtivo,
                                                 checkoutSummaryTokens:

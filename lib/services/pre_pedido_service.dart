@@ -14,7 +14,6 @@ import '../repositories/pedido_repository.dart';
 import '../repositories/pedido_status_publico_repository.dart';
 import 'frete_service.dart';
 import 'notificacao_vendas_service.dart';
-import 'pedido_cliente_email_service.dart';
 import 'pedido_collection_resolver.dart';
 import 'indicacao_config_service.dart';
 import 'cupons_service.dart';
@@ -774,10 +773,8 @@ class PrePedidoService {
       final clienteData = prePedidoData?['cliente'] as Map?;
       final clienteNome =
           (clienteData)?['nome'] ?? 'Cliente';
-      final clienteEmail =
-          ((clienteData)?['email'] ?? '').toString().trim().toLowerCase();
 
-      // Atualizar status para 'confirmado' e salvar vendaId (mantém doc para rastreio: embalando → enviado → entregue)
+      // Atualizar status para 'confirmado' e salvar vendaId (mantém doc para rastreio: em preparação → enviado → entregue)
       await _pedidoRepository.updatePedido(
         flowType: PedidoFlowType.prePedidos,
         lojaId: lojaId,
@@ -824,27 +821,7 @@ class PrePedidoService {
         }
       }
 
-      // Email ao cliente: pedido confirmado (remetente = nome da loja)
-      if (clienteEmail.isNotEmpty) {
-        unawaited((() async {
-          try {
-            final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
-            final lojaData = lojaDoc.data();
-            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
-            final logoUrl = _extrairLogoUrl(lojaData);
-            await PedidoClienteEmailService.enviarAtualizacaoStatus(
-              clienteEmail: clienteEmail,
-              clienteNome: clienteNome,
-              pedidoId: prePedidoId,
-              novoStatus: 'confirmado',
-              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
-              logoUrl: logoUrl,
-            );
-          } catch (e) {
-            logW('⚠️ [CONFIRMAR] Erro ao enviar email de confirmação ao cliente (type=${e.runtimeType})');
-          }
-        })());
-      }
+      // E-mail ao cliente (confirmado): Cloud Function onPrePedidoClienteEmail
 
       return vendaId;
     } catch (e, st) {
@@ -869,8 +846,6 @@ class PrePedidoService {
       final clienteData = prePedidoData?['cliente'] as Map?;
       final clienteNome =
           (clienteData)?['nome'] ?? 'Cliente';
-      final clienteEmail =
-          ((clienteData)?['email'] ?? '').toString().trim().toLowerCase();
 
       // Mantém um espelho público sanitizado mesmo quando o pré-pedido privado é removido.
       try {
@@ -893,28 +868,6 @@ class PrePedidoService {
         logW(
           '⚠️ [CANCELAR] Erro ao atualizar pedido_status_publico (não bloqueia) (type=${e.runtimeType})',
         );
-      }
-
-      // Email ao cliente: pedido cancelado (antes de deletar)
-      if (clienteEmail.isNotEmpty) {
-        unawaited((() async {
-          try {
-            final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
-            final lojaData = lojaDoc.data();
-            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
-            final logoUrl = _extrairLogoUrl(lojaData);
-            await PedidoClienteEmailService.enviarAtualizacaoStatus(
-              clienteEmail: clienteEmail,
-              clienteNome: clienteNome,
-              pedidoId: prePedidoId,
-              novoStatus: 'cancelado',
-              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
-              logoUrl: logoUrl,
-            );
-          } catch (e) {
-            logW('⚠️ [CANCELAR] Erro ao enviar email de cancelamento ao cliente (type=${e.runtimeType})');
-          }
-        })());
       }
 
       // Deletar o documento ao invés de apenas marcar como cancelado
@@ -1012,13 +965,12 @@ class PrePedidoService {
   }
 
   /// Atualiza o status de um pré-pedido.
-  /// Envia email ao cliente com a atualização (e código de rastreio se enviado).
+  /// E-mails ao cliente: Cloud Function onPrePedidoClienteEmail.
   static Future<bool> atualizarStatus({
     required String lojaId,
     required String prePedidoId,
     required String novoStatus,
     Map<String, dynamic>? extraUpdates,
-    bool enviarEmailCliente = true,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -1037,42 +989,6 @@ class PrePedidoService {
 
       logD(
           '✅ Status do pré-pedido $prePedidoId atualizado para: $novoStatus');
-
-      // Email ao cliente a cada atualização de status (embalando, enviado, entregue)
-      if (enviarEmailCliente) {
-        unawaited((() async {
-          try {
-            final doc = await _prePedidosRef(lojaId).doc(prePedidoId).get();
-            if (!doc.exists) return;
-            final data = doc.data() ?? {};
-            final cliente = data['cliente'] as Map<String, dynamic>?;
-            final email =
-                (cliente?['email'] ?? '').toString().trim().toLowerCase();
-            if (email.isEmpty) return;
-
-            final lojaDoc = await _firestore.collection('lojas').doc(lojaId).get();
-            final lojaData = lojaDoc.data();
-            final lojaNome = (lojaData?['nome'] ?? 'Loja').toString().trim();
-            final logoUrl = _extrairLogoUrl(lojaData);
-            final codigoRastreio = extraUpdates?['codigoRastreio']?.toString();
-
-            await PedidoClienteEmailService.enviarAtualizacaoStatus(
-              clienteEmail: email,
-              clienteNome: (cliente?['nome'] ?? 'Cliente').toString(),
-              pedidoId: prePedidoId,
-              novoStatus: novoStatus,
-              codigoRastreio: codigoRastreio?.trim().isEmpty == true
-                  ? null
-                  : codigoRastreio,
-              remetenteNome: lojaNome.isEmpty ? 'Loja' : lojaNome,
-              logoUrl: logoUrl,
-            );
-            } catch (e) {
-            logW(
-                '⚠️ [PRE-PEDIDO] Erro ao enviar email de atualização (não bloqueia) (type=${e.runtimeType})');
-          }
-        })());
-      }
 
       return true;
     } catch (e, st) {
@@ -1115,30 +1031,6 @@ class PrePedidoService {
       // HTTPS - clicável no WhatsApp e abre no app se instalado
       return '$baseUrl/c/$lojaId?pedido=$prePedidoId';
     }
-  }
-
-  /// Determina o status do pagamento com base no método selecionado
-  ///
-  static String? _extrairLogoUrl(Map<String, dynamic>? lojaData) {
-    if (lojaData == null) return null;
-    final lm = (lojaData['logoMobileUrl'] ?? '').toString().trim();
-    if (lm.isNotEmpty) return lm;
-    final ld = (lojaData['logoDesktopUrl'] ?? '').toString().trim();
-    if (ld.isNotEmpty) return ld;
-    final media = lojaData['media'];
-    if (media is Map) {
-      final mobile = media['mobile'];
-      if (mobile is Map) {
-        final mUrl = (mobile['logoUrl'] ?? '').toString().trim();
-        if (mUrl.isNotEmpty) return mUrl;
-      }
-      final desktop = media['desktop'];
-      if (desktop is Map) {
-        final dUrl = (desktop['logoUrl'] ?? '').toString().trim();
-        if (dUrl.isNotEmpty) return dUrl;
-      }
-    }
-    return null;
   }
 
   /// Formata os dados do pré-pedido para exibição

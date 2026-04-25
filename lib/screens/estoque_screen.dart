@@ -3821,7 +3821,7 @@ String _formatGradeTexto(Produto p) {
   /// Custo total (custo real × quantidade; sem combos)
   double get _custoTotal => _produtosInventarioFisico.fold(
         0.0,
-        (acc, p) => acc + (p.custoReal * p.quantidade),
+        (acc, p) => acc + p.custoTotalEstoque(),
       );
   /// Valor de venda total (preço final × quantidade; sem combos)
   double get _valorTotal => _produtosInventarioFisico.fold(

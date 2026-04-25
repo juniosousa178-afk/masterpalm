@@ -1,5 +1,9 @@
 // lib/screens/public_catalog/catalog_helpers.dart
 // Helpers compartilhados para o catálogo público (cores, checkout, mapas).
+//
+// PIX (mpCatalogPayment): [catalogIsPlausibleMpBuyerEmail], [catalogIsValidCpfForMpPayer] e
+// [catalogCheckoutBuyerValidForMpPix] devem permanecer alinhados a
+// `functions/src/mpCatalogPayerBrasil.js`.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -15,6 +19,32 @@ bool catalogIsPlausibleMpBuyerEmail(String? raw) {
   if (parts.length != 2 || parts[0].isEmpty) return false;
   final dom = parts[1];
   return dom.contains('.') && dom.length >= 4;
+}
+
+/// CPF (11 dígitos, dígitos verificadores) — espelha [isValidCpfDigits] na Cloud Function.
+bool catalogIsValidCpfForMpPayer(String? raw) {
+  final cpf = (raw ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+  if (cpf.length != 11) return false;
+  if (cpf.split('').toSet().length == 1) return false;
+  var sum = 0;
+  for (var i = 0; i < 9; i++) {
+    sum += int.parse(cpf[i]) * (10 - i);
+  }
+  var d1 = (sum * 10) % 11;
+  if (d1 == 10) d1 = 0;
+  if (d1 != int.parse(cpf[9])) return false;
+  sum = 0;
+  for (var i = 0; i < 10; i++) {
+    sum += int.parse(cpf[i]) * (11 - i);
+  }
+  var d2 = (sum * 10) % 11;
+  if (d2 == 10) d2 = 0;
+  return d2 == int.parse(cpf[10]);
+}
+
+/// Verificação imediata antes de POST `mpCatalogPayment` com type=pix.
+bool catalogCheckoutBuyerValidForMpPix({required String? email, required String? cpf}) {
+  return catalogIsPlausibleMpBuyerEmail(email) && catalogIsValidCpfForMpPayer(cpf);
 }
 
 // ===================================================================

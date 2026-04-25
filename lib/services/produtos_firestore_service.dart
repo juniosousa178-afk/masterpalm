@@ -21,6 +21,7 @@ import 'catalog_thumbnail_service.dart';
 import 'combo_receita_normalizacao.dart';
 import 'image_upload_service.dart';
 import 'sync_queue_service.dart';
+import 'produto_exclusao_tombstone_service.dart';
 import 'produto_pull_skip_guard.dart';
 import '../src/blob_fetch_stub.dart'
     if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
@@ -42,6 +43,8 @@ enum ProdutoSyncRemotoStatus {
   lojaInvalida,
   produtoInvalido,
   semMudancas,
+  /// Produto com exclusão definitiva (tombstone) — upsert remoto descartado.
+  bloqueadoExclusaoTombstone,
 }
 
 class ProdutosFirestoreService {
@@ -351,6 +354,18 @@ class ProdutosFirestoreService {
               ? produto.slug
               : DateTime.now().millisecondsSinceEpoch.toString();
 
+      await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(storeId);
+      if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+        lojaId: storeId,
+        estoqueDocId: produtoId,
+      )) {
+        logW(
+          '[TOMBSTONE_BLOCK] upsert bloqueado — produto excluído: $produtoId',
+          tag: 'TOMBSTONE',
+        );
+        return ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone;
+      }
+
       // 📸 Fazer upload das imagens locais para Firebase Storage
       final imagensFinais = <String>[];
       bool imagensAtualizadas = false;
@@ -449,10 +464,27 @@ class ProdutosFirestoreService {
       final existingData = docSnap.data();
       final dynamic createdAtPersistido = existingData?['createdAt'];
 
+      // Não registrar tombstone de variação via diff remoto×local no sync geral: payload
+      // local pode estar incompleto (pull parcial, import, race) e marcar célula ativa como "excluída".
+
       // Sempre enviar mapas explícitos (vazios = limpar com merge:true).
-      final variacoesPush = _variacoesParaFirestorePush(produto);
-      final variacoesExtraPush = _variacoesExtraTipoParaFirestorePush(produto);
-      final estoquePorTamPush = _estoquePorTamanhoParaFirestorePush(produto);
+      final variacoesPush = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
+        storeId,
+        produtoId,
+        _variacoesParaFirestorePush(produto),
+      );
+      final variacoesExtraPush =
+          ProdutoExclusaoTombstoneService.filtrarVariacoesExtraTipo(
+        storeId,
+        produtoId,
+        _variacoesExtraTipoParaFirestorePush(produto),
+      );
+      final estoquePorTamPush =
+          ProdutoExclusaoTombstoneService.filtrarEstoquePorTamanho(
+        storeId,
+        produtoId,
+        _estoquePorTamanhoParaFirestorePush(produto),
+      );
       logD(
         '[VARIACAO_CLEAR] push estoque_produtos/$produtoId '
         'variacoesKeys=${variacoesPush.length} extraKeys=${variacoesExtraPush.length} '
@@ -782,8 +814,32 @@ class ProdutosFirestoreService {
 
       for (final doc in allDocs) {
         try {
-          final data = doc.data();
+          var data = Map<String, dynamic>.from(doc.data());
           final produtoId = doc.id;
+
+          await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+          if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+            lojaId: lojaId,
+            estoqueDocId: produtoId,
+          )) {
+            for (final k in produtosBox.keys.toList()) {
+              final loc = produtosBox.get(k);
+              if (loc != null &&
+                  loc.lojaId == lojaId &&
+                  loc.idFirebase == produtoId) {
+                await produtosBox.delete(k);
+                logD(
+                  '🗑️ [PRODUTOS-SYNC] Hive removido (tombstone p): key=$k doc=$produtoId',
+                );
+              }
+            }
+            continue;
+          }
+          data = ProdutoExclusaoTombstoneService.filtrarDocEstoqueParaPull(
+            lojaId,
+            produtoId,
+            data,
+          );
 
           // Soft delete pendente: doc ainda existe até a exclusão definitiva; não recriar no Hive.
           if (isEstoqueDocPendingSoftDelete(data)) {
@@ -1096,6 +1152,11 @@ class ProdutosFirestoreService {
             if (p.idFirebase.isEmpty) {
               p.idFirebase = produtoId;
             }
+            ProdutoExclusaoTombstoneService.filtrarMapasLocaisDoProdutoPeloTombstone(
+              lojaId,
+              produtoId,
+              p,
+            );
             p.recalcularQuantidadeTotal();
             await p.save();
             atualizados++;
@@ -1608,16 +1669,28 @@ class ProdutosFirestoreService {
         if (cor.isEmpty) continue;
         final v = e.value;
         if (v is Map) {
-          final m = <String, int>{};
+          final m = <String, dynamic>{};
           for (final ie in v.entries) {
             final k = ie.key?.toString() ?? '';
+            if (k.isEmpty) continue;
+            if (ProdutoVariacaoExtra.isMetaKey(k)) {
+              final c = ie.value is num
+                  ? (ie.value as num).toDouble()
+                  : double.tryParse(ie.value?.toString() ?? '');
+              if (c != null && c > 0) {
+                m[k] = c;
+              }
+              continue;
+            }
             final q = ie.value is num
                 ? (ie.value as num).toInt()
                 : int.tryParse(ie.value?.toString() ?? '') ?? 0;
             m[k] = q;
           }
           if (m.isNotEmpty) {
-            if (m.length == 1 && m.containsKey('')) {
+            final hasMeta =
+                m.containsKey(ProdutoVariacaoExtra.kMetaCustoUnitarioKey);
+            if (!hasMeta && m.length == 1 && m.containsKey('')) {
               mapaCor[cor] = m[''] ?? 0;
             } else {
               mapaCor[cor] = m;

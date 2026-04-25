@@ -8,6 +8,7 @@ import '../models/produto.dart';
 import 'catalog_cache_service.dart';
 import 'catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
 import 'firestore_paths.dart';
+import 'produto_exclusao_tombstone_service.dart';
 import 'produto_imagens_storage_cleanup.dart';
 import 'produtos_firestore_service.dart';
 
@@ -135,8 +136,33 @@ class ProdutoExclusaoRemotaService {
     required String lojaId,
   }) async {
     if (lojaId.isEmpty) return ProdutoExclusaoRemotaStatus.pendente;
-    // Imagens no Storage: best-effort. Se falhar, o produto ainda some do estoque
-    // (evita "exclusão não confirmada" só por timeout/CORS no Storage no web).
+
+    final eid = produto.idFirebase.trim().isNotEmpty
+        ? produto.idFirebase.trim()
+        : produto.slug.trim();
+    if (eid.isEmpty) {
+      logE(
+        '[TOMBSTONE_FAIL_ABORT_DELETE] sem idFirebase/slug: exclusao insegura — abortada',
+        tag: 'EXCLUSAO',
+      );
+      return ProdutoExclusaoRemotaStatus.pendente;
+    }
+
+    final okT = await ProdutoExclusaoTombstoneService.registrarExclusaoProdutoCompleto(
+      lojaId: lojaId,
+      estoqueDocId: eid,
+      slug: produto.slug.trim().isNotEmpty ? produto.slug : null,
+    );
+    if (!okT) {
+      logE(
+        '[TOMBSTONE_FAIL_ABORT_DELETE] tombstone p=true nao confirmado; abortando '
+        'imagem+delete (loja=$lojaId doc=$eid)',
+        tag: 'EXCLUSAO',
+      );
+      return ProdutoExclusaoRemotaStatus.pendente;
+    }
+
+    // Storage: best-effort (após tombstone confirmar).
     try {
       await ProdutoImagensStorageCleanup.apagarTodasImagensGerenciadasDoProduto(
         produto,
@@ -157,7 +183,9 @@ class ProdutoExclusaoRemotaService {
       );
     } catch (e, st) {
       logE(
-        '[EXCLUSAO_REMOTA] Falha deleteProdutoRobusto',
+        '[TOMBSTONE_STALE] delete estoque falhou apos [TOMBSTONE_OK] p=true; '
+        'doc remoto pode existir (limpeza manual possivel) loja=$lojaId eid=$eid. '
+        'Detalhe: deleteProdutoRobusto',
         tag: 'EXCLUSAO',
         error: e,
         st: st,
