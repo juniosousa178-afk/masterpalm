@@ -800,7 +800,7 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                       IconButton(
                         icon: const Icon(Icons.cloud_upload_outlined,
                             color: Colors.white),
-                        tooltip: 'Publicar catálogo',
+                        tooltip: 'Publicação do catálogo',
                         onPressed: _lojaId == null ? null : _publicarCatalogo,
                       ),
                     const SizedBox(width: 8),
@@ -954,7 +954,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton.icon(
-                                  onPressed: (_lojaId == null || _mpOAuthConnecting)
+                                  onPressed: (_lojaId == null ||
+                                          _mpOAuthConnecting)
                                       ? null
                                       : () async {
                                           setState(() {
@@ -962,8 +963,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                             _mpOAuthError = null;
                                           });
                                           try {
-                                            await PagamentosService.abrirConexaoOAuth(
-                                                _lojaId!);
+                                            await PagamentosService
+                                                .abrirConexaoOAuth(_lojaId!);
                                           } catch (e) {
                                             if (!mounted) return;
                                             setState(() {
@@ -1024,7 +1025,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                             barrierDismissible: false,
                                             builder: (_) => Center(
                                               child: Container(
-                                                padding: const EdgeInsets.all(24),
+                                                padding:
+                                                    const EdgeInsets.all(24),
                                                 decoration: BoxDecoration(
                                                   color: Colors.white,
                                                   borderRadius:
@@ -1046,8 +1048,9 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                             ),
                                           );
                                           try {
-                                            final health = await PagamentosService
-                                                .validarConexaoMercadoPago(
+                                            final health =
+                                                await PagamentosService
+                                                    .validarConexaoMercadoPago(
                                               lojaId: _lojaId!,
                                             );
                                             if (!context.mounted) return;
@@ -1075,7 +1078,8 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                             );
                                           }
                                         },
-                                  icon: const Icon(Icons.verified_user_outlined),
+                                  icon:
+                                      const Icon(Icons.verified_user_outlined),
                                   label: const Text(
                                     'Validar conexão Mercado Pago',
                                   ),

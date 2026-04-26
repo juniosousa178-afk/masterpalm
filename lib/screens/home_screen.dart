@@ -91,6 +91,7 @@ import '../motor_crescimento_automacoes/screens/campanhas_sugeridas_screen.dart'
 import '../core/logger.dart';
 import '../core/plan_matrix.dart';
 import '../widgets/plan_gated_screen.dart';
+import '../services/catalog_public_url_service.dart';
 import '../services/public_store_link_helper.dart';
 import '../utils/home_store_context_helper.dart';
 // WebLandingPlanCard é declarado no final deste arquivo para evitar problemas de resolução de import.
@@ -116,10 +117,15 @@ class _HomeScreenState extends State<HomeScreen>
 
   String _usuario = '';
   String _tipo = 'vendedor';
+
   /// Identificador interno da loja ativa (Hive, Firestore, Motor, Campanhas, Painel).
   String _lojaIdInterno = '';
+
   /// Slug/identificador público para link e catálogo (pode ser igual ao interno).
   String _lojaSlugPublico = '';
+
+  /// URL pública do catálogo (domínio próprio ou hosted).
+  String? _catalogOnlineUrl;
   bool _carregando = true;
   bool _vendedorSemPermissao =
       false; // ✅ Vendedor sem nenhuma permissão liberada
@@ -141,7 +147,9 @@ class _HomeScreenState extends State<HomeScreen>
       Future<void>.delayed(Duration(milliseconds: kIsWeb ? 900 : 220), () {
         if (!mounted) return;
         AutoSyncService.syncCompleto().then((r) {
-          if (mounted) setState(() {}); // Atualiza dashboard quando sync terminar
+          if (mounted) {
+            setState(() {}); // Atualiza dashboard quando sync terminar
+          }
         }).catchError((_) {});
       });
     });
@@ -153,7 +161,8 @@ class _HomeScreenState extends State<HomeScreen>
       // Recalcula tipo (com ROOT override) aqui também, por segurança
       final user = FirebaseAuth.instance.currentUser;
       final email = (user?.email ?? '').trim().toLowerCase();
-      final isRoot = (sessao.get('is_root') == true) || RoleUtils.isRootEmail(email);
+      final isRoot =
+          (sessao.get('is_root') == true) || RoleUtils.isRootEmail(email);
 
       final tipoHive = (sessao.get('tipo_usuario') as String?) ?? 'vendedor';
       final tipoEfetivo = isRoot ? 'programador' : tipoHive;
@@ -195,10 +204,13 @@ class _HomeScreenState extends State<HomeScreen>
       sessao.put('store_id', _lojaIdInterno);
       logD('📋 [HOME] store_id persistido na sessão: $_lojaIdInterno');
     }
-    if (_lojaSlugPublico.isEmpty && _lojaIdInterno.isNotEmpty && isValidForPublicLink(_lojaIdInterno)) {
+    if (_lojaSlugPublico.isEmpty &&
+        _lojaIdInterno.isNotEmpty &&
+        isValidForPublicLink(_lojaIdInterno)) {
       _lojaSlugPublico = _lojaIdInterno;
     }
-    logD('📋 [HOME] contexto loja: interno=${_lojaIdInterno.isNotEmpty ? "ok" : "vazio"} slugPublico=${_lojaSlugPublico.isNotEmpty ? "ok" : "vazio"}');
+    logD(
+        '📋 [HOME] contexto loja: interno=${_lojaIdInterno.isNotEmpty ? "ok" : "vazio"} slugPublico=${_lojaSlugPublico.isNotEmpty ? "ok" : "vazio"}');
 
     // ✅ ROOT override (impede "root virar vendedor")
     final isRoot = (sessao.get('is_root') == true) ||
@@ -223,7 +235,9 @@ class _HomeScreenState extends State<HomeScreen>
     if (user != null) {
       final storeId = (_lojaIdInterno.isNotEmpty
               ? _lojaIdInterno
-              : (sessao.get('store_id') ?? sessao.get('storeId') ?? '').toString().trim())
+              : (sessao.get('store_id') ?? sessao.get('storeId') ?? '')
+                  .toString()
+                  .trim())
           .trim();
       FirestoreCriticalListenerService.startPermissoesListener(
         userEmail: user.email ?? _usuario,
@@ -231,6 +245,25 @@ class _HomeScreenState extends State<HomeScreen>
         storeId: storeId.isNotEmpty ? storeId : null,
         userUid: user.uid,
       );
+    }
+
+    final lidForCatalogUrl = _lojaIdInterno.isNotEmpty
+        ? _lojaIdInterno
+        : (_lojaSlugPublico.isNotEmpty ? _lojaSlugPublico : '');
+    if (lidForCatalogUrl.isNotEmpty) {
+      try {
+        _catalogOnlineUrl =
+            await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(
+          lidForCatalogUrl,
+          slug: _lojaSlugPublico.isNotEmpty ? _lojaSlugPublico : null,
+        );
+      } catch (_) {
+        _catalogOnlineUrl = buildPublicCatalogUrl(
+          _lojaSlugPublico.isNotEmpty ? _lojaSlugPublico : lidForCatalogUrl,
+        );
+      }
+    } else {
+      _catalogOnlineUrl = null;
     }
 
     if (mounted) setState(() => _carregando = false);
@@ -297,8 +330,8 @@ class _HomeScreenState extends State<HomeScreen>
       }).toList();
       if (vencidas.isEmpty && vencendo.isEmpty) return;
 
-      final valorTotal = (vencidas + vencendo)
-          .fold<double>(0, (s, c) => s + c.valor);
+      final valorTotal =
+          (vencidas + vencendo).fold<double>(0, (s, c) => s + c.valor);
 
       if (!mounted) return;
       await showDialog<void>(
@@ -352,8 +385,7 @@ class _HomeScreenState extends State<HomeScreen>
       final svc = PlanosService();
 
       // Só lê (não cria automaticamente aqui).
-      PlanInfo? plan =
-          await svc.fetchCurrentPlan(uid: user.uid, email: email);
+      PlanInfo? plan = await svc.fetchCurrentPlan(uid: user.uid, email: email);
       if (!mounted) return;
 
       // fetch null (timeout/rede) não pode sobrepor o mesmo critério do Splash/LicenseManager.
@@ -387,8 +419,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (!mounted) return;
         if (refreshed != null) plan = refreshed;
         end = plan.currentPeriodEnd ?? await LicenseManager.getCachedExpiry();
-        if (end == null &&
-            !PlanosService.planGrantsAdminAppAccess(plan)) {
+        if (end == null && !PlanosService.planGrantsAdminAppAccess(plan)) {
           await FirebaseAuth.instance.signOut();
           if (!mounted) return;
           Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
@@ -755,8 +786,9 @@ class _HomeScreenState extends State<HomeScreen>
       if (confirm != true) return;
 
       // Obter lojaId (mesmo que VendasScreen usa, para garantir mesma box)
-      final lojaId = await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 15))
-          ?? await StoreResolverFacade.resolveForAdminApp();
+      final lojaId = await LojaIdService.getWithTimeout(
+              timeout: const Duration(seconds: 15)) ??
+          await StoreResolverFacade.resolveForAdminApp();
       logD('📥 [SYNC-DEBUG] Importar dados (menu) → lojaId=$lojaId');
       if (lojaId == null || lojaId.isEmpty) {
         if (!mounted) return;
@@ -797,8 +829,7 @@ class _HomeScreenState extends State<HomeScreen>
           boxName: produtosBox.name,
           lojaId: lojaId,
         );
-        produtosImportados =
-            await ProdutosFirestoreService.syncFirestoreToHive(
+        produtosImportados = await ProdutosFirestoreService.syncFirestoreToHive(
           lojaId: lojaId,
           produtosBox: produtosBox,
         );
@@ -814,8 +845,7 @@ class _HomeScreenState extends State<HomeScreen>
         logD('[IMPORT] Importando clientes...');
         final clientesBox =
             await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
-        clientesImportados =
-            await ClientesFirestoreService.syncFirestoreToHive(
+        clientesImportados = await ClientesFirestoreService.syncFirestoreToHive(
           lojaId: lojaId,
           clientesBox: clientesBox,
         );
@@ -858,7 +888,8 @@ class _HomeScreenState extends State<HomeScreen>
         logD(
             '[IMPORT] ${resultadoVendas.importadas} vendas novas importadas (${resultadoVendas.jaExistentes} já existiam, total Firestore=${resultadoVendas.totalNoFirestore})');
         if (resultadoVendas.erroMensagem != null) {
-          logW('[IMPORT] Vendas: fallback usado (erro anterior: ${resultadoVendas.erroMensagem})');
+          logW(
+              '[IMPORT] Vendas: fallback usado (erro anterior: ${resultadoVendas.erroMensagem})');
         }
       } catch (e) {
         totalErros++;
@@ -895,14 +926,18 @@ class _HomeScreenState extends State<HomeScreen>
       if (vendasImportadas == 0) {
         final r = resultadoVendas;
         if (r != null && r.totalNoFirestore > 0 && r.jaExistentes > 0) {
-          msgVendas = '\n\nVendas: ${r.totalNoFirestore} na nuvem (${r.jaExistentes} já estavam no aparelho). Abra a tela de Vendas para visualizá-las.';
+          msgVendas =
+              '\n\nVendas: ${r.totalNoFirestore} na nuvem (${r.jaExistentes} já estavam no aparelho). Abra a tela de Vendas para visualizá-las.';
         } else if (r != null && r.totalNoFirestore > 0) {
-          msgVendas = '\n\nVendas na nuvem: ${r.totalNoFirestore}. Abra a tela de Vendas para conferir.';
+          msgVendas =
+              '\n\nVendas na nuvem: ${r.totalNoFirestore}. Abra a tela de Vendas para conferir.';
         } else {
-          msgVendas = '\n\nNenhuma venda nova para importar (todas já estavam no aparelho ou a sincronização ainda não foi feita no outro dispositivo).';
+          msgVendas =
+              '\n\nNenhuma venda nova para importar (todas já estavam no aparelho ou a sincronização ainda não foi feita no outro dispositivo).';
         }
         if (resultadoVendas?.erroMensagem != null) {
-          msgVendas += '\n\nAviso: foi usado modo alternativo de leitura (índice Firestore pode estar sendo criado).';
+          msgVendas +=
+              '\n\nAviso: foi usado modo alternativo de leitura (índice Firestore pode estar sendo criado).';
         }
       }
       _showSuccessSheet(
@@ -1054,7 +1089,8 @@ class _HomeScreenState extends State<HomeScreen>
   static const double _kLandingPrecoIntermediario = 29.99;
 
   String _fmtBRL(double v) =>
-      NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2).format(v);
+      NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2)
+          .format(v);
 
   // =========================
   // WEB landing (mastepalm.com.br) com seção de planos
@@ -1401,7 +1437,8 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       subtitle: Text(
         PlanMatrix.upgradeHint(feature),
-        style: TextStyle(fontSize: sidebarMode ? 10 : 11, color: Colors.grey[500]),
+        style:
+            TextStyle(fontSize: sidebarMode ? 10 : 11, color: Colors.grey[500]),
         maxLines: 3,
       ),
       trailing: TextButton(
@@ -1631,7 +1668,11 @@ class _HomeScreenState extends State<HomeScreen>
 
     void closeSection() {
       if (currentSection != null && currentChildren.isNotEmpty) {
-        sections.add((title: currentSection!, color: currentSectionColor, children: List.from(currentChildren)));
+        sections.add((
+          title: currentSection!,
+          color: currentSectionColor,
+          children: List.from(currentChildren)
+        ));
         currentChildren = [];
       }
     }
@@ -1684,7 +1725,8 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // ✅ Abrir catálogo online (link direto da loja ativa; sem placeholder)
-    final catalogUrl = buildPublicCatalogUrl(_lojaSlugPublico);
+    final catalogUrl =
+        _catalogOnlineUrl ?? buildPublicCatalogUrl(_lojaSlugPublico);
     if (catalogUrl != null) {
       currentChildren.add(
         ListTile(
@@ -1696,7 +1738,8 @@ class _HomeScreenState extends State<HomeScreen>
               color: const Color(0xFF3B82F6).withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.language, color: Color(0xFF3B82F6), size: 20),
+            child:
+                const Icon(Icons.language, color: Color(0xFF3B82F6), size: 20),
           ),
           title: Text(
             'Abrir catálogo online',
@@ -1748,11 +1791,13 @@ class _HomeScreenState extends State<HomeScreen>
     startSection('Gestão');
 
     if (combinadas['estoque'] == true) {
-      currentChildren.add(_buildMenuTile('Estoque', Icons.inventory_2, '/estoque',
+      currentChildren.add(_buildMenuTile(
+          'Estoque', Icons.inventory_2, '/estoque',
           sidebarMode: sidebarMode));
     }
     if (combinadas['vendas'] == true) {
-      currentChildren.add(_buildMenuTile('Vendas', Icons.point_of_sale, '/vendas',
+      currentChildren.add(_buildMenuTile(
+          'Vendas', Icons.point_of_sale, '/vendas',
           iconBgColor: _successColor.withOpacity(0.1),
           color: _successColor,
           sidebarMode: sidebarMode));
@@ -1862,7 +1907,8 @@ class _HomeScreenState extends State<HomeScreen>
           planFeature: PlanGateFeature.fornecedores));
     }
     if (combinadas['precificacao'] == true) {
-      currentChildren.add(_menuTileWithPlanGate('Precificação', Icons.calculate, '/precificacao',
+      currentChildren.add(_menuTileWithPlanGate(
+          'Precificação', Icons.calculate, '/precificacao',
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
           menuPlanTier: menuPlanTier,
@@ -2089,7 +2135,8 @@ class _HomeScreenState extends State<HomeScreen>
           applyPlanGate: applyPlanGate,
           menuPlanTier: menuPlanTier,
           planFeature: PlanGateFeature.adminSync));
-      currentChildren.add(_menuTileWithPlanGate('Backup da Loja', Icons.backup, '/backup',
+      currentChildren.add(_menuTileWithPlanGate(
+          'Backup da Loja', Icons.backup, '/backup',
           sidebarMode: sidebarMode,
           applyPlanGate: applyPlanGate,
           menuPlanTier: menuPlanTier,
@@ -2123,7 +2170,8 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
 
-      currentChildren.add(_buildMenuTile('Planos', Icons.workspace_premium, '/planos',
+      currentChildren.add(_buildMenuTile(
+          'Planos', Icons.workspace_premium, '/planos',
           iconBgColor: _warningColor.withOpacity(0.1),
           color: _warningColor,
           sidebarMode: sidebarMode));
@@ -2137,7 +2185,8 @@ class _HomeScreenState extends State<HomeScreen>
           iconBgColor: Colors.orange.withOpacity(0.1),
           color: Colors.orange,
           sidebarMode: sidebarMode));
-      currentChildren.add(_buildMenuTile('Alterar PIN', Icons.vpn_key, '/config_pin',
+      currentChildren.add(_buildMenuTile(
+          'Alterar PIN', Icons.vpn_key, '/config_pin',
           sidebarMode: sidebarMode));
       currentChildren.add(_buildMenuTile(
           'Teste Checkout (MP)', Icons.payment, '/test_checkout',
@@ -2674,7 +2723,8 @@ class _HomeScreenState extends State<HomeScreen>
                 // Header compacto (insight do mês)
                 if (isValidForPublicLink(_lojaSlugPublico))
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
@@ -2693,9 +2743,8 @@ class _HomeScreenState extends State<HomeScreen>
                     child: DashboardInsightsTicker(
                       lojaId: _lojaIdInterno,
                       isVendedor: _tipo == 'vendedor',
-                      vendedorNome: _tipo == 'vendedor'
-                          ? _getFirstName(_usuario)
-                          : null,
+                      vendedorNome:
+                          _tipo == 'vendedor' ? _getFirstName(_usuario) : null,
                     ),
                   ),
                 if (_lojaIdInterno.isNotEmpty) const SizedBox(height: 8),
@@ -2762,8 +2811,7 @@ class _HomeScreenState extends State<HomeScreen>
                   builder: (context, snap) {
                     return _futureListOrError(
                       snap: snap,
-                      onRetry: () =>
-                          setState(() => _homeSidebarMenuRetryKey++),
+                      onRetry: () => setState(() => _homeSidebarMenuRetryKey++),
                       onData: (items) => AdminSidebar(
                         usuario: _usuario,
                         tipo: _tipo,
@@ -2939,8 +2987,7 @@ class _HomeScreenState extends State<HomeScreen>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.store,
-                    size: 22, color: theme.colorScheme.onSurface),
+                Icon(Icons.store, size: 22, color: theme.colorScheme.onSurface),
                 const SizedBox(width: 8),
                 const Text(
                   'MasterPalm',
@@ -2979,7 +3026,8 @@ class _HomeScreenState extends State<HomeScreen>
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => GlobalSearchScreen(lojaId: _lojaIdInterno),
+                      builder: (_) =>
+                          GlobalSearchScreen(lojaId: _lojaIdInterno),
                     ),
                   );
                   break;

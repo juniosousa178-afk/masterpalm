@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/catalog_public_url_service.dart';
 import '../services/catalog_share_service.dart';
 import '../services/public_store_link_helper.dart';
 import '../services/loja_id_service.dart';
@@ -14,11 +15,14 @@ class CompartilharWhatsAppScreen extends StatefulWidget {
   const CompartilharWhatsAppScreen({super.key});
 
   @override
-  State<CompartilharWhatsAppScreen> createState() => _CompartilharWhatsAppScreenState();
+  State<CompartilharWhatsAppScreen> createState() =>
+      _CompartilharWhatsAppScreenState();
 }
 
-class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen> {
+class _CompartilharWhatsAppScreenState
+    extends State<CompartilharWhatsAppScreen> {
   String? _lojaId;
+  String? _catalogUrlResolved;
   String? _erro;
   bool _loading = true;
 
@@ -40,15 +44,25 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
 
   Future<void> _carregarLoja() async {
     final lojaId = await LojaIdService.get();
+    String? resolved;
+    if (lojaId != null && lojaId.isNotEmpty) {
+      try {
+        resolved =
+            await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(lojaId);
+      } catch (_) {
+        resolved = buildPublicCatalogUrl(lojaId);
+      }
+    }
     setState(() {
       _lojaId = lojaId;
+      _catalogUrlResolved = resolved;
       _loading = false;
       if (lojaId == null || lojaId.isEmpty) _erro = 'Loja não identificada.';
     });
   }
 
   String get _urlCatalogo {
-    final url = buildPublicCatalogUrl(_lojaId);
+    final url = _catalogUrlResolved ?? buildPublicCatalogUrl(_lojaId);
     if (url == null) return '';
     return CatalogShareService.buildUrlWithParams(url);
   }
@@ -57,13 +71,15 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
     if (texto.isEmpty) return;
     Clipboard.setData(ClipboardData(text: texto));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Mensagem copiada para a área de transferência')),
+      const SnackBar(
+          content: Text('Mensagem copiada para a área de transferência')),
     );
   }
 
   Future<void> _abrirWhatsApp(String texto) async {
     if (texto.isEmpty) return;
-    final uri = Uri.parse('https://wa.me/?text=${CatalogShareService.encodeForWhatsApp(texto)}');
+    final uri = Uri.parse(
+        'https://wa.me/?text=${CatalogShareService.encodeForWhatsApp(texto)}');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
@@ -91,21 +107,25 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Text(_erro!, style: TextStyle(color: theme.colorScheme.error), textAlign: TextAlign.center),
+            child: Text(_erro!,
+                style: TextStyle(color: theme.colorScheme.error),
+                textAlign: TextAlign.center),
           ),
         ),
       );
     }
 
     final urlCatalogo = _urlCatalogo;
-    final msgCatalogo = CatalogShareService.buildCatalogShareMessage(url: urlCatalogo);
+    final msgCatalogo =
+        CatalogShareService.buildCatalogShareMessage(url: urlCatalogo);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Compartilhar no WhatsApp'),
       ),
       body: ListView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics()),
         padding: const EdgeInsets.all(16),
         children: [
           // Catálogo completo
@@ -119,37 +139,46 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                     children: [
                       Icon(Icons.store, color: theme.colorScheme.primary),
                       const SizedBox(width: 8),
-                      Text('Catálogo completo', style: theme.textTheme.titleMedium),
+                      Text('Catálogo completo',
+                          style: theme.textTheme.titleMedium),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Compartilhe o link do seu catálogo com clientes.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(0.5),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: SelectableText(msgCatalogo, style: const TextStyle(height: 1.4)),
+                    child: SelectableText(msgCatalogo,
+                        style: const TextStyle(height: 1.4)),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       FilledButton.icon(
-                        onPressed: urlCatalogo.isEmpty ? null : () => _copiar(msgCatalogo),
+                        onPressed: urlCatalogo.isEmpty
+                            ? null
+                            : () => _copiar(msgCatalogo),
                         icon: const Icon(Icons.copy, size: 18),
                         label: const Text('Copiar'),
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
-                        onPressed: urlCatalogo.isEmpty ? null : () => _abrirWhatsApp(msgCatalogo),
+                        onPressed: urlCatalogo.isEmpty
+                            ? null
+                            : () => _abrirWhatsApp(msgCatalogo),
                         icon: const Icon(Icons.chat, size: 18),
                         label: const Text('Abrir no WhatsApp'),
-                        style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366)),
+                        style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF25D366)),
                       ),
                     ],
                   ),
@@ -168,7 +197,8 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.campaign_outlined, color: theme.colorScheme.primary),
+                      Icon(Icons.campaign_outlined,
+                          color: theme.colorScheme.primary),
                       const SizedBox(width: 8),
                       Text('Campanha', style: theme.textTheme.titleMedium),
                     ],
@@ -213,10 +243,12 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                                color: theme.colorScheme.surfaceContainerHighest
+                                    .withOpacity(0.5),
                                 borderRadius: BorderRadius.circular(8),
                               ),
-                              child: SelectableText(msgCampanha, style: const TextStyle(height: 1.4)),
+                              child: SelectableText(msgCampanha,
+                                  style: const TextStyle(height: 1.4)),
                             ),
                             const SizedBox(height: 12),
                             Row(
@@ -231,14 +263,16 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                                   onPressed: () => _abrirWhatsApp(msgCampanha),
                                   icon: const Icon(Icons.chat, size: 18),
                                   label: const Text('Abrir no WhatsApp'),
-                                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF25D366)),
+                                  style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(0xFF25D366)),
                                 ),
                               ],
                             ),
                           ] else
                             Text(
                               'Digite o nome da campanha para gerar a mensagem.',
-                              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant),
                             ),
                         ],
                       );
@@ -259,7 +293,8 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.inventory_2_outlined, color: theme.colorScheme.primary),
+                      Icon(Icons.inventory_2_outlined,
+                          color: theme.colorScheme.primary),
                       const SizedBox(width: 8),
                       Text('Produto', style: theme.textTheme.titleMedium),
                     ],
@@ -267,7 +302,8 @@ class _CompartilharWhatsAppScreenState extends State<CompartilharWhatsAppScreen>
                   const SizedBox(height: 8),
                   Text(
                     'Para compartilhar um produto específico, abra o catálogo no navegador (ou envie o link do catálogo acima) e use o botão compartilhar em cada produto.',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                   ),
                 ],
               ),

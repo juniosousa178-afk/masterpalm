@@ -176,51 +176,6 @@ class _PaneMenuWidget extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Catálogo',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Catálogo em manutenção'),
-                    subtitle: const Text(
-                      'Quando ativado, os clientes verão uma tela de manutenção no catálogo público. O painel administrativo continua funcionando normalmente.',
-                    ),
-                    value: host._catalogoEmManutencao,
-                    onChanged: host._menuSetCatalogoEmManutencao,
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: host._mensagemManutencaoCatalogoCtrl,
-                    onChanged: host._menuSetMensagemManutencaoCatalogo,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      labelText: 'Mensagem de manutenção (opcional)',
-                      border: OutlineInputBorder(),
-                      helperText:
-                          'Padrão: Estamos preparando algo incrível para você ter a melhor experiência.',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
                     'Página "Sobre a loja" no catálogo',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,

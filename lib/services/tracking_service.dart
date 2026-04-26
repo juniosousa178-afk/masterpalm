@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/venda_tracking.dart';
 import '../utils/text_utils.dart';
+import 'catalog_public_url_service.dart';
 import 'store_resolver_facade.dart';
 import 'comissao_config_service.dart';
 
@@ -20,7 +21,6 @@ class TrackingService {
   TrackingService._();
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
-  static const String _baseUrl = 'https://app.mastepalm.com.br/loja';
 
   // ============================================================
   // GERAÇÃO DE LINKS DE TRACKING
@@ -47,16 +47,15 @@ class TrackingService {
       }
 
       // Resolver loja
-      final resolvedLojaId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+      final resolvedLojaId =
+          lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (resolvedLojaId == null || resolvedLojaId.isEmpty) {
         return TrackingLinkResult.erro('Loja não encontrada');
       }
 
       // Buscar dados do vendedor
-      final vendedorDoc = await _db
-          .collection('usuarios')
-          .doc(user.email)
-          .get();
+      final vendedorDoc =
+          await _db.collection('usuarios').doc(user.email).get();
 
       String vendedorNome = user.displayName ?? user.email ?? 'Vendedor';
       if (vendedorDoc.exists) {
@@ -97,8 +96,16 @@ class TrackingService {
           .doc(trackingId)
           .set(tracking.toMap());
 
-      // Montar URL
-      final link = '$_baseUrl/$resolvedLojaId?v=${user.uid}&t=$token&tid=$trackingId';
+      // Montar URL (hosted ou domínio próprio)
+      final baseCatalog =
+          await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(
+        resolvedLojaId,
+      );
+      final link = CatalogPublicUrlService.withQueryParameters(baseCatalog, {
+        'v': user.uid,
+        't': token,
+        'tid': trackingId,
+      });
 
       debugPrint('🔗 [TRACKING] Link gerado: $link');
       debugPrint('🔗 [TRACKING] Vendedor: $vendedorNome (${user.uid})');
@@ -154,8 +161,8 @@ class TrackingService {
     required String link,
     String? mensagemPersonalizada,
   }) async {
-    final mensagem = mensagemPersonalizada ??
-        'Confira nosso catálogo de produtos: $link';
+    final mensagem =
+        mensagemPersonalizada ?? 'Confira nosso catálogo de produtos: $link';
 
     await SharePlus.instance.share(ShareParams(
       text: sanitizeForPlatform(mensagem),
@@ -220,11 +227,13 @@ class TrackingService {
 
       // Verificar se já foi utilizado
       if (tracking.utilizado) {
-        debugPrint('⚠️ [TRACKING] Tracking já utilizado na venda ${tracking.vendaId}');
+        debugPrint(
+            '⚠️ [TRACKING] Tracking já utilizado na venda ${tracking.vendaId}');
         // Ainda retorna para permitir consulta, mas está marcado como utilizado
       }
 
-      debugPrint('✅ [TRACKING] Tracking válido para vendedor: ${tracking.vendedorNome}');
+      debugPrint(
+          '✅ [TRACKING] Tracking válido para vendedor: ${tracking.vendedorNome}');
       return tracking;
     } catch (e) {
       debugPrint('❌ [TRACKING] Erro ao validar (type=${e.runtimeType})');
@@ -263,7 +272,9 @@ class TrackingService {
       final snapshot = await query.get();
 
       for (final doc in snapshot.docs) {
-        final tracking = VendaTracking.fromMap(doc.data() as Map<String, dynamic>, docId: doc.id);
+        final tracking = VendaTracking.fromMap(
+            doc.data() as Map<String, dynamic>,
+            docId: doc.id);
 
         // Verificar se ainda é válido
         if (tracking.isValido) {
@@ -271,7 +282,8 @@ class TrackingService {
           if (deviceId != null && tracking.deviceId == deviceId) {
             return tracking;
           }
-          if (clienteTelefone != null && tracking.clienteTelefone == clienteTelefone) {
+          if (clienteTelefone != null &&
+              tracking.clienteTelefone == clienteTelefone) {
             return tracking;
           }
           // Se não tem filtros, retorna o primeiro válido
@@ -283,7 +295,8 @@ class TrackingService {
 
       return null;
     } catch (e) {
-      debugPrint('❌ [TRACKING] Erro ao buscar tracking recente (type=${e.runtimeType})');
+      debugPrint(
+          '❌ [TRACKING] Erro ao buscar tracking recente (type=${e.runtimeType})');
       return null;
     }
   }
@@ -310,10 +323,12 @@ class TrackingService {
         'utilizadoEm': DateTime.now().toIso8601String(),
       });
 
-      debugPrint('✅ [TRACKING] Tracking $trackingId marcado como utilizado na venda $vendaId');
+      debugPrint(
+          '✅ [TRACKING] Tracking $trackingId marcado como utilizado na venda $vendaId');
       return true;
     } catch (e) {
-      debugPrint('❌ [TRACKING] Erro ao marcar tracking (type=${e.runtimeType})');
+      debugPrint(
+          '❌ [TRACKING] Erro ao marcar tracking (type=${e.runtimeType})');
       return false;
     }
   }
@@ -342,7 +357,8 @@ class TrackingService {
           .map((doc) => VendaTracking.fromMap(doc.data(), docId: doc.id))
           .toList();
     } catch (e) {
-      debugPrint('❌ [TRACKING] Erro ao listar trackings (type=${e.runtimeType})');
+      debugPrint(
+          '❌ [TRACKING] Erro ao listar trackings (type=${e.runtimeType})');
       return [];
     }
   }
@@ -363,16 +379,19 @@ class TrackingService {
           .where('utilizado', isEqualTo: true);
 
       if (inicio != null) {
-        query = query.where('utilizadoEm', isGreaterThanOrEqualTo: inicio.toIso8601String());
+        query = query.where('utilizadoEm',
+            isGreaterThanOrEqualTo: inicio.toIso8601String());
       }
       if (fim != null) {
-        query = query.where('utilizadoEm', isLessThanOrEqualTo: fim.toIso8601String());
+        query = query.where('utilizadoEm',
+            isLessThanOrEqualTo: fim.toIso8601String());
       }
 
       final snapshot = await query.count().get();
       return snapshot.count ?? 0;
     } catch (e) {
-      debugPrint('❌ [TRACKING] Erro ao contar trackings (type=${e.runtimeType})');
+      debugPrint(
+          '❌ [TRACKING] Erro ao contar trackings (type=${e.runtimeType})');
       return 0;
     }
   }
@@ -390,8 +409,10 @@ class TrackingService {
   }
 
   /// Gera um token de validação
-  static String _gerarToken(String lojaId, String vendedorUid, String trackingId) {
-    final data = '$lojaId:$vendedorUid:$trackingId:${DateTime.now().millisecondsSinceEpoch}';
+  static String _gerarToken(
+      String lojaId, String vendedorUid, String trackingId) {
+    final data =
+        '$lojaId:$vendedorUid:$trackingId:${DateTime.now().millisecondsSinceEpoch}';
     final bytes = utf8.encode(data);
     final hash = sha256.convert(bytes);
     return hash.toString().substring(0, 32);

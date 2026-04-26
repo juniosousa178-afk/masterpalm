@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../services/carrinho_abandonado_service.dart';
+import '../services/catalog_public_url_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/public_store_link_helper.dart';
 
@@ -20,10 +21,12 @@ class CarrinhosAbandonadosScreen extends StatefulWidget {
   const CarrinhosAbandonadosScreen({this.lojaId, super.key});
 
   @override
-  State<CarrinhosAbandonadosScreen> createState() => _CarrinhosAbandonadosScreenState();
+  State<CarrinhosAbandonadosScreen> createState() =>
+      _CarrinhosAbandonadosScreenState();
 }
 
-class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen> {
+class _CarrinhosAbandonadosScreenState
+    extends State<CarrinhosAbandonadosScreen> {
   bool _loading = true;
   bool _erroResolucaoLoja = false;
   String? _lojaId;
@@ -32,12 +35,18 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
   int _horasAbandono = 24;
   bool _enviando = false;
   String _lojaNome = '';
+
   /// Mensagem sugerida pela IA por cartId (catálogo). Quando null, usa mensagem fixa.
   final Map<String, String> _mensagemSugeridaPorCartId = {};
+
   /// CartId para o qual a IA está carregando (evita múltiplos toques).
   String? _loadingIaCartId;
+
   /// Métricas de recuperação do catálogo (abandonados / recuperados).
   MetricasRecuperacaoCatalogo? _metricasCatalogo;
+
+  /// URL pública do catálogo (hosted ou domínio próprio), carregada após resolver a loja.
+  String? _catalogPublicBaseUrl;
 
   @override
   void initState() {
@@ -46,8 +55,11 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
   }
 
   Future<void> _init() async {
-    String? id = (widget.lojaId != null && widget.lojaId!.trim().isNotEmpty) ? widget.lojaId : null;
-    id ??= await LojaIdService.getWithTimeout(timeout: const Duration(seconds: 10));
+    String? id = (widget.lojaId != null && widget.lojaId!.trim().isNotEmpty)
+        ? widget.lojaId
+        : null;
+    id ??= await LojaIdService.getWithTimeout(
+        timeout: const Duration(seconds: 10));
     if (!mounted) return;
     if (id == null || id.trim().isEmpty || !isValidForPublicLink(id)) {
       setState(() {
@@ -61,8 +73,25 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
       _lojaId = id;
       _loading = true;
     });
+    _catalogPublicBaseUrl =
+        await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(id);
+    if (!mounted) return;
+    setState(() {});
     await _carregarConfig();
     await _carregar();
+  }
+
+  String _catalogBaseOrFallback() {
+    final id = _lojaId;
+    if (id == null) return CatalogPublicUrlService.kDefaultCatalogPublicBase;
+    return _catalogPublicBaseUrl ??
+        '${CatalogPublicUrlService.kDefaultCatalogPublicBase}/${Uri.encodeComponent(id)}';
+  }
+
+  String _linkRecuperacaoCatalogo(String cartId) {
+    final b = _catalogBaseOrFallback();
+    final sep = b.contains('?') ? '&' : '?';
+    return '$b${sep}cart=${Uri.encodeComponent(cartId)}';
   }
 
   Future<void> _carregarConfig() async {
@@ -82,15 +111,23 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
       lojaId: _lojaId!,
       horasAbandono: _horasAbandono,
     );
-    final listaCatalogo = await CarrinhoAbandonadoService.listarCarrinhosAbandonadosCatalogo(
+    final listaCatalogo =
+        await CarrinhoAbandonadoService.listarCarrinhosAbandonadosCatalogo(
       lojaId: _lojaId!,
     );
-    final metricasCatalogo = await CarrinhoAbandonadoService.getMetricasRecuperacaoCatalogo(_lojaId!);
+    final metricasCatalogo =
+        await CarrinhoAbandonadoService.getMetricasRecuperacaoCatalogo(
+            _lojaId!);
     String lojaNome = '';
     try {
-      final doc = await FirebaseFirestore.instance.collection('lojas').doc(_lojaId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(_lojaId)
+          .get();
       final d = doc.data();
-      lojaNome = (d?['nome_loja'] ?? d?['nomeLoja'] ?? d?['nome'] ?? '').toString().trim();
+      lojaNome = (d?['nome_loja'] ?? d?['nomeLoja'] ?? d?['nome'] ?? '')
+          .toString()
+          .trim();
     } catch (_) {}
     if (mounted) {
       setState(() {
@@ -116,7 +153,9 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
       setState(() => _enviando = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ok ? 'E-mail enviado para ${item.email}' : 'Falha ao enviar e-mail'),
+          content: Text(ok
+              ? 'E-mail enviado para ${item.email}'
+              : 'Falha ao enviar e-mail'),
           backgroundColor: ok ? _successColor : Colors.red,
         ),
       );
@@ -126,7 +165,8 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
 
   Future<void> _abrirWhatsApp(CarrinhoAbandonadoItem item) async {
     if (_lojaId == null) return;
-    final link = CarrinhoAbandonadoService.linkCatalogo(_lojaId!);
+    final link = _catalogPublicBaseUrl ??
+        await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(_lojaId!);
     await CarrinhoAbandonadoService.abrirWhatsAppLembrete(
       telefone: item.telefone,
       nomeCliente: item.nome,
@@ -135,7 +175,7 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
   }
 
   String _mensagemAtualCatalogo(CarrinhoAbandonadoCatalogoItem item) {
-    final link = (_lojaId != null ? buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId) : null) ?? '';
+    final link = _lojaId != null ? _linkRecuperacaoCatalogo(item.cartId) : '';
     return _mensagemSugeridaPorCartId[item.cartId] ??
         CarrinhoAbandonadoService.mensagemWhatsAppRecuperacao(
           _lojaNome.isNotEmpty ? _lojaNome : 'Loja',
@@ -143,13 +183,15 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
         );
   }
 
-  Future<void> _sugerirMensagemIaCatalogo(CarrinhoAbandonadoCatalogoItem item) async {
+  Future<void> _sugerirMensagemIaCatalogo(
+      CarrinhoAbandonadoCatalogoItem item) async {
     if (_lojaId == null) return;
-    final link = buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId);
-    if (link == null) return;
+    final link = _linkRecuperacaoCatalogo(item.cartId);
+    if (link.isEmpty) return;
     setState(() => _loadingIaCartId = item.cartId);
     final nomeLoja = _lojaNome.isNotEmpty ? _lojaNome : 'Loja';
-    final msg = await CarrinhoAbandonadoService.sugerirMensagemRecuperacaoCatalogo(
+    final msg =
+        await CarrinhoAbandonadoService.sugerirMensagemRecuperacaoCatalogo(
       nomeLoja: nomeLoja,
       linkRecuperacao: link,
       clienteNome: item.clienteNome,
@@ -164,13 +206,16 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
     }
   }
 
-  Future<void> _abrirWhatsAppCatalogo(CarrinhoAbandonadoCatalogoItem item, {String? mensagem}) async {
+  Future<void> _abrirWhatsAppCatalogo(CarrinhoAbandonadoCatalogoItem item,
+      {String? mensagem}) async {
     if (_lojaId == null) return;
-    final link = buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId);
-    if (link == null) return;
+    final link = _linkRecuperacaoCatalogo(item.cartId);
+    if (link.isEmpty) return;
     final msg = mensagem ?? _mensagemAtualCatalogo(item);
     await CarrinhoAbandonadoService.abrirWhatsAppRecuperacaoCatalogo(
-      telefone: item.clienteTelefone.isNotEmpty ? item.clienteTelefone : '5511999999999',
+      telefone: item.clienteTelefone.isNotEmpty
+          ? item.clienteTelefone
+          : '5511999999999',
       nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : 'Loja',
       linkRecuperacao: link,
       mensagem: msg,
@@ -181,7 +226,8 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
     await Clipboard.setData(ClipboardData(text: link));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link copiado'), duration: Duration(seconds: 2)),
+        const SnackBar(
+            content: Text('Link copiado'), duration: Duration(seconds: 2)),
       );
     }
   }
@@ -190,7 +236,8 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
     await Clipboard.setData(ClipboardData(text: text));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mensagem copiada'), duration: Duration(seconds: 2)),
+        const SnackBar(
+            content: Text('Mensagem copiada'), duration: Duration(seconds: 2)),
       );
     }
   }
@@ -203,7 +250,8 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
         appBar: AppBar(
           backgroundColor: _primaryColor,
           foregroundColor: Colors.white,
-          title: const Text('Carrinhos abandonados', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text('Carrinhos abandonados',
+              style: TextStyle(fontWeight: FontWeight.bold)),
         ),
         body: Center(
           child: Padding(
@@ -211,7 +259,8 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.store_mall_directory_outlined, size: 64, color: Colors.grey.shade400),
+                Icon(Icons.store_mall_directory_outlined,
+                    size: 64, color: Colors.grey.shade400),
                 const SizedBox(height: 16),
                 Text(
                   'Não foi possível identificar a loja.',
@@ -244,9 +293,11 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
         appBar: AppBar(
           backgroundColor: _primaryColor,
           foregroundColor: Colors.white,
-          title: const Text('Carrinhos abandonados', style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text('Carrinhos abandonados',
+              style: TextStyle(fontWeight: FontWeight.bold)),
         ),
-        body: const Center(child: CircularProgressIndicator(color: _primaryColor)),
+        body: const Center(
+            child: CircularProgressIndicator(color: _primaryColor)),
       );
     }
     return Scaffold(
@@ -254,7 +305,8 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
       appBar: AppBar(
         backgroundColor: _primaryColor,
         foregroundColor: Colors.white,
-        title: const Text('Carrinhos abandonados', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Carrinhos abandonados',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -269,16 +321,19 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.shopping_cart_outlined, size: 64, color: Colors.grey.shade400),
+                      Icon(Icons.shopping_cart_outlined,
+                          size: 64, color: Colors.grey.shade400),
                       const SizedBox(height: 16),
                       Text(
                         'Nenhum carrinho abandonado no momento.',
-                        style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                        style: TextStyle(
+                            fontSize: 16, color: Colors.grey.shade600),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Clientes com itens no carrinho há mais de $_horasAbandono h aparecem aqui.',
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+                        style: TextStyle(
+                            fontSize: 13, color: Colors.grey.shade500),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -295,16 +350,21 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Text(
                             'Carrinhos da loja (venda)',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700),
                           ),
                         ),
                         ..._lista.map((item) {
                           final ultimaStr = item.ultimaAtualizacao != null
-                              ? DateFormat('dd/MM/yyyy HH:mm').format(item.ultimaAtualizacao!)
+                              ? DateFormat('dd/MM/yyyy HH:mm')
+                                  .format(item.ultimaAtualizacao!)
                               : '—';
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
                             child: Padding(
                               padding: const EdgeInsets.all(16),
                               child: Column(
@@ -313,22 +373,39 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                   Row(
                                     children: [
                                       CircleAvatar(
-                                        backgroundColor: _primaryColor.withOpacity(0.2),
+                                        backgroundColor:
+                                            _primaryColor.withOpacity(0.2),
                                         child: Text(
-                                          item.nome.isNotEmpty ? item.nome[0].toUpperCase() : '?',
-                                          style: const TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),
+                                          item.nome.isNotEmpty
+                                              ? item.nome[0].toUpperCase()
+                                              : '?',
+                                          style: const TextStyle(
+                                              color: _primaryColor,
+                                              fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
-                                            Text(item.nome, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                            Text(item.nome,
+                                                style: const TextStyle(
+                                                    fontWeight:
+                                                        FontWeight.w600)),
                                             if (item.email.isNotEmpty)
-                                              Text(item.email, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                              Text(item.email,
+                                                  style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors
+                                                          .grey.shade600)),
                                             if (item.telefone.isNotEmpty)
-                                              Text(item.telefone, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                              Text(item.telefone,
+                                                  style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors
+                                                          .grey.shade600)),
                                           ],
                                         ),
                                       ),
@@ -337,14 +414,17 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                   const SizedBox(height: 8),
                                   Text(
                                     '${item.totalItens} item(ns) · Última atualização: $ultimaStr',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600),
                                   ),
                                   if (item.lembreteEnviadoEm != null)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 4),
                                       child: Text(
                                         'Lembrete enviado em ${DateFormat('dd/MM HH:mm').format(item.lembreteEnviadoEm!)}',
-                                        style: const TextStyle(fontSize: 11, color: _successColor),
+                                        style: const TextStyle(
+                                            fontSize: 11, color: _successColor),
                                       ),
                                     ),
                                   const SizedBox(height: 12),
@@ -353,20 +433,38 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                       if (item.email.trim().isNotEmpty)
                                         Expanded(
                                           child: OutlinedButton.icon(
-                                            onPressed: _enviando ? null : () => _enviarEmail(item),
-                                            icon: _enviando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.email_outlined, size: 18),
+                                            onPressed: _enviando
+                                                ? null
+                                                : () => _enviarEmail(item),
+                                            icon: _enviando
+                                                ? const SizedBox(
+                                                    width: 18,
+                                                    height: 18,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                            strokeWidth: 2))
+                                                : const Icon(
+                                                    Icons.email_outlined,
+                                                    size: 18),
                                             label: const Text('Enviar e-mail'),
-                                            style: OutlinedButton.styleFrom(foregroundColor: _primaryColor),
+                                            style: OutlinedButton.styleFrom(
+                                                foregroundColor: _primaryColor),
                                           ),
                                         ),
-                                      if (item.email.trim().isNotEmpty && item.telefone.trim().isNotEmpty) const SizedBox(width: 8),
+                                      if (item.email.trim().isNotEmpty &&
+                                          item.telefone.trim().isNotEmpty)
+                                        const SizedBox(width: 8),
                                       if (item.telefone.trim().isNotEmpty)
                                         Expanded(
                                           child: FilledButton.icon(
-                                            onPressed: () => _abrirWhatsApp(item),
-                                            icon: const Icon(Icons.chat_outlined, size: 18),
+                                            onPressed: () =>
+                                                _abrirWhatsApp(item),
+                                            icon: const Icon(
+                                                Icons.chat_outlined,
+                                                size: 18),
                                             label: const Text('WhatsApp'),
-                                            style: FilledButton.styleFrom(backgroundColor: _successColor),
+                                            style: FilledButton.styleFrom(
+                                                backgroundColor: _successColor),
                                           ),
                                         ),
                                     ],
@@ -376,35 +474,48 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                             ),
                           );
                         }),
-                        if (_listaCatalogo.isNotEmpty) const SizedBox(height: 20),
+                        if (_listaCatalogo.isNotEmpty)
+                          const SizedBox(height: 20),
                       ],
-                      if (_listaCatalogo.isNotEmpty || _metricasCatalogo != null) ...[
-                        if (_metricasCatalogo != null && _metricasCatalogo!.total > 0)
+                      if (_listaCatalogo.isNotEmpty ||
+                          _metricasCatalogo != null) ...[
+                        if (_metricasCatalogo != null &&
+                            _metricasCatalogo!.total > 0)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 12),
                             child: Card(
                               margin: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                               color: _primaryColor.withOpacity(0.08),
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 10),
                                 child: Row(
                                   children: [
-                                    const Icon(Icons.insights_outlined, size: 20, color: _primaryColor),
+                                    const Icon(Icons.insights_outlined,
+                                        size: 20, color: _primaryColor),
                                     const SizedBox(width: 10),
                                     Text(
                                       'Abandonados: ${_metricasCatalogo!.abandonados}',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade800),
                                     ),
                                     const SizedBox(width: 16),
                                     Text(
                                       'Recuperados: ${_metricasCatalogo!.recuperados}',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade800),
                                     ),
                                     const SizedBox(width: 16),
                                     Text(
                                       'Taxa: ${_metricasCatalogo!.taxaRecuperacaoPercent.toStringAsFixed(0)}%',
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _primaryColor),
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: _primaryColor),
                                     ),
                                   ],
                                 ),
@@ -415,19 +526,26 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Text(
                             'Carrinhos do catálogo',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey.shade700),
                           ),
                         ),
                         ..._listaCatalogo.map((item) {
-                          final link = (_lojaId != null ? buildRecuperacaoCarrinhoUrl(_lojaId!, item.cartId) : null) ?? '';
+                          final link = _lojaId != null
+                              ? _linkRecuperacaoCatalogo(item.cartId)
+                              : '';
                           final ultimaStr = item.ultimoUpdate != null
-                              ? DateFormat('dd/MM/yyyy HH:mm').format(item.ultimoUpdate!)
+                              ? DateFormat('dd/MM/yyyy HH:mm')
+                                  .format(item.ultimoUpdate!)
                               : '—';
                           final mensagemAtual = _mensagemAtualCatalogo(item);
                           final loadingIa = _loadingIaCartId == item.cartId;
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
                             child: Padding(
                               padding: const EdgeInsets.all(16),
                               child: Column(
@@ -436,23 +554,37 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                   Row(
                                     children: [
                                       CircleAvatar(
-                                        backgroundColor: _primaryColor.withOpacity(0.2),
+                                        backgroundColor:
+                                            _primaryColor.withOpacity(0.2),
                                         child: Text(
-                                          item.clienteNome.isNotEmpty ? item.clienteNome[0].toUpperCase() : '?',
-                                          style: const TextStyle(color: _primaryColor, fontWeight: FontWeight.bold),
+                                          item.clienteNome.isNotEmpty
+                                              ? item.clienteNome[0]
+                                                  .toUpperCase()
+                                              : '?',
+                                          style: const TextStyle(
+                                              color: _primaryColor,
+                                              fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              item.clienteNome.isEmpty ? 'Cliente (sem nome)' : item.clienteNome,
-                                              style: const TextStyle(fontWeight: FontWeight.w600),
+                                              item.clienteNome.isEmpty
+                                                  ? 'Cliente (sem nome)'
+                                                  : item.clienteNome,
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w600),
                                             ),
                                             if (item.clienteTelefone.isNotEmpty)
-                                              Text(item.clienteTelefone, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                              Text(item.clienteTelefone,
+                                                  style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors
+                                                          .grey.shade600)),
                                           ],
                                         ),
                                       ),
@@ -461,12 +593,17 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                   const SizedBox(height: 8),
                                   Text(
                                     '${item.totalItens} item(ns) · Última atualização: $ultimaStr · ${item.status}',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600),
                                   ),
                                   if (link.isNotEmpty)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 6),
-                                      child: SelectableText(link, style: const TextStyle(fontSize: 11, color: _primaryColor)),
+                                      child: SelectableText(link,
+                                          style: const TextStyle(
+                                              fontSize: 11,
+                                              color: _primaryColor)),
                                     ),
                                   const SizedBox(height: 10),
                                   Container(
@@ -475,19 +612,27 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                     decoration: BoxDecoration(
                                       color: Colors.grey.shade100,
                                       borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.grey.shade300),
+                                      border: Border.all(
+                                          color: Colors.grey.shade300),
                                     ),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          _mensagemSugeridaPorCartId.containsKey(item.cartId)
+                                          _mensagemSugeridaPorCartId
+                                                  .containsKey(item.cartId)
                                               ? 'Mensagem sugerida (IA)'
                                               : 'Mensagem para envio',
-                                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: Colors.grey.shade700),
                                         ),
                                         const SizedBox(height: 4),
-                                        SelectableText(mensagemAtual, style: const TextStyle(fontSize: 13)),
+                                        SelectableText(mensagemAtual,
+                                            style:
+                                                const TextStyle(fontSize: 13)),
                                       ],
                                     ),
                                   ),
@@ -495,41 +640,63 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
                                   Row(
                                     children: [
                                       OutlinedButton.icon(
-                                        onPressed: loadingIa ? null : () => _sugerirMensagemIaCatalogo(item),
+                                        onPressed: loadingIa
+                                            ? null
+                                            : () => _sugerirMensagemIaCatalogo(
+                                                item),
                                         icon: loadingIa
-                                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                            : const Icon(Icons.auto_awesome, size: 18),
-                                        label: Text(loadingIa ? 'Gerando…' : 'Sugerir com IA'),
-                                        style: OutlinedButton.styleFrom(foregroundColor: _primaryColor),
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                        strokeWidth: 2))
+                                            : const Icon(Icons.auto_awesome,
+                                                size: 18),
+                                        label: Text(loadingIa
+                                            ? 'Gerando…'
+                                            : 'Sugerir com IA'),
+                                        style: OutlinedButton.styleFrom(
+                                            foregroundColor: _primaryColor),
                                       ),
                                       const SizedBox(width: 8),
                                       OutlinedButton.icon(
-                                        onPressed: () => _copiarMensagem(context, mensagemAtual),
+                                        onPressed: () => _copiarMensagem(
+                                            context, mensagemAtual),
                                         icon: const Icon(Icons.copy, size: 18),
                                         label: const Text('Copiar mensagem'),
-                                        style: OutlinedButton.styleFrom(foregroundColor: _primaryColor),
+                                        style: OutlinedButton.styleFrom(
+                                            foregroundColor: _primaryColor),
                                       ),
                                     ],
                                   ),
-                                  if (link.isNotEmpty) const SizedBox(height: 8),
+                                  if (link.isNotEmpty)
+                                    const SizedBox(height: 8),
                                   Row(
                                     children: [
                                       if (link.isNotEmpty)
                                         Expanded(
                                           child: OutlinedButton.icon(
-                                            onPressed: () => _copiarLink(context, link),
-                                            icon: const Icon(Icons.link, size: 18),
+                                            onPressed: () =>
+                                                _copiarLink(context, link),
+                                            icon: const Icon(Icons.link,
+                                                size: 18),
                                             label: const Text('Copiar link'),
-                                            style: OutlinedButton.styleFrom(foregroundColor: _primaryColor),
+                                            style: OutlinedButton.styleFrom(
+                                                foregroundColor: _primaryColor),
                                           ),
                                         ),
-                                      if (link.isNotEmpty) const SizedBox(width: 8),
+                                      if (link.isNotEmpty)
+                                        const SizedBox(width: 8),
                                       Expanded(
                                         child: FilledButton.icon(
-                                          onPressed: () => _abrirWhatsAppCatalogo(item),
-                                          icon: const Icon(Icons.chat_outlined, size: 18),
+                                          onPressed: () =>
+                                              _abrirWhatsAppCatalogo(item),
+                                          icon: const Icon(Icons.chat_outlined,
+                                              size: 18),
                                           label: const Text('WhatsApp'),
-                                          style: FilledButton.styleFrom(backgroundColor: _successColor),
+                                          style: FilledButton.styleFrom(
+                                              backgroundColor: _successColor),
                                         ),
                                       ),
                                     ],
@@ -546,4 +713,3 @@ class _CarrinhosAbandonadosScreenState extends State<CarrinhosAbandonadosScreen>
     );
   }
 }
-

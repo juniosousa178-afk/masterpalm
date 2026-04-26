@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../services/catalog_public_url_service.dart';
 import '../services/public_store_link_helper.dart';
 import '../services/store_resolver_facade.dart';
 
@@ -27,6 +28,7 @@ class VendedorAguardeWidget extends StatefulWidget {
 }
 
 class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
+  /// URL absoluta do catálogo com `?ref=` do vendedor.
   String? _linkCatalogo;
   bool _copiado = false;
 
@@ -44,7 +46,8 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
       // Usar widget.lojaId se válido, senão StoreResolverFacade (mesma lógica da loja modelo)
       String storeId = widget.lojaId.trim();
       if (storeId.isEmpty) {
-        storeId = (await StoreResolverFacade.resolveForAdminApp())?.trim() ?? '';
+        storeId =
+            (await StoreResolverFacade.resolveForAdminApp())?.trim() ?? '';
       }
 
       if (storeId.isEmpty) {
@@ -64,7 +67,8 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
           lojaSlug = (lojaData['slug'] ?? lojaData['id'] ?? storeId).toString();
         }
       } catch (e) {
-        debugPrint('⚠️ [VENDEDOR] Erro ao buscar slug da loja (type=${e.runtimeType})');
+        debugPrint(
+            '⚠️ [VENDEDOR] Erro ao buscar slug da loja (type=${e.runtimeType})');
       }
 
       // Gerar link com ref do vendedor (só se slug for válido, sem placeholder)
@@ -72,7 +76,14 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
         if (mounted) setState(() => _linkCatalogo = null);
         return;
       }
-      final link = '/loja/$lojaSlug?ref=${user.uid}';
+      final baseCatalog =
+          await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(
+        storeId,
+        slug: lojaSlug != storeId ? lojaSlug : null,
+      );
+      final link = CatalogPublicUrlService.withQueryParameters(baseCatalog, {
+        'ref': user.uid,
+      });
 
       if (mounted) {
         setState(() => _linkCatalogo = link);
@@ -87,10 +98,7 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
   void _copiarLink() {
     if (_linkCatalogo == null) return;
 
-    // Montar URL completa (usar URL base do app)
-    final urlCompleta = 'https://app.mastepalm.com.br$_linkCatalogo';
-
-    Clipboard.setData(ClipboardData(text: urlCompleta));
+    Clipboard.setData(ClipboardData(text: _linkCatalogo!));
     setState(() => _copiado = true);
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -226,7 +234,7 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
                               border: Border.all(color: Colors.grey[300]!),
                             ),
                             child: Text(
-                              'app.mastepalm.com.br$_linkCatalogo',
+                              _linkCatalogo!,
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontFamily: 'monospace',
@@ -238,11 +246,13 @@ class _VendedorAguardeWidgetState extends State<VendedorAguardeWidget> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: _linkCatalogo != null ? _copiarLink : null,
+                            onPressed:
+                                _linkCatalogo != null ? _copiarLink : null,
                             icon: Icon(_copiado ? Icons.check : Icons.copy),
                             label: Text(_copiado ? 'Copiado!' : 'Copiar link'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _copiado ? Colors.green : Colors.blue,
+                              backgroundColor:
+                                  _copiado ? Colors.green : Colors.blue,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                             ),

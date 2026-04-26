@@ -7,7 +7,7 @@ class CatalogShareService {
   CatalogShareService._();
 
   /// Monta a URL final do catálogo com ref e indicacao quando informados.
-  /// [baseUrl] ex.: https://app.mastepalm.com.br/loja/loja_123
+  /// [baseUrl] URL base do catálogo (hosted `.../loja/slug` ou domínio próprio `https://...`).
   ///
   /// Produto em foco: query canônica `prod` (slug ou id). Ao definir [prod],
   /// remove `produto` da query mesclada para evitar duplicidade; links antigos

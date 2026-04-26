@@ -5,13 +5,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/logger.dart';
+import '../../services/catalog_public_url_service.dart';
 import '../../services/cupom_desconto_service.dart';
 import '../models/campanha_motor.dart';
 import '../models/campanha_motor_result.dart';
 import '../models/oportunidade_crescimento.dart';
 import '../models/sugestao_campanha.dart';
-
-const String _baseUrlCatalogo = 'https://app.mastepalm.com.br/loja';
 
 /// Executa a campanha: cria cupom, gera link, registra.
 class MotorCrescimentoExecutorService {
@@ -30,13 +29,18 @@ class MotorCrescimentoExecutorService {
 
     final codigo = sugestao.codigoCupomSugerido.trim().toUpperCase();
     if (codigo.isEmpty) {
-      return CampanhaMotorResult.erro('Código do cupom não informado na sugestão.');
+      return CampanhaMotorResult.erro(
+          'Código do cupom não informado na sugestão.');
     }
 
+    final baseCatalog =
+        await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(lojaId);
     final linkPromocao = _gerarLinkPromocao(
-      lojaId: lojaId,
+      baseCatalog: baseCatalog,
       codigoCupom: codigo,
-      produtoId: oportunidade.entidadeId.trim().isNotEmpty ? oportunidade.entidadeId.trim() : null,
+      produtoId: oportunidade.entidadeId.trim().isNotEmpty
+          ? oportunidade.entidadeId.trim()
+          : null,
     );
 
     String? cupomId;
@@ -49,7 +53,9 @@ class MotorCrescimentoExecutorService {
         cupomId = await CupomDescontoService().criarCupom(
           lojaId: lojaId,
           codigo: codigo,
-          nome: sugestao.titulo.isNotEmpty ? sugestao.titulo : 'Motor IA - ${oportunidade.entidadeNome}',
+          nome: sugestao.titulo.isNotEmpty
+              ? sugestao.titulo
+              : 'Motor IA - ${oportunidade.entidadeNome}',
           valor: sugestao.percentualDesconto,
           tipo: 'percentual',
           aplicarEm: 'produtos',
@@ -64,7 +70,10 @@ class MotorCrescimentoExecutorService {
           logD('✅ [Motor] Cupom criado: $codigo');
         }
       } catch (e, st) {
-        logE('⚠️ [Motor] Erro ao criar cupom (fallback) (type=${e.runtimeType})', error: e, st: st);
+        logE(
+            '⚠️ [Motor] Erro ao criar cupom (fallback) (type=${e.runtimeType})',
+            error: e,
+            st: st);
       }
     }
 
@@ -108,10 +117,12 @@ class MotorCrescimentoExecutorService {
       );
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {
-        logW('⚠️ [Motor] Sem permissão para registrar campanha – fallback local');
+        logW(
+            '⚠️ [Motor] Sem permissão para registrar campanha – fallback local');
         return CampanhaMotorResult.sucessoFallback(
           campanha: campanha,
-          mensagem: 'Link gerado. Campanha não foi registrada (sem permissão). O cupom precisa ser criado manualmente.',
+          mensagem:
+              'Link gerado. Campanha não foi registrada (sem permissão). O cupom precisa ser criado manualmente.',
         );
       }
       rethrow;
@@ -121,15 +132,18 @@ class MotorCrescimentoExecutorService {
   /// Gera link da campanha. Se [produtoId] for informado (produto da oportunidade),
   /// o link inclui `&prod=` para o catálogo abrir direto no produto (canônico).
   static String _gerarLinkPromocao({
-    required String lojaId,
+    required String baseCatalog,
     required String codigoCupom,
     String? produtoId,
   }) {
-    if (lojaId.trim().isEmpty) return '';
-    final base = '$_baseUrlCatalogo/$lojaId';
-    var link = '$base?cupom=${Uri.encodeComponent(codigoCupom)}';
+    if (baseCatalog.trim().isEmpty) return '';
+    var link = CatalogPublicUrlService.withQueryParameters(baseCatalog, {
+      'cupom': codigoCupom,
+    });
     if (produtoId != null && produtoId.trim().isNotEmpty) {
-      link = '$link&prod=${Uri.encodeComponent(produtoId.trim())}';
+      link = CatalogPublicUrlService.withQueryParameters(link, {
+        'prod': produtoId.trim(),
+      });
     }
     return link;
   }

@@ -28,6 +28,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/catalog_cache_service.dart';
 import '../services/catalog_config_published_v3_bridge.dart';
 import '../services/catalog_recent_service.dart';
+import '../services/catalog_public_url_service.dart';
 import '../services/catalog_share_service.dart';
 import '../services/catalog_visitas_service.dart';
 import '../services/pagamentos_service.dart';
@@ -638,6 +639,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   String _lastCatalogSanitizeSig = '';
   int _catalogSanitizeGen = 0;
 
+  /// Merge draft/published para [CatalogPublicUrlService] (domínio próprio nos links).
+  Map<String, dynamic> _catalogUrlConfigMerge = const {};
+
   // ✅ FONTE ÚNICA: lojaId resolvido de forma assíncrona
   String? _resolvedLojaId;
   bool _loadingLojaId = true;
@@ -767,7 +771,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   }
 
   static const Color _successColor = Color(0xFF22C55E);
-  static const String _baseUrlCatalogo = 'https://app.mastepalm.com.br/loja';
 
   /// Cache de streams (evita recriação a cada rebuild = piscar)
   Stream<Map<String, dynamic>>? _cachedConfigStream;
@@ -1859,7 +1862,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   maxParcelas:
                       safeInt(p['maxParcelasSemJuros'], 12).clamp(1, 24),
                   catalogShareUrl: CatalogShareService.buildUrlWithParams(
-                    '$_baseUrlCatalogo/$lojaId',
+                    _publicCatalogShareBase(),
                     ref: widget.vendedorRef,
                     indicacao: widget.indicacaoClienteRef,
                     prod: safeStr(p['slug']).isNotEmpty
@@ -1901,7 +1904,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     ? asMapDeep(p['variacoes'])
                     : null,
             catalogShareUrl: CatalogShareService.buildUrlWithParams(
-              '$_baseUrlCatalogo/$lojaId',
+              _publicCatalogShareBase(),
               ref: widget.vendedorRef,
               indicacao: widget.indicacaoClienteRef,
               prod: safeStr(p['slug']).isNotEmpty
@@ -2437,6 +2440,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     return _resolvedLojaId!;
   }
 
+  String _publicCatalogShareBase() {
+    return CatalogPublicUrlService.montarUrlCatalogoPublico(
+      lojaConfig: _catalogUrlConfigMerge,
+      lojaId: lojaId,
+    );
+  }
+
   void _refreshCatalogCartFormCache(String storeId) {
     if (storeId.isEmpty) return;
     SharedPreferences.getInstance().then((prefs) {
@@ -2478,7 +2488,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   void _mostrarIndicarAmigoSheet(BuildContext context,
       {required String lojaId, required String clienteId}) {
-    final link = '$_baseUrlCatalogo/$lojaId?indicacao=$clienteId';
+    final link = CatalogShareService.buildUrlWithParams(
+      CatalogPublicUrlService.montarUrlCatalogoPublico(
+        lojaConfig: _catalogUrlConfigMerge,
+        lojaId: lojaId,
+      ),
+      indicacao: clienteId,
+    );
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -4573,6 +4589,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
             final Map<String, dynamic> cfg =
                 (cfgSnap.data ?? {}).map((k, v) => MapEntry(k.toString(), v));
+            _catalogUrlConfigMerge =
+                CatalogPublicUrlService.mergeStoreConfigForCatalogUrls(cfg);
 
             if (kDebugMode) {
               logD('📄 [CATÁLOGO] Config carregado: ${cfg.keys.length} chaves');
@@ -6210,11 +6228,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 final messenger =
                                                     ScaffoldMessenger.of(
                                                         context);
-                                                final lojaId =
-                                                    _resolvedLojaId ??
-                                                        widget.lojaId;
                                                 final url =
-                                                    'https://app.mastepalm.com.br/loja/$lojaId';
+                                                    _publicCatalogShareBase();
                                                 logD(
                                                     '🌐 Abrindo catálogo web: $url');
 
@@ -6981,69 +6996,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             SliverToBoxAdapter(
                                               child: Column(
                                                 children: [
-                                                  if (modoListagemCategoria)
-                                                    Padding(
-                                                      padding: const EdgeInsets
-                                                          .fromLTRB(4, 4, 4, 0),
-                                                      child: Row(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .center,
-                                                        children: [
-                                                          TextButton.icon(
-                                                            onPressed: () {
-                                                              setState(() {
-                                                                _selectedCategory =
-                                                                    null;
-                                                                _selectedSubcategory =
-                                                                    null;
-                                                                _clearFiltrosVariacao();
-                                                                _currentPageNotifier
-                                                                    .value = 0;
-                                                              });
-                                                              _onCatalogCategoryOrSubChanged();
-                                                            },
-                                                            icon: Icon(
-                                                              Icons
-                                                                  .arrow_back_ios_new_rounded,
-                                                              size: 18,
-                                                              color:
-                                                                  primaryColor,
-                                                            ),
-                                                            label: Text(
-                                                              'Todos',
-                                                              style: TextStyle(
-                                                                color:
-                                                                    primaryColor,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                          Expanded(
-                                                            child: Text(
-                                                              _catalogListagemTituloLinha() ??
-                                                                  '',
-                                                              maxLines: 2,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                              textAlign:
-                                                                  TextAlign.end,
-                                                              style: TextStyle(
-                                                                color:
-                                                                    textColor,
-                                                                fontSize: 16,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
                                                   if (exibindoTodosCatalogo &&
                                                       banners.isNotEmpty)
                                                     CatalogBannerCarousel(
@@ -7062,8 +7014,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                         _openUrl(url);
                                                       },
                                                     ),
-                                                  if (exibindoTodosCatalogo &&
-                                                      useMinimalLayout)
+                                                  // Mesmo no modo listagem por categoria, o menu horizontal de categorias deve continuar visível para permitir troca rápida de categoria. Apenas banners, destaques e mais vendidos ficam ocultos.
+                                                  if (useMinimalLayout &&
+                                                      menuShowCategorias &&
+                                                      categoriasMenu
+                                                          .isNotEmpty &&
+                                                      (exibindoTodosCatalogo ||
+                                                          modoListagemCategoria))
                                                     CatalogMinimalCategoryImageStrip(
                                                       categories:
                                                           categoriasMenu,
@@ -7130,6 +7087,37 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                         });
                                                         _onCatalogCategoryOrSubChanged();
                                                       },
+                                                    ),
+                                                  if (modoListagemCategoria)
+                                                    Padding(
+                                                      padding:
+                                                          EdgeInsets.fromLTRB(
+                                                        16,
+                                                        useMinimalLayout
+                                                            ? 8
+                                                            : 12,
+                                                        16,
+                                                        useMinimalLayout
+                                                            ? 4
+                                                            : 8,
+                                                      ),
+                                                      child: Align(
+                                                        alignment: Alignment
+                                                            .centerLeft,
+                                                        child: Text(
+                                                          _catalogListagemTituloLinha() ??
+                                                              '',
+                                                          maxLines: 2,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style: TextStyle(
+                                                            color: textColor,
+                                                            fontSize: 16,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
+                                                        ),
+                                                      ),
                                                     ),
                                                   if (useMinimalLayout &&
                                                       exibindoTodosCatalogo)
@@ -7296,7 +7284,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       catalogShareUrl:
                                                           CatalogShareService
                                                               .buildUrlWithParams(
-                                                        '$_baseUrlCatalogo/$lojaId',
+                                                        _publicCatalogShareBase(),
                                                         ref: widget.vendedorRef,
                                                         indicacao: widget
                                                             .indicacaoClienteRef,
@@ -7574,7 +7562,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   catalogShareUrl:
                                                       CatalogShareService
                                                           .buildUrlWithParams(
-                                                    '$_baseUrlCatalogo/$lojaId',
+                                                    _publicCatalogShareBase(),
                                                     ref: widget.vendedorRef,
                                                     indicacao: widget
                                                         .indicacaoClienteRef,
@@ -7800,7 +7788,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 catalogShareUrl:
                                                     CatalogShareService
                                                         .buildUrlWithParams(
-                                                  '$_baseUrlCatalogo/$lojaId',
+                                                  _publicCatalogShareBase(),
                                                   ref: widget.vendedorRef,
                                                   indicacao: widget
                                                       .indicacaoClienteRef,

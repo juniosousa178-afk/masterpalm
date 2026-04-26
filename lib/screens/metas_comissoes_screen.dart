@@ -21,6 +21,7 @@ import '../widgets/compartilhar_catalogo_widget.dart';
 import '../utils/responsive.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
+import '../services/catalog_public_url_service.dart';
 import '../services/public_store_link_helper.dart';
 import '../services/loja_id_service.dart';
 import '../services/financeiro_hive_store.dart';
@@ -46,6 +47,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   late TabController _tabController;
 
   String? _lojaId;
+  String? _catalogPublicBaseUrl;
   String _usuarioLogado = '';
   bool _isAdmin = false;
   bool _carregando = true;
@@ -79,7 +81,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   String _ordenacaoVendedores = 'vendas';
   bool _ordenacaoDescendente = true;
   String _buscaVendedor = '';
-  String _filtroStatusComissao = 'todas'; // todas | pendentes | pagas | estornadas
+  String _filtroStatusComissao =
+      'todas'; // todas | pendentes | pagas | estornadas
   String? _erroTrackingDias;
 
   @override
@@ -87,10 +90,13 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _buscaVendedorController.addListener(() => setState(() {
-      _buscaVendedor = _buscaVendedorController.text;
-    }));
+          _buscaVendedor = _buscaVendedorController.text;
+        }));
     Connectivity().onConnectivityChanged.listen((r) {
-      if (mounted) setState(() => _isOffline = r.length == 1 && r.first == ConnectivityResult.none);
+      if (mounted) {
+        setState(() =>
+            _isOffline = r.length == 1 && r.first == ConnectivityResult.none);
+      }
     });
     _definirPeriodo('mes');
   }
@@ -113,9 +119,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
           _fimMes = DateTime(agora.year, agora.month, agora.day, 23, 59, 59);
           break;
         case 'semana':
-          final inicioSemana = agora.subtract(Duration(days: agora.weekday - 1));
-          _inicioMes = DateTime(inicioSemana.year, inicioSemana.month, inicioSemana.day);
-          _fimMes = _inicioMes.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+          final inicioSemana =
+              agora.subtract(Duration(days: agora.weekday - 1));
+          _inicioMes =
+              DateTime(inicioSemana.year, inicioSemana.month, inicioSemana.day);
+          _fimMes = _inicioMes.add(
+              const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
           break;
         case 'mes':
         default:
@@ -144,6 +153,14 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         throw Exception('Loja não encontrada');
       }
 
+      try {
+        _catalogPublicBaseUrl =
+            await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(
+                _lojaId!);
+      } catch (_) {
+        _catalogPublicBaseUrl = buildPublicCatalogUrl(_lojaId);
+      }
+
       // Buscar usuário atual
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
@@ -152,24 +169,32 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
       // Buscar dados do usuário
       final sessaoBox = await Hive.openBox('sessao');
-      final tipoUsuario = sessaoBox.get('tipo_usuario') as String? ?? 'vendedor';
-      _usuarioLogado = (sessaoBox.get('usuario_logado') ?? '').toString().trim().toLowerCase();
+      final tipoUsuario =
+          sessaoBox.get('tipo_usuario') as String? ?? 'vendedor';
+      _usuarioLogado = (sessaoBox.get('usuario_logado') ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
       _isAdmin = tipoUsuario == 'admin' || tipoUsuario == 'programador';
 
       // Buscar metas (vendedor): abrir box e sincronizar do Firestore para aparecer em qualquer dispositivo
       if (!_isAdmin) {
         try {
           _metasBox = await Hive.openBox<Meta>('metas_$_lojaId');
-          final metasRemotas = await MetaFirestoreService.getMetas(lojaId: _lojaId!);
+          final metasRemotas =
+              await MetaFirestoreService.getMetas(lojaId: _lojaId!);
           for (final meta in metasRemotas) {
             final key = meta.hiveKey;
             final local = _metasBox!.get(key);
-            if (local == null || (meta.atualizadoEm.isAfter(local.atualizadoEm))) {
+            if (local == null ||
+                (meta.atualizadoEm.isAfter(local.atualizadoEm))) {
               await _metasBox!.put(key, meta);
             }
           }
-          final mesRef = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
-          _metaAtual = _metasBox!.get('${mesRef}_$_usuarioLogado') ?? _metasBox!.get('${mesRef}_GERAL');
+          final mesRef =
+              '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
+          _metaAtual = _metasBox!.get('${mesRef}_$_usuarioLogado') ??
+              _metasBox!.get('${mesRef}_GERAL');
         } catch (_) {
           _metaAtual = null;
         }
@@ -182,11 +207,15 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       _erroTrackingDias = null;
 
       final connectivity = await Connectivity().checkConnectivity();
-      if (mounted) setState(() => _isOffline = connectivity.length == 1 && connectivity.first == ConnectivityResult.none);
+      if (mounted) {
+        setState(() => _isOffline = connectivity.length == 1 &&
+            connectivity.first == ConnectivityResult.none);
+      }
 
       if (_isAdmin) {
         // Admin: buscar resumo de todos os vendedores
-        _resumosVendedores = await ComissaoService.calcularResumoTodosVendedores(
+        _resumosVendedores =
+            await ComissaoService.calcularResumoTodosVendedores(
           lojaId: _lojaId!,
           inicio: _inicioMes,
           fim: _fimMes,
@@ -235,8 +264,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
     final meta = _metaAtual?.metaMensal ?? 0;
     final realizado = _meuResumo?.totalVendas ?? 0;
     final falta = (meta - realizado).clamp(0.0, double.infinity);
-    final periodo = '${_inicioMes.day}/${_inicioMes.month}/${_inicioMes.year} a ${_fimMes.day}/${_fimMes.month}/${_fimMes.year}';
-    final resumo = 'Período: $periodo. Meta do mês: ${_formatoMoeda.format(meta)}. '
+    final periodo =
+        '${_inicioMes.day}/${_inicioMes.month}/${_inicioMes.year} a ${_fimMes.day}/${_fimMes.month}/${_fimMes.year}';
+    final resumo =
+        'Período: $periodo. Meta do mês: ${_formatoMoeda.format(meta)}. '
         'Realizado (vendas): ${_formatoMoeda.format(realizado)}. '
         'Falta para bater a meta: ${_formatoMoeda.format(falta)}.';
     Navigator.push(
@@ -261,7 +292,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             const Text('Metas & Comissões'),
             Text(
               _getPeriodoTexto(),
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontWeight: FontWeight.normal),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade400,
+                  fontWeight: FontWeight.normal),
             ),
           ],
         ),
@@ -301,7 +335,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 children: [
                   Icon(Icons.wifi_off, size: 18, color: _warningColor),
                   SizedBox(width: 8),
-                  Text('Sem conexão', style: TextStyle(color: _warningColor, fontWeight: FontWeight.w600)),
+                  Text('Sem conexão',
+                      style: TextStyle(
+                          color: _warningColor, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -364,7 +400,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _periodoSelecionado == 'hoje',
             onSelected: (_) => _definirPeriodo('hoje'),
             selectedColor: _primaryColor.withOpacity(0.3),
-            labelStyle: TextStyle(color: _periodoSelecionado == 'hoje' ? _primaryColor : Colors.white),
+            labelStyle: TextStyle(
+                color: _periodoSelecionado == 'hoje'
+                    ? _primaryColor
+                    : Colors.white),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
@@ -372,7 +411,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _periodoSelecionado == 'semana',
             onSelected: (_) => _definirPeriodo('semana'),
             selectedColor: _primaryColor.withOpacity(0.3),
-            labelStyle: TextStyle(color: _periodoSelecionado == 'semana' ? _primaryColor : Colors.white),
+            labelStyle: TextStyle(
+                color: _periodoSelecionado == 'semana'
+                    ? _primaryColor
+                    : Colors.white),
           ),
           const SizedBox(width: 8),
           ChoiceChip(
@@ -380,7 +422,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _periodoSelecionado == 'mes',
             onSelected: (_) => _definirPeriodo('mes'),
             selectedColor: _primaryColor.withOpacity(0.3),
-            labelStyle: TextStyle(color: _periodoSelecionado == 'mes' ? _primaryColor : Colors.white),
+            labelStyle: TextStyle(
+                color: _periodoSelecionado == 'mes'
+                    ? _primaryColor
+                    : Colors.white),
           ),
         ],
       ),
@@ -390,15 +435,17 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   Widget _buildSkeletonLoading() {
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: List.generate(4, (_) => Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        height: 100,
-        decoration: BoxDecoration(
-          color: _cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.withOpacity(0.1)),
-        ),
-      )),
+      children: List.generate(
+          4,
+          (_) => Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                height: 100,
+                decoration: BoxDecoration(
+                  color: _cardColor,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.withOpacity(0.1)),
+                ),
+              )),
     );
   }
 
@@ -413,7 +460,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             const SizedBox(height: 16),
             Text(
               'Erro ao carregar dados',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade300),
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade300),
             ),
             const SizedBox(height: 8),
             Text(
@@ -442,7 +492,7 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
   Widget _buildLinkIndicacaoCard() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    final baseUrl = buildPublicCatalogUrl(_lojaId);
+    final baseUrl = _catalogPublicBaseUrl ?? buildPublicCatalogUrl(_lojaId);
     if (baseUrl == null || uid == null) return const SizedBox.shrink();
     final link = '$baseUrl?ref=$uid';
     return _buildCard(
@@ -455,7 +505,11 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
               children: [
                 Icon(Icons.link, color: _primaryColor, size: 20),
                 SizedBox(width: 8),
-                Text('Seu link de indicação', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                Text('Seu link de indicação',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white)),
               ],
             ),
             const SizedBox(height: 8),
@@ -470,7 +524,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 color: Colors.grey.shade900,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: SelectableText(link, style: TextStyle(fontSize: 12, color: Colors.grey.shade300)),
+              child: SelectableText(link,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade300)),
             ),
             const SizedBox(height: 10),
             SizedBox(
@@ -479,12 +534,16 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: link));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Link copiado!'), duration: Duration(seconds: 2)),
+                    const SnackBar(
+                        content: Text('Link copiado!'),
+                        duration: Duration(seconds: 2)),
                   );
                 },
                 icon: const Icon(Icons.copy, size: 18),
                 label: const Text('Copiar link'),
-                style: OutlinedButton.styleFrom(foregroundColor: _primaryColor, side: const BorderSide(color: _primaryColor)),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: _primaryColor,
+                    side: const BorderSide(color: _primaryColor)),
               ),
             ),
           ],
@@ -511,9 +570,13 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             const SizedBox(height: 16),
             _buildLinkIndicacaoCard(),
             const SizedBox(height: 16),
-            if (_metaAtual != null && _metaAtual!.metaMensal > 0 && _periodoSelecionado == 'mes')
+            if (_metaAtual != null &&
+                _metaAtual!.metaMensal > 0 &&
+                _periodoSelecionado == 'mes')
               _buildMetaCard(),
-            if (_metaAtual != null && _metaAtual!.metaMensal > 0 && _periodoSelecionado == 'mes')
+            if (_metaAtual != null &&
+                _metaAtual!.metaMensal > 0 &&
+                _periodoSelecionado == 'mes')
               const SizedBox(height: 16),
             _buildResumoCard(),
             const SizedBox(height: 16),
@@ -533,7 +596,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   Widget _buildMetaCard() {
     final meta = _metaAtual!.metaMensal;
     final realizado = _meuResumo?.totalVendas ?? 0;
-    final percentual = meta > 0 ? (realizado / meta * 100).clamp(0.0, 200.0) : 0.0;
+    final percentual =
+        meta > 0 ? (realizado / meta * 100).clamp(0.0, 200.0) : 0.0;
 
     return _buildCard(
       child: Padding(
@@ -548,12 +612,19 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                   children: [
                     Icon(Icons.flag, color: _primaryColor, size: 20),
                     SizedBox(width: 8),
-                    Text('Meta do Mês', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    Text('Meta do Mês',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
                   ],
                 ),
                 Text(
                   '${percentual.toStringAsFixed(0)}%',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: percentual >= 100 ? _successColor : _warningColor),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: percentual >= 100 ? _successColor : _warningColor),
                 ),
               ],
             ),
@@ -571,8 +642,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Realizado: ${_formatoMoeda.format(realizado)}', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
-                Text('Meta: ${_formatoMoeda.format(meta)}', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                Text('Realizado: ${_formatoMoeda.format(realizado)}',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                Text('Meta: ${_formatoMoeda.format(meta)}',
+                    style:
+                        TextStyle(fontSize: 12, color: Colors.grey.shade400)),
               ],
             ),
           ],
@@ -587,7 +662,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       return _buildCard(
         child: const Padding(
           padding: EdgeInsets.all(16),
-          child: Text('Sem dados para o período selecionado', style: TextStyle(color: Colors.grey)),
+          child: Text('Sem dados para o período selecionado',
+              style: TextStyle(color: Colors.grey)),
         ),
       );
     }
@@ -603,15 +679,21 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
               children: [
                 const Text(
                   'Seu Resumo',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
                     color: _primaryColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Text(_getPeriodoTexto(), style: const TextStyle(color: _primaryColor, fontSize: 12)),
+                  child: Text(_getPeriodoTexto(),
+                      style:
+                          const TextStyle(color: _primaryColor, fontSize: 12)),
                 ),
               ],
             ),
@@ -620,17 +702,34 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             // Grid de métricas
             Row(
               children: [
-                Expanded(child: _buildMetricaCard('Total Vendido', _formatoMoeda.format(resumo.totalVendas), Icons.shopping_cart, _primaryColor)),
+                Expanded(
+                    child: _buildMetricaCard(
+                        'Total Vendido',
+                        _formatoMoeda.format(resumo.totalVendas),
+                        Icons.shopping_cart,
+                        _primaryColor)),
                 const SizedBox(width: 12),
-                Expanded(child: _buildMetricaCard('Vendas', '${resumo.qtdVendas}', Icons.receipt, _successColor)),
+                Expanded(
+                    child: _buildMetricaCard('Vendas', '${resumo.qtdVendas}',
+                        Icons.receipt, _successColor)),
               ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: _buildMetricaCard('Comissão a Receber', _formatoMoeda.format(resumo.comissaoAAReceber), Icons.payments, _warningColor)),
+                Expanded(
+                    child: _buildMetricaCard(
+                        'Comissão a Receber',
+                        _formatoMoeda.format(resumo.comissaoAAReceber),
+                        Icons.payments,
+                        _warningColor)),
                 const SizedBox(width: 12),
-                Expanded(child: _buildMetricaCard('Vendas Catálogo', '${resumo.qtdVendasCatalogo}', Icons.link, Colors.purple)),
+                Expanded(
+                    child: _buildMetricaCard(
+                        'Vendas Catálogo',
+                        '${resumo.qtdVendasCatalogo}',
+                        Icons.link,
+                        Colors.purple)),
               ],
             ),
 
@@ -674,7 +773,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
     );
   }
 
-  Widget _buildMetricaCard(String titulo, String valor, IconData icone, Color cor) {
+  Widget _buildMetricaCard(
+      String titulo, String valor, IconData icone, Color cor) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -701,7 +801,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
           const SizedBox(height: 4),
           Text(
             valor,
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cor),
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: cor),
           ),
         ],
       ),
@@ -718,15 +819,22 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _filtroStatusComissao == 'todas',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'todas'),
             selectedColor: _primaryColor.withOpacity(0.3),
-            labelStyle: TextStyle(color: _filtroStatusComissao == 'todas' ? _primaryColor : Colors.grey.shade400),
+            labelStyle: TextStyle(
+                color: _filtroStatusComissao == 'todas'
+                    ? _primaryColor
+                    : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
           ChoiceChip(
             label: const Text('Pendentes'),
             selected: _filtroStatusComissao == 'pendentes',
-            onSelected: (_) => setState(() => _filtroStatusComissao = 'pendentes'),
+            onSelected: (_) =>
+                setState(() => _filtroStatusComissao = 'pendentes'),
             selectedColor: _primaryColor.withOpacity(0.3),
-            labelStyle: TextStyle(color: _filtroStatusComissao == 'pendentes' ? _primaryColor : Colors.grey.shade400),
+            labelStyle: TextStyle(
+                color: _filtroStatusComissao == 'pendentes'
+                    ? _primaryColor
+                    : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
           ChoiceChip(
@@ -734,15 +842,22 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             selected: _filtroStatusComissao == 'pagas',
             onSelected: (_) => setState(() => _filtroStatusComissao = 'pagas'),
             selectedColor: _primaryColor.withOpacity(0.3),
-            labelStyle: TextStyle(color: _filtroStatusComissao == 'pagas' ? _primaryColor : Colors.grey.shade400),
+            labelStyle: TextStyle(
+                color: _filtroStatusComissao == 'pagas'
+                    ? _primaryColor
+                    : Colors.grey.shade400),
           ),
           const SizedBox(width: 6),
           ChoiceChip(
             label: const Text('Estornadas'),
             selected: _filtroStatusComissao == 'estornadas',
-            onSelected: (_) => setState(() => _filtroStatusComissao = 'estornadas'),
+            onSelected: (_) =>
+                setState(() => _filtroStatusComissao = 'estornadas'),
             selectedColor: _primaryColor.withOpacity(0.3),
-            labelStyle: TextStyle(color: _filtroStatusComissao == 'estornadas' ? _primaryColor : Colors.grey.shade400),
+            labelStyle: TextStyle(
+                color: _filtroStatusComissao == 'estornadas'
+                    ? _primaryColor
+                    : Colors.grey.shade400),
           ),
         ],
       ),
@@ -765,7 +880,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
   String _getEmptyStateMensagem() {
     if (_filtroStatusComissao == 'todas') return 'Nenhuma comissão no período';
-    if (_filtroStatusComissao == 'pendentes') return 'Nenhuma comissão pendente';
+    if (_filtroStatusComissao == 'pendentes') {
+      return 'Nenhuma comissão pendente';
+    }
     if (_filtroStatusComissao == 'pagas') return 'Nenhuma comissão paga';
     return 'Nenhuma comissão estornada';
   }
@@ -780,11 +897,15 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade500),
+                Icon(Icons.receipt_long_outlined,
+                    size: 64, color: Colors.grey.shade500),
                 const SizedBox(height: 16),
                 Text(
                   _getEmptyStateMensagem(),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
@@ -808,15 +929,21 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         children: [
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Text('Suas Comissões', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+            child: Text('Suas Comissões',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white)),
           ),
           Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: comissoes.length,
-            separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
-            itemBuilder: (context, index) => _buildComissaoTile(comissoes[index]),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
+            itemBuilder: (context, index) =>
+                _buildComissaoTile(comissoes[index]),
           ),
         ],
       ),
@@ -852,7 +979,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       ),
       title: Text(
         _formatoMoeda.format(comissao.comissaoValor),
-        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        style:
+            const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -879,11 +1007,15 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             ),
             child: Text(
               comissao.status.toUpperCase(),
-              style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                  fontSize: 10,
+                  color: statusColor,
+                  fontWeight: FontWeight.bold),
             ),
           ),
           if (comissao.origem == 'catalogo')
-            const Text('via catálogo', style: TextStyle(fontSize: 10, color: Colors.purple)),
+            const Text('via catálogo',
+                style: TextStyle(fontSize: 10, color: Colors.purple)),
         ],
       ),
     );
@@ -934,21 +1066,29 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Resumo Geral', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                const Text('Resumo Geral',
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white)),
                 Row(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.picture_as_pdf, color: _primaryColor),
+                      icon: const Icon(Icons.picture_as_pdf,
+                          color: _primaryColor),
                       onPressed: _exportarRelatorio,
                       tooltip: 'Exportar relatório em PDF',
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
                         color: _primaryColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Text(_getPeriodoTexto(), style: const TextStyle(color: _primaryColor, fontSize: 12)),
+                      child: Text(_getPeriodoTexto(),
+                          style: const TextStyle(
+                              color: _primaryColor, fontSize: 12)),
                     ),
                   ],
                 ),
@@ -957,17 +1097,34 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: _buildMetricaCard('Total Vendido', _formatoMoeda.format(totalVendas), Icons.shopping_cart, _primaryColor)),
+                Expanded(
+                    child: _buildMetricaCard(
+                        'Total Vendido',
+                        _formatoMoeda.format(totalVendas),
+                        Icons.shopping_cart,
+                        _primaryColor)),
                 const SizedBox(width: 12),
-                Expanded(child: _buildMetricaCard('Total Comissões', _formatoMoeda.format(totalComissoes), Icons.payments, _warningColor)),
+                Expanded(
+                    child: _buildMetricaCard(
+                        'Total Comissões',
+                        _formatoMoeda.format(totalComissoes),
+                        Icons.payments,
+                        _warningColor)),
               ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: _buildMetricaCard('Vendas', '$totalQtdVendas', Icons.receipt, _successColor)),
+                Expanded(
+                    child: _buildMetricaCard('Vendas', '$totalQtdVendas',
+                        Icons.receipt, _successColor)),
                 const SizedBox(width: 12),
-                Expanded(child: _buildMetricaCard('Vendedores', '${_resumosVendedores.length}', Icons.people, Colors.purple)),
+                Expanded(
+                    child: _buildMetricaCard(
+                        'Vendedores',
+                        '${_resumosVendedores.length}',
+                        Icons.people,
+                        Colors.purple)),
               ],
             ),
             if (_moduloFinanceiroComplemento?.temAlgumDado == true) ...[
@@ -985,7 +1142,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.account_balance, color: _primaryColor, size: 18),
+                        Icon(Icons.account_balance,
+                            color: _primaryColor, size: 18),
                         SizedBox(width: 8),
                         Text(
                           'Módulo financeiro · complemento gerencial',
@@ -1008,7 +1166,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                       'equipe ${_formatoMoeda.format(_moduloFinanceiroComplemento!.totalPagamentosEquipe)}. '
                       'Metas e comissões acima: só vendas. '
                       'Não substitui o lucro operacional de vendas; complemento gerencial — evite somar a mesma despesa duas vezes com taxas operacionais.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade400),
                     ),
                   ],
                 ),
@@ -1029,11 +1188,15 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.people_outline, size: 64, color: Colors.grey.shade500),
+                Icon(Icons.people_outline,
+                    size: 64, color: Colors.grey.shade500),
                 const SizedBox(height: 16),
                 const Text(
                   'Nenhum vendedor com comissões',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
@@ -1071,13 +1234,24 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Vendedores', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    const Text('Vendedores',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
                     TextButton.icon(
                       onPressed: _sincronizando ? null : _sincronizarVendedores,
                       icon: _sincronizando
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: _primaryColor))
-                          : const Icon(Icons.sync, size: 18, color: _primaryColor),
-                      label: Text(_sincronizando ? 'Sincronizando...' : 'Sincronizar', style: const TextStyle(color: _primaryColor)),
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: _primaryColor))
+                          : const Icon(Icons.sync,
+                              size: 18, color: _primaryColor),
+                      label: Text(
+                          _sincronizando ? 'Sincronizando...' : 'Sincronizar',
+                          style: const TextStyle(color: _primaryColor)),
                     ),
                   ],
                 ),
@@ -1100,7 +1274,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                         : null,
                     filled: true,
                     fillColor: Colors.black26,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1108,17 +1283,40 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      ChoiceChip(label: const Text('Por vendas'), selected: _ordenacaoVendedores == 'vendas', onSelected: (_) => setState(() => _ordenacaoVendedores = 'vendas'), selectedColor: _primaryColor.withOpacity(0.3)),
+                      ChoiceChip(
+                          label: const Text('Por vendas'),
+                          selected: _ordenacaoVendedores == 'vendas',
+                          onSelected: (_) =>
+                              setState(() => _ordenacaoVendedores = 'vendas'),
+                          selectedColor: _primaryColor.withOpacity(0.3)),
                       const SizedBox(width: 6),
-                      ChoiceChip(label: const Text('Por nome'), selected: _ordenacaoVendedores == 'nome', onSelected: (_) => setState(() => _ordenacaoVendedores = 'nome'), selectedColor: _primaryColor.withOpacity(0.3)),
+                      ChoiceChip(
+                          label: const Text('Por nome'),
+                          selected: _ordenacaoVendedores == 'nome',
+                          onSelected: (_) =>
+                              setState(() => _ordenacaoVendedores = 'nome'),
+                          selectedColor: _primaryColor.withOpacity(0.3)),
                       const SizedBox(width: 6),
-                      ChoiceChip(label: const Text('Por comissão'), selected: _ordenacaoVendedores == 'comissao', onSelected: (_) => setState(() => _ordenacaoVendedores = 'comissao'), selectedColor: _primaryColor.withOpacity(0.3)),
+                      ChoiceChip(
+                          label: const Text('Por comissão'),
+                          selected: _ordenacaoVendedores == 'comissao',
+                          onSelected: (_) =>
+                              setState(() => _ordenacaoVendedores = 'comissao'),
+                          selectedColor: _primaryColor.withOpacity(0.3)),
                       const SizedBox(width: 6),
                       Tooltip(
-                        message: _ordenacaoDescendente ? 'Maior primeiro (clique para inverter)' : 'Menor primeiro (clique para inverter)',
+                        message: _ordenacaoDescendente
+                            ? 'Maior primeiro (clique para inverter)'
+                            : 'Menor primeiro (clique para inverter)',
                         child: IconButton(
-                          icon: Icon(_ordenacaoDescendente ? Icons.arrow_downward : Icons.arrow_upward, color: _primaryColor, size: 20),
-                          onPressed: () => setState(() => _ordenacaoDescendente = !_ordenacaoDescendente),
+                          icon: Icon(
+                              _ordenacaoDescendente
+                                  ? Icons.arrow_downward
+                                  : Icons.arrow_upward,
+                              color: _primaryColor,
+                              size: 20),
+                          onPressed: () => setState(() =>
+                              _ordenacaoDescendente = !_ordenacaoDescendente),
                         ),
                       ),
                     ],
@@ -1132,8 +1330,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: _resumosVendedoresFiltrados.length,
-            separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
-            itemBuilder: (context, index) => _buildVendedorTileAdmin(_resumosVendedoresFiltrados[index]),
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: Colors.grey.withOpacity(0.2)),
+            itemBuilder: (context, index) =>
+                _buildVendedorTileAdmin(_resumosVendedoresFiltrados[index]),
           ),
         ],
       ),
@@ -1148,21 +1348,25 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
           backgroundColor: _primaryColor.withOpacity(0.2),
           child: Text(
             (resumo.vendedorNome ?? 'V')[0].toUpperCase(),
-            style: const TextStyle(fontWeight: FontWeight.bold, color: _primaryColor),
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, color: _primaryColor),
           ),
         ),
         title: Text(
           resumo.vendedorNome ?? 'Vendedor',
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          style:
+              const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        subtitle: Text(resumo.vendedorEmail ?? '', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+        subtitle: Text(resumo.vendedorEmail ?? '',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
               _formatoMoeda.format(resumo.totalVendas),
-              style: const TextStyle(fontWeight: FontWeight.bold, color: _successColor),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: _successColor),
             ),
             Text(
               '${resumo.percentualComissao?.toStringAsFixed(1) ?? _config?.comissaoGlobalPercent.toStringAsFixed(1) ?? "5.0"}%',
@@ -1182,8 +1386,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _buildMiniMetrica('Vendas', '${resumo.qtdVendas}'),
-                    _buildMiniMetrica('Via Catálogo', '${resumo.qtdVendasCatalogo}'),
-                    _buildMiniMetrica('Comissão', _formatoMoeda.format(resumo.totalComissoes)),
+                    _buildMiniMetrica(
+                        'Via Catálogo', '${resumo.qtdVendasCatalogo}'),
+                    _buildMiniMetrica('Comissão',
+                        _formatoMoeda.format(resumo.totalComissoes)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -1225,9 +1431,12 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
   Widget _buildMiniMetrica(String titulo, String valor) {
     return Column(
       children: [
-        Text(titulo, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+        Text(titulo,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
         const SizedBox(height: 2),
-        Text(valor, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        Text(valor,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, color: Colors.white)),
       ],
     );
   }
@@ -1238,7 +1447,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
   Widget _buildConfiguracoes() {
     if (_config == null) {
-      return const Center(child: CircularProgressIndicator(color: _primaryColor));
+      return const Center(
+          child: CircularProgressIndicator(color: _primaryColor));
     }
 
     return RefreshIndicator(
@@ -1248,180 +1458,227 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Comissão global
-          _buildCard(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Comissão Global', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            activeTrackColor: _primaryColor,
-                            inactiveTrackColor: Colors.grey.shade800,
-                            thumbColor: _primaryColor,
-                            overlayColor: _primaryColor.withOpacity(0.2),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Comissão global
+            _buildCard(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Comissão Global',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              activeTrackColor: _primaryColor,
+                              inactiveTrackColor: Colors.grey.shade800,
+                              thumbColor: _primaryColor,
+                              overlayColor: _primaryColor.withOpacity(0.2),
+                            ),
+                            child: Slider(
+                              value: _config!.comissaoGlobalPercent,
+                              min: 0,
+                              max: 30,
+                              divisions: 60,
+                              label:
+                                  '${_config!.comissaoGlobalPercent.toStringAsFixed(1)}%',
+                              onChanged: (value) {
+                                setState(() {
+                                  _config = _config!
+                                      .copyWith(comissaoGlobalPercent: value);
+                                });
+                              },
+                            ),
                           ),
-                          child: Slider(
-                            value: _config!.comissaoGlobalPercent,
-                            min: 0,
-                            max: 30,
-                            divisions: 60,
-                            label: '${_config!.comissaoGlobalPercent.toStringAsFixed(1)}%',
-                            onChanged: (value) {
-                              setState(() {
-                                _config = _config!.copyWith(comissaoGlobalPercent: value);
-                              });
-                            },
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _primaryColor.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_config!.comissaoGlobalPercent.toStringAsFixed(1)}%',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _primaryColor,
+                                fontSize: 16),
                           ),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: _primaryColor.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '${_config!.comissaoGlobalPercent.toStringAsFixed(1)}%',
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: _primaryColor, fontSize: 16),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Regras de cálculo
-          _buildCard(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Regras de Cálculo', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const SizedBox(height: 8),
-                  _buildSwitchTile(
-                    'Excluir frete da base',
-                    'Comissão calculada apenas sobre produtos',
-                    _config!.excluirFreteDaBase,
-                    (value) => setState(() => _config = _config!.copyWith(excluirFreteDaBase: value)),
-                    tooltip: 'Quando ativado, o valor do frete não entra na base de cálculo da comissão.',
-                  ),
-                  _buildSwitchTile(
-                    'Desconto reduz base',
-                    'Descontos são subtraídos da base de cálculo',
-                    _config!.descontoReduzBase,
-                    (value) => setState(() => _config = _config!.copyWith(descontoReduzBase: value)),
-                    tooltip: 'Descontos aplicados na venda reduzem o valor sobre o qual a comissão é calculada.',
-                  ),
-                  _buildSwitchTile(
-                    'Apenas após pagamento',
-                    'Comissão só é confirmada após pagamento',
-                    _config!.apenasAposPagamentoConfirmado,
-                    (value) => setState(() => _config = _config!.copyWith(apenasAposPagamentoConfirmado: value)),
-                    tooltip: 'A comissão só passa a ser considerada quando o pagamento da venda for confirmado.',
-                  ),
-                  _buildSwitchTile(
-                    'Estorno automático',
-                    'Estorna comissão se venda for cancelada',
-                    _config!.estornoAutomaticoEmCancelamento,
-                    (value) => setState(() => _config = _config!.copyWith(estornoAutomaticoEmCancelamento: value)),
-                    tooltip: 'Se uma venda for cancelada, a comissão correspondente é automaticamente estornada.',
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Tracking
-          _buildCard(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Tracking de Links', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const SizedBox(height: 16),
-                  _buildConfigRow(
-                    Icons.timer,
-                    'Expiração do tracking',
-                    '${_config!.trackingExpiracaoDias} dias',
-                    TextField(
-                      textAlign: TextAlign.center,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        suffixText: 'd',
-                        suffixStyle: TextStyle(color: Colors.grey.shade500),
-                        isDense: true,
-                        errorText: _erroTrackingDias,
-                        errorStyle: const TextStyle(fontSize: 11, color: _dangerColor),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade700)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _primaryColor)),
-                      ),
-                      controller: _trackingDiasController,
-                      onChanged: (value) {
-                        final parsed = int.tryParse(value);
-                        String? erro;
-                        if (parsed == null || parsed < 1 || parsed > 365) {
-                          erro = parsed == null || value.isEmpty
-                              ? null
-                              : 'Informe entre 1 e 365 dias';
-                        }
-                        setState(() {
-                          _erroTrackingDias = erro;
-                          if (parsed != null && parsed >= 1 && parsed <= 365) {
-                            _config = _config!.copyWith(trackingExpiracaoDias: parsed);
-                          }
-                        });
-                      },
+                      ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-          // Botão salvar
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _salvando ? null : _salvarConfiguracoes,
-              icon: _salvando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
-              label: Text(_salvando ? 'Salvando...' : 'Salvar Configurações'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            // Regras de cálculo
+            _buildCard(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Regras de Cálculo',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                    const SizedBox(height: 8),
+                    _buildSwitchTile(
+                      'Excluir frete da base',
+                      'Comissão calculada apenas sobre produtos',
+                      _config!.excluirFreteDaBase,
+                      (value) => setState(() => _config =
+                          _config!.copyWith(excluirFreteDaBase: value)),
+                      tooltip:
+                          'Quando ativado, o valor do frete não entra na base de cálculo da comissão.',
+                    ),
+                    _buildSwitchTile(
+                      'Desconto reduz base',
+                      'Descontos são subtraídos da base de cálculo',
+                      _config!.descontoReduzBase,
+                      (value) => setState(() => _config =
+                          _config!.copyWith(descontoReduzBase: value)),
+                      tooltip:
+                          'Descontos aplicados na venda reduzem o valor sobre o qual a comissão é calculada.',
+                    ),
+                    _buildSwitchTile(
+                      'Apenas após pagamento',
+                      'Comissão só é confirmada após pagamento',
+                      _config!.apenasAposPagamentoConfirmado,
+                      (value) => setState(() => _config = _config!
+                          .copyWith(apenasAposPagamentoConfirmado: value)),
+                      tooltip:
+                          'A comissão só passa a ser considerada quando o pagamento da venda for confirmado.',
+                    ),
+                    _buildSwitchTile(
+                      'Estorno automático',
+                      'Estorna comissão se venda for cancelada',
+                      _config!.estornoAutomaticoEmCancelamento,
+                      (value) => setState(() => _config = _config!
+                          .copyWith(estornoAutomaticoEmCancelamento: value)),
+                      tooltip:
+                          'Se uma venda for cancelada, a comissão correspondente é automaticamente estornada.',
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 32),
-        ],
+            const SizedBox(height: 16),
+
+            // Tracking
+            _buildCard(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Tracking de Links',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white)),
+                    const SizedBox(height: 16),
+                    _buildConfigRow(
+                      Icons.timer,
+                      'Expiração do tracking',
+                      '${_config!.trackingExpiracaoDias} dias',
+                      TextField(
+                        textAlign: TextAlign.center,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          suffixText: 'd',
+                          suffixStyle: TextStyle(color: Colors.grey.shade500),
+                          isDense: true,
+                          errorText: _erroTrackingDias,
+                          errorStyle: const TextStyle(
+                              fontSize: 11, color: _dangerColor),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide:
+                                  BorderSide(color: Colors.grey.shade700)),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide:
+                                  const BorderSide(color: _primaryColor)),
+                        ),
+                        controller: _trackingDiasController,
+                        onChanged: (value) {
+                          final parsed = int.tryParse(value);
+                          String? erro;
+                          if (parsed == null || parsed < 1 || parsed > 365) {
+                            erro = parsed == null || value.isEmpty
+                                ? null
+                                : 'Informe entre 1 e 365 dias';
+                          }
+                          setState(() {
+                            _erroTrackingDias = erro;
+                            if (parsed != null &&
+                                parsed >= 1 &&
+                                parsed <= 365) {
+                              _config = _config!
+                                  .copyWith(trackingExpiracaoDias: parsed);
+                            }
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Botão salvar
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _salvando ? null : _salvarConfiguracoes,
+                icon: _salvando
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save),
+                label: Text(_salvando ? 'Salvando...' : 'Salvar Configurações'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildSwitchTile(String title, String subtitle, bool value, ValueChanged<bool> onChanged, {String? tooltip}) {
+  Widget _buildSwitchTile(
+      String title, String subtitle, bool value, ValueChanged<bool> onChanged,
+      {String? tooltip}) {
     final tile = SwitchListTile(
       title: Text(title, style: const TextStyle(color: Colors.white)),
-      subtitle: Text(subtitle, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+      subtitle: Text(subtitle,
+          style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
       value: value,
       onChanged: onChanged,
       contentPadding: EdgeInsets.zero,
@@ -1435,7 +1692,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
     return tile;
   }
 
-  Widget _buildConfigRow(IconData icon, String title, String subtitle, Widget trailing) {
+  Widget _buildConfigRow(
+      IconData icon, String title, String subtitle, Widget trailing) {
     return Row(
       children: [
         Icon(icon, color: Colors.grey.shade500),
@@ -1445,7 +1703,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title, style: const TextStyle(color: Colors.white)),
-              Text(subtitle, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+              Text(subtitle,
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
             ],
           ),
         ),
@@ -1514,7 +1773,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
             pw.Center(
               child: pw.Text(
                 'Relatório de Comissões',
-                style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
+                style:
+                    pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
               ),
             ),
             pw.SizedBox(height: 4),
@@ -1534,61 +1794,76 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  pw.Text('Resumo Geral', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                  pw.Text('Resumo Geral',
+                      style: pw.TextStyle(
+                          fontSize: 14, fontWeight: pw.FontWeight.bold)),
                   pw.SizedBox(height: 8),
-                  pw.Text('Total Vendido: ${_formatoMoeda.format(totalVendas)}'),
-                  pw.Text('Total Comissões: ${_formatoMoeda.format(totalComissoes)}'),
+                  pw.Text(
+                      'Total Vendido: ${_formatoMoeda.format(totalVendas)}'),
+                  pw.Text(
+                      'Total Comissões: ${_formatoMoeda.format(totalComissoes)}'),
                   pw.Text('Quantidade de Vendas: $totalQtdVendas'),
                   pw.Text('Vendedores: ${_resumosVendedores.length}'),
                 ],
               ),
             ),
             pw.SizedBox(height: 16),
-            pw.Text('Detalhamento por Vendedor', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Detalhamento por Vendedor',
+                style:
+                    pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 8),
             ..._resumosVendedoresFiltrados.map((r) => pw.Container(
-              margin: const pw.EdgeInsets.only(bottom: 8),
-              padding: const pw.EdgeInsets.all(8),
-              decoration: pw.BoxDecoration(
-                border: pw.Border.all(color: PdfColors.grey300),
-                borderRadius: pw.BorderRadius.circular(4),
-              ),
-              child: pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Expanded(
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(r.vendedorNome ?? 'Vendedor', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                        pw.Text(r.vendedorEmail ?? '', style: const pw.TextStyle(fontSize: 9)),
-                      ],
-                    ),
+                  margin: const pw.EdgeInsets.only(bottom: 8),
+                  padding: const pw.EdgeInsets.all(8),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300),
+                    borderRadius: pw.BorderRadius.circular(4),
                   ),
-                  pw.Text(_formatoMoeda.format(r.totalVendas), style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                  pw.SizedBox(width: 12),
-                  pw.Text(_formatoMoeda.format(r.totalComissoes)),
-                ],
-              ),
-            )),
+                  child: pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Expanded(
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            pw.Text(r.vendedorNome ?? 'Vendedor',
+                                style: pw.TextStyle(
+                                    fontWeight: pw.FontWeight.bold)),
+                            pw.Text(r.vendedorEmail ?? '',
+                                style: const pw.TextStyle(fontSize: 9)),
+                          ],
+                        ),
+                      ),
+                      pw.Text(_formatoMoeda.format(r.totalVendas),
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.SizedBox(width: 12),
+                      pw.Text(_formatoMoeda.format(r.totalComissoes)),
+                    ],
+                  ),
+                )),
           ],
         ),
       );
 
       await Printing.layoutPdf(
         onLayout: (_) => pdf.save(),
-        name: 'Comissoes_${_getPeriodoTexto().replaceAll(' ', '_')}_${DateFormat('ddMMyyyy').format(DateTime.now())}.pdf',
+        name:
+            'Comissoes_${_getPeriodoTexto().replaceAll(' ', '_')}_${DateFormat('ddMMyyyy').format(DateTime.now())}.pdf',
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Relatório exportado!'), backgroundColor: _successColor),
+          const SnackBar(
+              content: Text('Relatório exportado!'),
+              backgroundColor: _successColor),
         );
       }
     } catch (e) {
       debugPrint('❌ [COMISSOES] Erro ao exportar PDF (type=${e.runtimeType})');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao exportar: $e'), backgroundColor: _dangerColor),
+          SnackBar(
+              content: Text('Erro ao exportar: $e'),
+              backgroundColor: _dangerColor),
         );
       }
     }
@@ -1603,7 +1878,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       await _carregarDados();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Vendedores sincronizados!'), backgroundColor: _successColor),
+          const SnackBar(
+              content: Text('Vendedores sincronizados!'),
+              backgroundColor: _successColor),
         );
       }
     } finally {
@@ -1627,7 +1904,9 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(sucesso ? 'Configurações salvas!' : 'Erro ao salvar configurações'),
+            content: Text(sucesso
+                ? 'Configurações salvas!'
+                : 'Erro ao salvar configurações'),
             backgroundColor: sucesso ? _successColor : _dangerColor,
           ),
         );
@@ -1641,14 +1920,16 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
 
   Future<void> _editarComissaoVendedor(ResumoComissaoVendedor resumo) async {
     final controller = TextEditingController(
-      text: (resumo.percentualComissao ?? _config?.comissaoGlobalPercent ?? 5).toStringAsFixed(1),
+      text: (resumo.percentualComissao ?? _config?.comissaoGlobalPercent ?? 5)
+          .toStringAsFixed(1),
     );
 
     final confirmado = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: _cardColor,
-        title: Text('Alterar comissão de ${resumo.vendedorNome}', style: const TextStyle(color: Colors.white)),
+        title: Text('Alterar comissão de ${resumo.vendedorNome}',
+            style: const TextStyle(color: Colors.white)),
         content: const Text(
           'Ao alterar o percentual, as comissões futuras serão calculadas com o novo valor. Deseja continuar?',
           style: TextStyle(color: Colors.white70),
@@ -1656,7 +1937,8 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancelar', style: TextStyle(color: Colors.grey.shade500)),
+            child:
+                Text('Cancelar', style: TextStyle(color: Colors.grey.shade500)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -1673,11 +1955,13 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: _cardColor,
-        title: Text('Comissão de ${resumo.vendedorNome}', style: const TextStyle(color: Colors.white)),
+        title: Text('Comissão de ${resumo.vendedorNome}',
+            style: const TextStyle(color: Colors.white)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Deixe vazio para usar a comissão global', style: TextStyle(color: Colors.grey.shade500)),
+            Text('Deixe vazio para usar a comissão global',
+                style: TextStyle(color: Colors.grey.shade500)),
             const SizedBox(height: 16),
             TextField(
               controller: controller,
@@ -1688,8 +1972,10 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 labelStyle: TextStyle(color: Colors.grey.shade500),
                 suffixText: '%',
                 border: const OutlineInputBorder(),
-                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.grey.shade700)),
-                focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: _primaryColor)),
+                enabledBorder: OutlineInputBorder(
+                    borderSide: BorderSide(color: Colors.grey.shade700)),
+                focusedBorder: const OutlineInputBorder(
+                    borderSide: BorderSide(color: _primaryColor)),
               ),
             ),
           ],
@@ -1697,11 +1983,13 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancelar', style: TextStyle(color: Colors.grey.shade500)),
+            child:
+                Text('Cancelar', style: TextStyle(color: Colors.grey.shade500)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, -1.0),
-            child: const Text('Usar global', style: TextStyle(color: _warningColor)),
+            child: const Text('Usar global',
+                style: TextStyle(color: _warningColor)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -1754,13 +2042,18 @@ class _MetasComissoesScreenState extends State<MetasComissoesScreen>
                 margin: const EdgeInsets.only(top: 12),
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(color: Colors.grey.shade600, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade600,
+                    borderRadius: BorderRadius.circular(2)),
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
                   '${resumo.vendedorNome} - ${comissoes.length} comissão(ões)',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
                 ),
               ),
               Expanded(
@@ -1785,7 +2078,8 @@ class _SugestoesIaMetasScreen extends StatefulWidget {
   const _SugestoesIaMetasScreen({required this.resumoInicial});
 
   @override
-  State<_SugestoesIaMetasScreen> createState() => _SugestoesIaMetasScreenState();
+  State<_SugestoesIaMetasScreen> createState() =>
+      _SugestoesIaMetasScreenState();
 }
 
 class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
@@ -1808,11 +2102,17 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
     if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)), backgroundColor: Colors.orange.shade700),
+        SnackBar(
+            content: Text(
+                IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)),
+            backgroundColor: Colors.orange.shade700),
       );
       return;
     }
-    setState(() { _enviando = true; _resposta = null; });
+    setState(() {
+      _enviando = true;
+      _resposta = null;
+    });
     try {
       final resposta = await AiLojaService.analiseVendasNatural(
         pergunta: pergunta,
@@ -1820,13 +2120,18 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
       );
       if (mounted) {
         IaUsoLimiteService.recordUse(lojaId, TipoUsoIa.perguntas);
-        setState(() { _resposta = resposta; _enviando = false; });
+        setState(() {
+          _resposta = resposta;
+          _enviando = false;
+        });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _enviando = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AiLojaService.messageForUser(e)), backgroundColor: Colors.red.shade700),
+          SnackBar(
+              content: Text(AiLojaService.messageForUser(e)),
+              backgroundColor: Colors.red.shade700),
         );
       }
     }
@@ -1838,21 +2143,29 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
       backgroundColor: _cardColor,
       appBar: AppBar(
         backgroundColor: _cardColor,
-        title: const Text('Sugestões com IA – Metas', style: TextStyle(color: Colors.white)),
-        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
+        title: const Text('Sugestões com IA – Metas',
+            style: TextStyle(color: Colors.white)),
+        leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context)),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _enviando ? null : () => _enviar(null),
         tooltip: 'Enviar pergunta',
         backgroundColor: _primaryColor,
         child: _enviando
-            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.send, color: Colors.white),
       ),
       body: Scrollbar(
         thumbVisibility: true,
         child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics()),
           padding: EdgeInsets.only(
             left: 20,
             right: 20,
@@ -1860,60 +2173,77 @@ class _SugestoesIaMetasScreenState extends State<_SugestoesIaMetasScreen> {
             bottom: 20 + MediaQuery.of(context).padding.bottom + 100,
           ),
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            FilledButton.tonalIcon(
-              onPressed: _enviando ? null : () => _enviar('O que fazer para bater a meta? Dê sugestões práticas.'),
-              icon: const Icon(Icons.flag),
-              label: const Text('O que fazer para bater a meta?'),
-              style: FilledButton.styleFrom(backgroundColor: _primaryColor.withOpacity(0.2)),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _perguntaCtrl,
-              decoration: InputDecoration(
-                hintText: 'Ou digite sua pergunta...',
-                border: const OutlineInputBorder(),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.05),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: _enviando
+                    ? null
+                    : () => _enviar(
+                        'O que fazer para bater a meta? Dê sugestões práticas.'),
+                icon: const Icon(Icons.flag),
+                label: const Text('O que fazer para bater a meta?'),
+                style: FilledButton.styleFrom(
+                    backgroundColor: _primaryColor.withOpacity(0.2)),
               ),
-              maxLines: 2,
-              enabled: !_enviando,
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _enviando ? null : () => _enviar(null),
-              icon: _enviando ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-              label: Text(_enviando ? 'Analisando…' : 'Enviar'),
-              style: FilledButton.styleFrom(backgroundColor: _primaryColor),
-            ),
-            if (_resposta != null) ...[
-              const SizedBox(height: 24),
-              const Text('Resposta:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16)),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: _primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 20),
+              TextField(
+                controller: _perguntaCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Ou digite sua pergunta...',
+                  border: const OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.05),
                 ),
-                child: Scrollbar(
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                    child: SelectableText(_resposta!, style: const TextStyle(color: Colors.white, height: 1.5, fontSize: 15)),
+                maxLines: 2,
+                enabled: !_enviando,
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _enviando ? null : () => _enviar(null),
+                icon: _enviando
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.send),
+                label: Text(_enviando ? 'Analisando…' : 'Enviar'),
+                style: FilledButton.styleFrom(backgroundColor: _primaryColor),
+              ),
+              if (_resposta != null) ...[
+                const SizedBox(height: 24),
+                const Text('Resposta:',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16)),
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.5),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics()),
+                      child: SelectableText(_resposta!,
+                          style: const TextStyle(
+                              color: Colors.white, height: 1.5, fontSize: 15)),
+                    ),
                   ),
                 ),
-              ),
+              ],
+              const SizedBox(height: 120),
             ],
-            const SizedBox(height: 120),
-          ],
-        ),
+          ),
         ),
       ),
     );
   }
 }
-

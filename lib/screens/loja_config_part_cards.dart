@@ -176,7 +176,8 @@ class _LojaConfigUrlCard extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: primaryColor,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -298,19 +299,24 @@ class _LojaConfigFreeLimitedLockedPaneBody extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.lock_outline_rounded, size: 52, color: cs.primary.withOpacity(0.85)),
+          Icon(Icons.lock_outline_rounded,
+              size: 52, color: cs.primary.withOpacity(0.85)),
           const SizedBox(height: 16),
           Text(
             'Módulo indisponível no plano gratuito',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           Text(
-            'No plano gratuito limitado use Identidade, Mídias e Publicar. '
+            'No plano gratuito limitado use Identidade, Mídias e Publicação do catálogo. '
             'O catálogo público recebe pedidos pelo WhatsApp.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: cs.onSurface.withOpacity(0.72), height: 1.35),
+            style:
+                TextStyle(color: cs.onSurface.withOpacity(0.72), height: 1.35),
           ),
           const SizedBox(height: 22),
           FilledButton.icon(

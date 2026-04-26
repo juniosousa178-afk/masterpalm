@@ -6,12 +6,12 @@ import '../../motor_crescimento/models/oportunidade_crescimento.dart';
 import '../../motor_crescimento/models/sugestao_campanha.dart';
 import '../../motor_crescimento/services/motor_crescimento_detector_service.dart';
 import '../../motor_crescimento/services/motor_crescimento_sugestor_service.dart';
+import '../../services/catalog_public_url_service.dart';
 import '../models/campanha_automatica.dart';
-
-const String _baseUrlCatalogo = 'https://app.mastepalm.com.br/loja';
 
 /// Tempo máximo para cada tipo de detecção (rodam em paralelo, então total ~20s).
 const Duration _timeoutDeteccaoPorTipo = Duration(seconds: 20);
+
 /// Timeout da fase de sugestões: retorna o que já tiver após esse tempo.
 const Duration _timeoutSugestoes = Duration(seconds: 45);
 
@@ -69,14 +69,20 @@ class MotorCrescimentoAutomacoesService {
       final stopAt = DateTime.now().add(_timeoutSugestoes);
       onProgress?.call(0, oportunidades.length);
 
+      final catalogBase =
+          await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(lojaId);
+
       for (var i = 0; i < oportunidades.length; i++) {
         if (DateTime.now().isAfter(stopAt)) break;
         final op = oportunidades[i];
         try {
-          final sugestao = await MotorCrescimentoSugestorService.sugerirCampanha(op);
+          final sugestao =
+              await MotorCrescimentoSugestorService.sugerirCampanha(op);
           final codigo = sugestao.codigoCupomSugerido.trim().toUpperCase();
           final link = codigo.isNotEmpty
-              ? '$_baseUrlCatalogo/$lojaId?cupom=${Uri.encodeComponent(codigo)}'
+              ? CatalogPublicUrlService.withQueryParameters(catalogBase, {
+                  'cupom': codigo,
+                })
               : '';
 
           final prioridade = sugestao.tipoCampanha == 'promocao'
@@ -112,8 +118,11 @@ class MotorCrescimentoAutomacoesService {
       }
 
       sugestoes.sort((a, b) {
-        int ordem(PrioridadeCampanha p) => p == PrioridadeCampanha.alta ? 0 : (p == PrioridadeCampanha.media ? 1 : 2);
-        return ordem(a.campanha.prioridade).compareTo(ordem(b.campanha.prioridade));
+        int ordem(PrioridadeCampanha p) => p == PrioridadeCampanha.alta
+            ? 0
+            : (p == PrioridadeCampanha.media ? 1 : 2);
+        return ordem(a.campanha.prioridade)
+            .compareTo(ordem(b.campanha.prioridade));
       });
       return sugestoes;
     } catch (_) {

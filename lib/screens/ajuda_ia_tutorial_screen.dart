@@ -27,7 +27,8 @@ class AjudaTelaTutorialOpcao {
 List<AjudaTelaTutorialOpcao> get ajudaTutorialOpcoes => const [
       AjudaTelaTutorialOpcao(
         titulo: 'Precificação',
-        nomeParaIa: 'Precificação (cálculo de preço de venda, markup, importação Excel)',
+        nomeParaIa:
+            'Precificação (cálculo de preço de venda, markup, importação Excel)',
         icon: Icons.calculate,
       ),
       AjudaTelaTutorialOpcao(
@@ -37,12 +38,14 @@ List<AjudaTelaTutorialOpcao> get ajudaTutorialOpcoes => const [
       ),
       AjudaTelaTutorialOpcao(
         titulo: 'Vendas',
-        nomeParaIa: 'Vendas (PDV, cliente, formas de pagamento, edição de venda)',
+        nomeParaIa:
+            'Vendas (PDV, cliente, formas de pagamento, edição de venda)',
         icon: Icons.point_of_sale,
       ),
       AjudaTelaTutorialOpcao(
         titulo: 'Financeiro e metas',
-        nomeParaIa: 'Painel financeiro e metas (totais por forma de pagamento, período)',
+        nomeParaIa:
+            'Painel financeiro e metas (totais por forma de pagamento, período)',
         icon: Icons.trending_up,
       ),
       AjudaTelaTutorialOpcao(
@@ -57,7 +60,8 @@ List<AjudaTelaTutorialOpcao> get ajudaTutorialOpcoes => const [
       ),
       AjudaTelaTutorialOpcao(
         titulo: 'Catálogo / loja',
-        nomeParaIa: 'Catálogo e loja online (como o cliente vê, categorias, aparência)',
+        nomeParaIa:
+            'Catálogo e loja online (como o cliente vê, categorias, aparência)',
         icon: Icons.storefront,
       ),
       AjudaTelaTutorialOpcao(
@@ -76,7 +80,7 @@ List<AjudaTelaTutorialOpcao> get ajudaTutorialOpcoes => const [
             'Dicas e informações (cuidados, garantias); '
             'Rodapé e Links (redes, políticas); '
             'Taxas Financeiras (vínculo com relatórios/metas quando aplicável); '
-            'Publicar catálogo (enviar alterações ao site). '
+            'Publicação do catálogo (enviar alterações ao site). '
             'Deixe explícito que regras de frete e cupons de desconto são em outra tela (Fretes e cupons), não dentro destes módulos.',
         icon: Icons.tune,
       ),
@@ -159,12 +163,14 @@ List<AjudaTelaTutorialOpcao> get ajudaTutorialOpcoes => const [
       ),
       AjudaTelaTutorialOpcao(
         titulo: 'Dicas com IA',
-        nomeParaIa: 'Tela Dicas com IA (chat de marketing e ideias para a loja)',
+        nomeParaIa:
+            'Tela Dicas com IA (chat de marketing e ideias para a loja)',
         icon: Icons.auto_awesome,
       ),
       AjudaTelaTutorialOpcao(
         titulo: 'Catálogo público (cliente)',
-        nomeParaIa: 'Experiência do cliente no catálogo público (navegar, carrinho, checkout)',
+        nomeParaIa:
+            'Experiência do cliente no catálogo público (navegar, carrinho, checkout)',
         icon: Icons.public,
       ),
     ];
@@ -248,7 +254,8 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)),
+            content: Text(
+                IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)),
             backgroundColor: Colors.orange.shade700,
           ),
         );
@@ -285,13 +292,17 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
 
   Future<void> _enviarPergunta() async {
     final texto = _perguntaCtrl.text.trim();
-    if (texto.isEmpty || _enviando || _cooldownRestante > 0 || _telaNomeIa == null) return;
+    if (texto.isEmpty ||
+        _enviando ||
+        _cooldownRestante > 0 ||
+        _telaNomeIa == null) return;
     final lojaId = await LojaIdService.get();
     if (!await IaUsoLimiteService.canUse(lojaId, TipoUsoIa.perguntas)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)),
+            content: Text(
+                IaUsoLimiteService.messageLimitExcedido(TipoUsoIa.perguntas)),
             backgroundColor: Colors.orange.shade700,
           ),
         );
@@ -308,7 +319,9 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
       final resposta = await AiLojaService.chatAjudaTutorial(
         nomeTela: _telaNomeIa!,
         mensagem: texto,
-        historico: _historico.length > 1 ? _historico.sublist(0, _historico.length - 1) : null,
+        historico: _historico.length > 1
+            ? _historico.sublist(0, _historico.length - 1)
+            : null,
       );
       if (mounted) {
         setState(() {
@@ -325,7 +338,8 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
         setState(() {
           _historico.add({
             'role': 'model',
-            'content': 'Não consegui responder agora.\n\n${AiLojaService.messageForUser(e)}',
+            'content':
+                'Não consegui responder agora.\n\n${AiLojaService.messageForUser(e)}',
           });
           _enviando = false;
         });
@@ -362,13 +376,16 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: Text(
                 'Perguntas: $_usoPerguntas/${IaUsoLimiteService.limiteDe(TipoUsoIa.perguntas)}',
-                style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.9)),
+                style: TextStyle(
+                    fontSize: 12, color: Colors.white.withOpacity(0.9)),
               ),
             ),
           ),
         ],
       ),
-      body: _mostrarLista ? _buildLista(primary, cs) : _buildChat(theme, primary, cs),
+      body: _mostrarLista
+          ? _buildLista(primary, cs)
+          : _buildChat(theme, primary, cs),
     );
   }
 
@@ -379,7 +396,8 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
         Card(
           elevation: 0,
           color: primary.withOpacity(0.1),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -404,7 +422,8 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                 const SizedBox(height: 8),
                 Text(
                   'A IA gera um resumo, passo a passo, exemplos e dicas. Depois você pode fazer perguntas sobre a mesma tela.',
-                  style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant, height: 1.35),
+                  style: TextStyle(
+                      fontSize: 14, color: cs.onSurfaceVariant, height: 1.35),
                 ),
               ],
             ),
@@ -421,7 +440,8 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                 borderRadius: BorderRadius.circular(14),
                 onTap: () => _escolherTela(op),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                   child: Row(
                     children: [
                       Container(
@@ -470,11 +490,13 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                     children: [
                       Text(
                         _telaTitulo ?? '',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 15),
                       ),
                       Text(
                         'Toque para escolher outra tela',
-                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                        style:
+                            TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -505,9 +527,12 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                 )
               : ListView.builder(
                   controller: _scrollCtrl,
-                  physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  itemCount: _historico.length + (_enviando && _historico.isNotEmpty ? 1 : 0),
+                  physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics()),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  itemCount: _historico.length +
+                      (_enviando && _historico.isNotEmpty ? 1 : 0),
                   itemBuilder: (context, i) {
                     if (i == _historico.length) {
                       return Padding(
@@ -517,7 +542,8 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                             CircleAvatar(
                               radius: 18,
                               backgroundColor: primary.withOpacity(0.2),
-                              child: Icon(Icons.smart_toy, size: 20, color: primary),
+                              child: Icon(Icons.smart_toy,
+                                  size: 20, color: primary),
                             ),
                             const SizedBox(width: 12),
                             const SizedBox(
@@ -534,20 +560,24 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Row(
-                        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+                        mainAxisAlignment: isUser
+                            ? MainAxisAlignment.end
+                            : MainAxisAlignment.start,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (!isUser) ...[
                             CircleAvatar(
                               radius: 18,
                               backgroundColor: primary.withOpacity(0.2),
-                              child: Icon(Icons.smart_toy, size: 20, color: primary),
+                              child: Icon(Icons.smart_toy,
+                                  size: 20, color: primary),
                             ),
                             const SizedBox(width: 12),
                           ],
                           Flexible(
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
                               decoration: BoxDecoration(
                                 color: isUser
                                     ? cs.primaryContainer.withOpacity(0.65)
@@ -567,17 +597,23 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                                       alignment: Alignment.centerRight,
                                       child: IconButton(
                                         visualDensity: VisualDensity.compact,
-                                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                        constraints: const BoxConstraints(
+                                            minWidth: 32, minHeight: 32),
                                         padding: EdgeInsets.zero,
                                         tooltip: 'Copiar',
-                                        icon: Icon(Icons.copy, size: 18, color: cs.onSurfaceVariant),
+                                        icon: Icon(Icons.copy,
+                                            size: 18,
+                                            color: cs.onSurfaceVariant),
                                         onPressed: () {
                                           final t = msg['content'] ?? '';
-                                          Clipboard.setData(ClipboardData(text: t));
-                                          ScaffoldMessenger.of(context).showSnackBar(
+                                          Clipboard.setData(
+                                              ClipboardData(text: t));
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
                                             const SnackBar(
                                               content: Text('Texto copiado'),
-                                              behavior: SnackBarBehavior.floating,
+                                              behavior:
+                                                  SnackBarBehavior.floating,
                                               duration: Duration(seconds: 2),
                                             ),
                                           );
@@ -594,7 +630,8 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                             CircleAvatar(
                               radius: 18,
                               backgroundColor: cs.primaryContainer,
-                              child: Icon(Icons.person, size: 20, color: cs.onPrimaryContainer),
+                              child: Icon(Icons.person,
+                                  size: 20, color: cs.onPrimaryContainer),
                             ),
                           ],
                         ],
@@ -613,7 +650,10 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
           decoration: BoxDecoration(
             color: theme.scaffoldBackgroundColor,
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, -2)),
+              BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2)),
             ],
           ),
           child: SafeArea(
@@ -625,8 +665,10 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                     controller: _perguntaCtrl,
                     decoration: InputDecoration(
                       hintText: 'Pergunte algo sobre esta tela…',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
                     ),
                     maxLines: 3,
                     minLines: 1,
@@ -636,10 +678,14 @@ class _AjudaIaTutorialScreenState extends State<AjudaIaTutorialScreen> {
                 ),
                 const SizedBox(width: 8),
                 IconButton.filled(
-                  onPressed: (_enviando || _cooldownRestante > 0) ? null : _enviarPergunta,
-                  style: IconButton.styleFrom(backgroundColor: primary, foregroundColor: Colors.white),
+                  onPressed: (_enviando || _cooldownRestante > 0)
+                      ? null
+                      : _enviarPergunta,
+                  style: IconButton.styleFrom(
+                      backgroundColor: primary, foregroundColor: Colors.white),
                   icon: _cooldownRestante > 0
-                      ? Text('${_cooldownRestante}s', style: const TextStyle(fontSize: 12))
+                      ? Text('${_cooldownRestante}s',
+                          style: const TextStyle(fontSize: 12))
                       : const Icon(Icons.send),
                 ),
               ],

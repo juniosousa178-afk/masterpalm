@@ -1,4 +1,4 @@
-// lib/screens/loja_config_screen.dart
+﻿// lib/screens/loja_config_screen.dart
 // Configuração unificada da loja: identidade -> mídia -> tema -> fretes -> rodapé -> publicar
 // ✅ CORRIGIDO: Alinhado 100% com public_catalog_screen.dart
 
@@ -44,6 +44,7 @@ import '../catalog/domain/catalog_custom_domain.dart';
 import '../screens/catalogo/catalog_domain_setup_screen.dart';
 import '../widgets/catalog_domain_section.dart';
 import '../services/catalog_domain_workflow_service.dart';
+import '../services/catalog_public_url_service.dart';
 
 part 'loja_config_tema_pane.dart';
 part 'loja_config_widgets.dart';
@@ -364,7 +365,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _Pane.dicas: ['dicas'],
     _Pane.rodape: ['rodape', 'links'],
     _Pane.financeiro: ['taxas'],
-    _Pane.publicar: [],
+    _Pane.publicar: [
+      'catalogoEmManutencao',
+      'mensagemManutencaoCatalogo',
+    ],
   };
 
   static const List<String> _kHubFretesTopKeys = [
@@ -416,8 +420,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _Pane pane, Map<String, dynamic> currentFull) {
     if (_hubBaselineMap == null) return false;
     if (pane == _Pane.publicar) {
-      return _campanhaAtiva != _hubBaselinePublicarCampanha ||
-          _roletaAtiva != _hubBaselinePublicarRoleta;
+      final campanhaRoletaDirty =
+          _campanhaAtiva != _hubBaselinePublicarCampanha ||
+              _roletaAtiva != _hubBaselinePublicarRoleta;
+      final pubKeys = _kHubPaneTopLevelKeys[pane];
+      final publicarConfigDirty = pubKeys != null &&
+          pubKeys.isNotEmpty &&
+          _hubSliceDirty(currentFull, _hubBaselineMap, pubKeys);
+      return campanhaRoletaDirty || publicarConfigDirty;
     }
     final keys = _kHubPaneTopLevelKeys[pane];
     if (keys == null || keys.isEmpty) return false;
@@ -1919,8 +1929,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       Icons.local_shipping_outlined
     ),
     (
-      'Publicar catálogo',
-      'Depois de configurar tudo, clique aqui para publicar e tornar seu catálogo visível online.',
+      'Publicação do catálogo',
+      'Manutenção do site, sorteios e botão para publicar e atualizar o que os clientes veem online.',
       Icons.cloud_upload_outlined
     ),
   ];
@@ -3706,7 +3716,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           children: [
             Icon(Icons.cloud_upload, color: _primaryColor, size: 28),
             SizedBox(width: 12),
-            Text('Publicar catálogo?'),
+            Text('Publicar alterações no site?'),
           ],
         ),
         content: const Text(
@@ -4297,7 +4307,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 const SizedBox(height: 14),
                 Text(
                   'Serão atualizadas de uma vez as principais cores do catálogo: página, cards, textos, botões, preços, carrinho, cabeçalho, rodapé, dicas, barra promocional e banner hero. '
-                  'Nada é publicado automaticamente no site — use Publicar quando quiser. Você pode editar cada cor depois.',
+                  'Nada é publicado automaticamente no site — use Publicação do catálogo quando quiser. Você pode editar cada cor depois.',
                   style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
                         color: Theme.of(ctx).colorScheme.onSurfaceVariant,
                         height: 1.4,
@@ -4557,9 +4567,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         .trim()
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+    final domNormPreview =
+        normalizeCatalogDomainInput(_dominioCatalogoCtrl.text);
     final urlPublica = linkCurto.isNotEmpty
         ? '$publicBase/c/$linkCurto'
-        : '$publicBase/loja/$slugParaUrl';
+        : CatalogPublicUrlService.montarUrlCatalogoPublico(
+            lojaConfig: {
+              'dominioCatalogo': domNormPreview,
+              'dominioStatus': _dominioCatalogoStatus,
+            },
+            lojaId: slugParaUrl,
+          );
 
     final isWide = MediaQuery.of(context).size.width >= 980;
     final cs = Theme.of(context).colorScheme;
@@ -4797,7 +4815,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         ),
       IconButton(
         icon: Icon(Icons.cloud_upload_outlined, color: actionIconColor),
-        tooltip: 'Publicar (salva e publica)',
+        tooltip: 'Publicar alterações no site',
         onPressed: _salvando ? null : _publicarTudo,
       ),
       IconButton(
@@ -4935,9 +4953,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       },
       {
         'pane': _Pane.publicar,
-        'label': 'Publicar catálogo',
-        'railLabel': 'Publicar',
-        'subtitle': 'Publicar alterações no site',
+        'label': 'Publicação do catálogo',
+        'railLabel': 'Publicação',
+        'subtitle': 'Manutenção, sorteios e atualizar o site',
         'icon': Icons.cloud_upload_outlined,
       },
     ];
@@ -5621,6 +5639,39 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       children: [
         if (_salvando) const LinearProgressIndicator(),
 
+        _Section(
+          title: 'Visibilidade do catálogo',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Catálogo em manutenção'),
+                subtitle: const Text(
+                  'Quando ativado, os clientes verão uma tela de manutenção no catálogo público. O painel administrativo continua funcionando normalmente.',
+                ),
+                value: _catalogoEmManutencao,
+                onChanged: _salvando ? null : _menuSetCatalogoEmManutencao,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _mensagemManutencaoCatalogoCtrl,
+                onChanged: _menuSetMensagemManutencaoCatalogo,
+                minLines: 2,
+                maxLines: 4,
+                decoration: _inputDecoration(
+                  context,
+                  labelText: 'Mensagem de manutenção (opcional)',
+                  helperText:
+                      'Padrão: Estamos preparando algo incrível para você ter a melhor experiência.',
+                  helperMaxLines: 2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
         // ✨ Campanhas e Roleta
         _Section(
           title: 'Sorteios e Promoções',
@@ -5760,7 +5811,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         const SizedBox(height: 16),
 
         _Section(
-          title: 'Publicar Catálogo',
+          title: 'Atualizar o catálogo no site',
           child: Column(
             children: [
               FilledButton.icon(
@@ -5771,7 +5822,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 onPressed: _salvando ? null : _publicarTudo,
                 icon: const Icon(Icons.publish, size: 28),
                 label: const Text(
-                  'PUBLICAR CATÁLOGO (TORNAR VISÍVEL)',
+                  'PUBLICAR E ATUALIZAR O SITE',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
