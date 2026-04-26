@@ -2173,7 +2173,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                     children: [
                       const Text(
                         'Adicione tamanho, cor, quantidade e, se quiser, tipo/valor da variação extra (estampa, letra, etc.).\n'
-                        'Deixe tipo/valor vazios se não usar personalização extra.',
+                        'Preço de custo por variação é opcional. Deixe os campos vazios quando não usar custo diferente por variação.',
                         style: TextStyle(fontSize: 13, color: Colors.black54),
                       ),
                       const SizedBox(height: 12),
@@ -2257,7 +2257,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                     child: TextFormField(
                                       controller: c['custo'],
                                       decoration: InputDecoration(
-                                        labelText: 'Preço de custo',
+                                        labelText: 'Preço de custo (opcional)',
                                         hintText: _custo.text.isNotEmpty
                                             ? 'Geral: ${_custo.text}'
                                             : '0,00',
