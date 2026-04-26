@@ -332,6 +332,34 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
       return '';
     }
 
+    String imageForTodos() {
+      final imgs = categoryVisuals['images'];
+      final imgsByNorm = categoryVisuals['imagesByNameNorm'];
+      const keys = <String>[
+        'todos',
+        'todas',
+        'all',
+        '__all__',
+        'name:todos',
+      ];
+      if (imgs is Map) {
+        for (final k in keys) {
+          if (imgs[k] != null && imgs[k].toString().trim().isNotEmpty) {
+            return imgs[k].toString();
+          }
+        }
+      }
+      if (imgsByNorm is Map) {
+        for (final k in keys) {
+          if (imgsByNorm[k] != null &&
+              imgsByNorm[k].toString().trim().isNotEmpty) {
+            return imgsByNorm[k].toString();
+          }
+        }
+      }
+      return imageFor('Todos');
+    }
+
     return SizedBox(
       height: showTitle ? imageSize + 38 : imageSize + 12,
       child: ListView(
@@ -343,7 +371,7 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
               padding: EdgeInsets.only(right: spacing.toDouble()),
               child: _CategoryItem(
                 label: 'Todos',
-                imageUrl: '',
+                imageUrl: imageForTodos(),
                 textColor: textColor,
                 imageSize: imageSize,
                 borderRadius: radiusForShape(),

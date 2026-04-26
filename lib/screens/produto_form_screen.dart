@@ -1805,18 +1805,35 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
       if (!mounted) return;
 
+      final mensagemSalvar = switch (remoteStatus) {
+        ProdutoSyncRemotoStatus.confirmado => _publicar
+            ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
+            : 'Produto salvo e sincronizado com Hive e Firestore.',
+        ProdutoSyncRemotoStatus.pendenteFila =>
+          'Produto salvo no aparelho e colocado na fila de sincronização. '
+              'Quando a conexão estabilizar, ele será enviado para a nuvem automaticamente.',
+        ProdutoSyncRemotoStatus.falhaRemota =>
+          'Produto salvo no aparelho, mas a sincronização com a nuvem falhou agora. '
+              'Tente novamente em instantes.',
+        ProdutoSyncRemotoStatus.lojaInvalida =>
+          'Produto salvo no aparelho, mas sem contexto de loja para sincronizar com a nuvem.',
+        ProdutoSyncRemotoStatus.produtoInvalido =>
+          'Produto salvo no aparelho, mas o identificador local ficou inválido para sincronização automática.',
+        ProdutoSyncRemotoStatus.semMudancas =>
+          'Produto salvo sem alterações remotas pendentes.',
+        ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone =>
+          'Produto salvo localmente, porém bloqueado para sincronização porque foi marcado para exclusão remota.',
+      };
+
+      final corMensagem = remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
+              remoteStatus == ProdutoSyncRemotoStatus.semMudancas
+          ? null
+          : Colors.orange;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            remoteStatus == ProdutoSyncRemotoStatus.confirmado
-                ? (_publicar
-                    ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
-                    : 'Produto salvo e sincronizado com Hive e Firestore.')
-                : 'Produto salvo localmente e marcado como pendente de sincronização com a nuvem.',
-          ),
-          backgroundColor: remoteStatus == ProdutoSyncRemotoStatus.confirmado
-              ? null
-              : Colors.orange,
+          content: Text(mensagemSalvar),
+          backgroundColor: corMensagem,
         ),
       );
 
