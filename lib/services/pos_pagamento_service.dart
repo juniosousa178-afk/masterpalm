@@ -112,29 +112,43 @@ class PosPagamentoService {
       // 2. Atualizar status da venda para "pago"
       await _atualizarStatusVenda(lojaId, vendaId);
 
-      // 3. Gerar número da sorte
+      // 3. Gerar número da sorte (não bloqueante para confirmação do pagamento)
       final numeroSorte = _gerarNumeroSorte();
-      await _salvarNumeroSorte(
-        lojaId: lojaId,
-        vendaId: vendaId,
-        numeroSorte: numeroSorte,
-        customer: customer,
-        valorTotal: valorTotal,
-      );
+      try {
+        await _salvarNumeroSorte(
+          lojaId: lojaId,
+          vendaId: vendaId,
+          numeroSorte: numeroSorte,
+          customer: customer,
+          valorTotal: valorTotal,
+        );
+      } catch (e) {
+        debugPrint(
+          '⚠️ [PÓS-PAGAMENTO] Falha não-bloqueante ao salvar número da sorte '
+          '(type=${e.runtimeType}) | lojaId=$lojaId | vendaId=$vendaId',
+        );
+      }
 
-      // 3.1. Campanha (APK / vendas locais). Pedidos MP web: `mpWebhookPromo` + idempotência.
-      // `estoque_baixa_pagamento` já evita reprocessar o mesmo vendaId.
-      await SorteioNumeroService.registrarNumeroEmCampanhas(
-        lojaId: lojaId,
-        clienteNome: customer['nome']?.toString() ?? 'Cliente',
-        clienteId: customer['id']?.toString() ?? customer['clienteId']?.toString(),
-        valorCompra: valorTotal,
-        dataCompra: DateTime.now(),
-        numeroSorte: numeroSorte,
-        vendaIdOuPedidoId: vendaId,
-      );
+      // 3.1. Campanha (não bloqueante): pedido já foi confirmado e estoque já baixado.
+      try {
+        await SorteioNumeroService.registrarNumeroEmCampanhas(
+          lojaId: lojaId,
+          clienteNome: customer['nome']?.toString() ?? 'Cliente',
+          clienteId:
+              customer['id']?.toString() ?? customer['clienteId']?.toString(),
+          valorCompra: valorTotal,
+          dataCompra: DateTime.now(),
+          numeroSorte: numeroSorte,
+          vendaIdOuPedidoId: vendaId,
+        );
+      } catch (e) {
+        debugPrint(
+          '⚠️ [PÓS-PAGAMENTO] Falha não-bloqueante ao registrar campanha '
+          '(type=${e.runtimeType}) | lojaId=$lojaId | vendaId=$vendaId',
+        );
+      }
 
-      // 4. Ativar prêmio da roleta (se houver)
+      // 4. Ativar prêmio da roleta (já é não-bloqueante internamente, mantém await)
       await _ativarPremioRoleta(
         lojaId: lojaId,
         vendaId: vendaId,

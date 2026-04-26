@@ -2,8 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../../widgets/smart_image.dart' show mpImageProvider, SmartImage;
+import '../../../widgets/smart_image.dart' show SmartImage;
 import '../catalog_helpers.dart';
+import 'public_catalog_banner_image.dart';
 
 /// Letreiro promocional; com [marqueeWhenOverflow] mantém rolagem contínua.
 class CatalogPromoBar extends StatefulWidget {
@@ -276,12 +277,13 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (categories.isEmpty) return const SizedBox.shrink();
-    final double imageSize = (((categoryVisuals['imageSize'] as num?)?.toDouble() ?? 82)
-            .clamp(44, 120))
-        .toDouble();
-    final double spacing = (((categoryVisuals['spacing'] as num?)?.toDouble() ?? 14)
-            .clamp(4, 24))
-        .toDouble();
+    final double imageSize =
+        (((categoryVisuals['imageSize'] as num?)?.toDouble() ?? 82)
+                .clamp(44, 120))
+            .toDouble();
+    final double spacing =
+        (((categoryVisuals['spacing'] as num?)?.toDouble() ?? 14).clamp(4, 24))
+            .toDouble();
     final showTitle = (categoryVisuals['showTitle'] as bool?) ?? true;
     final shape = (categoryVisuals['shape'] ?? 'circle').toString();
 
@@ -301,7 +303,9 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
           .replaceAll(RegExp(r'[òóôõö]'), 'o')
           .replaceAll(RegExp(r'[ùúûü]'), 'u')
           .replaceAll(RegExp(r'ç'), 'c');
-      return s.replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+      return s
+          .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
     }
 
     String imageFor(String cat) {
@@ -312,7 +316,9 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
       if (imgs is Map) {
         if (imgs[cat] != null) return imgs[cat].toString();
         if (imgs[keyNorm] != null) return imgs[keyNorm].toString();
-        if (imgs['name:$keyNorm'] != null) return imgs['name:$keyNorm'].toString();
+        if (imgs['name:$keyNorm'] != null) {
+          return imgs['name:$keyNorm'].toString();
+        }
       }
       if (imgsByNorm is Map) {
         if (imgsByNorm[keyNorm] != null) return imgsByNorm[keyNorm].toString();
@@ -406,14 +412,17 @@ class _CategoryItem extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: borderRadius,
               border: Border.all(
-                color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+                color: selected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.transparent,
                 width: 2,
               ),
               color: fallbackBg,
             ),
             clipBehavior: Clip.antiAlias,
             child: imageUrl.trim().isEmpty
-                ? Icon(Icons.category_outlined, color: textColor.withOpacity(0.7))
+                ? Icon(Icons.category_outlined,
+                    color: textColor.withOpacity(0.7))
                 : SmartImage(src: imageUrl, fit: BoxFit.cover),
           ),
           if (showTitle) ...[
@@ -577,16 +586,19 @@ class CatalogMinimalSubcategoryStrip extends StatelessWidget {
   }
 }
 
-class CatalogMinimalHeroBanner extends StatefulWidget {
+class CatalogMinimalHeroBanner extends StatelessWidget {
   final bool enabled;
   final String title;
   final String subtitle;
   final String buttonText;
   final VoidCallback? onTap;
   final String imageUrl;
+  final String? resolvedLojaId;
   final double height;
+
   /// Cor do card/fundo do banner (atrás da imagem ou gradiente sem imagem).
   final Color backgroundColor;
+
   /// Raio do card do banner.
   final double borderRadius;
   final double overlayOpacity;
@@ -616,6 +628,7 @@ class CatalogMinimalHeroBanner extends StatefulWidget {
     required this.buttonText,
     this.onTap,
     required this.imageUrl,
+    this.resolvedLojaId,
     required this.height,
     required this.backgroundColor,
     required this.borderRadius,
@@ -637,258 +650,118 @@ class CatalogMinimalHeroBanner extends StatefulWidget {
   });
 
   @override
-  State<CatalogMinimalHeroBanner> createState() =>
-      _CatalogMinimalHeroBannerState();
-}
-
-class _CatalogMinimalHeroBannerState extends State<CatalogMinimalHeroBanner> {
-  /// Largura/altura da imagem em pixels; null até [ImageStream] entregar o frame.
-  double? _imageAspectWOverH;
-  ImageStream? _imageStream;
-  ImageStreamListener? _imageListener;
-
-  @override
-  void initState() {
-    super.initState();
-    _attachImageStream();
-  }
-
-  @override
-  void didUpdateWidget(covariant CatalogMinimalHeroBanner oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl ||
-        oldWidget.enabled != widget.enabled) {
-      _detachImageStream();
-      setState(() => _imageAspectWOverH = null);
-      _attachImageStream();
-    }
-  }
-
-  void _detachImageStream() {
-    if (_imageStream != null && _imageListener != null) {
-      _imageStream!.removeListener(_imageListener!);
-    }
-    _imageStream = null;
-    _imageListener = null;
-  }
-
-  void _attachImageStream() {
-    if (!widget.enabled) return;
-    if (widget.imageUrl.trim().isEmpty) return;
-    _detachImageStream();
-    final provider = mpImageProvider(widget.imageUrl);
-    final stream = provider.resolve(const ImageConfiguration());
-    _imageListener = ImageStreamListener(
-      (ImageInfo info, bool syncCall) {
-        if (!mounted) return;
-        final w = info.image.width.toDouble();
-        final h = info.image.height.toDouble();
-        if (w > 0 && h > 0) {
-          setState(() {
-            _imageAspectWOverH = w / h;
-          });
-        }
-      },
-      onError: (_, __) {
-        if (!mounted) return;
-        setState(() {
-          _imageAspectWOverH = null;
-        });
-      },
-    );
-    _imageStream = stream;
-    _imageStream!.addListener(_imageListener!);
-  }
-
-  @override
-  void dispose() {
-    _detachImageStream();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (!widget.enabled) return const SizedBox.shrink();
+    if (!enabled) return const SizedBox.shrink();
     final screenSize = MediaQuery.sizeOf(context);
     final screenW = screenSize.width;
-    final screenH = screenSize.height;
-    final isDesktop = screenW >= 900;
-    final hasImage = widget.imageUrl.trim().isNotEmpty;
-    final hasCopy = widget.title.trim().isNotEmpty ||
-        widget.subtitle.trim().isNotEmpty ||
-        widget.buttonText.trim().isNotEmpty;
+    final hasImage = imageUrl.trim().isNotEmpty;
+    final hasCopy = title.trim().isNotEmpty ||
+        subtitle.trim().isNotEmpty ||
+        buttonText.trim().isNotEmpty;
     if (!hasImage && !hasCopy) {
       return const SizedBox.shrink();
     }
-    final minBannerH = isDesktop ? 180.0 : 140.0;
-    // Desktop: libera mais altura para o quadro acompanhar o aspecto da arte
-    // (evita faixas laterais em imagens menos panorâmicas).
-    final maxBannerH = isDesktop
-        ? (screenH * 0.72).clamp(360.0, 620.0).toDouble()
-        : 260.0;
-    final configH = hasImage
-        ? widget.height.clamp(minBannerH, maxBannerH).toDouble()
-        : (hasCopy ? 96.0 : 0.0);
-    final titleDisplay =
-        applyHeroLetterCase(widget.title.trim(), widget.titleLetterCase);
-    final subtitleDisplay = applyHeroLetterCase(
-        widget.subtitle.trim(), widget.subtitleLetterCase);
-    final buttonDisplay = applyHeroLetterCase(
-        widget.buttonText.trim(), widget.buttonLetterCase);
+    final fallbackAspect =
+        height > 0 ? (screenW / height).clamp(0.45, 3.2).toDouble() : (16 / 9);
+    final titleDisplay = applyHeroLetterCase(title.trim(), titleLetterCase);
+    final subtitleDisplay =
+        applyHeroLetterCase(subtitle.trim(), subtitleLetterCase);
+    final buttonDisplay =
+        applyHeroLetterCase(buttonText.trim(), buttonLetterCase);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxW = constraints.maxWidth;
-        final dpr = MediaQuery.devicePixelRatioOf(context);
-        // Tablet/desktop largo: card central; mobile: mesma regra de largura útil do conteúdo.
         final isWide = maxW >= 900;
         final double cardMaxW =
             isWide ? math.min(960.0, maxW - 24.0) : maxW - 24.0;
-        // Largura real do slot da imagem (alinhada ao padding horizontal do return).
-        final double padH = isWide ? 32.0 : 24.0;
-        final double imageSlotW =
-            (isWide ? math.min(cardMaxW, maxW - padH) : (maxW - padH))
-                .clamp(1.0, 10000.0);
-
-        /// Altura do quadro: desktop segue a proporção real da arte.
-        /// Mobile: **só** [configH] — se usássemos o aspecto após o [ImageStream], a altura
-        /// mudava (configH → naturalH) e o [BoxFit.contain] refazia o encaixe: ora “100%” na
-        /// largura, ora faixas laterais (oscilação ao abrir o catálogo).
-        final double layoutH;
-        if (!hasImage) {
-          layoutH = configH;
-        } else if (!isWide) {
-          layoutH = configH;
-        } else if (_imageAspectWOverH == null) {
-          layoutH = configH;
-        } else {
-          final naturalH = imageSlotW / _imageAspectWOverH!;
-          layoutH = naturalH.clamp(minBannerH, maxBannerH);
-        }
         final double overlayBlend = isWide && hasImage
-            ? (widget.overlayOpacity + 0.06).clamp(0.0, 0.55)
-            : widget.overlayOpacity.clamp(0.0, 0.8);
+            ? (overlayOpacity + 0.06).clamp(0.0, 0.55)
+            : overlayOpacity.clamp(0.0, 0.8);
 
         final inner = ClipRRect(
           borderRadius: BorderRadius.circular(
-            widget.borderRadius.clamp(8, 36).toDouble(),
+            borderRadius.clamp(8, 36).toDouble(),
           ),
-          child: Stack(
-            children: [
-              Container(
-                height: layoutH,
-                width: double.infinity,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: widget.backgroundColor,
-                  gradient: !hasImage && hasCopy
-                      ? LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            widget.backgroundColor,
-                            widget.backgroundColor.withOpacity(0.88),
-                          ],
-                        )
-                      : null,
-                ),
-                child: hasImage
-                    ? Image(
-                        image: ResizeImage(
-                          mpImageProvider(widget.imageUrl),
-                          width: (imageSlotW * dpr).round().clamp(64, 4096),
-                          height: (layoutH * dpr).round().clamp(64, 4096),
-                          // Evita decodificar acima do tamanho nativo (parece "zoom" e perde nitidez).
-                          allowUpscaling: false,
+          child: PublicCatalogBannerImage(
+            imageUrl: imageUrl,
+            resolvedLojaId: resolvedLojaId,
+            fallbackAspectRatio: fallbackAspect,
+            backgroundColor: backgroundColor,
+            // Não trocar para BoxFit.cover no banner: cover recorta e aplica zoom.
+            overlay: Container(
+              color: Colors.black.withOpacity(overlayBlend),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (titleDisplay.isNotEmpty)
+                      Text(
+                        titleDisplay,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontSize: titleFontSize.clamp(10, 40),
+                          fontWeight: titleFontWeight,
                         ),
-                        width: imageSlotW,
-                        height: layoutH,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
-                        isAntiAlias: true,
-                        gaplessPlayback: true,
-                        errorBuilder: (_, __, ___) => const Center(
-                          child: Icon(Icons.broken_image_outlined, size: 40),
+                      ),
+                    if (subtitleDisplay.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitleDisplay,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: subtitleColor,
+                          fontSize: subtitleFontSize.clamp(9, 32),
+                          fontWeight: subtitleFontWeight,
                         ),
-                      )
-                    : null,
-              ),
-              Container(
-                height: layoutH,
-                width: double.infinity,
-                color: Colors.black.withOpacity(overlayBlend),
-              ),
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (titleDisplay.isNotEmpty)
-                        Text(
-                          titleDisplay,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: widget.titleColor,
-                            fontSize: widget.titleFontSize.clamp(10, 40),
-                            fontWeight: widget.titleFontWeight,
-                          ),
-                        ),
-                      if (subtitleDisplay.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          subtitleDisplay,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: widget.subtitleColor,
-                            fontSize: widget.subtitleFontSize.clamp(9, 32),
-                            fontWeight: widget.subtitleFontWeight,
-                          ),
-                        ),
-                      ],
-                      if (buttonDisplay.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: widget.onTap,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: widget.buttonBackgroundColor,
-                            foregroundColor: widget.buttonTextColor,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            minimumSize: const Size(0, 36),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                widget.buttonBorderRadius.clamp(0, 28),
-                              ),
-                            ),
-                          ),
-                          child: Text(
-                            buttonDisplay,
-                            style: TextStyle(
-                              fontSize: widget.buttonFontSize.clamp(9, 24),
-                              fontWeight: widget.buttonFontWeight,
-                              color: widget.buttonTextColor,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ],
-                  ),
+                    if (buttonDisplay.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        onPressed: onTap,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: buttonBackgroundColor,
+                          foregroundColor: buttonTextColor,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          minimumSize: const Size(0, 36),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              buttonBorderRadius.clamp(0, 28),
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          buttonDisplay,
+                          style: TextStyle(
+                            fontSize: buttonFontSize.clamp(9, 24),
+                            fontWeight: buttonFontWeight,
+                            color: buttonTextColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         );
 
-        final wrapped = widget.onTap == null
+        final wrapped = onTap == null
             ? inner
             : Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: widget.onTap,
+                  onTap: onTap,
                   child: inner,
                 ),
               );
