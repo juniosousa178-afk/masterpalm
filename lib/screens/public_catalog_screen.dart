@@ -642,6 +642,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   /// Merge draft/published para [CatalogPublicUrlService] (domínio próprio nos links).
   Map<String, dynamic> _catalogUrlConfigMerge = const {};
 
+  /// Descarta respostas antigas de [mergeDraftConfigDomainForCatalogUrls].
+  int _catalogUrlDraftEnrichSeq = 0;
+
   // ✅ FONTE ÚNICA: lojaId resolvido de forma assíncrona
   String? _resolvedLojaId;
   bool _loadingLojaId = true;
@@ -4590,7 +4593,36 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             final Map<String, dynamic> cfg =
                 (cfgSnap.data ?? {}).map((k, v) => MapEntry(k.toString(), v));
             _catalogUrlConfigMerge =
-                CatalogPublicUrlService.mergeStoreConfigForCatalogUrls(cfg);
+                CatalogPublicUrlService.coalesceCatalogUrlConfig(
+              cfg,
+              _catalogUrlConfigMerge,
+            );
+
+            if (!widget.preview &&
+                CatalogPublicUrlService.tryCustomCatalogPublicRoot(
+                      _catalogUrlConfigMerge,
+                    ) ==
+                    null) {
+              _catalogUrlDraftEnrichSeq++;
+              final seq = _catalogUrlDraftEnrichSeq;
+              final loja = lojaId;
+              final baseline =
+                  Map<String, dynamic>.from(_catalogUrlConfigMerge);
+              CatalogPublicUrlService.mergeDraftConfigDomainForCatalogUrls(
+                loja,
+                baseline,
+              ).then((enriched) {
+                if (!mounted || seq != _catalogUrlDraftEnrichSeq) return;
+                if (identical(enriched, baseline)) return;
+                if (CatalogPublicUrlService.tryCustomCatalogPublicRoot(
+                      enriched,
+                    ) ==
+                    null) {
+                  return;
+                }
+                setState(() => _catalogUrlConfigMerge = enriched);
+              });
+            }
 
             if (kDebugMode) {
               logD('📄 [CATÁLOGO] Config carregado: ${cfg.keys.length} chaves');

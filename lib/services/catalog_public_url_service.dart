@@ -1,6 +1,8 @@
 // lib/services/catalog_public_url_service.dart
 // URL canônica do catálogo público (hosted vs domínio próprio).
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../catalog/domain/catalog_custom_domain.dart';
 import 'store_config_service.dart';
 
@@ -61,12 +63,87 @@ class CatalogPublicUrlService {
     return out;
   }
 
+  static const List<String> _domainKeysForDraftOverlay = [
+    'dominioCatalogo',
+    'dominio_catalogo',
+    'dominioStatus',
+    'dominio_status',
+    'dominioUpdatedAt',
+    'dominioProvider',
+  ];
+
+  static bool _mergedDeclaresDomainState(Map<String, dynamic> merged) {
+    final host =
+        (merged['dominioCatalogo'] ?? merged['dominio_catalogo'] ?? '')
+            .toString()
+            .trim();
+    final st =
+        (merged['dominioStatus'] ?? merged['dominio_status'] ?? '')
+            .toString()
+            .trim();
+    return host.isNotEmpty || st.isNotEmpty;
+  }
+
+  /// Evita perder domínio vindo de [mergeDraftConfigDomainForCatalogUrls] quando
+  /// o stream de `config` ainda não inclui essas chaves.
+  static Map<String, dynamic> coalesceCatalogUrlConfig(
+    Map<String, dynamic> rawCfgFromStream,
+    Map<String, dynamic>? previousMerged,
+  ) {
+    final merged = mergeStoreConfigForCatalogUrls(rawCfgFromStream);
+    if (tryCustomCatalogPublicRoot(merged) != null) return merged;
+    if (previousMerged == null || previousMerged.isEmpty) return merged;
+    if (_mergedDeclaresDomainState(merged)) return merged;
+    if (tryCustomCatalogPublicRoot(previousMerged) == null) return merged;
+    final out = Map<String, dynamic>.from(merged);
+    for (final k in _domainKeysForDraftOverlay) {
+      if (previousMerged.containsKey(k)) out[k] = previousMerged[k];
+    }
+    if (tryCustomCatalogPublicRoot(out) != null) return out;
+    return merged;
+  }
+
+  /// Quando [lojas/{id}/config/config] ainda não reflete o domínio (ex.: só em
+  /// `draft_config`), mescla só as chaves de domínio do rascunho se o resultado
+  /// for URL própria **ativa** — não sobrescreve domínio já válido em [merged].
+  static Future<Map<String, dynamic>> mergeDraftConfigDomainForCatalogUrls(
+    String lojaId,
+    Map<String, dynamic> merged,
+  ) async {
+    if (tryCustomCatalogPublicRoot(merged) != null) return merged;
+    final id = lojaId.trim();
+    if (id.isEmpty) return merged;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(id)
+          .collection('draft_config')
+          .doc('config')
+          .get();
+      if (!snap.exists) return merged;
+      final flat = Map<String, dynamic>.from(snap.data() ?? {});
+      final overlay = <String, dynamic>{};
+      for (final k in _domainKeysForDraftOverlay) {
+        if (!flat.containsKey(k) || flat[k] == null) continue;
+        final asStr = flat[k].toString().trim();
+        if (asStr.isEmpty) continue;
+        overlay[k] = flat[k];
+      }
+      if (overlay.isEmpty) return merged;
+      final combined = Map<String, dynamic>.from(merged)..addAll(overlay);
+      if (tryCustomCatalogPublicRoot(combined) != null) return combined;
+    } catch (_) {
+      // Mantém [merged] (hosted).
+    }
+    return merged;
+  }
+
   /// Só [kDominioStatusAtivo] habilita URL pública no domínio próprio; demais
   /// estados (incl. [kDominioStatusDnsOk]) usam o hosted padrão.
   static bool _catalogCustomDomainIsActive(Map<String, dynamic> cfg) {
     final st =
         (cfg['dominioStatus'] ?? cfg['dominio_status'] ?? '').toString().trim();
-    return st == kDominioStatusAtivo;
+    return st.toLowerCase() == kDominioStatusAtivo;
   }
 
   /// Retorna `https://host` sem barra final ou null se inválido / inativo.
@@ -118,9 +195,13 @@ class CatalogPublicUrlService {
     }
     try {
       final doc = await StoreConfigService.getConfigDoc(lojaId: id);
-      final merged = mergeStoreConfigForCatalogUrls(doc);
+      var merged = mergeStoreConfigForCatalogUrls(doc);
+      merged = await mergeDraftConfigDomainForCatalogUrls(id, merged);
       return montarUrlCatalogoPublico(
-          lojaConfig: merged, lojaId: id, slug: slug);
+        lojaConfig: merged,
+        lojaId: id,
+        slug: slug,
+      );
     } catch (_) {
       final s = (slug ?? id).trim();
       if (isValidStoreIdForHostedCatalogPath(s)) {
