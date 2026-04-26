@@ -96,4 +96,11 @@ class Web {
     }
     html.window.open(url, '_blank');
   }
+
+  /// Remove o overlay `#initial-loader` de [web/index.html] (backup do evento `flutter-first-frame`).
+  static void hideInitialCatalogLoader() {
+    try {
+      html.document.getElementById('initial-loader')?.remove();
+    } catch (_) {}
+  }
 }

@@ -49,4 +49,7 @@ class Web {
 
   /// Navega na janela previamente aberta (no-op no stub)
   static void navigateInOpened(HtmlWindowBase? win, String url) {}
+
+  /// Remove o loader estático de [web/index.html] após o primeiro frame Flutter.
+  static void hideInitialCatalogLoader() {}
 }

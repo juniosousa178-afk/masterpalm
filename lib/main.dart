@@ -73,6 +73,7 @@ import 'screens/relatorio_financeiro_screen.dart';
 import 'screens/relatorios_financeiros_screen.dart';
 import 'screens/public_catalog_screen.dart';
 import 'screens/public_catalog/catalog_url_query_codec.dart';
+import 'catalog/catalog_bootstrap_loading.dart';
 import 'services/catalog_domain_resolver.dart';
 import 'screens/loja_config_screen.dart';
 import 'screens/configure_loja_placeholder_screen.dart';
@@ -1664,7 +1665,29 @@ class _BootError extends StatelessWidget {
 // ===========================================================================
 // 🔥 Inicialização do Firebase com fallback OFFLINE
 // ===========================================================================
+/// Evita `firebase.init.begin` duplicado e corrida entre fast path do catálogo e `_bootstrapSafe`.
+Future<bool>? _firebaseCoreInitInFlight;
+
+Future<bool> ensureFirebaseInitializedOnce() => _initFirebaseCore();
+
 Future<bool> _initFirebaseCore() async {
+  if (Firebase.apps.isNotEmpty) {
+    if (kDebugMode) {
+      debugPrint(
+        '[CATALOG_BOOT] firebase.min.ok (already initialized, skip duplicate)',
+      );
+    }
+    return true;
+  }
+  _firebaseCoreInitInFlight ??= _initFirebaseCorePerform();
+  try {
+    return await _firebaseCoreInitInFlight!;
+  } finally {
+    _firebaseCoreInitInFlight = null;
+  }
+}
+
+Future<bool> _initFirebaseCorePerform() async {
   CatalogStartupTrace.spanStart('CAT_START.firebase_init');
   logD('➡️ Firebase.initializeApp...');
   boot.mark('firebase.init.begin');
@@ -1711,6 +1734,25 @@ Future<bool> _initFirebaseCore() async {
   }
 }
 
+void _debugLogPublicCatalogBootChoice(Uri uriWeb) {
+  if (!kIsWeb || !kDebugMode) return;
+  final isDefaultHost = AppUrls.isDefaultMasterPalmCatalogHost(uriWeb.host);
+  final isCatPath = _uriHasLojaPathPriority(uriWeb) &&
+      !_uriIsPagamentoPublicPath(uriWeb);
+  final isCustomCand = _shouldOfferCustomDomainCatalogFastPath(uriWeb);
+  var selectedBootMode = 'admin_or_full_bootstrap';
+  if (isCatPath || isCustomCand) {
+    selectedBootMode = 'public_catalog_fastpath';
+  }
+  debugPrint('[BOOT] currentUri $uriWeb');
+  debugPrint('[BOOT] host ${uriWeb.host}');
+  debugPrint('[BOOT] path ${uriWeb.path}');
+  debugPrint('[BOOT] isDefaultMasterPalmCatalogHost $isDefaultHost');
+  debugPrint('[BOOT] isCatalogPath $isCatPath');
+  debugPrint('[BOOT] isCustomCatalogDomainCandidate $isCustomCand');
+  debugPrint('[BOOT] selectedBootMode $selectedBootMode');
+}
+
 // ===========================================================================
 // ▶️ MAIN
 // ===========================================================================
@@ -1734,170 +1776,138 @@ Future<void> main() async {
     logD('🚀 [MAIN] Iniciando MasterPalm');
     logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // FAST PATH CIRÚRGICO: catálogo público via /loja/* deve abrir imediatamente.
-    // Evita bloquear o primeiro paint por bootstrap/admin/auth do app interno.
+    // FAST PATH CIRÚRGICO: catálogo público via /loja/* e domínio próprio.
+    //
+    // Catálogo público não deve passar pelo bootstrap pesado do app antes do primeiro frame.
+    // Isso causa tela branca. Renderizar loader imediatamente; não chamar `_bootstrapSafe` aqui
+    // (Hive, sessão, RemoteConfig, AppCheck pesado só no app administrativo).
     if (kIsWeb) {
       final uriWeb = _initialWebUri ?? Uri.base;
+      _debugLogPublicCatalogBootChoice(uriWeb);
+
       final isPublicCatalogPath = _uriHasLojaPathPriority(uriWeb) &&
           !_uriIsPagamentoPublicPath(uriWeb);
       if (isPublicCatalogPath) {
-        // Guardrail mínimo do fast path: Firestore do catálogo precisa de Firebase pronto.
-        // Mantém o ganho de startup sem reintroduzir bootstrap admin.
-        CatalogStartupTrace.spanStart('CAT_START.fast_path.firebase_min_init');
-        try {
-          await _initFirebaseCore();
-          CatalogStartupTrace.spanEnd(
-            'CAT_START.fast_path.firebase_min_init',
-            data: {'ok': true},
-          );
-        } catch (e) {
-          CatalogStartupTrace.spanEnd(
-            'CAT_START.fast_path.firebase_min_init',
-            data: {'ok': false, 'error_type': e.runtimeType.toString()},
-          );
-          // Mesmo em falha, seguimos com catálogo para manter comportamento resiliente.
-          logW(
-            '⚠️ [MAIN] Fast path: init mínima Firebase falhou (type=${e.runtimeType})',
-          );
-        }
-
         final lojaSlugOrId = _lojaSlugOrIdFromUrl();
         final vendedorRef = _vendedorRefFromUrl();
         final indicacaoRef = _indicacaoRefFromUrl();
         final produtoRef = _produtoRefFromUrl();
-        // Guardrail mínimo: semear cache do resolver público evita falha transitória
-        // de validação no primeiro frame do fast path.
-        StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
-          urlSlugOrId: lojaSlugOrId,
-          resolvedCanonicalStoreId: lojaSlugOrId,
-        );
-        CatalogStartupTrace.mark(
-          'CAT_START.fast_path.public_resolver_seeded',
-          data: {'loja_slug_or_id': lojaSlugOrId},
-        );
-        CatalogStartupTrace.mark(
-          'CAT_START.runApp.catalog_web_root.fast_path',
-          data: {
-            'loja_slug_or_id': lojaSlugOrId,
-          },
-        );
-        runApp(CatalogWebRoot(
-          lojaId: lojaSlugOrId,
-          vendedorRef: vendedorRef,
-          indicacaoRef: indicacaoRef,
-          produtoRef: produtoRef,
-        ));
-        unawaited(() async {
-          try {
-            CatalogStartupTrace.spanStart('CAT_START.bootstrap_safe.background');
-            await _bootstrapSafe();
-            CatalogStartupTrace.spanEnd('CAT_START.bootstrap_safe.background');
-          } catch (e, st) {
-            CatalogStartupTrace.mark(
-              'CAT_START.bootstrap_safe.background.error',
-              data: {'error_type': e.runtimeType.toString()},
+        CatalogStartupTrace.mark('CAT_START.runApp.catalog_bootstrap_gate.loja_path');
+        runApp(PublicCatalogBootstrapApp(
+          firebaseSpanName: 'CAT_START.fast_path.firebase_min_init',
+          initFirebase: ensureFirebaseInitializedOnce,
+          afterFirebaseMinReady: () async {
+            StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+              urlSlugOrId: lojaSlugOrId,
+              resolvedCanonicalStoreId: lojaSlugOrId,
             );
-            logW(
-                '⚠️ [MAIN] Bootstrap em background (catálogo fast path) falhou (type=${e.runtimeType})');
-            if (kDebugMode) logD('$st');
-          }
-        }());
+            CatalogStartupTrace.mark(
+              'CAT_START.fast_path.public_resolver_seeded',
+              data: {'loja_slug_or_id': lojaSlugOrId},
+            );
+            CatalogStartupTrace.mark(
+              'CAT_START.runApp.catalog_web_root.fast_path',
+              data: {
+                'loja_slug_or_id': lojaSlugOrId,
+              },
+            );
+            if (kDebugMode) {
+              debugPrint('[CATALOG_BOOT] catalog.root.render');
+            }
+            runApp(CatalogWebRoot(
+              lojaId: lojaSlugOrId,
+              vendedorRef: vendedorRef,
+              indicacaoRef: indicacaoRef,
+              produtoRef: produtoRef,
+            ));
+          },
+        ));
         return;
       }
 
-      // FAST PATH: domínio próprio (host mapeado em catalog_domains) — mesmo ganho do /loja/*.
+      // FAST PATH: domínio próprio (host mapeado em catalog_domains).
       if (_shouldOfferCustomDomainCatalogFastPath(uriWeb)) {
-        CatalogStartupTrace.spanStart('CAT_START.custom_domain.fast_path');
-        try {
-          await _initFirebaseCore();
-          CatalogStartupTrace.spanEnd(
-            'CAT_START.custom_domain.fast_path.firebase',
-            data: {'ok': true},
-          );
-        } catch (e) {
-          CatalogStartupTrace.spanEnd(
-            'CAT_START.custom_domain.fast_path.firebase',
-            data: {'ok': false, 'error_type': e.runtimeType.toString()},
-          );
-          logW(
-            '⚠️ [MAIN] Fast path domínio próprio: Firebase falhou (type=${e.runtimeType})',
-          );
-        }
-
         final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
-        String? fromMappedHost;
-        try {
-          fromMappedHost = await resolveLojaIdForPublicCatalogHost(
-            uriWeb.host,
-            useBrowserCache: true,
-          ).timeout(
-            kCatalogDomainResolveBudget,
-            onTimeout: () => null,
-          );
-        } catch (e) {
-          logW(
-            '⚠️ [MAIN] Resolução domínio próprio (fast path) falhou (type=${e.runtimeType})',
-          );
-        }
-
-        if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
-          String lojaIdResolvido = fromMappedHost;
-          try {
-            lojaIdResolvido =
-                await _fastResolveStoreIdFromDomainIndex(fromMappedHost);
-          } catch (e) {
-            logW(
-                '⚠️ [MAIN] Resolver lojaId (domínio fast path) falhou (type=${e.runtimeType})');
-          }
-          StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
-            urlSlugOrId: fromMappedHost,
-            resolvedCanonicalStoreId: lojaIdResolvido,
-          );
-          final vendedorRef = _vendedorRefFromUrl();
-          final indicacaoRef = _indicacaoRefFromUrl();
-          final produtoRef = _produtoRefFromUrl();
-          logD(
-            '🌐 [MAIN] Public Catalog FAST domínio próprio host=$hostNorm → $lojaIdResolvido');
-          CatalogStartupTrace.spanEnd(
-            'CAT_START.custom_domain.fast_path',
-            data: {'ok': true, 'host': hostNorm, 'loja_id': lojaIdResolvido},
-          );
-          CatalogStartupTrace.mark(
-            'CAT_START.runApp.catalog_web_root.custom_domain_fast',
-            data: {'host': hostNorm, 'loja_id': lojaIdResolvido},
-          );
-          runApp(CatalogWebRoot(
-            lojaId: lojaIdResolvido,
-            vendedorRef: vendedorRef,
-            indicacaoRef: indicacaoRef,
-            produtoRef: produtoRef,
-          ));
-          unawaited(() async {
-            try {
-              CatalogStartupTrace.spanStart('CAT_START.bootstrap_safe.background');
-              await _bootstrapSafe();
-              CatalogStartupTrace.spanEnd('CAT_START.bootstrap_safe.background');
-            } catch (e, st) {
-              CatalogStartupTrace.mark(
-                'CAT_START.bootstrap_safe.background.error',
-                data: {'error_type': e.runtimeType.toString()},
-              );
-              logW(
-                  '⚠️ [MAIN] Bootstrap em background (domínio próprio fast path) falhou (type=${e.runtimeType})');
-              if (kDebugMode) logD('$st');
+        CatalogStartupTrace.mark('CAT_START.runApp.catalog_bootstrap_gate.custom_domain');
+        runApp(PublicCatalogBootstrapApp(
+          firebaseSpanName: 'CAT_START.custom_domain.fast_path.firebase',
+          initFirebase: ensureFirebaseInitializedOnce,
+          afterFirebaseMinReady: () async {
+            if (kDebugMode) {
+              debugPrint('[CATALOG_BOOT] domain.resolve.begin');
             }
-          }());
-          return;
-        }
+            CatalogStartupTrace.spanStart('CAT_START.custom_domain.fast_path');
+            String? fromMappedHost;
+            try {
+              fromMappedHost = await resolveLojaIdForPublicCatalogHost(
+                uriWeb.host,
+                useBrowserCache: true,
+              ).timeout(
+                kCatalogDomainResolveBudget,
+                onTimeout: () => null,
+              );
+            } catch (e) {
+              logW(
+                '⚠️ [MAIN] Resolução domínio próprio (fast path) falhou (type=${e.runtimeType})',
+              );
+            }
 
-        CatalogStartupTrace.spanEnd(
-          'CAT_START.custom_domain.fast_path',
-          data: {'ok': false, 'reason': 'no_mapping'},
-        );
-        logD(
-          '🌐 [MAIN] Domínio próprio sem mapeamento ativo (fast path) host=$hostNorm → tela amigável');
-        CatalogStartupTrace.mark('CAT_START.runApp.catalog_domain_resolve_error');
-        runApp(const CatalogDomainBootstrapErrorApp());
+            if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
+              String lojaIdResolvido = fromMappedHost;
+              try {
+                lojaIdResolvido =
+                    await _fastResolveStoreIdFromDomainIndex(fromMappedHost);
+              } catch (e) {
+                logW(
+                    '⚠️ [MAIN] Resolver lojaId (domínio fast path) falhou (type=${e.runtimeType})');
+              }
+              StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+                urlSlugOrId: fromMappedHost,
+                resolvedCanonicalStoreId: lojaIdResolvido,
+              );
+              final vendedorRef = _vendedorRefFromUrl();
+              final indicacaoRef = _indicacaoRefFromUrl();
+              final produtoRef = _produtoRefFromUrl();
+              logD(
+                '🌐 [MAIN] Public Catalog FAST domínio próprio host=$hostNorm → $lojaIdResolvido');
+              if (kDebugMode) {
+                debugPrint('[CATALOG_BOOT] domain.resolve.ok');
+              }
+              CatalogStartupTrace.spanEnd(
+                'CAT_START.custom_domain.fast_path',
+                data: {
+                  'ok': true,
+                  'host': hostNorm,
+                  'loja_id': lojaIdResolvido,
+                },
+              );
+              CatalogStartupTrace.mark(
+                'CAT_START.runApp.catalog_web_root.custom_domain_fast',
+                data: {'host': hostNorm, 'loja_id': lojaIdResolvido},
+              );
+              if (kDebugMode) {
+                debugPrint('[CATALOG_BOOT] catalog.root.render');
+              }
+              runApp(CatalogWebRoot(
+                lojaId: lojaIdResolvido,
+                vendedorRef: vendedorRef,
+                indicacaoRef: indicacaoRef,
+                produtoRef: produtoRef,
+              ));
+              return;
+            }
+
+            CatalogStartupTrace.spanEnd(
+              'CAT_START.custom_domain.fast_path',
+              data: {'ok': false, 'reason': 'no_mapping'},
+            );
+            logD(
+              '🌐 [MAIN] Domínio próprio sem mapeamento ativo (fast path) host=$hostNorm → tela amigável');
+            CatalogStartupTrace.mark(
+                'CAT_START.runApp.catalog_domain_resolve_error');
+            runApp(const CatalogDomainBootstrapErrorApp());
+          },
+        ));
         return;
       }
     }
