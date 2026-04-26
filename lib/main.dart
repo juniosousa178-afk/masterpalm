@@ -1796,7 +1796,9 @@ Future<void> main() async {
         runApp(PublicCatalogBootstrapApp(
           firebaseSpanName: 'CAT_START.fast_path.firebase_min_init',
           initFirebase: ensureFirebaseInitializedOnce,
-          afterFirebaseMinReady: () async {
+          afterFirebaseMinReady: (updateNomeLoja) async {
+            // /loja/{id}: nome costuma vir depois no stream de config; mantemos fallback leve aqui.
+            updateNomeLoja(null);
             StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
               urlSlugOrId: lojaSlugOrId,
               resolvedCanonicalStoreId: lojaSlugOrId,
@@ -1832,14 +1834,14 @@ Future<void> main() async {
         runApp(PublicCatalogBootstrapApp(
           firebaseSpanName: 'CAT_START.custom_domain.fast_path.firebase',
           initFirebase: ensureFirebaseInitializedOnce,
-          afterFirebaseMinReady: () async {
+          afterFirebaseMinReady: (updateNomeLoja) async {
             if (kDebugMode) {
               debugPrint('[CATALOG_BOOT] domain.resolve.begin');
             }
             CatalogStartupTrace.spanStart('CAT_START.custom_domain.fast_path');
-            String? fromMappedHost;
+            CatalogDomainFirestoreHit? domainHit;
             try {
-              fromMappedHost = await resolveLojaIdForPublicCatalogHost(
+              domainHit = await resolveCatalogDomainHitForPublicCatalogHost(
                 uriWeb.host,
                 useBrowserCache: true,
               ).timeout(
@@ -1852,7 +1854,12 @@ Future<void> main() async {
               );
             }
 
-            if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
+            final nomeLoja = (domainHit?.nomeLoja ?? '').trim();
+            if (nomeLoja.isNotEmpty) {
+              updateNomeLoja(nomeLoja);
+            }
+            final fromMappedHost = (domainHit?.lojaId ?? '').trim();
+            if (fromMappedHost.isNotEmpty) {
               String lojaIdResolvido = fromMappedHost;
               try {
                 lojaIdResolvido =

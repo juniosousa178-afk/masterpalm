@@ -29,6 +29,26 @@ class CatalogDomainsIndexService {
 
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  static String? _extractNomeLojaFromConfig(Map<String, dynamic> cfg) {
+    final vals = <String?>[
+      cfg['nomeLoja']?.toString(),
+      cfg['lojaNome']?.toString(),
+      cfg['nomeFantasia']?.toString(),
+      cfg['nome']?.toString(),
+      cfg['razaoSocial']?.toString(),
+    ];
+    for (final v in vals) {
+      final t = (v ?? '').trim();
+      if (t.isNotEmpty) return t;
+    }
+    final empresa = cfg['empresa'];
+    if (empresa is Map) {
+      final nome = (empresa['nome'] ?? '').toString().trim();
+      if (nome.isNotEmpty) return nome;
+    }
+    return null;
+  }
+
   static Future<void> _writeInactiveForHosts(Set<String> hosts) async {
     for (final id in hosts) {
       if (id.isEmpty) continue;
@@ -48,6 +68,7 @@ class CatalogDomainsIndexService {
     required String lojaId,
     required String dominioDisplay,
     required Set<String> hosts,
+    String? nomeLoja,
   }) async {
     final idLoja = lojaId.trim();
     if (idLoja.isEmpty || hosts.isEmpty) return;
@@ -60,6 +81,7 @@ class CatalogDomainsIndexService {
             'dominio': dominioDisplay,
             'status': kCatalogDomainIndexStatusAtivo,
             'verified': true,
+            if ((nomeLoja ?? '').trim().isNotEmpty) 'nomeLoja': nomeLoja!.trim(),
             'atualizadoEm': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
@@ -83,6 +105,7 @@ class CatalogDomainsIndexService {
     final domNorm = normalizeCatalogDomainInput(domRaw);
     final st = (publishedConfig['dominioStatus'] ?? publishedConfig['dominio_status'] ?? '')
         .toString();
+    final nomeLoja = _extractNomeLojaFromConfig(publishedConfig);
 
     final oldHosts = previousDominioCatalogoNormalized == null ||
             previousDominioCatalogoNormalized.isEmpty
@@ -104,6 +127,7 @@ class CatalogDomainsIndexService {
         lojaId: idLoja,
         dominioDisplay: domNorm,
         hosts: newHosts,
+        nomeLoja: nomeLoja,
       );
     }
   }
@@ -112,14 +136,28 @@ class CatalogDomainsIndexService {
   static Future<void> syncOnDomainActivated({
     required String lojaId,
     required String dominioUserNormalized,
+    String? nomeLoja,
   }) async {
     final domNorm = normalizeCatalogDomainInput(dominioUserNormalized);
     if (domNorm.isEmpty) return;
+    var nomeFinal = (nomeLoja ?? '').trim();
+    if (nomeFinal.isEmpty) {
+      try {
+        final lojaDoc = await _db.collection('lojas').doc(lojaId.trim()).get();
+        if (lojaDoc.exists) {
+          nomeFinal = _extractNomeLojaFromConfig(
+            Map<String, dynamic>.from(lojaDoc.data() ?? const {}),
+          ) ??
+              '';
+        }
+      } catch (_) {}
+    }
     final hosts = catalogDomainIndexDocIdsForConfig(domNorm);
     await _writeActiveForHosts(
       lojaId: lojaId,
       dominioDisplay: domNorm,
       hosts: hosts,
+      nomeLoja: nomeFinal,
     );
   }
 }

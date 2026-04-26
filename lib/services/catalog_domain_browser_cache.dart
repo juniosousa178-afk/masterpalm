@@ -11,11 +11,13 @@ const Duration kCatalogDomainBrowserCacheTtl = Duration(minutes: 20);
 class CatalogDomainCacheEntry {
   final String lojaId;
   final String status;
+  final String? nomeLoja;
   final int cachedAtMs;
 
   const CatalogDomainCacheEntry({
     required this.lojaId,
     required this.status,
+    this.nomeLoja,
     required this.cachedAtMs,
   });
 
@@ -49,12 +51,14 @@ class CatalogDomainBrowserCache {
       if (m is! Map) return null;
       final lojaId = (m['lojaId'] ?? '').toString().trim();
       final status = (m['status'] ?? '').toString().trim();
+      final nomeLoja = (m['nomeLoja'] ?? '').toString().trim();
       final cachedAt =
           (m['cachedAt'] is num) ? (m['cachedAt'] as num).toInt() : 0;
       if (lojaId.isEmpty || cachedAt <= 0) return null;
       return CatalogDomainCacheEntry(
         lojaId: lojaId,
         status: status,
+        nomeLoja: nomeLoja.isEmpty ? null : nomeLoja,
         cachedAtMs: cachedAt,
       );
     } catch (_) {
@@ -66,12 +70,14 @@ class CatalogDomainBrowserCache {
     String normalizedHost,
     String lojaId,
     String status,
+    String? nomeLoja,
   ) {
     if (normalizedHost.isEmpty || lojaId.isEmpty) return;
     try {
       final payload = jsonEncode(<String, Object?>{
         'lojaId': lojaId,
         'status': status,
+        if ((nomeLoja ?? '').trim().isNotEmpty) 'nomeLoja': nomeLoja!.trim(),
         'cachedAt': DateTime.now().millisecondsSinceEpoch,
       });
       catalogDomainBrowserStorageSet(_key(normalizedHost), payload);

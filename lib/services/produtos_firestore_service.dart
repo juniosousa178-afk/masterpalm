@@ -50,6 +50,23 @@ enum ProdutoSyncRemotoStatus {
 class ProdutosFirestoreService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Com `merge:true`, mapas aninhados podem preservar chaves antigas no remoto.
+  /// Antes do upsert, limpa campos de variação para garantir sobrescrita total.
+  static Future<void> _clearVariationFieldsBeforeMerge({
+    required DocumentReference<Map<String, dynamic>> ref,
+    required bool clearPrecoPorTamanho,
+  }) async {
+    final clearPayload = <String, dynamic>{
+      'variacoes': FieldValue.delete(),
+      'variacoesExtraTipo': FieldValue.delete(),
+      'estoquePorTamanho': FieldValue.delete(),
+    };
+    if (clearPrecoPorTamanho) {
+      clearPayload['precoPorTamanho'] = FieldValue.delete();
+    }
+    await ref.set(clearPayload, SetOptions(merge: true));
+  }
+
   /// Estado explícito da persistência remota de produto.
   /// - confirmado: escrita remota concluída
   /// - pendenteFila: falhou remoto, item foi enfileirado para retry
@@ -575,6 +592,10 @@ class ProdutosFirestoreService {
         _dlog('[ProdutoSync] create estoque_produtos/$produtoId');
       }
 
+      await _clearVariationFieldsBeforeMerge(
+        ref: docRef,
+        clearPrecoPorTamanho: true,
+      );
       await docRef.set(produtoData, SetOptions(merge: true));
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
@@ -585,6 +606,10 @@ class ProdutosFirestoreService {
               .doc(storeId)
               .collection('produtos')
               .doc(produtoId);
+          await _clearVariationFieldsBeforeMerge(
+            ref: publicoRef,
+            clearPrecoPorTamanho: true,
+          );
           await publicoRef.set({
             // Campos mínimos para o stream/filtros do catálogo web.
             // Sem esses campos, o doc pode ser ignorado por filtros de publicação.

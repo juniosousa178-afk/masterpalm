@@ -19,11 +19,21 @@ import '../web/platform_stub.dart'
 
 /// Tela leve exibida antes de resolver domínio / Firebase mínimo.
 class CatalogBootstrapLoadingScreen extends StatelessWidget {
-  const CatalogBootstrapLoadingScreen({super.key});
+  const CatalogBootstrapLoadingScreen({
+    super.key,
+    this.nomeLoja,
+  });
+
+  final String? nomeLoja;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // No catálogo público, o loader deve priorizar o nome da loja.
+    // Não mostrar MasterPalm para o cliente final quando houver nome da loja disponível.
+    final titulo = (nomeLoja ?? '').trim().isNotEmpty
+        ? nomeLoja!.trim()
+        : 'Carregando loja';
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       body: SafeArea(
@@ -44,9 +54,10 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
                       color: cs.primary,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Text(
-                      'MasterPalm',
-                      style: TextStyle(
+                    child: Text(
+                      titulo,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
@@ -96,7 +107,12 @@ typedef PublicCatalogInitialLoadingScreen = CatalogBootstrapLoadingScreen;
 
 /// `MaterialApp` mínimo só com o loader (primeiro `runApp` no fast path).
 class CatalogBootstrapLoadingApp extends StatelessWidget {
-  const CatalogBootstrapLoadingApp({super.key});
+  const CatalogBootstrapLoadingApp({
+    super.key,
+    this.nomeLoja,
+  });
+
+  final String? nomeLoja;
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +123,7 @@ class CatalogBootstrapLoadingApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
         scaffoldBackgroundColor: const Color(0xFFF0F2F5),
       ),
-      home: const CatalogBootstrapLoadingScreen(),
+      home: CatalogBootstrapLoadingScreen(nomeLoja: nomeLoja),
     );
   }
 }
@@ -122,10 +138,13 @@ class PublicCatalogBootstrapApp extends StatefulWidget {
     required this.initFirebase,
     required this.afterFirebaseMinReady,
     required this.firebaseSpanName,
+    this.initialNomeLoja,
   });
 
   final Future<bool> Function() initFirebase;
-  final Future<void> Function() afterFirebaseMinReady;
+  final Future<void> Function(void Function(String? nomeLoja) updateNomeLoja)
+      afterFirebaseMinReady;
+  final String? initialNomeLoja;
 
   /// Ex.: `CAT_START.fast_path.firebase_min_init` ou `CAT_START.custom_domain.fast_path.firebase`
   final String firebaseSpanName;
@@ -136,9 +155,19 @@ class PublicCatalogBootstrapApp extends StatefulWidget {
 }
 
 class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
+  late String? _nomeLoja;
+
+  void _updateNomeLoja(String? nomeLoja) {
+    if (!mounted) return;
+    setState(() {
+      _nomeLoja = nomeLoja;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
+    _nomeLoja = widget.initialNomeLoja;
     if (kDebugMode) {
       debugPrint('[CATALOG_BOOT] first_frame_loader');
     }
@@ -179,7 +208,7 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
     }
 
     try {
-      await widget.afterFirebaseMinReady();
+      await widget.afterFirebaseMinReady(_updateNomeLoja);
     } catch (e, st) {
       logW(
         '⚠️ [CATALOG_BOOT] afterFirebaseMinReady falhou (type=${e.runtimeType})',
@@ -190,6 +219,6 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
 
   @override
   Widget build(BuildContext context) {
-    return const CatalogBootstrapLoadingApp();
+    return CatalogBootstrapLoadingApp(nomeLoja: _nomeLoja);
   }
 }

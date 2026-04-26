@@ -54,11 +54,33 @@ bool _firestoreStatusIsPublicActive(String? raw) {
 class CatalogDomainFirestoreHit {
   final String lojaId;
   final String status;
+  final String? nomeLoja;
 
   const CatalogDomainFirestoreHit({
     required this.lojaId,
     required this.status,
+    this.nomeLoja,
   });
+}
+
+String? _extractNomeLoja(Map<String, dynamic>? data) {
+  if (data == null) return null;
+  final direct = <String?>[
+    data['nomeLoja']?.toString(),
+    data['lojaNome']?.toString(),
+    data['nomeFantasia']?.toString(),
+    data['nome']?.toString(),
+  ];
+  for (final v in direct) {
+    final t = (v ?? '').trim();
+    if (t.isNotEmpty) return t;
+  }
+  final empresa = data['empresa'];
+  if (empresa is Map) {
+    final n = (empresa['nome'] ?? '').toString().trim();
+    if (n.isNotEmpty) return n;
+  }
+  return null;
 }
 
 String? _lojaIdFromDomainDocData(Map<String, dynamic>? data) {
@@ -99,8 +121,13 @@ Future<CatalogDomainFirestoreHit?> fetchCatalogDomainFromFirestore(
       final lojaId = _lojaIdFromDomainDocData(data);
       if (lojaId == null) continue;
       final st = (data?['status'] ?? 'ativo').toString().trim();
+      final nomeLoja = _extractNomeLoja(data);
       logD('🌐 [CATALOG_DOMAIN] host=$docId → lojaId=$lojaId');
-      return CatalogDomainFirestoreHit(lojaId: lojaId, status: st);
+      return CatalogDomainFirestoreHit(
+        lojaId: lojaId,
+        status: st,
+        nomeLoja: nomeLoja,
+      );
     } on TimeoutException catch (_) {
       logW('⚠️ [CATALOG_DOMAIN] timeout ao ler catalog_domains/$docId');
     } catch (e) {
@@ -126,7 +153,12 @@ void scheduleCatalogDomainCacheRevalidation(String normalizedHost) {
         CatalogDomainBrowserCache.clear(normalizedHost);
         return;
       }
-      CatalogDomainBrowserCache.write(normalizedHost, hit.lojaId, hit.status);
+      CatalogDomainBrowserCache.write(
+        normalizedHost,
+        hit.lojaId,
+        hit.status,
+        hit.nomeLoja,
+      );
     } catch (_) {}
   }());
 }
@@ -151,7 +183,8 @@ Future<String?> resolveLojaIdForPublicCatalogHost(
     if (cached != null && cached.isValid) {
       if (kDebugMode) {
         debugPrint(
-          '[CATALOG_DOMAIN_TIMING] cache válido → lojaId=${cached.lojaId} (instantâneo)',
+          '[CATALOG_DOMAIN_TIMING] cache válido → lojaId=${cached.lojaId} (instantâneo)'
+          ' nomeLoja=${cached.nomeLoja ?? "-"}',
         );
       }
       scheduleCatalogDomainCacheRevalidation(host);
@@ -180,7 +213,7 @@ Future<String?> resolveLojaIdForPublicCatalogHost(
 
   if (hit != null) {
     if (kIsWeb) {
-      CatalogDomainBrowserCache.write(host, hit.lojaId, hit.status);
+      CatalogDomainBrowserCache.write(host, hit.lojaId, hit.status, hit.nomeLoja);
     }
     return hit.lojaId;
   }
@@ -188,4 +221,35 @@ Future<String?> resolveLojaIdForPublicCatalogHost(
     CatalogDomainBrowserCache.clear(host);
   }
   return null;
+}
+
+/// Igual [resolveLojaIdForPublicCatalogHost], mas retorna metadados úteis do loader
+/// (ex.: [nomeLoja]) quando disponíveis no cache/índice.
+Future<CatalogDomainFirestoreHit?> resolveCatalogDomainHitForPublicCatalogHost(
+  String rawHost, {
+  bool useBrowserCache = true,
+}) async {
+  final host = normalizeCatalogDomainHost(rawHost);
+  if (host.isEmpty || Firebase.apps.isEmpty) return null;
+
+  if (kIsWeb && useBrowserCache) {
+    final cached = CatalogDomainBrowserCache.read(host);
+    if (cached != null && cached.isValid) {
+      scheduleCatalogDomainCacheRevalidation(host);
+      return CatalogDomainFirestoreHit(
+        lojaId: cached.lojaId,
+        status: cached.status,
+        nomeLoja: cached.nomeLoja,
+      );
+    }
+  }
+
+  final hit = await fetchCatalogDomainFromFirestore(host).timeout(
+    kCatalogDomainResolveBudget,
+    onTimeout: () => null,
+  );
+  if (hit != null && kIsWeb) {
+    CatalogDomainBrowserCache.write(host, hit.lojaId, hit.status, hit.nomeLoja);
+  }
+  return hit;
 }
