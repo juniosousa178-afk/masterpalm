@@ -652,8 +652,6 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!enabled) return const SizedBox.shrink();
-    final screenSize = MediaQuery.sizeOf(context);
-    final screenW = screenSize.width;
     final hasImage = imageUrl.trim().isNotEmpty;
     final hasCopy = title.trim().isNotEmpty ||
         subtitle.trim().isNotEmpty ||
@@ -661,8 +659,9 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
     if (!hasImage && !hasCopy) {
       return const SizedBox.shrink();
     }
-    final fallbackAspect =
-        height > 0 ? (screenW / height).clamp(0.45, 3.2).toDouble() : (16 / 9);
+    // No minimalista, o campo do banner deve seguir a proporção real da imagem.
+    // Fallback neutro evita "achatamento panorâmico" quando a proporção ainda não foi resolvida.
+    const fallbackAspect = 16 / 9;
     final titleDisplay = applyHeroLetterCase(title.trim(), titleLetterCase);
     final subtitleDisplay =
         applyHeroLetterCase(subtitle.trim(), subtitleLetterCase);
@@ -687,6 +686,7 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
             imageUrl: imageUrl,
             resolvedLojaId: resolvedLojaId,
             fallbackAspectRatio: fallbackAspect,
+            enforceAspectRatio: true,
             backgroundColor: backgroundColor,
             // Não trocar para BoxFit.cover no banner: cover recorta e aplica zoom.
             overlay: Container(
