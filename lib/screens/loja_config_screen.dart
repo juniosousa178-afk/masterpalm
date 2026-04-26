@@ -1,4 +1,4 @@
-﻿// lib/screens/loja_config_screen.dart
+// lib/screens/loja_config_screen.dart
 // Configuração unificada da loja: identidade -> mídia -> tema -> fretes -> rodapé -> publicar
 // ✅ CORRIGIDO: Alinhado 100% com public_catalog_screen.dart
 
@@ -10,7 +10,8 @@ import 'package:diacritic/diacritic.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData, FilteringTextInputFormatter;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, FilteringTextInputFormatter;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:hive/hive.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -57,7 +58,9 @@ part 'loja_config_part_pane_layout.dart';
 part 'loja_config_part_pane_dicas.dart';
 
 enum _LayoutPreset { masterPadrao, masterLuxo, darkClean }
+
 enum _MediaTab { desktop, mobile }
+
 enum _Pane {
   identidade,
   midias,
@@ -101,6 +104,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   static const Color _warningColor = Color(0xFFF59E0B);
   static const Color _errorColor = Color(0xFFEF4444);
   static const Color _surfaceColor = Color(0xFFF8FAFC);
+  static const String _mensagemManutencaoCatalogoPadrao =
+      'Estamos preparando algo incrível para você ter a melhor experiência.';
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -379,16 +384,19 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     try {
       final m = _buildConfigMap(storeId: _activeStoreId());
       _hubBaselineMap = json.decode(json.encode(m)) as Map<String, dynamic>;
-      _hubBaselineFreteConfig =
-          _mergeFreteConfigCache == null ? null : json.decode(json.encode(_mergeFreteConfigCache));
-      _hubBaselineCuponsMerge =
-          _mergeCuponsCache == null ? null : json.decode(json.encode(_mergeCuponsCache));
+      _hubBaselineFreteConfig = _mergeFreteConfigCache == null
+          ? null
+          : json.decode(json.encode(_mergeFreteConfigCache));
+      _hubBaselineCuponsMerge = _mergeCuponsCache == null
+          ? null
+          : json.decode(json.encode(_mergeCuponsCache));
       _hubBaselinePublicarCampanha = _campanhaAtiva;
       _hubBaselinePublicarRoleta = _roletaAtiva;
     } catch (_) {}
   }
 
-  Map<String, dynamic> _hubSliceForKeys(Map<String, dynamic> full, List<String> keys) {
+  Map<String, dynamic> _hubSliceForKeys(
+      Map<String, dynamic> full, List<String> keys) {
     final out = <String, dynamic>{};
     for (final k in keys) {
       if (full.containsKey(k)) out[k] = full[k];
@@ -396,17 +404,20 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     return out;
   }
 
-  bool _hubSliceDirty(Map<String, dynamic> currentFull, Map<String, dynamic>? baseline, List<String> keys) {
+  bool _hubSliceDirty(Map<String, dynamic> currentFull,
+      Map<String, dynamic>? baseline, List<String> keys) {
     if (baseline == null) return false;
     final a = _hubSliceForKeys(currentFull, keys);
     final b = _hubSliceForKeys(baseline, keys);
     return !_hubDeepEq.equals(a, b);
   }
 
-  bool _hubModuleHasPendingChanges(_Pane pane, Map<String, dynamic> currentFull) {
+  bool _hubModuleHasPendingChanges(
+      _Pane pane, Map<String, dynamic> currentFull) {
     if (_hubBaselineMap == null) return false;
     if (pane == _Pane.publicar) {
-      return _campanhaAtiva != _hubBaselinePublicarCampanha || _roletaAtiva != _hubBaselinePublicarRoleta;
+      return _campanhaAtiva != _hubBaselinePublicarCampanha ||
+          _roletaAtiva != _hubBaselinePublicarRoleta;
     }
     final keys = _kHubPaneTopLevelKeys[pane];
     if (keys == null || keys.isEmpty) return false;
@@ -415,9 +426,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   bool _hubFretesShortcutHasPendingChanges(Map<String, dynamic> currentFull) {
     if (_hubBaselineMap == null) return false;
-    if (_hubSliceDirty(currentFull, _hubBaselineMap, _kHubFretesTopKeys)) return true;
-    if (!_hubDeepEq.equals(_mergeFreteConfigCache, _hubBaselineFreteConfig)) return true;
-    if (!_hubDeepEq.equals(_mergeCuponsCache, _hubBaselineCuponsMerge)) return true;
+    if (_hubSliceDirty(currentFull, _hubBaselineMap, _kHubFretesTopKeys))
+      return true;
+    if (!_hubDeepEq.equals(_mergeFreteConfigCache, _hubBaselineFreteConfig))
+      return true;
+    if (!_hubDeepEq.equals(_mergeCuponsCache, _hubBaselineCuponsMerge))
+      return true;
     return false;
   }
 
@@ -462,13 +476,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (dirty) {
       return (
         signal: _HubModuleSignal.pending,
-        tooltip: 'Há alterações de rascunho neste módulo em relação ao último ponto salvo.',
+        tooltip:
+            'Há alterações de rascunho neste módulo em relação ao último ponto salvo.',
       );
     }
     if (_hubBaselineMap != null) {
       return (
         signal: _HubModuleSignal.ok,
-        tooltip: 'Sem pendências de rascunho nem problemas detectados neste módulo.',
+        tooltip:
+            'Sem pendências de rascunho nem problemas detectados neste módulo.',
       );
     }
     return (signal: _HubModuleSignal.neutral, tooltip: null);
@@ -488,7 +504,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   /// Mensagens de validação/publicação exibidas no hub — mesma base para o banner do módulo.
   List<String> _listHubErrorMessagesForPane(_Pane pane) {
     final salvar = _coletarProblemasSalvar();
-    final pubAvisos = salvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
+    final pubAvisos =
+        salvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
 
     if (pane == _Pane.publicar) {
       final m = <String>[];
@@ -518,7 +535,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     return _dedupeHubStrings(out);
   }
 
-  Widget _buildModulePaneErrorBanner(BuildContext context, ColorScheme cs, _Pane pane) {
+  Widget _buildModulePaneErrorBanner(
+      BuildContext context, ColorScheme cs, _Pane pane) {
     return _LojaConfigModulePaneErrorBanner(
       messages: _listHubErrorMessagesForPane(pane),
       colorScheme: cs,
@@ -529,7 +547,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (dirty) {
       return (
         signal: _HubModuleSignal.pending,
-        tooltip: 'Há alterações de fretes ou cupons no rascunho em relação ao último ponto salvo.',
+        tooltip:
+            'Há alterações de fretes ou cupons no rascunho em relação ao último ponto salvo.',
       );
     }
     if (_hubBaselineMap != null) {
@@ -544,7 +563,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     );
   }
 
-  bool _hubFilterAcceptsSignal(_HubModuleFilter filter, _HubModuleSignal signal) {
+  bool _hubFilterAcceptsSignal(
+      _HubModuleFilter filter, _HubModuleSignal signal) {
     return switch (filter) {
       _HubModuleFilter.all => true,
       _HubModuleFilter.error => signal == _HubModuleSignal.error,
@@ -600,7 +620,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       }
     } catch (_) {}
     final hubSalvar = _coletarProblemasSalvar();
-    final hubPubAvisos = hubSalvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
+    final hubPubAvisos =
+        hubSalvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
     final fretesDirty =
         currentFull != null && _hubFretesShortcutHasPendingChanges(currentFull);
     final fretesSignal = _hubCardStateFretes(fretesDirty).signal;
@@ -613,25 +634,33 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   /// Ordem global do hub (sem filtro/busca): Fretes com `origIndex` -1, depois módulos na ordem de [_lojaConfigNavItems].
-  List<({bool fretes, _Pane? pane, _HubModuleSignal signal, int origIndex})> _hubGlobalSortedRows({
+  List<({bool fretes, _Pane? pane, _HubModuleSignal signal, int origIndex})>
+      _hubGlobalSortedRows({
     required Map<String, dynamic>? currentFull,
     required List<({String campo, String msg})> hubSalvar,
     required List<String> hubPubAvisos,
     required _HubModuleSignal fretesSignal,
   }) {
     final nav = _lojaConfigNavItems();
-    final rows = <({bool fretes, _Pane? pane, _HubModuleSignal signal, int origIndex})>[];
+    final rows = <({
+      bool fretes,
+      _Pane? pane,
+      _HubModuleSignal signal,
+      int origIndex
+    })>[];
     rows.add((fretes: true, pane: null, signal: fretesSignal, origIndex: -1));
     for (var i = 0; i < nav.length; i++) {
       final item = nav[i];
       final pane = item['pane'] as _Pane;
       final dirty =
           currentFull != null && _hubModuleHasPendingChanges(pane, currentFull);
-      final signal = _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
+      final signal =
+          _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
       rows.add((fretes: false, pane: pane, signal: signal, origIndex: i));
     }
     rows.sort((a, b) {
-      final c = _hubSignalPriority(a.signal).compareTo(_hubSignalPriority(b.signal));
+      final c =
+          _hubSignalPriority(a.signal).compareTo(_hubSignalPriority(b.signal));
       if (c != 0) return c;
       return a.origIndex.compareTo(b.origIndex);
     });
@@ -656,7 +685,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   /// Itens anterior/próximo na fila global de erros (mesma ordem do hub). Só posiciona se o painel atual estiver na fila (linhas de módulo, não Fretes).
-  ({({bool fretes, _Pane? pane})? prev, ({bool fretes, _Pane? pane})? next}) _hubErrorPrevNextForCurrentPane() {
+  ({({bool fretes, _Pane? pane})? prev, ({bool fretes, _Pane? pane})? next})
+      _hubErrorPrevNextForCurrentPane() {
     final ctx = _hubNavigationContext();
     final rows = _hubGlobalSortedRows(
       currentFull: ctx.currentFull,
@@ -753,16 +783,20 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   bool _hubBaselinePublicarRoleta = false;
 
   _Pane _pane = _Pane.identidade;
+
   /// `true` = painel inicial com cards; `false` = tela cheia de um módulo (mesmo [State], sem duplicar lógica).
   bool _hubMode = true;
+
   /// Filtro dos cards no hub (módulos + atalho Fretes & Cupons).
   _HubModuleFilter _hubModuleFilter = _HubModuleFilter.all;
+
   /// Busca por nome/descrição no hub (combina com o filtro por estado).
   final TextEditingController _hubSearchCtrl = TextEditingController();
   _MediaTab _mediaTab = _MediaTab.desktop;
   _LayoutPreset? _layoutPreset;
 
-  final GlobalKey<_PaneTemaWidgetState> _paneTemaKey = GlobalKey<_PaneTemaWidgetState>();
+  final GlobalKey<_PaneTemaWidgetState> _paneTemaKey =
+      GlobalKey<_PaneTemaWidgetState>();
 
   void _invalidateCatalogPaletteCaches() {
     _catalogPaletteContentHash = null;
@@ -786,27 +820,36 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   /// Foco no primeiro campo com erro ao abrir o módulo (não substitui os controllers).
   final FocusNode _focusNomeLoja = FocusNode(debugLabel: 'lojaConfig_nomeLoja');
-  final FocusNode _focusWaVendedor = FocusNode(debugLabel: 'lojaConfig_waVendedor');
-  final FocusNode _focusPedidoBaseUrl = FocusNode(debugLabel: 'lojaConfig_pedidoBase');
+  final FocusNode _focusWaVendedor =
+      FocusNode(debugLabel: 'lojaConfig_waVendedor');
+  final FocusNode _focusPedidoBaseUrl =
+      FocusNode(debugLabel: 'lojaConfig_pedidoBase');
   final FocusNode _focusSacWhatsapp = FocusNode(debugLabel: 'lojaConfig_sacWa');
-  final FocusNode _focusWhatsappRodape = FocusNode(debugLabel: 'lojaConfig_waRodape');
-  final GlobalKey _midiasLogoSectionKey = GlobalKey(debugLabel: 'lojaConfig_midiasLogo');
+  final FocusNode _focusWhatsappRodape =
+      FocusNode(debugLabel: 'lojaConfig_waRodape');
+  final GlobalKey _midiasLogoSectionKey =
+      GlobalKey(debugLabel: 'lojaConfig_midiasLogo');
 
   // ---------------------------------
   // CONTROLES BÁSICOS / IDENTIDADE
   // ---------------------------------
   final TextEditingController _nomeCtrl = TextEditingController();
-  final TextEditingController _slugCtrl = TextEditingController(); // ✅ SLUG AMIGÁVEL
-  final TextEditingController _linkCurtoCtrl = TextEditingController(); // ✅ LINK CURTO: /c/{linkCurto} → /loja/{slug}
-  final TextEditingController _subdominioMascaraCtrl = TextEditingController(); // ✅ MÁSCARA: nathypratasefolheados.masterpalm.com
-  final TextEditingController _subdominioDominioBaseCtrl = TextEditingController(text: 'mastepalm.com.br');
+  final TextEditingController _slugCtrl =
+      TextEditingController(); // ✅ SLUG AMIGÁVEL
+  final TextEditingController _linkCurtoCtrl =
+      TextEditingController(); // ✅ LINK CURTO: /c/{linkCurto} → /loja/{slug}
+  final TextEditingController _subdominioMascaraCtrl =
+      TextEditingController(); // ✅ MÁSCARA: nathypratasefolheados.masterpalm.com
+  final TextEditingController _subdominioDominioBaseCtrl =
+      TextEditingController(text: 'mastepalm.com.br');
   final TextEditingController _waCtrl = TextEditingController();
   final TextEditingController _pedidoBaseCtrl = TextEditingController();
   final TextEditingController _dominioCatalogoCtrl = TextEditingController();
   String _dominioCatalogoStatus = kDominioStatusNaoConfigurado;
   String? _dominioProviderId;
   int? _dominioCatalogoUpdatedAt;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _catalogDomainOpSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _catalogDomainOpSub;
   String? _catalogDomainOpExpectedTarget;
   String? _catalogDomainOpDnsObserved;
   String? _catalogDomainOpLastCheckLabel;
@@ -908,6 +951,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   final TextEditingController _promoBarLinkCtrl = TextEditingController();
   Color _promoBarBg = const Color(0xFFFF4F96);
   Color _promoBarText = Colors.white;
+
   /// Texto longo do letreiro rola automaticamente (layout minimalista).
   bool _promoBarMarquee = true;
 
@@ -923,11 +967,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   bool _heroBannerEnabled = false;
   final TextEditingController _heroBannerTitleCtrl = TextEditingController();
   final TextEditingController _heroBannerSubtitleCtrl = TextEditingController();
-  final TextEditingController _heroBannerButtonTextCtrl = TextEditingController();
-  final TextEditingController _heroBannerButtonLinkCtrl = TextEditingController();
+  final TextEditingController _heroBannerButtonTextCtrl =
+      TextEditingController();
+  final TextEditingController _heroBannerButtonLinkCtrl =
+      TextEditingController();
   final TextEditingController _heroBannerImageCtrl = TextEditingController();
-  final TextEditingController _heroBannerMobileImageCtrl = TextEditingController();
-  final TextEditingController _heroBannerCompactImageCtrl = TextEditingController();
+  final TextEditingController _heroBannerMobileImageCtrl =
+      TextEditingController();
+  final TextEditingController _heroBannerCompactImageCtrl =
+      TextEditingController();
   String _heroBannerSizeMode = 'grande'; // grande | compacto
   // Banner minimalista: cartão + tipografia (separado do tema geral)
   Color _heroCardBg = const Color(0xFFE8E8E8);
@@ -997,9 +1045,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   bool _menuShowQuemSomos = true;
   bool _menuShowDicas = true;
   bool _exibirAvaliacoesCatalogo = false;
+  bool _catalogoEmManutencao = false;
   CatalogAvaliacoesOrdem _catalogAvaliacoesOrdem =
       CatalogAvaliacoesOrdem.maisRecentes;
   bool _showMobileMenuGrid = true;
+  final TextEditingController _mensagemManutencaoCatalogoCtrl =
+      TextEditingController(text: _mensagemManutencaoCatalogoPadrao);
 
   /// Dicas e informações (cuidados, garantias, qualidade) – lista de mapas para o catálogo.
   List<Map<String, dynamic>> _dicas = [];
@@ -1026,10 +1077,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   // TAXAS FINANCEIRAS (Relatórios Financeiros e Financeiro & Metas)
   // Valores padrão; usuário pode alterar em Loja Config > Taxas Financeiras
   // ---------------------------------
-  final TextEditingController _taxaCartaoCtrl = TextEditingController(text: '5.0');
+  final TextEditingController _taxaCartaoCtrl =
+      TextEditingController(text: '5.0');
   final TextEditingController _taxaMEICtrl = TextEditingController(text: '3.5');
-  final TextEditingController _custosFixosCtrl = TextEditingController(text: '10.0');
-  final TextEditingController _custoEmbalagemCtrl = TextEditingController(text: '3.0');
+  final TextEditingController _custosFixosCtrl =
+      TextEditingController(text: '10.0');
+  final TextEditingController _custoEmbalagemCtrl =
+      TextEditingController(text: '3.0');
 
   // SAC
   final TextEditingController _sacWhatsappCtrl = TextEditingController();
@@ -1170,7 +1224,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   void _onDominioCatalogoEdited() {
     if (normalizeCatalogDomainInput(_dominioCatalogoCtrl.text).isEmpty) {
-      if (_dominioCatalogoStatus != kDominioStatusNaoConfigurado || _dominioProviderId != null) {
+      if (_dominioCatalogoStatus != kDominioStatusNaoConfigurado ||
+          _dominioProviderId != null) {
         setState(() {
           _dominioCatalogoStatus = kDominioStatusNaoConfigurado;
           _dominioProviderId = null;
@@ -1241,12 +1296,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final err = (d['lastError'] ?? '').toString().trim();
       final st = (d['status'] ?? '').toString().trim();
       setState(() {
-        _catalogDomainOpExpectedTarget = exp.isNotEmpty ? exp : kCatalogPublicCnameTarget;
+        _catalogDomainOpExpectedTarget =
+            exp.isNotEmpty ? exp : kCatalogPublicCnameTarget;
         _catalogDomainOpDnsObserved = obs.isNotEmpty ? obs : null;
-        _catalogDomainOpLastCheckLabel = _formatCatalogDomainCheckAt(d['lastCheckAt']);
+        _catalogDomainOpLastCheckLabel =
+            _formatCatalogDomainCheckAt(d['lastCheckAt']);
         _catalogDomainOpError = err.isNotEmpty ? err : null;
         if (st.isNotEmpty) {
-          _dominioCatalogoStatus = dominioStatusFromStorage(st, hasDomain: true);
+          _dominioCatalogoStatus =
+              dominioStatusFromStorage(st, hasDomain: true);
         }
       });
     });
@@ -1271,7 +1329,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         providerId: _dominioProviderId,
       );
       final hostFinal = (res['hostFinal'] ?? '').toString().trim();
-      final status = (res['status'] ?? kDominioStatusSolicitado).toString().trim();
+      final status =
+          (res['status'] ?? kDominioStatusSolicitado).toString().trim();
       final upd = (res['dominioUpdatedAt'] as num?)?.toInt();
       if (!mounted) return;
       setState(() {
@@ -1280,8 +1339,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         } else {
           _dominioCatalogoCtrl.text = norm;
         }
-        _dominioCatalogoStatus = dominioStatusFromStorage(status, hasDomain: true);
-        _dominioCatalogoUpdatedAt = upd ?? DateTime.now().millisecondsSinceEpoch;
+        _dominioCatalogoStatus =
+            dominioStatusFromStorage(status, hasDomain: true);
+        _dominioCatalogoUpdatedAt =
+            upd ?? DateTime.now().millisecondsSinceEpoch;
         final p = res['providerId']?.toString().trim();
         if (p != null && p.isNotEmpty) {
           _dominioProviderId = p;
@@ -1319,7 +1380,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _snack('Loja ativa não encontrada.', isError: true);
       return;
     }
-    final result = await Navigator.of(context).push<CatalogDomainSetupPopResult?>(
+    final result =
+        await Navigator.of(context).push<CatalogDomainSetupPopResult?>(
       MaterialPageRoute(
         builder: (ctx) => CatalogDomainSetupScreen(
           lojaId: loja,
@@ -1448,6 +1510,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   void _menuSetShowMobileMenuGrid(bool v) {
     setState(() => _showMobileMenuGrid = v);
     _salvarRascunho(validar: false);
+  }
+
+  void _menuSetCatalogoEmManutencao(bool v) {
+    setState(() => _catalogoEmManutencao = v);
+    _salvarRascunho(validar: false);
+  }
+
+  void _menuSetMensagemManutencaoCatalogo(String _) {
+    _scheduleAutoSave();
   }
 
   void _menuSetSobreLojaMostrarLegais(bool v) {
@@ -1668,7 +1739,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   Future<void> _initConfig() async {
     if (_initConfigInFlight != null) {
-      if (kDebugMode) logD('[LOJA_CONFIG_LOAD_ONCE] coalescing with in-flight init');
+      if (kDebugMode)
+        logD('[LOJA_CONFIG_LOAD_ONCE] coalescing with in-flight init');
       return _initConfigInFlight!;
     }
     final f = _runInitConfig();
@@ -1686,7 +1758,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final id = await StoreResolverFacade.resolveForAdminApp();
       logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       logD('🏪 [LOJA CONFIG] StoreResolverFacade.resolveForAdminApp() = $id');
-      if (kDebugMode) logD('[LOJA_CONFIG_RESOLVE_ONCE] resolve concluído (carga inicial / refresh)');
+      if (kDebugMode)
+        logD(
+            '[LOJA_CONFIG_RESOLVE_ONCE] resolve concluído (carga inicial / refresh)');
 
       // Mostra todas as fontes de loja
       final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : null;
@@ -1729,7 +1803,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
       // 4) Fallback Hive: se mídia vazia, carregar rascunho completo do Hive
       if (_isMidiaVazia()) {
-        logD('⚠️ [LOJA CONFIG] Mídia vazia, tentando rascunho local do Hive...');
+        logD(
+            '⚠️ [LOJA CONFIG] Mídia vazia, tentando rascunho local do Hive...');
         final local = _configBox.get('draft_config');
         if (local is Map) {
           _applyConfigMap(Map<String, dynamic>.from(local));
@@ -1742,20 +1817,30 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         final lm = Map<String, dynamic>.from(local);
         final ld = (lm['media']?['desktop'] ?? lm) as Map?;
         final lmobile = (lm['media']?['mobile'] ?? lm) as Map?;
-        final localLogoD = (ld?['logoUrl'] ?? lm['logoDesktopUrl'])?.toString().trim();
-        final localLogoM = (lmobile?['logoUrl'] ?? lm['logoMobileUrl'])?.toString().trim();
+        final localLogoD =
+            (ld?['logoUrl'] ?? lm['logoDesktopUrl'])?.toString().trim();
+        final localLogoM =
+            (lmobile?['logoUrl'] ?? lm['logoMobileUrl'])?.toString().trim();
         final bdRaw = ld?['banners'] ?? lm['bannersDesktop'];
         final bmRaw = lmobile?['banners'] ?? lm['bannersMobile'];
-        final localBannersD = (bdRaw is List) ? bdRaw.map((e) => e.toString()).toList() : <String>[];
-        final localBannersM = (bmRaw is List) ? bmRaw.map((e) => e.toString()).toList() : <String>[];
-        final precisaLogoD = (_logoUrlDesktop ?? '').trim().isEmpty && (localLogoD ?? '').isNotEmpty;
-        final precisaLogoM = (_logoUrlMobile ?? '').trim().isEmpty && (localLogoM ?? '').isNotEmpty;
+        final localBannersD = (bdRaw is List)
+            ? bdRaw.map((e) => e.toString()).toList()
+            : <String>[];
+        final localBannersM = (bmRaw is List)
+            ? bmRaw.map((e) => e.toString()).toList()
+            : <String>[];
+        final precisaLogoD = (_logoUrlDesktop ?? '').trim().isEmpty &&
+            (localLogoD ?? '').isNotEmpty;
+        final precisaLogoM = (_logoUrlMobile ?? '').trim().isEmpty &&
+            (localLogoM ?? '').isNotEmpty;
         final precisaBd = _bannersDesktop.isEmpty && localBannersD.isNotEmpty;
         final precisaBm = _bannersMobile.isEmpty && localBannersM.isNotEmpty;
         if (precisaLogoD || precisaLogoM || precisaBd || precisaBm) {
-          logD('📥 [LOJA CONFIG] Complementando mídia com dados locais do Hive');
+          logD(
+              '📥 [LOJA CONFIG] Complementando mídia com dados locais do Hive');
           setState(() {
-            if (precisaLogoD && localLogoD != null) _logoUrlDesktop = localLogoD;
+            if (precisaLogoD && localLogoD != null)
+              _logoUrlDesktop = localLogoD;
             if (precisaLogoM && localLogoM != null) _logoUrlMobile = localLogoM;
             if (precisaBd) _bannersDesktop = localBannersD;
             if (precisaBm) _bannersMobile = localBannersM;
@@ -1769,9 +1854,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         setState(() {
           _erroCarregamento = true;
           _mensagemErro = e.toString().replaceAll('Exception:', '').trim();
-          if (_mensagemErro.length > 80) _mensagemErro = '${_mensagemErro.substring(0, 80)}...';
+          if (_mensagemErro.length > 80)
+            _mensagemErro = '${_mensagemErro.substring(0, 80)}...';
         });
-        _showModernSnackBar('Erro ao carregar: ${e.toString().split('\n').first}', isError: true);
+        _showModernSnackBar(
+            'Erro ao carregar: ${e.toString().split('\n').first}',
+            isError: true);
       }
     } finally {
       if (mounted) {
@@ -1785,22 +1873,64 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   static const _tutorialPassos = [
-    ('Identidade & Contato', 'Nome da loja, WhatsApp e configurações básicas de contato.', Icons.storefront_outlined),
-    ('Mídias & Banners', 'Logo e banners para desktop e mobile. Envie imagens para personalizar seu catálogo.', Icons.photo_library_outlined),
-    ('Tema & Cores', 'Defina as cores do catálogo, botões e fundo para combinar com sua marca.', Icons.palette_outlined),
-    ('Layout dos cards', 'Colunas, sombras e bordas dos cards de produto no catálogo.', Icons.dashboard_customize_outlined),
-    ('Menu & Páginas', 'Configure quais itens aparecem no menu: categorias, entrar, contato, SAC, Quem somos.', Icons.menu_open_outlined),
-    ('Dicas e informações', 'Cuidados, garantias e qualidade – página linkada no menu do catálogo.', Icons.lightbulb_outline),
-    ('Rodapé & Links', 'Redes sociais, políticas de troca, sobre a loja e informações legais.', Icons.view_day_outlined),
-    ('Taxas Financeiras', 'Configure taxas usadas em relatórios e metas financeiras.', Icons.percent_outlined),
-    ('Fretes & Cupons', 'Abra a tela dedicada para fretes e cupons de desconto.', Icons.local_shipping_outlined),
-    ('Publicar catálogo', 'Depois de configurar tudo, clique aqui para publicar e tornar seu catálogo visível online.', Icons.cloud_upload_outlined),
+    (
+      'Identidade & Contato',
+      'Nome da loja, WhatsApp e configurações básicas de contato.',
+      Icons.storefront_outlined
+    ),
+    (
+      'Mídias & Banners',
+      'Logo e banners para desktop e mobile. Envie imagens para personalizar seu catálogo.',
+      Icons.photo_library_outlined
+    ),
+    (
+      'Tema & Cores',
+      'Defina as cores do catálogo, botões e fundo para combinar com sua marca.',
+      Icons.palette_outlined
+    ),
+    (
+      'Layout dos cards',
+      'Colunas, sombras e bordas dos cards de produto no catálogo.',
+      Icons.dashboard_customize_outlined
+    ),
+    (
+      'Menu & Páginas',
+      'Configure quais itens aparecem no menu: categorias, entrar, contato, SAC, Quem somos.',
+      Icons.menu_open_outlined
+    ),
+    (
+      'Dicas e informações',
+      'Cuidados, garantias e qualidade – página linkada no menu do catálogo.',
+      Icons.lightbulb_outline
+    ),
+    (
+      'Rodapé & Links',
+      'Redes sociais, políticas de troca, sobre a loja e informações legais.',
+      Icons.view_day_outlined
+    ),
+    (
+      'Taxas Financeiras',
+      'Configure taxas usadas em relatórios e metas financeiras.',
+      Icons.percent_outlined
+    ),
+    (
+      'Fretes & Cupons',
+      'Abra a tela dedicada para fretes e cupons de desconto.',
+      Icons.local_shipping_outlined
+    ),
+    (
+      'Publicar catálogo',
+      'Depois de configurar tudo, clique aqui para publicar e tornar seu catálogo visível online.',
+      Icons.cloud_upload_outlined
+    ),
   ];
 
   Future<void> _verificarTutorialPrimeiraVez() async {
     if (_carregando || !mounted) return;
     try {
-      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+      final cfg = Hive.isBoxOpen('config')
+          ? Hive.box('config')
+          : await Hive.openBox('config');
       final visto = cfg.get('tutorial_loja_config_visto') == true;
       if (!visto && mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1816,7 +1946,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       _tutorialPasso = 0;
     });
     try {
-      final cfg = Hive.isBoxOpen('config') ? Hive.box('config') : await Hive.openBox('config');
+      final cfg = Hive.isBoxOpen('config')
+          ? Hive.box('config')
+          : await Hive.openBox('config');
       await cfg.put('tutorial_loja_config_visto', true);
     } catch (_) {}
   }
@@ -1847,7 +1979,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     try {
       final lojaId = _resolvedLojaId!;
-      if (kDebugMode) logD('[LOJA_CONFIG_CAMPANHAS_ONCE] buscando campanhas/roleta (init ou refresh)');
+      if (kDebugMode)
+        logD(
+            '[LOJA_CONFIG_CAMPANHAS_ONCE] buscando campanhas/roleta (init ou refresh)');
       logD('🎰 [CONFIG] Carregando status de campanhas e roleta para: $lojaId');
 
       // 1. Buscar campanhas ativas (limit para reduzir custo; suficiente para achar uma ativa)
@@ -1891,28 +2025,33 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           .doc('roleta_sorte')
           .get();
 
-      final roletaAtiva = roletaDoc.exists && roletaDoc.data()?['ativa'] == true;
+      final roletaAtiva =
+          roletaDoc.exists && roletaDoc.data()?['ativa'] == true;
 
       if (mounted) {
         setState(() {
           _campanhaAtiva = campanhaAtiva != null;
           _campanhaAtivaId = campanhaAtiva?['id'];
-          _campanhaAtivaNome = campanhaAtiva?['nome'] ?? campanhaAtiva?['titulo'];
+          _campanhaAtivaNome =
+              campanhaAtiva?['nome'] ?? campanhaAtiva?['titulo'];
           _roletaAtiva = roletaAtiva;
         });
 
-        logD('✅ [CONFIG] Campanha ativa: $_campanhaAtiva ($_campanhaAtivaNome)');
+        logD(
+            '✅ [CONFIG] Campanha ativa: $_campanhaAtiva ($_campanhaAtivaNome)');
         logD('✅ [CONFIG] Roleta ativa: $_roletaAtiva');
       }
     } catch (e) {
-      logD('⚠️ [CONFIG] Erro ao carregar status de campanhas/roleta (type=${e.runtimeType})');
+      logD(
+          '⚠️ [CONFIG] Erro ao carregar status de campanhas/roleta (type=${e.runtimeType})');
     }
   }
 
   /// Toggle para ativar/desativar campanha
   Future<void> _toggleCampanhaAtiva(bool novoValor) async {
     if (_campanhaAtivaId == null && novoValor) {
-      _snack('Nenhuma campanha cadastrada. Crie uma campanha primeiro na seção de Sorteios.');
+      _snack(
+          'Nenhuma campanha cadastrada. Crie uma campanha primeiro na seção de Sorteios.');
       return;
     }
 
@@ -2010,7 +2149,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         logD('✅ [FIRESTORE] draft_config encontrado! Aplicando...');
-        if (kDebugMode) logD('[LOJA_CONFIG_FIRESTORE_ONCE] draft_config aplicado (carga inicial / refresh)');
+        if (kDebugMode)
+          logD(
+              '[LOJA_CONFIG_FIRESTORE_ONCE] draft_config aplicado (carga inicial / refresh)');
         final converted = Map<String, dynamic>.from(data);
         _applyConfigMap(converted);
         _mergeFreteConfigCache = data['frete_config'];
@@ -2022,12 +2163,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       }
 
       // Doc da loja: pré-preenche nome/WhatsApp (cadastro inicial) e fallback de mídia
-      final lojaDoc = await FirebaseFirestore.instance.collection('lojas').doc(_slug).get();
+      final lojaDoc =
+          await FirebaseFirestore.instance.collection('lojas').doc(_slug).get();
       if (lojaDoc.exists && lojaDoc.data() != null) {
         final d = lojaDoc.data()!;
         // Pré-preenche nome e WhatsApp quando vazios (ex.: primeiro acesso após onboarding)
-        final nomeLoja = (d['name'] ?? d['nome'] ?? d['nomeLoja'] ?? '').toString().trim();
-        final whatsE164 = (d['whatsappE164'] ?? d['whatsapp'] ?? '').toString().trim();
+        final nomeLoja =
+            (d['name'] ?? d['nome'] ?? d['nomeLoja'] ?? '').toString().trim();
+        final whatsE164 =
+            (d['whatsappE164'] ?? d['whatsapp'] ?? '').toString().trim();
         if (nomeLoja.isNotEmpty && _nomeCtrl.text.trim().isEmpty) {
           setState(() => _nomeCtrl.text = nomeLoja);
           logD('📝 [LOJA CONFIG] Nome da loja pré-preenchido com: $nomeLoja');
@@ -2040,25 +2184,34 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
       // Fallback: se mídia vazia, usar doc da loja já carregado (config publicado)
       if (_isMidiaVazia() && lojaDoc.exists && lojaDoc.data() != null) {
-        logD('📥 [FIRESTORE] Mídia vazia, tentando loja doc (config publicado)...');
+        logD(
+            '📥 [FIRESTORE] Mídia vazia, tentando loja doc (config publicado)...');
         final d = lojaDoc.data()!;
-          final media = d['media'] as Map<String, dynamic>?;
-          final desktop = media?['desktop'] as Map?;
-          final mobile = media?['mobile'] as Map?;
-          final logoD = (desktop?['logoUrl'] ?? d['logoDesktopUrl'])?.toString();
-          final logoM = (mobile?['logoUrl'] ?? d['logoMobileUrl'])?.toString();
-          final bd = (desktop?['banners'] ?? d['bannersDesktop']) as List?;
-          final bm = (mobile?['banners'] ?? d['bannersMobile']) as List?;
-          if ((logoD != null && logoD.isNotEmpty) || (logoM != null && logoM.isNotEmpty) ||
-              (bd != null && bd.isNotEmpty) || (bm != null && bm.isNotEmpty)) {
-            setState(() {
-              if ((_logoUrlDesktop == null || _logoUrlDesktop!.isEmpty) && logoD != null && logoD.isNotEmpty) _logoUrlDesktop = logoD;
-              if ((_logoUrlMobile == null || _logoUrlMobile!.isEmpty) && logoM != null && logoM.isNotEmpty) _logoUrlMobile = logoM;
-              if (_bannersDesktop.isEmpty && bd != null && bd.isNotEmpty) _bannersDesktop = bd.map((e) => e.toString()).toList();
-              if (_bannersMobile.isEmpty && bm != null && bm.isNotEmpty) _bannersMobile = bm.map((e) => e.toString()).toList();
-            });
-            logD('✅ [FIRESTORE] Mídia carregada do config publicado');
-          }
+        final media = d['media'] as Map<String, dynamic>?;
+        final desktop = media?['desktop'] as Map?;
+        final mobile = media?['mobile'] as Map?;
+        final logoD = (desktop?['logoUrl'] ?? d['logoDesktopUrl'])?.toString();
+        final logoM = (mobile?['logoUrl'] ?? d['logoMobileUrl'])?.toString();
+        final bd = (desktop?['banners'] ?? d['bannersDesktop']) as List?;
+        final bm = (mobile?['banners'] ?? d['bannersMobile']) as List?;
+        if ((logoD != null && logoD.isNotEmpty) ||
+            (logoM != null && logoM.isNotEmpty) ||
+            (bd != null && bd.isNotEmpty) ||
+            (bm != null && bm.isNotEmpty)) {
+          setState(() {
+            if ((_logoUrlDesktop == null || _logoUrlDesktop!.isEmpty) &&
+                logoD != null &&
+                logoD.isNotEmpty) _logoUrlDesktop = logoD;
+            if ((_logoUrlMobile == null || _logoUrlMobile!.isEmpty) &&
+                logoM != null &&
+                logoM.isNotEmpty) _logoUrlMobile = logoM;
+            if (_bannersDesktop.isEmpty && bd != null && bd.isNotEmpty)
+              _bannersDesktop = bd.map((e) => e.toString()).toList();
+            if (_bannersMobile.isEmpty && bm != null && bm.isNotEmpty)
+              _bannersMobile = bm.map((e) => e.toString()).toList();
+          });
+          logD('✅ [FIRESTORE] Mídia carregada do config publicado');
+        }
       }
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {
@@ -2088,11 +2241,21 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   void _applyConfigMap(Map<String, dynamic> data) {
     setState(() {
       _nomeCtrl.text = (data['nome'] as String?) ?? _nomeCtrl.text;
-      _slugCtrl.text = (data['slug'] as String?) ?? _slugCtrl.text; // ✅ CARREGAR SLUG
-    _linkCurtoCtrl.text = (data['linkCurto'] as String?) ?? _linkCurtoCtrl.text; // ✅ CARREGAR LINK CURTO
-      _subdominioMascaraCtrl.text = (data['subdominioMascara'] ?? data['subdominio_mascara'] ?? '').toString().trim();
-      _subdominioDominioBaseCtrl.text = (data['subdominioDominioBase'] ?? data['subdominio_dominio_base'] ?? 'mastepalm.com.br').toString().trim();
-      _dominioCatalogoCtrl.text = (data['dominioCatalogo'] ?? '').toString().trim();
+      _slugCtrl.text =
+          (data['slug'] as String?) ?? _slugCtrl.text; // ✅ CARREGAR SLUG
+      _linkCurtoCtrl.text = (data['linkCurto'] as String?) ??
+          _linkCurtoCtrl.text; // ✅ CARREGAR LINK CURTO
+      _subdominioMascaraCtrl.text =
+          (data['subdominioMascara'] ?? data['subdominio_mascara'] ?? '')
+              .toString()
+              .trim();
+      _subdominioDominioBaseCtrl.text = (data['subdominioDominioBase'] ??
+              data['subdominio_dominio_base'] ??
+              'mastepalm.com.br')
+          .toString()
+          .trim();
+      _dominioCatalogoCtrl.text =
+          (data['dominioCatalogo'] ?? '').toString().trim();
       final domProv = (data['dominioProvider'] ?? '').toString().trim();
       _dominioProviderId = domProv.isEmpty ? null : domProv;
       _dominioCatalogoStatus = dominioStatusFromStorage(
@@ -2101,15 +2264,16 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       );
       _dominioCatalogoUpdatedAt = (data['dominioUpdatedAt'] as num?)?.toInt();
       final waRaw = _stringFromDynamic(data['whatsapp']);
-      _waCtrl.text = waRaw == null ? _waCtrl.text : (waRaw.trim().isEmpty ? '' : _extrairApenasDigitos(waRaw));
+      _waCtrl.text = waRaw == null
+          ? _waCtrl.text
+          : (waRaw.trim().isEmpty ? '' : _extrairApenasDigitos(waRaw));
       _pedidoBaseCtrl.text =
           (data['pedidoBaseUrl'] as String?) ?? _pedidoBaseCtrl.text;
 
       // mídia - prioriza nova estrutura media.desktop/mobile, senão usa legado
       final mediaRaw = data['media'];
-      final Map<String, dynamic> mediaData = mediaRaw is Map
-          ? Map<String, dynamic>.from(mediaRaw)
-          : {};
+      final Map<String, dynamic> mediaData =
+          mediaRaw is Map ? Map<String, dynamic>.from(mediaRaw) : {};
       final desktopMediaRaw = mediaData['desktop'];
       final Map<String, dynamic> desktopMedia = desktopMediaRaw is Map
           ? Map<String, dynamic>.from(desktopMediaRaw)
@@ -2120,49 +2284,70 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           : {};
 
       _logoUrlDesktop = (desktopMedia['logoUrl'] as String?) ??
-                        (data['logoDesktopUrl'] as String?);
+          (data['logoDesktopUrl'] as String?);
       _logoUrlMobile = (mobileMedia['logoUrl'] as String?) ??
-                       (data['logoMobileUrl'] as String?);
+          (data['logoMobileUrl'] as String?);
 
-      _bannersDesktop = (desktopMedia['banners'] as List?)?.map((e) => e.toString()).toList() ??
-                        (data['bannersDesktop'] as List?)?.map((e) => e.toString()).toList() ??
-                        [];
-      _bannersMobile = (mobileMedia['banners'] as List?)?.map((e) => e.toString()).toList() ??
-                       (data['bannersMobile'] as List?)?.map((e) => e.toString()).toList() ??
-                       [];
+      _bannersDesktop = (desktopMedia['banners'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          (data['bannersDesktop'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+      _bannersMobile = (mobileMedia['banners'] as List?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          (data['bannersMobile'] as List?)?.map((e) => e.toString()).toList() ??
+          [];
 
       // dimensões logo/banners - prioriza nova estrutura
       _dLogoH.text = (_intFrom(desktopMedia['logoH']) ??
-                      _intFrom(data['dLogoH']) ??
-                      int.tryParse(_dLogoH.text) ?? 105).toString();
+              _intFrom(data['dLogoH']) ??
+              int.tryParse(_dLogoH.text) ??
+              105)
+          .toString();
       _dLogoW.text = (_intFrom(desktopMedia['logoW']) ??
-                      _intFrom(data['dLogoW']) ??
-                      int.tryParse(_dLogoW.text) ?? 327).toString();
+              _intFrom(data['dLogoW']) ??
+              int.tryParse(_dLogoW.text) ??
+              327)
+          .toString();
       _mLogoH.text = (_intFrom(mobileMedia['logoH']) ??
-                      _intFrom(data['mLogoH']) ??
-                      int.tryParse(_mLogoH.text) ?? 105).toString();
+              _intFrom(data['mLogoH']) ??
+              int.tryParse(_mLogoH.text) ??
+              105)
+          .toString();
       _mLogoW.text = (_intFrom(mobileMedia['logoW']) ??
-                      _intFrom(data['mLogoW']) ??
-                      int.tryParse(_mLogoW.text) ?? 327).toString();
+              _intFrom(data['mLogoW']) ??
+              int.tryParse(_mLogoW.text) ??
+              327)
+          .toString();
 
       _dBanH.text = (_intFrom(desktopMedia['bannerH']) ??
-                     _intFrom(data['dBanH']) ??
-                     int.tryParse(_dBanH.text) ?? 256).toString();
+              _intFrom(data['dBanH']) ??
+              int.tryParse(_dBanH.text) ??
+              256)
+          .toString();
       _dBanW.text = (_intFrom(desktopMedia['bannerW']) ??
-                     _intFrom(data['dBanW']) ??
-                     int.tryParse(_dBanW.text) ?? 1280).toString();
+              _intFrom(data['dBanW']) ??
+              int.tryParse(_dBanW.text) ??
+              1280)
+          .toString();
       _mBanH.text = (_intFrom(mobileMedia['bannerH']) ??
-                     _intFrom(data['mBanH']) ??
-                     int.tryParse(_mBanH.text) ?? 300).toString();
+              _intFrom(data['mBanH']) ??
+              int.tryParse(_mBanH.text) ??
+              300)
+          .toString();
       _mBanW.text = (_intFrom(mobileMedia['bannerW']) ??
-                     _intFrom(data['mBanW']) ??
-                     int.tryParse(_mBanW.text) ?? 562).toString();
+              _intFrom(data['mBanW']) ??
+              int.tryParse(_mBanW.text) ??
+              562)
+          .toString();
 
       // ✅ CORRIGIDO: Lê de 'theme' (mesma estrutura do public_catalog)
       final themeRaw = data['theme'];
-      final Map<String, dynamic> theme = themeRaw is Map
-          ? Map<String, dynamic>.from(themeRaw)
-          : {};
+      final Map<String, dynamic> theme =
+          themeRaw is Map ? Map<String, dynamic>.from(themeRaw) : {};
 
       // Função helper para converter cor (aceita int ou String hexadecimal)
       int? colorToInt(dynamic v) {
@@ -2210,9 +2395,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
       // ✅ NOVO: Carrega uiColors (cores unificadas expandidas)
       final uiColorsRaw = data['uiColors'];
-      final Map<String, dynamic> uiColors = uiColorsRaw is Map
-          ? Map<String, dynamic>.from(uiColorsRaw)
-          : {};
+      final Map<String, dynamic> uiColors =
+          uiColorsRaw is Map ? Map<String, dynamic>.from(uiColorsRaw) : {};
 
       if (uiColors.isNotEmpty) {
         final textSecondary = colorToInt(uiColors['textSecondary']);
@@ -2225,7 +2409,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         final dividerColor = colorToInt(uiColors['dividerColor']);
         final buttonSecondaryBg = colorToInt(uiColors['buttonSecondaryBg']);
         final buttonSecondaryText = colorToInt(uiColors['buttonSecondaryText']);
-        final buttonSecondaryBorder = colorToInt(uiColors['buttonSecondaryBorder']);
+        final buttonSecondaryBorder =
+            colorToInt(uiColors['buttonSecondaryBorder']);
         final badgeBackground = colorToInt(uiColors['badgeBackground']);
         final badgeText = colorToInt(uiColors['badgeText']);
         final iconColor = colorToInt(uiColors['iconColor']);
@@ -2233,15 +2418,19 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
         if (textSecondary != null) _cTextSecondary = Color(textSecondary);
         if (cardTextPrimary != null) _cCardTextPrimary = Color(cardTextPrimary);
-        if (cardTextSecondary != null) _cCardTextSecondary = Color(cardTextSecondary);
+        if (cardTextSecondary != null)
+          _cCardTextSecondary = Color(cardTextSecondary);
         if (priceHighlight != null) _cPriceHighlight = Color(priceHighlight);
         if (danger != null) _cDanger = Color(danger);
         if (fieldHint != null) _cFieldHint = Color(fieldHint);
         if (fieldBorder != null) _cFieldBorder = Color(fieldBorder);
         if (dividerColor != null) _cDivider = Color(dividerColor);
-        if (buttonSecondaryBg != null) _cButtonSecondaryBg = Color(buttonSecondaryBg);
-        if (buttonSecondaryText != null) _cButtonSecondaryText = Color(buttonSecondaryText);
-        if (buttonSecondaryBorder != null) _cButtonSecondaryBorder = Color(buttonSecondaryBorder);
+        if (buttonSecondaryBg != null)
+          _cButtonSecondaryBg = Color(buttonSecondaryBg);
+        if (buttonSecondaryText != null)
+          _cButtonSecondaryText = Color(buttonSecondaryText);
+        if (buttonSecondaryBorder != null)
+          _cButtonSecondaryBorder = Color(buttonSecondaryBorder);
         if (badgeBackground != null) _cBadgeBackground = Color(badgeBackground);
         if (badgeText != null) _cBadgeText = Color(badgeText);
         if (iconColor != null) _cIcon = Color(iconColor);
@@ -2289,7 +2478,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
         if (footerBg != null) _cFooterBackground = Color(footerBg);
         if (footerText != null) _cFooterText = Color(footerText);
-        if (footerTextSecondary != null) _cFooterTextSecondary = Color(footerTextSecondary);
+        if (footerTextSecondary != null)
+          _cFooterTextSecondary = Color(footerTextSecondary);
         if (footerIcon != null) _cFooterIcon = Color(footerIcon);
         if (footerLink != null) _cFooterLink = Color(footerLink);
         if (footerDivider != null) _cFooterDivider = Color(footerDivider);
@@ -2362,26 +2552,32 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final heroBanner = heroBannerRaw is Map
           ? Map<String, dynamic>.from(heroBannerRaw)
           : <String, dynamic>{};
-      _heroBannerEnabled = (heroBanner['enabled'] as bool?) ?? _heroBannerEnabled;
+      _heroBannerEnabled =
+          (heroBanner['enabled'] as bool?) ?? _heroBannerEnabled;
       _heroBannerTitleCtrl.text =
           (heroBanner['title'] ?? _heroBannerTitleCtrl.text).toString();
       _heroBannerSubtitleCtrl.text =
           (heroBanner['subtitle'] ?? _heroBannerSubtitleCtrl.text).toString();
       _heroBannerButtonTextCtrl.text =
-          (heroBanner['buttonText'] ?? _heroBannerButtonTextCtrl.text).toString();
+          (heroBanner['buttonText'] ?? _heroBannerButtonTextCtrl.text)
+              .toString();
       _heroBannerButtonLinkCtrl.text =
-          (heroBanner['buttonLink'] ?? _heroBannerButtonLinkCtrl.text).toString();
+          (heroBanner['buttonLink'] ?? _heroBannerButtonLinkCtrl.text)
+              .toString();
       _heroBannerImageCtrl.text =
           (heroBanner['image'] ?? _heroBannerImageCtrl.text).toString();
       _heroBannerMobileImageCtrl.text =
-          (heroBanner['mobileImage'] ?? _heroBannerMobileImageCtrl.text).toString();
+          (heroBanner['mobileImage'] ?? _heroBannerMobileImageCtrl.text)
+              .toString();
       _heroBannerCompactImageCtrl.text =
           (heroBanner['bannerMinimalistaCompactoUrl'] ??
                   _heroBannerCompactImageCtrl.text)
               .toString();
-      _heroBannerSizeMode =
-          (heroBanner['bannerMinimalistaTamanho'] ?? 'grande').toString().trim();
-      if (_heroBannerSizeMode != 'grande' && _heroBannerSizeMode != 'compacto') {
+      _heroBannerSizeMode = (heroBanner['bannerMinimalistaTamanho'] ?? 'grande')
+          .toString()
+          .trim();
+      if (_heroBannerSizeMode != 'grande' &&
+          _heroBannerSizeMode != 'compacto') {
         _heroBannerSizeMode = 'grande';
       }
 
@@ -2412,8 +2608,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           ? Map<String, dynamic>.from(heroBanner['buttonStyle'] as Map)
           : <String, dynamic>{};
 
-      final hcBg =
-          colorToInt(heroCard['backgroundColor']) ?? colorToInt(heroBanner['backgroundColor']);
+      final hcBg = colorToInt(heroCard['backgroundColor']) ??
+          colorToInt(heroBanner['backgroundColor']);
       if (hcBg != null) {
         _heroCardBg = Color(hcBg);
       } else {
@@ -2463,8 +2659,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       }
       _heroTitleFontWeight =
           heroWeightFrom(heroTitleStyle['fontWeight'], _heroTitleFontWeight);
-      _heroSubtitleFontWeight =
-          heroWeightFrom(heroSubtitleStyle['fontWeight'], _heroSubtitleFontWeight);
+      _heroSubtitleFontWeight = heroWeightFrom(
+          heroSubtitleStyle['fontWeight'], _heroSubtitleFontWeight);
       _heroButtonFontWeight =
           heroWeightFrom(heroButtonStyle['fontWeight'], _heroButtonFontWeight);
       _heroTitleCase =
@@ -2574,16 +2770,14 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
       // menu
       final menuRaw = data['menu'];
-      final Map<String, dynamic> menu = menuRaw is Map
-          ? Map<String, dynamic>.from(menuRaw)
-          : {};
+      final Map<String, dynamic> menu =
+          menuRaw is Map ? Map<String, dynamic>.from(menuRaw) : {};
       _menuShowCategorias =
           (menu['categorias'] as bool?) ?? _menuShowCategorias;
       _menuShowEntrar = (menu['entrar'] as bool?) ?? _menuShowEntrar;
       _menuShowContato = (menu['contato'] as bool?) ?? _menuShowContato;
       _menuShowSac = (menu['sac'] as bool?) ?? _menuShowSac;
-      _menuShowQuemSomos =
-          (menu['quemSomos'] as bool?) ?? _menuShowQuemSomos;
+      _menuShowQuemSomos = (menu['quemSomos'] as bool?) ?? _menuShowQuemSomos;
       _menuShowDicas = (menu['dicas'] as bool?) ?? _menuShowDicas;
       _exibirAvaliacoesCatalogo = (data['exibirAvaliacoesCatalogo'] as bool?) ??
           _exibirAvaliacoesCatalogo;
@@ -2592,6 +2786,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       );
       _showMobileMenuGrid =
           (menu['mobileMenuGrid'] as bool?) ?? _showMobileMenuGrid;
+      _catalogoEmManutencao = (data['catalogoEmManutencao'] as bool?) ?? false;
+      final msgManutRaw =
+          (data['mensagemManutencaoCatalogo'] ?? '').toString().trim();
+      _mensagemManutencaoCatalogoCtrl.text =
+          msgManutRaw.isEmpty ? _mensagemManutencaoCatalogoPadrao : msgManutRaw;
 
       // dicas (lista de cuidados, garantias, qualidade etc.)
       final dicasRaw = data['dicas'];
@@ -2599,16 +2798,16 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       if (dicasRaw is List) {
         for (final e in dicasRaw) {
           if (e is Map) {
-            _dicas.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
+            _dicas.add(Map<String, dynamic>.from(
+                e.map((k, v) => MapEntry(k.toString(), v))));
           }
         }
       }
 
       // quem somos
       final quemRaw = data['quemSomos'];
-      final Map<String, dynamic> quem = quemRaw is Map
-          ? Map<String, dynamic>.from(quemRaw)
-          : {};
+      final Map<String, dynamic> quem =
+          quemRaw is Map ? Map<String, dynamic>.from(quemRaw) : {};
       _quemSomosTituloCtrl.text =
           (quem['titulo'] as String?) ?? _quemSomosTituloCtrl.text;
       _quemSomosTextoCtrl.text =
@@ -2616,39 +2815,42 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
       // SAC
       final sacRaw = data['sac'];
-      final Map<String, dynamic> sac = sacRaw is Map
-          ? Map<String, dynamic>.from(sacRaw)
-          : {};
+      final Map<String, dynamic> sac =
+          sacRaw is Map ? Map<String, dynamic>.from(sacRaw) : {};
       final sacWa = _stringFromDynamic(sac['whatsapp']);
-      _sacWhatsappCtrl.text = sacWa == null ? _sacWhatsappCtrl.text : (sacWa.trim().isEmpty ? '' : _extrairApenasDigitos(sacWa));
+      _sacWhatsappCtrl.text = sacWa == null
+          ? _sacWhatsappCtrl.text
+          : (sacWa.trim().isEmpty ? '' : _extrairApenasDigitos(sacWa));
       _sacEmailCtrl.text = (sac['email'] as String?) ?? _sacEmailCtrl.text;
 
       // ✅ CORRIGIDO: Lê de 'rodape' (fonte principal) com fallback em 'links' (retrocompatibilidade)
       final rodapeRaw = data['rodape'];
-      final Map<String, dynamic> rodape = rodapeRaw is Map
-          ? Map<String, dynamic>.from(rodapeRaw)
-          : {};
+      final Map<String, dynamic> rodape =
+          rodapeRaw is Map ? Map<String, dynamic>.from(rodapeRaw) : {};
       final linksRaw = data['links'];
-      final Map<String, dynamic> links = linksRaw is Map
-          ? Map<String, dynamic>.from(linksRaw)
-          : {};
-      _instagramCtrl.text =
-          (rodape['instagram'] as String?) ?? (links['instagram'] as String?) ?? _instagramCtrl.text;
-      _facebookCtrl.text =
-          (rodape['facebook'] as String?) ?? (links['facebook'] as String?) ?? _facebookCtrl.text;
-      _tiktokCtrl.text =
-          (rodape['tiktok'] as String?) ?? _tiktokCtrl.text;
+      final Map<String, dynamic> links =
+          linksRaw is Map ? Map<String, dynamic>.from(linksRaw) : {};
+      _instagramCtrl.text = (rodape['instagram'] as String?) ??
+          (links['instagram'] as String?) ??
+          _instagramCtrl.text;
+      _facebookCtrl.text = (rodape['facebook'] as String?) ??
+          (links['facebook'] as String?) ??
+          _facebookCtrl.text;
+      _tiktokCtrl.text = (rodape['tiktok'] as String?) ?? _tiktokCtrl.text;
       _telegramCtrl.text =
           (rodape['telegram'] as String?) ?? _telegramCtrl.text;
-      _kwaiCtrl.text =
-          (rodape['kwai'] as String?) ?? _kwaiCtrl.text;
+      _kwaiCtrl.text = (rodape['kwai'] as String?) ?? _kwaiCtrl.text;
       _linkedinCtrl.text =
           (rodape['linkedin'] as String?) ?? _linkedinCtrl.text;
       _emailRodapeCtrl.text =
           (rodape['email'] as String?) ?? _emailRodapeCtrl.text;
       final rodapeWa = _stringFromDynamic(rodape['whatsapp']);
-      _whatsappRodapeCtrl.text = rodapeWa == null ? _whatsappRodapeCtrl.text : (rodapeWa.trim().isEmpty ? '' : _extrairApenasDigitos(rodapeWa));
-      _sobreCtrl.text = (rodape['sobre'] as String?) ?? (links['sobre'] as String?) ?? _sobreCtrl.text;
+      _whatsappRodapeCtrl.text = rodapeWa == null
+          ? _whatsappRodapeCtrl.text
+          : (rodapeWa.trim().isEmpty ? '' : _extrairApenasDigitos(rodapeWa));
+      _sobreCtrl.text = (rodape['sobre'] as String?) ??
+          (links['sobre'] as String?) ??
+          _sobreCtrl.text;
       final slRaw = data['sobreLojaCatalogo'];
       if (slRaw is Map) {
         final sl = Map<String, dynamic>.from(
@@ -2684,13 +2886,16 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             (sl['email'] as String?) ??
             _sobreLojaEmailCtrl.text;
         _sobreLojaMostrarLegais = sl['mostrarDadosLegais'] != false;
-        final ext = (sl['linkExternoUrl'] ?? sl['linkExterno'] ?? '')
-            .toString()
-            .trim();
+        final ext =
+            (sl['linkExternoUrl'] ?? sl['linkExterno'] ?? '').toString().trim();
         if (ext.isNotEmpty) _sobreCtrl.text = ext;
       }
-      _trocasCtrl.text = (rodape['trocas'] as String?) ?? (links['trocas'] as String?) ?? _trocasCtrl.text;
-      _loginCtrl.text = (rodape['login'] as String?) ?? (links['login'] as String?) ?? _loginCtrl.text;
+      _trocasCtrl.text = (rodape['trocas'] as String?) ??
+          (links['trocas'] as String?) ??
+          _trocasCtrl.text;
+      _loginCtrl.text = (rodape['login'] as String?) ??
+          (links['login'] as String?) ??
+          _loginCtrl.text;
       _razaoCtrl.text = (rodape['razao'] as String?) ?? _razaoCtrl.text;
       _cnpjCtrl.text = (rodape['cnpj'] as String?) ?? _cnpjCtrl.text;
 
@@ -2705,8 +2910,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         final taxas = Map<String, dynamic>.from(taxasRaw);
         _taxaCartaoCtrl.text = (_doubleFrom(taxas['cartao']) ?? 5.0).toString();
         _taxaMEICtrl.text = (_doubleFrom(taxas['mei']) ?? 3.5).toString();
-        _custosFixosCtrl.text = (_doubleFrom(taxas['custosFixos']) ?? 10.0).toString();
-        _custoEmbalagemCtrl.text = (_doubleFrom(taxas['embalagem']) ?? 3.0).toString();
+        _custosFixosCtrl.text =
+            (_doubleFrom(taxas['custosFixos']) ?? 10.0).toString();
+        _custoEmbalagemCtrl.text =
+            (_doubleFrom(taxas['embalagem']) ?? 3.0).toString();
       }
     });
     _scheduleSyncCatalogDomainListener();
@@ -2748,7 +2955,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final names = <String>{};
       for (final d in snap.docs) {
         final m = d.data();
-        final c = (m['categoria'] ?? m['categoria_nome'] ?? '').toString().trim();
+        final c =
+            (m['categoria'] ?? m['categoria_nome'] ?? '').toString().trim();
         if (c.isNotEmpty) names.add(c);
       }
       if (!mounted) return;
@@ -2786,7 +2994,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     // ✅ SLUG AMIGÁVEL: Se não tiver slug configurado, gera automaticamente do nome
     String slugFinal = _slugCtrl.text.trim();
     if (slugFinal.isEmpty) {
-      slugFinal = _nomeCtrl.text.trim()
+      slugFinal = _nomeCtrl.text
+          .trim()
           .toLowerCase()
           .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
           .replaceAll(RegExp(r'^_+|_+$'), '');
@@ -2796,24 +3005,41 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final pedidoBaseRaw = _pedidoBaseCtrl.text.trim();
     final pedidoBaseUrl = pedidoBaseRaw.isEmpty
         ? ''
-        : (pedidoBaseRaw.contains('://') ? pedidoBaseRaw : 'https://$pedidoBaseRaw');
+        : (pedidoBaseRaw.contains('://')
+            ? pedidoBaseRaw
+            : 'https://$pedidoBaseRaw');
 
-    final linkCurto = _linkCurtoCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
-    final subMascara = _subdominioMascaraCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9-]'), '');
-    final subDominio = _subdominioDominioBaseCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9.-]'), '');
+    final linkCurto = _linkCurtoCtrl.text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+    final subMascara = _subdominioMascaraCtrl.text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9-]'), '');
+    final subDominio = _subdominioDominioBaseCtrl.text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9.-]'), '');
     final domNorm = normalizeCatalogDomainInput(_dominioCatalogoCtrl.text);
     return {
       'slug': slugFinal, // ✅ SLUG AMIGÁVEL para URL pública
-      if (linkCurto.isNotEmpty) 'linkCurto': linkCurto, // ✅ Link curto: app.mastepalm.com.br/c/{linkCurto}
+      if (linkCurto.isNotEmpty)
+        'linkCurto':
+            linkCurto, // ✅ Link curto: app.mastepalm.com.br/c/{linkCurto}
       if (subMascara.isNotEmpty) 'subdominioMascara': subMascara,
-      if (subMascara.isNotEmpty) 'subdominioDominioBase': subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br',
+      if (subMascara.isNotEmpty)
+        'subdominioDominioBase':
+            subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br',
       'dominioCatalogo': domNorm,
-      'dominioStatus': dominioStatusForConfigMap(domNorm, _dominioCatalogoStatus),
+      'dominioStatus':
+          dominioStatusForConfigMap(domNorm, _dominioCatalogoStatus),
       if (domNorm.isNotEmpty && _dominioCatalogoUpdatedAt != null)
         'dominioUpdatedAt': _dominioCatalogoUpdatedAt,
       if (domNorm.isEmpty)
         'dominioProvider': ''
-      else if (_dominioProviderId != null && _dominioProviderId!.trim().isNotEmpty)
+      else if (_dominioProviderId != null &&
+          _dominioProviderId!.trim().isNotEmpty)
         'dominioProvider': _dominioProviderId!.trim(),
       'lojaId': storeId,
       'nome': _nomeCtrl.text.trim(),
@@ -2825,7 +3051,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       'pedidoBaseUrl': pedidoBaseUrl,
       'layoutPreset':
           _layoutPreset != null ? _presetToString(_layoutPreset!) : null,
-      
+
       // ✅ CORRIGIDO: Salva em 'theme' (igual ao que o public_catalog lê)
       // Salva como int (mais compatível e eficiente)
       'theme': {
@@ -2902,7 +3128,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'buttonText': _cDicasButtonText.value,
         'topicPrimary': _cDicasTopicPrimary.value,
       },
-      
+
       'gridDesktopCols': _gridDesktopCols,
       'gridMobileCols': _gridMobileCols,
       'cardShowShadow': _cardShowShadow,
@@ -2939,15 +3165,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'mobileImage': _heroBannerMobileImageCtrl.text.trim(),
         'bannerMinimalistaTamanho': _heroBannerSizeMode,
         'bannerMinimalistaCompactoUrl': _heroBannerCompactImageCtrl.text.trim(),
-        'height': double.tryParse(
-                _heroBannerHeightCtrl.text.replaceAll(',', '.')) ??
-            180,
+        'height':
+            double.tryParse(_heroBannerHeightCtrl.text.replaceAll(',', '.')) ??
+                180,
         'borderRadius': double.tryParse(
                 _heroBannerCardRadiusCtrl.text.replaceAll(',', '.')) ??
             18,
-        'overlayOpacity': double.tryParse(
-                _heroBannerOverlayCtrl.text.replaceAll(',', '.')) ??
-            0.16,
+        'overlayOpacity':
+            double.tryParse(_heroBannerOverlayCtrl.text.replaceAll(',', '.')) ??
+                0.16,
         'textColor': _heroTitleColor.value,
         'buttonColor': _heroButtonBg.value,
         'backgroundColor': _heroCardBg.value,
@@ -3075,6 +3301,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'dicas': _menuShowDicas,
         'mobileMenuGrid': _showMobileMenuGrid,
       },
+      'catalogoEmManutencao': _catalogoEmManutencao,
+      'mensagemManutencaoCatalogo':
+          _mensagemManutencaoCatalogoCtrl.text.trim().isEmpty
+              ? _mensagemManutencaoCatalogoPadrao
+              : _mensagemManutencaoCatalogoCtrl.text.trim(),
       'exibirAvaliacoesCatalogo': _exibirAvaliacoesCatalogo,
       'catalogAvaliacoesOrdem': _catalogAvaliacoesOrdem.firestoreValue,
       'dicas': _dicas,
@@ -3105,7 +3336,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'whatsapp': _sacWhatsappCtrl.text.trim(),
         'email': _sacEmailCtrl.text.trim(),
       },
-      
+
       // ✅ CORRIGIDO: Salva payments em 'rodape' (igual ao que o public_catalog lê)
       'rodape': {
         'instagram': _instagramCtrl.text.trim(),
@@ -3168,11 +3399,13 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final s = v.trim();
     final toParse = s.contains('://') ? s : 'https://$s';
     final uri = Uri.tryParse(toParse);
-    return uri != null && (uri.hasScheme && (uri.host.isNotEmpty || uri.hasAbsolutePath));
+    return uri != null &&
+        (uri.hasScheme && (uri.host.isNotEmpty || uri.hasAbsolutePath));
   }
 
   /// Valida e corrige dimensão (50-2000)
-  void _corrigirDimensao(TextEditingController c, {int min = 50, int max = 2000}) {
+  void _corrigirDimensao(TextEditingController c,
+      {int min = 50, int max = 2000}) {
     final v = int.tryParse(c.text.trim());
     if (v != null && (v < min || v > max)) {
       c.text = v.clamp(min, max).toString();
@@ -3185,7 +3418,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (!_validarWhatsApp(_waCtrl.text)) {
       out.add((
         campo: 'whatsapp',
-        msg: 'WhatsApp do vendedor inválido. Use 10 a 15 dígitos (ex: 5533999998888).',
+        msg:
+            'WhatsApp do vendedor inválido. Use 10 a 15 dígitos (ex: 5533999998888).',
       ));
     }
     if (!_validarWhatsApp(_sacWhatsappCtrl.text)) {
@@ -3197,7 +3431,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (!_validarWhatsApp(_whatsappRodapeCtrl.text)) {
       out.add((
         campo: 'whatsapp_rodape',
-        msg: 'WhatsApp do rodapé inválido (se preenchido, use 10 a 15 dígitos).',
+        msg:
+            'WhatsApp do rodapé inválido (se preenchido, use 10 a 15 dígitos).',
       ));
     }
     if (!_validarUrl(_pedidoBaseCtrl.text)) {
@@ -3219,13 +3454,23 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   void _corrigirDimensoesMidiaForm() {
-    for (final c in [_dLogoH, _dLogoW, _mLogoH, _mLogoW, _dBanH, _dBanW, _mBanH, _mBanW]) {
+    for (final c in [
+      _dLogoH,
+      _dLogoW,
+      _mLogoH,
+      _mLogoW,
+      _dBanH,
+      _dBanW,
+      _mBanH,
+      _mBanW
+    ]) {
       _corrigirDimensao(c);
     }
   }
 
   /// Retorna lista de erros e set de campos com erro
-  ({List<String> erros, Set<String> campos}) _validarAntesDeSalvar({bool incluirCampos = true}) {
+  ({List<String> erros, Set<String> campos}) _validarAntesDeSalvar(
+      {bool incluirCampos = true}) {
     final items = _coletarProblemasSalvar();
     _corrigirDimensoesMidiaForm();
     return (
@@ -3249,12 +3494,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   Future<bool> _syncAndValidateLojaAtiva() async {
     final id = _resolvedLojaId?.trim();
-    if (id != null &&
-        id.isNotEmpty &&
-        _lojaId == id &&
-        _slug == id) {
+    if (id != null && id.isNotEmpty && _lojaId == id && _slug == id) {
       if (kDebugMode) {
-        logD('[LOJA_CONFIG_RESOLVE_ONCE] skip StoreResolver — loja já resolvida ($_resolvedLojaId)');
+        logD(
+            '[LOJA_CONFIG_RESOLVE_ONCE] skip StoreResolver — loja já resolvida ($_resolvedLojaId)');
       }
       return true;
     }
@@ -3298,7 +3541,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           _camposComErro.clear();
           _camposComErro.addAll(r.campos);
           _hubMode = false;
-          if (r.campos.contains('whatsapp') || r.campos.contains('pedido_base')) {
+          if (r.campos.contains('whatsapp') ||
+              r.campos.contains('pedido_base')) {
             _pane = _Pane.identidade;
           } else if (r.campos.contains('sac_whatsapp')) {
             _pane = _Pane.menu;
@@ -3326,7 +3570,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       // Salvar com validação: GET para capturar alterações feitas em Fretes/Cupons noutra aba.
       try {
         if (validar) {
-          if (kDebugMode) logD('[LOJA_CONFIG_FIRESTORE_ONCE] merge draft GET (salvar com validação)');
+          if (kDebugMode)
+            logD(
+                '[LOJA_CONFIG_FIRESTORE_ONCE] merge draft GET (salvar com validação)');
           final draftSnap = await FirebaseFirestore.instance
               .collection('lojas')
               .doc(loja)
@@ -3347,7 +3593,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             }
           }
         } else {
-          if (kDebugMode) logD('[LOJA_CONFIG_FIRESTORE_ONCE] skip draft GET (auto-save; cache merge)');
+          if (kDebugMode)
+            logD(
+                '[LOJA_CONFIG_FIRESTORE_ONCE] skip draft GET (auto-save; cache merge)');
           if (_mergeFreteConfigCache != null) {
             data = Map<String, dynamic>.from(data);
             data['frete_config'] = _mergeFreteConfigCache;
@@ -3359,7 +3607,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         }
       } catch (_) {}
 
-      if (data['frete_config'] != null) _mergeFreteConfigCache = data['frete_config'];
+      if (data['frete_config'] != null)
+        _mergeFreteConfigCache = data['frete_config'];
       if (data['cupons'] != null) _mergeCuponsCache = data['cupons'];
 
       if (kDebugMode) {
@@ -3373,8 +3622,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         logD('Banners Mobile (${_bannersMobile.length}): $_bannersMobile');
         logD('-' * 80);
         logD('Estrutura media no Map:');
-        logD('  media.desktop.logoUrl: ${data['media']?['desktop']?['logoUrl']}');
-        logD('  media.desktop.banners: ${data['media']?['desktop']?['banners']}');
+        logD(
+            '  media.desktop.logoUrl: ${data['media']?['desktop']?['logoUrl']}');
+        logD(
+            '  media.desktop.banners: ${data['media']?['desktop']?['banners']}');
         logD('  media.mobile.logoUrl: ${data['media']?['mobile']?['logoUrl']}');
         logD('  media.mobile.banners: ${data['media']?['mobile']?['banners']}');
         logD('${'=' * 80}\n');
@@ -3397,8 +3648,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         _captureHubBaseline();
       } on FirebaseException catch (e) {
         if (e.code == 'permission-denied') {
-          logD('⚠️ [CONFIG] Sem permissão para salvar no Firestore - mantido apenas localmente');
-          _snack('Rascunho salvo localmente (sem permissão para sincronizar online).');
+          logD(
+              '⚠️ [CONFIG] Sem permissão para salvar no Firestore - mantido apenas localmente');
+          _snack(
+              'Rascunho salvo localmente (sem permissão para sincronizar online).');
           _captureHubBaseline();
         } else {
           rethrow;
@@ -3427,7 +3680,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         );
       } else {
         final err = results['errors'] as List<dynamic>?;
-        _snack(err != null && err.isNotEmpty ? err.first.toString() : 'Erro na sincronização', isError: true);
+        _snack(
+            err != null && err.isNotEmpty
+                ? err.first.toString()
+                : 'Erro na sincronização',
+            isError: true);
       }
     } catch (e) {
       if (mounted) _snack('Erro ao sincronizar: $e', isError: true);
@@ -3521,18 +3778,30 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final avisos = <String>[];
     if (_nomeCtrl.text.trim().isEmpty) avisos.add('Informe o nome da loja.');
     // ✅ Logo: exige só se nunca publicou (se já tem publicado, será preservado)
-    final temLogoForm = (_logoUrlDesktop ?? '').trim().isNotEmpty || (_logoUrlMobile ?? '').trim().isNotEmpty;
+    final temLogoForm = (_logoUrlDesktop ?? '').trim().isNotEmpty ||
+        (_logoUrlMobile ?? '').trim().isNotEmpty;
     if (!temLogoForm) {
       bool temLogoTemPublicada = false;
       try {
         final loja = _activeStoreId();
         final liveSnap = await FirebaseFirestore.instance
-            .collection('lojas').doc(loja).collection('config').doc('config').get();
+            .collection('lojas')
+            .doc(loja)
+            .collection('config')
+            .doc('config')
+            .get();
         if (liveSnap.exists && liveSnap.data() != null) {
           final live = liveSnap.data()!;
-          final ld = (live['logoDesktopUrl'] ?? live['media']?['desktop']?['logoUrl'])?.toString().trim();
-          final lm = (live['logoMobileUrl'] ?? live['media']?['mobile']?['logoUrl'])?.toString().trim();
-          temLogoTemPublicada = (ld != null && ld.isNotEmpty) || (lm != null && lm.isNotEmpty);
+          final ld =
+              (live['logoDesktopUrl'] ?? live['media']?['desktop']?['logoUrl'])
+                  ?.toString()
+                  .trim();
+          final lm =
+              (live['logoMobileUrl'] ?? live['media']?['mobile']?['logoUrl'])
+                  ?.toString()
+                  .trim();
+          temLogoTemPublicada =
+              (ld != null && ld.isNotEmpty) || (lm != null && lm.isNotEmpty);
         }
       } catch (_) {}
       if (!temLogoTemPublicada) avisos.add('Adicione pelo menos uma logo.');
@@ -3566,7 +3835,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           final banM = _bannersMobile;
 
           if (logoD.isEmpty && !_logoDesktopAlterado) {
-            final prev = (live['logoDesktopUrl'] ?? live['media']?['desktop']?['logoUrl'])?.toString().trim();
+            final prev = (live['logoDesktopUrl'] ??
+                    live['media']?['desktop']?['logoUrl'])
+                ?.toString()
+                .trim();
             if (prev != null && prev.isNotEmpty) {
               data['logoDesktopUrl'] = prev;
               data['media'] ??= {};
@@ -3575,7 +3847,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             }
           }
           if (logoM.isEmpty && !_logoMobileAlterado) {
-            final prev = (live['logoMobileUrl'] ?? live['media']?['mobile']?['logoUrl'])?.toString().trim();
+            final prev =
+                (live['logoMobileUrl'] ?? live['media']?['mobile']?['logoUrl'])
+                    ?.toString()
+                    .trim();
             if (prev != null && prev.isNotEmpty) {
               data['logoMobileUrl'] = prev;
               data['media'] ??= {};
@@ -3584,7 +3859,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             }
           }
           if (banD.isEmpty && !_bannersDesktopAlterados) {
-            final prev = (live['bannersDesktop'] ?? live['media']?['desktop']?['banners']);
+            final prev = (live['bannersDesktop'] ??
+                live['media']?['desktop']?['banners']);
             if (prev is List && prev.isNotEmpty) {
               final list = prev.map((e) => e.toString()).toList();
               data['bannersDesktop'] = list;
@@ -3594,7 +3870,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             }
           }
           if (banM.isEmpty && !_bannersMobileAlterados) {
-            final prev = (live['bannersMobile'] ?? live['media']?['mobile']?['banners']);
+            final prev =
+                (live['bannersMobile'] ?? live['media']?['mobile']?['banners']);
             if (prev is List && prev.isNotEmpty) {
               final list = prev.map((e) => e.toString()).toList();
               data['bannersMobile'] = list;
@@ -3607,7 +3884,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       } catch (_) {}
 
       try {
-        final draftSnap = await lojaDoc.collection('draft_config').doc('config').get();
+        final draftSnap =
+            await lojaDoc.collection('draft_config').doc('config').get();
         if (draftSnap.exists && draftSnap.data() != null) {
           final draft = Map<String, dynamic>.from(draftSnap.data()!);
           // Preserva frete_config (Melhor Envio, SuperFrete, etc) e cupons vindos de Fretes e Cupons
@@ -3630,7 +3908,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         logD('theme.primaria: ${data['theme']?['primaria']}');
         if (data['theme']?['primaria'] != null) {
           final color = data['theme']['primaria'] as int;
-          logD('Cor hex: #${color.toRadixString(16).padLeft(8, '0').toUpperCase()}');
+          logD(
+              'Cor hex: #${color.toRadixString(16).padLeft(8, '0').toUpperCase()}');
         }
         logD('Destino: lojas/$loja/config/config');
         logD('${'=' * 80}\n');
@@ -3658,7 +3937,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
       // 2.0) Invalida cache do catálogo no APK/Web para a próxima abertura usar config publicada
       CatalogCacheService.invalidate(loja, preview: false);
-      if (kDebugMode) logD('🔄 [PUBLICAR] Cache do catálogo invalidado (APK/Web verá alterações na próxima abertura).');
+      if (kDebugMode)
+        logD(
+            '🔄 [PUBLICAR] Cache do catálogo invalidado (APK/Web verá alterações na próxima abertura).');
 
       // 2.0b) Paleta legada: mantém `config_catalogo_live/main` alinhado ao [theme] publicado em config/config.
       await CatalogoConfigService.mirrorOfficialThemePaletteToLegacyLive(loja);
@@ -3667,13 +3948,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final fc = data['frete_config'] as Map<String, dynamic>?;
       if (fc != null) {
         try {
-          final cepO = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString().trim();
-          final pesoEmb = double.tryParse((fc['peso_embalagem'] ?? '50').toString()) ?? 50.0;
+          final cepO =
+              (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString().trim();
+          final pesoEmb =
+              double.tryParse((fc['peso_embalagem'] ?? '50').toString()) ??
+                  50.0;
           final fretesDoc = <String, dynamic>{
             'provider': (fc['provider'] ?? 'manual').toString(),
             'cepOrigem': cepO,
             'pesoEmbalagem': pesoEmb,
-            'melhorEnvio': {'token': (fc['melhor_envio_token'] ?? '').toString().trim()},
+            'melhorEnvio': {
+              'token': (fc['melhor_envio_token'] ?? '').toString().trim()
+            },
             'superfrete': {
               'token': (fc['superfrete_token'] ?? '').toString().trim(),
               'sandbox': fc['superfrete_sandbox'] == true,
@@ -3683,21 +3969,31 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               'senha': (fc['correios_senha'] ?? '').toString().trim(),
             },
             'frenet': {'token': (fc['frenet_token'] ?? '').toString().trim()},
-            'manualFretes': (data['fretes'] is List) ? data['fretes'] as List : [],
+            'manualFretes':
+                (data['fretes'] is List) ? data['fretes'] as List : [],
             'updatedAt': FieldValue.serverTimestamp(),
           };
-          await lojaDoc.collection('config').doc('fretes').set(fretesDoc, SetOptions(merge: true));
+          await lojaDoc
+              .collection('config')
+              .doc('fretes')
+              .set(fretesDoc, SetOptions(merge: true));
           if (kDebugMode) logD('✅ config/fretes publicado (catálogo/frete).');
         } catch (e) {
-          if (kDebugMode) logD('⚠️ [PUBLICAR] config/fretes falhou (type=${e.runtimeType})');
+          if (kDebugMode)
+            logD('⚠️ [PUBLICAR] config/fretes falhou (type=${e.runtimeType})');
         }
       }
 
       // 3) Espelha no doc raiz (com slug amigável, link curto e máscara de subdomínio)
       final slugFinal = data['slug'] ?? loja;
-      final linkCurto = (data['linkCurto'] ?? '').toString().trim().toLowerCase();
-      final subMascara = (data['subdominioMascara'] ?? '').toString().trim().toLowerCase();
-      final subDominio = (data['subdominioDominioBase'] ?? 'mastepalm.com.br').toString().trim().toLowerCase();
+      final linkCurto =
+          (data['linkCurto'] ?? '').toString().trim().toLowerCase();
+      final subMascara =
+          (data['subdominioMascara'] ?? '').toString().trim().toLowerCase();
+      final subDominio = (data['subdominioDominioBase'] ?? 'mastepalm.com.br')
+          .toString()
+          .trim()
+          .toLowerCase();
       final updateData = <String, dynamic>{
         'slug': slugFinal,
         'lojaId': loja,
@@ -3708,7 +4004,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       if (linkCurto.isNotEmpty) updateData['linkCurto'] = linkCurto;
       if (subMascara.isNotEmpty) {
         updateData['subdominioMascara'] = subMascara;
-        updateData['subdominioDominioBase'] = subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br';
+        updateData['subdominioDominioBase'] =
+            subDominio.isNotEmpty ? subDominio : 'mastepalm.com.br';
       }
       await lojaDoc.set(updateData, SetOptions(merge: true));
 
@@ -3742,7 +4039,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {
         logD('⚠️ [PUBLICAR] Sem permissão para publicar');
-        _snack('Sem permissão para publicar. Verifique se você é administrador da loja.', isError: true);
+        _snack(
+            'Sem permissão para publicar. Verifique se você é administrador da loja.',
+            isError: true);
       } else {
         logD('❌ [PUBLICAR] Erro Firebase (type=${e.runtimeType})');
         _snack('Erro ao publicar: ${e.message}', isError: true);
@@ -3978,20 +4277,23 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _heroButtonTextColor = p.heroButtonTextColor;
   }
 
-  Future<void> _confirmApplyVisualPalette(CatalogVisualPalettePreset preset) async {
+  Future<void> _confirmApplyVisualPalette(
+      CatalogVisualPalettePreset preset) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) {
         final sw = preset.colors.previewSwatches;
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           title: Text('Aplicar “${preset.title}”?'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(preset.description, style: Theme.of(ctx).textTheme.bodyMedium),
+                Text(preset.description,
+                    style: Theme.of(ctx).textTheme.bodyMedium),
                 const SizedBox(height: 14),
                 Text(
                   'Serão atualizadas de uma vez as principais cores do catálogo: página, cards, textos, botões, preços, carrinho, cabeçalho, rodapé, dicas, barra promocional e banner hero. '
@@ -4004,7 +4306,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 const SizedBox(height: 14),
                 Text(
                   'Prévia',
-                  style: Theme.of(ctx).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                  style: Theme.of(ctx)
+                      .textTheme
+                      .labelLarge
+                      ?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
@@ -4019,7 +4324,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                           color: c,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: Theme.of(ctx).colorScheme.outline.withOpacity(0.3),
+                            color: Theme.of(ctx)
+                                .colorScheme
+                                .outline
+                                .withOpacity(0.3),
                           ),
                         ),
                       ),
@@ -4044,7 +4352,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     if (ok != true || !mounted) return;
     setState(() => _applyCatalogPaletteColorsToState(preset.colors));
     _salvarRascunho(validar: false);
-    _snack('Paleta “${preset.title}” aplicada ao rascunho. Ajuste as cores se quiser e publique quando estiver pronto.');
+    _snack(
+        'Paleta “${preset.title}” aplicada ao rascunho. Ajuste as cores se quiser e publique quando estiver pronto.');
   }
 
   CatalogStoreMiniPreviewColors _catalogMiniPreviewColors() {
@@ -4143,7 +4452,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   Widget build(BuildContext context) {
     if (kDebugMode) {
       _debugLojaConfigBuildCount++;
-      if (_debugLojaConfigBuildCount == 1 || _debugLojaConfigBuildCount % 50 == 0) {
+      if (_debugLojaConfigBuildCount == 1 ||
+          _debugLojaConfigBuildCount % 50 == 0) {
         logD('[LOJA_CONFIG_BUILD_COUNT] $_debugLojaConfigBuildCount');
       }
     }
@@ -4181,7 +4491,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     color: _errorColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.error_outline, size: 64, color: _errorColor),
+                  child: const Icon(Icons.error_outline,
+                      size: 64, color: _errorColor),
                 ),
                 const SizedBox(height: 24),
                 const Text(
@@ -4191,7 +4502,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  _mensagemErro.isNotEmpty ? _mensagemErro : 'Verifique sua conexão e tente novamente.',
+                  _mensagemErro.isNotEmpty
+                      ? _mensagemErro
+                      : 'Verifique sua conexão e tente novamente.',
                   style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   textAlign: TextAlign.center,
                 ),
@@ -4202,8 +4515,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   label: const Text('Tentar novamente'),
                   style: FilledButton.styleFrom(
                     backgroundColor: _primaryColor,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -4228,7 +4543,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     String slugParaUrl = _slugCtrl.text.trim();
     if (slugParaUrl.isEmpty) {
       // Fallback: gera slug do nome
-      slugParaUrl = _nomeCtrl.text.trim()
+      slugParaUrl = _nomeCtrl.text
+          .trim()
           .toLowerCase()
           .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
           .replaceAll(RegExp(r'^_+|_+$'), '');
@@ -4237,7 +4553,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       slugParaUrl = lojaAtiva; // Último fallback: usa ID técnico
     }
 
-    final linkCurto = _linkCurtoCtrl.text.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+    final linkCurto = _linkCurtoCtrl.text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9_-]'), '');
     final urlPublica = linkCurto.isNotEmpty
         ? '$publicBase/c/$linkCurto'
         : '$publicBase/loja/$slugParaUrl';
@@ -4263,138 +4582,140 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       body: Stack(
         children: [
           FadeTransition(
-        opacity: _fadeAnimation,
-        child: RefreshIndicator(
-          onRefresh: () async {
-            setState(() => _erroCarregamento = false);
-            await _verificarConectividade();
-            await _initConfig();
-          },
-          color: _primaryColor,
-          child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-            SliverAppBar(
-              expandedHeight: 140,
-              floating: false,
-              pinned: true,
-              backgroundColor: _primaryColor,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
-              ),
-              actions: _buildLojaConfigAppBarActions(cs, isDark),
-              flexibleSpace: FlexibleSpaceBar(
-                background: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_primaryColor, _secondaryColor],
+            opacity: _fadeAnimation,
+            child: RefreshIndicator(
+              onRefresh: () async {
+                setState(() => _erroCarregamento = false);
+                await _verificarConectividade();
+                await _initConfig();
+              },
+              color: _primaryColor,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverAppBar(
+                    expandedHeight: 140,
+                    floating: false,
+                    pinned: true,
+                    backgroundColor: _primaryColor,
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
                     ),
-                  ),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        right: -50,
-                        top: -50,
-                        child: Container(
-                          width: 200,
-                          height: 200,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.1),
+                    actions: _buildLojaConfigAppBarActions(cs, isDark),
+                    flexibleSpace: FlexibleSpaceBar(
+                      background: Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [_primaryColor, _secondaryColor],
                           ),
                         ),
-                      ),
-                      Positioned(
-                        left: -30,
-                        bottom: -30,
-                        child: Container(
-                          width: 140,
-                          height: 140,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.1),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 20,
-                        right: 20,
-                        bottom: 16,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Stack(
                           children: [
-                            const Text(
-                              'Configurações da Loja',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
+                            Positioned(
+                              right: -50,
+                              top: -50,
+                              child: Container(
+                                width: 200,
+                                height: 200,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.1),
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Escolha um módulo abaixo para editar com foco',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
-                                fontSize: 14,
+                            Positioned(
+                              left: -30,
+                              bottom: -30,
+                              child: Container(
+                                width: 140,
+                                height: 140,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.1),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              left: 20,
+                              right: 20,
+                              bottom: 16,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Configurações da Loja',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Escolha um módulo abaixo para editar com foco',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.9),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                  if (_offline)
+                    SliverToBoxAdapter(
+                      child: _LojaConfigOfflineConnectivityStripe(
+                        onVerificar: _verificarConectividade,
+                      ),
+                    ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        children: [
+                          // URL pública fixa no topo
+                          _buildUrlCard(urlPublica),
+                          if (_isFreeLimitedCatalog) ...[
+                            const SizedBox(height: 12),
+                            _buildFreeLimitedCatalogBanner(cs),
+                          ],
+                          if (_isBasicCatalog) ...[
+                            const SizedBox(height: 12),
+                            _buildBasicCatalogBanner(cs),
+                          ],
+                          const SizedBox(height: 12),
+                          if (!_isFreeLimitedCatalog)
+                            _buildUrlCard(
+                              '$urlPublica?page=dicas',
+                              label: 'Link da tela Dicas e Informações',
+                              subtitle:
+                                  'Use este link para enviar somente a página de dicas ao cliente',
+                            ),
+                          if (!_isFreeLimitedCatalog)
+                            const SizedBox(height: 16),
+                          if (!_isFreeLimitedCatalog) ...[
+                            CatalogStorePaletteCard(
+                              entries: _catalogPaletteOverviewEntries(),
+                              compactStrip: true,
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          _buildLojaConfigHub(isWide),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (_offline)
-              SliverToBoxAdapter(
-                child: _LojaConfigOfflineConnectivityStripe(
-                  onVerificar: _verificarConectividade,
-                ),
-              ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // URL pública fixa no topo
-                    _buildUrlCard(urlPublica),
-                    if (_isFreeLimitedCatalog) ...[
-                      const SizedBox(height: 12),
-                      _buildFreeLimitedCatalogBanner(cs),
-                    ],
-                    if (_isBasicCatalog) ...[
-                      const SizedBox(height: 12),
-                      _buildBasicCatalogBanner(cs),
-                    ],
-                    const SizedBox(height: 12),
-                    if (!_isFreeLimitedCatalog)
-                      _buildUrlCard(
-                        '$urlPublica?page=dicas',
-                        label: 'Link da tela Dicas e Informações',
-                        subtitle: 'Use este link para enviar somente a página de dicas ao cliente',
-                      ),
-                    if (!_isFreeLimitedCatalog) const SizedBox(height: 16),
-                    if (!_isFreeLimitedCatalog) ...[
-                      CatalogStorePaletteCard(
-                        entries: _catalogPaletteOverviewEntries(),
-                        compactStrip: true,
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    _buildLojaConfigHub(isWide),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        ),
-      ),
+          ),
           if (_mostrarTutorial) _buildTutorialOverlay(),
         ],
       ),
@@ -4432,8 +4753,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
   /// Ações compartilhadas entre o hub (SliverAppBar) e a vista de módulo (AppBar).
   List<Widget> _buildLojaConfigAppBarActions(ColorScheme cs, bool isDark) {
-    final hubErrEdges =
-        !_hubMode ? _hubErrorPrevNextForCurrentPane() : (prev: null, next: null);
+    final hubErrEdges = !_hubMode
+        ? _hubErrorPrevNextForCurrentPane()
+        : (prev: null, next: null);
     final compact = MediaQuery.sizeOf(context).width < 420;
     final actionIconColor = isDark ? cs.primary : Colors.white;
 
@@ -4497,21 +4819,26 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   onPressed: _openNextHubErrorTarget,
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   icon: const Icon(Icons.skip_next_rounded, size: 20),
                   label: const Text(
                     'Próximo erro',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: -0.1),
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.1),
                   ),
                 ),
               ),
       if (hubErrEdges.prev != null)
         compact
             ? IconButton(
-                icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
+                icon: const Icon(Icons.skip_previous_rounded,
+                    color: Colors.white),
                 tooltip: 'Ir para o erro anterior',
                 onPressed: _openPrevHubErrorTarget,
               )
@@ -4522,14 +4849,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   onPressed: _openPrevHubErrorTarget,
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   icon: const Icon(Icons.skip_previous_rounded, size: 20),
                   label: const Text(
                     'Erro anterior',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: -0.1),
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.1),
                   ),
                 ),
               ),
@@ -4549,7 +4880,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'pane': _Pane.identidade,
         'label': 'Identidade & Contato',
         'railLabel': 'Identidade',
-        'subtitle': 'Nome, WhatsApp, domínio próprio do catálogo e dados básicos',
+        'subtitle':
+            'Nome, WhatsApp, domínio próprio do catálogo e dados básicos',
         'icon': Icons.storefront_outlined,
       },
       {
@@ -4882,7 +5214,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     return 'outro';
   }
 
-  CatalogColorSuggestion _catalogSuggestionFromBucketEntry(int k, Map<int, Set<String>> bucket) {
+  CatalogColorSuggestion _catalogSuggestionFromBucketEntry(
+      int k, Map<int, Set<String>> bucket) {
     final origins = bucket[k]!.toList()..sort();
     return CatalogColorSuggestion(
       color: Color(k),
@@ -4908,7 +5241,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   }
 
   /// Paleta resumida para o card no topo: ordem útil + até [maxItems] cores distintas.
-  List<CatalogColorSuggestion> _catalogPaletteOverviewEntries({int maxItems = 20}) {
+  List<CatalogColorSuggestion> _catalogPaletteOverviewEntries(
+      {int maxItems = 20}) {
     _ensureCatalogPaletteCaches();
     return _cachedPaletteOverview!.take(maxItems).toList();
   }
@@ -4917,7 +5251,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     const maxItems = 20;
     final bucket = <int, Set<String>>{};
     _fillCatalogPaletteBucket(bucket);
-    CatalogColorSuggestion build(int k) => _catalogSuggestionFromBucketEntry(k, bucket);
+    CatalogColorSuggestion build(int k) =>
+        _catalogSuggestionFromBucketEntry(k, bucket);
 
     final seen = <int>{};
     final out = <CatalogColorSuggestion>[];
@@ -5003,7 +5338,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     }
 
     final hubSalvar = _coletarProblemasSalvar();
-    final hubPubAvisos = hubSalvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
+    final hubPubAvisos =
+        hubSalvar.isEmpty ? _listaAvisosPublicarNomeLogo() : <String>[];
     final fretesDirty =
         currentFull != null && _hubFretesShortcutHasPendingChanges(currentFull);
     final fretesHub = _hubCardStateFretes(fretesDirty);
@@ -5030,7 +5366,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final pane = item['pane'] as _Pane;
       final dirty =
           currentFull != null && _hubModuleHasPendingChanges(pane, currentFull);
-      final signal = _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
+      final signal =
+          _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
       tally(signal);
     }
     tally(fretesHub.signal);
@@ -5038,9 +5375,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final queryRaw = _hubSearchCtrl.text.trim();
     final queryFolded = queryRaw.isEmpty ? '' : _hubFoldForSearch(queryRaw);
 
-    final hubRows = <({bool fretes, Map<String, dynamic>? item, _HubModuleSignal signal, int origIndex})>[];
-    final fretesMatches = _hubFilterAcceptsSignal(_hubModuleFilter, fretesHub.signal) &&
-        _hubSearchMatchesFretes(queryFolded);
+    final hubRows = <({
+      bool fretes,
+      Map<String, dynamic>? item,
+      _HubModuleSignal signal,
+      int origIndex
+    })>[];
+    final fretesMatches =
+        _hubFilterAcceptsSignal(_hubModuleFilter, fretesHub.signal) &&
+            _hubSearchMatchesFretes(queryFolded);
     if (fretesMatches) {
       hubRows.add((
         fretes: true,
@@ -5054,7 +5397,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final pane = item['pane'] as _Pane;
       final dirty =
           currentFull != null && _hubModuleHasPendingChanges(pane, currentFull);
-      final signal = _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
+      final signal =
+          _hubCardStateForPane(pane, dirty, hubSalvar, hubPubAvisos).signal;
       if (!_hubFilterAcceptsSignal(_hubModuleFilter, signal)) continue;
       if (!_hubSearchMatchesModule(item, queryFolded)) continue;
       hubRows.add((
@@ -5153,7 +5497,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                       item: r.item!,
                       cs: cs,
                       dirty: currentFull != null &&
-                          _hubModuleHasPendingChanges(r.item!['pane'] as _Pane, currentFull),
+                          _hubModuleHasPendingChanges(
+                              r.item!['pane'] as _Pane, currentFull),
                       hubSalvar: hubSalvar,
                       hubPubAvisos: hubPubAvisos,
                     ),
@@ -5274,8 +5619,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
-        if (_salvando)
-          const LinearProgressIndicator(),
+        if (_salvando) const LinearProgressIndicator(),
 
         // ✨ Campanhas e Roleta
         _Section(
@@ -5353,7 +5697,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                     children: [
                       Icon(
                         Icons.casino,
-                        color: _roletaAtiva ? Colors.amber.shade700 : Colors.grey,
+                        color:
+                            _roletaAtiva ? Colors.amber.shade700 : Colors.grey,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -5394,7 +5739,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                    Icon(Icons.info_outline,
+                        color: Colors.blue.shade700, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -5614,12 +5960,18 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     await _showDicaDialog(context, _dicas[index], index: index);
   }
 
-  Future<void> _showDicaDialog(BuildContext context, Map<String, dynamic>? initial, {int? index}) async {
-    final tituloCtrl = TextEditingController(text: initial?['titulo']?.toString() ?? '');
-    final conteudoCtrl = TextEditingController(text: initial?['conteudo']?.toString() ?? '');
-    final bannerUrlCtrl = TextEditingController(text: initial?['bannerUrl'] ?? initial?['banner_url'] ?? '');
+  Future<void> _showDicaDialog(
+      BuildContext context, Map<String, dynamic>? initial,
+      {int? index}) async {
+    final tituloCtrl =
+        TextEditingController(text: initial?['titulo']?.toString() ?? '');
+    final conteudoCtrl =
+        TextEditingController(text: initial?['conteudo']?.toString() ?? '');
+    final bannerUrlCtrl = TextEditingController(
+        text: initial?['bannerUrl'] ?? initial?['banner_url'] ?? '');
     final ordemCtrl = TextEditingController(
-      text: '${(initial?['ordem'] is int) ? (initial!['ordem'] as int) : (int.tryParse('${initial?['ordem']}') ?? 0)}',
+      text:
+          '${(initial?['ordem'] is int) ? (initial!['ordem'] as int) : (int.tryParse('${initial?['ordem']}') ?? 0)}',
     );
     var tipo = (initial?['tipo'] ?? 'informacoes').toString().trim();
     if (tipo.isEmpty) tipo = 'informacoes';
@@ -5654,9 +6006,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                         border: OutlineInputBorder(),
                       ),
                       items: _dicaTipos
-                          .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                          .map((e) => DropdownMenuItem(
+                              value: e.key, child: Text(e.value)))
                           .toList(),
-                      onChanged: (v) => setDialogState(() => tipo = v ?? 'informacoes'),
+                      onChanged: (v) =>
+                          setDialogState(() => tipo = v ?? 'informacoes'),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -5738,7 +6092,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                 ),
                 FilledButton(
                   onPressed: () {
-                    final id = index != null && initial != null && (initial['id'] ?? '').toString().isNotEmpty
+                    final id = index != null &&
+                            initial != null &&
+                            (initial['id'] ?? '').toString().isNotEmpty
                         ? (initial['id']!).toString()
                         : DateTime.now().millisecondsSinceEpoch.toString();
                     Navigator.pop(ctx, {
@@ -5746,7 +6102,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                       'titulo': tituloCtrl.text.trim(),
                       'tipo': tipo,
                       'conteudo': conteudoCtrl.text.trim(),
-                      'bannerUrl': bannerUrlCtrl.text.trim().isEmpty ? null : bannerUrlCtrl.text.trim(),
+                      'bannerUrl': bannerUrlCtrl.text.trim().isEmpty
+                          ? null
+                          : bannerUrlCtrl.text.trim(),
                       'ordem': int.tryParse(ordemCtrl.text.trim()) ?? 0,
                       'ativo': ativo,
                     });
@@ -5797,10 +6155,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   TextField(
                     controller: _taxaCartaoCtrl,
                     onChanged: (_) => _scheduleAutoSave(),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                       labelText: 'Taxa de Cartão (%)',
-                      helperText: 'Aplicada sobre pagamentos em cartão (padrão: 5%)',
+                      helperText:
+                          'Aplicada sobre pagamentos em cartão (padrão: 5%)',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.credit_card_outlined),
                       suffixText: '%',
@@ -5810,10 +6170,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   TextField(
                     controller: _taxaMEICtrl,
                     onChanged: (_) => _scheduleAutoSave(),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                       labelText: 'Taxa MEI (%)',
-                      helperText: 'Imposto simplificado sobre o total (padrão: 3,5%)',
+                      helperText:
+                          'Imposto simplificado sobre o total (padrão: 3,5%)',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.description_outlined),
                       suffixText: '%',
@@ -5823,10 +6185,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   TextField(
                     controller: _custosFixosCtrl,
                     onChanged: (_) => _scheduleAutoSave(),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                       labelText: 'Custos Fixos (%)',
-                      helperText: 'Luz, internet, aluguel etc. sobre o total (padrão: 10%)',
+                      helperText:
+                          'Luz, internet, aluguel etc. sobre o total (padrão: 10%)',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.home_work_outlined),
                       suffixText: '%',
@@ -5836,10 +6200,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
                   TextField(
                     controller: _custoEmbalagemCtrl,
                     onChanged: (_) => _scheduleAutoSave(),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
                       labelText: 'Custo de Embalagem por Item (R\$)',
-                      helperText: 'Valor fixo por item vendido (padrão: R\$ 3,00)',
+                      helperText:
+                          'Valor fixo por item vendido (padrão: R\$ 3,00)',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.inventory_2_outlined),
                       prefixText: 'R\$ ',
@@ -5952,7 +6318,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     });
 
     try {
-      if (urlAtual != null && urlAtual.contains('firebasestorage.googleapis.com')) {
+      if (urlAtual != null &&
+          urlAtual.contains('firebasestorage.googleapis.com')) {
         final ref = FirebaseStorage.instance.refFromURL(urlAtual);
         await ref.delete();
       }
@@ -5982,10 +6349,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     // iOS Safari/Chrome exige que o file picker seja acionado diretamente do gesto
     // do usuário; por isso as validações assíncronas ficam após o pickFiles.
-    final canAdd = await guard.canAddBanner(loja, currentTotalBanners: currentTotal);
+    final canAdd =
+        await guard.canAddBanner(loja, currentTotalBanners: currentTotal);
     if (!canAdd) {
       final max = await guard.maxBanners(null);
-      _snack('Limite de $max banners atingido. Remova algum ou faça upgrade.', isError: true);
+      _snack('Limite de $max banners atingido. Remova algum ou faça upgrade.',
+          isError: true);
       return;
     }
 
@@ -5993,13 +6362,17 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     final slotsLeft = maxBanners - currentTotal;
     final filesToUpload = slotsLeft <= 0
         ? <dynamic>[]
-        : (result.files.length <= slotsLeft ? result.files : result.files.take(slotsLeft).toList());
+        : (result.files.length <= slotsLeft
+            ? result.files
+            : result.files.take(slotsLeft).toList());
     if (filesToUpload.isEmpty) {
       _snack('Limite de $maxBanners banners atingido.', isError: true);
       return;
     }
     if (filesToUpload.length < result.files.length) {
-      _snack('Limite de $maxBanners banners: adicionando ${filesToUpload.length} de ${result.files.length}.', isError: false);
+      _snack(
+          'Limite de $maxBanners banners: adicionando ${filesToUpload.length} de ${result.files.length}.',
+          isError: false);
     }
 
     setState(() => _salvando = true);
@@ -6083,7 +6456,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       final ext = _extFromName(fileName);
       final ts = DateTime.now().millisecondsSinceEpoch;
       final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-      final storagePath = 'lojas/$loja/midias/layout_minimal/$subpath-$ts-$safeName';
+      final storagePath =
+          'lojas/$loja/midias/layout_minimal/$subpath-$ts-$safeName';
       UploadResult up;
       if (kIsWeb) {
         final bytes = f.bytes;
@@ -6212,7 +6586,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     }
   }
 
-  Future<void> _removerBanner({required bool desktop, required String url}) async {
+  Future<void> _removerBanner(
+      {required bool desktop, required String url}) async {
     await _syncAndValidateLojaAtiva();
 
     setState(() {
@@ -6321,6 +6696,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _linkedinCtrl.dispose();
     _emailRodapeCtrl.dispose();
     _whatsappRodapeCtrl.dispose();
+    _mensagemManutencaoCatalogoCtrl.dispose();
     _hubSearchCtrl.dispose();
     _sobreCtrl.dispose();
     _trocasCtrl.dispose();

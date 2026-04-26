@@ -91,6 +91,10 @@ import '../models/catalog_sobre_loja_config.dart';
 // ===================================================================
 const bool _useCatalogCache =
     true; // Mobile/desktop público: cache; Preview e Web público: stream direto
+const String _catalogMaintenanceDefaultMessage =
+    'Estamos preparando algo incrível para você ter a melhor experiência.';
+const String _catalogMaintenanceWhatsappPrefill =
+    'Olá! Vim pelo catálogo e gostaria de comprar pelo WhatsApp.';
 
 class PublicCatalogScreen extends StatefulWidget {
   final String lojaId;
@@ -1104,6 +1108,62 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     return _produtoSubcategoriasAssociadas(p).contains(subcategoria);
   }
 
+  /// Categoria "Todos" / vazia / sinônimos: mesma experiência da home (banners, mais vendidos, etc.).
+  String? _effectiveCatalogCategoryFilter() {
+    final c = _selectedCategory?.trim();
+    if (c == null || c.isEmpty) return null;
+    final lower = c.toLowerCase();
+    if (lower == 'todos' || lower == 'todas' || lower == 'all') {
+      return null;
+    }
+    return c;
+  }
+
+  String? _effectiveCatalogSubcategoryFilter() {
+    if (_effectiveCatalogCategoryFilter() == null) return null;
+    final s = _selectedSubcategory?.trim();
+    if (s == null || s.isEmpty) return null;
+    return s;
+  }
+
+  bool _catalogExibindoTodosCategorias() =>
+      _effectiveCatalogCategoryFilter() == null;
+
+  void _scheduleCatalogScrollToTopAfterFilter() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_catalogScrollController.hasClients) {
+        _catalogScrollController.jumpTo(0);
+      }
+    });
+  }
+
+  void _onCatalogCategoryOrSubChanged() {
+    _syncCatalogQueryToBrowserUri();
+    _scheduleCatalogScrollToTopAfterFilter();
+  }
+
+  String? _catalogListagemTituloLinha() {
+    final c = _effectiveCatalogCategoryFilter();
+    if (c == null) return null;
+    final s = _effectiveCatalogSubcategoryFilter();
+    if (s == null) return c;
+    return '$c / $s';
+  }
+
+  bool _catalogSemFiltrosAlemDeCategoria(String search) {
+    final t = _filtroVariacaoTamanho?.trim();
+    final co = _filtroVariacaoCor?.trim();
+    final xv = _filtroVariacaoExtra?.trim();
+    return search.trim().isEmpty &&
+        !_apenasEmEstoque &&
+        (t == null || t.isEmpty) &&
+        (co == null || co.isEmpty) &&
+        (xv == null || xv.isEmpty) &&
+        _precoMin == null &&
+        _precoMax == null;
+  }
+
   String? _canonicalSubcategoriaNaLista(String raw, List<String> subs) {
     final r = raw.trim();
     if (r.isEmpty) return null;
@@ -1481,6 +1541,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _filtroVariacaoCor = cor;
         _filtroVariacaoExtra = xv;
       });
+      _scheduleCatalogScrollToTopAfterFilter();
     }
     if (changed || mustSyncUri || pageAdjusted) {
       _syncCatalogQueryToBrowserUri();
@@ -2771,6 +2832,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 'links',
                 'rodape',
                 'empresa',
+                'catalogoEmManutencao',
+                'mensagemManutencaoCatalogo',
               ]) {
                 putIfMissing(cfg, legacy, k);
               }
@@ -2796,6 +2859,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 'theme',
                 'uiColors',
                 'layout',
+                'catalogoEmManutencao',
+                'mensagemManutencaoCatalogo',
               ]) {
                 putIfMissing(cfg, lojaMap, k);
               }
@@ -4143,6 +4208,178 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     );
   }
 
+  String _normalizeWhatsappForWaMe(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '';
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '';
+    if (digits.length == 10 || digits.length == 11) {
+      return '55$digits';
+    }
+    return digits;
+  }
+
+  String _resolveCatalogWhatsappNumber(Map<String, dynamic> cfg) {
+    final links = mpMapDyn(cfg['links']);
+    final empresa = mpMapDyn(cfg['empresa']);
+    final rodape = mpMapDyn(cfg['rodape']);
+    final candidates = <dynamic>[
+      cfg['whatsapp'],
+      cfg['whatsappLoja'],
+      cfg['telefoneWhatsapp'],
+      cfg['numeroWhatsapp'],
+      cfg['whatsapp_vendedor'],
+      rodape['whatsapp'],
+      links['whatsapp'],
+      empresa['whatsapp'],
+      cfg['telefone'],
+    ];
+    for (final c in candidates) {
+      final normalized = _normalizeWhatsappForWaMe(c?.toString());
+      if (normalized.isNotEmpty) return normalized;
+    }
+    return '';
+  }
+
+  Future<void> _openCatalogMaintenanceWhatsapp(String phone) async {
+    final normalized = _normalizeWhatsappForWaMe(phone);
+    if (normalized.isEmpty) return;
+    final uri = Uri.parse(
+      'https://wa.me/$normalized?text=${Uri.encodeComponent(_catalogMaintenanceWhatsappPrefill)}',
+    );
+    if (kIsWeb) {
+      await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_blank',
+      );
+      return;
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  Widget _buildCatalogMaintenanceScaffold({
+    required String lojaNome,
+    required String logoUrl,
+    required String mensagem,
+    required String whatsappNumber,
+    required Color primaryColor,
+    required Color bgColor,
+    required Color cardColor,
+    required Color textColor,
+    required Color btnTextColor,
+  }) {
+    final hasWhatsapp = whatsappNumber.trim().isNotEmpty;
+    return Scaffold(
+      backgroundColor: bgColor,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (logoUrl.trim().isNotEmpty) ...[
+                      SizedBox(
+                        height: 72,
+                        child: SmartImage(src: logoUrl, fit: BoxFit.contain),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        Icons.auto_awesome_rounded,
+                        color: primaryColor,
+                        size: 34,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Site em manutenção',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      mensagem.trim().isEmpty
+                          ? _catalogMaintenanceDefaultMessage
+                          : mensagem,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: textColor.withOpacity(0.88),
+                        fontSize: 15,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    if (hasWhatsapp)
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => _openCatalogMaintenanceWhatsapp(
+                            whatsappNumber,
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            foregroundColor: btnTextColor,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          icon: const Icon(Icons.chat),
+                          label: const Text('Comprar no WhatsApp'),
+                        ),
+                      )
+                    else
+                      Text(
+                        'WhatsApp da loja ainda não configurado.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: textColor.withOpacity(0.75),
+                          fontSize: 13,
+                        ),
+                      ),
+                    const SizedBox(height: 14),
+                    Text(
+                      lojaNome,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: textColor.withOpacity(0.65),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _openWhatsappSimple(String telefone, String msg) async {
     if (telefone.trim().isEmpty) return;
     final phone = telefone.replaceAll(RegExp(r'[^0-9]'), '');
@@ -4560,6 +4797,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
             // =================== IDENTIDADE / LINKS ===================
             final lojaNome = catalogHeaderStoreNameFromCfg(cfg) ?? 'Minha Loja';
+            final catalogoEmManutencao =
+                !widget.preview && safeBool(cfg['catalogoEmManutencao'], false);
+            final mensagemManutencaoCatalogo =
+                (cfg['mensagemManutencaoCatalogo'] ?? '').toString().trim();
+            final whatsappCatalogoManutencao =
+                _resolveCatalogWhatsappNumber(cfg);
 
             final links = mpMapDyn(cfg['links']);
             final rodapeLinks = mpMapDyn(cfg['rodape']);
@@ -4829,6 +5072,24 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   'banners_count': banners.length,
                   'banner_h': bannerH,
                 },
+              );
+            }
+            // O modo manutenção bloqueia apenas a visualização pública do catálogo.
+            // Não remove produtos, não altera estoque e não interfere no painel admin.
+            if (catalogoEmManutencao) {
+              final mensagem = mensagemManutencaoCatalogo.isEmpty
+                  ? '$_catalogMaintenanceDefaultMessage ✨'
+                  : mensagemManutencaoCatalogo;
+              return _buildCatalogMaintenanceScaffold(
+                lojaNome: lojaNome,
+                logoUrl: logoUrl,
+                mensagem: mensagem,
+                whatsappNumber: whatsappCatalogoManutencao,
+                primaryColor: primaryColor,
+                bgColor: bgColor,
+                cardColor: cardColor,
+                textColor: textColor,
+                btnTextColor: btnTextColor,
               );
             }
             return Theme(
@@ -5368,7 +5629,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                         _clearFiltrosVariacao();
                                         _currentPageNotifier.value = 0;
                                       });
-                                      _syncCatalogQueryToBrowserUri();
+                                      _onCatalogCategoryOrSubChanged();
                                     },
                                   ),
 
@@ -5385,7 +5646,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                         _clearFiltrosVariacao();
                                         _currentPageNotifier.value = 0;
                                       });
-                                      _syncCatalogQueryToBrowserUri();
+                                      _onCatalogCategoryOrSubChanged();
                                     },
                                   ),
 
@@ -5432,7 +5693,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               _clearFiltrosVariacao();
                                               _currentPageNotifier.value = 0;
                                             });
-                                            _syncCatalogQueryToBrowserUri();
+                                            _onCatalogCategoryOrSubChanged();
                                           },
                                         ),
                                         ...subcategorias.map((sub) {
@@ -5464,7 +5725,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 _clearFiltrosVariacao();
                                                 _currentPageNotifier.value = 0;
                                               });
-                                              _syncCatalogQueryToBrowserUri();
+                                              _onCatalogCategoryOrSubChanged();
                                             },
                                           );
                                         }),
@@ -5845,10 +6106,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           : (isDesktop
                               ? (categoriasMenu.isEmpty
                                   ? 152
-                                  : (_selectedCategory != null ? 248 : 198))
+                                  : (!_catalogExibindoTodosCategorias()
+                                      ? 248
+                                      : 198))
                               : (categoriasMenu.isEmpty
                                   ? 132
-                                  : (_selectedCategory != null ? 228 : 178))),
+                                  : (!_catalogExibindoTodosCategorias()
+                                      ? 228
+                                      : 178))),
                       titleSpacing: 0,
                       automaticallyImplyLeading: false,
                       title: LayoutBuilder(
@@ -6312,7 +6577,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             _clearFiltrosVariacao();
                                             _currentPageNotifier.value = 0;
                                           });
-                                          _syncCatalogQueryToBrowserUri();
+                                          _onCatalogCategoryOrSubChanged();
                                         },
                                         onCategorySelected: (cat) {
                                           setState(() {
@@ -6321,7 +6586,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             _clearFiltrosVariacao();
                                             _currentPageNotifier.value = 0;
                                           });
-                                          _syncCatalogQueryToBrowserUri();
+                                          _onCatalogCategoryOrSubChanged();
                                         },
                                         onSubcategorySelectedNull: () {
                                           setState(() {
@@ -6329,7 +6594,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             _clearFiltrosVariacao();
                                             _currentPageNotifier.value = 0;
                                           });
-                                          _syncCatalogQueryToBrowserUri();
+                                          _onCatalogCategoryOrSubChanged();
                                         },
                                         onSubcategorySelected: (subcat) {
                                           setState(() {
@@ -6337,7 +6602,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             _clearFiltrosVariacao();
                                             _currentPageNotifier.value = 0;
                                           });
-                                          _syncCatalogQueryToBrowserUri();
+                                          _onCatalogCategoryOrSubChanged();
                                         },
                                       ),
                                   ],
@@ -6404,6 +6669,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         Column(
                           children: [
                             if (useMinimalLayout &&
+                                _catalogExibindoTodosCategorias() &&
                                 safeBool(promoBarCfg['enabled'], false))
                               Padding(
                                 padding:
@@ -6469,16 +6735,27 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                       builder: (context, c) {
                                         final isDesktopBody =
                                             c.maxWidth >= 1024;
+                                        final effCatFilter =
+                                            _effectiveCatalogCategoryFilter();
+                                        final effSubFilter =
+                                            _effectiveCatalogSubcategoryFilter();
+                                        // Quando uma categoria/subcategoria específica está selecionada, o catálogo
+                                        // vira uma listagem direta de produtos. Banners, mais vendidos e destaques
+                                        // devem aparecer apenas em Todos.
+                                        final exibindoTodosCatalogo =
+                                            effCatFilter == null;
+                                        final modoListagemCategoria =
+                                            effCatFilter != null;
                                         bool matchCategoriaSub(
                                             Map<String, dynamic> p) {
                                           final matchCat = _produtoTemCategoria(
                                             p,
-                                            _selectedCategory,
+                                            effCatFilter,
                                           );
                                           final matchSubcat =
                                               _produtoTemSubcategoria(
                                             p,
-                                            _selectedSubcategory,
+                                            effSubFilter,
                                           );
                                           return matchCat && matchSubcat;
                                         }
@@ -6631,7 +6908,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               _categoryAliasesSignature(
                                                   categoryAliasesByName);
                                           final sig =
-                                              '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$_selectedCategory|$_selectedSubcategory|$_ordenacaoProdutos|${_precoMin}_$_precoMax|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|${variacaoExtrasOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$_filtroVariacaoExtra|$totalPaginas';
+                                              '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$effCatFilter|$effSubFilter|$_ordenacaoProdutos|${_precoMin}_$_precoMax|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|${variacaoExtrasOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$_filtroVariacaoExtra|$totalPaginas';
                                           if (sig != _lastCatalogSanitizeSig) {
                                             _lastCatalogSanitizeSig = sig;
                                             final gen = ++_catalogSanitizeGen;
@@ -6686,9 +6963,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             .toList();
 
                                         final minimalSubcats = useMinimalLayout &&
-                                                _selectedCategory != null
+                                                effCatFilter != null
                                             ? _subcategoriasDisponiveisParaCategoria(
-                                                _selectedCategory,
+                                                effCatFilter,
                                                 produtos,
                                               )
                                             : <String>[];
@@ -6704,7 +6981,71 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             SliverToBoxAdapter(
                                               child: Column(
                                                 children: [
-                                                  if (banners.isNotEmpty)
+                                                  if (modoListagemCategoria)
+                                                    Padding(
+                                                      padding: const EdgeInsets
+                                                          .fromLTRB(4, 4, 4, 0),
+                                                      child: Row(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .center,
+                                                        children: [
+                                                          TextButton.icon(
+                                                            onPressed: () {
+                                                              setState(() {
+                                                                _selectedCategory =
+                                                                    null;
+                                                                _selectedSubcategory =
+                                                                    null;
+                                                                _clearFiltrosVariacao();
+                                                                _currentPageNotifier
+                                                                    .value = 0;
+                                                              });
+                                                              _onCatalogCategoryOrSubChanged();
+                                                            },
+                                                            icon: Icon(
+                                                              Icons
+                                                                  .arrow_back_ios_new_rounded,
+                                                              size: 18,
+                                                              color:
+                                                                  primaryColor,
+                                                            ),
+                                                            label: Text(
+                                                              'Todos',
+                                                              style: TextStyle(
+                                                                color:
+                                                                    primaryColor,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          Expanded(
+                                                            child: Text(
+                                                              _catalogListagemTituloLinha() ??
+                                                                  '',
+                                                              maxLines: 2,
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                              textAlign:
+                                                                  TextAlign.end,
+                                                              style: TextStyle(
+                                                                color:
+                                                                    textColor,
+                                                                fontSize: 16,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  if (exibindoTodosCatalogo &&
+                                                      banners.isNotEmpty)
                                                     CatalogBannerCarousel(
                                                       banners: banners,
                                                       height: bannerH,
@@ -6721,7 +7062,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                         _openUrl(url);
                                                       },
                                                     ),
-                                                  if (useMinimalLayout)
+                                                  if (exibindoTodosCatalogo &&
+                                                      useMinimalLayout)
                                                     CatalogMinimalCategoryImageStrip(
                                                       categories:
                                                           categoriasMenu,
@@ -6741,7 +7083,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           _currentPageNotifier
                                                               .value = 0;
                                                         });
-                                                        _syncCatalogQueryToBrowserUri();
+                                                        _onCatalogCategoryOrSubChanged();
                                                       },
                                                       onClear: () {
                                                         setState(() {
@@ -6753,14 +7095,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           _currentPageNotifier
                                                               .value = 0;
                                                         });
-                                                        _syncCatalogQueryToBrowserUri();
+                                                        _onCatalogCategoryOrSubChanged();
                                                       },
                                                       textColor: textColor,
                                                       fallbackBg: cardColor,
                                                     ),
                                                   if (useMinimalLayout &&
-                                                      _selectedCategory !=
-                                                          null &&
+                                                      effCatFilter != null &&
                                                       minimalSubcats.isNotEmpty)
                                                     CatalogMinimalSubcategoryStrip(
                                                       subcategories:
@@ -6778,7 +7119,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           _currentPageNotifier
                                                               .value = 0;
                                                         });
-                                                        _syncCatalogQueryToBrowserUri();
+                                                        _onCatalogCategoryOrSubChanged();
                                                       },
                                                       onSelectSub: (sub) {
                                                         setState(() {
@@ -6787,10 +7128,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           _currentPageNotifier
                                                               .value = 0;
                                                         });
-                                                        _syncCatalogQueryToBrowserUri();
+                                                        _onCatalogCategoryOrSubChanged();
                                                       },
                                                     ),
-                                                  if (useMinimalLayout)
+                                                  if (useMinimalLayout &&
+                                                      exibindoTodosCatalogo)
                                                     CatalogMinimalHeroBanner(
                                                       enabled: safeBool(
                                                           heroBannerCfg[
@@ -6875,6 +7217,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           : null,
                                                     ),
                                                   if (useMinimalLayout &&
+                                                      exibindoTodosCatalogo &&
                                                       bestSellersSectionEnabled &&
                                                       produtos.isNotEmpty)
                                                     CatalogMinimalBestSellersSection(
@@ -6975,11 +7318,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       onProductUrlBlur:
                                                           _onProductUrlBlur,
                                                     ),
-                                                  const SizedBox(height: 16),
+                                                  if (exibindoTodosCatalogo)
+                                                    const SizedBox(height: 16),
 
                                                   // ✨ BANNER DE CAMPANHAS
-                                                  CampanhaBannerWidget(
-                                                      lojaId: lojaId),
+                                                  if (exibindoTodosCatalogo)
+                                                    CampanhaBannerWidget(
+                                                        lojaId: lojaId),
                                                 ],
                                               ),
                                             ),
@@ -7010,7 +7355,29 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       ),
                                               )
                                             else if (listaOrdenada.isEmpty)
-                                              const CatalogEmptyProductsState()
+                                              modoListagemCategoria &&
+                                                      _catalogSemFiltrosAlemDeCategoria(
+                                                          search)
+                                                  ? SliverFillRemaining(
+                                                      hasScrollBody: false,
+                                                      child: Center(
+                                                        child: Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .all(24),
+                                                          child: Text(
+                                                            'Nenhum produto encontrado nesta categoria.',
+                                                            textAlign: TextAlign
+                                                                .center,
+                                                            style: TextStyle(
+                                                              color: textColor,
+                                                              fontSize: 16,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    )
+                                                  : const CatalogEmptyProductsState()
                                             else ...[
                                               // Ordenação (filtros) - linha separada da paginação para evitar sobreposição
                                               SliverToBoxAdapter(
@@ -7099,7 +7466,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   },
                                                 ),
                                               ),
-                                              if (_recentIds.isNotEmpty)
+                                              if (exibindoTodosCatalogo &&
+                                                  _recentIds.isNotEmpty)
                                                 buildCatalogRecentSectionSliver(
                                                   recentProducts: () {
                                                     final pm = {
@@ -7470,7 +7838,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                         : null,
                                                   ),
                                                 ),
-                                              if (exibirAvaliacoesCatalogo)
+                                              if (exibindoTodosCatalogo &&
+                                                  exibirAvaliacoesCatalogo)
                                                 SliverToBoxAdapter(
                                                   child:
                                                       CatalogAvaliacoesSection(
@@ -7664,7 +8033,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             _currentPageNotifier
                                                                 .value = 0;
                                                           });
-                                                          _syncCatalogQueryToBrowserUri();
+                                                          _onCatalogCategoryOrSubChanged();
                                                         },
                                                         onCategorySelected:
                                                             (cat) {
@@ -7677,7 +8046,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             _currentPageNotifier
                                                                 .value = 0;
                                                           });
-                                                          _syncCatalogQueryToBrowserUri();
+                                                          _onCatalogCategoryOrSubChanged();
                                                         },
                                                         onSubcategorySelectedNull:
                                                             () {
@@ -7688,7 +8057,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             _currentPageNotifier
                                                                 .value = 0;
                                                           });
-                                                          _syncCatalogQueryToBrowserUri();
+                                                          _onCatalogCategoryOrSubChanged();
                                                         },
                                                         onSubcategorySelected:
                                                             (subcat) {
@@ -7699,7 +8068,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                             _currentPageNotifier
                                                                 .value = 0;
                                                           });
-                                                          _syncCatalogQueryToBrowserUri();
+                                                          _onCatalogCategoryOrSubChanged();
                                                         },
                                                       ),
                                                     ),

@@ -19,7 +19,6 @@ class _PaneMenuWidget extends StatelessWidget {
             'categorias, entrar/cadastro, contato, SAC e a página "Quem somos".',
           ),
           const SizedBox(height: 16),
-
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(
@@ -55,7 +54,8 @@ class _PaneMenuWidget extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
-                  title: const Text('Mostrar "SAC – Elogios, sugestões e críticas"'),
+                  title: const Text(
+                      'Mostrar "SAC – Elogios, sugestões e críticas"'),
                   value: host._menuShowSac,
                   onChanged: host._menuSetShowSac,
                 ),
@@ -109,7 +109,8 @@ class _PaneMenuWidget extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 SwitchListTile(
-                  title: const Text('No celular, mostrar menu em cards na tela inicial'),
+                  title: const Text(
+                      'No celular, mostrar menu em cards na tela inicial'),
                   subtitle: const Text(
                     'Quando ativo, o catálogo mobile mostra um grid de atalhos.',
                   ),
@@ -119,9 +120,7 @@ class _PaneMenuWidget extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 16),
-
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(
@@ -165,9 +164,52 @@ class _PaneMenuWidget extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 16),
-
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Catálogo',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Catálogo em manutenção'),
+                    subtitle: const Text(
+                      'Quando ativado, os clientes verão uma tela de manutenção no catálogo público. O painel administrativo continua funcionando normalmente.',
+                    ),
+                    value: host._catalogoEmManutencao,
+                    onChanged: host._menuSetCatalogoEmManutencao,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: host._mensagemManutencaoCatalogoCtrl,
+                    onChanged: host._menuSetMensagemManutencaoCatalogo,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Mensagem de manutenção (opcional)',
+                      border: OutlineInputBorder(),
+                      helperText:
+                          'Padrão: Estamos preparando algo incrível para você ter a melhor experiência.',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(
@@ -338,9 +380,7 @@ class _PaneMenuWidget extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 16),
-
           Card(
             elevation: 0,
             shape: RoundedRectangleBorder(
@@ -368,7 +408,8 @@ class _PaneMenuWidget extends StatelessWidget {
                     },
                     keyboardType: TextInputType.phone,
                     inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9\s\-+()]')),
+                      FilteringTextInputFormatter.allow(
+                          RegExp(r'[0-9\s\-+()]')),
                     ],
                     decoration: InputDecoration(
                       labelText: 'WhatsApp do SAC (opcional)',
@@ -379,7 +420,9 @@ class _PaneMenuWidget extends StatelessWidget {
                           : null,
                       border: const OutlineInputBorder(),
                       errorBorder: OutlineInputBorder(
-                        borderSide: const BorderSide(color: _LojaConfigScreenState._errorColor, width: 2),
+                        borderSide: const BorderSide(
+                            color: _LojaConfigScreenState._errorColor,
+                            width: 2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       prefixIcon: const Icon(Icons.chat),
