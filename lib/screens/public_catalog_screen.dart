@@ -5063,6 +5063,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   final minimalSearchCfg = mpMapDyn(cfg['minimalSearch']);
                   final categoryVisualsCfg = mpMapDyn(cfg['categoryVisuals']);
                   final heroBannerCfg = mpMapDyn(cfg['heroBanner']);
+                  final heroBannerSizeMode =
+                      (heroBannerCfg['bannerMinimalistaTamanho'] ?? 'grande')
+                          .toString()
+                          .trim();
+                  final heroBannerCompactImageUrl =
+                      (heroBannerCfg['bannerMinimalistaCompactoUrl'] ?? '')
+                          .toString();
                   final heroBannerActionLink =
                       catalogHeroBannerActionUrl(heroBannerCfg);
                   final minimalGridCfg = mpMapDyn(cfg['minimalProductGrid']);
@@ -6809,6 +6816,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           heroBannerCfg[
                                                               'image'] ??
                                                           '',
+                                                      compactImageUrl:
+                                                          heroBannerCompactImageUrl,
+                                                      bannerSizeMode:
+                                                          heroBannerSizeMode,
                                                       resolvedLojaId:
                                                           _resolvedLojaId ??
                                                               widget.lojaId,

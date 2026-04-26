@@ -927,6 +927,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
   final TextEditingController _heroBannerButtonLinkCtrl = TextEditingController();
   final TextEditingController _heroBannerImageCtrl = TextEditingController();
   final TextEditingController _heroBannerMobileImageCtrl = TextEditingController();
+  final TextEditingController _heroBannerCompactImageCtrl = TextEditingController();
+  String _heroBannerSizeMode = 'grande'; // grande | compacto
   // Banner minimalista: cartão + tipografia (separado do tema geral)
   Color _heroCardBg = const Color(0xFFE8E8E8);
   Color _heroTitleColor = Colors.white;
@@ -1109,6 +1111,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _heroBannerButtonLinkCtrl.addListener(_scheduleAutoSave);
     _heroBannerImageCtrl.addListener(_scheduleAutoSave);
     _heroBannerMobileImageCtrl.addListener(_scheduleAutoSave);
+    _heroBannerCompactImageCtrl.addListener(_scheduleAutoSave);
     _heroBannerHeightCtrl.addListener(_scheduleAutoSave);
     _heroBannerCardRadiusCtrl.addListener(_scheduleAutoSave);
     _heroBannerOverlayCtrl.addListener(_scheduleAutoSave);
@@ -2372,6 +2375,15 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           (heroBanner['image'] ?? _heroBannerImageCtrl.text).toString();
       _heroBannerMobileImageCtrl.text =
           (heroBanner['mobileImage'] ?? _heroBannerMobileImageCtrl.text).toString();
+      _heroBannerCompactImageCtrl.text =
+          (heroBanner['bannerMinimalistaCompactoUrl'] ??
+                  _heroBannerCompactImageCtrl.text)
+              .toString();
+      _heroBannerSizeMode =
+          (heroBanner['bannerMinimalistaTamanho'] ?? 'grande').toString().trim();
+      if (_heroBannerSizeMode != 'grande' && _heroBannerSizeMode != 'compacto') {
+        _heroBannerSizeMode = 'grande';
+      }
 
       int heroWeightFrom(dynamic v, int def) {
         if (v is int) return v.clamp(100, 900);
@@ -2925,6 +2937,8 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         'buttonLink': _heroBannerButtonLinkCtrl.text.trim(),
         'image': _heroBannerImageCtrl.text.trim(),
         'mobileImage': _heroBannerMobileImageCtrl.text.trim(),
+        'bannerMinimalistaTamanho': _heroBannerSizeMode,
+        'bannerMinimalistaCompactoUrl': _heroBannerCompactImageCtrl.text.trim(),
         'height': double.tryParse(
                 _heroBannerHeightCtrl.text.replaceAll(',', '.')) ??
             180,
@@ -6256,6 +6270,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
     _heroBannerButtonLinkCtrl.dispose();
     _heroBannerImageCtrl.dispose();
     _heroBannerMobileImageCtrl.dispose();
+    _heroBannerCompactImageCtrl.dispose();
     _heroBannerHeightCtrl.dispose();
     _heroBannerCardRadiusCtrl.dispose();
     _heroBannerOverlayCtrl.dispose();

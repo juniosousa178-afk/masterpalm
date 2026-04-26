@@ -210,6 +210,52 @@ class _PaneLayoutWidget extends StatelessWidget {
                 onPickImage: () => host._pickAndUploadLayoutImage('hero_mobile'),
               ),
               const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                value: host._heroBannerSizeMode,
+                decoration: const InputDecoration(
+                  labelText: 'Tamanho do banner minimalista',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'grande',
+                    child: Text('Grande atual'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'compacto',
+                    child: Text('Pequeno antigo / compacto'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  host._layoutSetStateAndSave(() => host._heroBannerSizeMode = v);
+                },
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Use o modo Grande atual para banners altos e completos. Use o modo Compacto para banners em formato faixa.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _ImageFieldWithGallery(
+                label: 'Imagem banner compacto (opcional)',
+                controller: host._heroBannerCompactImageCtrl,
+                onChanged: host._scheduleAutoSave,
+                onPickImage: () => host._pickAndUploadLayoutImage('hero_compacto'),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Para o banner compacto ocupar todo o espaço sem corte, sem zoom e sem distorção, envie uma arte na proporção 21:9. Medida recomendada: 1080 x 463 px ou 1200 x 514 px.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 controller: host._heroBannerButtonTextCtrl,
                 decoration: const InputDecoration(

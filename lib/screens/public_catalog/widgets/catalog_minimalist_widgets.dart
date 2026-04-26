@@ -621,6 +621,8 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   final String buttonText;
   final VoidCallback? onTap;
   final String imageUrl;
+  final String compactImageUrl;
+  final String bannerSizeMode; // grande | compacto
   final String? resolvedLojaId;
   final double height;
 
@@ -656,6 +658,8 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
     required this.buttonText,
     this.onTap,
     required this.imageUrl,
+    this.compactImageUrl = '',
+    this.bannerSizeMode = 'grande',
     this.resolvedLojaId,
     required this.height,
     required this.backgroundColor,
@@ -680,16 +684,23 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!enabled) return const SizedBox.shrink();
-    final hasImage = imageUrl.trim().isNotEmpty;
+    final isCompact = bannerSizeMode == 'compacto';
+    final resolvedImageUrl =
+        (isCompact && compactImageUrl.trim().isNotEmpty)
+            ? compactImageUrl
+            : imageUrl;
+    final hasImage = resolvedImageUrl.trim().isNotEmpty;
     final hasCopy = title.trim().isNotEmpty ||
         subtitle.trim().isNotEmpty ||
         buttonText.trim().isNotEmpty;
     if (!hasImage && !hasCopy) {
       return const SizedBox.shrink();
     }
-    // No minimalista, o campo do banner deve seguir a proporção real da imagem.
+    // No minimalista (grande), o campo do banner segue a proporção real da imagem.
     // Fallback neutro evita "achatamento panorâmico" quando a proporção ainda não foi resolvida.
     const fallbackAspect = 16 / 9;
+    // Compacto antigo: faixa menor (21:9) sem recorte/zoom.
+    const compactAspect = 21 / 9;
     final titleDisplay = applyHeroLetterCase(title.trim(), titleLetterCase);
     final subtitleDisplay =
         applyHeroLetterCase(subtitle.trim(), subtitleLetterCase);
@@ -706,17 +717,17 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
             ? (overlayOpacity + 0.06).clamp(0.0, 0.55)
             : overlayOpacity.clamp(0.0, 0.8);
 
-        final inner = ClipRRect(
-          borderRadius: BorderRadius.circular(
-            borderRadius.clamp(8, 36).toDouble(),
-          ),
-          child: PublicCatalogBannerImage(
-            imageUrl: imageUrl,
+        Widget imageLayer({required bool enforceAspectRatio}) {
+          return PublicCatalogBannerImage(
+            imageUrl: resolvedImageUrl,
             resolvedLojaId: resolvedLojaId,
             fallbackAspectRatio: fallbackAspect,
-            enforceAspectRatio: true,
+            enforceAspectRatio: enforceAspectRatio,
             backgroundColor: backgroundColor,
             // Não trocar para BoxFit.cover no banner: cover recorta e aplica zoom.
+            // Não trocar para BoxFit.cover para preencher o banner compacto.
+            // Cover corta/dá zoom. Para ocupar 100% sem corte/distorção, a arte compacta
+            // deve ter a mesma proporção do campo compacto.
             overlay: Container(
               color: Colors.black.withOpacity(overlayBlend),
               child: Padding(
@@ -781,7 +792,21 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
                 ),
               ),
             ),
+          );
+        }
+
+        final bannerChild = isCompact
+            ? AspectRatio(
+                aspectRatio: compactAspect,
+                child: imageLayer(enforceAspectRatio: false),
+              )
+            : imageLayer(enforceAspectRatio: true);
+
+        final inner = ClipRRect(
+          borderRadius: BorderRadius.circular(
+            borderRadius.clamp(8, 36).toDouble(),
           ),
+          child: bannerChild,
         );
 
         final wrapped = onTap == null

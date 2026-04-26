@@ -30,7 +30,8 @@ import '../../../services/cliente_auth_service.dart';
 import '../../../services/cupom_desconto_service.dart';
 import '../../../services/cupons_service.dart';
 import '../../../services/frete_service.dart';
-import '../../../widgets/selecionar_cupom_modal.dart' show mostrarModalSelecionarCupom;
+import '../../../widgets/selecionar_cupom_modal.dart'
+    show mostrarModalSelecionarCupom;
 import '../../../widgets/roleta_web_widget_v3.dart';
 import 'package:master_palm/screens/auth/cadastro_screen_cliente.dart';
 import 'catalog_cart_line_quantity_section.dart';
@@ -48,6 +49,7 @@ import 'catalog_first_purchase_coupon_dialog.dart';
 class CarrinhoSheetWeb extends StatefulWidget {
   final String lojaId; // 👈 NOVO
   final List<Map<String, dynamic>> items;
+
   /// Lista de produtos do catálogo (para teto de estoque e botões +/-).
   final List<Map<String, dynamic>> catalogProducts;
   final List<Map<String, dynamic>> fretes;
@@ -239,15 +241,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   String? _avisoCheckoutFrete;
 
   // ✨ ROLETA
-  String? _campanhaAtivaId; // Campanha (sorteio com número da sorte) — independente da roleta
-  bool _roletaAtiva = false; // Roleta (girar e concorrer a prêmios) — config/roleta_sorte
+  String?
+      _campanhaAtivaId; // Campanha (sorteio com número da sorte) — independente da roleta
+  bool _roletaAtiva =
+      false; // Roleta (girar e concorrer a prêmios) — config/roleta_sorte
   double _valorMinimoRoleta = 0.0; // Valor mínimo para liberar a roleta
   late bool _roletaJaGirada;
   bool _todosOsDadosPreenchidos = false;
   int _quantidadeProdutosAoMostrarRoleta = 0;
   late String? _cupomRoletaCodigo; // Código do cupom ganho na roleta
   late double? _cupomRoletaDesconto; // Desconto (%) do cupom da roleta
-  late String? _premioRoletaDescricao; // Descrição do prêmio (brinde, mimo, etc)
+  late String?
+      _premioRoletaDescricao; // Descrição do prêmio (brinde, mimo, etc)
   late bool _freteGratisRoleta; // Frete grátis ganho na roleta
 
   // ✅ Flag para evitar duplicação de pedidos
@@ -340,8 +345,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final field = widget.checkoutFieldBg ?? card.withOpacity(0.92);
     final ft = widget.checkoutFieldTextColor ?? widget.textColor;
     final lb = widget.checkoutLabelColor ?? widget.textColor;
-    final bord =
-        widget.checkoutFieldBorder ?? Colors.white.withOpacity(0.12);
+    final bord = widget.checkoutFieldBorder ?? Colors.white.withOpacity(0.12);
     return CatalogCartUiTokens(
       sheetBackground: Colors.transparent,
       cartCardBackground: card,
@@ -386,9 +390,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   bool _ehOpcaoIdentificavelComoMelhorEnvio(Map<String, dynamic> f) {
     final plat = (f['plataforma'] ?? '').toString().trim();
     if (plat == 'melhor_envio') return true;
-    final companyId = (f['company_id'] ?? f['companyId'])?.toString().trim() ?? '';
+    final companyId =
+        (f['company_id'] ?? f['companyId'])?.toString().trim() ?? '';
     if (companyId.isNotEmpty) return true;
-    final serviceId = (f['service_id'] ?? f['serviceId'])?.toString().trim() ?? '';
+    final serviceId =
+        (f['service_id'] ?? f['serviceId'])?.toString().trim() ?? '';
     if (serviceId.isNotEmpty) return true;
     return false;
   }
@@ -468,8 +474,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   double get _subtotalPix => _totals.subtotalPix;
 
   /// Subtotal conforme forma de pagamento (PIX aplica desconto quando disponível)
-  double get _subtotalConformePagamento =>
-      _totals.subtotalConformePagamento;
+  double get _subtotalConformePagamento => _totals.subtotalConformePagamento;
 
   bool get _freteGratis => _totals.freteGratis;
 
@@ -493,8 +498,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         '[CART_WIDGET_RENDERED] CarrinhoSheetWeb.initState lojaId=${widget.lojaId}',
       );
     }
-    _fretesLocal =
-        widget.fretes.map((e) => asMapDeep(e)).toList();
+    _fretesLocal = widget.fretes.map((e) => asMapDeep(e)).toList();
 
     // Restaurar dados do formulário salvos anteriormente
     final init = widget.initialFormData;
@@ -537,14 +541,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     _quantidadeProdutosAoMostrarRoleta = widget.items.length;
 
     // 🔍 Debug: Mostrar fretes iniciais
-    logD(
-        '🛒 [CARRINHO] initState - Fretes recebidos: ${widget.fretes.length}');
-    logD(
-        '📊 [CARRINHO] _fretesLocal inicial: ${_fretesLocal.length} itens');
+    logD('🛒 [CARRINHO] initState - Fretes recebidos: ${widget.fretes.length}');
+    logD('📊 [CARRINHO] _fretesLocal inicial: ${_fretesLocal.length} itens');
     for (int i = 0; i < _fretesLocal.length; i++) {
       final f = _fretesLocal[i];
-      logD(
-          '   [$i] ${f['nome']} - R\$ ${f['valor']} (tipo: ${f['tipo']})');
+      logD('   [$i] ${f['nome']} - R\$ ${f['valor']} (tipo: ${f['tipo']})');
     }
 
     _verificarCampanhaAtiva();
@@ -702,7 +703,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
       if (dados == null) {
         if (kDebugMode) {
-          debugPrint('carrinho_sheet_web: getDadosCompletos retornou null (CF pode ter falhado)');
+          debugPrint(
+              'carrinho_sheet_web: getDadosCompletos retornou null (CF pode ter falhado)');
         }
         _nome.text = cliente['nome'] ?? '';
         _email.text = cliente['email'] ?? '';
@@ -718,11 +720,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       Map<String, dynamic> endereco = asMap(dados['endereco']);
       if (endereco.isEmpty) {
         try {
-          final portalToken = (dados['portalToken'] ??
-                  cliente['portalToken'] ??
-                  '')
-              .toString()
-              .trim();
+          final portalToken =
+              (dados['portalToken'] ?? cliente['portalToken'] ?? '')
+                  .toString()
+                  .trim();
           if (portalToken.isNotEmpty) {
             endereco = await ClienteAuthService.getUltimoEnderecoIndexado(
                   lojaId: widget.lojaId,
@@ -749,7 +750,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
           }
         } catch (e) {
           if (kDebugMode) {
-            debugPrint('carrinho_sheet_web: erro ao buscar endereço de pedido anterior (type=${e.runtimeType})');
+            debugPrint(
+                'carrinho_sheet_web: erro ao buscar endereço de pedido anterior (type=${e.runtimeType})');
           }
         }
       }
@@ -770,7 +772,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       logD('✅ Dados preenchidos (sem endereço salvo)');
       return 'no_address';
     } catch (e, st) {
-      logE('❌ Erro ao preencher dados do cliente (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ Erro ao preencher dados do cliente (type=${e.runtimeType})',
+          error: e, st: st);
       return 'error';
     }
   }
@@ -862,7 +865,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         }
       }
     } catch (e, st) {
-      logE('❌ Erro ao verificar campanha (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ Erro ao verificar campanha (type=${e.runtimeType})',
+          error: e, st: st);
       if (mounted) {
         setState(() {
           _campanhaAtivaId = null;
@@ -904,7 +908,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         logW('⚠️ Config roleta_sorte não encontrada');
       }
     } catch (e, st) {
-      logE('❌ Erro ao verificar roleta (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ Erro ao verificar roleta (type=${e.runtimeType})',
+          error: e, st: st);
       if (mounted) {
         setState(() {
           _roletaAtiva = false;
@@ -1060,7 +1065,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   }
 
   Map<String, dynamic> _customerPayload() {
-    final tipoFrete = (_fretesLocal.isNotEmpty && _freteIndex >= 0 && _freteIndex < _fretesLocal.length)
+    final tipoFrete = (_fretesLocal.isNotEmpty &&
+            _freteIndex >= 0 &&
+            _freteIndex < _fretesLocal.length)
         ? (_fretesLocal[_freteIndex]['tipo'] ?? '').toString().toLowerCase()
         : '';
     final isRetirada = tipoFrete == 'retirada';
@@ -1114,7 +1121,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final tel = _tel.text.replaceAll(RegExp(r'[^0-9]'), '');
 
     // Se frete for retirada, não exige endereço completo
-    final tipoFrete = (_fretesLocal.isNotEmpty && _freteIndex >= 0 && _freteIndex < _fretesLocal.length)
+    final tipoFrete = (_fretesLocal.isNotEmpty &&
+            _freteIndex >= 0 &&
+            _freteIndex < _fretesLocal.length)
         ? (_fretesLocal[_freteIndex]['tipo'] ?? '').toString().toLowerCase()
         : '';
     final isRetirada = tipoFrete == 'retirada';
@@ -1138,7 +1147,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       obrigatorios.add('Telefone');
     } else if (tel.length < 10) {
       _camposComErro.add('tel');
-      _erroValidacao ??= 'Telefone deve ter no mínimo 10 dígitos (DDD + número).';
+      _erroValidacao ??=
+          'Telefone deve ter no mínimo 10 dígitos (DDD + número).';
     }
     if (_email.text.trim().isEmpty) {
       _camposComErro.add('email');
@@ -1197,10 +1207,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   bool _validarItensComPreco() {
     for (var i = 0; i < widget.items.length; i++) {
       final item = widget.items[i];
-      final price = (item['preco'] as num?)?.toDouble() ?? (item['price'] as num?)?.toDouble() ?? 0.0;
+      final price = (item['preco'] as num?)?.toDouble() ??
+          (item['price'] as num?)?.toDouble() ??
+          0.0;
       if (price <= 0) {
-        final nome = (item['nome'] ?? item['name'] ?? 'Item ${i + 1}').toString();
-        widget.showSnack('Produto "$nome" sem preço. Remova ou verifique no catálogo.');
+        final nome =
+            (item['nome'] ?? item['name'] ?? 'Item ${i + 1}').toString();
+        widget.showSnack(
+            'Produto "$nome" sem preço. Remova ou verifique no catálogo.');
         return false;
       }
     }
@@ -1216,7 +1230,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       'tipo': c.tipo == 'percentual' ? 'percent' : 'valor',
       'valor': c.valor,
       'aplicarEm': c.aplicarEm,
-      if (c.produtoIds.isNotEmpty) 'produtoIds': List<String>.from(c.produtoIds),
+      if (c.produtoIds.isNotEmpty)
+        'produtoIds': List<String>.from(c.produtoIds),
       'freteGratis': c.freteGratis,
       'valorMinimo': c.valorMinimo,
       'dataFim': c.dataFim,
@@ -1288,7 +1303,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     // 3) Cupom de indicação (cupons_clientes) – destinatário ganha na 1ª compra, usa na próxima
     if (found == null) {
       final clienteLogado = await ClienteAuthService.getClienteLogado();
-      final clienteIdCatalogo = (clienteLogado?['clienteId'] ?? '').toString().trim();
+      final clienteIdCatalogo =
+          (clienteLogado?['clienteId'] ?? '').toString().trim();
       if (clienteIdCatalogo.isNotEmpty) {
         final cuponsCliente = await CuponsService.buscarCuponsValidos(
           lojaId: widget.lojaId,
@@ -1323,8 +1339,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
 
     var merged = Map<String, dynamic>.from(found);
-    if (merged['origem'] != 'roleta_sorte' && merged['origem'] != 'cupom_cliente') {
-      final cLoja = await CupomDescontoService().buscarPorCodigo(widget.lojaId, code);
+    if (merged['origem'] != 'roleta_sorte' &&
+        merged['origem'] != 'cupom_cliente') {
+      final cLoja =
+          await CupomDescontoService().buscarPorCodigo(widget.lojaId, code);
       if (cLoja != null) {
         merged['id'] = cLoja.id;
         if (cLoja.produtoIds.isNotEmpty) {
@@ -1334,9 +1352,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
 
     if (!catalogCarrinhoCobreProdutosCupom(
-          cupomAplicado: merged,
-          items: widget.items,
-        )) {
+      cupomAplicado: merged,
+      items: widget.items,
+    )) {
       widget.showSnack(
         'Este cupom só vale para o produto da promoção. Adicione esse item ao carrinho.',
       );
@@ -1345,8 +1363,11 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
     // Validar data de validade ao aplicar (evita uso de cupom expirado)
     final now = DateTime.now();
-    final df = merged['dataFim'] ?? merged['validade'] ?? merged['dataValidade'] ??
-        merged['dataExpiracao'] ?? merged['expiraEm'];
+    final df = merged['dataFim'] ??
+        merged['validade'] ??
+        merged['dataValidade'] ??
+        merged['dataExpiracao'] ??
+        merged['expiraEm'];
     if (df != null) {
       DateTime? fim;
       if (df is Timestamp) {
@@ -1371,8 +1392,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       double baseValor = _subtotalConformePagamento;
       if ((aplicarEm == 'total' || aplicarEm == 'frete') &&
           _fretesLocal.isNotEmpty) {
-        final frete = _fretesLocal[_freteIndex.clamp(0, _fretesLocal.length - 1)];
-        baseValor += _freteGratis ? 0.0 : ((frete['valor'] as num?)?.toDouble() ?? 0.0);
+        final frete =
+            _fretesLocal[_freteIndex.clamp(0, _fretesLocal.length - 1)];
+        baseValor +=
+            _freteGratis ? 0.0 : ((frete['valor'] as num?)?.toDouble() ?? 0.0);
       }
       if (baseValor < valorMinimo) {
         widget.showSnack(
@@ -1417,8 +1440,20 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         : widget.fretes.map((e) => asMapDeep(e)).toList();
     if (fretesExibir.isEmpty) {
       fretesExibir.addAll([
-        {'nome': 'Retirada', 'valor': 0.0, 'tipo': 'retirada', 'plataforma': 'manual', 'freteGratis': true},
-        {'nome': 'Combinar com vendedor', 'valor': 0.0, 'tipo': 'combinar', 'plataforma': 'manual', 'freteGratis': true},
+        {
+          'nome': 'Retirada',
+          'valor': 0.0,
+          'tipo': 'retirada',
+          'plataforma': 'manual',
+          'freteGratis': true
+        },
+        {
+          'nome': 'Combinar com vendedor',
+          'valor': 0.0,
+          'tipo': 'combinar',
+          'plataforma': 'manual',
+          'freteGratis': true
+        },
       ]);
     }
     // Restaurar _fretesLocal quando vazio para interações (modal, etc.)
@@ -1472,7 +1507,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             final isWide = c.maxWidth > 1080;
             final padH = c.maxWidth < 420 ? 12.0 : 16.0;
             final gapStack = c.maxWidth < 420 ? 18.0 : 22.0;
-            final summaryW = math.min(400.0, (c.maxWidth * 0.34).clamp(300.0, 420.0));
+            final summaryW =
+                math.min(400.0, (c.maxWidth * 0.34).clamp(300.0, 420.0));
             final mainCheckout = Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1527,113 +1563,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     );
   }
 
-  /// Calcula peso total do carrinho com seleção inteligente de embalagem
-  /// Retorna: {'pesoTotal': double, 'embalagem': Map, 'pesoEmbalagem': double}
-  Future<Map<String, dynamic>> _calcularPesoComEmbalagem(
-      List<Map<String, dynamic>> items) async {
-    // 1. Carregar configurações de embalagens (isolado por loja no web)
-    List<Map<String, dynamic>> embalagens = [];
-    try {
-      if (!Hive.isBoxOpen('config')) {
-        await Hive.openBox('config');
-      }
-      final configBox = Hive.box('config');
-      final lojaId = widget.lojaId.trim();
-      var rawEmbalagens = lojaId.isNotEmpty
-          ? configBox.get('embalagens_$lojaId')
-          : null;
-      if (rawEmbalagens == null || (rawEmbalagens is List && rawEmbalagens.isEmpty)) {
-        rawEmbalagens = configBox.get('embalagens');
-      }
-
-      if (rawEmbalagens is List && rawEmbalagens.isNotEmpty) {
-        embalagens = rawEmbalagens.map<Map<String, dynamic>>((e) {
-          if (e is Map) {
-            return {
-              'id': e['id']?.toString() ?? '',
-              'nome': e['nome']?.toString() ?? '',
-              'peso': (e['peso'] is num) ? (e['peso'] as num).toDouble() : 0.0,
-              'tamanho':
-                  (e['tamanho'] is num) ? (e['tamanho'] as num).toInt() : 0,
-              'altura':
-                  (e['altura'] is num) ? (e['altura'] as num).toDouble() : 10.0,
-              'largura': (e['largura'] is num)
-                  ? (e['largura'] as num).toDouble()
-                  : 20.0,
-              'comprimento': (e['comprimento'] is num)
-                  ? (e['comprimento'] as num).toDouble()
-                  : 30.0,
-            };
-          }
-          return {
-            'id': '',
-            'nome': '',
-            'peso': 0.0,
-            'tamanho': 0,
-            'altura': 10.0,
-            'largura': 20.0,
-            'comprimento': 30.0,
-          };
-        }).toList();
-      } else {
-        // Embalagens padrão
-        embalagens = [
-          {
-            'id': 'padrao',
-            'nome': 'Padrão',
-            'peso': 50.0,
-            'tamanho': 1,
-            'altura': 10.0,
-            'largura': 20.0,
-            'comprimento': 30.0
-          },
-          {
-            'id': 'pequena',
-            'nome': 'Pequena',
-            'peso': 100.0,
-            'tamanho': 2,
-            'altura': 15.0,
-            'largura': 25.0,
-            'comprimento': 35.0
-          },
-          {
-            'id': 'media',
-            'nome': 'Média',
-            'peso': 200.0,
-            'tamanho': 3,
-            'altura': 20.0,
-            'largura': 30.0,
-            'comprimento': 40.0
-          },
-          {
-            'id': 'grande',
-            'nome': 'Grande',
-            'peso': 350.0,
-            'tamanho': 4,
-            'altura': 25.0,
-            'largura': 35.0,
-            'comprimento': 45.0
-          },
-        ];
-      }
-    } catch (e, st) {
-      logE('❌ Erro ao carregar embalagens (type=${e.runtimeType})', error: e, st: st);
-      embalagens = [
-        {
-          'id': 'padrao',
-          'nome': 'Padrão',
-          'peso': 50.0,
-          'tamanho': 1,
-          'altura': 10.0,
-          'largura': 20.0,
-          'comprimento': 30.0
-        },
-      ];
-    }
-
-    // Garantir que embalagens nunca esteja vazia (evita firstWhere/orElse com lista vazia)
-    if (embalagens.isEmpty) {
-      embalagens = [
+  List<Map<String, dynamic>> _embalagensPadrao() => [
         {
           'id': 'padrao',
           'nome': 'Padrão',
@@ -1643,8 +1573,159 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
           'largura': 20.0,
           'comprimento': 30.0,
         },
+        {
+          'id': 'pequena',
+          'nome': 'Pequena',
+          'peso': 100.0,
+          'tamanho': 2,
+          'altura': 15.0,
+          'largura': 25.0,
+          'comprimento': 35.0,
+        },
+        {
+          'id': 'media',
+          'nome': 'Média',
+          'peso': 200.0,
+          'tamanho': 3,
+          'altura': 20.0,
+          'largura': 30.0,
+          'comprimento': 40.0,
+        },
+        {
+          'id': 'grande',
+          'nome': 'Grande',
+          'peso': 350.0,
+          'tamanho': 4,
+          'altura': 25.0,
+          'largura': 35.0,
+          'comprimento': 45.0,
+        },
       ];
+
+  List<Map<String, dynamic>> _parseEmbalagens(dynamic raw) {
+    if (raw is! List || raw.isEmpty) return <Map<String, dynamic>>[];
+    return raw.map<Map<String, dynamic>>((e) {
+      if (e is! Map) {
+        return {
+          'id': '',
+          'nome': '',
+          'peso': 0.0,
+          'tamanho': 0,
+          'altura': 10.0,
+          'largura': 20.0,
+          'comprimento': 30.0,
+        };
+      }
+      final m = Map<String, dynamic>.from(e);
+      return {
+        'id': m['id']?.toString() ?? '',
+        'nome': m['nome']?.toString() ?? '',
+        'peso': (m['peso'] is num)
+            ? (m['peso'] as num).toDouble()
+            : double.tryParse('${m['peso']}') ?? 0.0,
+        'tamanho': (m['tamanho'] is num)
+            ? (m['tamanho'] as num).toInt()
+            : int.tryParse('${m['tamanho']}') ?? 0,
+        'altura': (m['altura'] is num)
+            ? (m['altura'] as num).toDouble()
+            : double.tryParse('${m['altura']}') ?? 10.0,
+        'largura': (m['largura'] is num)
+            ? (m['largura'] as num).toDouble()
+            : double.tryParse('${m['largura']}') ?? 20.0,
+        'comprimento': (m['comprimento'] is num)
+            ? (m['comprimento'] as num).toDouble()
+            : double.tryParse('${m['comprimento']}') ?? 30.0,
+      };
+    }).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _carregarEmbalagensParaFrete() async {
+    final lojaId = widget.lojaId.trim();
+    try {
+      if (!Hive.isBoxOpen('config')) {
+        await Hive.openBox('config');
+      }
+      final configBox = Hive.box('config');
+
+      // Fonte primária: Firestore config/fretes.embalagens (escopo da loja).
+      if (lojaId.isNotEmpty) {
+        try {
+          var lojaDocRef =
+              FirebaseFirestore.instance.collection('lojas').doc(lojaId);
+          var fretesSnap =
+              await lojaDocRef.collection('config').doc('fretes').get();
+          if (!fretesSnap.exists) {
+            final bySlug = await FirebaseFirestore.instance
+                .collection('lojas')
+                .where('slug', isEqualTo: lojaId.toLowerCase())
+                .limit(1)
+                .get();
+            if (bySlug.docs.isNotEmpty) {
+              lojaDocRef = bySlug.docs.first.reference;
+              fretesSnap =
+                  await lojaDocRef.collection('config').doc('fretes').get();
+            }
+          }
+          final remote = _parseEmbalagens(fretesSnap.data()?['embalagens']);
+          if (remote.isNotEmpty) {
+            await configBox.put('embalagens_${lojaDocRef.id}', remote);
+            await configBox.put('embalagens_$lojaId', remote);
+            await configBox.put('embalagens', remote);
+            logD(
+              '📦 [FRETE/EMBALAGEM] Fonte: Firestore config/fretes '
+              '(loja=${lojaDocRef.id}, itens=${remote.length})',
+            );
+            return remote;
+          }
+        } catch (e, st) {
+          logW(
+              '⚠️ [FRETE] Falha ao ler embalagens remotas (type=${e.runtimeType})');
+          logD('$st');
+        }
+      }
+
+      // Fallback 1: cache por loja (Hive).
+      dynamic raw =
+          lojaId.isNotEmpty ? configBox.get('embalagens_$lojaId') : null;
+      var parsed = _parseEmbalagens(raw);
+      if (parsed.isNotEmpty) {
+        logD(
+          '📦 [FRETE/EMBALAGEM] Fonte: Hive por loja '
+          '(chave=embalagens_$lojaId, itens=${parsed.length})',
+        );
+        return parsed;
+      }
+
+      // Fallback 2: cache global.
+      raw = configBox.get('embalagens');
+      parsed = _parseEmbalagens(raw);
+      if (parsed.isNotEmpty) {
+        logD(
+          '📦 [FRETE/EMBALAGEM] Fonte: Hive global '
+          '(chave=embalagens, itens=${parsed.length})',
+        );
+        return parsed;
+      }
+    } catch (e, st) {
+      logE(
+        '❌ Erro ao carregar embalagens (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
     }
+    final fallback = _embalagensPadrao();
+    logW(
+      '📦 [FRETE/EMBALAGEM] Fonte: padrão interno '
+      '(itens=${fallback.length})',
+    );
+    return fallback;
+  }
+
+  /// Calcula peso total do carrinho com seleção inteligente de embalagem
+  /// Retorna: {'pesoTotal': double, 'embalagem': Map, 'pesoEmbalagem': double}
+  Future<Map<String, dynamic>> _calcularPesoComEmbalagem(
+      List<Map<String, dynamic>> items) async {
+    final embalagens = await _carregarEmbalagensParaFrete();
 
     // 2. Calcular peso total dos produtos
     double pesoProdutos = 0.0;
@@ -1658,7 +1739,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       final tipoEmb = item['tipoEmbalagem'] as String? ?? 'padrao';
 
       if (peso <= 0 && qty > 0) {
-        logW('📦 [PESO] Produto sem peso: ${item['nome'] ?? item['name'] ?? '?'}');
+        logW(
+            '📦 [PESO] Produto sem peso: ${item['nome'] ?? item['name'] ?? '?'}');
       }
       pesoProdutos += peso * qty;
 
@@ -1683,7 +1765,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     final pesoEmbalagem = safeDouble(embalagemMaior?['peso'], fallback: 50.0);
     final alturaEmb = safeDouble(embalagemMaior?['altura'], fallback: 10.0);
     final larguraEmb = safeDouble(embalagemMaior?['largura'], fallback: 20.0);
-    final comprimentoEmb = safeDouble(embalagemMaior?['comprimento'], fallback: 30.0);
+    final comprimentoEmb =
+        safeDouble(embalagemMaior?['comprimento'], fallback: 30.0);
     final pesoTotal = pesoProdutos + pesoEmbalagem;
 
     if (items.isNotEmpty && pesoProdutos <= 0) {
@@ -1736,7 +1819,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     // Considerar "só manuais" quando nenhum item veio de API (melhor_envio, frenet, correios, superfrete)
     final soManuais = _fretesLocal.every((f) {
       final plat = (f['plataforma'] ?? '').toString();
-      return plat.isEmpty || !['melhor_envio', 'frenet', 'correios', 'superfrete'].contains(plat);
+      return plat.isEmpty ||
+          !['melhor_envio', 'frenet', 'correios', 'superfrete'].contains(plat);
     });
     if (cep.length == 8 && soManuais && widget.items.isNotEmpty) {
       await _recalcularFreteSelecionado();
@@ -1761,17 +1845,17 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
     Widget opcoesFreteContent(BuildContext sheetContext) {
       return StatefulBuilder(
-          builder: (context, setModalState) {
-            final modalH = MediaQuery.of(context).size.height * 0.65;
-            final indicesVisiveis = <int>[];
-            for (var i = 0; i < _fretesLocal.length; i++) {
-              if (_deveExibirFreteNoModal(_fretesLocal[i])) {
-                indicesVisiveis.add(i);
-              }
+        builder: (context, setModalState) {
+          final modalH = MediaQuery.of(context).size.height * 0.65;
+          final indicesVisiveis = <int>[];
+          for (var i = 0; i < _fretesLocal.length; i++) {
+            if (_deveExibirFreteNoModal(_fretesLocal[i])) {
+              indicesVisiveis.add(i);
             }
-            return SizedBox(
-              height: modalH,
-              child: Padding(
+          }
+          return SizedBox(
+            height: modalH,
+            child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1822,223 +1906,246 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 ),
                               ]
                             : List.generate(indicesVisiveis.length, (j) {
-                          final i = indicesVisiveis[j];
-                          final f = _fretesLocal[i];
-                          final nome =
-                              (f['nome'] ?? f['label'] ?? 'Frete').toString();
-                          final valor = (f['valor'] as num?)?.toDouble() ?? 0.0;
-                          final prazo = (f['prazo'] ?? '').toString();
-                          final plataforma =
-                              (f['plataforma'] ?? f['tipo'] ?? '').toString();
-                          final bool isSelected = i == _freteIndex;
+                                final i = indicesVisiveis[j];
+                                final f = _fretesLocal[i];
+                                final nome =
+                                    (f['nome'] ?? f['label'] ?? 'Frete')
+                                        .toString();
+                                final valor =
+                                    (f['valor'] as num?)?.toDouble() ?? 0.0;
+                                final prazo = (f['prazo'] ?? '').toString();
+                                final plataforma =
+                                    (f['plataforma'] ?? f['tipo'] ?? '')
+                                        .toString();
+                                final bool isSelected = i == _freteIndex;
 
-                          // ✅ se o cupom dá frete grátis, mostra "Grátis" para o frete selecionado
-                          final bool showGratis = isSelected
-                              ? _freteGratis
-                              : (f['freteGratis'] == true);
-                          final precoTexto =
-                              showGratis ? 'GRÁTIS' : 'R\$ ${_fmt2(valor)}';
+                                // ✅ se o cupom dá frete grátis, mostra "Grátis" para o frete selecionado
+                                final bool showGratis = isSelected
+                                    ? _freteGratis
+                                    : (f['freteGratis'] == true);
+                                final precoTexto = showGratis
+                                    ? 'GRÁTIS'
+                                    : 'R\$ ${_fmt2(valor)}';
 
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: InkWell(
-                              onTap: () async {
-                                // 🔍 DEBUG: Log da seleção
-                                logD(
-                                    '🖱️ [SELEÇÃO] Usuário clicou no frete: $nome (índice $i)');
-                                logD(
-                                    '🖱️ [SELEÇÃO] Valor do frete: R\$ $valor');
-                                logD('🖱️ [SELEÇÃO] Frete completo: $f');
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: InkWell(
+                                    onTap: () async {
+                                      // 🔍 DEBUG: Log da seleção
+                                      logD(
+                                          '🖱️ [SELEÇÃO] Usuário clicou no frete: $nome (índice $i)');
+                                      logD(
+                                          '🖱️ [SELEÇÃO] Valor do frete: R\$ $valor');
+                                      logD('🖱️ [SELEÇÃO] Frete completo: $f');
 
-                                // Atualizar seleção
-                                setState(() => _freteIndex = i);
-                                setModalState(() {}); // Atualiza o modal também
+                                      // Atualizar seleção
+                                      setState(() => _freteIndex = i);
+                                      setModalState(
+                                          () {}); // Atualiza o modal também
 
-                                logD(
-                                    '✅ [SELEÇÃO] _freteIndex atualizado para: $_freteIndex');
+                                      logD(
+                                          '✅ [SELEÇÃO] _freteIndex atualizado para: $_freteIndex');
 
-                                // Recalcular frete
-                                await _recalcularFreteSelecionado();
-                                if (!mounted) return;
-                                setState(() {});
+                                      // Recalcular frete
+                                      await _recalcularFreteSelecionado();
+                                      if (!mounted) return;
+                                      setState(() {});
 
-                                // Fechar modal
-                                if (!sheetContext.mounted) return;
-                                Navigator.of(sheetContext).pop();
-                              },
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? selectedBorder
-                                        : borderColor,
-                                    width: isSelected ? 2 : 1,
-                                  ),
-                                  color: isSelected
-                                      ? selectedBg
-                                      : Colors.transparent,
-                                ),
-                                child: Row(
-                                  children: [
-                                    // Ícone
-                                    Icon(
-                                      valor == 0 || showGratis
-                                          ? Icons.store_outlined
-                                          : Icons.local_shipping_outlined,
-                                      color: isSelected
-                                          ? selectedBorder
-                                          : textoSecundario,
-                                      size: 28,
-                                    ),
-                                    const SizedBox(width: 16),
-
-                                    // Informações
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                      // Fechar modal
+                                      if (!sheetContext.mounted) return;
+                                      Navigator.of(sheetContext).pop();
+                                    },
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? selectedBorder
+                                              : borderColor,
+                                          width: isSelected ? 2 : 1,
+                                        ),
+                                        color: isSelected
+                                            ? selectedBg
+                                            : Colors.transparent,
+                                      ),
+                                      child: Row(
                                         children: [
-                                          Row(
-                                            children: [
-                                              Flexible(
-                                                child: Text(
-                                                  nome,
-                                                  style: TextStyle(
-                                                    color: textoPrincipal,
-                                                    fontSize: 16,
-                                                    fontWeight: isSelected
-                                                        ? FontWeight.w700
-                                                        : FontWeight.w600,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        horizontal: 6,
-                                                        vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: plataforma ==
-                                                          'melhor_envio'
-                                                      ? Colors.green.shade100
-                                                      : plataforma == 'frenet'
-                                                          ? Colors.blue.shade100
-                                                          : plataforma ==
-                                                                  'correios'
-                                                              ? Colors.orange
-                                                                  .shade100
-                                                              : plataforma ==
-                                                                      'superfrete'
-                                                                  ? Colors.teal
-                                                                      .shade100
-                                                                  : Colors.grey
-                                                                      .shade200,
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                ),
-                                                child: Text(
-                                                  plataforma == 'melhor_envio'
-                                                      ? 'ME'
-                                                      : plataforma == 'frenet'
-                                                          ? 'FR'
-                                                          : plataforma ==
-                                                                  'correios'
-                                                              ? 'COR'
-                                                              : plataforma ==
-                                                                      'superfrete'
-                                                                  ? 'SF'
-                                                                  : 'MAN',
-                                                  style: TextStyle(
-                                                    color: plataforma ==
-                                                            'melhor_envio'
-                                                        ? Colors.green.shade800
-                                                        : plataforma == 'frenet'
+                                          // Ícone
+                                          Icon(
+                                            valor == 0 || showGratis
+                                                ? Icons.store_outlined
+                                                : Icons.local_shipping_outlined,
+                                            color: isSelected
+                                                ? selectedBorder
+                                                : textoSecundario,
+                                            size: 28,
+                                          ),
+                                          const SizedBox(width: 16),
+
+                                          // Informações
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Flexible(
+                                                      child: Text(
+                                                        nome,
+                                                        style: TextStyle(
+                                                          color: textoPrincipal,
+                                                          fontSize: 16,
+                                                          fontWeight: isSelected
+                                                              ? FontWeight.w700
+                                                              : FontWeight.w600,
+                                                        ),
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: plataforma ==
+                                                                'melhor_envio'
                                                             ? Colors
-                                                                .blue.shade800
+                                                                .green.shade100
                                                             : plataforma ==
-                                                                    'correios'
-                                                                ? Colors.orange
-                                                                    .shade800
+                                                                    'frenet'
+                                                                ? Colors.blue
+                                                                    .shade100
                                                                 : plataforma ==
-                                                                        'superfrete'
+                                                                        'correios'
                                                                     ? Colors
-                                                                        .teal
-                                                                        .shade800
-                                                                    : Colors
-                                                                        .grey
-                                                                        .shade700,
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
+                                                                        .orange
+                                                                        .shade100
+                                                                    : plataforma ==
+                                                                            'superfrete'
+                                                                        ? Colors
+                                                                            .teal
+                                                                            .shade100
+                                                                        : Colors
+                                                                            .grey
+                                                                            .shade200,
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(4),
+                                                      ),
+                                                      child: Text(
+                                                        plataforma ==
+                                                                'melhor_envio'
+                                                            ? 'ME'
+                                                            : plataforma ==
+                                                                    'frenet'
+                                                                ? 'FR'
+                                                                : plataforma ==
+                                                                        'correios'
+                                                                    ? 'COR'
+                                                                    : plataforma ==
+                                                                            'superfrete'
+                                                                        ? 'SF'
+                                                                        : 'MAN',
+                                                        style: TextStyle(
+                                                          color: plataforma ==
+                                                                  'melhor_envio'
+                                                              ? Colors.green
+                                                                  .shade800
+                                                              : plataforma ==
+                                                                      'frenet'
+                                                                  ? Colors.blue
+                                                                      .shade800
+                                                                  : plataforma ==
+                                                                          'correios'
+                                                                      ? Colors
+                                                                          .orange
+                                                                          .shade800
+                                                                      : plataforma ==
+                                                                              'superfrete'
+                                                                          ? Colors
+                                                                              .teal
+                                                                              .shade800
+                                                                          : Colors
+                                                                              .grey
+                                                                              .shade700,
+                                                          fontSize: 10,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 4),
+                                                if (prazo.isNotEmpty)
+                                                  Text(
+                                                    prazo,
+                                                    style: TextStyle(
+                                                      color: textoSecundario,
+                                                      fontSize: 13,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
+                                              ],
+                                            ),
+                                          ),
+
+                                          // Preço
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
+                                              Text(
+                                                precoTexto,
+                                                style: TextStyle(
+                                                  color: showGratis
+                                                      ? Colors.green
+                                                      : textoPrincipal,
+                                                  fontSize: 17,
+                                                  fontWeight: FontWeight.bold,
                                                 ),
                                               ),
+                                              if (isSelected)
+                                                Container(
+                                                  margin: const EdgeInsets.only(
+                                                      top: 4),
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: selectedBorder,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            10),
+                                                  ),
+                                                  child: const Text(
+                                                    'Selecionado',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
                                             ],
                                           ),
-                                          const SizedBox(height: 4),
-                                          if (prazo.isNotEmpty)
-                                            Text(
-                                              prazo,
-                                              style: TextStyle(
-                                                color: textoSecundario,
-                                                fontSize: 13,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
                                         ],
                                       ),
                                     ),
-
-                                    // Preço
-                                    Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
-                                      children: [
-                                        Text(
-                                          precoTexto,
-                                          style: TextStyle(
-                                            color: showGratis
-                                                ? Colors.green
-                                                : textoPrincipal,
-                                            fontSize: 17,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        if (isSelected)
-                                          Container(
-                                            margin:
-                                                const EdgeInsets.only(top: 4),
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: selectedBorder,
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            child: const Text(
-                                              'Selecionado',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
+                                  ),
+                                );
+                              }),
                       ),
                     ),
                   ),
@@ -2047,9 +2154,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 ],
               ),
             ),
-            );
-          },
-        );
+          );
+        },
+      );
     }
 
     if (wideChrome) {
@@ -2060,7 +2167,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
           final mq = MediaQuery.of(sheetContext);
           final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
           return Dialog(
-            insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             backgroundColor: Colors.transparent,
             elevation: 0,
             child: ConstrainedBox(
@@ -2161,8 +2269,20 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       final fallbackManuais = widget.fretes.isNotEmpty
           ? widget.fretes.map((e) => asMapDeep(e)).toList()
           : [
-              {'nome': 'Retirada', 'valor': 0.0, 'tipo': 'retirada', 'plataforma': 'manual', 'freteGratis': true},
-              {'nome': 'Combinar com vendedor', 'valor': 0.0, 'tipo': 'combinar', 'plataforma': 'manual', 'freteGratis': true},
+              {
+                'nome': 'Retirada',
+                'valor': 0.0,
+                'tipo': 'retirada',
+                'plataforma': 'manual',
+                'freteGratis': true
+              },
+              {
+                'nome': 'Combinar com vendedor',
+                'valor': 0.0,
+                'tipo': 'combinar',
+                'plataforma': 'manual',
+                'freteGratis': true
+              },
             ];
 
       // ✅ Limpar e reconstruir _fretesLocal
@@ -2170,8 +2290,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
       // Adicionar opções retornadas pela API (que já inclui manuais)
       if (opcoesFretes.isNotEmpty) {
-        logD(
-            '📦 [CATALOGO] Processando ${opcoesFretes.length} opções da API:');
+        logD('📦 [CATALOGO] Processando ${opcoesFretes.length} opções da API:');
         for (int idx = 0; idx < opcoesFretes.length; idx++) {
           final opcao = opcoesFretes[idx];
           final nome = opcao['nome'] ?? 'Frete';
@@ -2240,8 +2359,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
       // ✅ Se API retornou vazio ou filtrou tudo: preservar manuais (nunca deixar lista vazia)
       if (_fretesLocal.isEmpty) {
-        _fretesLocal.addAll(manuaisAtuais.isNotEmpty ? manuaisAtuais : fallbackManuais);
-        logD('📦 [CATALOGO] API sem opções; preservando ${_fretesLocal.length} manuais.');
+        _fretesLocal
+            .addAll(manuaisAtuais.isNotEmpty ? manuaisAtuais : fallbackManuais);
+        logD(
+            '📦 [CATALOGO] API sem opções; preservando ${_fretesLocal.length} manuais.');
       }
 
       // ✅ Manter índice selecionado pelo usuário, ou selecionar primeira opção de API
@@ -2262,8 +2383,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         if (_freteIndex == 0 &&
             _fretesLocal.isNotEmpty &&
             (_fretesLocal.first['plataforma'] ?? 'manual') == 'manual') {
-          logD(
-              '📍 [CATALOGO] Todas as opções são manuais. Mantendo índice 0.');
+          logD('📍 [CATALOGO] Todas as opções são manuais. Mantendo índice 0.');
         }
       } else {
         logD(
@@ -2285,7 +2405,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         _avisoCheckoutFrete = null;
       });
     } catch (e, st) {
-      logE('❌ [CATALOGO] Erro ao calcular frete (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [CATALOGO] Erro ao calcular frete (type=${e.runtimeType})',
+          error: e, st: st);
       if (mounted) {
         setState(() {
           _avisoCheckoutFrete =
@@ -2301,8 +2422,20 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       } else if (_fretesLocal.isEmpty && mounted) {
         setState(() {
           _fretesLocal.addAll([
-            {'nome': 'Retirada', 'valor': 0.0, 'tipo': 'retirada', 'plataforma': 'manual', 'freteGratis': true},
-            {'nome': 'Combinar com vendedor', 'valor': 0.0, 'tipo': 'combinar', 'plataforma': 'manual', 'freteGratis': true},
+            {
+              'nome': 'Retirada',
+              'valor': 0.0,
+              'tipo': 'retirada',
+              'plataforma': 'manual',
+              'freteGratis': true
+            },
+            {
+              'nome': 'Combinar com vendedor',
+              'valor': 0.0,
+              'tipo': 'combinar',
+              'plataforma': 'manual',
+              'freteGratis': true
+            },
           ]);
         });
       }
@@ -2392,7 +2525,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         widget.showSnack('Erro ao buscar CEP. Digite manualmente.');
       }
     } catch (e, st) {
-      logE('❌ [VIACEP] Erro ao buscar endereço (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [VIACEP] Erro ao buscar endereço (type=${e.runtimeType})',
+          error: e, st: st);
       widget.showSnack('Erro ao buscar CEP. Verifique sua conexão.');
     }
   }
@@ -2474,7 +2608,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             SizedBox(height: compact ? 14 : 16),
             Divider(height: 1, thickness: 1, color: cu.itemDividerColor),
             SizedBox(height: compact ? 10 : 12),
-
             if (widget.items.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 26),
@@ -2678,9 +2811,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
           letterSpacing: -0.1,
         ),
         filled: true,
-        fillColor: hasError
-            ? erroColor.withOpacity(0.08)
-            : cu.inputBackground,
+        fillColor: hasError ? erroColor.withOpacity(0.08) : cu.inputBackground,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(
@@ -2798,8 +2929,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             fontSize: 15,
                             height: 1.25,
                           ),
-                          decoration:
-                              deco('Nome completo *', campoKey: 'nome'),
+                          decoration: deco('Nome completo *', campoKey: 'nome'),
                           onChanged: (_) {
                             _limparErroCampo('nome');
                             _scheduleFormSave();
@@ -2832,8 +2962,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             fontSize: 15,
                             height: 1.25,
                           ),
-                          decoration:
-                              deco('E-mail *', campoKey: 'email'),
+                          decoration: deco('E-mail *', campoKey: 'email'),
                           onChanged: (_) {
                             _limparErroCampo('email');
                             _scheduleFormSave();
@@ -2851,9 +2980,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               FontFeature.tabularFigures(),
                             ],
                           ),
-                          decoration: deco(
-                              'Telefone / WhatsApp *',
-                              campoKey: 'tel'),
+                          decoration:
+                              deco('Telefone / WhatsApp *', campoKey: 'tel'),
                           onChanged: (_) {
                             _limparErroCampo('tel');
                             _scheduleFormSave();
@@ -2876,9 +3004,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 fontSize: 15,
                                 height: 1.25,
                               ),
-                              decoration: deco(
-                                  'Nome completo *',
-                                  campoKey: 'nome'),
+                              decoration:
+                                  deco('Nome completo *', campoKey: 'nome'),
                               onChanged: (_) {
                                 _limparErroCampo('nome');
                                 _scheduleFormSave();
@@ -2898,8 +3025,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 ],
                               ),
                               keyboardType: kKeyboardDecimal,
-                              decoration:
-                                  deco('CPF *', campoKey: 'cpf'),
+                              decoration: deco('CPF *', campoKey: 'cpf'),
                               onChanged: (_) {
                                 _limparErroCampo('cpf');
                                 _scheduleFormSave();
@@ -2921,9 +3047,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 fontSize: 15,
                                 height: 1.25,
                               ),
-                              decoration: deco(
-                                  'E-mail *',
-                                  campoKey: 'email'),
+                              decoration: deco('E-mail *', campoKey: 'email'),
                               onChanged: (_) {
                                 _limparErroCampo('email');
                                 _scheduleFormSave();
@@ -2943,8 +3067,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                   FontFeature.tabularFigures(),
                                 ],
                               ),
-                              decoration: deco(
-                                  'Telefone / WhatsApp *',
+                              decoration: deco('Telefone / WhatsApp *',
                                   campoKey: 'tel'),
                               onChanged: (_) {
                                 _limparErroCampo('tel');
@@ -2978,45 +3101,45 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                   Flexible(
                     fit: FlexFit.loose,
                     child: TextButton.icon(
-                    onPressed: () async {
-                      setState(() {}); // Feedback imediato ao toque
-                      final resultado = await _preencherDadosClienteLogado();
-                      if (!mounted) return;
-                      final String msg;
-                      switch (resultado) {
-                        case 'no_login':
-                          msg = 'Faça login para usar seu último endereço.';
-                          break;
-                        case 'no_address':
-                          msg =
-                              'Nenhum endereço encontrado. É seu primeiro pedido nesta loja? Preencha o endereço abaixo.';
-                          break;
-                        case 'success_full':
-                          msg =
-                              'Dados preenchidos com o último endereço salvo.';
-                          break;
-                        case 'success_partial':
-                          msg =
-                              'Nome, e-mail e telefone preenchidos. Nenhum endereço salvo ainda — preencha o endereço abaixo.';
-                          break;
-                        case 'success_partial_cf_falhou':
-                          msg =
-                              'Dados básicos preenchidos. Não foi possível carregar o endereço salvo — verifique sua conexão ou preencha abaixo.';
-                          break;
-                        case 'error':
-                        default:
-                          msg =
-                              'Não foi possível carregar os dados. Tente novamente ou preencha manualmente.';
-                      }
-                      // SnackBar no messenger do overlay do carrinho (parent injeta showCartSnack).
-                      widget.showSnack(msg);
-                    },
-                    icon: const Icon(Icons.history, size: 18),
-                    label: const Text('Usar último endereço'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: widget.primary,
+                      onPressed: () async {
+                        setState(() {}); // Feedback imediato ao toque
+                        final resultado = await _preencherDadosClienteLogado();
+                        if (!mounted) return;
+                        final String msg;
+                        switch (resultado) {
+                          case 'no_login':
+                            msg = 'Faça login para usar seu último endereço.';
+                            break;
+                          case 'no_address':
+                            msg =
+                                'Nenhum endereço encontrado. É seu primeiro pedido nesta loja? Preencha o endereço abaixo.';
+                            break;
+                          case 'success_full':
+                            msg =
+                                'Dados preenchidos com o último endereço salvo.';
+                            break;
+                          case 'success_partial':
+                            msg =
+                                'Nome, e-mail e telefone preenchidos. Nenhum endereço salvo ainda — preencha o endereço abaixo.';
+                            break;
+                          case 'success_partial_cf_falhou':
+                            msg =
+                                'Dados básicos preenchidos. Não foi possível carregar o endereço salvo — verifique sua conexão ou preencha abaixo.';
+                            break;
+                          case 'error':
+                          default:
+                            msg =
+                                'Não foi possível carregar os dados. Tente novamente ou preencha manualmente.';
+                        }
+                        // SnackBar no messenger do overlay do carrinho (parent injeta showCartSnack).
+                        widget.showSnack(msg);
+                      },
+                      icon: const Icon(Icons.history, size: 18),
+                      label: const Text('Usar último endereço'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: widget.primary,
+                      ),
                     ),
-                  ),
                   ),
                 ],
               ),
@@ -3098,7 +3221,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _rua,
                       decoration: deco('Rua *', campoKey: 'rua'),
-                      onChanged: (_) { _limparErroCampo('rua'); _scheduleFormSave(); },
+                      onChanged: (_) {
+                        _limparErroCampo('rua');
+                        _scheduleFormSave();
+                      },
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -3107,7 +3233,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       controller: _numero,
                       keyboardType: kKeyboardDecimal,
                       decoration: deco('Número *', campoKey: 'numero'),
-                      onChanged: (_) { _limparErroCampo('numero'); _scheduleFormSave(); },
+                      onChanged: (_) {
+                        _limparErroCampo('numero');
+                        _scheduleFormSave();
+                      },
                     ),
                   ),
                 ],
@@ -3121,7 +3250,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _bairro,
                       decoration: deco('Bairro *', campoKey: 'bairro'),
-                      onChanged: (_) { _limparErroCampo('bairro'); _scheduleFormSave(); },
+                      onChanged: (_) {
+                        _limparErroCampo('bairro');
+                        _scheduleFormSave();
+                      },
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -3129,7 +3261,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _cidade,
                       decoration: deco('Cidade *', campoKey: 'cidade'),
-                      onChanged: (_) { _limparErroCampo('cidade'); _scheduleFormSave(); },
+                      onChanged: (_) {
+                        _limparErroCampo('cidade');
+                        _scheduleFormSave();
+                      },
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -3137,7 +3272,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     child: TextField(
                       controller: _estado,
                       decoration: deco('UF *', campoKey: 'estado'),
-                      onChanged: (_) { _limparErroCampo('estado'); _scheduleFormSave(); },
+                      onChanged: (_) {
+                        _limparErroCampo('estado');
+                        _scheduleFormSave();
+                      },
                     ),
                   ),
                 ],
@@ -3227,7 +3365,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       VoidCallback? onDismiss,
     }) {
       return Material(
-        color: Color.alphaBlend(accent.withOpacity(0.12), cu.cartCardBackground),
+        color:
+            Color.alphaBlend(accent.withOpacity(0.12), cu.cartCardBackground),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: EdgeInsets.fromLTRB(pad, pad * 0.85, pad * 0.5, pad * 0.85),
@@ -3389,8 +3528,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             }
                             return Text(
                               'Selecionar frete',
-                              style:
-                                  TextStyle(color: textoCampo, fontSize: 15),
+                              style: TextStyle(color: textoCampo, fontSize: 15),
                             );
                           }(),
                         ),
@@ -3759,8 +3897,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.stars,
-                                  color: Colors.black, size: 24),
+                              Icon(Icons.stars, color: Colors.black, size: 24),
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text(
@@ -4012,8 +4149,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     _resumeRow(
                       'Desconto PIX',
                       -(_subtotal - _subtotalPix),
-                      strOverride:
-                          '- R\$ ${_fmt2(_subtotal - _subtotalPix)}',
+                      strOverride: '- R\$ ${_fmt2(_subtotal - _subtotalPix)}',
                       labelColor: cu.summaryLabelColor,
                       valueColor: s.pixDiscountValueColor,
                       sum: s,
@@ -4154,102 +4290,110 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
                         final cupomIdDesc = _cupomDescontoIdFirestore();
                         final cupomIdFrete = _cupomFreteIdFirestore();
-                          final clienteLogado = await ClienteAuthService.getClienteLogado();
-                          final clienteId = clienteLogado?['clienteId']?.toString();
+                        final clienteLogado =
+                            await ClienteAuthService.getClienteLogado();
+                        final clienteId =
+                            clienteLogado?['clienteId']?.toString();
 
-                          try {
-                            final customer = _customerPayload();
+                        try {
+                          final customer = _customerPayload();
 
-                            // ✅ Pega o frete selecionado completo
-                            final freteSelecionado = _fretesLocal.isNotEmpty &&
-                                    _freteIndex >= 0 &&
-                                    _freteIndex < _fretesLocal.length
-                                ? _fretesLocal[_freteIndex]
-                                : {
-                                    'nome': 'Entrega',
-                                    'valor': 0.0,
-                                    'tipo': 'padrao'
-                                  };
+                          // ✅ Pega o frete selecionado completo
+                          final freteSelecionado = _fretesLocal.isNotEmpty &&
+                                  _freteIndex >= 0 &&
+                                  _freteIndex < _fretesLocal.length
+                              ? _fretesLocal[_freteIndex]
+                              : {
+                                  'nome': 'Entrega',
+                                  'valor': 0.0,
+                                  'tipo': 'padrao'
+                                };
 
-                            final nomeFretePedido = _freteGratis
-                                ? 'Cupom de frete grátis'
-                                : (freteSelecionado['nome'] ?? freteSelecionado['label'] ?? 'Entrega').toString();
-                            final entrega = {
-                              'nome': nomeFretePedido,
-                              'valor': _totals.valorFreteFinal,
-                              'freteGratis': _freteGratis,
-                              'tipo': freteSelecionado['tipo'] ?? 'padrao',
-                              if (freteSelecionado['plataforma'] != null)
-                                'plataforma': freteSelecionado['plataforma'],
-                              if (freteSelecionado['service_id'] != null)
-                                'service_id': freteSelecionado['service_id'],
-                            };
+                          final nomeFretePedido = _freteGratis
+                              ? 'Cupom de frete grátis'
+                              : (freteSelecionado['nome'] ??
+                                      freteSelecionado['label'] ??
+                                      'Entrega')
+                                  .toString();
+                          final entrega = {
+                            'nome': nomeFretePedido,
+                            'valor': _totals.valorFreteFinal,
+                            'freteGratis': _freteGratis,
+                            'tipo': freteSelecionado['tipo'] ?? 'padrao',
+                            if (freteSelecionado['plataforma'] != null)
+                              'plataforma': freteSelecionado['plataforma'],
+                            if (freteSelecionado['service_id'] != null)
+                              'service_id': freteSelecionado['service_id'],
+                          };
 
-                            await widget.onCheckoutWhatsapp(
-                              customer: customer,
-                              entrega: entrega,
-                              pagamento: _pagamento,
-                              observacao: _obs.text.trim(),
-                              cupomRoletaCodigo: _cupomRoletaCodigo,
-                              cupomRoletaDesconto: _cupomRoletaDesconto,
-                              premioRoletaDescricao: _premioRoletaDescricao,
-                              cupomCodigo: _cupomCodigoParaPedido(),
-                              cupomFreteCodigo: _cupomFreteCodigoParaPedido(),
-                              descontoCupom: _totals.descontoCupom,
-                              valorTotalCheckout: _totals.total,
-                              onSuccess: (String? pedidoId) async {
-                                if (mounted) Navigator.pop(context);
-                                if (clienteId != null && clienteId.isNotEmpty) {
-                                  if (cupomIdDesc != null &&
-                                      cupomIdDesc.isNotEmpty) {
-                                    CupomDescontoService().registrarUso(
-                                      lojaId: widget.lojaId,
-                                      cupomId: cupomIdDesc,
-                                      clienteId: clienteId,
-                                    );
-                                  }
-                                  if (cupomIdFrete != null &&
-                                      cupomIdFrete.isNotEmpty) {
-                                    CupomDescontoService().registrarUso(
-                                      lojaId: widget.lojaId,
-                                      cupomId: cupomIdFrete,
-                                      clienteId: clienteId,
-                                    );
-                                  }
+                          await widget.onCheckoutWhatsapp(
+                            customer: customer,
+                            entrega: entrega,
+                            pagamento: _pagamento,
+                            observacao: _obs.text.trim(),
+                            cupomRoletaCodigo: _cupomRoletaCodigo,
+                            cupomRoletaDesconto: _cupomRoletaDesconto,
+                            premioRoletaDescricao: _premioRoletaDescricao,
+                            cupomCodigo: _cupomCodigoParaPedido(),
+                            cupomFreteCodigo: _cupomFreteCodigoParaPedido(),
+                            descontoCupom: _totals.descontoCupom,
+                            valorTotalCheckout: _totals.total,
+                            onSuccess: (String? pedidoId) async {
+                              if (mounted) Navigator.pop(context);
+                              if (clienteId != null && clienteId.isNotEmpty) {
+                                if (cupomIdDesc != null &&
+                                    cupomIdDesc.isNotEmpty) {
+                                  CupomDescontoService().registrarUso(
+                                    lojaId: widget.lojaId,
+                                    cupomId: cupomIdDesc,
+                                    clienteId: clienteId,
+                                  );
                                 }
-                                final cRoleta = _cupomPorOrigem('roleta_sorte');
-                                if (cRoleta != null) {
-                                  final email = (clienteLogado?['email'] ??
-                                          customer['email'] ??
-                                          '')
-                                      .toString()
-                                      .trim();
-                                  final codigo = _codigoCupomMap(cRoleta);
-                                  if (email.isNotEmpty && codigo.isNotEmpty) {
-                                    await ClienteAuthService.marcarCupomRoletaComoUsado(
-                                      lojaId: widget.lojaId,
-                                      email: email,
-                                      codigo: codigo,
-                                    );
-                                  }
+                                if (cupomIdFrete != null &&
+                                    cupomIdFrete.isNotEmpty) {
+                                  CupomDescontoService().registrarUso(
+                                    lojaId: widget.lojaId,
+                                    cupomId: cupomIdFrete,
+                                    clienteId: clienteId,
+                                  );
                                 }
-                                final cIndic = _cupomPorOrigem('cupom_cliente');
-                                if (cIndic != null && (pedidoId ?? '').isNotEmpty) {
-                                  final cupomClienteId = (cIndic['id'] ?? '').toString();
-                                  if (cupomClienteId.isNotEmpty) {
-                                    await CuponsService.usarCupom(
-                                      lojaId: widget.lojaId,
-                                      cupomId: cupomClienteId,
-                                      pedidoId: pedidoId!,
-                                    );
-                                  }
+                              }
+                              final cRoleta = _cupomPorOrigem('roleta_sorte');
+                              if (cRoleta != null) {
+                                final email = (clienteLogado?['email'] ??
+                                        customer['email'] ??
+                                        '')
+                                    .toString()
+                                    .trim();
+                                final codigo = _codigoCupomMap(cRoleta);
+                                if (email.isNotEmpty && codigo.isNotEmpty) {
+                                  await ClienteAuthService
+                                      .marcarCupomRoletaComoUsado(
+                                    lojaId: widget.lojaId,
+                                    email: email,
+                                    codigo: codigo,
+                                  );
                                 }
-                              },
-                              showErrorInCart: (msg) {
-                                if (mounted) setState(() => _checkoutError = msg);
-                              },
-                            );
-                          } finally {
+                              }
+                              final cIndic = _cupomPorOrigem('cupom_cliente');
+                              if (cIndic != null &&
+                                  (pedidoId ?? '').isNotEmpty) {
+                                final cupomClienteId =
+                                    (cIndic['id'] ?? '').toString();
+                                if (cupomClienteId.isNotEmpty) {
+                                  await CuponsService.usarCupom(
+                                    lojaId: widget.lojaId,
+                                    cupomId: cupomClienteId,
+                                    pedidoId: pedidoId!,
+                                  );
+                                }
+                              }
+                            },
+                            showErrorInCart: (msg) {
+                              if (mounted) setState(() => _checkoutError = msg);
+                            },
+                          );
+                        } finally {
                           // ✅ DESMARCA APÓS PROCESSAMENTO
                           if (mounted) {
                             setState(() {
@@ -4321,7 +4465,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                   };
                             final nomeFretePedidoPix = _freteGratis
                                 ? 'Cupom de frete grátis'
-                                : (freteSelecionado['nome'] ?? freteSelecionado['label'] ?? 'Entrega').toString();
+                                : (freteSelecionado['nome'] ??
+                                        freteSelecionado['label'] ??
+                                        'Entrega')
+                                    .toString();
                             final entrega = {
                               'nome': nomeFretePedidoPix,
                               'valor': _totals.valorFreteFinal,
@@ -4335,8 +4482,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                             final cupomCod = _cupomCodigoParaPedido() ?? '';
                             final cupomIdDesc = _cupomDescontoIdFirestore();
                             final cupomIdFrete = _cupomFreteIdFirestore();
-                            final clienteLogadoPix = await ClienteAuthService.getClienteLogado();
-                            final clienteIdPix = clienteLogadoPix?['clienteId']?.toString();
+                            final clienteLogadoPix =
+                                await ClienteAuthService.getClienteLogado();
+                            final clienteIdPix =
+                                clienteLogadoPix?['clienteId']?.toString();
                             await widget.onCheckoutPix!(
                               customer: customer,
                               entrega: entrega,
@@ -4354,15 +4503,18 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 }
                               },
                               onPedidoCriado: (pedidoId) async {
-                                if (clienteIdPix != null && clienteIdPix.isNotEmpty) {
-                                  if (cupomIdDesc != null && cupomIdDesc.isNotEmpty) {
+                                if (clienteIdPix != null &&
+                                    clienteIdPix.isNotEmpty) {
+                                  if (cupomIdDesc != null &&
+                                      cupomIdDesc.isNotEmpty) {
                                     await CupomDescontoService().registrarUso(
                                       lojaId: widget.lojaId,
                                       cupomId: cupomIdDesc,
                                       clienteId: clienteIdPix,
                                     );
                                   }
-                                  if (cupomIdFrete != null && cupomIdFrete.isNotEmpty) {
+                                  if (cupomIdFrete != null &&
+                                      cupomIdFrete.isNotEmpty) {
                                     await CupomDescontoService().registrarUso(
                                       lojaId: widget.lojaId,
                                       cupomId: cupomIdFrete,
@@ -4379,7 +4531,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                       .trim();
                                   final cod = _codigoCupomMap(cRoleta);
                                   if (email.isNotEmpty && cod.isNotEmpty) {
-                                    await ClienteAuthService.marcarCupomRoletaComoUsado(
+                                    await ClienteAuthService
+                                        .marcarCupomRoletaComoUsado(
                                       lojaId: widget.lojaId,
                                       email: email,
                                       codigo: cod,
@@ -4390,7 +4543,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 if (cIndic != null &&
                                     pedidoId != null &&
                                     pedidoId.isNotEmpty) {
-                                  final cupomClienteId = (cIndic['id'] ?? '').toString();
+                                  final cupomClienteId =
+                                      (cIndic['id'] ?? '').toString();
                                   if (cupomClienteId.isNotEmpty) {
                                     await CuponsService.usarCupom(
                                       lojaId: widget.lojaId,
@@ -4486,7 +4640,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
                             final nomeFretePedidoMp = _freteGratis
                                 ? 'Cupom de frete grátis'
-                                : (freteSelecionado['nome'] ?? freteSelecionado['label'] ?? 'Entrega').toString();
+                                : (freteSelecionado['nome'] ??
+                                        freteSelecionado['label'] ??
+                                        'Entrega')
+                                    .toString();
                             final entrega = {
                               'nome': nomeFretePedidoMp,
                               'valor': _totals.valorFreteFinal,
@@ -4527,7 +4684,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                   .trim();
                               final codigoMp = _codigoCupomMap(cRoletaMp);
                               if (emailMp.isNotEmpty && codigoMp.isNotEmpty) {
-                                await ClienteAuthService.marcarCupomRoletaComoUsado(
+                                await ClienteAuthService
+                                    .marcarCupomRoletaComoUsado(
                                   lojaId: widget.lojaId,
                                   email: emailMp,
                                   codigo: codigoMp,
@@ -4596,4 +4754,3 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     );
   }
 }
-
