@@ -43,4 +43,24 @@ class AppUrls {
     final h = host.trim().toLowerCase();
     return publicSiteHostsAll.contains(h);
   }
+
+  /// Hosting Firebase do catálogo (CNAME público) — mesmo app Web, fluxo padrão `/loja/`.
+  static const String catalogFirebaseHostingHost = 'masterpalm-58c46.web.app';
+
+  /// App admin canônico + typo legado + hosting web do catálogo (não é domínio próprio do lojista).
+  static bool isDefaultMasterPalmCatalogHost(String host) {
+    final h = normalizeHostForAppUrlCheck(host);
+    if (h.isEmpty) return false;
+    if (appWebHostsAll.contains(h)) return true;
+    if (h == catalogFirebaseHostingHost) return true;
+    return false;
+  }
+
+  static String normalizeHostForAppUrlCheck(String host) {
+    var h = host.trim().toLowerCase();
+    if (h.startsWith('www.')) {
+      h = h.substring(4);
+    }
+    return h;
+  }
 }

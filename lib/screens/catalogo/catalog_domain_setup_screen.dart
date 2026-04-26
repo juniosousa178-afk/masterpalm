@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../catalog/domain/catalog_custom_domain.dart';
 import '../../data/domain_provider_guides.dart';
 import '../../models/domain_provider_guide.dart';
+import '../../services/catalog_domains_index_service.dart';
 import '../../services/catalog_domain_workflow_service.dart';
 import 'catalog_domain_provider_screen.dart';
 
@@ -123,6 +126,14 @@ class _CatalogDomainSetupScreenState extends State<CatalogDomainSetupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(okMsg), duration: const Duration(seconds: 5)),
       );
+      if (mapped == kDominioStatusAtivo) {
+        unawaited(
+          CatalogDomainsIndexService.syncOnDomainActivated(
+            lojaId: widget.lojaId.trim(),
+            dominioUserNormalized: widget.dominioInformado,
+          ),
+        );
+      }
       if (popAfter) {
         Navigator.of(context).pop(CatalogDomainSetupPopResult(
           status: mapped,

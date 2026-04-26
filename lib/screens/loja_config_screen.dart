@@ -44,6 +44,7 @@ import '../catalog/domain/catalog_custom_domain.dart';
 import '../screens/catalogo/catalog_domain_setup_screen.dart';
 import '../widgets/catalog_domain_section.dart';
 import '../services/catalog_domain_workflow_service.dart';
+import '../services/catalog_domains_index_service.dart';
 import '../services/catalog_public_url_service.dart';
 
 part 'loja_config_tema_pane.dart';
@@ -3825,6 +3826,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
 
     setState(() => _salvando = true);
 
+    String? previousDominioCatalogo;
     try {
       final fs = FirebaseFirestore.instance;
       final lojaDoc = fs.collection('lojas').doc(loja);
@@ -3837,6 +3839,9 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
         final liveSnap = await lojaDoc.collection('config').doc('config').get();
         if (liveSnap.exists && liveSnap.data() != null) {
           final live = liveSnap.data()!;
+          previousDominioCatalogo = normalizeCatalogDomainInput(
+            (live['dominioCatalogo'] ?? '').toString(),
+          );
           data = Map<String, dynamic>.from(data);
 
           final logoD = (_logoUrlDesktop ?? '').trim();
@@ -3944,6 +3949,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           .doc('config')
           .set(data, SetOptions(merge: true));
       if (kDebugMode) logD('✅ Config LIVE publicado!');
+
+      await CatalogDomainsIndexService.syncAfterCatalogPublish(
+        lojaId: loja,
+        publishedConfig: Map<String, dynamic>.from(data),
+        previousDominioCatalogoNormalized: previousDominioCatalogo,
+      );
 
       // 2.0) Invalida cache do catálogo no APK/Web para a próxima abertura usar config publicada
       CatalogCacheService.invalidate(loja, preview: false);

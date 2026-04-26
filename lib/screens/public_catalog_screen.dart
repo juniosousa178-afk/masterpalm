@@ -869,6 +869,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _loadModoEscuro();
   }
 
+  /// Visitas, recentes e cliente/favoritos não devem atrasar a 1ª pintura útil.
+  void _deferSecondaryPublicCatalogLoads() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadRecentIds();
+      _loadClienteAndFavoritos();
+      if (!widget.preview &&
+          _resolvedLojaId != null &&
+          _resolvedLojaId!.isNotEmpty) {
+        CatalogVisitasService.incrementarVisita(_resolvedLojaId!);
+      }
+    });
+  }
+
   void _debouncedSearchUpdate(String txt) {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 180), () {
@@ -2262,6 +2276,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   }
 
   Future<void> _resolveLojaId() async {
+    final swResolve = Stopwatch()..start();
+    if (kDebugMode) {
+      debugPrint(
+        '[CAT_START_TIMING] resolve_loja_id begin raw=${widget.lojaId}',
+      );
+    }
     var traceOk = false;
     String? traceResolvedId;
     String? traceErrorType;
@@ -2342,13 +2362,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _refreshCatalogCartFormCache(
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
-        _loadRecentIds();
-        _loadClienteAndFavoritos();
-        if (!widget.preview &&
-            _resolvedLojaId != null &&
-            _resolvedLojaId!.isNotEmpty) {
-          CatalogVisitasService.incrementarVisita(_resolvedLojaId!);
-        }
+        _deferSecondaryPublicCatalogLoads();
         logD('✅ [CATÁLOGO] lojaId FINAL (público): $_resolvedLojaId');
         catalogDebugLogStoreResolution(
           widgetLojaIdRaw: widgetId,
@@ -2392,13 +2406,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _refreshCatalogCartFormCache(
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
-        _loadRecentIds();
-        _loadClienteAndFavoritos();
-        if (!widget.preview &&
-            _resolvedLojaId != null &&
-            _resolvedLojaId!.isNotEmpty) {
-          CatalogVisitasService.incrementarVisita(_resolvedLojaId!);
-        }
+        _deferSecondaryPublicCatalogLoads();
         logD('✅ [CATÁLOGO] lojaId FINAL (admin): $_resolvedLojaId');
         catalogDebugLogStoreResolution(
           widgetLojaIdRaw: widgetId,
@@ -2425,6 +2433,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         );
       }
     } finally {
+      if (kDebugMode) {
+        debugPrint(
+          '[CAT_START_TIMING] resolve_loja_id total ${swResolve.elapsedMilliseconds}ms',
+        );
+      }
       CatalogStartupTrace.spanEnd(
         'CAT_START.resolve_loja_id',
         data: <String, Object?>{

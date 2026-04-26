@@ -970,6 +970,58 @@ Future<String> _resolveSlugToStoreIdIfNeeded(String slugOrId) async {
   return slug; // fallback
 }
 
+/// Após [catalog_domains] devolver [lojaId] canônico: 1 leitura direta `lojas/{id}` (rápida), só depois slug.
+Future<String> _fastResolveStoreIdFromDomainIndex(String lojaIdFromIndex) async {
+  final raw = lojaIdFromIndex.trim();
+  if (raw.isEmpty) return raw;
+  if (Firebase.apps.isEmpty) return raw;
+  try {
+    final doc = await FirebaseFirestore.instance
+        .collection('lojas')
+        .doc(raw)
+        .get()
+        .timeout(const Duration(seconds: 2));
+    if (doc.exists) {
+      final redirectTo =
+          (doc.data()?['redirectTo'] ?? '').toString().trim();
+      if (redirectTo.isNotEmpty && redirectTo != raw) {
+        return redirectTo;
+      }
+      return raw;
+    }
+  } on TimeoutException catch (_) {
+    return raw;
+  } catch (_) {
+    return raw;
+  }
+  try {
+    return await _resolveSlugToStoreIdIfNeeded(raw)
+        .timeout(const Duration(seconds: 3));
+  } catch (_) {
+    return raw;
+  }
+}
+
+bool _isLocalWebDevHost(String normalizedHost) {
+  return normalizedHost == 'localhost' ||
+      normalizedHost == '127.0.0.1' ||
+      normalizedHost.endsWith('.localhost');
+}
+
+bool _shouldOfferCustomDomainCatalogFastPath(Uri uri) {
+  if (!kIsWeb) return false;
+  if (_uriIsPagamentoPublicPath(uri)) return false;
+  if (_uriHasLojaPathPriority(uri)) return false;
+  if (_uriHasExplicitCatalogQueryOrFragment(uri)) return false;
+  final hostNorm =
+      normalizeCatalogDomainHost(AppUrls.normalizeHostForAppUrlCheck(uri.host));
+  if (hostNorm.isEmpty) return false;
+  if (_isLocalWebDevHost(hostNorm)) return false;
+  if (AppUrls.isDefaultMasterPalmCatalogHost(uri.host)) return false;
+  if (AppUrls.isPublicMarketingHost(uri.host)) return false;
+  return true;
+}
+
 // ✅ DIAGNÓSTICO
 void mpStoreDiag(String tag) {
   final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : null;
@@ -1115,7 +1167,10 @@ Future<bool> _webShouldMinimalBootstrapForPublicCatalogViewer() async {
   try {
     final hostNorm = normalizeCatalogDomainHost(uri.host);
     if (hostNorm.isEmpty) return false;
-    final lojaId = await resolveLojaIdFromCatalogDomainMap(hostNorm);
+    final lojaId = await resolveLojaIdForPublicCatalogHost(
+      uri.host,
+      useBrowserCache: true,
+    ).timeout(kCatalogDomainResolveBudget, onTimeout: () => null);
     return lojaId != null && lojaId.isNotEmpty;
   } catch (_) {
     return false;
@@ -1279,6 +1334,48 @@ String? _produtoRefFromUrl() {
     return v;
   }
   return null;
+}
+
+// ===========================================================================
+// Catálogo: falha rápida ao resolver domínio próprio (sem MyApp nem ~1min de bootstrap)
+// ===========================================================================
+class CatalogDomainBootstrapErrorApp extends StatelessWidget {
+  const CatalogDomainBootstrapErrorApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+        useMaterial3: true,
+      ),
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.store_mall_directory_outlined,
+                      size: 64, color: Colors.grey.shade600),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Não foi possível carregar a loja agora. Tente novamente em instantes.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          height: 1.35,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ===========================================================================
@@ -1707,6 +1804,102 @@ Future<void> main() async {
         }());
         return;
       }
+
+      // FAST PATH: domínio próprio (host mapeado em catalog_domains) — mesmo ganho do /loja/*.
+      if (_shouldOfferCustomDomainCatalogFastPath(uriWeb)) {
+        CatalogStartupTrace.spanStart('CAT_START.custom_domain.fast_path');
+        try {
+          await _initFirebaseCore();
+          CatalogStartupTrace.spanEnd(
+            'CAT_START.custom_domain.fast_path.firebase',
+            data: {'ok': true},
+          );
+        } catch (e) {
+          CatalogStartupTrace.spanEnd(
+            'CAT_START.custom_domain.fast_path.firebase',
+            data: {'ok': false, 'error_type': e.runtimeType.toString()},
+          );
+          logW(
+            '⚠️ [MAIN] Fast path domínio próprio: Firebase falhou (type=${e.runtimeType})',
+          );
+        }
+
+        final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
+        String? fromMappedHost;
+        try {
+          fromMappedHost = await resolveLojaIdForPublicCatalogHost(
+            uriWeb.host,
+            useBrowserCache: true,
+          ).timeout(
+            kCatalogDomainResolveBudget,
+            onTimeout: () => null,
+          );
+        } catch (e) {
+          logW(
+            '⚠️ [MAIN] Resolução domínio próprio (fast path) falhou (type=${e.runtimeType})',
+          );
+        }
+
+        if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
+          String lojaIdResolvido = fromMappedHost;
+          try {
+            lojaIdResolvido =
+                await _fastResolveStoreIdFromDomainIndex(fromMappedHost);
+          } catch (e) {
+            logW(
+                '⚠️ [MAIN] Resolver lojaId (domínio fast path) falhou (type=${e.runtimeType})');
+          }
+          StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+            urlSlugOrId: fromMappedHost,
+            resolvedCanonicalStoreId: lojaIdResolvido,
+          );
+          final vendedorRef = _vendedorRefFromUrl();
+          final indicacaoRef = _indicacaoRefFromUrl();
+          final produtoRef = _produtoRefFromUrl();
+          logD(
+            '🌐 [MAIN] Public Catalog FAST domínio próprio host=$hostNorm → $lojaIdResolvido');
+          CatalogStartupTrace.spanEnd(
+            'CAT_START.custom_domain.fast_path',
+            data: {'ok': true, 'host': hostNorm, 'loja_id': lojaIdResolvido},
+          );
+          CatalogStartupTrace.mark(
+            'CAT_START.runApp.catalog_web_root.custom_domain_fast',
+            data: {'host': hostNorm, 'loja_id': lojaIdResolvido},
+          );
+          runApp(CatalogWebRoot(
+            lojaId: lojaIdResolvido,
+            vendedorRef: vendedorRef,
+            indicacaoRef: indicacaoRef,
+            produtoRef: produtoRef,
+          ));
+          unawaited(() async {
+            try {
+              CatalogStartupTrace.spanStart('CAT_START.bootstrap_safe.background');
+              await _bootstrapSafe();
+              CatalogStartupTrace.spanEnd('CAT_START.bootstrap_safe.background');
+            } catch (e, st) {
+              CatalogStartupTrace.mark(
+                'CAT_START.bootstrap_safe.background.error',
+                data: {'error_type': e.runtimeType.toString()},
+              );
+              logW(
+                  '⚠️ [MAIN] Bootstrap em background (domínio próprio fast path) falhou (type=${e.runtimeType})');
+              if (kDebugMode) logD('$st');
+            }
+          }());
+          return;
+        }
+
+        CatalogStartupTrace.spanEnd(
+          'CAT_START.custom_domain.fast_path',
+          data: {'ok': false, 'reason': 'no_mapping'},
+        );
+        logD(
+          '🌐 [MAIN] Domínio próprio sem mapeamento ativo (fast path) host=$hostNorm → tela amigável');
+        CatalogStartupTrace.mark('CAT_START.runApp.catalog_domain_resolve_error');
+        runApp(const CatalogDomainBootstrapErrorApp());
+        return;
+      }
     }
 
     CatalogStartupTrace.mark('CAT_START.runApp.boot_app');
@@ -1795,12 +1988,15 @@ Future<void> main() async {
             Firebase.apps.isNotEmpty) {
           final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
           final fromMappedHost =
-              await resolveLojaIdFromCatalogDomainMap(hostNorm);
+              await resolveLojaIdForPublicCatalogHost(
+            uriWeb.host,
+            useBrowserCache: true,
+          ).timeout(kCatalogDomainResolveBudget, onTimeout: () => null);
           if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
             String lojaIdResolvido = fromMappedHost;
             try {
               lojaIdResolvido =
-                  await _resolveSlugToStoreIdIfNeeded(fromMappedHost);
+                  await _fastResolveStoreIdFromDomainIndex(fromMappedHost);
             } catch (e) {
               logW(
                   '⚠️ [MAIN] Resolver lojaId (domínio mapeado) falhou (type=${e.runtimeType})');
