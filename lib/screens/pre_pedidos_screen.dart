@@ -2442,11 +2442,15 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         logD('[PRE-PEDIDO]   - cor: ${item['cor']}');
         logD('[PRE-PEDIDO]   - quantidade: ${item['quantidade']}');
 
+        final productId = (item['productId'] ?? item['id'] ?? item['produtosId'] ?? '')
+            .toString()
+            .trim();
         return {
           'nome': item['nome'] ?? '',
           'name': item['nome'] ?? '',
-          'id': item['id'] ?? item['produtosId'] ?? '',
-          'produtosId': item['produtosId'] ?? item['id'] ?? '',
+          'productId': productId,
+          'id': productId,
+          'produtosId': item['produtosId'] ?? productId,
           'quantidade': item['quantidade'] ?? 1,
           'qty': item['quantidade'] ?? 1,
           'preco': precoUnit,

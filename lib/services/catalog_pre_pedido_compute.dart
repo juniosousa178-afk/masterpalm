@@ -37,9 +37,13 @@ CatalogPrePedidoMoneySnapshot computeCatalogPrePedidoMoneySnapshot({
     final itemTotal = precoEfetivo * qty;
     subtotal += itemTotal;
 
+    final productId = (item['productId'] ?? item['id'] ?? item['produtosId'] ?? '')
+        .toString()
+        .trim();
     final storedItem = <String, dynamic>{
-      'id': item['id'] ?? item['produtosId'] ?? '',
-      'produtosId': item['produtosId'] ?? item['id'] ?? '',
+      'productId': productId,
+      'id': productId,
+      'produtosId': item['produtosId'] ?? productId,
       'nome': item['nome'] ?? item['name'] ?? '',
       'quantidade': qty,
       'precoUnitario': precoEfetivo,
