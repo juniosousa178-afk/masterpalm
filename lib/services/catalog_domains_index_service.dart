@@ -9,6 +9,13 @@ import 'catalog_domain_resolver.dart';
 const String kCatalogDomainIndexStatusAtivo = 'ativo';
 const String kCatalogDomainIndexStatusInativo = 'inativo';
 
+String? _sanitizeStoreNameForIndex(String? raw) {
+  final t = (raw ?? '').trim();
+  if (t.isEmpty) return null;
+  if (t.toLowerCase() == 'masterpalm') return null;
+  return t;
+}
+
 /// Hosts que recebem documento no índice (apex + subdomínio recomendado do catálogo).
 Set<String> catalogDomainIndexDocIdsForConfig(String normalizedDomainInput) {
   final base = normalizeCatalogDomainInput(normalizedDomainInput);
@@ -39,12 +46,14 @@ class CatalogDomainsIndexService {
     ];
     for (final v in vals) {
       final t = (v ?? '').trim();
-      if (t.isNotEmpty) return t;
+      final ok = _sanitizeStoreNameForIndex(t);
+      if (ok != null) return ok;
     }
     final empresa = cfg['empresa'];
     if (empresa is Map) {
       final nome = (empresa['nome'] ?? '').toString().trim();
-      if (nome.isNotEmpty) return nome;
+      final ok = _sanitizeStoreNameForIndex(nome);
+      if (ok != null) return ok;
     }
     return null;
   }

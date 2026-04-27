@@ -51,7 +51,7 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
                       vertical: 12,
                     ),
                     decoration: BoxDecoration(
-                      color: cs.primary,
+                      color: const Color(0xFF9A4E6B),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -76,7 +76,7 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Estamos preparando a loja para você ✨',
+                    'Estamos preparando a loja para você.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: AppColors.textSecondary,

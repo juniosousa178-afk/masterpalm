@@ -75,6 +75,7 @@ import 'screens/public_catalog_screen.dart';
 import 'screens/public_catalog/catalog_url_query_codec.dart';
 import 'catalog/catalog_bootstrap_loading.dart';
 import 'services/catalog_domain_resolver.dart';
+import 'services/catalog_domain_browser_cache.dart';
 import 'screens/loja_config_screen.dart';
 import 'screens/configure_loja_placeholder_screen.dart';
 import 'screens/onboarding_loja_screen.dart';
@@ -1830,10 +1831,14 @@ Future<void> main() async {
       // FAST PATH: domínio próprio (host mapeado em catalog_domains).
       if (_shouldOfferCustomDomainCatalogFastPath(uriWeb)) {
         final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
+        final cachedNomeLoja = sanitizePublicStoreName(
+          CatalogDomainBrowserCache.read(hostNorm)?.nomeLoja,
+        );
         CatalogStartupTrace.mark('CAT_START.runApp.catalog_bootstrap_gate.custom_domain');
         runApp(PublicCatalogBootstrapApp(
           firebaseSpanName: 'CAT_START.custom_domain.fast_path.firebase',
           initFirebase: ensureFirebaseInitializedOnce,
+          initialNomeLoja: cachedNomeLoja,
           afterFirebaseMinReady: (updateNomeLoja) async {
             if (kDebugMode) {
               debugPrint('[CATALOG_BOOT] domain.resolve.begin');

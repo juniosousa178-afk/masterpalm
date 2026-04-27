@@ -34,6 +34,13 @@ bool _statusMeansActiveForCache(String s) {
   return t == 'ativo' || t == 'active';
 }
 
+String? _sanitizePublicStoreNameForCache(String? raw) {
+  final t = (raw ?? '').trim();
+  if (t.isEmpty) return null;
+  if (t.toLowerCase() == 'masterpalm') return null;
+  return t;
+}
+
 /// Cache leve no navegador: `catalog_domain_cache_v1_{hostNormalizado}`.
 class CatalogDomainBrowserCache {
   CatalogDomainBrowserCache._();
@@ -51,14 +58,16 @@ class CatalogDomainBrowserCache {
       if (m is! Map) return null;
       final lojaId = (m['lojaId'] ?? '').toString().trim();
       final status = (m['status'] ?? '').toString().trim();
-      final nomeLoja = (m['nomeLoja'] ?? '').toString().trim();
+      final nomeLoja = _sanitizePublicStoreNameForCache(
+        (m['nomeLoja'] ?? '').toString().trim(),
+      );
       final cachedAt =
           (m['cachedAt'] is num) ? (m['cachedAt'] as num).toInt() : 0;
       if (lojaId.isEmpty || cachedAt <= 0) return null;
       return CatalogDomainCacheEntry(
         lojaId: lojaId,
         status: status,
-        nomeLoja: nomeLoja.isEmpty ? null : nomeLoja,
+        nomeLoja: nomeLoja,
         cachedAtMs: cachedAt,
       );
     } catch (_) {
@@ -72,12 +81,13 @@ class CatalogDomainBrowserCache {
     String status,
     String? nomeLoja,
   ) {
+    final nomeLojaOk = _sanitizePublicStoreNameForCache(nomeLoja);
     if (normalizedHost.isEmpty || lojaId.isEmpty) return;
     try {
       final payload = jsonEncode(<String, Object?>{
         'lojaId': lojaId,
         'status': status,
-        if ((nomeLoja ?? '').trim().isNotEmpty) 'nomeLoja': nomeLoja!.trim(),
+        if (nomeLojaOk != null) 'nomeLoja': nomeLojaOk,
         'cachedAt': DateTime.now().millisecondsSinceEpoch,
       });
       catalogDomainBrowserStorageSet(_key(normalizedHost), payload);

@@ -21,6 +21,14 @@ const String kCatalogDomainsCollection = 'catalog_domains';
 /// Orçamento máximo para uma tentativa de resolução (cache miss → Firestore).
 const Duration kCatalogDomainResolveBudget = Duration(seconds: 5);
 
+String? sanitizePublicStoreName(String? raw) {
+  final t = (raw ?? '').trim();
+  if (t.isEmpty) return null;
+  final lower = t.toLowerCase();
+  if (lower == 'masterpalm') return null;
+  return t;
+}
+
 /// Normaliza host para id do documento: lowercase, trim, sem porta, sem `www.`.
 String normalizeCatalogDomainHost(String raw) {
   var h = raw.trim().toLowerCase();
@@ -73,12 +81,14 @@ String? _extractNomeLoja(Map<String, dynamic>? data) {
   ];
   for (final v in direct) {
     final t = (v ?? '').trim();
-    if (t.isNotEmpty) return t;
+    final ok = sanitizePublicStoreName(t);
+    if (ok != null) return ok;
   }
   final empresa = data['empresa'];
   if (empresa is Map) {
     final n = (empresa['nome'] ?? '').toString().trim();
-    if (n.isNotEmpty) return n;
+    final ok = sanitizePublicStoreName(n);
+    if (ok != null) return ok;
   }
   return null;
 }
