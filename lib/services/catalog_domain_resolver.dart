@@ -13,6 +13,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/logger.dart';
+import '../core/safe_cast.dart';
 import 'catalog_domain_browser_cache.dart';
 
 /// Coleção Firestore: um documento por host normalizado (id = host).
@@ -73,8 +74,9 @@ class CatalogDomainFirestoreHit {
   });
 }
 
-String? _extractNomeLoja(Map<String, dynamic>? data) {
-  if (data == null) return null;
+String? _extractNomeLoja(dynamic rawData) {
+  final data = asMap(rawData);
+  if (data.isEmpty) return null;
   final direct = <String?>[
     data['nomeLoja']?.toString(),
     data['lojaNome']?.toString(),
@@ -86,8 +88,8 @@ String? _extractNomeLoja(Map<String, dynamic>? data) {
     final ok = sanitizePublicStoreName(t);
     if (ok != null) return ok;
   }
-  final empresa = data['empresa'];
-  if (empresa is Map) {
+  final empresa = asMap(data['empresa']);
+  if (empresa.isNotEmpty) {
     final n = (empresa['nome'] ?? '').toString().trim();
     final ok = sanitizePublicStoreName(n);
     if (ok != null) return ok;
@@ -100,12 +102,14 @@ String? sanitizePublicStoreLogoUrl(String? raw) {
   if (t.isEmpty) return null;
   final lower = t.toLowerCase();
   if (lower == 'null' || lower == 'undefined') return null;
-  if (!(lower.startsWith('http://') || lower.startsWith('https://'))) return null;
+  if (!(lower.startsWith('http://') || lower.startsWith('https://')))
+    return null;
   return t;
 }
 
-String? _extractLogoUrl(Map<String, dynamic>? data) {
-  if (data == null) return null;
+String? _extractLogoUrl(dynamic rawData) {
+  final data = asMap(rawData);
+  if (data.isEmpty) return null;
   final direct = <String?>[
     data['logoUrl']?.toString(),
     data['logo']?.toString(),
@@ -119,8 +123,8 @@ String? _extractLogoUrl(Map<String, dynamic>? data) {
     final ok = sanitizePublicStoreLogoUrl(v);
     if (ok != null) return ok;
   }
-  final empresa = data['empresa'];
-  if (empresa is Map) {
+  final empresa = asMap(data['empresa']);
+  if (empresa.isNotEmpty) {
     final fromEmpresa = <String?>[
       empresa['logo']?.toString(),
       empresa['logoUrl']?.toString(),
@@ -130,8 +134,8 @@ String? _extractLogoUrl(Map<String, dynamic>? data) {
       if (ok != null) return ok;
     }
   }
-  final media = data['media'];
-  if (media is Map) {
+  final media = asMap(data['media']);
+  if (media.isNotEmpty) {
     final fromMedia = <String?>[
       media['logo']?.toString(),
       media['logoUrl']?.toString(),
@@ -144,8 +148,9 @@ String? _extractLogoUrl(Map<String, dynamic>? data) {
   return null;
 }
 
-String? _lojaIdFromDomainDocData(Map<String, dynamic>? data) {
-  if (data == null) return null;
+String? _lojaIdFromDomainDocData(dynamic rawData) {
+  final data = asMap(rawData);
+  if (data.isEmpty) return null;
   // Legado: só bloquear se vier explicitamente false.
   if (data['verified'] == false) return null;
   if (!_firestoreStatusIsPublicActive(data['status']?.toString())) {
@@ -262,7 +267,8 @@ Future<String?> resolveLojaIdForPublicCatalogHost(
     hit = await fetchCatalogDomainFromFirestore(host).timeout(
       kCatalogDomainResolveBudget,
       onTimeout: () {
-        logW('⚠️ [CATALOG_DOMAIN] orçamento ${kCatalogDomainResolveBudget.inSeconds}s esgotado');
+        logW(
+            '⚠️ [CATALOG_DOMAIN] orçamento ${kCatalogDomainResolveBudget.inSeconds}s esgotado');
         return null;
       },
     );
