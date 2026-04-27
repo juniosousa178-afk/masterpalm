@@ -63,11 +63,13 @@ class CatalogDomainFirestoreHit {
   final String lojaId;
   final String status;
   final String? nomeLoja;
+  final String? logoUrl;
 
   const CatalogDomainFirestoreHit({
     required this.lojaId,
     required this.status,
     this.nomeLoja,
+    this.logoUrl,
   });
 }
 
@@ -89,6 +91,55 @@ String? _extractNomeLoja(Map<String, dynamic>? data) {
     final n = (empresa['nome'] ?? '').toString().trim();
     final ok = sanitizePublicStoreName(n);
     if (ok != null) return ok;
+  }
+  return null;
+}
+
+String? sanitizePublicStoreLogoUrl(String? raw) {
+  final t = (raw ?? '').trim();
+  if (t.isEmpty) return null;
+  final lower = t.toLowerCase();
+  if (lower == 'null' || lower == 'undefined') return null;
+  if (!(lower.startsWith('http://') || lower.startsWith('https://'))) return null;
+  return t;
+}
+
+String? _extractLogoUrl(Map<String, dynamic>? data) {
+  if (data == null) return null;
+  final direct = <String?>[
+    data['logoUrl']?.toString(),
+    data['logo']?.toString(),
+    data['logoLoja']?.toString(),
+    data['media.logo']?.toString(),
+    data['media.logoUrl']?.toString(),
+    data['imagens.logo']?.toString(),
+    data['marca.logo']?.toString(),
+  ];
+  for (final v in direct) {
+    final ok = sanitizePublicStoreLogoUrl(v);
+    if (ok != null) return ok;
+  }
+  final empresa = data['empresa'];
+  if (empresa is Map) {
+    final fromEmpresa = <String?>[
+      empresa['logo']?.toString(),
+      empresa['logoUrl']?.toString(),
+    ];
+    for (final v in fromEmpresa) {
+      final ok = sanitizePublicStoreLogoUrl(v);
+      if (ok != null) return ok;
+    }
+  }
+  final media = data['media'];
+  if (media is Map) {
+    final fromMedia = <String?>[
+      media['logo']?.toString(),
+      media['logoUrl']?.toString(),
+    ];
+    for (final v in fromMedia) {
+      final ok = sanitizePublicStoreLogoUrl(v);
+      if (ok != null) return ok;
+    }
   }
   return null;
 }
@@ -132,11 +183,13 @@ Future<CatalogDomainFirestoreHit?> fetchCatalogDomainFromFirestore(
       if (lojaId == null) continue;
       final st = (data?['status'] ?? 'ativo').toString().trim();
       final nomeLoja = _extractNomeLoja(data);
+      final logoUrl = _extractLogoUrl(data);
       logD('🌐 [CATALOG_DOMAIN] host=$docId → lojaId=$lojaId');
       return CatalogDomainFirestoreHit(
         lojaId: lojaId,
         status: st,
         nomeLoja: nomeLoja,
+        logoUrl: logoUrl,
       );
     } on TimeoutException catch (_) {
       logW('⚠️ [CATALOG_DOMAIN] timeout ao ler catalog_domains/$docId');
@@ -168,6 +221,7 @@ void scheduleCatalogDomainCacheRevalidation(String normalizedHost) {
         hit.lojaId,
         hit.status,
         hit.nomeLoja,
+        hit.logoUrl,
       );
     } catch (_) {}
   }());
@@ -194,7 +248,7 @@ Future<String?> resolveLojaIdForPublicCatalogHost(
       if (kDebugMode) {
         debugPrint(
           '[CATALOG_DOMAIN_TIMING] cache válido → lojaId=${cached.lojaId} (instantâneo)'
-          ' nomeLoja=${cached.nomeLoja ?? "-"}',
+          ' nomeLoja=${cached.nomeLoja ?? "-"} logo=${cached.logoUrl ?? "-"}',
         );
       }
       scheduleCatalogDomainCacheRevalidation(host);
@@ -223,7 +277,13 @@ Future<String?> resolveLojaIdForPublicCatalogHost(
 
   if (hit != null) {
     if (kIsWeb) {
-      CatalogDomainBrowserCache.write(host, hit.lojaId, hit.status, hit.nomeLoja);
+      CatalogDomainBrowserCache.write(
+        host,
+        hit.lojaId,
+        hit.status,
+        hit.nomeLoja,
+        hit.logoUrl,
+      );
     }
     return hit.lojaId;
   }
@@ -250,6 +310,7 @@ Future<CatalogDomainFirestoreHit?> resolveCatalogDomainHitForPublicCatalogHost(
         lojaId: cached.lojaId,
         status: cached.status,
         nomeLoja: cached.nomeLoja,
+        logoUrl: cached.logoUrl,
       );
     }
   }
@@ -259,7 +320,13 @@ Future<CatalogDomainFirestoreHit?> resolveCatalogDomainHitForPublicCatalogHost(
     onTimeout: () => null,
   );
   if (hit != null && kIsWeb) {
-    CatalogDomainBrowserCache.write(host, hit.lojaId, hit.status, hit.nomeLoja);
+    CatalogDomainBrowserCache.write(
+      host,
+      hit.lojaId,
+      hit.status,
+      hit.nomeLoja,
+      hit.logoUrl,
+    );
   }
   return hit;
 }

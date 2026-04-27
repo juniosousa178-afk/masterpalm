@@ -22,18 +22,46 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
   const CatalogBootstrapLoadingScreen({
     super.key,
     this.nomeLoja,
+    this.logoUrl,
   });
 
   final String? nomeLoja;
+  final String? logoUrl;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // No catálogo público, o loader deve priorizar o nome da loja.
-    // Não mostrar MasterPalm para o cliente final quando houver nome da loja disponível.
+    // No loader público do catálogo, priorizar logo da loja.
+    // Se não houver logo, usar nome da loja. Nunca mostrar MasterPalm para cliente final.
     final titulo = (nomeLoja ?? '').trim().isNotEmpty
         ? nomeLoja!.trim()
         : 'Carregando loja';
+    final logo = (logoUrl ?? '').trim();
+    final hasLogo = logo.isNotEmpty;
+
+    Widget fallbackPill() {
+      return Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF9A4E6B),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          titulo,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
       body: SafeArea(
@@ -45,26 +73,21 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF9A4E6B),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      titulo,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
+                  if (hasLogo)
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxHeight: 72,
+                        maxWidth: 220,
                       ),
-                    ),
-                  ),
+                      child: Image.network(
+                        logo,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        errorBuilder: (_, __, ___) => fallbackPill(),
+                      ),
+                    )
+                  else
+                    fallbackPill(),
                   const SizedBox(height: 36),
                   Text(
                     'Carregando catálogo...',
@@ -110,9 +133,11 @@ class CatalogBootstrapLoadingApp extends StatelessWidget {
   const CatalogBootstrapLoadingApp({
     super.key,
     this.nomeLoja,
+    this.logoUrl,
   });
 
   final String? nomeLoja;
+  final String? logoUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +148,10 @@ class CatalogBootstrapLoadingApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
         scaffoldBackgroundColor: const Color(0xFFF0F2F5),
       ),
-      home: CatalogBootstrapLoadingScreen(nomeLoja: nomeLoja),
+      home: CatalogBootstrapLoadingScreen(
+        nomeLoja: nomeLoja,
+        logoUrl: logoUrl,
+      ),
     );
   }
 }
@@ -139,12 +167,16 @@ class PublicCatalogBootstrapApp extends StatefulWidget {
     required this.afterFirebaseMinReady,
     required this.firebaseSpanName,
     this.initialNomeLoja,
+    this.initialLogoUrl,
   });
 
   final Future<bool> Function() initFirebase;
-  final Future<void> Function(void Function(String? nomeLoja) updateNomeLoja)
-      afterFirebaseMinReady;
+  final Future<void> Function({
+    required void Function(String? nomeLoja) updateNomeLoja,
+    required void Function(String? logoUrl) updateLogoUrl,
+  }) afterFirebaseMinReady;
   final String? initialNomeLoja;
+  final String? initialLogoUrl;
 
   /// Ex.: `CAT_START.fast_path.firebase_min_init` ou `CAT_START.custom_domain.fast_path.firebase`
   final String firebaseSpanName;
@@ -156,6 +188,7 @@ class PublicCatalogBootstrapApp extends StatefulWidget {
 
 class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
   late String? _nomeLoja;
+  late String? _logoUrl;
 
   void _updateNomeLoja(String? nomeLoja) {
     if (!mounted) return;
@@ -164,10 +197,18 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
     });
   }
 
+  void _updateLogoUrl(String? logoUrl) {
+    if (!mounted) return;
+    setState(() {
+      _logoUrl = logoUrl;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _nomeLoja = widget.initialNomeLoja;
+    _logoUrl = widget.initialLogoUrl;
     if (kDebugMode) {
       debugPrint('[CATALOG_BOOT] first_frame_loader');
     }
@@ -208,7 +249,10 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
     }
 
     try {
-      await widget.afterFirebaseMinReady(_updateNomeLoja);
+      await widget.afterFirebaseMinReady(
+        updateNomeLoja: _updateNomeLoja,
+        updateLogoUrl: _updateLogoUrl,
+      );
     } catch (e, st) {
       logW(
         '⚠️ [CATALOG_BOOT] afterFirebaseMinReady falhou (type=${e.runtimeType})',
@@ -219,6 +263,9 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
 
   @override
   Widget build(BuildContext context) {
-    return CatalogBootstrapLoadingApp(nomeLoja: _nomeLoja);
+    return CatalogBootstrapLoadingApp(
+      nomeLoja: _nomeLoja,
+      logoUrl: _logoUrl,
+    );
   }
 }

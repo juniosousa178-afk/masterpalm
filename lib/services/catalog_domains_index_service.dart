@@ -16,6 +16,15 @@ String? _sanitizeStoreNameForIndex(String? raw) {
   return t;
 }
 
+String? _sanitizeLogoUrlForIndex(String? raw) {
+  final t = (raw ?? '').trim();
+  if (t.isEmpty) return null;
+  final lower = t.toLowerCase();
+  if (lower == 'null' || lower == 'undefined') return null;
+  if (!(lower.startsWith('http://') || lower.startsWith('https://'))) return null;
+  return t;
+}
+
 /// Hosts que recebem documento no índice (apex + subdomínio recomendado do catálogo).
 Set<String> catalogDomainIndexDocIdsForConfig(String normalizedDomainInput) {
   final base = normalizeCatalogDomainInput(normalizedDomainInput);
@@ -58,6 +67,45 @@ class CatalogDomainsIndexService {
     return null;
   }
 
+  static String? _extractLogoUrlFromConfig(Map<String, dynamic> cfg) {
+    final vals = <String?>[
+      cfg['logoUrl']?.toString(),
+      cfg['logo']?.toString(),
+      cfg['logoLoja']?.toString(),
+      cfg['media.logo']?.toString(),
+      cfg['media.logoUrl']?.toString(),
+      cfg['imagens.logo']?.toString(),
+      cfg['marca.logo']?.toString(),
+    ];
+    for (final v in vals) {
+      final ok = _sanitizeLogoUrlForIndex(v);
+      if (ok != null) return ok;
+    }
+    final empresa = cfg['empresa'];
+    if (empresa is Map) {
+      final fromEmpresa = <String?>[
+        empresa['logo']?.toString(),
+        empresa['logoUrl']?.toString(),
+      ];
+      for (final v in fromEmpresa) {
+        final ok = _sanitizeLogoUrlForIndex(v);
+        if (ok != null) return ok;
+      }
+    }
+    final media = cfg['media'];
+    if (media is Map) {
+      final fromMedia = <String?>[
+        media['logo']?.toString(),
+        media['logoUrl']?.toString(),
+      ];
+      for (final v in fromMedia) {
+        final ok = _sanitizeLogoUrlForIndex(v);
+        if (ok != null) return ok;
+      }
+    }
+    return null;
+  }
+
   static Future<void> _writeInactiveForHosts(Set<String> hosts) async {
     for (final id in hosts) {
       if (id.isEmpty) continue;
@@ -78,6 +126,7 @@ class CatalogDomainsIndexService {
     required String dominioDisplay,
     required Set<String> hosts,
     String? nomeLoja,
+    String? logoUrl,
   }) async {
     final idLoja = lojaId.trim();
     if (idLoja.isEmpty || hosts.isEmpty) return;
@@ -91,6 +140,7 @@ class CatalogDomainsIndexService {
             'status': kCatalogDomainIndexStatusAtivo,
             'verified': true,
             if ((nomeLoja ?? '').trim().isNotEmpty) 'nomeLoja': nomeLoja!.trim(),
+            if ((logoUrl ?? '').trim().isNotEmpty) 'logoUrl': logoUrl!.trim(),
             'atualizadoEm': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
@@ -115,6 +165,7 @@ class CatalogDomainsIndexService {
     final st = (publishedConfig['dominioStatus'] ?? publishedConfig['dominio_status'] ?? '')
         .toString();
     final nomeLoja = _extractNomeLojaFromConfig(publishedConfig);
+    final logoUrl = _extractLogoUrlFromConfig(publishedConfig);
 
     final oldHosts = previousDominioCatalogoNormalized == null ||
             previousDominioCatalogoNormalized.isEmpty
@@ -137,6 +188,7 @@ class CatalogDomainsIndexService {
         dominioDisplay: domNorm,
         hosts: newHosts,
         nomeLoja: nomeLoja,
+        logoUrl: logoUrl,
       );
     }
   }
@@ -146,18 +198,22 @@ class CatalogDomainsIndexService {
     required String lojaId,
     required String dominioUserNormalized,
     String? nomeLoja,
+    String? logoUrl,
   }) async {
     final domNorm = normalizeCatalogDomainInput(dominioUserNormalized);
     if (domNorm.isEmpty) return;
     var nomeFinal = (nomeLoja ?? '').trim();
+    var logoFinal = (logoUrl ?? '').trim();
     if (nomeFinal.isEmpty) {
       try {
         final lojaDoc = await _db.collection('lojas').doc(lojaId.trim()).get();
         if (lojaDoc.exists) {
+          final map = Map<String, dynamic>.from(lojaDoc.data() ?? const {});
           nomeFinal = _extractNomeLojaFromConfig(
-            Map<String, dynamic>.from(lojaDoc.data() ?? const {}),
+            map,
           ) ??
               '';
+          logoFinal = _extractLogoUrlFromConfig(map) ?? '';
         }
       } catch (_) {}
     }
@@ -167,6 +223,7 @@ class CatalogDomainsIndexService {
       dominioDisplay: domNorm,
       hosts: hosts,
       nomeLoja: nomeFinal,
+      logoUrl: logoFinal,
     );
   }
 }

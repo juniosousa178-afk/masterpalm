@@ -1797,9 +1797,13 @@ Future<void> main() async {
         runApp(PublicCatalogBootstrapApp(
           firebaseSpanName: 'CAT_START.fast_path.firebase_min_init',
           initFirebase: ensureFirebaseInitializedOnce,
-          afterFirebaseMinReady: (updateNomeLoja) async {
+          afterFirebaseMinReady: ({
+            required void Function(String? nomeLoja) updateNomeLoja,
+            required void Function(String? logoUrl) updateLogoUrl,
+          }) async {
             // /loja/{id}: nome costuma vir depois no stream de config; mantemos fallback leve aqui.
             updateNomeLoja(null);
+            updateLogoUrl(null);
             StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
               urlSlugOrId: lojaSlugOrId,
               resolvedCanonicalStoreId: lojaSlugOrId,
@@ -1831,15 +1835,19 @@ Future<void> main() async {
       // FAST PATH: domínio próprio (host mapeado em catalog_domains).
       if (_shouldOfferCustomDomainCatalogFastPath(uriWeb)) {
         final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
-        final cachedNomeLoja = sanitizePublicStoreName(
-          CatalogDomainBrowserCache.read(hostNorm)?.nomeLoja,
-        );
+        final cached = CatalogDomainBrowserCache.read(hostNorm);
+        final cachedNomeLoja = sanitizePublicStoreName(cached?.nomeLoja);
+        final cachedLogoUrl = sanitizePublicStoreLogoUrl(cached?.logoUrl);
         CatalogStartupTrace.mark('CAT_START.runApp.catalog_bootstrap_gate.custom_domain');
         runApp(PublicCatalogBootstrapApp(
           firebaseSpanName: 'CAT_START.custom_domain.fast_path.firebase',
           initFirebase: ensureFirebaseInitializedOnce,
           initialNomeLoja: cachedNomeLoja,
-          afterFirebaseMinReady: (updateNomeLoja) async {
+          initialLogoUrl: cachedLogoUrl,
+          afterFirebaseMinReady: ({
+            required void Function(String? nomeLoja) updateNomeLoja,
+            required void Function(String? logoUrl) updateLogoUrl,
+          }) async {
             if (kDebugMode) {
               debugPrint('[CATALOG_BOOT] domain.resolve.begin');
             }
@@ -1862,6 +1870,10 @@ Future<void> main() async {
             final nomeLoja = (domainHit?.nomeLoja ?? '').trim();
             if (nomeLoja.isNotEmpty) {
               updateNomeLoja(nomeLoja);
+            }
+            final logoUrl = sanitizePublicStoreLogoUrl(domainHit?.logoUrl);
+            if (logoUrl != null) {
+              updateLogoUrl(logoUrl);
             }
             final fromMappedHost = (domainHit?.lojaId ?? '').trim();
             if (fromMappedHost.isNotEmpty) {
