@@ -1,6 +1,55 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+  <!-- ?diag=1&cacheReset=1 : limpa SW, Cache API e chaves de diagnóstico antes do Flutter; redireciona com cacheResetDone=1 -->
+  <script>
+    (function () {
+      function shouldRun() {
+        try {
+          var u = new URL(location.href);
+          return u.searchParams.get('diag') === '1' && u.searchParams.get('cacheReset') === '1';
+        } catch (e) {
+          return false;
+        }
+      }
+      if (!shouldRun()) return;
+      var keys = [
+        'mp_last_runtime_error',
+        'mp_catalog_resolver_result',
+        'mp_fetch_log',
+        'mp_diag_sw_state',
+        'mp_catalog_phase',
+        'mp_catalog_build_id'
+      ];
+      try {
+        for (var i = 0; i < keys.length; i++) {
+          try { localStorage.removeItem(keys[i]); } catch (e) {}
+        }
+      } catch (e) {}
+      var next;
+      try {
+        var u = new URL(location.href);
+        u.searchParams.delete('cacheReset');
+        u.searchParams.set('cacheResetDone', '1');
+        next = u.toString();
+      } catch (e) {
+        next = location.href;
+      }
+      var p1 = ('serviceWorker' in navigator)
+        ? navigator.serviceWorker.getRegistrations().then(function (regs) {
+            return Promise.all(regs.map(function (r) { return r.unregister(); }));
+          })
+        : Promise.resolve();
+      var p2 = (window.caches && caches.keys)
+        ? caches.keys().then(function (ks) {
+            return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+          })
+        : Promise.resolve();
+      Promise.all([p1, p2]).finally(function () {
+        try { location.replace(next); } catch (e) { location.href = next; }
+      });
+    })();
+  </script>
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
@@ -29,6 +78,261 @@
             regs[i].update();
           }
         });
+      });
+    })();
+  </script>
+  <script>
+    (function () {
+      function isDiagMode() {
+        try {
+          var u = new URL(location.href);
+          return u.searchParams.get('diag') === '1' || u.searchParams.get('netTest') === '1';
+        } catch (_) {
+          return false;
+        }
+      }
+      function sanitizeUrl(raw) {
+        try {
+          var u = new URL(String(raw), location.origin);
+          var blocked = {
+            token: true,
+            auth: true,
+            authorization: true,
+            key: true,
+            apikey: true,
+            appcheck: true,
+            app_check: true,
+            recaptcha: true,
+            id_token: true,
+            access_token: true,
+            refresh_token: true,
+            code: true,
+            secret: true
+          };
+          var keep = [];
+          u.searchParams.forEach(function (value, key) {
+            if (!blocked[String(key).toLowerCase()]) keep.push([key, value]);
+          });
+          u.search = '';
+          for (var i = 0; i < keep.length; i++) {
+            u.searchParams.append(keep[i][0], keep[i][1]);
+          }
+          return u.origin + u.pathname + (u.search ? u.search : '');
+        } catch (_) {
+          return String(raw || '').slice(0, 280);
+        }
+      }
+      function pushFetchLog(entry) {
+        if (!isDiagMode()) return;
+        try {
+          var key = 'mp_fetch_log';
+          var raw = localStorage.getItem(key);
+          var arr = [];
+          if (raw) {
+            try {
+              var parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) arr = parsed;
+            } catch (_) {}
+          }
+          arr.push(entry);
+          if (arr.length > 80) arr = arr.slice(arr.length - 80);
+          localStorage.setItem(key, JSON.stringify(arr));
+        } catch (_) {}
+      }
+      function updateSwDiagState() {
+        if (!isDiagMode()) return;
+        try {
+          var payload = {
+            ts: new Date().toISOString(),
+            controller: !!(navigator.serviceWorker && navigator.serviceWorker.controller),
+            iosswfixRan: location.search.indexOf('iosswfix=1') >= 0,
+            userAgent: navigator.userAgent || ''
+          };
+          var p = Promise.resolve();
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            p = p.then(function () {
+              return navigator.serviceWorker.getRegistrations().then(function (regs) {
+                payload.registrations = regs.map(function (r) {
+                  return {
+                    scope: r.scope || '',
+                    active: !!r.active,
+                    waiting: !!r.waiting,
+                    installing: !!r.installing
+                  };
+                });
+              });
+            });
+          }
+          if (window.caches && caches.keys) {
+            p = p.then(function () {
+              return caches.keys().then(function (keys) {
+                payload.caches = keys || [];
+              });
+            });
+          }
+          p.finally(function () {
+            localStorage.setItem('mp_diag_sw_state', JSON.stringify(payload));
+          });
+        } catch (_) {}
+      }
+      if (isDiagMode() && window.fetch && !window.__mpFetchDiagWrapped) {
+        window.__mpFetchDiagWrapped = true;
+        var originalFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+          var method = (init && init.method) ? String(init.method).toUpperCase() : 'GET';
+          var url = '';
+          try {
+            url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+          } catch (_) {}
+          var safeUrl = sanitizeUrl(url);
+          var startedAt = Date.now();
+          return originalFetch(input, init).then(function (resp) {
+            pushFetchLog({
+              ts: new Date().toISOString(),
+              method: method,
+              url: safeUrl,
+              status: resp && typeof resp.status === 'number' ? resp.status : null,
+              ok: !!(resp && resp.ok),
+              elapsedMs: Date.now() - startedAt
+            });
+            return resp;
+          }).catch(function (err) {
+            pushFetchLog({
+              ts: new Date().toISOString(),
+              method: method,
+              url: safeUrl,
+              status: null,
+              ok: false,
+              errorName: err && err.name ? String(err.name) : '',
+              errorMessage: err && err.message ? String(err.message) : String(err),
+              elapsedMs: Date.now() - startedAt
+            });
+            throw err;
+          });
+        };
+      }
+      updateSwDiagState();
+      function getSlugFromLocation() {
+        try {
+          var p = location.pathname || '';
+          var parts = p.split('/').filter(Boolean);
+          if (parts.length >= 2 && parts[0] === 'loja') return parts[1] || '';
+          var u = new URL(location.href);
+          return (u.searchParams.get('loja') || u.searchParams.get('slug') || u.searchParams.get('store_id') || '').trim();
+        } catch (_) {
+          return '';
+        }
+      }
+      function saveRuntimeError(payload) {
+        try {
+          localStorage.setItem('mp_last_runtime_error', JSON.stringify(payload));
+        } catch (_) {}
+      }
+      window.addEventListener('error', function (ev) {
+        try {
+          var msg = (ev && ev.message) ? String(ev.message) : 'window.onerror';
+          var errObj = ev && ev.error;
+          var stack = '';
+          try {
+            stack = errObj && errObj.stack ? String(errObj.stack) : '';
+          } catch (_) {}
+          var payload = {
+            buildId: localStorage.getItem('mp_catalog_build_id') || 'unknown',
+            timestamp: new Date().toISOString(),
+            host: location.host || '',
+            path: location.pathname || '',
+            query: (location.search || '').replace(/^\?/, ''),
+            userAgent: navigator.userAgent || '',
+            fase: 'window.onerror',
+            slug: getSlugFromLocation(),
+            lojaId: '',
+            error: msg,
+            stack: stack,
+            source: (ev && ev.filename) ? String(ev.filename) : '',
+            lineno: (ev && typeof ev.lineno === 'number') ? ev.lineno : 0,
+            colno: (ev && typeof ev.colno === 'number') ? ev.colno : 0
+          };
+          saveRuntimeError(payload);
+        } catch (_) {}
+      });
+      window.addEventListener('unhandledrejection', function (ev) {
+        try {
+          var reason = ev && ev.reason ? ev.reason : 'unhandledrejection';
+          var msg = '';
+          var stack = '';
+          var reasonName = '';
+          var reasonCode = '';
+          var reasonMessage = '';
+          var reasonJson = '';
+          var reasonKeys = '';
+          if (reason && typeof reason === 'object') {
+            msg = reason.toString ? String(reason.toString()) : '[object]';
+            stack = reason.stack ? String(reason.stack) : '';
+            reasonName = reason.name ? String(reason.name) : '';
+            reasonCode = reason.code ? String(reason.code) : '';
+            reasonMessage = reason.message ? String(reason.message) : '';
+            try {
+              reasonJson = JSON.stringify(reason) || '';
+            } catch (_) {
+              reasonJson = '';
+            }
+            try {
+              reasonKeys = Object.keys(reason).join(',');
+            } catch (_) {
+              reasonKeys = '';
+            }
+          } else {
+            msg = String(reason);
+          }
+          var payload = {
+            buildId: localStorage.getItem('mp_catalog_build_id') || 'unknown',
+            timestamp: new Date().toISOString(),
+            host: location.host || '',
+            path: location.pathname || '',
+            query: (location.search || '').replace(/^\?/, ''),
+            userAgent: navigator.userAgent || '',
+            fase: 'window.unhandledrejection',
+            slug: getSlugFromLocation(),
+            lojaId: '',
+            error: msg,
+            stack: stack,
+            reasonName: reasonName,
+            reasonMessage: reasonMessage,
+            reasonCode: reasonCode,
+            reasonJson: reasonJson,
+            reasonKeys: reasonKeys,
+            source: '',
+            lineno: 0,
+            colno: 0
+          };
+          saveRuntimeError(payload);
+        } catch (_) {}
+      });
+    })();
+  </script>
+  <!-- iPhone WebKit (Safari/Chrome/WhatsApp): limpeza única de SW/cache para evitar mix de bundles -->
+  <script>
+    (function () {
+      if (location.search.indexOf('cacheReset=1') >= 0) return;
+      var ua = (navigator.userAgent || '').toLowerCase();
+      var isIosWebKit =
+        (ua.indexOf('iphone') >= 0 || ua.indexOf('ipad') >= 0 || ua.indexOf('ipod') >= 0) &&
+        ua.indexOf('applewebkit') >= 0;
+      if (!isIosWebKit) return;
+      if (!('serviceWorker' in navigator)) return;
+      if (location.search.indexOf('iosswfix=1') >= 0) return;
+      Promise.all([
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          return Promise.all(regs.map(function (r) { return r.unregister(); }));
+        }),
+        (window.caches && caches.keys)
+          ? caches.keys().then(function (keys) {
+              return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+            })
+          : Promise.resolve()
+      ]).finally(function () {
+        var sep = location.search ? '&' : '?';
+        location.replace(location.pathname + location.search + sep + 'iosswfix=1' + location.hash);
       });
     })();
   </script>

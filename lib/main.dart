@@ -1,16 +1,18 @@
 // lib/main.dart
 import 'dart:async';
+import 'dart:convert';
 
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart'
     show kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform;
 
-
 import 'core/logger.dart';
 import 'package:flutter/material.dart';
-import 'url_strategy_stub.dart' if (dart.library.html) 'url_strategy_web.dart' as url_strategy;
+import 'url_strategy_stub.dart' if (dart.library.html) 'url_strategy_web.dart'
+    as url_strategy;
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -37,12 +39,15 @@ import 'src/io_compat.dart' show File, getAppDocsDirPath;
 import 'utils/theme_notifier.dart';
 
 // Projeto
+import 'firebase_bootstrap_options.dart';
 import 'firebase_options.dart';
 import 'themes/app_colors.dart';
 import 'app_routes.dart' as app_routes;
 import 'utils/last_route_observer.dart';
 import 'utils/store_screen_route_observer.dart';
 import 'bootstrap/web_popstate_logger.dart';
+import 'web/platform_stub.dart' if (dart.library.html) 'web/platform_web.dart'
+    as web_plat;
 import 'utils/web_nav_log_observer.dart';
 import 'widgets/admin_web_route_shell.dart';
 
@@ -141,7 +146,9 @@ import 'services/deep_link_handler.dart';
 import 'services/fcm_pedido_service.dart';
 import 'services/test_checkout.dart';
 import 'services/permissoes_service.dart';
-import 'services/backup_auto_service_io.dart' if (dart.library.html) 'services/backup_auto_service_web.dart' as backup_auto_service;
+import 'services/backup_auto_service_io.dart'
+    if (dart.library.html) 'services/backup_auto_service_web.dart'
+    as backup_auto_service;
 import 'services/produto_auto_sync_service.dart';
 import 'services/notificacao_service.dart';
 import 'services/auto_sync_service.dart';
@@ -207,7 +214,8 @@ import 'debug/catalog_startup_trace.dart';
 // ===========================================================================
 
 bool _appCheckActivatedOnce = false;
-bool _appCheckWebOk = false; // true apenas quando ativação Web teve sucesso (ETAPA 20).
+bool _appCheckWebOk =
+    false; // true apenas quando ativação Web teve sucesso (ETAPA 20).
 DateTime? _appCheckBackoffUntil;
 
 Future<void> initFirebaseAppCheck() async {
@@ -220,18 +228,22 @@ Future<void> initFirebaseAppCheck() async {
   }
 
   if (_appCheckActivatedOnce) {
-    logD('ℹ️ [AppCheck] Já ativado nesta sessão (evitando throttle). Pulando nova ativação.');
+    logD(
+        'ℹ️ [AppCheck] Já ativado nesta sessão (evitando throttle). Pulando nova ativação.');
     _debugPrintAppCheckDiagnostics();
     return;
   }
 
-  if (_appCheckBackoffUntil != null && DateTime.now().isBefore(_appCheckBackoffUntil!)) {
-    logD('ℹ️ [AppCheck] Em backoff (400/erro de rede). Aguardando ${_appCheckBackoffUntil!.difference(DateTime.now()).inSeconds}s.');
+  final backoffUntil = _appCheckBackoffUntil;
+  if (backoffUntil != null && DateTime.now().isBefore(backoffUntil)) {
+    logD(
+        'ℹ️ [AppCheck] Em backoff (400/erro de rede). Aguardando ${backoffUntil.difference(DateTime.now()).inSeconds}s.');
     return;
   }
 
   if (skipAppCheckOnWebInDebug) {
-    logD('ℹ️ [AppCheck] Web em modo debug: pulando ativação (evita 400/throttle em localhost).');
+    logD(
+        'ℹ️ [AppCheck] Web em modo debug: pulando ativação (evita 400/throttle em localhost).');
     _appCheckActivatedOnce = true;
     _debugPrintAppCheckDiagnostics();
     return;
@@ -239,14 +251,17 @@ Future<void> initFirebaseAppCheck() async {
 
   try {
     if (kDebugMode && !kIsWeb) {
-      logD('[LOGIN-APPCHECK] Iniciando App Check para ${defaultTargetPlatform.name}');
+      logD(
+          '[LOGIN-APPCHECK] Iniciando App Check para ${defaultTargetPlatform.name}');
     }
     if (kIsWeb) {
       // ETAPA 20: Web soft-fail — uma única tentativa; em erro não bloqueia Auth/login.
       try {
         final host = Uri.base.host.isEmpty ? 'unknown' : Uri.base.host;
         if (!isHostAllowed(host)) {
-          logW('[AppCheck] host não permitido; não ativando. Login continua normalmente.', tag: 'APP-CHECK');
+          logW(
+              '[AppCheck] host não permitido; não ativando. Login continua normalmente.',
+              tag: 'APP-CHECK');
           _appCheckActivatedOnce = true;
           _debugPrintAppCheckDiagnostics();
           return;
@@ -254,8 +269,11 @@ Future<void> initFirebaseAppCheck() async {
         logD('[AppCheck] host=$host activate.start');
         final ok = await _activateAppCheckWeb();
         if (!ok) {
-          _appCheckBackoffUntil = DateTime.now().add(const Duration(seconds: 60));
-          logW('[AppCheck] Ativação Web falhou (400/throttle/storage). App e login Google continuam.', tag: 'APP-CHECK');
+          _appCheckBackoffUntil =
+              DateTime.now().add(const Duration(seconds: 60));
+          logW(
+              '[AppCheck] Ativação Web falhou (400/throttle/storage). App e login Google continuam.',
+              tag: 'APP-CHECK');
           _appCheckActivatedOnce = true;
           _debugPrintAppCheckDiagnostics();
           return;
@@ -265,7 +283,9 @@ Future<void> initFirebaseAppCheck() async {
       } catch (e, st) {
         _appCheckWebOk = false;
         _appCheckActivatedOnce = true;
-        logW('[AppCheck] Web: falha na ativação (ignorado). Login continua normalmente.', tag: 'APP-CHECK');
+        logW(
+            '[AppCheck] Web: falha na ativação (ignorado). Login continua normalmente.',
+            tag: 'APP-CHECK');
         if (kDebugMode) logD('   (type=${e.runtimeType})');
         if (kDebugMode) logD('   $st');
         _debugPrintAppCheckDiagnostics();
@@ -281,7 +301,9 @@ Future<void> initFirebaseAppCheck() async {
     // Web: desabilitar auto-refresh para evitar 400/throttle em exchangeRecaptchaV3Token (evita loop de requests).
     const enableRefresh = !kIsWeb;
     await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(enableRefresh);
-    if (kIsWeb && kDebugMode) logD('[AppCheck] Web: token auto-refresh desligado para evitar 400 em cascata.');
+    if (kIsWeb && kDebugMode)
+      logD(
+          '[AppCheck] Web: token auto-refresh desligado para evitar 400 em cascata.');
 
     if (useDebugProvider && !kIsWeb) {
       _appCheckSelfCheck();
@@ -289,11 +311,17 @@ Future<void> initFirebaseAppCheck() async {
     _debugPrintAppCheckDiagnostics();
   } on FirebaseException catch (e) {
     final msg = (e.message ?? '').toLowerCase();
-    final is400 = e.code.contains('400') || msg.contains('400') || msg.contains('bad request');
-    final isConnectionError = msg.contains('connection_closed') || msg.contains('err_connection') || msg.contains('connection');
-    final isAttestationFailed = msg.contains('attestation failed') || msg.contains('app attestation failed');
+    final is400 = e.code.contains('400') ||
+        msg.contains('400') ||
+        msg.contains('bad request');
+    final isConnectionError = msg.contains('connection_closed') ||
+        msg.contains('err_connection') ||
+        msg.contains('connection');
+    final isAttestationFailed = msg.contains('attestation failed') ||
+        msg.contains('app attestation failed');
     if (!kIsWeb && kDebugMode && isAttestationFailed) {
-      logD('[AppCheck] Detectado attestation failed (debug). Cadastre o Debug Token em Firebase Console → App Check → Tokens de depuração.');
+      logD(
+          '[AppCheck] Detectado attestation failed (debug). Cadastre o Debug Token em Firebase Console → App Check → Tokens de depuração.');
       _logDebugTokenInstructions();
     }
     if (kIsWeb) {
@@ -301,39 +329,52 @@ Future<void> initFirebaseAppCheck() async {
       _appCheckActivatedOnce = true;
       if (is400 || isConnectionError) {
         _appCheckBackoffUntil = DateTime.now().add(const Duration(seconds: 60));
-        logW('[AppCheck] 400/erro de rede no Web. App e login continuam.', tag: 'APP-CHECK');
+        logW('[AppCheck] 400/erro de rede no Web. App e login continuam.',
+            tag: 'APP-CHECK');
       } else {
-        logW('[AppCheck] activate.fail Web: ${e.code}. App continua sem proteção.', tag: 'APP-CHECK');
+        logW(
+            '[AppCheck] activate.fail Web: ${e.code}. App continua sem proteção.',
+            tag: 'APP-CHECK');
       }
     } else {
       if (is400 || isConnectionError) {
         _appCheckBackoffUntil = DateTime.now().add(const Duration(seconds: 60));
-        logD('[AppCheck] 400 ou erro de rede detectado. Backoff 60s. App continua normalmente.');
+        logD(
+            '[AppCheck] 400 ou erro de rede detectado. Backoff 60s. App continua normalmente.');
       } else {
-        logD('[AppCheck] activate.fail: ${e.code} ${e.message ?? ""}. App continua sem proteção.');
+        logD(
+            '[AppCheck] activate.fail: ${e.code} ${e.message ?? ""}. App continua sem proteção.');
       }
       _appCheckActivatedOnce = true;
     }
     if (kIsWeb && kDebugMode) {
-      logD('   [AppCheck] Web: recaptcha_site_key (Remote Config) ou kRecaptchaSiteKeyOverride.');
+      logD(
+          '   [AppCheck] Web: recaptcha_site_key (Remote Config) ou kRecaptchaSiteKeyOverride.');
     }
     _debugPrintAppCheckDiagnostics();
   } catch (e, st) {
     if (kIsWeb) {
       _appCheckWebOk = false;
       _appCheckActivatedOnce = true;
-      logW('[AppCheck] Web: falha na ativação (ignorado). Login continua normalmente.', tag: 'APP-CHECK');
+      logW(
+          '[AppCheck] Web: falha na ativação (ignorado). Login continua normalmente.',
+          tag: 'APP-CHECK');
       if (kDebugMode) logD('   (type=${e.runtimeType})');
       if (kDebugMode) logD('   $st');
     } else {
       final msg = e.toString().toLowerCase();
-      final is400OrConnection = msg.contains('400') || msg.contains('connection_closed') || msg.contains('err_connection');
-      final isAttestationFailed = msg.contains('attestation failed') || msg.contains('app attestation failed');
+      final is400OrConnection = msg.contains('400') ||
+          msg.contains('connection_closed') ||
+          msg.contains('err_connection');
+      final isAttestationFailed = msg.contains('attestation failed') ||
+          msg.contains('app attestation failed');
       if (is400OrConnection) {
         _appCheckBackoffUntil = DateTime.now().add(const Duration(seconds: 60));
-        logD('[AppCheck] 400 ou erro de rede detectado. Backoff 60s. App continua normalmente.');
+        logD(
+            '[AppCheck] 400 ou erro de rede detectado. Backoff 60s. App continua normalmente.');
       } else if (kDebugMode && isAttestationFailed) {
-        logD('[AppCheck] Attestation failed. Cadastre o Debug Token em Firebase Console → App Check → Tokens de depuração.');
+        logD(
+            '[AppCheck] Attestation failed. Cadastre o Debug Token em Firebase Console → App Check → Tokens de depuração.');
         _logDebugTokenInstructions();
       } else {
         logD('[AppCheck] activate.fail (type=${e.runtimeType})');
@@ -349,15 +390,20 @@ Future<void> initFirebaseAppCheck() async {
 void _debugPrintAppCheckDiagnostics() {
   if (!kDebugMode) return;
   try {
-    final host = kIsWeb ? (Uri.base.host.isEmpty ? 'unknown' : Uri.base.host) : defaultTargetPlatform.name;
-    logD('   [AppCheck] Diagnóstico: host=$host | ativadoUmaVez=$_appCheckActivatedOnce');
+    final host = kIsWeb
+        ? (Uri.base.host.isEmpty ? 'unknown' : Uri.base.host)
+        : defaultTargetPlatform.name;
+    logD(
+        '   [AppCheck] Diagnóstico: host=$host | ativadoUmaVez=$_appCheckActivatedOnce');
   } catch (_) {}
 }
 
 /// Para telas de diagnóstico: retorna host e confirmação de que activate rodou apenas uma vez.
 Map<String, String> getAppCheckDiagnostics() {
   return {
-    'host': kIsWeb ? (Uri.base.host.isEmpty ? 'unknown' : Uri.base.host) : defaultTargetPlatform.name,
+    'host': kIsWeb
+        ? (Uri.base.host.isEmpty ? 'unknown' : Uri.base.host)
+        : defaultTargetPlatform.name,
     'appCheckActivatedOnce': _appCheckActivatedOnce.toString(),
     'appCheckWebOk': _appCheckWebOk.toString(),
   };
@@ -374,11 +420,15 @@ Future<bool> _activateAppCheckWeb() async {
     recaptchaKey = RemoteConfigService.recaptchaSiteKey.trim();
   }
   if (recaptchaKey.isEmpty || recaptchaKey == kRecaptchaPlaceholder) {
-    logW('[AppCheck] Web: recaptcha_site_key vazia; não ativar. Login continua.', tag: 'APP-CHECK');
+    logW(
+        '[AppCheck] Web: recaptcha_site_key vazia; não ativar. Login continua.',
+        tag: 'APP-CHECK');
     return false;
   }
-  final keyPreview = recaptchaKey.length >= 6 ? '${recaptchaKey.substring(0, 6)}...' : '***';
-  logD('[AppCheck] Provider: reCAPTCHA v3 (Web) | host=$host | key=$keyPreview');
+  final keyPreview =
+      recaptchaKey.length >= 6 ? '${recaptchaKey.substring(0, 6)}...' : '***';
+  logD(
+      '[AppCheck] Provider: reCAPTCHA v3 (Web) | host=$host | key=$keyPreview');
 
   try {
     await FirebaseAppCheck.instance.activate(
@@ -386,13 +436,17 @@ Future<bool> _activateAppCheckWeb() async {
     );
     return true;
   } on FirebaseException catch (e) {
-    logW('[AppCheck] Web: ${e.code} ${e.message ?? "sem mensagem"}. Login continua.', tag: 'APP-CHECK');
-    if (e.code == 'app-check/throttled' || (e.message?.toLowerCase().contains('throttl') ?? false)) {
+    logW(
+        '[AppCheck] Web: ${e.code} ${e.message ?? "sem mensagem"}. Login continua.',
+        tag: 'APP-CHECK');
+    if (e.code == 'app-check/throttled' ||
+        (e.message?.toLowerCase().contains('throttl') ?? false)) {
       logD('[AppCheck] throttle detectado. Não ativar novamente nesta sessão.');
     }
     return false;
   } catch (e) {
-    logW('[AppCheck] Web: falha na ativação. Login continua.', tag: 'APP-CHECK');
+    logW('[AppCheck] Web: falha na ativação. Login continua.',
+        tag: 'APP-CHECK');
     return false;
   }
 }
@@ -432,12 +486,14 @@ Future<void> _activateAppCheckNative() async {
 void _logDebugTokenInstructions() {
   logD('   ┌─────────────────────────────────────────────────────────────');
   logD('   │ DEBUG TOKEN – cadastre no Firebase Console:');
-  logD('   │ Firebase Console → App Check → Apps → [Android/iOS] → Tokens de depuração');
+  logD(
+      '   │ Firebase Console → App Check → Apps → [Android/iOS] → Tokens de depuração');
   logD('   │');
   logD('   │ Como obter o token:');
   if (defaultTargetPlatform == TargetPlatform.android) {
     logD('   │   adb logcat | grep -i DebugAppCheckProvider');
-    logD('   │   ou no Android Studio Logcat, filtrar por "debug secret" ou "App Check"');
+    logD(
+        '   │   ou no Android Studio Logcat, filtrar por "debug secret" ou "App Check"');
   } else {
     logD('   │   O token aparece no console do Xcode ao rodar o app.');
   }
@@ -466,9 +522,12 @@ void _appCheckSelfCheck() {
           err.contains('denied') ||
           e.runtimeType.toString() == 'FirebaseException';
       if (isKnownDebug) {
-        logD('⚠️ [AppCheck] Self-check falhou (esperado em debug sem token cadastrado).');
-        logD('   → Cadastre o Debug Token em: Firebase Console → App Check → Tokens de depuração');
-        logD('   → O token aparece no Logcat (Android) ou Xcode (iOS) ao rodar o app.');
+        logD(
+            '⚠️ [AppCheck] Self-check falhou (esperado em debug sem token cadastrado).');
+        logD(
+            '   → Cadastre o Debug Token em: Firebase Console → App Check → Tokens de depuração');
+        logD(
+            '   → O token aparece no Logcat (Android) ou Xcode (iOS) ao rodar o app.');
       } else {
         logW('⚠️ [AppCheck] Self-check falhou (type=${e.runtimeType})');
       }
@@ -495,7 +554,8 @@ Future<void> initFirebaseMonitoring() async {
   // Se Firebase não estiver inicializado (ex.: modo OFFLINE / timeout), não tentar
   // acessar Crashlytics para evitar core/no-app durante o próprio handler.
   if (Firebase.apps.isEmpty) {
-    logD('ℹ️ Crashlytics omitido: Firebase.apps.isEmpty (modo OFFLINE ou init falhou).');
+    logD(
+        'ℹ️ Crashlytics omitido: Firebase.apps.isEmpty (modo OFFLINE ou init falhou).');
     return;
   }
 
@@ -506,7 +566,8 @@ Future<void> initFirebaseMonitoring() async {
       await crash.setCrashlyticsCollectionEnabled(true);
 
       FlutterError.onError = (details) {
-        logE('🔴 [FlutterError] ${details.exception}', error: details.exception, st: details.stack);
+        logE('🔴 [FlutterError] ${details.exception}',
+            error: details.exception, st: details.stack);
         if (details.exception.toString().contains('overflowed')) {
           logW('🔴 [OVERFLOW DETECTADO] ${details.exception}');
         }
@@ -534,7 +595,8 @@ Future<void> initFirebaseMonitoring() async {
           unwrapped = error.error;
           unwrappedStack = error.stackTrace;
         }
-        logE('💥 [PlatformDispatcher] $unwrapped', error: unwrapped, st: unwrappedStack);
+        logE('💥 [PlatformDispatcher] $unwrapped',
+            error: unwrapped, st: unwrappedStack);
         final c = crash;
         if (c != null) {
           try {
@@ -556,7 +618,8 @@ Future<void> initFirebaseMonitoring() async {
     logD('ℹ️ Crashlytics omitido no Web (não suportado).');
     // Web: handlers para logar erro + stack (facilita debug de minified:iD/jI)
     FlutterError.onError = (FlutterErrorDetails details) {
-      logE('🔴 [FlutterError/Web] ${details.exception}', error: details.exception, st: details.stack);
+      logE('🔴 [FlutterError/Web] ${details.exception}',
+          error: details.exception, st: details.stack);
       FlutterError.presentError(details);
     };
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
@@ -566,18 +629,18 @@ Future<void> initFirebaseMonitoring() async {
         unwrapped = error.error;
         unwrappedStack = error.stackTrace;
       }
-      logE('💥 [PlatformDispatcher/Web] $unwrapped', error: unwrapped, st: unwrappedStack);
+      logE('💥 [PlatformDispatcher/Web] $unwrapped',
+          error: unwrapped, st: unwrappedStack);
       // Web não tem Crashlytics: contagem agregada no Analytics (só tipo, sem mensagem/PII).
       if (Firebase.apps.isNotEmpty) {
         final typeStr = unwrapped.runtimeType.toString();
-        final typeParam = typeStr.length > 36 ? typeStr.substring(0, 36) : typeStr;
+        final typeParam =
+            typeStr.length > 36 ? typeStr.substring(0, 36) : typeStr;
         unawaited(
-          FirebaseAnalytics.instance
-              .logEvent(
-                name: 'web_uncaught_error',
-                parameters: {'exception_type': typeParam},
-              )
-              .catchError((Object _) {}),
+          FirebaseAnalytics.instance.logEvent(
+            name: 'web_uncaught_error',
+            parameters: {'exception_type': typeParam},
+          ).catchError((Object _) {}),
         );
       }
       return true;
@@ -625,7 +688,8 @@ Future<void> _fixPedidoLinkBase() async {
   String migratePublicSiteApex(String s) {
     var t = s.trim();
     if (t.isEmpty) return t;
-    final re = RegExp(r'^https?://(www\.)?mastepalm\.com\.br(?=/|$)', caseSensitive: false);
+    final re = RegExp(r'^https?://(www\.)?mastepalm\.com\.br(?=/|$)',
+        caseSensitive: false);
     if (re.hasMatch(t) && !t.toLowerCase().contains('app.mastepalm')) {
       t = t.replaceFirst(re, AppUrls.landingBase);
     }
@@ -683,7 +747,8 @@ Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
       SyncQueueService.startConnectivityListener();
       unawaited(SyncQueueService.processPending().then((r) {
         if (r.processed > 0) {
-          logD('📋 [BOOT_DEFERRED] SyncQueue: ${r.processed} itens processados');
+          logD(
+              '📋 [BOOT_DEFERRED] SyncQueue: ${r.processed} itens processados');
         }
       }));
     } catch (e) {
@@ -719,7 +784,8 @@ Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
       try {
         await refreshPermissoesLocais();
       } catch (e) {
-        logW('⚠️ [BOOT_DEFERRED] refreshPermissoesLocais (type=${e.runtimeType})');
+        logW(
+            '⚠️ [BOOT_DEFERRED] refreshPermissoesLocais (type=${e.runtimeType})');
       }
     }
 
@@ -751,7 +817,8 @@ Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
     logD('🟢 [BOOT_DEFERRED] _bootstrapLoggedInHeavy concluído');
     logD(boot.dump());
   } catch (e, st) {
-    logW('⚠️ [BOOT_DEFERRED] _bootstrapLoggedInHeavy falhou (type=${e.runtimeType})');
+    logW(
+        '⚠️ [BOOT_DEFERRED] _bootstrapLoggedInHeavy falhou (type=${e.runtimeType})');
     if (kDebugMode) logD('$st');
   }
 }
@@ -825,7 +892,8 @@ Widget _lojaIdRoute(Widget Function(String lojaId) builder) {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.store_outlined, size: 64, color: Colors.grey),
+                  const Icon(Icons.store_outlined,
+                      size: 64, color: Colors.grey),
                   const SizedBox(height: 16),
                   const Text(
                     'Não foi possível carregar a loja.\nConfigure nas Configurações ou tente novamente.',
@@ -900,8 +968,7 @@ Future<String> _resolveSlugToStoreIdIfNeeded(String slugOrId) async {
 
   // ✅ Se parece store_id (loja_uid_XXX), verificar existência e redirect
   if (_looksLikeStoreId(raw)) {
-    logD(
-        '🔍 [RESOLVER] "$raw" parece store_id, verificando existência...');
+    logD('🔍 [RESOLVER] "$raw" parece store_id, verificando existência...');
 
     try {
       // 1. Verificar se o doc exato existe
@@ -973,7 +1040,8 @@ Future<String> _resolveSlugToStoreIdIfNeeded(String slugOrId) async {
 }
 
 /// Após [catalog_domains] devolver [lojaId] canônico: 1 leitura direta `lojas/{id}` (rápida), só depois slug.
-Future<String> _fastResolveStoreIdFromDomainIndex(String lojaIdFromIndex) async {
+Future<String> _fastResolveStoreIdFromDomainIndex(
+    String lojaIdFromIndex) async {
   final raw = lojaIdFromIndex.trim();
   if (raw.isEmpty) return raw;
   if (Firebase.apps.isEmpty) return raw;
@@ -984,8 +1052,7 @@ Future<String> _fastResolveStoreIdFromDomainIndex(String lojaIdFromIndex) async 
         .get()
         .timeout(const Duration(seconds: 2));
     if (doc.exists) {
-      final redirectTo =
-          (doc.data()?['redirectTo'] ?? '').toString().trim();
+      final redirectTo = (doc.data()?['redirectTo'] ?? '').toString().trim();
       if (redirectTo.isNotEmpty && redirectTo != raw) {
         return redirectTo;
       }
@@ -1024,6 +1091,66 @@ bool _shouldOfferCustomDomainCatalogFastPath(Uri uri) {
   return true;
 }
 
+void _logWebCatalogDiag({
+  required String source,
+  String? slugOrId,
+  String? resolvedLojaId,
+}) {
+  if (!kIsWeb) return;
+  try {
+    final uri = _initialWebUri ?? Uri.base;
+    final ua = web_plat.Web.userAgent();
+    logD(
+      '[CAT_DIAG][$source] host=${uri.host} path=${uri.path} query=${uri.query} '
+      'slug=$slugOrId lojaId=$resolvedLojaId ua=$ua',
+    );
+  } catch (_) {}
+}
+
+Future<void> _logCatalogRuntimeError({
+  required String fase,
+  required Object error,
+  StackTrace? stack,
+  String? slug,
+  String? lojaId,
+  String? source,
+  int? lineno,
+  int? colno,
+  String? library,
+  String? context,
+}) async {
+  if (!kIsWeb) return;
+  try {
+    final uri = _initialWebUri ?? Uri.base;
+    final payload = <String, dynamic>{
+      'buildId': kCatalogDiagBuildId,
+      'timestamp': DateTime.now().toIso8601String(),
+      'host': uri.host,
+      'path': uri.path,
+      'query': uri.query,
+      'userAgent': web_plat.Web.userAgent(),
+      'slug': slug ?? _lojaSlugOrIdFromUrl(),
+      'lojaId': lojaId ?? '',
+      'error': error.toString(),
+      'stack': (stack ?? StackTrace.current).toString(),
+      'fase': fase,
+      'phase': web_plat.Web.localStorageGet('mp_catalog_phase') ?? fase,
+      'source': source ?? '',
+      'lineno': lineno ?? 0,
+      'colno': colno ?? 0,
+      'library': library ?? '',
+      'context': context ?? '',
+      'appVersion': 'web',
+    };
+    web_plat.Web.localStorageSet('mp_last_runtime_error', jsonEncode(payload));
+    if (Firebase.apps.isNotEmpty) {
+      await FirebaseFirestore.instance
+          .collection('catalog_runtime_errors')
+          .add(payload);
+    }
+  } catch (_) {}
+}
+
 // ✅ DIAGNÓSTICO
 void mpStoreDiag(String tag) {
   final sessao = Hive.isBoxOpen('sessao') ? Hive.box('sessao') : null;
@@ -1040,8 +1167,7 @@ void mpStoreDiag(String tag) {
   logD('config.store_id   = $sidCfg');
   logD('config.store_slug = $slugCfg');
   logD('config.loja_slug  = $lojaSlugCfg');
-  logD(
-      'Uri.base          = ${kIsWeb ? Uri.base.toString() : "(not web)"}');
+  logD('Uri.base          = ${kIsWeb ? Uri.base.toString() : "(not web)"}');
   logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
@@ -1055,8 +1181,10 @@ Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
   String? existing = _safeStringFromDynamic(sessao.get('store_id'));
   existing ??= _safeStringFromDynamic(cfg.get('store_id'));
 
-  final String? existingSlug = _safeStringFromDynamic(cfg.get('store_slug'))?.toLowerCase();
-  final String? existingLojaSlug = _safeStringFromDynamic(cfg.get('loja_slug'))?.toLowerCase();
+  final String? existingSlug =
+      _safeStringFromDynamic(cfg.get('store_slug'))?.toLowerCase();
+  final String? existingLojaSlug =
+      _safeStringFromDynamic(cfg.get('loja_slug'))?.toLowerCase();
 
   if (existing != null && existing.isNotEmpty) {
     try {
@@ -1081,7 +1209,8 @@ Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
       lojaId = lojaId?.trim();
       if (lojaId != null && lojaId.isNotEmpty) {
         if (kDebugMode) {
-          logD('✅ [WEB_BOOTSTRAP] store_id resolvido via StoreResolver → $lojaId');
+          logD(
+              '✅ [WEB_BOOTSTRAP] store_id resolvido via StoreResolver → $lojaId');
         }
       } else {
         lojaId = null;
@@ -1099,7 +1228,8 @@ Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
         final uid = user?.uid;
         if (uid != null && uid.isNotEmpty) {
           lojaId = 'loja_uid_$uid';
-          logD('🔄 [WEB_BOOTSTRAP] Fallback loja_uid_$uid (StoreResolver não retornou)');
+          logD(
+              '🔄 [WEB_BOOTSTRAP] Fallback loja_uid_$uid (StoreResolver não retornou)');
         }
       } catch (_) {}
     }
@@ -1107,7 +1237,8 @@ Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
       final u = _safeString(sessao.get('usuario_logado'), '');
       if (u.isNotEmpty) {
         final fallback = 'loja_email_${_safeSlug(u)}';
-        logD('🔄 [WEB_BOOTSTRAP] Fallback loja_email_ (StoreResolver não retornou)');
+        logD(
+            '🔄 [WEB_BOOTSTRAP] Fallback loja_email_ (StoreResolver não retornou)');
         return fallback;
       }
       return null;
@@ -1115,7 +1246,8 @@ Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
   }
 
   if (lojaId == null || lojaId.isEmpty) {
-    logW('⚠️ [WEB_BOOTSTRAP] Não foi possível definir store_id automaticamente.');
+    logW(
+        '⚠️ [WEB_BOOTSTRAP] Não foi possível definir store_id automaticamente.');
     return;
   }
 
@@ -1135,7 +1267,99 @@ Future<void> _ensureStoreIdOnBootstrap({required bool firebaseOk}) async {
 // 🔑 navigatorKey e scaffoldMessengerKey globais (SnackBar Desfazer usa o root)
 // ===========================================================================
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+const String kCatalogDiagBuildId = String.fromEnvironment(
+  'CATALOG_BUILD_ID',
+  defaultValue: 'dev',
+);
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
+void _setCatalogPhase(String phase) {
+  if (!kIsWeb) return;
+  web_plat.Web.localStorageSet('mp_catalog_phase', phase);
+}
+
+Widget _buildEarlyCatalogErrorFallback({
+  required Object error,
+  required StackTrace stack,
+}) {
+  final uri = _initialWebUri ?? Uri.base;
+  final diag = uri.queryParameters['diag'] == '1';
+  if (!diag) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Não foi possível carregar a loja agora. Tente novamente em instantes.',
+              textAlign: TextAlign.center,
+              style: ThemeData.light().textTheme.titleMedium,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  return MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: Scaffold(
+      appBar: AppBar(title: const Text('Diagnóstico Catálogo')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: SelectableText(
+          'buildId=$kCatalogDiagBuildId\n'
+          'host=${uri.host}\n'
+          'path=${uri.path}\n'
+          'query=${uri.query}\n'
+          'userAgent=${web_plat.Web.userAgent()}\n'
+          'slug=${_lojaSlugOrIdFromUrl()}\n'
+          'fase=${web_plat.Web.localStorageGet('mp_catalog_phase') ?? 'early.error_widget'}\n'
+          'error=${error.toString()}\n'
+          'stack=${stack.toString()}',
+        ),
+      ),
+    ),
+  );
+}
+
+void _installUltraEarlyCatalogErrorCapture() {
+  if (!kIsWeb) return;
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    final st = details.stack ?? StackTrace.current;
+    final contextDesc = details.context?.toDescription() ?? '';
+    final payload = <String, dynamic>{
+      'buildId': kCatalogDiagBuildId,
+      'timestamp': DateTime.now().toIso8601String(),
+      'host': (_initialWebUri ?? Uri.base).host,
+      'path': (_initialWebUri ?? Uri.base).path,
+      'query': (_initialWebUri ?? Uri.base).query,
+      'userAgent': web_plat.Web.userAgent(),
+      'slug': _lojaSlugOrIdFromUrl(),
+      'lojaId': '',
+      'fase': 'error_widget.ultra_early',
+      'phase': web_plat.Web.localStorageGet('mp_catalog_phase') ?? 'main.start',
+      'error': details.exceptionAsString(),
+      'stack': st.toString(),
+      'library': details.library ?? '',
+      'context': contextDesc,
+      'appVersion': 'web',
+    };
+    try {
+      web_plat.Web.localStorageSet(
+          'mp_last_runtime_error', jsonEncode(payload));
+    } catch (_) {}
+    unawaited(_logCatalogRuntimeError(
+      fase: 'error_widget.ultra_early',
+      error: details.exception,
+      stack: st,
+      source: details.library,
+      context: contextDesc,
+    ));
+    return _buildEarlyCatalogErrorFallback(error: details.exception, stack: st);
+  };
+}
 
 // ===========================================================================
 // 📱 ScrollBehavior responsivo – toque mais sensível no APK
@@ -1163,7 +1387,8 @@ Future<bool> _webShouldMinimalBootstrapForPublicCatalogViewer() async {
   final uri = _initialWebUri ?? Uri.base;
   if (_uriIsPagamentoPublicPath(uri)) return false;
   if (_isPublicCatalogUrl()) return true;
-  if (_uriHasLojaPathPriority(uri) || _uriHasExplicitCatalogQueryOrFragment(uri)) {
+  if (_uriHasLojaPathPriority(uri) ||
+      _uriHasExplicitCatalogQueryOrFragment(uri)) {
     return true;
   }
   try {
@@ -1186,7 +1411,8 @@ bool _isPublicCatalogUrl() {
 
   // Path direto: /loja/slug (garante que abra o catálogo e não o app web)
   if (path.startsWith('/loja/') || path.contains('/loja/')) return true;
-  if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'loja') return true;
+  if (uri.pathSegments.isNotEmpty && uri.pathSegments.first == 'loja')
+    return true;
 
   if (uri.queryParameters.containsKey('loja') ||
       uri.queryParameters.containsKey('slug') ||
@@ -1240,6 +1466,18 @@ bool _isPublicMarketingSite() {
   return true;
 }
 
+bool _shouldShowRootStoreNotConfigured(Uri uri) {
+  if (!kIsWeb) return false;
+  final hostNorm = AppUrls.normalizeHostForAppUrlCheck(uri.host);
+  final isAppHost = AppUrls.appWebHostsAll.contains(hostNorm);
+  if (!isAppHost) return false;
+  final atRoot = uri.path.isEmpty || uri.path == '/';
+  if (!atRoot) return false;
+  if (_uriHasLojaPathPriority(uri)) return false;
+  if (_uriHasExplicitCatalogQueryOrFragment(uri)) return false;
+  return true;
+}
+
 /// Extrai slug da URL a partir do fragment (#/loja/xxx).
 String? _lojaSlugFromFragment(String fragment) {
   final s = fragment.trim();
@@ -1255,9 +1493,10 @@ String? _lojaSlugFromFragment(String fragment) {
   return null;
 }
 
-/// Lê o identificador bruto vindo da URL (path, query ou fragment). Nunca retorna 'minha-loja' se a URL tiver loja.
+/// Lê o identificador bruto vindo da URL (path, query ou fragment).
+/// Quando não há loja explícita, retorna vazio (não usar placeholder como loja real).
 String _lojaSlugOrIdFromUrl() {
-  if (!kIsWeb) return 'minha-loja';
+  if (!kIsWeb) return '';
   final uri = _initialWebUri ?? Uri.base;
 
   // 1) Path: /loja/{slugOuId} (prioridade para garantir catálogo web)
@@ -1284,7 +1523,7 @@ String _lojaSlugOrIdFromUrl() {
   final fromFrag = _lojaSlugFromFragment(uri.fragment);
   if (fromFrag != null && fromFrag.isNotEmpty) return fromFrag;
 
-  return 'minha-loja';
+  return '';
 }
 
 /// ✅ Lê o ID do vendedor para tracking de comissão
@@ -1342,10 +1581,20 @@ String? _produtoRefFromUrl() {
 // Catálogo: falha rápida ao resolver domínio próprio (sem MyApp nem ~1min de bootstrap)
 // ===========================================================================
 class CatalogDomainBootstrapErrorApp extends StatelessWidget {
-  const CatalogDomainBootstrapErrorApp({super.key});
+  final String message;
+  const CatalogDomainBootstrapErrorApp({
+    super.key,
+    this.message =
+        'Não foi possível carregar a loja agora. Tente novamente em instantes.',
+  });
 
   @override
   Widget build(BuildContext context) {
+    final uri = kIsWeb ? (_initialWebUri ?? Uri.base) : Uri();
+    final diag = kIsWeb && uri.queryParameters['diag'] == '1';
+    final showLast = diag && uri.queryParameters['showLastError'] == '1';
+    final lastErrorRaw =
+        showLast ? web_plat.Web.localStorageGet('mp_last_runtime_error') : null;
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -1364,14 +1613,955 @@ class CatalogDomainBootstrapErrorApp extends StatelessWidget {
                       size: 64, color: Colors.grey.shade600),
                   const SizedBox(height: 20),
                   Text(
-                    'Não foi possível carregar a loja agora. Tente novamente em instantes.',
+                    message,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           height: 1.35,
                         ),
                   ),
+                  if (diag) ...[
+                    const SizedBox(height: 16),
+                    SelectableText(
+                      'buildId=$kCatalogDiagBuildId\n'
+                      'host=${uri.host}\n'
+                      'path=${uri.path}\n'
+                      'query=${uri.query}\n'
+                      'userAgent=${web_plat.Web.userAgent()}\n'
+                      'slug=${_lojaSlugOrIdFromUrl()}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (showLast && (lastErrorRaw ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      SelectableText(
+                        'lastError=$lastErrorRaw',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+bool _shouldForceDiagScreen(Uri uri) {
+  if (!kIsWeb) return false;
+  if (uri.queryParameters['diag'] != '1') return false;
+  return uri.queryParameters['showLastError'] == '1';
+}
+
+bool _shouldForceResolveTest(Uri uri) {
+  if (!kIsWeb) return false;
+  if (uri.queryParameters['diag'] != '1') return false;
+  return uri.queryParameters['resolveTest'] == '1';
+}
+
+bool _shouldForceNetTest(Uri uri) {
+  if (!kIsWeb) return false;
+  bool isTruthy(String? value) {
+    final v = (value ?? '').trim().toLowerCase();
+    return v == '1' || v == 'true' || v == 'yes' || v == 'on';
+  }
+
+  return isTruthy(uri.queryParameters['diag']) &&
+      isTruthy(uri.queryParameters['netTest']);
+}
+
+/// `diag=1&netTest=1` no Web (evita side‑effects pós-init que quebram o WebKit).
+bool _isWebNetTestDiagnosticsQuery(Uri? uri) {
+  if (uri == null) return false;
+  bool isTruthy(String? value) {
+    final v = (value ?? '').trim().toLowerCase();
+    return v == '1' || v == 'true' || v == 'yes' || v == 'on';
+  }
+  return isTruthy(uri.queryParameters['diag']) &&
+      isTruthy(uri.queryParameters['netTest']);
+}
+
+Map<String, dynamic> _diagErrorDetails(Object error, StackTrace stack) {
+  final out = <String, dynamic>{
+    'error.runtimeType': error.runtimeType.toString(),
+    'error.toString': error.toString(),
+    'stack': stack.toString(),
+  };
+  if (error is FirebaseException) {
+    out['firebaseException.code'] = error.code;
+    out['firebaseException.message'] = error.message ?? '';
+    out['firebaseException.plugin'] = error.plugin;
+  }
+  return out;
+}
+
+Map<String, dynamic> _netTestFirebaseOptionsRow(FirebaseOptions o) {
+  return <String, dynamic>{
+    'optionsRuntimeType': o.runtimeType.toString(),
+    'hasApiKey': o.apiKey.isNotEmpty,
+    'hasAppId': o.appId.isNotEmpty,
+    'hasProjectId': o.projectId.isNotEmpty,
+    'hasMessagingSenderId': o.messagingSenderId.isNotEmpty,
+    'hasAuthDomain': (o.authDomain?.isNotEmpty ?? false),
+    'hasStorageBucket': (o.storageBucket?.isNotEmpty ?? false),
+    'apiKeyPrefix': o.apiKey.length > 8
+        ? '${o.apiKey.substring(0, 8)}…'
+        : (o.apiKey.isEmpty ? '(empty)' : '…'),
+    'projectId': o.projectId,
+    'appIdPrefix': o.appId.length > 12
+        ? '${o.appId.substring(0, 12)}…'
+        : o.appId,
+  };
+}
+
+class _CatalogNetTestApp extends StatefulWidget {
+  const _CatalogNetTestApp();
+
+  @override
+  State<_CatalogNetTestApp> createState() => _CatalogNetTestAppState();
+}
+
+class _CatalogNetTestAppState extends State<_CatalogNetTestApp> {
+  static const _firebaseInitTimeout = Duration(seconds: 20);
+
+  final List<Map<String, dynamic>> _steps = <Map<String, dynamic>>[];
+  bool _running = false;
+  bool _netTestComplete = false;
+  Object? _runFatal;
+  StackTrace? _runFatalStack;
+  /// Metadados carregados antes dos passos (fetch /version.json + SW/cache + script).
+  Map<String, dynamic> _buildProvenance = <String, dynamic>{};
+
+  String get _slug => _lojaSlugOrIdFromUrl();
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_run());
+  }
+
+  Future<void> _append(Map<String, dynamic> row) async {
+    if (!mounted) return;
+    setState(() => _steps.add(row));
+    if (!kIsWeb) return;
+    try {
+      final uri = _initialWebUri ?? Uri.base;
+      final payload = <String, dynamic>{
+        'buildId': kCatalogDiagBuildId,
+        'timestamp': DateTime.now().toIso8601String(),
+        'host': uri.host,
+        'path': uri.path,
+        'query': uri.query,
+        'slug': _slug,
+        'netTest': _steps,
+      };
+      web_plat.Web.localStorageSet('mp_catalog_nettest_result', jsonEncode(payload));
+      web_plat.Web.localStorageSet('mp_last_runtime_error', jsonEncode(payload));
+    } catch (_) {}
+  }
+
+  /// Net test: nenhum passo pode interromper os seguintes; timeout no init Firebase
+  /// (WebKit pode deixar o `Future` pendente) para sempre chegar aos passos 5–11.
+  Future<void> _run() async {
+    if (_running) return;
+    _running = true;
+    final uri = _initialWebUri ?? Uri.base;
+    final prov = <String, dynamic>{};
+
+    try {
+      // Prova de qual bundle está em memória (Dart define) vs. /version.json na rede
+      if (kIsWeb) {
+        prov['buildIdFromDartDefine'] = kCatalogDiagBuildId;
+        prov['host'] = uri.host;
+        prov['path'] = uri.path;
+        prov['query'] = uri.query;
+        prov['cacheResetDone'] =
+            uri.queryParameters['cacheResetDone'] ?? '';
+        final origin = uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https')
+            ? uri.origin
+            : '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+        try {
+          final u = Uri.parse('$origin/version.json').replace(
+            queryParameters: <String, String>{
+              'v': DateTime.now().millisecondsSinceEpoch.toString(),
+            },
+          );
+          prov['versionJsonRequestUrl'] = u.toString();
+          final r = await http.get(u).timeout(const Duration(seconds: 20));
+          prov['versionJsonHttpStatus'] = r.statusCode;
+          if (r.statusCode == 200) {
+            final j = jsonDecode(r.body);
+            if (j is Map) {
+              prov['versionJsonFetchedBuildId'] = j['buildId']?.toString() ?? '';
+              prov['versionJsonTimestamp'] = j['timestamp']?.toString();
+            } else {
+              prov['versionJsonParseNote'] = 'not a map';
+            }
+          } else {
+            prov['versionJsonError'] = 'http_status_${r.statusCode}';
+            prov['versionJsonBodyPreview'] = r.body.length > 200
+                ? '${r.body.substring(0, 200)}…'
+                : r.body;
+          }
+        } on Object catch (e, st) {
+          prov['versionJsonError'] = e.toString();
+          prov['versionJsonErrorStack'] = st.toString();
+        }
+        try {
+          prov.addAll(await web_plat.Web.netTestBuildProvenance());
+        } on Object catch (e) {
+          prov['buildProvenanceNativeError'] = e.toString();
+        }
+        prov['buildIdMatch'] = (prov['versionJsonFetchedBuildId'] as String? ?? '') ==
+            kCatalogDiagBuildId;
+      } else {
+        prov['buildIdFromDartDefine'] = kCatalogDiagBuildId;
+        prov['host'] = uri.host;
+        prov['path'] = uri.path;
+        prov['query'] = uri.query;
+        prov['buildProvenanceNote'] = 'not_web';
+        prov['buildIdMatch'] = true;
+      }
+
+      // —— 1.build
+      try {
+        await _append(<String, dynamic>{
+          'step': '1.build',
+          'buildId': kCatalogDiagBuildId,
+        });
+      } on Object catch (e, st) {
+        await _append(<String, dynamic>{
+          'step': '1.build',
+          'buildId': kCatalogDiagBuildId,
+          'success': false,
+          ..._diagErrorDetails(e, st),
+        });
+      }
+      // —— 2.context
+      try {
+        await _append(<String, dynamic>{
+          'step': '2.context',
+          'host': uri.host,
+          'path': uri.path,
+          'query': uri.query,
+          'userAgent': web_plat.Web.userAgent(),
+        });
+      } on Object catch (e, st) {
+        await _append(<String, dynamic>{
+          'step': '2.context',
+          'success': false,
+          'host': uri.host,
+          'path': uri.path,
+          'query': uri.query,
+          ..._diagErrorDetails(e, st),
+        });
+      }
+      // —— 3.navigator
+      var online = 'unknown';
+      try {
+        online = web_plat.Web
+                .callJs('eval', ['navigator.onLine'])?.toString() ??
+            'unknown';
+      } on Object {
+        online = 'unknown (eval/callJs failed)';
+      }
+      try {
+        await _append(<String, dynamic>{
+          'step': '3.navigator',
+          'online': online,
+        });
+      } on Object catch (e, st) {
+        await _append(<String, dynamic>{
+          'step': '3.navigator',
+          'success': false,
+          'online': online,
+          ..._diagErrorDetails(e, st),
+        });
+      }
+
+      // Step 4a/4b/4c: Core só — nunca App Check/Auth. `Firebase.apps` sem try após 4a só
+      // fora de verificações “há app já?”, para não repetir o crash WebKit.
+      var appsCount = 0;
+      String? appName;
+      var step4bOk = false;
+      var step4cOk = false;
+      // —— 4a: apenas `DefaultFirebaseOptions.currentPlatform` (leitura; sem `Firebase.initializeApp`)
+      try {
+        final opts = DefaultFirebaseOptions.currentPlatform;
+        await _append(<String, dynamic>{
+          'step': '4a.firebase_options_generated',
+          'success': true,
+          ..._netTestFirebaseOptionsRow(opts),
+        });
+      } on Object catch (e, st) {
+        await _append(<String, dynamic>{
+          'step': '4a.firebase_options_generated',
+          'success': false,
+          ..._diagErrorDetails(e, st),
+        });
+      }
+      // —— 4b: `DefaultFirebaseOptions.currentPlatform` (comportamento clássico; bootstrap usa [firebaseOptionsForInit])
+      var step4bError = false;
+      try {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        ).timeout(
+          _firebaseInitTimeout,
+          onTimeout: () {
+            throw TimeoutException(
+              '4b: Firebase.initializeApp (DefaultFirebaseOptions.currentPlatform) timeout',
+              _firebaseInitTimeout,
+            );
+          },
+        );
+        try {
+          appsCount = Firebase.apps.length;
+        } on Object {
+          appsCount = 0;
+        }
+        if (appsCount > 0) {
+          try {
+            appName = Firebase.apps.first.name;
+          } on Object {
+            appName = null;
+          }
+        }
+        step4bOk = appsCount > 0;
+        await _append(<String, dynamic>{
+          'step': '4b.firebase_initialize_generated_options',
+          'success': step4bOk,
+          'optionsSource': 'DefaultFirebaseOptions.currentPlatform',
+          'method': 'Firebase.initializeApp (no auth, no app check)',
+          'timeoutCapSeconds': _firebaseInitTimeout.inSeconds,
+          'appsCount': appsCount,
+          'appName': appName,
+        });
+      } on Object catch (e, st) {
+        step4bError = true;
+        try {
+          appsCount = Firebase.apps.length;
+        } on Object {
+          appsCount = 0;
+        }
+        if (e is FirebaseException && e.code == 'duplicate-app' && appsCount > 0) {
+          try {
+            appName = Firebase.apps.first.name;
+          } on Object {
+            appName = null;
+          }
+          await _append(<String, dynamic>{
+            'step': '4b.firebase_initialize_generated_options',
+            'success': true,
+            'optionsSource': 'DefaultFirebaseOptions.currentPlatform',
+            'method': 'Firebase.initializeApp (no auth, no app check)',
+            'note': 'duplicate-app',
+            'timeoutCapSeconds': _firebaseInitTimeout.inSeconds,
+            'appsCount': appsCount,
+            'appName': appName,
+          });
+        } else {
+          await _append(<String, dynamic>{
+            'step': '4b.firebase_initialize_generated_options',
+            'success': false,
+            'optionsSource': 'DefaultFirebaseOptions.currentPlatform',
+            'method': 'Firebase.initializeApp (no auth, no app check)',
+            'timeoutCapSeconds': _firebaseInitTimeout.inSeconds,
+            'appsCount': appsCount,
+            ..._diagErrorDetails(e, st),
+          });
+        }
+      }
+      // —— 4c: opções [FirebaseOptions] idênticas a firebase_options web (só se 4b falhar e ainda sem apps)
+      if (step4bError && appsCount == 0) {
+        try {
+          await Firebase.initializeApp(
+            options: kExplicitWebBootstrapFirebaseOptions,
+          ).timeout(
+            _firebaseInitTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                '4c: explicit web options timeout',
+                _firebaseInitTimeout,
+              );
+            },
+          );
+          try {
+            appsCount = Firebase.apps.length;
+          } on Object {
+            appsCount = 0;
+          }
+          if (appsCount > 0) {
+            try {
+              appName = Firebase.apps.first.name;
+            } on Object {
+              appName = null;
+            }
+          }
+          step4cOk = appsCount > 0;
+          await _append(<String, dynamic>{
+            'step': '4c.firebase_initialize_explicit_web_options',
+            'success': step4cOk,
+            'optionsSource': 'kExplicitWebBootstrapFirebaseOptions (espelha firebase_options web)',
+            'method': 'Firebase.initializeApp (no auth, no app check)',
+            'if4bFailedAnd4cSucceeds':
+                'possível divergência em DefaultFirebaseOptions.get currentPlatform (improvável na Web: kIsWeb).',
+            'timeoutCapSeconds': _firebaseInitTimeout.inSeconds,
+            'appsCount': appsCount,
+            'appName': appName,
+          });
+        } on Object catch (e, st) {
+          if (e is FirebaseException && e.code == 'duplicate-app') {
+            try {
+              appsCount = Firebase.apps.length;
+            } on Object {
+              appsCount = 0;
+            }
+            if (appsCount > 0) {
+              try {
+                appName = Firebase.apps.first.name;
+              } on Object {
+                appName = null;
+              }
+            }
+            await _append(<String, dynamic>{
+              'step': '4c.firebase_initialize_explicit_web_options',
+              'success': appsCount > 0,
+              'optionsSource': 'kExplicitWebBootstrapFirebaseOptions',
+              'note': 'duplicate-app',
+              'appsCount': appsCount,
+              'appName': appName,
+            });
+          } else {
+            try {
+              appsCount = Firebase.apps.length;
+            } on Object {
+              appsCount = 0;
+            }
+            await _append(<String, dynamic>{
+              'step': '4c.firebase_initialize_explicit_web_options',
+              'success': false,
+              'optionsSource': 'kExplicitWebBootstrapFirebaseOptions',
+              ..._diagErrorDetails(e, st),
+              'appsCount': appsCount,
+            });
+          }
+        }
+      } else if (!step4bOk && appsCount == 0) {
+        await _append(<String, dynamic>{
+          'step': '4c.firebase_initialize_explicit_web_options',
+          'success': false,
+          'skipped': true,
+          'reason': '4b did not error or appsCount already > 0',
+        });
+      }
+
+      // —— 5.app_check_token
+      if (appsCount == 0) {
+        try {
+          await _append(<String, dynamic>{
+            'step': '5.app_check_token',
+            'success': false,
+            'skipped': true,
+            'reason': 'no_firebase',
+          });
+        } on Object catch (e, st) {
+          await _append(<String, dynamic>{
+            'step': '5.app_check_token',
+            'success': false,
+            'skipped': true,
+            'reason': 'no_firebase',
+            'appendError': e.toString(),
+            'stack': st.toString(),
+          });
+        }
+      } else {
+        try {
+          final token = await FirebaseAppCheck.instance
+              .getToken(false)
+              .timeout(const Duration(seconds: 30));
+          await _append(<String, dynamic>{
+            'step': '5.app_check_token',
+            'success': token != null && token.isNotEmpty,
+            'tokenLength': token?.length ?? 0,
+          });
+        } on Object catch (e, st) {
+          await _append(<String, dynamic>{
+            'step': '5.app_check_token',
+            'success': false,
+            'interopNote':
+                'Safari/embedded WebView: App Check + reCAPTCHA pode lançar TypeError; não implica init Firebase inválido',
+            ..._diagErrorDetails(e, st),
+          });
+        }
+      }
+
+      final slug = _slug;
+      if (appsCount == 0) {
+        for (final key in const <String>['6', '7', '8', '9']) {
+          final label = switch (key) {
+            '6' => '6.firestore_direct_doc',
+            '7' => '7.firestore_slug_query',
+            '8' => '8.config_doc',
+            '9' => '9.produtos_publicos',
+            _ => '9.produtos_publicos',
+          };
+          try {
+            await _append(<String, dynamic>{
+              'step': label,
+              'success': false,
+              'skipped': true,
+              'reason': 'no_firebase',
+            });
+          } on Object catch (e, st) {
+            await _append(<String, dynamic>{
+              'step': label,
+              'success': false,
+              'skipped': true,
+              'reason': 'no_firebase',
+              'appendError': e.toString(),
+              'stack': st.toString(),
+            });
+          }
+        }
+      } else {
+        try {
+          final lojas = FirebaseFirestore.instance.collection('lojas');
+
+          try {
+            final snap = await lojas.doc(slug).get();
+            await _append(<String, dynamic>{
+              'step': '6.firestore_direct_doc',
+              'path': 'lojas/$slug',
+              'success': true,
+              'exists': snap.exists,
+            });
+          } on Object catch (e, st) {
+            await _append(<String, dynamic>{
+              'step': '6.firestore_direct_doc',
+              'path': 'lojas/$slug',
+              'success': false,
+              ..._diagErrorDetails(e, st),
+            });
+          }
+
+          try {
+            final q = await lojas
+                .where('slug', isEqualTo: slug)
+                .limit(1)
+                .get();
+            await _append(<String, dynamic>{
+              'step': '7.firestore_slug_query',
+              'success': true,
+              'count': q.docs.length,
+              'firstDocId': q.docs.isNotEmpty ? q.docs.first.id : '',
+            });
+          } on Object catch (e, st) {
+            await _append(<String, dynamic>{
+              'step': '7.firestore_slug_query',
+              'success': false,
+              ..._diagErrorDetails(e, st),
+            });
+          }
+
+          try {
+            final cfg = await lojas
+                .doc(slug)
+                .collection('config')
+                .doc('config')
+                .get();
+            await _append(<String, dynamic>{
+              'step': '8.config_doc',
+              'path': 'lojas/$slug/config/config',
+              'success': true,
+              'exists': cfg.exists,
+            });
+          } on Object catch (e, st) {
+            await _append(<String, dynamic>{
+              'step': '8.config_doc',
+              'path': 'lojas/$slug/config/config',
+              'success': false,
+              ..._diagErrorDetails(e, st),
+            });
+          }
+
+          try {
+            final pubRef = lojas.doc(slug).collection('produtos_publicos');
+            final liveRef = lojas.doc(slug).collection('produtos');
+            var pubCount = 0;
+            var liveAtivoCount = 0;
+            try {
+              pubCount = (await pubRef.count().get()).count ?? 0;
+            } on Object {
+              final snap = await pubRef.limit(2000).get();
+              pubCount = snap.docs.length;
+            }
+            try {
+              liveAtivoCount = (await liveRef
+                      .where('ativo', isEqualTo: true)
+                      .count()
+                      .get())
+                  .count ??
+                  0;
+            } on Object {
+              final snap = await liveRef
+                  .where('ativo', isEqualTo: true)
+                  .limit(2000)
+                  .get();
+              liveAtivoCount = snap.docs.length;
+            }
+            await _append(<String, dynamic>{
+              'step': '9.produtos_publicos',
+              'path': 'lojas/$slug/produtos_publicos',
+              'success': true,
+              'count': pubCount,
+              'note':
+                  'Coleção espelho/legada; o catálogo lê `produtos` (ver 9b), não esta.',
+            });
+            await _append(<String, dynamic>{
+              'step': '9b.catalog_produtos',
+              'path': 'lojas/$slug/produtos',
+              'query': 'ativo==true',
+              'success': true,
+              'count': liveAtivoCount,
+              'note':
+                  'Fonte usada por PublicCatalogScreen (kLiveProdutosCol).',
+            });
+          } on Object catch (e, st) {
+            await _append(<String, dynamic>{
+              'step': '9.produtos_publicos',
+              'path': 'lojas/$slug/produtos_publicos',
+              'success': false,
+              ..._diagErrorDetails(e, st),
+            });
+            await _append(<String, dynamic>{
+              'step': '9b.catalog_produtos',
+              'path': 'lojas/$slug/produtos',
+              'success': false,
+              ..._diagErrorDetails(e, st),
+            });
+          }
+        } on Object catch (e, st) {
+          for (final label in const <String>[
+            '6.firestore_direct_doc',
+            '7.firestore_slug_query',
+            '8.config_doc',
+            '9.produtos_publicos',
+          ]) {
+            await _append(<String, dynamic>{
+              'step': label,
+              'success': false,
+              'skipped': true,
+              'reason': 'firestore_bootstrap_error',
+              ..._diagErrorDetails(e, st),
+            });
+          }
+        }
+      }
+
+      try {
+        final swRaw = web_plat.Web.localStorageGet('mp_diag_sw_state') ?? '';
+        var controllerExists = '';
+        var registrations = '';
+        var caches = '';
+        var iosswfixRan = '';
+        if (swRaw.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(swRaw);
+            if (decoded is Map) {
+              controllerExists = (decoded['controller'] ?? '').toString();
+              registrations = (decoded['registrations'] ?? '').toString();
+              caches = (decoded['caches'] ?? '').toString();
+              iosswfixRan = (decoded['iosswfixRan'] ?? '').toString();
+            }
+          } catch (_) {}
+        }
+        await _append(<String, dynamic>{
+          'step': '10.service_worker_cache',
+          'controllerExists': controllerExists,
+          'registrations': registrations,
+          'caches': caches,
+          'iosswfixRan': iosswfixRan,
+          'raw': swRaw,
+        });
+      } on Object catch (e, st) {
+        await _append(<String, dynamic>{
+          'step': '10.service_worker_cache',
+          'success': false,
+          ..._diagErrorDetails(e, st),
+        });
+      }
+
+      try {
+        final fetchRaw = web_plat.Web.localStorageGet('mp_fetch_log') ?? '[]';
+        await _append(<String, dynamic>{
+          'step': '11.fetch_log',
+          'raw': fetchRaw,
+        });
+      } on Object catch (e, st) {
+        await _append(<String, dynamic>{
+          'step': '11.fetch_log',
+          'success': false,
+          ..._diagErrorDetails(e, st),
+        });
+      }
+    } on Object catch (e, st) {
+      _runFatal = e;
+      _runFatalStack = st;
+      prov['netTestRunFatalInProvenance'] = e.toString();
+      prov['netTestRunFatalStackInProvenance'] = st.toString();
+      await _append(<String, dynamic>{
+        'step': '0.nettest_fatal',
+        'success': false,
+        'note': 'caught at outer _run; should be rare (each step has its own try/catch)',
+        ..._diagErrorDetails(e, st),
+      });
+    } finally {
+      _buildProvenance = prov;
+      if (kIsWeb) {
+        try {
+          final u = _initialWebUri ?? Uri.base;
+          final out = <String, dynamic>{
+            'buildId': kCatalogDiagBuildId,
+            'buildProvenance': prov,
+            'timestamp': DateTime.now().toIso8601String(),
+            'host': u.host,
+            'path': u.path,
+            'query': u.query,
+            'slug': _slug,
+            'netTest': _steps,
+          };
+          final raw = jsonEncode(out);
+          web_plat.Web.localStorageSet('mp_catalog_nettest_result', raw);
+          web_plat.Web.localStorageSet('mp_last_runtime_error', raw);
+        } catch (_) {}
+      }
+      _running = false;
+      if (mounted) {
+        setState(() {
+          _netTestComplete = true;
+        });
+      } else {
+        _netTestComplete = true;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uri = _initialWebUri ?? Uri.base;
+    final payload = <String, dynamic>{
+      'buildId': kCatalogDiagBuildId,
+      'buildProvenance': _buildProvenance,
+      'host': uri.host,
+      'path': uri.path,
+      'query': uri.query,
+      'slug': _slug,
+      'steps': _steps,
+    };
+    if (_runFatal != null) {
+      payload['netTestOuterFatal'] = {
+        'error': _runFatal.toString(),
+        'stack': _runFatalStack?.toString() ?? '',
+      };
+    }
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Net Test Catálogo (diag)')),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: _netTestComplete
+                ? SelectableText(
+                    const JsonEncoder.withIndent('  ').convert(payload),
+                  )
+                : const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 32),
+                          child: CircularProgressIndicator(),
+                        ),
+                      ),
+                      Text(
+                        'Executando netTest...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CatalogResolveTestApp extends StatelessWidget {
+  const _CatalogResolveTestApp();
+
+  @override
+  Widget build(BuildContext context) {
+    final uri = _initialWebUri ?? Uri.base;
+    final slug = _lojaSlugOrIdFromUrl();
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Resolve Test Catálogo')),
+        body: FutureBuilder<StoreResolveResult>(
+          future: StoreResolverFacade.resolveForPublicCatalog(
+            lojaIdFromUrl: slug,
+          ),
+          builder: (context, snapshot) {
+            final payload = <String, dynamic>{
+              'buildId': kCatalogDiagBuildId,
+              'host': uri.host,
+              'path': uri.path,
+              'query': uri.query,
+              'slug': slug,
+            };
+            if (snapshot.hasData) {
+              final r = snapshot.data!;
+              payload.addAll({
+                'success': r.success,
+                'lojaId': r.canonicalStoreId ?? '',
+                'reason': r.failureReason ?? '',
+                'resolverStage': r.resolverStage ?? '',
+                'resolverAttempt': r.resolverAttempt ?? '',
+                'diagnostics': r.diagnostics ?? <String, dynamic>{},
+                'error': r.errorMessage ?? '',
+              });
+              web_plat.Web.localStorageSet(
+                'mp_catalog_resolver_result',
+                jsonEncode(payload),
+              );
+              web_plat.Web.localStorageSet(
+                'mp_last_runtime_error',
+                jsonEncode(payload),
+              );
+            } else if (snapshot.hasError) {
+              payload.addAll({
+                'success': false,
+                'lojaId': '',
+                'reason': 'resolve_test_exception',
+                'resolverStage': 'resolveTest.futureBuilder',
+                'resolverAttempt':
+                    'StoreResolverFacade.resolveForPublicCatalog',
+                'error': snapshot.error.toString(),
+                'stack': '',
+              });
+              web_plat.Web.localStorageSet(
+                'mp_catalog_resolver_result',
+                jsonEncode(payload),
+              );
+            }
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child:
+                    SelectableText(const JsonEncoder.withIndent('  ').convert(
+                  payload,
+                )),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _CatalogDiagnosticApp extends StatelessWidget {
+  const _CatalogDiagnosticApp();
+
+  @override
+  Widget build(BuildContext context) {
+    final uri = _initialWebUri ?? Uri.base;
+    final raw = web_plat.Web.localStorageGet('mp_last_runtime_error');
+    final resolverRaw =
+        web_plat.Web.localStorageGet('mp_catalog_resolver_result');
+    String fase = '';
+    String error = '';
+    String stack = '';
+    String slug = _lojaSlugOrIdFromUrl();
+    String lojaId = '';
+    String reason = '';
+    String resolverStage = '';
+    String resolverAttempt = '';
+    String firestorePath = '';
+    String firestoreErrorCode = '';
+    String firestoreErrorMessage = '';
+    String docExists = '';
+    String docId = '';
+    String slugField = '';
+    String ativo = '';
+    String publicado = '';
+    String catalogoAtivo = '';
+    String status = '';
+    final rawValue = (raw ?? '').isNotEmpty ? (raw ?? '') : (resolverRaw ?? '');
+    if (rawValue.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawValue);
+        if (decoded is Map) {
+          fase = (decoded['fase'] ?? '').toString();
+          error = (decoded['error'] ?? '').toString();
+          stack = (decoded['stack'] ?? '').toString();
+          if ((decoded['slug'] ?? '').toString().trim().isNotEmpty) {
+            slug = (decoded['slug'] ?? '').toString().trim();
+          }
+          lojaId = (decoded['lojaId'] ?? '').toString();
+          reason = (decoded['reason'] ?? '').toString();
+          resolverStage = (decoded['resolverStage'] ?? '').toString();
+          resolverAttempt = (decoded['resolverAttempt'] ?? '').toString();
+          firestorePath = (decoded['firestorePath'] ?? '').toString();
+          firestoreErrorCode = (decoded['firestoreErrorCode'] ?? '').toString();
+          firestoreErrorMessage =
+              (decoded['firestoreErrorMessage'] ?? '').toString();
+          docExists = (decoded['docExists'] ?? '').toString();
+          docId = (decoded['docId'] ?? '').toString();
+          slugField = (decoded['slugField'] ?? '').toString();
+          ativo = (decoded['ativo'] ?? '').toString();
+          publicado = (decoded['publicado'] ?? '').toString();
+          catalogoAtivo = (decoded['catalogoAtivo'] ?? '').toString();
+          status = (decoded['status'] ?? '').toString();
+        }
+      } catch (_) {}
+    }
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        appBar: AppBar(title: const Text('Diagnóstico Catálogo')),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: SelectableText(
+              'buildId=$kCatalogDiagBuildId\n'
+              'host=${uri.host}\n'
+              'path=${uri.path}\n'
+              'query=${uri.query}\n'
+              'userAgent=${web_plat.Web.userAgent()}\n'
+              'slug=$slug\n'
+              'lojaId=$lojaId\n'
+              'fase=$fase\n'
+              'reason=$reason\n'
+              'resolverStage=$resolverStage\n'
+              'resolverAttempt=$resolverAttempt\n'
+              'firestorePath=$firestorePath\n'
+              'firestoreErrorCode=$firestoreErrorCode\n'
+              'firestoreErrorMessage=$firestoreErrorMessage\n'
+              'docExists=$docExists\n'
+              'docId=$docId\n'
+              'slugField=$slugField\n'
+              'ativo=$ativo\n'
+              'publicado=$publicado\n'
+              'catalogoAtivo=$catalogoAtivo\n'
+              'status=$status\n'
+              'error=$error\n'
+              'stack=$stack\n'
+              'mp_last_runtime_error_raw=$rawValue',
             ),
           ),
         ),
@@ -1596,7 +2786,8 @@ class _BootApp extends StatelessWidget {
     // Heurística só para texto da splash (antes do Firestore): domínios dedicados ao catálogo.
     final looksLikeDedicatedCatalogHost =
         host.contains('catalogo.') || host.startsWith('catalogo.');
-    final isCatalog = kIsWeb && (isCatalogPath || looksLikeDedicatedCatalogHost);
+    final isCatalog =
+        kIsWeb && (isCatalogPath || looksLikeDedicatedCatalogHost);
     final splash = _withCatStartDiagOverlay(Scaffold(
       body: Center(
         child: Column(
@@ -1666,8 +2857,8 @@ class _BootError extends StatelessWidget {
 // ===========================================================================
 // 🔥 Inicialização do Firebase com fallback OFFLINE
 // ===========================================================================
-/// Evita `firebase.init.begin` duplicado e corrida entre fast path do catálogo e `_bootstrapSafe`.
-Future<bool>? _firebaseCoreInitInFlight;
+/// Uma instância de in-flight; duplicar podia disparear dois `initializeApp` em condição de corrida.
+Future<bool>? _firebaseCoreInitFuture;
 
 Future<bool> ensureFirebaseInitializedOnce() => _initFirebaseCore();
 
@@ -1680,31 +2871,41 @@ Future<bool> _initFirebaseCore() async {
     }
     return true;
   }
-  _firebaseCoreInitInFlight ??= _initFirebaseCorePerform();
+  _firebaseCoreInitFuture ??= _initFirebaseCorePerform();
   try {
-    return await _firebaseCoreInitInFlight!;
-  } finally {
-    _firebaseCoreInitInFlight = null;
+    final ok = await _firebaseCoreInitFuture!;
+    if (!ok) {
+      _firebaseCoreInitFuture = null;
+    }
+    return ok;
+  } catch (e) {
+    _firebaseCoreInitFuture = null;
+    rethrow;
   }
 }
 
 Future<bool> _initFirebaseCorePerform() async {
+  final skipAuthPersistence = kIsWeb &&
+      _isWebNetTestDiagnosticsQuery(_initialWebUri ?? Uri.base);
   CatalogStartupTrace.spanStart('CAT_START.firebase_init');
   logD('➡️ Firebase.initializeApp...');
   boot.mark('firebase.init.begin');
   try {
     await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+      options: firebaseOptionsForInit(),
     ).timeout(const Duration(seconds: 15));
 
-    // Web: manter usuário logado até clicar em Sair, fechar aba/navegador ou limpar dados
-    if (kIsWeb) {
+    // Web: manter usuário logado; em `diag&netTest` pula (WebKit: `setPersistence` pode
+    // lançar "Null check" em interop) — o netTest chama `Firebase.initializeApp` isolado.
+    if (kIsWeb && !skipAuthPersistence && Firebase.apps.isNotEmpty) {
       try {
         await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
         logD('🔐 [BOOT] Auth persistência LOCAL (permanece logado até Sair)');
-      } catch (e) {
-        logD('⚠️ [BOOT] setPersistence: $e');
+      } catch (e, st) {
+        logD('⚠️ [BOOT] setPersistence: $e  $st');
       }
+    } else if (kIsWeb && skipAuthPersistence) {
+      logD('ℹ️ [BOOT] setPersistence omitido (modo netTest/diag no Web).');
     }
 
     boot.mark('firebase.init.ok');
@@ -1717,29 +2918,61 @@ Future<bool> _initFirebaseCorePerform() async {
     logD(
         '! Não foi possível inicializar o Firebase. Continuando em modo OFFLINE.');
     boot.mark('firebase.init.offline', e);
-    CatalogStartupTrace.spanEnd('CAT_START.firebase_init', data: {'ok': false, 'timeout': true});
+    CatalogStartupTrace.spanEnd('CAT_START.firebase_init',
+        data: {'ok': false, 'timeout': true});
+    unawaited(_logCatalogRuntimeError(
+      fase: 'firebaseInit',
+      error: e,
+      stack: StackTrace.current,
+    ));
     return false;
   } on FirebaseException catch (e) {
-    if (e.code == 'duplicate-app') {
+    if (e.code == 'duplicate-app' && Firebase.apps.isNotEmpty) {
       logD(
           'ℹ️ Firebase já estava inicializado (duplicate-app). Usando instância existente.');
-      Firebase.app();
       boot.mark('firebase.init.duplicate');
-      CatalogStartupTrace.spanEnd('CAT_START.firebase_init', data: {'ok': true, 'duplicate': true});
+      CatalogStartupTrace.spanEnd('CAT_START.firebase_init',
+          data: {'ok': true, 'duplicate': true});
       return true;
     } else {
       boot.mark('firebase.init.fail', e);
-      CatalogStartupTrace.spanEnd('CAT_START.firebase_init', data: {'ok': false, 'error_type': e.runtimeType.toString()});
+      CatalogStartupTrace.spanEnd('CAT_START.firebase_init',
+          data: {'ok': false, 'error_type': e.runtimeType.toString()});
+      unawaited(_logCatalogRuntimeError(
+        fase: 'firebaseInit',
+        error: e,
+        stack: StackTrace.current,
+      ));
       rethrow;
     }
+  } catch (e, st) {
+    // Tudo que não for Timeout / Firebase (ex.: null check / TypeError do JS, Auth interop)
+    logD('! Firebase init genérico (type=${e.runtimeType}): $e  $st');
+    boot.mark('firebase.init.unexpected', e);
+    CatalogStartupTrace.spanEnd(
+      'CAT_START.firebase_init',
+      data: {
+        'ok': false,
+        'error_type': e.runtimeType.toString(),
+        'unhandled': true,
+      },
+    );
+    unawaited(
+      _logCatalogRuntimeError(
+        fase: 'firebaseInit',
+        error: e,
+        stack: st,
+      ),
+    );
+    return false;
   }
 }
 
 void _debugLogPublicCatalogBootChoice(Uri uriWeb) {
   if (!kIsWeb || !kDebugMode) return;
   final isDefaultHost = AppUrls.isDefaultMasterPalmCatalogHost(uriWeb.host);
-  final isCatPath = _uriHasLojaPathPriority(uriWeb) &&
-      !_uriIsPagamentoPublicPath(uriWeb);
+  final isCatPath =
+      _uriHasLojaPathPriority(uriWeb) && !_uriIsPagamentoPublicPath(uriWeb);
   final isCustomCand = _shouldOfferCustomDomainCatalogFastPath(uriWeb);
   var selectedBootMode = 'admin_or_full_bootstrap';
   if (isCatPath || isCustomCand) {
@@ -1761,16 +2994,36 @@ Future<void> main() async {
   CatalogStartupTrace.mark('CAT_START.main.enter');
   await runWithGlobalErrorHook(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    _installUltraEarlyCatalogErrorCapture();
     CatalogStartupTrace.mark('CAT_START.flutter_binding.ready');
 
     // Web: usar path na URL (/loja/slug) em vez de hash (#/loja/slug) para o lojaId ser lido corretamente
     if (kIsWeb) {
       url_strategy.usePathUrlStrategy();
       // Captura URL inicial para decisão catálogo vs app (evita redirect durante bootstrap)
-      _initialWebUri = Uri.base;
+      final initialUri = Uri.base;
+      _initialWebUri = initialUri;
+
+      // GATE ABSOLUTO (antes de qualquer bootstrap/fallback do catálogo):
+      // ?diag=1&netTest=1 deve sempre abrir diagnóstico técnico e retornar.
+      if (_shouldForceNetTest(initialUri)) {
+        runApp(const _CatalogNetTestApp());
+        return;
+      }
+
+      web_plat.Web.localStorageSet('mp_catalog_build_id', kCatalogDiagBuildId);
+      _setCatalogPhase('main.start');
       logD('🌐 [MAIN] URL inicial (para catálogo): ${_initialWebUri?.path}');
       // Não inicializar Google Sign-In aqui: evita redirecionar para Google antes
       // de exibir a tela de login. O init é feito na LoginScreen quando o usuário vê as opções.
+      if (_shouldForceDiagScreen(initialUri)) {
+        runApp(const _CatalogDiagnosticApp());
+        return;
+      }
+      if (_shouldForceResolveTest(initialUri)) {
+        runApp(const _CatalogResolveTestApp());
+        return;
+      }
     }
 
     logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1784,16 +3037,37 @@ Future<void> main() async {
     // (Hive, sessão, RemoteConfig, AppCheck pesado só no app administrativo).
     if (kIsWeb) {
       final uriWeb = _initialWebUri ?? Uri.base;
+      _setCatalogPhase('route.detected');
       _debugLogPublicCatalogBootChoice(uriWeb);
+      if (_shouldShowRootStoreNotConfigured(uriWeb)) {
+        unawaited(_logCatalogRuntimeError(
+          fase: 'domainResolver',
+          error: StateError('root_without_store_context'),
+          stack: StackTrace.current,
+          slug: _lojaSlugOrIdFromUrl(),
+          lojaId: '',
+        ));
+        runApp(const CatalogDomainBootstrapErrorApp(
+          message: 'Loja não encontrada ou domínio não configurado.',
+        ));
+        return;
+      }
 
-      final isPublicCatalogPath = _uriHasLojaPathPriority(uriWeb) &&
-          !_uriIsPagamentoPublicPath(uriWeb);
+      final isPublicCatalogPath =
+          _uriHasLojaPathPriority(uriWeb) && !_uriIsPagamentoPublicPath(uriWeb);
       if (isPublicCatalogPath) {
+        _setCatalogPhase('catalog.slug.extracted');
         final lojaSlugOrId = _lojaSlugOrIdFromUrl();
+        _logWebCatalogDiag(
+          source: 'fast_path.loja_path.enter',
+          slugOrId: lojaSlugOrId,
+          resolvedLojaId: lojaSlugOrId,
+        );
         final vendedorRef = _vendedorRefFromUrl();
         final indicacaoRef = _indicacaoRefFromUrl();
         final produtoRef = _produtoRefFromUrl();
-        CatalogStartupTrace.mark('CAT_START.runApp.catalog_bootstrap_gate.loja_path');
+        CatalogStartupTrace.mark(
+            'CAT_START.runApp.catalog_bootstrap_gate.loja_path');
         runApp(PublicCatalogBootstrapApp(
           firebaseSpanName: 'CAT_START.fast_path.firebase_min_init',
           initFirebase: ensureFirebaseInitializedOnce,
@@ -1801,12 +3075,18 @@ Future<void> main() async {
             required void Function(String? nomeLoja) updateNomeLoja,
             required void Function(String? logoUrl) updateLogoUrl,
           }) async {
+            _setCatalogPhase('catalog.loja.load.start');
             // /loja/{id}: nome costuma vir depois no stream de config; mantemos fallback leve aqui.
             updateNomeLoja(null);
             updateLogoUrl(null);
             StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
               urlSlugOrId: lojaSlugOrId,
               resolvedCanonicalStoreId: lojaSlugOrId,
+            );
+            _logWebCatalogDiag(
+              source: 'fast_path.loja_path.seeded',
+              slugOrId: lojaSlugOrId,
+              resolvedLojaId: lojaSlugOrId,
             );
             CatalogStartupTrace.mark(
               'CAT_START.fast_path.public_resolver_seeded',
@@ -1821,6 +3101,8 @@ Future<void> main() async {
             if (kDebugMode) {
               debugPrint('[CATALOG_BOOT] catalog.root.render');
             }
+            _setCatalogPhase('catalog.loja.load.done');
+            _setCatalogPhase('publicCatalogScreen.render');
             runApp(CatalogWebRoot(
               lojaId: lojaSlugOrId,
               vendedorRef: vendedorRef,
@@ -1838,7 +3120,8 @@ Future<void> main() async {
         final cached = CatalogDomainBrowserCache.read(hostNorm);
         final cachedNomeLoja = sanitizePublicStoreName(cached?.nomeLoja);
         final cachedLogoUrl = sanitizePublicStoreLogoUrl(cached?.logoUrl);
-        CatalogStartupTrace.mark('CAT_START.runApp.catalog_bootstrap_gate.custom_domain');
+        CatalogStartupTrace.mark(
+            'CAT_START.runApp.catalog_bootstrap_gate.custom_domain');
         runApp(PublicCatalogBootstrapApp(
           firebaseSpanName: 'CAT_START.custom_domain.fast_path.firebase',
           initFirebase: ensureFirebaseInitializedOnce,
@@ -1848,6 +3131,7 @@ Future<void> main() async {
             required void Function(String? nomeLoja) updateNomeLoja,
             required void Function(String? logoUrl) updateLogoUrl,
           }) async {
+            _setCatalogPhase('catalog.domain.resolve.start');
             if (kDebugMode) {
               debugPrint('[CATALOG_BOOT] domain.resolve.begin');
             }
@@ -1861,10 +3145,15 @@ Future<void> main() async {
                 kCatalogDomainResolveBudget,
                 onTimeout: () => null,
               );
-            } catch (e) {
+            } catch (e, st) {
               logW(
                 '⚠️ [MAIN] Resolução domínio próprio (fast path) falhou (type=${e.runtimeType})',
               );
+              unawaited(_logCatalogRuntimeError(
+                fase: 'domainResolver',
+                error: e,
+                stack: st,
+              ));
             }
 
             final nomeLoja = (domainHit?.nomeLoja ?? '').trim();
@@ -1876,24 +3165,36 @@ Future<void> main() async {
               updateLogoUrl(logoUrl);
             }
             final fromMappedHost = (domainHit?.lojaId ?? '').trim();
+            _setCatalogPhase('catalog.domain.resolve.done');
             if (fromMappedHost.isNotEmpty) {
               String lojaIdResolvido = fromMappedHost;
               try {
                 lojaIdResolvido =
                     await _fastResolveStoreIdFromDomainIndex(fromMappedHost);
-              } catch (e) {
+              } catch (e, st) {
                 logW(
                     '⚠️ [MAIN] Resolver lojaId (domínio fast path) falhou (type=${e.runtimeType})');
+                unawaited(_logCatalogRuntimeError(
+                  fase: 'lojaLoad',
+                  error: e,
+                  stack: st,
+                  slug: fromMappedHost,
+                ));
               }
               StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
                 urlSlugOrId: fromMappedHost,
                 resolvedCanonicalStoreId: lojaIdResolvido,
               );
+              _logWebCatalogDiag(
+                source: 'fast_path.custom_domain.seeded',
+                slugOrId: fromMappedHost,
+                resolvedLojaId: lojaIdResolvido,
+              );
               final vendedorRef = _vendedorRefFromUrl();
               final indicacaoRef = _indicacaoRefFromUrl();
               final produtoRef = _produtoRefFromUrl();
               logD(
-                '🌐 [MAIN] Public Catalog FAST domínio próprio host=$hostNorm → $lojaIdResolvido');
+                  '🌐 [MAIN] Public Catalog FAST domínio próprio host=$hostNorm → $lojaIdResolvido');
               if (kDebugMode) {
                 debugPrint('[CATALOG_BOOT] domain.resolve.ok');
               }
@@ -1912,6 +3213,8 @@ Future<void> main() async {
               if (kDebugMode) {
                 debugPrint('[CATALOG_BOOT] catalog.root.render');
               }
+              _setCatalogPhase('catalog.loja.load.done');
+              _setCatalogPhase('publicCatalogScreen.render');
               runApp(CatalogWebRoot(
                 lojaId: lojaIdResolvido,
                 vendedorRef: vendedorRef,
@@ -1926,7 +3229,7 @@ Future<void> main() async {
               data: {'ok': false, 'reason': 'no_mapping'},
             );
             logD(
-              '🌐 [MAIN] Domínio próprio sem mapeamento ativo (fast path) host=$hostNorm → tela amigável');
+                '🌐 [MAIN] Domínio próprio sem mapeamento ativo (fast path) host=$hostNorm → tela amigável');
             CatalogStartupTrace.mark(
                 'CAT_START.runApp.catalog_domain_resolve_error');
             runApp(const CatalogDomainBootstrapErrorApp());
@@ -1948,10 +3251,10 @@ Future<void> main() async {
 
       try {
         final lojaViaLojaService = await LojaIdService.get();
-        logD(
-            '🟪 [MAIN] Loja via LojaIdService.get() → $lojaViaLojaService');
+        logD('🟪 [MAIN] Loja via LojaIdService.get() → $lojaViaLojaService');
       } catch (e) {
-        logD('🟥 [MAIN] Erro ao obter loja via LojaIdService.get() (type=${e.runtimeType})');
+        logD(
+            '🟥 [MAIN] Erro ao obter loja via LojaIdService.get() (type=${e.runtimeType})');
       }
 
       if (kIsWeb) {
@@ -1982,6 +3285,7 @@ Future<void> main() async {
           logD('🌐 [MAIN] URL para catálogo (atual): ${_initialWebUri?.path}');
         }
         final uriWeb = _initialWebUri ?? Uri.base;
+        _setCatalogPhase('route.detected');
         if (_uriIsPagamentoPublicPath(uriWeb)) {
           logD(
               '🌐 [MAIN] Path /pagamento/* → MyApp (fluxo MP; não CatalogWebRoot)');
@@ -1994,12 +3298,15 @@ Future<void> main() async {
         logD('🌐 [MAIN] _isPublicCatalogUrl() → $isCat');
 
         if (isCat) {
+          _setCatalogPhase('catalog.slug.extracted');
           final slugOuId = _lojaSlugOrIdFromUrl();
+          _setCatalogPhase('catalog.loja.load.start');
           String lojaIdResolvido = slugOuId;
           try {
             lojaIdResolvido = await _resolveSlugToStoreIdIfNeeded(slugOuId);
           } catch (e) {
-            logW('⚠️ [MAIN] Resolver slug falhou, usando slug da URL (type=${e.runtimeType})');
+            logW(
+                '⚠️ [MAIN] Resolver slug falhou, usando slug da URL (type=${e.runtimeType})');
           }
           StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
             urlSlugOrId: slugOuId,
@@ -2011,6 +3318,8 @@ Future<void> main() async {
 
           logD('🌐 [MAIN] Public Catalog slug/id resolvido');
           CatalogStartupTrace.mark('CAT_START.runApp.catalog_web_root');
+          _setCatalogPhase('catalog.loja.load.done');
+          _setCatalogPhase('publicCatalogScreen.render');
           runApp(CatalogWebRoot(
             lojaId: lojaIdResolvido,
             vendedorRef: vendedorRef,
@@ -2021,12 +3330,13 @@ Future<void> main() async {
             !_uriHasExplicitCatalogQueryOrFragment(uriWeb) &&
             Firebase.apps.isNotEmpty) {
           final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
-          final fromMappedHost =
-              await resolveLojaIdForPublicCatalogHost(
+          _setCatalogPhase('catalog.domain.resolve.start');
+          final fromMappedHost = await resolveLojaIdForPublicCatalogHost(
             uriWeb.host,
             useBrowserCache: true,
           ).timeout(kCatalogDomainResolveBudget, onTimeout: () => null);
           if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
+            _setCatalogPhase('catalog.domain.resolve.done');
             String lojaIdResolvido = fromMappedHost;
             try {
               lojaIdResolvido =
@@ -2044,7 +3354,10 @@ Future<void> main() async {
             final produtoRef = _produtoRefFromUrl();
             logD(
                 '🌐 [MAIN] Public Catalog via catalog_domains host=$hostNorm → $lojaIdResolvido');
-            CatalogStartupTrace.mark('CAT_START.runApp.catalog_web_root.domain_map');
+            CatalogStartupTrace.mark(
+                'CAT_START.runApp.catalog_web_root.domain_map');
+            _setCatalogPhase('catalog.loja.load.done');
+            _setCatalogPhase('publicCatalogScreen.render');
             runApp(CatalogWebRoot(
               lojaId: lojaIdResolvido,
               vendedorRef: vendedorRef,
@@ -2063,7 +3376,8 @@ Future<void> main() async {
             registerWebPopStateLogger();
           }
         } else if (_isPublicMarketingSite()) {
-          logD('🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
+          logD(
+              '🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
           CatalogStartupTrace.mark('CAT_START.runApp.marketing_web_app');
           runApp(const PublicMarketingWebApp());
         } else {
@@ -2079,7 +3393,14 @@ Future<void> main() async {
       }
     } catch (e, st) {
       logE('❌ Bootstrap ERROR (type=${e.runtimeType})', error: e, st: st);
-      CatalogStartupTrace.mark('CAT_START.runApp.boot_error', data: {'error_type': e.runtimeType.toString()});
+      _logWebCatalogDiag(source: 'main.bootstrap.error');
+      unawaited(_logCatalogRuntimeError(
+        fase: 'render',
+        error: e,
+        stack: st,
+      ));
+      CatalogStartupTrace.mark('CAT_START.runApp.boot_error',
+          data: {'error_type': e.runtimeType.toString()});
       runApp(_BootError(message: e.toString()));
     }
   });
@@ -2095,7 +3416,12 @@ Future<void> resetHiveIfSchemaChanged() async {
     final saved = config.get('schema_version') as int?;
     if (saved == schemaVersion) return;
 
-    for (final name in ['estoque', 'catalogo', 'config_catalogo', 'categorias']) {
+    for (final name in [
+      'estoque',
+      'catalogo',
+      'config_catalogo',
+      'categorias'
+    ]) {
       try {
         if (Hive.isBoxOpen(name)) await Hive.box(name).close();
         await Hive.deleteBoxFromDisk(name);
@@ -2119,28 +3445,44 @@ void _registerAllHiveAdaptersBootstrap() {
   if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(ProdutoAdapter());
   if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(FornecedorAdapter());
   if (!Hive.isAdapterRegistered(4)) Hive.registerAdapter(UsuarioAdapter());
-  if (!Hive.isAdapterRegistered(5)) Hive.registerAdapter(ProdutoCatalogoAdapter());
-  if (!Hive.isAdapterRegistered(6)) Hive.registerAdapter(CatalogoConfigAdapter());
+  if (!Hive.isAdapterRegistered(5))
+    Hive.registerAdapter(ProdutoCatalogoAdapter());
+  if (!Hive.isAdapterRegistered(6))
+    Hive.registerAdapter(CatalogoConfigAdapter());
   if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(VendaItemAdapter());
-  if (!Hive.isAdapterRegistered(8)) Hive.registerAdapter(FechamentoMensalAdapter());
-  if (!Hive.isAdapterRegistered(13)) Hive.registerAdapter(SubcategoriaAdapter());
+  if (!Hive.isAdapterRegistered(8))
+    Hive.registerAdapter(FechamentoMensalAdapter());
+  if (!Hive.isAdapterRegistered(13))
+    Hive.registerAdapter(SubcategoriaAdapter());
   if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(CupomPremioAdapter());
-  if (!Hive.isAdapterRegistered(15)) Hive.registerAdapter(MasterConfigAdapter());
+  if (!Hive.isAdapterRegistered(15))
+    Hive.registerAdapter(MasterConfigAdapter());
   if (!Hive.isAdapterRegistered(16)) Hive.registerAdapter(MetaAdapter());
   if (!Hive.isAdapterRegistered(17)) Hive.registerAdapter(CategoriaAdapter());
   if (!Hive.isAdapterRegistered(18)) Hive.registerAdapter(EstoqueItemAdapter());
-  if (!Hive.isAdapterRegistered(25)) Hive.registerAdapter(ComissaoConfigAdapter());
-  if (!Hive.isAdapterRegistered(26)) Hive.registerAdapter(ComissaoVendedorAdapter());
-  if (!Hive.isAdapterRegistered(27)) Hive.registerAdapter(VendaTrackingAdapter());
-  if (!Hive.isAdapterRegistered(28)) Hive.registerAdapter(ComissaoVendaAdapter());
+  if (!Hive.isAdapterRegistered(25))
+    Hive.registerAdapter(ComissaoConfigAdapter());
+  if (!Hive.isAdapterRegistered(26))
+    Hive.registerAdapter(ComissaoVendedorAdapter());
+  if (!Hive.isAdapterRegistered(27))
+    Hive.registerAdapter(VendaTrackingAdapter());
+  if (!Hive.isAdapterRegistered(28))
+    Hive.registerAdapter(ComissaoVendaAdapter());
   if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(NotaFiscalAdapter());
-  if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(NotaFiscalItemAdapter());
-  if (!Hive.isAdapterRegistered(29)) Hive.registerAdapter(ContaReceberAdapter());
-  if (!Hive.isAdapterRegistered(30)) Hive.registerAdapter(LancamentoFinanceiroAdapter());
-  if (!Hive.isAdapterRegistered(31)) Hive.registerAdapter(GastoFixoMensalAdapter());
-  if (!Hive.isAdapterRegistered(32)) Hive.registerAdapter(CompraFornecedorAdapter());
-  if (!Hive.isAdapterRegistered(33)) Hive.registerAdapter(CompraFornecedorItemAdapter());
-  if (!Hive.isAdapterRegistered(34)) Hive.registerAdapter(CompraItemPipelineAdapter());
+  if (!Hive.isAdapterRegistered(11))
+    Hive.registerAdapter(NotaFiscalItemAdapter());
+  if (!Hive.isAdapterRegistered(29))
+    Hive.registerAdapter(ContaReceberAdapter());
+  if (!Hive.isAdapterRegistered(30))
+    Hive.registerAdapter(LancamentoFinanceiroAdapter());
+  if (!Hive.isAdapterRegistered(31))
+    Hive.registerAdapter(GastoFixoMensalAdapter());
+  if (!Hive.isAdapterRegistered(32))
+    Hive.registerAdapter(CompraFornecedorAdapter());
+  if (!Hive.isAdapterRegistered(33))
+    Hive.registerAdapter(CompraFornecedorItemAdapter());
+  if (!Hive.isAdapterRegistered(34))
+    Hive.registerAdapter(CompraItemPipelineAdapter());
 }
 
 /// Catálogo web: não bloquear [main] com dezenas de [registerAdapter] síncronos
@@ -2202,9 +3544,11 @@ Future<void> _bootstrapSafe() async {
     if (!webCatalogMinimalBoot && u == null && kIsWeb) {
       // Sessão persistida costuma aparecer no 1º evento; visitante sem login nunca
       // recebe usuário não-anônimo — não pode esperar 5s (atrasava muito o 1º acesso).
-      logD('🟡 [BOOT] Web: currentUser null, aguardando restauração auth (até 900ms)...');
+      logD(
+          '🟡 [BOOT] Web: currentUser null, aguardando restauração auth (até 900ms)...');
       try {
-        await FirebaseAuth.instance.authStateChanges()
+        await FirebaseAuth.instance
+            .authStateChanges()
             .where((x) => x != null && !x.isAnonymous)
             .first
             .timeout(const Duration(milliseconds: 900), onTimeout: () => null);
@@ -2217,9 +3561,11 @@ Future<void> _bootstrapSafe() async {
   final isNoUser = !hasUser;
   if (webCatalogMinimalBoot || isNoUser) {
     if (webCatalogMinimalBoot) {
-      logD('[BOOT-CATALOG-WEB] Fast path: catálogo público (visitante ou admin na mesma origem)');
+      logD(
+          '[BOOT-CATALOG-WEB] Fast path: catálogo público (visitante ou admin na mesma origem)');
     } else {
-      logD('[BOOT-OFFLINE] Fast path: sem usuário → bootstrap mínimo para login');
+      logD(
+          '[BOOT-OFFLINE] Fast path: sem usuário → bootstrap mínimo para login');
     }
     boot.mark('auth.no_user');
     boot.mark('appcheck.skip_fastpath');
@@ -2245,7 +3591,8 @@ Future<void> _bootstrapSafe() async {
     boot.mark('local.fix.ok');
     scheduleBootstrapDeferredWork(
       delay: Duration(milliseconds: webCatalogMinimalBoot ? 0 : 120),
-      logTag: webCatalogMinimalBoot ? 'catalog_web_deferred_min' : 'fastpath_full',
+      logTag:
+          webCatalogMinimalBoot ? 'catalog_web_deferred_min' : 'fastpath_full',
       work: () => _bootstrapDeferredFull(
         firebaseOk: firebaseOk,
         publicCatalogWebVisitor: webCatalogMinimalBoot,
@@ -2258,23 +3605,25 @@ Future<void> _bootstrapSafe() async {
 
   // Fluxo completo (mobile ou web com usuário já logado)
   if (firebaseOk) {
-    logD('[BOOT_FIREBASE_PHASE] RemoteConfig + AppCheck + Monitoring (paralelo)');
+    logD(
+        '[BOOT_FIREBASE_PHASE] RemoteConfig + AppCheck + Monitoring (paralelo)');
     await Future.wait<void>([
-      RemoteConfigService.init()
-          .timeout(const Duration(seconds: 8), onTimeout: () {
+      RemoteConfigService.init().timeout(const Duration(seconds: 8),
+          onTimeout: () {
         logD('[BOOT-OFFLINE] RemoteConfig timeout – usando defaults');
       }).catchError((Object e, StackTrace _) {
-        logW('[BOOT-OFFLINE] RemoteConfig falhou (type=${e.runtimeType}) – usando defaults');
+        logW(
+            '[BOOT-OFFLINE] RemoteConfig falhou (type=${e.runtimeType}) – usando defaults');
       }),
-      initFirebaseAppCheck()
-          .timeout(const Duration(seconds: 5), onTimeout: () {
+      initFirebaseAppCheck().timeout(const Duration(seconds: 5), onTimeout: () {
         logD('[BOOT-OFFLINE] AppCheck timeout – continuando sem proteção');
       }).catchError((Object e, StackTrace st) {
-        logW('[AppCheck] (ignorado) Falha não bloqueia render.', tag: 'APP-CHECK');
+        logW('[AppCheck] (ignorado) Falha não bloqueia render.',
+            tag: 'APP-CHECK');
         if (kDebugMode) logD('   (type=${e.runtimeType})\n   $st');
       }),
-      initFirebaseMonitoring()
-          .timeout(const Duration(seconds: 3), onTimeout: () {
+      initFirebaseMonitoring().timeout(const Duration(seconds: 3),
+          onTimeout: () {
         logD('[BOOT-OFFLINE] Monitoring timeout – ignorado');
       }).catchError((Object _, StackTrace __) {}),
     ]);
@@ -2346,7 +3695,8 @@ Future<void> _bootstrapSafe() async {
           }
           await Hive.openBox(name);
         } catch (e2) {
-          logD('🟥 [BOOT_CRITICAL] Falha ao recuperar $name (type=${e2.runtimeType})');
+          logD(
+              '🟥 [BOOT_CRITICAL] Falha ao recuperar $name (type=${e2.runtimeType})');
         }
       }
     }
@@ -2362,7 +3712,8 @@ Future<void> _bootstrapSafe() async {
   if (firebaseOk && kIsWeb && FirebaseAuth.instance.currentUser == null) {
     logD('🟡 [WEB_BOOT] Aguardando Auth restaurar sessão (até 2s)...');
     try {
-      await FirebaseAuth.instance.authStateChanges()
+      await FirebaseAuth.instance
+          .authStateChanges()
           .where((u) => u != null)
           .first
           .timeout(const Duration(seconds: 2), onTimeout: () => null);
@@ -2388,7 +3739,8 @@ Future<void> _bootstrapSafe() async {
 
   boot.mark('local.fix.ok');
 
-  logD('✅ [BOOT_CRITICAL] Caminho crítico concluído — [BOOT_DEFERRED] agendado');
+  logD(
+      '✅ [BOOT_CRITICAL] Caminho crítico concluído — [BOOT_DEFERRED] agendado');
   logD(boot.dump());
 
   _scheduleLoggedInHeavyOnce(firebaseOk: firebaseOk);
@@ -2410,7 +3762,8 @@ Future<void> _bootstrapDeferred({required bool firebaseOk}) async {
       await autoSync.start();
       logD('✅ [BOOT] Auto-sincronização de produtos iniciada (deferred)');
     } catch (e) {
-      logW('⚠️ [BOOT] Erro ao iniciar auto-sync deferred (type=${e.runtimeType})');
+      logW(
+          '⚠️ [BOOT] Erro ao iniciar auto-sync deferred (type=${e.runtimeType})');
     }
     await SoftDeleteService.processOnStartup();
     await FinanceiroSoftDeleteService.processOnStartup();
@@ -2452,7 +3805,8 @@ Future<void> _bootstrapDeferredFull({
               .catchError((Object _, StackTrace __) {}),
         );
       }
-      logD('🟢 [BOOT] _bootstrapDeferredFull() concluído (catálogo web mínimo)');
+      logD(
+          '🟢 [BOOT] _bootstrapDeferredFull() concluído (catálogo web mínimo)');
       return;
     }
 
@@ -2557,8 +3911,7 @@ class MyApp extends StatelessWidget {
               logD('[AUTH] Firebase OK – usando AuthService ONLINE');
               return AuthService();
             } catch (_) {
-              logD(
-                  '[AUTH] Firebase OFFLINE – usando AuthService.offline()');
+              logD('[AUTH] Firebase OFFLINE – usando AuthService.offline()');
               return AuthService.offline();
             }
           },
@@ -2681,7 +4034,10 @@ class MyApp extends StatelessWidget {
               '/register': (_) => const RegisterScreen(),
               '/verify_email': (ctx) {
                 final raw = ModalRoute.of(ctx)?.settings.arguments;
-                final args = raw is Map ? Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v))) : null;
+                final args = raw is Map
+                    ? Map<String, dynamic>.from(
+                        raw.map((k, v) => MapEntry(k.toString(), v)))
+                    : null;
                 return VerifyEmailScreen(
                   email: args?['email']?.toString(),
                   nextRoute: args?['nextRoute']?.toString() ?? '/',
@@ -2784,7 +4140,8 @@ class MyApp extends StatelessWidget {
                   ),
               '/relatorio_lucratividade_produto': (ctx) => _lojaIdRouteGated(
                     PlanGateFeature.relatorioLucratividade,
-                    (lojaId) => RelatorioLucratividadeProdutoScreen(lojaId: lojaId),
+                    (lojaId) =>
+                        RelatorioLucratividadeProdutoScreen(lojaId: lojaId),
                   ),
               '/carrinhos_abandonados': (ctx) => _lojaIdRouteGated(
                     PlanGateFeature.carrinhosAbandonados,
@@ -2794,7 +4151,8 @@ class MyApp extends StatelessWidget {
                     PlanGateFeature.catalogoAvaliacoesModeracao,
                     (lojaId) => kIsWeb
                         ? AdminWebRouteShell(
-                            child: CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
+                            child: CatalogAvaliacoesModeracaoScreen(
+                                lojaId: lojaId),
                           )
                         : CatalogAvaliacoesModeracaoScreen(lojaId: lojaId),
                   ),
@@ -2822,7 +4180,10 @@ class MyApp extends StatelessWidget {
                   ),
               '/pedidos': (ctx) {
                 final raw = ModalRoute.of(ctx)?.settings.arguments;
-                final map = raw is Map ? Map<String, dynamic>.from(raw.map((k, v) => MapEntry(k.toString(), v))) : null;
+                final map = raw is Map
+                    ? Map<String, dynamic>.from(
+                        raw.map((k, v) => MapEntry(k.toString(), v)))
+                    : null;
                 final lojaIdArg = map?['lojaId']?.toString();
                 final pedidoIdArg = map?['pedidoId']?.toString();
                 if (lojaIdArg != null && lojaIdArg.isNotEmpty) {
@@ -2830,7 +4191,8 @@ class MyApp extends StatelessWidget {
                     PlanGateFeature.pedidosPrePedidos,
                     PrePedidosScreen(
                       lojaId: lojaIdArg,
-                      initialPedidoId: pedidoIdArg?.isNotEmpty == true ? pedidoIdArg : null,
+                      initialPedidoId:
+                          pedidoIdArg?.isNotEmpty == true ? pedidoIdArg : null,
                     ),
                   );
                 }
@@ -2926,27 +4288,32 @@ class MyApp extends StatelessWidget {
                     final pageRaw = Uri.base.queryParameters['page']?.trim();
                     final pageSplit = catalogInterpretPageQueryParam(pageRaw);
                     final cartId = Uri.base.queryParameters['cart']?.trim();
-                    final produtoId = Uri.base.queryParameters['produto']?.trim();
-                    final prodParam =
-                        catalogSanitizeProdQuery(Uri.base.queryParameters['prod']);
+                    final produtoId =
+                        Uri.base.queryParameters['produto']?.trim();
+                    final prodParam = catalogSanitizeProdQuery(
+                        Uri.base.queryParameters['prod']);
                     final tam = Uri.base.queryParameters['tam']?.trim();
                     final cor = Uri.base.queryParameters['cor']?.trim();
-                    final xv = catalogSanitizeXvQuery(Uri.base.queryParameters['xv']);
+                    final xv =
+                        catalogSanitizeXvQuery(Uri.base.queryParameters['xv']);
                     final cat = Uri.base.queryParameters['cat']?.trim();
                     final sub = Uri.base.queryParameters['sub']?.trim();
                     final ord = Uri.base.queryParameters['ord']?.trim();
                     final pmin = Uri.base.queryParameters['pmin']?.trim();
                     final pmax = Uri.base.queryParameters['pmax']?.trim();
                     final searchQ = Uri.base.queryParameters['q']?.trim();
-                    logD('🛒 [ROUTE /loja] Web: lojaId da URL → $fromUrl, page=$pageRaw, cart=$cartId, produto=$produtoId');
+                    logD(
+                        '🛒 [ROUTE /loja] Web: lojaId da URL → $fromUrl, page=$pageRaw, cart=$cartId, produto=$produtoId');
                     return PublicCatalogScreen(
                         lojaId: fromUrl,
                         vendedorRef: _vendedorRefFromUrl(),
                         indicacaoClienteRef: _indicacaoRefFromUrl(),
                         initialPage: pageSplit.namedInitialPage,
                         initialCatalogPage: pageSplit.catalogPage1Based,
-                        initialCartId: cartId?.isNotEmpty == true ? cartId : null,
-                        initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null,
+                        initialCartId:
+                            cartId?.isNotEmpty == true ? cartId : null,
+                        initialProdutoId:
+                            produtoId?.isNotEmpty == true ? produtoId : null,
                         initialProd: prodParam,
                         initialTam: tam?.isNotEmpty == true ? tam : null,
                         initialCor: cor?.isNotEmpty == true ? cor : null,
@@ -2965,27 +4332,48 @@ class MyApp extends StatelessWidget {
                     final lojaId = (snap.data ?? '').trim();
                     // Sem loja ou placeholder: mostra "Configure sua loja online". Nunca abre outra loja.
                     if (lojaId.isEmpty || !isValidForPublicLink(lojaId)) {
-                      logD('🛒 [ROUTE /loja] Sem loja válida → ConfigureLojaPlaceholderScreen');
+                      logD(
+                          '🛒 [ROUTE /loja] Sem loja válida → ConfigureLojaPlaceholderScreen');
                       return const ConfigureLojaPlaceholderScreen();
                     }
                     final vendedorRef = _vendedorRefFromUrl();
                     final indicacaoRef = _indicacaoRefFromUrl();
-                    final cartId = kIsWeb ? (Uri.base.queryParameters['cart']?.trim()) : null;
-                    final produtoId = kIsWeb ? (Uri.base.queryParameters['produto']?.trim()) : null;
-                    final prodParam = kIsWeb
-                        ? catalogSanitizeProdQuery(Uri.base.queryParameters['prod'])
+                    final cartId = kIsWeb
+                        ? (Uri.base.queryParameters['cart']?.trim())
                         : null;
-                    final tam = kIsWeb ? (Uri.base.queryParameters['tam']?.trim()) : null;
-                    final cor = kIsWeb ? (Uri.base.queryParameters['cor']?.trim()) : null;
+                    final produtoId = kIsWeb
+                        ? (Uri.base.queryParameters['produto']?.trim())
+                        : null;
+                    final prodParam = kIsWeb
+                        ? catalogSanitizeProdQuery(
+                            Uri.base.queryParameters['prod'])
+                        : null;
+                    final tam = kIsWeb
+                        ? (Uri.base.queryParameters['tam']?.trim())
+                        : null;
+                    final cor = kIsWeb
+                        ? (Uri.base.queryParameters['cor']?.trim())
+                        : null;
                     final xv = kIsWeb
                         ? catalogSanitizeXvQuery(Uri.base.queryParameters['xv'])
                         : null;
-                    final cat = kIsWeb ? (Uri.base.queryParameters['cat']?.trim()) : null;
-                    final sub = kIsWeb ? (Uri.base.queryParameters['sub']?.trim()) : null;
-                    final ord = kIsWeb ? (Uri.base.queryParameters['ord']?.trim()) : null;
-                    final pmin = kIsWeb ? (Uri.base.queryParameters['pmin']?.trim()) : null;
-                    final pmax = kIsWeb ? (Uri.base.queryParameters['pmax']?.trim()) : null;
-                    final searchQ = kIsWeb ? (Uri.base.queryParameters['q']?.trim()) : null;
+                    final cat = kIsWeb
+                        ? (Uri.base.queryParameters['cat']?.trim())
+                        : null;
+                    final sub = kIsWeb
+                        ? (Uri.base.queryParameters['sub']?.trim())
+                        : null;
+                    final ord = kIsWeb
+                        ? (Uri.base.queryParameters['ord']?.trim())
+                        : null;
+                    final pmin = kIsWeb
+                        ? (Uri.base.queryParameters['pmin']?.trim())
+                        : null;
+                    final pmax = kIsWeb
+                        ? (Uri.base.queryParameters['pmax']?.trim())
+                        : null;
+                    final searchQ =
+                        kIsWeb ? (Uri.base.queryParameters['q']?.trim()) : null;
                     final pageSplit = catalogInterpretPageQueryParam(
                       kIsWeb ? Uri.base.queryParameters['page']?.trim() : null,
                     );
@@ -2995,8 +4383,10 @@ class MyApp extends StatelessWidget {
                         indicacaoClienteRef: indicacaoRef,
                         initialPage: pageSplit.namedInitialPage,
                         initialCatalogPage: pageSplit.catalogPage1Based,
-                        initialCartId: cartId?.isNotEmpty == true ? cartId : null,
-                        initialProdutoId: produtoId?.isNotEmpty == true ? produtoId : null,
+                        initialCartId:
+                            cartId?.isNotEmpty == true ? cartId : null,
+                        initialProdutoId:
+                            produtoId?.isNotEmpty == true ? produtoId : null,
                         initialProd: prodParam,
                         initialTam: tam?.isNotEmpty == true ? tam : null,
                         initialCor: cor?.isNotEmpty == true ? cor : null,
@@ -3015,7 +4405,9 @@ class MyApp extends StatelessWidget {
               // Importante no Web: rota nomeada para manter histórico do browser (back funciona no iPhone).
               '/loja_preview': (ctx) {
                 final rawArgs = ModalRoute.of(ctx)?.settings.arguments;
-                final args = rawArgs is Map ? rawArgs.cast<String, dynamic>() : <String, dynamic>{};
+                final args = rawArgs is Map
+                    ? rawArgs.cast<String, dynamic>()
+                    : <String, dynamic>{};
                 final lojaIdArg = args['lojaId']?.toString().trim() ?? '';
                 return LojaPreviewShellScreen(lojaId: lojaIdArg);
               },

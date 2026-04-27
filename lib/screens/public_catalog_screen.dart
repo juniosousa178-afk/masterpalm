@@ -38,6 +38,7 @@ import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
 import '../core/combo_config_canonical.dart';
 import '../catalog/catalog_layout_config.dart';
+import '../debug/catalog_normal_trace.dart';
 import '../debug/catalog_startup_trace.dart';
 import 'public_catalog/catalog_helpers.dart';
 import 'public_catalog/catalog_public_header_debug.dart';
@@ -52,6 +53,8 @@ import 'public_catalog/catalog_config_service.dart'
         parseMedia;
 import '../utils/platform_adaptive.dart';
 import '../utils/safe_parse.dart';
+import '../web/platform_stub.dart'
+    if (dart.library.html) '../web/platform_web.dart' as plat;
 import 'public_catalog/catalog_theme_extension.dart';
 import 'public_catalog/catalog_theme.dart';
 import 'public_catalog/catalog_checkout_summary_tokens.dart';
@@ -648,6 +651,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   // ✅ FONTE ÚNICA: lojaId resolvido de forma assíncrona
   String? _resolvedLojaId;
   bool _loadingLojaId = true;
+  /// Exposto em [CatalogErrorLojaState] quando a loja não abre (ex.: flags / resolver).
+  String? _catalogOpenFailureDetail;
   bool _traceFirstUsefulPaintLogged = false;
   bool _traceInteractiveLogged = false;
   bool _traceConfigFirstDataLogged = false;
@@ -663,6 +668,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _traceEssentialActionsEnabledLogged = false;
   late final bool _diagCatStartOverlayEnabled =
       kIsWeb && Uri.base.queryParameters['diag'] == '1';
+
+  /// `?diag=1` ou `?traceCatalog=1` — painel técnico no fallback (localStorage + UI).
+  late final bool _catalogTechnicalDiagEnabled = kIsWeb &&
+      (Uri.base.queryParameters['diag'] == '1' ||
+          Uri.base.queryParameters['traceCatalog'] == '1');
+
+  bool _normalTraceRenderCatalogStartLogged = false;
+  bool _normalTraceRenderSuccessLogged = false;
 
   final List<Map<String, dynamic>> _cart = [];
   bool _publicando = false;
@@ -837,6 +850,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   @override
   void initState() {
     super.initState();
+    if (kIsWeb) {
+      plat.Web.localStorageSet('mp_catalog_phase', 'publicCatalogScreen.init');
+      CatalogNormalTrace.beginSession(widget.lojaId, preview: widget.preview);
+    }
     CatalogStartupTrace.mark(
       'CAT_START.public_screen.init_state',
       data: <String, Object?>{
@@ -851,10 +868,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _resolveLojaId().catchError((e, st) {
       logD(
           '❌ [CATÁLOGO] Erro não tratado em _resolveLojaId (type=${e.runtimeType})');
+      CatalogNormalTrace.setField('fallback.reason', 'resolve_catchError');
       if (mounted) {
         setState(() {
           _loadingLojaId = false;
           _resolvedLojaId = null;
+          _catalogOpenFailureDetail =
+              e is TimeoutException ? (e.message ?? 'Tempo esgotado') : e.toString();
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -875,10 +895,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       if (!mounted) return;
       _loadRecentIds();
       _loadClienteAndFavoritos();
-      if (!widget.preview &&
-          _resolvedLojaId != null &&
-          _resolvedLojaId!.isNotEmpty) {
-        CatalogVisitasService.incrementarVisita(_resolvedLojaId!);
+      final lid = _resolvedLojaId;
+      if (!widget.preview && lid != null && lid.isNotEmpty) {
+        CatalogVisitasService.incrementarVisita(lid);
       }
     });
   }
@@ -1494,7 +1513,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
     if (xv != null && kIsWeb && _catalogUrlProd != null) {
       Map<String, dynamic>? focused;
-      final pu = _catalogUrlProd!.trim();
+      final pu = (_catalogUrlProd ?? '').trim();
       if (pu.isNotEmpty) {
         for (final p in produtos) {
           if (catalogProdutoMatchesDeepLinkTarget(p, pu)) {
@@ -1593,19 +1612,18 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     double hi;
     final rawMin = p['priceMin'];
     final rawMax = p['priceMax'];
-    if (rawMin is num || rawMax is num) {
-      lo = rawMin is num ? rawMin.toDouble() : (rawMax as num).toDouble();
-      hi = rawMax is num ? rawMax.toDouble() : lo;
-      if (lo > hi) {
-        final t = lo;
-        lo = hi;
-        hi = t;
-      }
+    final nMin = asNum(rawMin);
+    final nMax = asNum(rawMax);
+    if (nMin != null || nMax != null) {
+      final a = (nMin ?? nMax)!.toDouble();
+      final b = (nMax ?? nMin)!.toDouble();
+      lo = a < b ? a : b;
+      hi = a > b ? a : b;
     } else {
-      final preco = (p['preco'] ?? p['valor'] ?? 0.0) is num
-          ? (p['preco'] ?? p['valor'] ?? 0.0) as num
-          : (double.tryParse('${p['preco'] ?? p['valor'] ?? 0}') ?? 0.0);
-      lo = hi = preco.toDouble();
+      final rawP = p['preco'] ?? p['valor'] ?? 0.0;
+      final n = asNum(rawP);
+      final preco = n?.toDouble() ?? double.tryParse('$rawP') ?? 0.0;
+      lo = hi = preco;
     }
     final fLo = _precoMin ?? double.negativeInfinity;
     final fHi = _precoMax ?? double.infinity;
@@ -1845,16 +1863,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       p['priceMin'] != null ? safeDouble(p['priceMin']) : null,
                   priceMax:
                       p['priceMax'] != null ? safeDouble(p['priceMax']) : null,
-                  precoPorTamanho: (p['precoPorTamanho'] is Map)
-                      ? Map<String, double>.from(
-                          (p['precoPorTamanho'] as Map).map(
-                            (k, v) => MapEntry(
-                              k.toString(),
-                              v is num ? v.toDouble() : 0.0,
-                            ),
-                          ),
-                        )
-                      : null,
+                  precoPorTamanho:
+                      catalogPrecoPorTamanhoFromDynamic(p['precoPorTamanho']),
                   precoOriginal: p['emPromocao'] == true
                       ? safeDouble(p['precoFinal'])
                       : null,
@@ -2130,7 +2140,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final cor = (e['cor'] ?? '').toString();
       return '$id|$q|$tam|$cor';
     }).join(';');
-    final fv = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
+    final fv = safeDouble(entrega['valor']);
     final fg = entrega['freteGratis'] == true;
     final tipo = (entrega['tipo'] ?? '').toString();
     final nom = (entrega['nome'] ?? '').toString();
@@ -2275,6 +2285,21 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     return 'web_host_custom_domain_or_root';
   }
 
+  String? _catalogTraceDiagnosticText() {
+    if (!_catalogTechnicalDiagEnabled) return null;
+    final buf = StringBuffer()..writeln(CatalogNormalTrace.toDiagnosticString());
+    if (kIsWeb) {
+      final phase = plat.Web.localStorageGet('mp_catalog_phase') ?? '';
+      buf.writeln('— runtime —');
+      buf.writeln('mp_catalog_phase: $phase');
+      buf.writeln(
+          'resolvedLojaId(widget): ${_resolvedLojaId ?? '(null)'}');
+      buf.writeln(
+          'buildId: ${const String.fromEnvironment('CATALOG_BUILD_ID', defaultValue: 'dev')}');
+    }
+    return buf.toString();
+  }
+
   Future<void> _resolveLojaId() async {
     final swResolve = Stopwatch()..start();
     if (kDebugMode) {
@@ -2294,13 +2319,18 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     );
     try {
       final widgetId = widget.lojaId.trim();
+      CatalogNormalTrace.mark(
+          'resolver.start', <String, Object?>{'raw': widgetId});
 
       // Link muito curto (ex: /loja/r) geralmente é incompleto ou truncado
       if (widgetId.length < 3) {
+        CatalogNormalTrace.setField('fallback.reason', 'link_too_short');
         if (mounted) {
           setState(() {
             _loadingLojaId = false;
             _resolvedLojaId = null;
+            _catalogOpenFailureDetail =
+                'Link do catálogo inválido ou incompleto. Use o link completo da loja.';
           });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2329,9 +2359,60 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
         if (!result.success) {
           logD('❌ [CATÁLOGO] ${result.errorMessage}');
+          CatalogNormalTrace.setField(
+              'fallback.reason', result.failureReason ?? 'resolve_failed');
+          CatalogNormalTrace.mark('resolver.failure', <String, Object?>{
+            'error': (result.errorMessage ?? '').toString(),
+          });
+          if (kIsWeb) {
+            final uri = Uri.base;
+            final payload = <String, dynamic>{
+              'buildId': const String.fromEnvironment(
+                'CATALOG_BUILD_ID',
+                defaultValue: 'dev',
+              ),
+              'timestamp': DateTime.now().toIso8601String(),
+              'host': uri.host,
+              'path': uri.path,
+              'query': uri.query,
+              'userAgent': plat.Web.userAgent(),
+              'slug': widgetId,
+              'lojaId': '',
+              'fase': 'catalog.slug.resolve.fail',
+              'phase': 'publicCatalogScreen.resolveLojaId',
+              'reason': result.failureReason ?? 'unknown',
+              'resolverStage': result.resolverStage ?? 'publicCatalog.resolve',
+              'resolverAttempt': result.resolverAttempt ?? 'n/a',
+              'firestorePath':
+                  (result.diagnostics?['firestorePath'] ?? '').toString(),
+              'firestoreErrorCode':
+                  (result.diagnostics?['firestoreErrorCode'] ?? '').toString(),
+              'firestoreErrorMessage':
+                  (result.diagnostics?['firestoreErrorMessage'] ?? '')
+                      .toString(),
+              'docExists': result.diagnostics?['docExists'],
+              'docId': (result.diagnostics?['docId'] ?? '').toString(),
+              'slugField': (result.diagnostics?['slugField'] ?? '').toString(),
+              'ativo': result.diagnostics?['ativo'],
+              'publicado': result.diagnostics?['publicado'],
+              'catalogoAtivo': result.diagnostics?['catalogoAtivo'],
+              'status': result.diagnostics?['status'],
+              'attempts': result.diagnostics?['attempts'],
+              'error': result.errorMessage ?? 'Loja não encontrada',
+              'stack': '',
+              'appVersion': 'web',
+            };
+            plat.Web.localStorageSet(
+                'mp_last_runtime_error', jsonEncode(payload));
+            plat.Web.localStorageSet(
+              'mp_catalog_resolver_result',
+              jsonEncode(payload),
+            );
+          }
           setState(() {
             _loadingLojaId = false;
             _resolvedLojaId = null;
+            _catalogOpenFailureDetail = result.errorMessage;
           });
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -2353,9 +2434,17 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         setState(() {
           _resolvedLojaId = result.canonicalStoreId;
           _loadingLojaId = false;
+          _catalogOpenFailureDetail = null;
         });
         traceOk = true;
         traceResolvedId = _resolvedLojaId;
+        CatalogNormalTrace.mark('resolver.success', <String, Object?>{
+          'lojaId': (result.canonicalStoreId ?? '').toString(),
+        });
+        CatalogNormalTrace.setField(
+            'resolver.lojaId', result.canonicalStoreId ?? '');
+        CatalogNormalTrace.setField('lojaDoc.exists', true);
+        CatalogNormalTrace.setField('fallback.reason', 'none');
         _loadMostrarEstoqueNoCatalogo(
             result.canonicalStoreId ?? result.storeId ?? widget.lojaId);
         _loadMostrarQuantidadeNoCatalogo(
@@ -2397,6 +2486,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         setState(() {
           _resolvedLojaId = result.canonicalStoreId ?? result.storeId;
           _loadingLojaId = false;
+          _catalogOpenFailureDetail = null;
         });
         traceOk = true;
         traceResolvedId = _resolvedLojaId;
@@ -2420,10 +2510,57 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     } catch (e) {
       traceErrorType = e.runtimeType.toString();
       logD('❌ Erro ao resolver lojaId (type=${e.runtimeType})');
+      CatalogNormalTrace.setField('fallback.reason', 'resolve_exception');
+      CatalogNormalTrace.mark('resolver.exception', <String, Object?>{
+        'type': e.runtimeType.toString(),
+      });
       if (mounted) {
+        if (kIsWeb) {
+          final uri = Uri.base;
+          final payload = <String, dynamic>{
+            'buildId': const String.fromEnvironment(
+              'CATALOG_BUILD_ID',
+              defaultValue: 'dev',
+            ),
+            'timestamp': DateTime.now().toIso8601String(),
+            'host': uri.host,
+            'path': uri.path,
+            'query': uri.query,
+            'userAgent': plat.Web.userAgent(),
+            'slug': widget.lojaId,
+            'lojaId': '',
+            'fase': 'catalog.slug.resolve.exception',
+            'phase': 'publicCatalogScreen.resolveLojaId',
+            'reason': 'exception',
+            'resolverStage': 'publicCatalog.resolve',
+            'resolverAttempt': 'resolveForPublicCatalog.catch',
+            'firestorePath': '',
+            'firestoreErrorCode': '',
+            'firestoreErrorMessage': e.toString(),
+            'docExists': false,
+            'docId': '',
+            'slugField': '',
+            'ativo': null,
+            'publicado': null,
+            'catalogoAtivo': null,
+            'status': null,
+            'error': e.toString(),
+            'stack': '',
+            'appVersion': 'web',
+          };
+          plat.Web.localStorageSet(
+              'mp_last_runtime_error', jsonEncode(payload));
+          plat.Web.localStorageSet(
+            'mp_catalog_resolver_result',
+            jsonEncode(payload),
+          );
+        }
         setState(() {
           _loadingLojaId = false;
           _resolvedLojaId = null;
+          _catalogOpenFailureDetail = e is TimeoutException
+              ? (e.message ?? 'Tempo esgotado. Tente novamente.')
+              : e.toString();
         });
         final msg = e is TimeoutException
             ? (e.message ?? 'Tempo esgotado. Tente novamente.')
@@ -2450,10 +2587,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   }
 
   String get lojaId {
-    if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
+    final lid = _resolvedLojaId;
+    if (lid == null || lid.isEmpty) {
       throw StateError('lojaId ainda não foi resolvido');
     }
-    return _resolvedLojaId!;
+    return lid;
   }
 
   String _publicCatalogShareBase() {
@@ -2738,6 +2876,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   // Flag para evitar spam de log de permission-denied
   static bool _cfgPermissionDeniedLogged = false;
   static bool _produtosPermissionDeniedLogged = false;
+  bool _isIosWebKitCatalog() => kIsWeb && plat.Web.isIosWebKit();
 
   Stream<Map<String, dynamic>> _cfgStream(String lojaId) {
     final db = FirebaseFirestore.instance;
@@ -2823,6 +2962,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               );
             }
             controller.add(Map<String, dynamic>.from(cfg));
+          }
+
+          // iPhone (Safari/Chrome via WebKit): evita merges secundários pesados
+          // que podem induzir TypeError/minified com documentos legados heterogêneos.
+          // Mantemos o config principal para preservar o fluxo do catálogo.
+          if (_isIosWebKitCatalog()) {
+            return;
           }
 
           Future<void> mergePayments() async {
@@ -3084,6 +3230,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           'preview': widget.preview,
         },
       );
+      CatalogNormalTrace.mark('produtos.stream.start', <String, Object?>{
+        'loja_id': lojaId,
+        'collection': 'lojas/$lojaId/$col',
+        'query': 'ativo==true',
+      });
       subscription = FirebaseFirestore.instance
           .collection('lojas')
           .doc(lojaId)
@@ -3103,6 +3254,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 'doc_count': snapshot.docs.length,
               },
             );
+            CatalogNormalTrace.mark(
+                'produtos.firstSnapshot.received', <String, Object?>{
+              'count': snapshot.docs.length,
+            });
+            CatalogNormalTrace.setField(
+                'produtos.firstSnapshot.count', snapshot.docs.length);
           }
           controller.add(snapshot);
         },
@@ -3112,6 +3269,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               _produtosPermissionDeniedLogged = true;
               logD(
                   '⚠️ [CATÁLOGO] Sem permissão para produtos - catálogo vazio');
+              CatalogNormalTrace.setField(
+                  'fallback.reason', 'produtos_permission_denied');
+              CatalogNormalTrace.mark('produtos.stream.error', <String, Object?>{
+                'code': 'permission-denied',
+              });
             }
             subscription?.cancel();
           } else {
@@ -3595,9 +3757,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                           checkoutFingerprint: fpWhatsapp,
                         );
                         if (prePedido != null) {
-                          final t = (prePedido['total'] as num?)?.toDouble();
-                          if (t != null &&
-                              (t - valorTotalCheckout).abs() > 0.02) {
+                          final t = safeDouble(prePedido['total']);
+                          if ((t - valorTotalCheckout).abs() > 0.02) {
                             logD(
                                 '⚠️ [CHECKOUT] total pré-pedido vs carrinho: $t vs $valorTotalCheckout');
                           }
@@ -3850,9 +4011,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         checkoutFingerprint: fpMp,
                       );
                       if (prePedido != null) {
-                        final t = (prePedido['total'] as num?)?.toDouble();
-                        if (t != null &&
-                            (t - valorTotalCheckout).abs() > 0.02) {
+                        final t = safeDouble(prePedido['total']);
+                        if ((t - valorTotalCheckout).abs() > 0.02) {
                           logD(
                               '⚠️ [CHECKOUT] total pré-pedido MP vs carrinho: $t vs $valorTotalCheckout');
                         }
@@ -4533,1223 +4693,2201 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_traceBuildEnteredLogged) {
-      _traceBuildEnteredLogged = true;
-      CatalogStartupTrace.mark(
-        'CAT_START.public_screen.build_enter',
-        data: <String, Object?>{
-          'loja_id_raw': widget.lojaId,
-          'preview': widget.preview,
-        },
-      );
+    if (kIsWeb) {
+      plat.Web.localStorageSet(
+          'mp_catalog_phase', 'publicCatalogScreen.build.start');
     }
-    final themeData = _modoEscuro ? ThemeData.dark() : ThemeData.light();
-    // Usar tema do contexto (ex.: web) para loading/erro, evitando tela branca
-    final themeForStates = Theme.of(context);
-    if (_loadingLojaId) {
-      return _wrapWithCatStartDiagOverlay(
-        CatalogLoadingState(themeData: themeForStates),
-      );
-    }
-
-    if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
-      return _wrapWithCatStartDiagOverlay(
-        CatalogErrorLojaState(themeData: themeForStates),
-      );
-    }
-    if (!_traceFirstUsefulPaintLogged) {
-      _traceFirstUsefulPaintLogged = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+    try {
+      if (!_traceBuildEnteredLogged) {
+        _traceBuildEnteredLogged = true;
         CatalogStartupTrace.mark(
-          'CAT_START.first_useful_paint',
-          data: <String, Object?>{'loja_id': _resolvedLojaId},
+          'CAT_START.public_screen.build_enter',
+          data: <String, Object?>{
+            'loja_id_raw': widget.lojaId,
+            'preview': widget.preview,
+          },
         );
-      });
-    }
+      }
+      final themeData = _modoEscuro ? ThemeData.dark() : ThemeData.light();
+      // Usar tema do contexto (ex.: web) para loading/erro, evitando tela branca
+      final themeForStates = Theme.of(context);
+      if (_loadingLojaId) {
+        return _wrapWithCatStartDiagOverlay(
+          CatalogLoadingState(themeData: themeForStates),
+        );
+      }
 
-    if (kDebugMode) {
-      logD('📱 [CATALOG] Renderizando loja: $_resolvedLojaId');
-    }
+      if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
+        return _wrapWithCatStartDiagOverlay(
+          CatalogErrorLojaState(
+            themeData: themeForStates,
+            detailMessage: _catalogOpenFailureDetail,
+            diagnosticText: _catalogTraceDiagnosticText(),
+          ),
+        );
+      }
+      if (!_traceFirstUsefulPaintLogged) {
+        _traceFirstUsefulPaintLogged = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          CatalogStartupTrace.mark(
+            'CAT_START.first_useful_paint',
+            data: <String, Object?>{'loja_id': _resolvedLojaId},
+          );
+        });
+      }
 
-    return _wrapWithCatStartDiagOverlay(
-      Theme(
-        data: themeData,
-        child: StreamBuilder<Map<String, dynamic>>(
-          stream: _getConfigStream(lojaId),
-          builder: (context, cfgSnap) {
-            // Usar tema do MaterialApp (themeForStates) para evitar tela branca na web
-            if (cfgSnap.connectionState == ConnectionState.waiting) {
-              if (!_traceConfigWaitingLogged) {
-                _traceConfigWaitingLogged = true;
+      if (kDebugMode) {
+        logD('📱 [CATALOG] Renderizando loja: $_resolvedLojaId');
+      }
+
+      final rendered = _wrapWithCatStartDiagOverlay(
+        Theme(
+          data: themeData,
+          child: StreamBuilder<Map<String, dynamic>>(
+            stream: _getConfigStream(lojaId),
+            builder: (context, cfgSnap) {
+              // Usar tema do MaterialApp (themeForStates) para evitar tela branca na web
+              if (cfgSnap.connectionState == ConnectionState.waiting) {
+                if (!_traceConfigWaitingLogged) {
+                  _traceConfigWaitingLogged = true;
+                  CatalogStartupTrace.mark(
+                    'CAT_START.cfg_builder.waiting',
+                    data: <String, Object?>{'loja_id': lojaId},
+                  );
+                }
+                return CatalogConfigLoadingState(themeData: themeForStates);
+              }
+              if (!cfgSnap.hasData) {
+                CatalogNormalTrace.setField('config.exists', false);
+                CatalogNormalTrace.setField(
+                    'fallback.reason', 'config_stream_no_data');
+                CatalogNormalTrace.mark('config.missing_or_empty',
+                    <String, Object?>{'loja_id': lojaId});
+                return CatalogConfigErrorState(themeData: themeForStates);
+              }
+              if (!_normalTraceRenderCatalogStartLogged) {
+                _normalTraceRenderCatalogStartLogged = true;
+                CatalogNormalTrace.setField('config.exists', true);
+                CatalogNormalTrace.mark(
+                    'render.catalog.start', <String, Object?>{'loja_id': lojaId});
+              }
+              if (!_traceConfigReadyLogged) {
+                _traceConfigReadyLogged = true;
                 CatalogStartupTrace.mark(
-                  'CAT_START.cfg_builder.waiting',
-                  data: <String, Object?>{'loja_id': lojaId},
+                  'CAT_START.cfg_builder.ready',
+                  data: <String, Object?>{
+                    'loja_id': lojaId,
+                    'cfg_keys':
+                        (cfgSnap.data ?? const <String, dynamic>{}).length,
+                  },
                 );
               }
-              return CatalogConfigLoadingState(themeData: themeForStates);
-            }
-            if (!cfgSnap.hasData) {
-              return CatalogConfigErrorState(themeData: themeForStates);
-            }
-            if (!_traceConfigReadyLogged) {
-              _traceConfigReadyLogged = true;
-              CatalogStartupTrace.mark(
-                'CAT_START.cfg_builder.ready',
-                data: <String, Object?>{
-                  'loja_id': lojaId,
-                  'cfg_keys':
-                      (cfgSnap.data ?? const <String, dynamic>{}).length,
-                },
+
+              final Map<String, dynamic> cfg =
+                  (cfgSnap.data ?? {}).map((k, v) => MapEntry(k.toString(), v));
+              _catalogUrlConfigMerge =
+                  CatalogPublicUrlService.coalesceCatalogUrlConfig(
+                cfg,
+                _catalogUrlConfigMerge,
               );
-            }
 
-            final Map<String, dynamic> cfg =
-                (cfgSnap.data ?? {}).map((k, v) => MapEntry(k.toString(), v));
-            _catalogUrlConfigMerge =
-                CatalogPublicUrlService.coalesceCatalogUrlConfig(
-              cfg,
-              _catalogUrlConfigMerge,
-            );
+              if (!widget.preview &&
+                  CatalogPublicUrlService.tryCustomCatalogPublicRoot(
+                        _catalogUrlConfigMerge,
+                      ) ==
+                      null) {
+                _catalogUrlDraftEnrichSeq++;
+                final seq = _catalogUrlDraftEnrichSeq;
+                final loja = lojaId;
+                final baseline =
+                    Map<String, dynamic>.from(_catalogUrlConfigMerge);
+                CatalogPublicUrlService.mergeDraftConfigDomainForCatalogUrls(
+                  loja,
+                  baseline,
+                ).then((enriched) {
+                  if (!mounted || seq != _catalogUrlDraftEnrichSeq) return;
+                  if (identical(enriched, baseline)) return;
+                  if (CatalogPublicUrlService.tryCustomCatalogPublicRoot(
+                        enriched,
+                      ) ==
+                      null) {
+                    return;
+                  }
+                  setState(() => _catalogUrlConfigMerge = enriched);
+                });
+              }
 
-            if (!widget.preview &&
-                CatalogPublicUrlService.tryCustomCatalogPublicRoot(
-                      _catalogUrlConfigMerge,
-                    ) ==
-                    null) {
-              _catalogUrlDraftEnrichSeq++;
-              final seq = _catalogUrlDraftEnrichSeq;
-              final loja = lojaId;
-              final baseline =
-                  Map<String, dynamic>.from(_catalogUrlConfigMerge);
-              CatalogPublicUrlService.mergeDraftConfigDomainForCatalogUrls(
-                loja,
-                baseline,
-              ).then((enriched) {
-                if (!mounted || seq != _catalogUrlDraftEnrichSeq) return;
-                if (identical(enriched, baseline)) return;
-                if (CatalogPublicUrlService.tryCustomCatalogPublicRoot(
-                      enriched,
-                    ) ==
-                    null) {
-                  return;
+              if (kDebugMode) {
+                logD(
+                    '📄 [CATÁLOGO] Config carregado: ${cfg.keys.length} chaves');
+              }
+
+              // Número único: rodapé (Loja Config) > campos legados no root — o checkout
+              // usava só o root; se o WhatsApp estava só em rodape.whatsapp, o carrinho
+              // dizia "não configurado" mesmo com o rodapé exibindo o contato.
+              final rodapeForWhatsapp = mpMapDyn(cfg['rodape']);
+              final whatsappRodape =
+                  (rodapeForWhatsapp['whatsapp'] ?? '').toString().trim();
+              final whatsappNoRoot =
+                  (cfg['whatsapp_vendedor'] ?? cfg['whatsapp'] ?? '')
+                      .toString()
+                      .trim();
+              final atendimentoWhatsapp =
+                  whatsappRodape.isNotEmpty ? whatsappRodape : whatsappNoRoot;
+              final whatsappVendedor = atendimentoWhatsapp;
+              final mercadoPagoAtivo = catalogConfigMercadoPagoAtivo(cfg);
+
+              // =================== CONFIGURAÇÕES DE LAYOUT ===================
+              final cardShowShadow = safeBool(cfg['cardShowShadow'], true);
+              final cardBorderRadius =
+                  safeDouble(cfg['cardBorderRadius'], 18.0);
+              final gridDesktopCols =
+                  safeInt(cfg['gridDesktopCols'], 4).clamp(2, 6);
+              final gridMobileCols =
+                  safeInt(cfg['gridMobileCols'], 2).clamp(1, 4);
+
+              // =================== CORES ===================
+              // ✅ CORRIGIDO: Lê de 'theme' e 'checkoutTheme' (mesma estrutura do LojaConfig)
+              final themeRaw = cfg['theme'];
+              final themeMap = (themeRaw is Map
+                  ? themeRaw.map((k, v) => MapEntry(k.toString(), v))
+                  : <String, dynamic>{});
+
+              final checkoutThemeRaw = cfg['checkoutTheme'];
+              final checkoutThemeMap = (checkoutThemeRaw is Map
+                  ? checkoutThemeRaw.map((k, v) => MapEntry(k.toString(), v))
+                  : <String, dynamic>{});
+
+              // ✅ NOVO: Lê de 'uiColors' (cores unificadas expandidas)
+              final uiColorsRaw = cfg['uiColors'];
+              final uiColorsMap = (uiColorsRaw is Map
+                  ? uiColorsRaw.map((k, v) => MapEntry(k.toString(), v))
+                  : <String, dynamic>{});
+
+              // ✅ NOVO: Lê de 'catalogHeaderColors' (cores do cabeçalho)
+              final headerColorsRaw = cfg['catalogHeaderColors'];
+              final headerColorsMap = (headerColorsRaw is Map
+                  ? headerColorsRaw.map((k, v) => MapEntry(k.toString(), v))
+                  : <String, dynamic>{});
+
+              // ✅ NOVO: Lê de 'catalogFooterColors' (cores do rodapé)
+              final footerColorsRaw = cfg['catalogFooterColors'];
+              final footerColorsMap = (footerColorsRaw is Map
+                  ? footerColorsRaw.map((k, v) => MapEntry(k.toString(), v))
+                  : <String, dynamic>{});
+
+              // ✅ NOVO: Lê de 'catalogDicasColors' (cores da tela Dicas)
+              final dicasColorsRaw = cfg['catalogDicasColors'];
+              final dicasColorsMap = (dicasColorsRaw is Map
+                  ? dicasColorsRaw.map((k, v) => MapEntry(k.toString(), v))
+                  : <String, dynamic>{});
+
+              Color colorFromTheme(String key, Color fallback) {
+                final dynamic raw = themeMap[key];
+                return readColorFromCfg(raw) ?? fallback;
+              }
+
+              Color colorFromCheckoutTheme(String key, Color fallback) {
+                final dynamic raw = checkoutThemeMap[key];
+                return readColorFromCfg(raw) ?? fallback;
+              }
+
+              Color colorFromUiColors(String key, Color fallback) {
+                final dynamic raw = uiColorsMap[key];
+                return readColorFromCfg(raw) ?? fallback;
+              }
+
+              Color colorFromHeaderColors(String key, Color fallback) {
+                final dynamic raw = headerColorsMap[key];
+                return readColorFromCfg(raw) ?? fallback;
+              }
+
+              Color colorFromFooterColors(String key, Color fallback) {
+                final dynamic raw = footerColorsMap[key];
+                return readColorFromCfg(raw) ?? fallback;
+              }
+
+              Color colorFromDicasColors(String key, Color fallback) {
+                final dynamic raw = dicasColorsMap[key];
+                return readColorFromCfg(raw) ?? fallback;
+              }
+
+              // ===== Tema geral (cards e produtos) =====
+              // Prioriza uiColors > theme > fallback
+              final primaryColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors('buttonPrimaryBg',
+                      colorFromTheme('primaria', const Color(0xFF22C55E)))
+                  : colorFromTheme('primaria', const Color(0xFF22C55E));
+              final bgColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors('background',
+                      colorFromTheme('fundo', const Color(0xFF020617)))
+                  : colorFromTheme('fundo', const Color(0xFF020617));
+              final cardColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors('cardBackground',
+                      colorFromTheme('card', const Color(0xFF020617)))
+                  : colorFromTheme('card', const Color(0xFF020617));
+              final textColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors('textPrimary',
+                      colorFromTheme('texto', Colors.white.withOpacity(0.95)))
+                  : colorFromTheme('texto', Colors.white.withOpacity(0.95));
+              final btnTextColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors('buttonPrimaryText',
+                      colorFromTheme('botaoTexto', Colors.white))
+                  : colorFromTheme('botaoTexto', Colors.white);
+
+              final cardTextPrimary =
+                  colorFromUiColors('cardTextPrimary', Colors.white);
+              final priceHighlightColor =
+                  colorFromUiColors('priceHighlight', const Color(0xFF4ADE80));
+              final buttonSecondaryBg =
+                  colorFromUiColors('buttonSecondaryBg', Colors.transparent);
+              final buttonSecondaryText =
+                  colorFromUiColors('buttonSecondaryText', primaryColor);
+
+              // ===== Cor do cabeçalho (separada do fundo geral) =====
+              final headerColor = headerColorsMap.isNotEmpty
+                  ? colorFromHeaderColors(
+                      'background', colorFromTheme('cabecalho', bgColor))
+                  : colorFromTheme('cabecalho', bgColor);
+              final headerTextColor =
+                  colorFromHeaderColors('text', Colors.white);
+              final headerIconColor =
+                  colorFromHeaderColors('icon', Colors.white);
+              final headerSearchBg =
+                  colorFromHeaderColors('searchBackground', Colors.white10);
+              final headerSearchText =
+                  colorFromHeaderColors('searchText', Colors.white);
+              final headerSearchHint =
+                  colorFromHeaderColors('searchHint', Colors.white70);
+
+              // ===== Cores do rodapé =====
+              final footerBgColor =
+                  colorFromFooterColors('background', bgColor);
+              final footerTextColor =
+                  colorFromFooterColors('text', Colors.white);
+              final footerTextSecondary =
+                  colorFromFooterColors('textSecondary', Colors.white70);
+              final footerIconColor =
+                  colorFromFooterColors('icon', Colors.white70);
+              final footerLinkColor =
+                  colorFromFooterColors('link', primaryColor);
+              final footerDividerColor =
+                  colorFromFooterColors('divider', Colors.white24);
+
+              // ===== Cores da tela Dicas e Informações =====
+              CatalogDicasColors? catalogDicasColors;
+              if (dicasColorsMap.isNotEmpty) {
+                catalogDicasColors = CatalogDicasColors(
+                  background: colorFromDicasColors(
+                      'background', const Color(0xFFF8F9FA)),
+                  footerBackground:
+                      colorFromDicasColors('footerBackground', Colors.white),
+                  footerText:
+                      colorFromDicasColors('footerText', Colors.black87),
+                  buttonBackground: colorFromDicasColors(
+                      'buttonBackground', const Color(0xFF22C55E)),
+                  buttonText: colorFromDicasColors('buttonText', Colors.white),
+                  topicPrimary: colorFromDicasColors(
+                      'topicPrimary', const Color(0xFF22C55E)),
+                );
+              }
+
+              if (kDebugMode && themeMap.isEmpty && uiColorsMap.isEmpty) {
+                logD(
+                    '⚠️ [CATÁLOGO] cfg["theme"] e cfg["uiColors"] vazios, usando padrão');
+              }
+
+              // ===== Cores do checkout / carrinho =====
+              // Prioriza uiColors > checkoutTheme > fallback
+              final checkoutCardColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors('cardBackground',
+                      colorFromCheckoutTheme('card', cardColor))
+                  : colorFromCheckoutTheme('card', cardColor);
+
+              final checkoutFieldBg = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors('fieldBackground',
+                      colorFromCheckoutTheme('campo', const Color(0xFF0F172A)))
+                  : colorFromCheckoutTheme('campo', const Color(0xFF0F172A));
+
+              final checkoutFieldTextColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors(
+                      'fieldText', colorFromCheckoutTheme('texto', textColor))
+                  : colorFromCheckoutTheme('texto', textColor);
+
+              final checkoutLabelColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors(
+                      'labelText', colorFromCheckoutTheme('label', textColor))
+                  : colorFromCheckoutTheme('label', textColor);
+
+              final checkoutTotalColor = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors('priceHighlight',
+                      colorFromCheckoutTheme('total', const Color(0xFF22C55E)))
+                  : colorFromCheckoutTheme('total', const Color(0xFF22C55E));
+              final checkoutFieldBorder = uiColorsMap.isNotEmpty
+                  ? colorFromUiColors(
+                      'fieldBorder', Colors.white.withOpacity(0.25))
+                  : Colors.white.withOpacity(0.25);
+
+              final catalogThemeDataResolved = CatalogThemeData.fromConfig(cfg);
+              final catalogCheckoutSummaryTokens =
+                  CatalogCheckoutSummaryTokens.fromThemeData(
+                      catalogThemeDataResolved);
+              final catalogCartUiTokens = CatalogCartUiTokens.fromConfig(
+                cfg,
+                theme: catalogThemeDataResolved,
+              );
+              final catalogFirstPurchaseCouponOffer =
+                  CatalogFirstPurchaseCouponOffer.parse(
+                cfg,
+                theme: catalogThemeDataResolved,
+              );
+
+              // ===== Cores de nome e preço do produto =====
+              final productNameColor = cardTextPrimary;
+              final productPriceColor = priceHighlightColor;
+
+              // =================== IDENTIDADE / LINKS ===================
+              final lojaNome =
+                  catalogHeaderStoreNameFromCfg(cfg) ?? 'Minha Loja';
+              final catalogoEmManutencao = !widget.preview &&
+                  safeBool(cfg['catalogoEmManutencao'], false);
+              final mensagemManutencaoCatalogo =
+                  (cfg['mensagemManutencaoCatalogo'] ?? '').toString().trim();
+              final whatsappCatalogoManutencao =
+                  _resolveCatalogWhatsappNumber(cfg);
+
+              final links = mpMapDyn(cfg['links']);
+              final rodapeLinks = mpMapDyn(cfg['rodape']);
+
+              final instagramUrl =
+                  (rodapeLinks['instagram'] ?? links['instagram'] ?? '')
+                      .toString();
+              final facebookUrl =
+                  (rodapeLinks['facebook'] ?? links['facebook'] ?? '')
+                      .toString();
+              final tiktokUrl = (rodapeLinks['tiktok'] ?? '').toString();
+              final telegramUrl = (rodapeLinks['telegram'] ?? '').toString();
+              final kwaiUrl = (rodapeLinks['kwai'] ?? '').toString();
+              final linkedinUrl = (rodapeLinks['linkedin'] ?? '').toString();
+              final emailUrl = (rodapeLinks['email'] ?? '').toString();
+              final whatsappUrl = (rodapeLinks['whatsapp'] ?? '').toString();
+              final trocasUrl =
+                  (rodapeLinks['trocas'] ?? links['trocas'] ?? '').toString();
+              final loginUrl =
+                  (rodapeLinks['login'] ?? links['login'] ?? '').toString();
+
+              final empresa = asMap(cfg['empresa']);
+              final empresaRazao =
+                  (rodapeLinks['razao'] ?? empresa['razao'] ?? '').toString();
+              final empresaCnpj =
+                  (rodapeLinks['cnpj'] ?? empresa['cnpj'] ?? '').toString();
+
+              // ✅ CORRIGIDO: Token de frete unificado
+              final freightToken = (cfg['melhorEnvioToken'] ??
+                      cfg['correiosUser'] ??
+                      cfg['frenetToken'] ??
+                      cfg['frete_token'] ??
+                      cfg['freight_token'] ??
+                      cfg['freightToken'] ??
+                      '')
+                  .toString()
+                  .trim();
+              final freteMelhorEnvioModoExibicaoRaw =
+                  (cfg['freteMelhorEnvioModoExibicao'] ?? '')
+                      .toString()
+                      .trim()
+                      .toLowerCase();
+              final freteMelhorEnvioModoExibicao =
+                  freteMelhorEnvioModoExibicaoRaw == 'somente_correios'
+                      ? 'somente_correios'
+                      : 'todas_transportadoras';
+
+              // ✅ CORRIGIDO: Lê payments de 'rodape' (onde o LojaConfig salva)
+              final rodapeRaw = cfg['rodape'];
+              final rodapeMap = rodapeRaw is Map
+                  ? rodapeRaw.map((k, v) => MapEntry(k.toString(), v))
+                  : <String, dynamic>{};
+
+              final paymentsFromRodape = rodapeMap['payments'];
+              final paymentCodes = <String>[
+                if (paymentsFromRodape is List)
+                  ...paymentsFromRodape.map((e) => e.toString()),
+              ];
+
+              final paymentAssets = <String, String>{
+                'visa': 'assets/payments/visa.png',
+                'mastercard': 'assets/payments/mastercard.png',
+                'hipercard': 'assets/payments/hipercard.png',
+                'elo': 'assets/payments/elo.png',
+                'amex': 'assets/payments/amex.png',
+                'diners': 'assets/payments/diners.png',
+                'pix': 'assets/payments/pix.png',
+                'boleto': 'assets/payments/boleto.png',
+                'transfer': 'assets/payments/transfer.png',
+                'barcode': 'assets/payments/barcode.png',
+              };
+
+              // =================== CHECKOUT / GATEWAY ===================
+              final checkoutCfg = resolveCheckoutCfgFromData(cfg);
+
+              logD('[PUBLIC] checkoutCfg = $checkoutCfg');
+
+              final Map<String, dynamic> checkoutInner =
+                  mpMapDyn(checkoutCfg['checkout']);
+
+              String normalizeGateway(dynamic v) {
+                final s = v?.toString().toLowerCase().trim() ?? '';
+                if (s.isEmpty) return '';
+                final compact = s.replaceAll(RegExp(r'[\s_-]+'), '');
+                if (compact.contains('mercadopago') || compact == 'mp') {
+                  return 'mp';
                 }
-                setState(() => _catalogUrlConfigMerge = enriched);
-              });
-            }
-
-            if (kDebugMode) {
-              logD('📄 [CATÁLOGO] Config carregado: ${cfg.keys.length} chaves');
-            }
-
-            // Número único: rodapé (Loja Config) > campos legados no root — o checkout
-            // usava só o root; se o WhatsApp estava só em rodape.whatsapp, o carrinho
-            // dizia "não configurado" mesmo com o rodapé exibindo o contato.
-            final rodapeForWhatsapp = mpMapDyn(cfg['rodape']);
-            final whatsappRodape =
-                (rodapeForWhatsapp['whatsapp'] ?? '').toString().trim();
-            final whatsappNoRoot =
-                (cfg['whatsapp_vendedor'] ?? cfg['whatsapp'] ?? '')
-                    .toString()
-                    .trim();
-            final atendimentoWhatsapp =
-                whatsappRodape.isNotEmpty ? whatsappRodape : whatsappNoRoot;
-            final whatsappVendedor = atendimentoWhatsapp;
-            final mercadoPagoAtivo = catalogConfigMercadoPagoAtivo(cfg);
-
-            // =================== CONFIGURAÇÕES DE LAYOUT ===================
-            final cardShowShadow = safeBool(cfg['cardShowShadow'], true);
-            final cardBorderRadius = safeDouble(cfg['cardBorderRadius'], 18.0);
-            final gridDesktopCols =
-                safeInt(cfg['gridDesktopCols'], 4).clamp(2, 6);
-            final gridMobileCols =
-                safeInt(cfg['gridMobileCols'], 2).clamp(1, 4);
-
-            // =================== CORES ===================
-            // ✅ CORRIGIDO: Lê de 'theme' e 'checkoutTheme' (mesma estrutura do LojaConfig)
-            final themeRaw = cfg['theme'];
-            final themeMap = (themeRaw is Map
-                ? themeRaw.map((k, v) => MapEntry(k.toString(), v))
-                : <String, dynamic>{});
-
-            final checkoutThemeRaw = cfg['checkoutTheme'];
-            final checkoutThemeMap = (checkoutThemeRaw is Map
-                ? checkoutThemeRaw.map((k, v) => MapEntry(k.toString(), v))
-                : <String, dynamic>{});
-
-            // ✅ NOVO: Lê de 'uiColors' (cores unificadas expandidas)
-            final uiColorsRaw = cfg['uiColors'];
-            final uiColorsMap = (uiColorsRaw is Map
-                ? uiColorsRaw.map((k, v) => MapEntry(k.toString(), v))
-                : <String, dynamic>{});
-
-            // ✅ NOVO: Lê de 'catalogHeaderColors' (cores do cabeçalho)
-            final headerColorsRaw = cfg['catalogHeaderColors'];
-            final headerColorsMap = (headerColorsRaw is Map
-                ? headerColorsRaw.map((k, v) => MapEntry(k.toString(), v))
-                : <String, dynamic>{});
-
-            // ✅ NOVO: Lê de 'catalogFooterColors' (cores do rodapé)
-            final footerColorsRaw = cfg['catalogFooterColors'];
-            final footerColorsMap = (footerColorsRaw is Map
-                ? footerColorsRaw.map((k, v) => MapEntry(k.toString(), v))
-                : <String, dynamic>{});
-
-            // ✅ NOVO: Lê de 'catalogDicasColors' (cores da tela Dicas)
-            final dicasColorsRaw = cfg['catalogDicasColors'];
-            final dicasColorsMap = (dicasColorsRaw is Map
-                ? dicasColorsRaw.map((k, v) => MapEntry(k.toString(), v))
-                : <String, dynamic>{});
-
-            Color colorFromTheme(String key, Color fallback) {
-              final dynamic raw = themeMap[key];
-              return readColorFromCfg(raw) ?? fallback;
-            }
-
-            Color colorFromCheckoutTheme(String key, Color fallback) {
-              final dynamic raw = checkoutThemeMap[key];
-              return readColorFromCfg(raw) ?? fallback;
-            }
-
-            Color colorFromUiColors(String key, Color fallback) {
-              final dynamic raw = uiColorsMap[key];
-              return readColorFromCfg(raw) ?? fallback;
-            }
-
-            Color colorFromHeaderColors(String key, Color fallback) {
-              final dynamic raw = headerColorsMap[key];
-              return readColorFromCfg(raw) ?? fallback;
-            }
-
-            Color colorFromFooterColors(String key, Color fallback) {
-              final dynamic raw = footerColorsMap[key];
-              return readColorFromCfg(raw) ?? fallback;
-            }
-
-            Color colorFromDicasColors(String key, Color fallback) {
-              final dynamic raw = dicasColorsMap[key];
-              return readColorFromCfg(raw) ?? fallback;
-            }
-
-            // ===== Tema geral (cards e produtos) =====
-            // Prioriza uiColors > theme > fallback
-            final primaryColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors('buttonPrimaryBg',
-                    colorFromTheme('primaria', const Color(0xFF22C55E)))
-                : colorFromTheme('primaria', const Color(0xFF22C55E));
-            final bgColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors('background',
-                    colorFromTheme('fundo', const Color(0xFF020617)))
-                : colorFromTheme('fundo', const Color(0xFF020617));
-            final cardColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors('cardBackground',
-                    colorFromTheme('card', const Color(0xFF020617)))
-                : colorFromTheme('card', const Color(0xFF020617));
-            final textColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors('textPrimary',
-                    colorFromTheme('texto', Colors.white.withOpacity(0.95)))
-                : colorFromTheme('texto', Colors.white.withOpacity(0.95));
-            final btnTextColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors('buttonPrimaryText',
-                    colorFromTheme('botaoTexto', Colors.white))
-                : colorFromTheme('botaoTexto', Colors.white);
-
-            final cardTextPrimary =
-                colorFromUiColors('cardTextPrimary', Colors.white);
-            final priceHighlightColor =
-                colorFromUiColors('priceHighlight', const Color(0xFF4ADE80));
-            final buttonSecondaryBg =
-                colorFromUiColors('buttonSecondaryBg', Colors.transparent);
-            final buttonSecondaryText =
-                colorFromUiColors('buttonSecondaryText', primaryColor);
-
-            // ===== Cor do cabeçalho (separada do fundo geral) =====
-            final headerColor = headerColorsMap.isNotEmpty
-                ? colorFromHeaderColors(
-                    'background', colorFromTheme('cabecalho', bgColor))
-                : colorFromTheme('cabecalho', bgColor);
-            final headerTextColor = colorFromHeaderColors('text', Colors.white);
-            final headerIconColor = colorFromHeaderColors('icon', Colors.white);
-            final headerSearchBg =
-                colorFromHeaderColors('searchBackground', Colors.white10);
-            final headerSearchText =
-                colorFromHeaderColors('searchText', Colors.white);
-            final headerSearchHint =
-                colorFromHeaderColors('searchHint', Colors.white70);
-
-            // ===== Cores do rodapé =====
-            final footerBgColor = colorFromFooterColors('background', bgColor);
-            final footerTextColor = colorFromFooterColors('text', Colors.white);
-            final footerTextSecondary =
-                colorFromFooterColors('textSecondary', Colors.white70);
-            final footerIconColor =
-                colorFromFooterColors('icon', Colors.white70);
-            final footerLinkColor = colorFromFooterColors('link', primaryColor);
-            final footerDividerColor =
-                colorFromFooterColors('divider', Colors.white24);
-
-            // ===== Cores da tela Dicas e Informações =====
-            CatalogDicasColors? catalogDicasColors;
-            if (dicasColorsMap.isNotEmpty) {
-              catalogDicasColors = CatalogDicasColors(
-                background:
-                    colorFromDicasColors('background', const Color(0xFFF8F9FA)),
-                footerBackground:
-                    colorFromDicasColors('footerBackground', Colors.white),
-                footerText: colorFromDicasColors('footerText', Colors.black87),
-                buttonBackground: colorFromDicasColors(
-                    'buttonBackground', const Color(0xFF22C55E)),
-                buttonText: colorFromDicasColors('buttonText', Colors.white),
-                topicPrimary: colorFromDicasColors(
-                    'topicPrimary', const Color(0xFF22C55E)),
-              );
-            }
-
-            if (kDebugMode && themeMap.isEmpty && uiColorsMap.isEmpty) {
-              logD(
-                  '⚠️ [CATÁLOGO] cfg["theme"] e cfg["uiColors"] vazios, usando padrão');
-            }
-
-            // ===== Cores do checkout / carrinho =====
-            // Prioriza uiColors > checkoutTheme > fallback
-            final checkoutCardColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors(
-                    'cardBackground', colorFromCheckoutTheme('card', cardColor))
-                : colorFromCheckoutTheme('card', cardColor);
-
-            final checkoutFieldBg = uiColorsMap.isNotEmpty
-                ? colorFromUiColors('fieldBackground',
-                    colorFromCheckoutTheme('campo', const Color(0xFF0F172A)))
-                : colorFromCheckoutTheme('campo', const Color(0xFF0F172A));
-
-            final checkoutFieldTextColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors(
-                    'fieldText', colorFromCheckoutTheme('texto', textColor))
-                : colorFromCheckoutTheme('texto', textColor);
-
-            final checkoutLabelColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors(
-                    'labelText', colorFromCheckoutTheme('label', textColor))
-                : colorFromCheckoutTheme('label', textColor);
-
-            final checkoutTotalColor = uiColorsMap.isNotEmpty
-                ? colorFromUiColors('priceHighlight',
-                    colorFromCheckoutTheme('total', const Color(0xFF22C55E)))
-                : colorFromCheckoutTheme('total', const Color(0xFF22C55E));
-            final checkoutFieldBorder = uiColorsMap.isNotEmpty
-                ? colorFromUiColors(
-                    'fieldBorder', Colors.white.withOpacity(0.25))
-                : Colors.white.withOpacity(0.25);
-
-            final catalogThemeDataResolved = CatalogThemeData.fromConfig(cfg);
-            final catalogCheckoutSummaryTokens =
-                CatalogCheckoutSummaryTokens.fromThemeData(
-                    catalogThemeDataResolved);
-            final catalogCartUiTokens = CatalogCartUiTokens.fromConfig(
-              cfg,
-              theme: catalogThemeDataResolved,
-            );
-            final catalogFirstPurchaseCouponOffer =
-                CatalogFirstPurchaseCouponOffer.parse(
-              cfg,
-              theme: catalogThemeDataResolved,
-            );
-
-            // ===== Cores de nome e preço do produto =====
-            final productNameColor = cardTextPrimary;
-            final productPriceColor = priceHighlightColor;
-
-            // =================== IDENTIDADE / LINKS ===================
-            final lojaNome = catalogHeaderStoreNameFromCfg(cfg) ?? 'Minha Loja';
-            final catalogoEmManutencao =
-                !widget.preview && safeBool(cfg['catalogoEmManutencao'], false);
-            final mensagemManutencaoCatalogo =
-                (cfg['mensagemManutencaoCatalogo'] ?? '').toString().trim();
-            final whatsappCatalogoManutencao =
-                _resolveCatalogWhatsappNumber(cfg);
-
-            final links = mpMapDyn(cfg['links']);
-            final rodapeLinks = mpMapDyn(cfg['rodape']);
-
-            final instagramUrl =
-                (rodapeLinks['instagram'] ?? links['instagram'] ?? '')
-                    .toString();
-            final facebookUrl =
-                (rodapeLinks['facebook'] ?? links['facebook'] ?? '').toString();
-            final tiktokUrl = (rodapeLinks['tiktok'] ?? '').toString();
-            final telegramUrl = (rodapeLinks['telegram'] ?? '').toString();
-            final kwaiUrl = (rodapeLinks['kwai'] ?? '').toString();
-            final linkedinUrl = (rodapeLinks['linkedin'] ?? '').toString();
-            final emailUrl = (rodapeLinks['email'] ?? '').toString();
-            final whatsappUrl = (rodapeLinks['whatsapp'] ?? '').toString();
-            final trocasUrl =
-                (rodapeLinks['trocas'] ?? links['trocas'] ?? '').toString();
-            final loginUrl =
-                (rodapeLinks['login'] ?? links['login'] ?? '').toString();
-
-            final empresa = asMap(cfg['empresa']);
-            final empresaRazao =
-                (rodapeLinks['razao'] ?? empresa['razao'] ?? '').toString();
-            final empresaCnpj =
-                (rodapeLinks['cnpj'] ?? empresa['cnpj'] ?? '').toString();
-
-            // ✅ CORRIGIDO: Token de frete unificado
-            final freightToken = (cfg['melhorEnvioToken'] ??
-                    cfg['correiosUser'] ??
-                    cfg['frenetToken'] ??
-                    cfg['frete_token'] ??
-                    cfg['freight_token'] ??
-                    cfg['freightToken'] ??
-                    '')
-                .toString()
-                .trim();
-            final freteMelhorEnvioModoExibicaoRaw =
-                (cfg['freteMelhorEnvioModoExibicao'] ?? '')
-                    .toString()
-                    .trim()
-                    .toLowerCase();
-            final freteMelhorEnvioModoExibicao =
-                freteMelhorEnvioModoExibicaoRaw == 'somente_correios'
-                    ? 'somente_correios'
-                    : 'todas_transportadoras';
-
-            // ✅ CORRIGIDO: Lê payments de 'rodape' (onde o LojaConfig salva)
-            final rodapeRaw = cfg['rodape'];
-            final rodapeMap = rodapeRaw is Map
-                ? rodapeRaw.map((k, v) => MapEntry(k.toString(), v))
-                : <String, dynamic>{};
-
-            final paymentsFromRodape = rodapeMap['payments'];
-            final paymentCodes = <String>[
-              if (paymentsFromRodape is List)
-                ...paymentsFromRodape.map((e) => e.toString()),
-            ];
-
-            final paymentAssets = <String, String>{
-              'visa': 'assets/payments/visa.png',
-              'mastercard': 'assets/payments/mastercard.png',
-              'hipercard': 'assets/payments/hipercard.png',
-              'elo': 'assets/payments/elo.png',
-              'amex': 'assets/payments/amex.png',
-              'diners': 'assets/payments/diners.png',
-              'pix': 'assets/payments/pix.png',
-              'boleto': 'assets/payments/boleto.png',
-              'transfer': 'assets/payments/transfer.png',
-              'barcode': 'assets/payments/barcode.png',
-            };
-
-            // =================== CHECKOUT / GATEWAY ===================
-            final checkoutCfg = resolveCheckoutCfgFromData(cfg);
-
-            logD('[PUBLIC] checkoutCfg = $checkoutCfg');
-
-            final Map<String, dynamic> checkoutInner =
-                mpMapDyn(checkoutCfg['checkout']);
-
-            String normalizeGateway(dynamic v) {
-              final s = v?.toString().toLowerCase().trim() ?? '';
-              if (s.isEmpty) return '';
-              final compact = s.replaceAll(RegExp(r'[\s_-]+'), '');
-              if (compact.contains('mercadopago') || compact == 'mp') {
-                return 'mp';
-              }
-              if (compact.contains('pagseguro') || compact == 'ps') {
-                return 'pagseguro';
-              }
-              if (compact.contains('ton')) {
-                return 'ton';
-              }
-              if (compact.contains('infinitepay') ||
-                  compact.contains('infinite')) {
-                return 'infinitepay';
-              }
-              if (compact.contains('whatsapp') || compact == 'zap') {
-                return 'whatsapp';
-              }
-              return s;
-            }
-
-            String readGateway() {
-              dynamic g = checkoutInner['gateway'] ??
-                  checkoutInner['gatewayPadrao'] ??
-                  checkoutInner['principal'] ??
-                  checkoutInner['principalGateway'] ??
-                  checkoutInner['gatewayPrincipal'];
-
-              g ??= checkoutCfg['gateway'] ??
-                  checkoutCfg['gatewayPadrao'] ??
-                  checkoutCfg['principalGateway'] ??
-                  checkoutCfg['gateway_default'] ??
-                  cfg['checkoutGateway'] ??
-                  cfg['gateway'] ??
-                  cfg['gatewayPadrao'];
-
-              String s = normalizeGateway(g);
-              if (s.isEmpty) s = 'mp';
-              return s;
-            }
-
-            final safeGateway = readGateway();
-
-            // Por enquanto apenas Mercado Pago ativo; outras gateways inativadas
-            String checkoutGateway;
-            switch (safeGateway) {
-              case 'mp':
-              case 'mercadopago':
-              case 'mercado_pago':
-                checkoutGateway = 'mp';
-                break;
-              case 'pagseguro':
-              case 'ps':
-              case 'ton':
-              case 'infinitepay':
-              case 'pix':
-              case 'pix_manual':
-                // Gateways inativadas temporariamente – usar apenas Mercado Pago
-                checkoutGateway = 'mp';
-                break;
-              case 'whatsapp':
-                checkoutGateway = 'whatsapp';
-                break;
-              default:
-                checkoutGateway = 'mp';
-            }
-
-            String extractPixKey() {
-              String? fromCheckout = (checkoutInner['pixKey'] ??
-                      checkoutInner['chavePix'] ??
-                      checkoutInner['pix_chave'] ??
-                      checkoutInner['pix_key'])
-                  ?.toString()
-                  .trim();
-
-              if (fromCheckout != null && fromCheckout.isNotEmpty) {
-                return fromCheckout;
+                if (compact.contains('pagseguro') || compact == 'ps') {
+                  return 'pagseguro';
+                }
+                if (compact.contains('ton')) {
+                  return 'ton';
+                }
+                if (compact.contains('infinitepay') ||
+                    compact.contains('infinite')) {
+                  return 'infinitepay';
+                }
+                if (compact.contains('whatsapp') || compact == 'zap') {
+                  return 'whatsapp';
+                }
+                return s;
               }
 
-              fromCheckout = (checkoutCfg['pixKey'] ??
-                      checkoutCfg['chavePix'] ??
-                      checkoutCfg['pix_chave'] ??
-                      checkoutCfg['pix_key'])
-                  ?.toString()
-                  .trim();
+              String readGateway() {
+                dynamic g = checkoutInner['gateway'] ??
+                    checkoutInner['gatewayPadrao'] ??
+                    checkoutInner['principal'] ??
+                    checkoutInner['principalGateway'] ??
+                    checkoutInner['gatewayPrincipal'];
 
-              if (fromCheckout != null && fromCheckout.isNotEmpty) {
-                return fromCheckout;
+                g ??= checkoutCfg['gateway'] ??
+                    checkoutCfg['gatewayPadrao'] ??
+                    checkoutCfg['principalGateway'] ??
+                    checkoutCfg['gateway_default'] ??
+                    cfg['checkoutGateway'] ??
+                    cfg['gateway'] ??
+                    cfg['gatewayPadrao'];
+
+                String s = normalizeGateway(g);
+                if (s.isEmpty) s = 'mp';
+                return s;
               }
 
-              // tenta em um bloco "pix" aninhado
-              final pixRaw = checkoutCfg['pix'];
-              if (pixRaw is Map) {
-                final pixMap = pixRaw.map((k, v) => MapEntry(k.toString(), v));
-                final nested = (pixMap['key'] ??
-                        pixMap['chave'] ??
-                        pixMap['chavePix'] ??
-                        pixMap['pixKey'])
+              final safeGateway = readGateway();
+
+              // Por enquanto apenas Mercado Pago ativo; outras gateways inativadas
+              String checkoutGateway;
+              switch (safeGateway) {
+                case 'mp':
+                case 'mercadopago':
+                case 'mercado_pago':
+                  checkoutGateway = 'mp';
+                  break;
+                case 'pagseguro':
+                case 'ps':
+                case 'ton':
+                case 'infinitepay':
+                case 'pix':
+                case 'pix_manual':
+                  // Gateways inativadas temporariamente – usar apenas Mercado Pago
+                  checkoutGateway = 'mp';
+                  break;
+                case 'whatsapp':
+                  checkoutGateway = 'whatsapp';
+                  break;
+                default:
+                  checkoutGateway = 'mp';
+              }
+
+              String extractPixKey() {
+                String? fromCheckout = (checkoutInner['pixKey'] ??
+                        checkoutInner['chavePix'] ??
+                        checkoutInner['pix_chave'] ??
+                        checkoutInner['pix_key'])
                     ?.toString()
                     .trim();
-                if (nested != null && nested.isNotEmpty) {
-                  return nested;
+
+                if (fromCheckout != null && fromCheckout.isNotEmpty) {
+                  return fromCheckout;
                 }
+
+                fromCheckout = (checkoutCfg['pixKey'] ??
+                        checkoutCfg['chavePix'] ??
+                        checkoutCfg['pix_chave'] ??
+                        checkoutCfg['pix_key'])
+                    ?.toString()
+                    .trim();
+
+                if (fromCheckout != null && fromCheckout.isNotEmpty) {
+                  return fromCheckout;
+                }
+
+                // tenta em um bloco "pix" aninhado
+                final pixRaw = checkoutCfg['pix'];
+                if (pixRaw is Map) {
+                  final pixMap =
+                      pixRaw.map((k, v) => MapEntry(k.toString(), v));
+                  final nested = (pixMap['key'] ??
+                          pixMap['chave'] ??
+                          pixMap['chavePix'] ??
+                          pixMap['pixKey'])
+                      ?.toString()
+                      .trim();
+                  if (nested != null && nested.isNotEmpty) {
+                    return nested;
+                  }
+                }
+
+                // último fallback: campos soltos na config raiz
+                final fromRoot = (cfg['pixKey'] ??
+                        cfg['chavePix'] ??
+                        cfg['pix_chave'] ??
+                        cfg['pix_key'])
+                    ?.toString()
+                    .trim();
+
+                return fromRoot ?? '';
               }
 
-              // último fallback: campos soltos na config raiz
-              final fromRoot = (cfg['pixKey'] ??
-                      cfg['chavePix'] ??
-                      cfg['pix_chave'] ??
-                      cfg['pix_key'])
-                  ?.toString()
-                  .trim();
+              final pixKey = extractPixKey();
 
-              return fromRoot ?? '';
-            }
+              if (kDebugMode) {
+                logD('[PUBLIC] gateway = $checkoutGateway');
+              }
 
-            final pixKey = extractPixKey();
+              // ===== LABEL DO BOTÃO DE CHECKOUT =====
+              String checkoutButtonLabel;
 
-            if (kDebugMode) {
-              logD('[PUBLIC] gateway = $checkoutGateway');
-            }
+              switch (checkoutGateway) {
+                case 'mp':
+                  checkoutButtonLabel = 'Pagar com Mercado Pago';
+                  break;
+                case 'pagseguro':
+                  checkoutButtonLabel = 'Pagar com PagSeguro';
+                  break;
+                case 'ton':
+                  checkoutButtonLabel = 'Pagar com TON';
+                  break;
+                case 'infinitepay':
+                  checkoutButtonLabel = 'Pagar com InfinitePay';
+                  break;
+                case 'pix':
+                  checkoutButtonLabel = 'Pagar com PIX';
+                  break;
+                default:
+                  checkoutButtonLabel = 'Finalizar pedido';
+              }
 
-            // ===== LABEL DO BOTÃO DE CHECKOUT =====
-            String checkoutButtonLabel;
+              // Juros de parcelamento (percentual ao mês, ex: 1.99 para Mercado Pago)
+              final jurosRaw = checkoutInner['jurosParcelamento'] ??
+                  checkoutCfg['jurosParcelamento'] ??
+                  cfg['jurosParcelamento'];
+              final jurosParcelamento = (jurosRaw is num)
+                  ? jurosRaw.toDouble()
+                  : (double.tryParse(jurosRaw?.toString() ?? '') ?? 1.99);
 
-            switch (checkoutGateway) {
-              case 'mp':
-                checkoutButtonLabel = 'Pagar com Mercado Pago';
-                break;
-              case 'pagseguro':
-                checkoutButtonLabel = 'Pagar com PagSeguro';
-                break;
-              case 'ton':
-                checkoutButtonLabel = 'Pagar com TON';
-                break;
-              case 'infinitepay':
-                checkoutButtonLabel = 'Pagar com InfinitePay';
-                break;
-              case 'pix':
-                checkoutButtonLabel = 'Pagar com PIX';
-                break;
-              default:
-                checkoutButtonLabel = 'Finalizar pedido';
-            }
+              final maxParcelasRaw = checkoutInner['maxParcelas'] ??
+                  checkoutCfg['maxParcelas'] ??
+                  cfg['maxParcelas'];
+              final maxParcelas = (maxParcelasRaw is int)
+                  ? maxParcelasRaw
+                  : (int.tryParse(maxParcelasRaw?.toString() ?? '') ?? 12);
+              final maxParcelasClamped = maxParcelas.clamp(1, 24);
 
-            // Juros de parcelamento (percentual ao mês, ex: 1.99 para Mercado Pago)
-            final jurosRaw = checkoutInner['jurosParcelamento'] ??
-                checkoutCfg['jurosParcelamento'] ??
-                cfg['jurosParcelamento'];
-            final jurosParcelamento = (jurosRaw is num)
-                ? jurosRaw.toDouble()
-                : (double.tryParse(jurosRaw?.toString() ?? '') ?? 1.99);
+              // =================== FRETES, CUPONS, MÍDIA ===================
+              final fretes = parseFretes(cfg);
+              final cupons = parseCupons(cfg);
 
-            final maxParcelasRaw = checkoutInner['maxParcelas'] ??
-                checkoutCfg['maxParcelas'] ??
-                cfg['maxParcelas'];
-            final maxParcelas = (maxParcelasRaw is int)
-                ? maxParcelasRaw
-                : (int.tryParse(maxParcelasRaw?.toString() ?? '') ?? 12);
-            final maxParcelasClamped = maxParcelas.clamp(1, 24);
-
-            // =================== FRETES, CUPONS, MÍDIA ===================
-            final fretes = parseFretes(cfg);
-            final cupons = parseCupons(cfg);
-
-            final size = MediaQuery.of(context).size;
-            // Mesmo breakpoint de `CatalogBannerCarousel` (1024): evita carregar
-            // banners de desktop no layout mobile (ou o contrário) em resoluções médias.
-            final isWide = size.width >= 1024;
-            final mediaConfig = parseMedia(cfg, isWide: isWide);
-            catalogDebugLogHeaderUi(
-              lojaId: lojaId,
-              cfg: cfg,
-              isWide: isWide,
-            );
-            final logoUrl = mediaConfig.logoUrl;
-            final banners = mediaConfig.banners;
-            final bannerH = mediaConfig.bannerH;
-            if (!_traceHeaderReadyLogged) {
-              _traceHeaderReadyLogged = true;
-              CatalogStartupTrace.mark(
-                'CAT_START.header_structure.ready',
-                data: <String, Object?>{
-                  'loja_id': lojaId,
-                  'logo_present': logoUrl.isNotEmpty,
-                  'banners_count': banners.length,
-                  'banner_h': bannerH,
-                },
+              final size = MediaQuery.of(context).size;
+              // Mesmo breakpoint de `CatalogBannerCarousel` (1024): evita carregar
+              // banners de desktop no layout mobile (ou o contrário) em resoluções médias.
+              final isWide = size.width >= 1024;
+              final mediaConfig = parseMedia(cfg, isWide: isWide);
+              catalogDebugLogHeaderUi(
+                lojaId: lojaId,
+                cfg: cfg,
+                isWide: isWide,
               );
-            }
-            // O modo manutenção bloqueia apenas a visualização pública do catálogo.
-            // Não remove produtos, não altera estoque e não interfere no painel admin.
-            if (catalogoEmManutencao) {
-              final mensagem = mensagemManutencaoCatalogo.isEmpty
-                  ? '$_catalogMaintenanceDefaultMessage ✨'
-                  : mensagemManutencaoCatalogo;
-              return _buildCatalogMaintenanceScaffold(
-                lojaNome: lojaNome,
-                logoUrl: logoUrl,
-                mensagem: mensagem,
-                whatsappNumber: whatsappCatalogoManutencao,
-                primaryColor: primaryColor,
-                bgColor: bgColor,
-                cardColor: cardColor,
-                textColor: textColor,
-                btnTextColor: btnTextColor,
-              );
-            }
-            return Theme(
-              data: Theme.of(context).copyWith(
-                scaffoldBackgroundColor: bgColor,
-                colorScheme: ColorScheme.fromSeed(
-                  seedColor: primaryColor,
-                  brightness: _modoEscuro ? Brightness.dark : Brightness.light,
-                  primary: primaryColor,
-                  surface: cardColor,
-                ),
-                cardColor: cardColor,
-                textTheme: Theme.of(context).textTheme.apply(
-                      bodyColor: textColor,
-                      displayColor: textColor,
-                    ),
-                extensions: [
-                  ...Theme.of(context)
-                      .extensions
-                      .values
-                      .where((e) => e.runtimeType != CatalogThemeExtension),
-                  CatalogThemeExtension(
-                    productNameColor: productNameColor,
-                    productPriceColor: productPriceColor,
-                    buttonComprarBg: primaryColor,
-                    buttonComprarText: btnTextColor,
-                    buttonVerBg: buttonSecondaryBg,
-                    buttonVerText: buttonSecondaryText,
-                    chipFilterSelectedBg: primaryColor,
-                    chipFilterSelectedText: btnTextColor,
+              final logoUrl = mediaConfig.logoUrl;
+              final banners = mediaConfig.banners;
+              final bannerH = mediaConfig.bannerH;
+              if (!_traceHeaderReadyLogged) {
+                _traceHeaderReadyLogged = true;
+                CatalogStartupTrace.mark(
+                  'CAT_START.header_structure.ready',
+                  data: <String, Object?>{
+                    'loja_id': lojaId,
+                    'logo_present': logoUrl.isNotEmpty,
+                    'banners_count': banners.length,
+                    'banner_h': bannerH,
+                  },
+                );
+              }
+              // O modo manutenção bloqueia apenas a visualização pública do catálogo.
+              // Não remove produtos, não altera estoque e não interfere no painel admin.
+              if (catalogoEmManutencao) {
+                final mensagem = mensagemManutencaoCatalogo.isEmpty
+                    ? '$_catalogMaintenanceDefaultMessage ✨'
+                    : mensagemManutencaoCatalogo;
+                return _buildCatalogMaintenanceScaffold(
+                  lojaNome: lojaNome,
+                  logoUrl: logoUrl,
+                  mensagem: mensagem,
+                  whatsappNumber: whatsappCatalogoManutencao,
+                  primaryColor: primaryColor,
+                  bgColor: bgColor,
+                  cardColor: cardColor,
+                  textColor: textColor,
+                  btnTextColor: btnTextColor,
+                );
+              }
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  scaffoldBackgroundColor: bgColor,
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: primaryColor,
+                    brightness:
+                        _modoEscuro ? Brightness.dark : Brightness.light,
+                    primary: primaryColor,
+                    surface: cardColor,
                   ),
-                ],
-              ),
-              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                key: ValueKey('produtos_${lojaId}_$_refreshCounter'),
-                stream: _getProdutosStream(lojaId),
-                builder: (context, prodSnap) {
-                  if (prodSnap.connectionState == ConnectionState.waiting &&
-                      !_traceProductsWaitingLogged) {
-                    _traceProductsWaitingLogged = true;
-                    CatalogStartupTrace.mark(
-                      'CAT_START.products_builder.waiting',
-                      data: <String, Object?>{'loja_id': lojaId},
-                    );
-                  }
-                  if (!_traceInteractiveLogged &&
-                      cfgSnap.hasData &&
-                      prodSnap.hasData) {
-                    _traceInteractiveLogged = true;
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                  cardColor: cardColor,
+                  textTheme: Theme.of(context).textTheme.apply(
+                        bodyColor: textColor,
+                        displayColor: textColor,
+                      ),
+                  extensions: [
+                    ...Theme.of(context)
+                        .extensions
+                        .values
+                        .where((e) => e.runtimeType != CatalogThemeExtension),
+                    CatalogThemeExtension(
+                      productNameColor: productNameColor,
+                      productPriceColor: productPriceColor,
+                      buttonComprarBg: primaryColor,
+                      buttonComprarText: btnTextColor,
+                      buttonVerBg: buttonSecondaryBg,
+                      buttonVerText: buttonSecondaryText,
+                      chipFilterSelectedBg: primaryColor,
+                      chipFilterSelectedText: btnTextColor,
+                    ),
+                  ],
+                ),
+                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  key: ValueKey('produtos_${lojaId}_$_refreshCounter'),
+                  stream: _getProdutosStream(lojaId),
+                  builder: (context, prodSnap) {
+                    if (prodSnap.connectionState == ConnectionState.waiting &&
+                        !_traceProductsWaitingLogged) {
+                      _traceProductsWaitingLogged = true;
                       CatalogStartupTrace.mark(
-                        'CAT_START.catalog_interactive',
+                        'CAT_START.products_builder.waiting',
+                        data: <String, Object?>{'loja_id': lojaId},
+                      );
+                    }
+                    if (!_traceInteractiveLogged &&
+                        cfgSnap.hasData &&
+                        prodSnap.hasData) {
+                      _traceInteractiveLogged = true;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        CatalogStartupTrace.mark(
+                          'CAT_START.catalog_interactive',
+                          data: <String, Object?>{
+                            'loja_id': lojaId,
+                            'produtos_count': prodSnap.data?.docs.length ?? 0,
+                          },
+                        );
+                      });
+                    }
+                    if (prodSnap.hasError) {
+                      return Scaffold(
+                        body: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.error_outline,
+                                    size: 64, color: Colors.red.shade300),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Erro ao carregar produtos',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${prodSnap.error}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 24),
+                                FilledButton.icon(
+                                  onPressed: () => _onRefreshProducts(lojaId),
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Tentar novamente'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    final docs = prodSnap.hasData && prodSnap.data != null
+                        ? prodSnap.data!.docs
+                        : <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                    if (prodSnap.hasData && !_traceProductsDataReadyLogged) {
+                      _traceProductsDataReadyLogged = true;
+                      CatalogStartupTrace.mark(
+                        'CAT_START.products_builder.ready',
                         data: <String, Object?>{
                           'loja_id': lojaId,
-                          'produtos_count': prodSnap.data?.docs.length ?? 0,
+                          'docs_count': docs.length,
                         },
                       );
-                    });
-                  }
-                  if (prodSnap.hasError) {
+                    }
+
+                    final produtos = _processDocsToProductsCached(docs);
+                    CatalogNormalTrace.setField(
+                        'produtos.afterClientFilters.count', produtos.length);
+                    if (prodSnap.hasData && !_normalTraceRenderSuccessLogged) {
+                      _normalTraceRenderSuccessLogged = true;
+                      CatalogNormalTrace.mark(
+                          'render.catalog.success', <String, Object?>{
+                        'raw_docs': docs.length,
+                        'after_filters': produtos.length,
+                      });
+                    }
+                    if (!_traceProductsVisibleLogged) {
+                      _traceProductsVisibleLogged = true;
+                      CatalogStartupTrace.mark(
+                        'CAT_START.products_visible.ready',
+                        data: <String, Object?>{
+                          'loja_id': lojaId,
+                          'produtos_count': produtos.length,
+                        },
+                      );
+                    }
+
+                    if (produtos.isNotEmpty && _cart.isNotEmpty) {
+                      final cleanupSig =
+                          '$_lastProdutosDocsSig|cart:${_cart.length}';
+                      if (_lastCartCleanupSig != cleanupSig) {
+                        _lastCartCleanupSig = cleanupSig;
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) _limparCartDeProdutosRemovidos(produtos);
+                        });
+                      }
+                    }
+
+                    const badgeSSL = 'assets/badges/ssl.png';
+                    const badgeGoogle =
+                        'assets/badges/google-safe-browsing.png';
+
+                    final sobreLojaConfig = CatalogSobreLojaConfig.fromCfg(cfg);
+
+                    final footerLinks = <Map<String, String>>[
+                      if (trocasUrl.isNotEmpty)
+                        {'label': 'Trocas e devoluções', 'url': trocasUrl},
+                      if (loginUrl.isNotEmpty)
+                        {'label': 'Área do cliente', 'url': loginUrl},
+                    ];
+
+                    // Prazo de entrega (primeiro frete com prazo preenchido)
+                    String prazoEntregaTexto = 'Conforme opção no checkout';
+                    for (final f in fretes) {
+                      final p = (f['prazo'] ?? '').toString().trim();
+                      if (p.isNotEmpty) {
+                        prazoEntregaTexto = p;
+                        break;
+                      }
+                    }
+
+                    // FAQ e links institucionais (opcionais no config)
+                    List<Map<String, String>> faqItems = [];
+                    if (cfg['faq'] is List) {
+                      for (final e in asList(cfg['faq'])) {
+                        if (e is Map) {
+                          final m = Map<String, String>.from(e.map((k, v) =>
+                              MapEntry(k.toString(), v?.toString() ?? '')));
+                          if ((m['pergunta'] ?? '').trim().isNotEmpty) {
+                            faqItems.add(m);
+                          }
+                        }
+                      }
+                    }
+                    if (faqItems.isEmpty) {
+                      faqItems = [
+                        {
+                          'pergunta': 'Qual o prazo de entrega?',
+                          'resposta':
+                              'O prazo varia conforme sua região e a opção de frete escolhida no checkout. Consulte as opções disponíveis no carrinho.'
+                        },
+                        {
+                          'pergunta': 'Como funciona a troca ou devolução?',
+                          'resposta':
+                              'Entre em contato pelo WhatsApp para solicitar troca ou devolução. Guarde o produto na embalagem original.'
+                        },
+                        {
+                          'pergunta': 'Quais formas de pagamento são aceitas?',
+                          'resposta':
+                              'Aceitamos PIX, cartão de crédito e outras formas conforme indicado no checkout. Entre em contato para dúvidas.'
+                        },
+                      ];
+                    }
+                    final politicaPrivacidadeUrl =
+                        (cfg['politicaPrivacidadeUrl'] ??
+                                cfg['politica_privacidade_url'] ??
+                                '')
+                            .toString()
+                            .trim();
+                    final termosUsoUrl =
+                        (cfg['termosUsoUrl'] ?? cfg['termos_uso_url'] ?? '')
+                            .toString()
+                            .trim();
+
+                    // 🔢 qtde de itens no carrinho (para badge do ícone)
+                    final cartCount = _cart.fold<int>(
+                        0,
+                        (s, e) =>
+                            s +
+                            CatalogEstoqueHelper.parseCartItemQuantidade(
+                                e['quantidade']));
+                    if (!_traceEssentialActionsEnabledLogged) {
+                      _traceEssentialActionsEnabledLogged = true;
+                      CatalogStartupTrace.mark(
+                        'CAT_START.essential_actions.enabled',
+                        data: <String, Object?>{
+                          'loja_id': lojaId,
+                          'cart_count': cartCount,
+                          'has_whatsapp': whatsappVendedor.trim().isNotEmpty,
+                        },
+                      );
+                    }
+
+                    final layoutCatalogo = CatalogLayoutConfig.normalize(
+                      cfg['layoutCatalogo'] ?? cfg['layout_catalogo'],
+                    );
+                    final bool useMinimalLayout =
+                        CatalogLayoutConfig.isMinimal(layoutCatalogo);
+                    final viewportW = MediaQuery.sizeOf(context).width;
+                    final int catalogGridMobileCols = !useMinimalLayout &&
+                            viewportW < 640 &&
+                            gridMobileCols > 2
+                        ? 2
+                        : gridMobileCols;
+                    _tryHandleInitialProdutoDeepLink(
+                      produtos: produtos,
+                      useMinimalLayout: useMinimalLayout,
+                    );
+                    final promoBarCfg = mpMapDyn(cfg['promoBar']);
+                    final minimalSearchCfg = mpMapDyn(cfg['minimalSearch']);
+                    final categoryVisualsCfg = mpMapDyn(cfg['categoryVisuals']);
+                    final heroBannerCfg = mpMapDyn(cfg['heroBanner']);
+                    final heroBannerSizeMode =
+                        (heroBannerCfg['bannerMinimalistaTamanho'] ?? 'grande')
+                            .toString()
+                            .trim();
+                    final heroBannerCompactImageUrl =
+                        (heroBannerCfg['bannerMinimalistaCompactoUrl'] ?? '')
+                            .toString();
+                    final heroBannerActionLink =
+                        catalogHeroBannerActionUrl(heroBannerCfg);
+                    final minimalGridCfg = mpMapDyn(cfg['minimalProductGrid']);
+                    final productCardSize = CatalogProductCardSize.normalize(
+                      cfg['productCardSize'],
+                    );
+                    final minimalBestSellersCfg =
+                        mpMapDyn(cfg['minimalBestSellers']);
+                    final bestSellersSectionEnabled =
+                        safeBool(minimalBestSellersCfg['enabled'], true);
+                    final bestSellersTitle =
+                        (minimalBestSellersCfg['title'] ?? 'Mais vendidos')
+                            .toString();
+                    final bestSellersLimit =
+                        safeInt(minimalBestSellersCfg['count'], 10)
+                            .clamp(3, 24);
+
+                    // Banner hero minimalista: card / tipografia / botão (Loja Config — draft_config).
+                    final heroCardCfg = mpMapDyn(heroBannerCfg['card']);
+                    final heroTitleStyle =
+                        mpMapDyn(heroBannerCfg['titleStyle']);
+                    final heroSubtitleStyle =
+                        mpMapDyn(heroBannerCfg['subtitleStyle']);
+                    final heroButtonStyle =
+                        mpMapDyn(heroBannerCfg['buttonStyle']);
+                    final Color heroLegacyText =
+                        readColorFromCfg(heroBannerCfg['textColor']) ??
+                            Colors.white;
+                    final Color heroLegacyCardBg =
+                        readColorFromCfg(heroBannerCfg['backgroundColor']) ??
+                            cardColor;
+                    final Color heroLegacyBtnBg =
+                        readColorFromCfg(heroBannerCfg['buttonColor']) ??
+                            primaryColor;
+                    final Color heroBannerCardBg =
+                        readColorFromCfg(heroCardCfg['backgroundColor']) ??
+                            heroLegacyCardBg;
+                    final double heroBannerCardRadius = safeDouble(
+                      heroCardCfg['borderRadius'],
+                      safeDouble(heroBannerCfg['borderRadius'], 18),
+                    );
+                    final Color heroBannerTitleColor =
+                        readColorFromCfg(heroTitleStyle['color']) ??
+                            heroLegacyText;
+                    final double heroBannerTitleSize =
+                        safeDouble(heroTitleStyle['fontSize'], 17);
+                    final FontWeight heroBannerTitleW = parseFontWeightCfg(
+                        heroTitleStyle['fontWeight'], FontWeight.w600);
+                    final String heroBannerTitleCase =
+                        (heroTitleStyle['letterCase'] ?? 'none').toString();
+                    final Color heroBannerSubtitleColor =
+                        readColorFromCfg(heroSubtitleStyle['color']) ??
+                            heroLegacyText.withOpacity(0.96);
+                    final double heroBannerSubtitleSize =
+                        safeDouble(heroSubtitleStyle['fontSize'], 13);
+                    final FontWeight heroBannerSubtitleW = parseFontWeightCfg(
+                        heroSubtitleStyle['fontWeight'], FontWeight.w400);
+                    final String heroBannerSubtitleCase =
+                        (heroSubtitleStyle['letterCase'] ?? 'none').toString();
+                    final Color heroBannerBtnBg =
+                        readColorFromCfg(heroButtonStyle['backgroundColor']) ??
+                            readColorFromCfg(heroButtonStyle['background']) ??
+                            heroLegacyBtnBg;
+                    final Color heroBannerBtnText =
+                        readColorFromCfg(heroButtonStyle['textColor']) ??
+                            Colors.white;
+                    final double heroBannerBtnSize =
+                        safeDouble(heroButtonStyle['fontSize'], 13);
+                    final FontWeight heroBannerBtnW = parseFontWeightCfg(
+                        heroButtonStyle['fontWeight'], FontWeight.w600);
+                    final double heroBannerBtnRadius =
+                        safeDouble(heroButtonStyle['borderRadius'], 8);
+                    final String heroBannerBtnCase =
+                        (heroButtonStyle['letterCase'] ?? 'none').toString();
+
+                    TextAlign parseTextAlign(dynamic raw, TextAlign fallback) {
+                      final v = (raw ?? '').toString().trim().toLowerCase();
+                      switch (v) {
+                        case 'left':
+                          return TextAlign.left;
+                        case 'right':
+                          return TextAlign.right;
+                        case 'center':
+                          return TextAlign.center;
+                        case 'justify':
+                          return TextAlign.justify;
+                        default:
+                          return fallback;
+                      }
+                    }
+
+                    // Mostrar quantidade / estoque no catálogo (Firestore > prefs)
+                    final mostrarQuantidadeNoCatalogo = safeBool(
+                        cfg['mostrarQuantidadeNoCatalogo'],
+                        _mostrarQuantidadeNoCatalogo);
+                    final mostrarEstoqueNoCatalogo = safeBool(
+                        cfg['mostrarEstoqueNoCatalogo'],
+                        _mostrarEstoqueNoCatalogo);
+
+                    // categorias únicas para o menu lateral
+                    // Compatibilidade: lê tanto 'categoria' quanto 'categoriaId'
+                    final categoriasSet = <String>{};
+                    final categoryAliasesByName = <String, Set<String>>{};
+                    for (final p in produtos) {
+                      for (final c in _produtoCategoriasAssociadas(p)) {
+                        categoriasSet.add(c);
+                        final aliases = categoryAliasesByName.putIfAbsent(
+                            c, () => <String>{});
+                        final cid = (p['categoriaId'] ?? '').toString().trim();
+                        if (cid.isNotEmpty) aliases.add(cid);
+                        aliases.add(c.toLowerCase());
+                      }
+                    }
+                    final categoriasMenu = categoriasSet.toList()..sort();
+
+                    // =================== MENU & PÁGINAS ===================
+                    // Lê configurações do menu (quais itens mostrar/ocultar)
+                    final menuRaw = cfg['menu'];
+                    final menuMap = menuRaw is Map
+                        ? menuRaw.map((k, v) => MapEntry(k.toString(), v))
+                        : <String, dynamic>{};
+
+                    final menuShowCategorias =
+                        safeBool(menuMap['categorias'], true);
+                    final menuShowEntrar = safeBool(menuMap['entrar'], true);
+                    final menuShowContato = safeBool(menuMap['contato'], true);
+                    final menuShowSac = safeBool(menuMap['sac'], true);
+                    final menuShowQuemSomos =
+                        safeBool(menuMap['quemSomos'], true);
+                    final menuShowDicas = safeBool(menuMap['dicas'], true);
+                    final exibirAvaliacoesCatalogo = safeBool(
+                          cfg['exibirAvaliacoesCatalogo'] ??
+                              cfg['exibir_depoimentos_catalogo'],
+                          false,
+                        ) &&
+                        !_previewHideAvaliacoesForAdmin;
+                    final catalogAvaliacoesOrdem =
+                        CatalogAvaliacoesOrdem.fromFirestore(
+                      cfg['catalogAvaliacoesOrdem'],
+                    );
+                    final indicacaoRaw = cfg['indicacao'];
+                    final indicacaoAtivo =
+                        indicacaoRaw is Map && (indicacaoRaw['ativo'] == true);
+
+                    // DEBUG: Ver se está lendo as configurações do menu
+                    logD(
+                        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    logD('📋 [MENU CONFIG] Configurações do menu:');
+                    logD('   menuRaw existe: ${menuRaw != null}');
+                    logD('   menuMap: $menuMap');
+                    logD('   Categorias: $menuShowCategorias');
+                    logD('   Entrar: $menuShowEntrar');
+                    logD('   Contato: $menuShowContato');
+                    logD('   SAC: $menuShowSac');
+                    logD('   Quem Somos: $menuShowQuemSomos');
+                    logD(
+                        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+                    // Lê dados da página "Quem Somos"
+                    final quemSomosRaw = cfg['quemSomos'];
+                    final quemSomosMap = quemSomosRaw is Map
+                        ? quemSomosRaw.map((k, v) => MapEntry(k.toString(), v))
+                        : <String, dynamic>{};
+
+                    final quemSomosTitulo =
+                        (quemSomosMap['titulo'] ?? 'Quem somos').toString();
+                    final quemSomosTexto = (quemSomosMap['texto'] ??
+                            cfg['quem_somos'] ??
+                            cfg['sobre_texto'] ??
+                            '')
+                        .toString();
+
+                    // Lê dados do SAC
+                    final sacRaw = cfg['sac'];
+                    final sacMap = sacRaw is Map
+                        ? sacRaw.map((k, v) => MapEntry(k.toString(), v))
+                        : <String, dynamic>{};
+
+                    final sacWhatsapp =
+                        (sacMap['whatsapp'] ?? whatsappVendedor).toString();
+
+                    // Lista de dicas (cuidados, garantias, qualidade etc.) – só ativas com título
+                    final dicasRaw = cfg['dicas'];
+                    final dicasList = <DicaItem>[];
+                    if (dicasRaw is List) {
+                      for (final e in dicasRaw) {
+                        if (e is! Map) continue;
+                        final d = DicaItem.fromMap(Map<String, dynamic>.from(
+                            e.map((k, v) => MapEntry(k.toString(), v))));
+                        if (d.ativo && d.titulo.trim().isNotEmpty) {
+                          dicasList.add(d);
+                        }
+                      }
+                    }
+
+                    final w = MediaQuery.of(context).size.width;
+                    final isDesktop = w >= 1024;
+
+                    // Link direto: ?page=dicas abre a página de dicas ao carregar
+                    if (widget.initialPage == 'dicas' && !_openedInitialPage) {
+                      _openedInitialPage = true;
+                      final contact = DicasContactInfo(
+                        whatsappNumber: atendimentoWhatsapp,
+                        instagramUrl:
+                            instagramUrl.isNotEmpty ? instagramUrl : null,
+                        facebookUrl:
+                            facebookUrl.isNotEmpty ? facebookUrl : null,
+                      );
+                      final dicasW = MediaQuery.of(context).size.width;
+                      final dicasIsWide = dicasW >= 900;
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => CatalogDicasScreen(
+                              lojaId: _resolvedLojaId ?? widget.lojaId,
+                              lojaNome: lojaNome,
+                              dicas: dicasList,
+                              primaryColor: primaryColor,
+                              logoUrl: logoUrl.isNotEmpty ? logoUrl : null,
+                              logoHeight: dicasIsWide ? 90 : 80,
+                              bannerHeightCard: mediaConfig.bannerH * 0.65,
+                              bannerHeightDetail: mediaConfig.bannerH * 0.85,
+                              dicasColors: catalogDicasColors,
+                              contactInfo: contact,
+                            ),
+                          ),
+                        );
+                      });
+                    }
+
                     return Scaffold(
-                      body: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
+                      // ================= DRAWER =================
+                      drawer: Drawer(
+                        child: SafeArea(
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.error_outline,
-                                  size: 64, color: Colors.red.shade300),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Erro ao carregar produtos',
-                                style: Theme.of(context).textTheme.titleMedium,
-                                textAlign: TextAlign.center,
+                              // topo com logo (fixo) – cor configurável para tema claro/escuro
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                                child: Row(
+                                  children: [
+                                    if (logoUrl.isNotEmpty)
+                                      Expanded(
+                                        child: SizedBox(
+                                          height: 40,
+                                          child: _buildDrawerLogo(
+                                            context: context,
+                                            logoUrl: logoUrl,
+                                            isDark: _modoEscuro,
+                                            colorClaro:
+                                                mediaConfig.logoColorClaro,
+                                            colorEscuro:
+                                                mediaConfig.logoColorEscuro,
+                                          ),
+                                        ),
+                                      )
+                                    else
+                                      Expanded(
+                                        child: Text(
+                                          lojaNome,
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w700,
+                                            color: _modoEscuro
+                                                ? headerTextColor
+                                                : textColor,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    IconButton(
+                                      icon: const Icon(Icons.close),
+                                      onPressed: () => Navigator.pop(context),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '${prodSnap.error}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                                textAlign: TextAlign.center,
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
+                              const Divider(height: 1),
+
+                              // Conteúdo rolável (evita overflow com muitas categorias)
+                              Expanded(
+                                child: ListView(
+                                  shrinkWrap: true,
+                                  padding: EdgeInsets.zero,
+                                  children: [
+                                    // HOME
+                                    ListTile(
+                                      leading: const Icon(Icons.home_outlined),
+                                      title: const Text('Home'),
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        _searchController.clear();
+                                        _searchNotifier.value = '';
+                                        setState(() {
+                                          _selectedCategory = null;
+                                          _selectedSubcategory = null;
+                                          _clearFiltrosVariacao();
+                                          _currentPageNotifier.value = 0;
+                                        });
+                                        _onCatalogCategoryOrSubChanged();
+                                      },
+                                    ),
+
+                                    // PRODUTOS (sem filtro, mostra todos)
+                                    ListTile(
+                                      leading:
+                                          const Icon(Icons.grid_view_outlined),
+                                      title: const Text('Produtos'),
+                                      onTap: () {
+                                        Navigator.pop(context);
+                                        setState(() {
+                                          _selectedCategory = null;
+                                          _selectedSubcategory = null;
+                                          _clearFiltrosVariacao();
+                                          _currentPageNotifier.value = 0;
+                                        });
+                                        _onCatalogCategoryOrSubChanged();
+                                      },
+                                    ),
+
+                                    // CATEGORIAS E SUBCATEGORIAS (condicional)
+                                    if (menuShowCategorias &&
+                                        categoriasMenu.isNotEmpty) ...[
+                                      const Padding(
+                                        padding:
+                                            EdgeInsets.fromLTRB(16, 12, 16, 4),
+                                        child: Text(
+                                          'Categorias',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                      ...categoriasMenu.expand((cat) {
+                                        final subcategoriasSet = <String>{};
+                                        for (final p in produtos) {
+                                          if (_produtoTemCategoria(p, cat)) {
+                                            for (final sub
+                                                in _produtoSubcategoriasAssociadas(
+                                                    p)) {
+                                              if (sub.isNotEmpty) {
+                                                subcategoriasSet.add(sub);
+                                              }
+                                            }
+                                          }
+                                        }
+                                        final subcategorias =
+                                            subcategoriasSet.toList()..sort();
+                                        return [
+                                          ListTile(
+                                            dense: true,
+                                            leading:
+                                                const Icon(Icons.chevron_right),
+                                            title: Text(cat),
+                                            onTap: () {
+                                              Navigator.pop(context);
+                                              setState(() {
+                                                _selectedCategory = cat;
+                                                _selectedSubcategory = null;
+                                                _clearFiltrosVariacao();
+                                                _currentPageNotifier.value = 0;
+                                              });
+                                              _onCatalogCategoryOrSubChanged();
+                                            },
+                                          ),
+                                          ...subcategorias.map((sub) {
+                                            final isDark =
+                                                Theme.of(context).brightness ==
+                                                    Brightness.dark;
+                                            final subcatColor = isDark
+                                                ? Colors.white
+                                                : Colors.black87;
+                                            return ListTile(
+                                              dense: true,
+                                              leading: Icon(
+                                                  Icons
+                                                      .subdirectory_arrow_right,
+                                                  size: 18,
+                                                  color: primaryColor
+                                                      .withOpacity(0.7)),
+                                              title: Text(
+                                                sub,
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: subcatColor,
+                                                ),
+                                              ),
+                                              onTap: () {
+                                                Navigator.pop(context);
+                                                setState(() {
+                                                  _selectedCategory = cat;
+                                                  _selectedSubcategory = sub;
+                                                  _clearFiltrosVariacao();
+                                                  _currentPageNotifier.value =
+                                                      0;
+                                                });
+                                                _onCatalogCategoryOrSubChanged();
+                                              },
+                                            );
+                                          }),
+                                        ];
+                                      }),
+                                    ],
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 24),
-                              FilledButton.icon(
-                                onPressed: () => _onRefreshProducts(lojaId),
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Tentar novamente'),
+
+                              const Divider(height: 1),
+
+                              // ENTRAR/CADASTRAR ou PERFIL - depende se está logado (NOVO SISTEMA)
+                              FutureBuilder<Map<String, dynamic>?>(
+                                key: ValueKey(_menuClienteAuthRetryKey),
+                                future: ClienteAuthService.getClienteLogado(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasError) {
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          ListTile(
+                                            leading: Icon(
+                                              Icons.cloud_off_outlined,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .error,
+                                            ),
+                                            title: const Text(
+                                              'Não foi possível carregar sua sessão',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            subtitle: Text(
+                                              kDebugMode
+                                                  ? snapshot.error.toString()
+                                                  : 'Verifique a conexão e tente de novo.',
+                                              maxLines: 3,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .bodySmall,
+                                            ),
+                                          ),
+                                          TextButton.icon(
+                                            onPressed: () {
+                                              setState(() =>
+                                                  _menuClienteAuthRetryKey++);
+                                            },
+                                            icon: const Icon(Icons.refresh,
+                                                size: 20),
+                                            label:
+                                                const Text('Tentar novamente'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                  if (snapshot.connectionState ==
+                                      ConnectionState.waiting) {
+                                    return const Padding(
+                                      padding:
+                                          EdgeInsets.symmetric(vertical: 14),
+                                      child: Center(
+                                        child: SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        ),
+                                      ),
+                                    );
+                                  }
+
+                                  final cliente = snapshot.data;
+
+                                  if (cliente != null) {
+                                    // Cliente LOGADO - mostrar perfil e opcionalmente Indicar amigo
+                                    final nome = cliente['nome'] ?? 'Cliente';
+                                    final clienteId =
+                                        (cliente['clienteId'] ?? '').toString();
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ListTile(
+                                          leading: CircleAvatar(
+                                            backgroundColor: Colors.blue,
+                                            child: Text(
+                                              nome.isNotEmpty
+                                                  ? nome[0].toUpperCase()
+                                                  : 'C',
+                                              style: const TextStyle(
+                                                  color: Colors.white),
+                                            ),
+                                          ),
+                                          title: Text(
+                                            nome,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          subtitle:
+                                              const Text('Ver meu perfil'),
+                                          onTap: () async {
+                                            Navigator.pop(context);
+                                            final lojaIdSessao =
+                                                await ClienteAuthService
+                                                    .getLojaId();
+                                            final lojaIdPerfil = lojaIdSessao ??
+                                                _resolvedLojaId ??
+                                                widget.lojaId;
+                                            if (!context.mounted) return;
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    PerfilClienteScreenNovo(
+                                                  lojaId: lojaIdPerfil,
+                                                  clienteId: clienteId,
+                                                ),
+                                              ),
+                                            ).then((_) async {
+                                              await _loadClienteAndFavoritos();
+                                              if (!mounted) return;
+                                              setState(() =>
+                                                  _menuClienteAuthRetryKey++);
+                                            });
+                                          },
+                                        ),
+                                        if (indicacaoAtivo &&
+                                            clienteId.isNotEmpty)
+                                          ListTile(
+                                            leading: Icon(Icons.card_giftcard,
+                                                color: _successColor),
+                                            title: const Text('Indicar amigo'),
+                                            subtitle: const Text(
+                                              'Compartilhe o link; você e seu amigo ganham cupom',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            onTap: () {
+                                              Navigator.pop(context);
+                                              _mostrarIndicarAmigoSheet(
+                                                context,
+                                                lojaId: _resolvedLojaId ??
+                                                    widget.lojaId,
+                                                clienteId: clienteId,
+                                              );
+                                            },
+                                          ),
+                                      ],
+                                    );
+                                  }
+
+                                  // Cliente NÃO LOGADO - mostrar botões Entrar/Cadastrar
+                                  if (menuShowEntrar) {
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ListTile(
+                                          leading: const Icon(Icons.login),
+                                          title: const Text('Entrar'),
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            final lojaIdAuth =
+                                                _resolvedLojaId ??
+                                                    widget.lojaId;
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    LoginScreenCliente(
+                                                        lojaId: lojaIdAuth),
+                                              ),
+                                            ).then((_) async {
+                                              await _loadClienteAndFavoritos();
+                                              if (!mounted) return;
+                                              setState(() =>
+                                                  _menuClienteAuthRetryKey++);
+                                            });
+                                          },
+                                        ),
+                                        ListTile(
+                                          leading: const Icon(Icons.person_add),
+                                          title: const Text('Cadastrar'),
+                                          onTap: () {
+                                            Navigator.pop(context);
+                                            final lojaIdAuth =
+                                                _resolvedLojaId ??
+                                                    widget.lojaId;
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    CadastroScreenCliente(
+                                                        lojaId: lojaIdAuth),
+                                              ),
+                                            ).then((_) async {
+                                              await _loadClienteAndFavoritos();
+                                              if (!mounted) return;
+                                              setState(() =>
+                                                  _menuClienteAuthRetryKey++);
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    );
+                                  }
+
+                                  return const SizedBox.shrink();
+                                },
                               ),
+
+                              // Modo escuro
+                              SwitchListTile(
+                                value: _modoEscuro,
+                                onChanged: (value) => _toggleModoEscuro(value),
+                                title: const Text('Modo escuro'),
+                                secondary: Icon(
+                                  _modoEscuro
+                                      ? Icons.dark_mode
+                                      : Icons.light_mode,
+                                  color: primaryColor,
+                                ),
+                              ),
+
+                              // SAC (elogios, sugestões e críticas) - condicional
+                              if (menuShowSac)
+                                ListTile(
+                                  leading:
+                                      const Icon(Icons.support_agent_outlined),
+                                  title: const Text(
+                                      'SAC – elogios, sugestões e críticas',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis),
+                                  onTap: () {
+                                    Navigator.pop(context);
+
+                                    final sacNumber =
+                                        sacWhatsapp.trim().isNotEmpty
+                                            ? sacWhatsapp.trim()
+                                            : whatsappVendedor.trim();
+
+                                    if (sacNumber.isEmpty) {
+                                      _snack(
+                                          'WhatsApp de atendimento não configurado.');
+                                    } else {
+                                      _openWhatsappSimple(
+                                        sacNumber,
+                                        'Olá! Gostaria de falar com o SAC (elogios, sugestões ou críticas).',
+                                      );
+                                    }
+                                  },
+                                ),
+
+                              // QUEM SOMOS - condicional
+                              if (menuShowQuemSomos)
+                                ListTile(
+                                  leading: const Icon(Icons.info_outline),
+                                  title: Text(quemSomosTitulo),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      backgroundColor: Theme.of(context)
+                                          .scaffoldBackgroundColor,
+                                      builder: (_) {
+                                        final texto = quemSomosTexto
+                                                .trim()
+                                                .isEmpty
+                                            ? 'Texto de "$quemSomosTitulo" ainda não configurado.\n\nVocê poderá editar esse conteúdo na tela Loja Config.'
+                                            : quemSomosTexto.trim();
+                                        return Padding(
+                                          padding: EdgeInsets.fromLTRB(
+                                            16,
+                                            16,
+                                            16,
+                                            MediaQuery.of(context)
+                                                    .viewInsets
+                                                    .bottom +
+                                                24,
+                                          ),
+                                          child: SingleChildScrollView(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  quemSomosTitulo,
+                                                  style: (Theme.of(context)
+                                                              .textTheme
+                                                              .titleLarge ??
+                                                          const TextStyle(
+                                                            fontSize: 22,
+                                                          ))
+                                                      .copyWith(
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 12),
+                                                Text(
+                                                  texto,
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
+                              // DICAS E INFORMAÇÕES (cuidados, garantias, qualidade) - condicional
+                              if (menuShowDicas)
+                                ListTile(
+                                  leading: const Icon(Icons.lightbulb_outline),
+                                  title: const Text(
+                                    'Dicas e informações',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: const Text(
+                                    'Cuidados, garantias e qualidade',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    final w = MediaQuery.of(context).size.width;
+                                    final isWide = w >= 900;
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => CatalogDicasScreen(
+                                          lojaId:
+                                              _resolvedLojaId ?? widget.lojaId,
+                                          lojaNome: lojaNome,
+                                          dicas: dicasList,
+                                          primaryColor: primaryColor,
+                                          logoUrl: logoUrl.isNotEmpty
+                                              ? logoUrl
+                                              : null,
+                                          logoHeight: isWide ? 90 : 80,
+                                          bannerHeightCard:
+                                              mediaConfig.bannerH * 0.65,
+                                          bannerHeightDetail:
+                                              mediaConfig.bannerH * 0.85,
+                                          dicasColors: catalogDicasColors,
+                                          contactInfo: DicasContactInfo(
+                                            whatsappNumber: atendimentoWhatsapp,
+                                            instagramUrl:
+                                                instagramUrl.isNotEmpty
+                                                    ? instagramUrl
+                                                    : null,
+                                            facebookUrl: facebookUrl.isNotEmpty
+                                                ? facebookUrl
+                                                : null,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
                             ],
                           ),
                         ),
                       ),
-                    );
-                  }
-                  final docs = prodSnap.hasData && prodSnap.data != null
-                      ? prodSnap.data!.docs
-                      : <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-                  if (prodSnap.hasData && !_traceProductsDataReadyLogged) {
-                    _traceProductsDataReadyLogged = true;
-                    CatalogStartupTrace.mark(
-                      'CAT_START.products_builder.ready',
-                      data: <String, Object?>{
-                        'loja_id': lojaId,
-                        'docs_count': docs.length,
-                      },
-                    );
-                  }
 
-                  final produtos = _processDocsToProductsCached(docs);
-                  if (!_traceProductsVisibleLogged) {
-                    _traceProductsVisibleLogged = true;
-                    CatalogStartupTrace.mark(
-                      'CAT_START.products_visible.ready',
-                      data: <String, Object?>{
-                        'loja_id': lojaId,
-                        'produtos_count': produtos.length,
-                      },
-                    );
-                  }
-
-                  if (produtos.isNotEmpty && _cart.isNotEmpty) {
-                    final cleanupSig =
-                        '$_lastProdutosDocsSig|cart:${_cart.length}';
-                    if (_lastCartCleanupSig != cleanupSig) {
-                      _lastCartCleanupSig = cleanupSig;
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) _limparCartDeProdutosRemovidos(produtos);
-                      });
-                    }
-                  }
-
-                  const badgeSSL = 'assets/badges/ssl.png';
-                  const badgeGoogle = 'assets/badges/google-safe-browsing.png';
-
-                  final sobreLojaConfig = CatalogSobreLojaConfig.fromCfg(cfg);
-
-                  final footerLinks = <Map<String, String>>[
-                    if (trocasUrl.isNotEmpty)
-                      {'label': 'Trocas e devoluções', 'url': trocasUrl},
-                    if (loginUrl.isNotEmpty)
-                      {'label': 'Área do cliente', 'url': loginUrl},
-                  ];
-
-                  // Prazo de entrega (primeiro frete com prazo preenchido)
-                  String prazoEntregaTexto = 'Conforme opção no checkout';
-                  for (final f in fretes) {
-                    final p = (f['prazo'] ?? '').toString().trim();
-                    if (p.isNotEmpty) {
-                      prazoEntregaTexto = p;
-                      break;
-                    }
-                  }
-
-                  // FAQ e links institucionais (opcionais no config)
-                  List<Map<String, String>> faqItems = [];
-                  if (cfg['faq'] is List) {
-                    for (final e in asList(cfg['faq'])) {
-                      if (e is Map) {
-                        final m = Map<String, String>.from(e.map((k, v) =>
-                            MapEntry(k.toString(), v?.toString() ?? '')));
-                        if ((m['pergunta'] ?? '').trim().isNotEmpty) {
-                          faqItems.add(m);
-                        }
-                      }
-                    }
-                  }
-                  if (faqItems.isEmpty) {
-                    faqItems = [
-                      {
-                        'pergunta': 'Qual o prazo de entrega?',
-                        'resposta':
-                            'O prazo varia conforme sua região e a opção de frete escolhida no checkout. Consulte as opções disponíveis no carrinho.'
-                      },
-                      {
-                        'pergunta': 'Como funciona a troca ou devolução?',
-                        'resposta':
-                            'Entre em contato pelo WhatsApp para solicitar troca ou devolução. Guarde o produto na embalagem original.'
-                      },
-                      {
-                        'pergunta': 'Quais formas de pagamento são aceitas?',
-                        'resposta':
-                            'Aceitamos PIX, cartão de crédito e outras formas conforme indicado no checkout. Entre em contato para dúvidas.'
-                      },
-                    ];
-                  }
-                  final politicaPrivacidadeUrl =
-                      (cfg['politicaPrivacidadeUrl'] ??
-                              cfg['politica_privacidade_url'] ??
-                              '')
-                          .toString()
-                          .trim();
-                  final termosUsoUrl =
-                      (cfg['termosUsoUrl'] ?? cfg['termos_uso_url'] ?? '')
-                          .toString()
-                          .trim();
-
-                  // 🔢 qtde de itens no carrinho (para badge do ícone)
-                  final cartCount = _cart.fold<int>(
-                      0,
-                      (s, e) =>
-                          s +
-                          CatalogEstoqueHelper.parseCartItemQuantidade(
-                              e['quantidade']));
-                  if (!_traceEssentialActionsEnabledLogged) {
-                    _traceEssentialActionsEnabledLogged = true;
-                    CatalogStartupTrace.mark(
-                      'CAT_START.essential_actions.enabled',
-                      data: <String, Object?>{
-                        'loja_id': lojaId,
-                        'cart_count': cartCount,
-                        'has_whatsapp': whatsappVendedor.trim().isNotEmpty,
-                      },
-                    );
-                  }
-
-                  final layoutCatalogo = CatalogLayoutConfig.normalize(
-                    cfg['layoutCatalogo'] ?? cfg['layout_catalogo'],
-                  );
-                  final bool useMinimalLayout =
-                      CatalogLayoutConfig.isMinimal(layoutCatalogo);
-                  final viewportW = MediaQuery.sizeOf(context).width;
-                  final int catalogGridMobileCols =
-                      !useMinimalLayout && viewportW < 640 && gridMobileCols > 2
-                          ? 2
-                          : gridMobileCols;
-                  _tryHandleInitialProdutoDeepLink(
-                    produtos: produtos,
-                    useMinimalLayout: useMinimalLayout,
-                  );
-                  final promoBarCfg = mpMapDyn(cfg['promoBar']);
-                  final minimalSearchCfg = mpMapDyn(cfg['minimalSearch']);
-                  final categoryVisualsCfg = mpMapDyn(cfg['categoryVisuals']);
-                  final heroBannerCfg = mpMapDyn(cfg['heroBanner']);
-                  final heroBannerSizeMode =
-                      (heroBannerCfg['bannerMinimalistaTamanho'] ?? 'grande')
-                          .toString()
-                          .trim();
-                  final heroBannerCompactImageUrl =
-                      (heroBannerCfg['bannerMinimalistaCompactoUrl'] ?? '')
-                          .toString();
-                  final heroBannerActionLink =
-                      catalogHeroBannerActionUrl(heroBannerCfg);
-                  final minimalGridCfg = mpMapDyn(cfg['minimalProductGrid']);
-                  final productCardSize = CatalogProductCardSize.normalize(
-                    cfg['productCardSize'],
-                  );
-                  final minimalBestSellersCfg =
-                      mpMapDyn(cfg['minimalBestSellers']);
-                  final bestSellersSectionEnabled =
-                      safeBool(minimalBestSellersCfg['enabled'], true);
-                  final bestSellersTitle =
-                      (minimalBestSellersCfg['title'] ?? 'Mais vendidos')
-                          .toString();
-                  final bestSellersLimit =
-                      safeInt(minimalBestSellersCfg['count'], 10).clamp(3, 24);
-
-                  // Banner hero minimalista: card / tipografia / botão (Loja Config — draft_config).
-                  final heroCardCfg = mpMapDyn(heroBannerCfg['card']);
-                  final heroTitleStyle = mpMapDyn(heroBannerCfg['titleStyle']);
-                  final heroSubtitleStyle =
-                      mpMapDyn(heroBannerCfg['subtitleStyle']);
-                  final heroButtonStyle =
-                      mpMapDyn(heroBannerCfg['buttonStyle']);
-                  final Color heroLegacyText =
-                      readColorFromCfg(heroBannerCfg['textColor']) ??
-                          Colors.white;
-                  final Color heroLegacyCardBg =
-                      readColorFromCfg(heroBannerCfg['backgroundColor']) ??
-                          cardColor;
-                  final Color heroLegacyBtnBg =
-                      readColorFromCfg(heroBannerCfg['buttonColor']) ??
-                          primaryColor;
-                  final Color heroBannerCardBg =
-                      readColorFromCfg(heroCardCfg['backgroundColor']) ??
-                          heroLegacyCardBg;
-                  final double heroBannerCardRadius = safeDouble(
-                    heroCardCfg['borderRadius'],
-                    safeDouble(heroBannerCfg['borderRadius'], 18),
-                  );
-                  final Color heroBannerTitleColor =
-                      readColorFromCfg(heroTitleStyle['color']) ??
-                          heroLegacyText;
-                  final double heroBannerTitleSize =
-                      safeDouble(heroTitleStyle['fontSize'], 17);
-                  final FontWeight heroBannerTitleW = parseFontWeightCfg(
-                      heroTitleStyle['fontWeight'], FontWeight.w600);
-                  final String heroBannerTitleCase =
-                      (heroTitleStyle['letterCase'] ?? 'none').toString();
-                  final Color heroBannerSubtitleColor =
-                      readColorFromCfg(heroSubtitleStyle['color']) ??
-                          heroLegacyText.withOpacity(0.96);
-                  final double heroBannerSubtitleSize =
-                      safeDouble(heroSubtitleStyle['fontSize'], 13);
-                  final FontWeight heroBannerSubtitleW = parseFontWeightCfg(
-                      heroSubtitleStyle['fontWeight'], FontWeight.w400);
-                  final String heroBannerSubtitleCase =
-                      (heroSubtitleStyle['letterCase'] ?? 'none').toString();
-                  final Color heroBannerBtnBg =
-                      readColorFromCfg(heroButtonStyle['backgroundColor']) ??
-                          readColorFromCfg(heroButtonStyle['background']) ??
-                          heroLegacyBtnBg;
-                  final Color heroBannerBtnText =
-                      readColorFromCfg(heroButtonStyle['textColor']) ??
-                          Colors.white;
-                  final double heroBannerBtnSize =
-                      safeDouble(heroButtonStyle['fontSize'], 13);
-                  final FontWeight heroBannerBtnW = parseFontWeightCfg(
-                      heroButtonStyle['fontWeight'], FontWeight.w600);
-                  final double heroBannerBtnRadius =
-                      safeDouble(heroButtonStyle['borderRadius'], 8);
-                  final String heroBannerBtnCase =
-                      (heroButtonStyle['letterCase'] ?? 'none').toString();
-
-                  TextAlign parseTextAlign(dynamic raw, TextAlign fallback) {
-                    final v = (raw ?? '').toString().trim().toLowerCase();
-                    switch (v) {
-                      case 'left':
-                        return TextAlign.left;
-                      case 'right':
-                        return TextAlign.right;
-                      case 'center':
-                        return TextAlign.center;
-                      case 'justify':
-                        return TextAlign.justify;
-                      default:
-                        return fallback;
-                    }
-                  }
-
-                  // Mostrar quantidade / estoque no catálogo (Firestore > prefs)
-                  final mostrarQuantidadeNoCatalogo =
-                      cfg['mostrarQuantidadeNoCatalogo'] as bool? ??
-                          _mostrarQuantidadeNoCatalogo;
-                  final mostrarEstoqueNoCatalogo =
-                      cfg['mostrarEstoqueNoCatalogo'] as bool? ??
-                          _mostrarEstoqueNoCatalogo;
-
-                  // categorias únicas para o menu lateral
-                  // Compatibilidade: lê tanto 'categoria' quanto 'categoriaId'
-                  final categoriasSet = <String>{};
-                  final categoryAliasesByName = <String, Set<String>>{};
-                  for (final p in produtos) {
-                    for (final c in _produtoCategoriasAssociadas(p)) {
-                      categoriasSet.add(c);
-                      final aliases = categoryAliasesByName.putIfAbsent(
-                          c, () => <String>{});
-                      final cid = (p['categoriaId'] ?? '').toString().trim();
-                      if (cid.isNotEmpty) aliases.add(cid);
-                      aliases.add(c.toLowerCase());
-                    }
-                  }
-                  final categoriasMenu = categoriasSet.toList()..sort();
-
-                  // =================== MENU & PÁGINAS ===================
-                  // Lê configurações do menu (quais itens mostrar/ocultar)
-                  final menuRaw = cfg['menu'];
-                  final menuMap = menuRaw is Map
-                      ? menuRaw.map((k, v) => MapEntry(k.toString(), v))
-                      : <String, dynamic>{};
-
-                  final menuShowCategorias =
-                      safeBool(menuMap['categorias'], true);
-                  final menuShowEntrar = safeBool(menuMap['entrar'], true);
-                  final menuShowContato = safeBool(menuMap['contato'], true);
-                  final menuShowSac = safeBool(menuMap['sac'], true);
-                  final menuShowQuemSomos =
-                      safeBool(menuMap['quemSomos'], true);
-                  final menuShowDicas = safeBool(menuMap['dicas'], true);
-                  final exibirAvaliacoesCatalogo = safeBool(
-                        cfg['exibirAvaliacoesCatalogo'] ??
-                            cfg['exibir_depoimentos_catalogo'],
-                        false,
-                      ) &&
-                      !_previewHideAvaliacoesForAdmin;
-                  final catalogAvaliacoesOrdem =
-                      CatalogAvaliacoesOrdem.fromFirestore(
-                    cfg['catalogAvaliacoesOrdem'],
-                  );
-                  final indicacaoRaw = cfg['indicacao'];
-                  final indicacaoAtivo =
-                      indicacaoRaw is Map && (indicacaoRaw['ativo'] == true);
-
-                  // DEBUG: Ver se está lendo as configurações do menu
-                  logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                  logD('📋 [MENU CONFIG] Configurações do menu:');
-                  logD('   menuRaw existe: ${menuRaw != null}');
-                  logD('   menuMap: $menuMap');
-                  logD('   Categorias: $menuShowCategorias');
-                  logD('   Entrar: $menuShowEntrar');
-                  logD('   Contato: $menuShowContato');
-                  logD('   SAC: $menuShowSac');
-                  logD('   Quem Somos: $menuShowQuemSomos');
-                  logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-                  // Lê dados da página "Quem Somos"
-                  final quemSomosRaw = cfg['quemSomos'];
-                  final quemSomosMap = quemSomosRaw is Map
-                      ? quemSomosRaw.map((k, v) => MapEntry(k.toString(), v))
-                      : <String, dynamic>{};
-
-                  final quemSomosTitulo =
-                      (quemSomosMap['titulo'] ?? 'Quem somos').toString();
-                  final quemSomosTexto = (quemSomosMap['texto'] ??
-                          cfg['quem_somos'] ??
-                          cfg['sobre_texto'] ??
-                          '')
-                      .toString();
-
-                  // Lê dados do SAC
-                  final sacRaw = cfg['sac'];
-                  final sacMap = sacRaw is Map
-                      ? sacRaw.map((k, v) => MapEntry(k.toString(), v))
-                      : <String, dynamic>{};
-
-                  final sacWhatsapp =
-                      (sacMap['whatsapp'] ?? whatsappVendedor).toString();
-
-                  // Lista de dicas (cuidados, garantias, qualidade etc.) – só ativas com título
-                  final dicasRaw = cfg['dicas'];
-                  final dicasList = <DicaItem>[];
-                  if (dicasRaw is List) {
-                    for (final e in dicasRaw) {
-                      if (e is! Map) continue;
-                      final d = DicaItem.fromMap(Map<String, dynamic>.from(
-                          e.map((k, v) => MapEntry(k.toString(), v))));
-                      if (d.ativo && d.titulo.trim().isNotEmpty) {
-                        dicasList.add(d);
-                      }
-                    }
-                  }
-
-                  final w = MediaQuery.of(context).size.width;
-                  final isDesktop = w >= 1024;
-
-                  // Link direto: ?page=dicas abre a página de dicas ao carregar
-                  if (widget.initialPage == 'dicas' && !_openedInitialPage) {
-                    _openedInitialPage = true;
-                    final contact = DicasContactInfo(
-                      whatsappNumber: atendimentoWhatsapp,
-                      instagramUrl:
-                          instagramUrl.isNotEmpty ? instagramUrl : null,
-                      facebookUrl: facebookUrl.isNotEmpty ? facebookUrl : null,
-                    );
-                    final dicasW = MediaQuery.of(context).size.width;
-                    final dicasIsWide = dicasW >= 900;
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) return;
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => CatalogDicasScreen(
-                            lojaId: _resolvedLojaId ?? widget.lojaId,
-                            lojaNome: lojaNome,
-                            dicas: dicasList,
-                            primaryColor: primaryColor,
-                            logoUrl: logoUrl.isNotEmpty ? logoUrl : null,
-                            logoHeight: dicasIsWide ? 90 : 80,
-                            bannerHeightCard: mediaConfig.bannerH * 0.65,
-                            bannerHeightDetail: mediaConfig.bannerH * 0.85,
-                            dicasColors: catalogDicasColors,
-                            contactInfo: contact,
-                          ),
-                        ),
-                      );
-                    });
-                  }
-
-                  return Scaffold(
-                    // ================= DRAWER =================
-                    drawer: Drawer(
-                      child: SafeArea(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // topo com logo (fixo) – cor configurável para tema claro/escuro
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                              child: Row(
-                                children: [
-                                  if (logoUrl.isNotEmpty)
-                                    Expanded(
-                                      child: SizedBox(
-                                        height: 40,
-                                        child: _buildDrawerLogo(
-                                          context: context,
-                                          logoUrl: logoUrl,
-                                          isDark: _modoEscuro,
-                                          colorClaro:
-                                              mediaConfig.logoColorClaro,
-                                          colorEscuro:
-                                              mediaConfig.logoColorEscuro,
-                                        ),
-                                      ),
-                                    )
-                                  else
-                                    Expanded(
-                                      child: Text(
-                                        lojaNome,
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w700,
-                                          color: _modoEscuro
-                                              ? headerTextColor
-                                              : textColor,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  IconButton(
-                                    icon: const Icon(Icons.close),
-                                    onPressed: () => Navigator.pop(context),
+                      // ================= APPBAR =================
+                      appBar: AppBar(
+                        backgroundColor: headerColor,
+                        elevation: 0,
+                        // Altura dinâmica: desktop maior; mobile inalterado
+                        // Margem extra vs conteúdo do título (busca + chips) para evitar overflow vertical residual.
+                        // Minimal: altura do AppBar equilibrada com ícones + busca (logo não domina a faixa).
+                        toolbarHeight: useMinimalLayout
+                            ? (isDesktop ? 112 : 100)
+                            : (isDesktop
+                                ? (categoriasMenu.isEmpty
+                                    ? 152
+                                    : (!_catalogExibindoTodosCategorias()
+                                        ? 248
+                                        : 198))
+                                : (categoriasMenu.isEmpty
+                                    ? 132
+                                    : (!_catalogExibindoTodosCategorias()
+                                        ? 228
+                                        : 178))),
+                        titleSpacing: 0,
+                        automaticallyImplyLeading: false,
+                        title: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Align(
+                              alignment: Alignment.topCenter,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.topCenter,
+                                // Não limitar maxHeight aqui: o Column estoura antes do FittedBox escalar (overflow ~20px).
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth: constraints.maxWidth,
                                   ),
-                                ],
-                              ),
-                            ),
-                            const Divider(height: 1),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      // ======= LINHA SUPERIOR: MENU + LOGO + PUBLICAR + CARRINHO =======
+                                      () {
+                                        // Minimal: logo no centro *global* do AppBar (Stack);
+                                        // a Row só reserva a faixa central; sem logo duplicar offset dos ícones.
+                                        final topBarRow = Row(
+                                          children: [
+                                            // ☰ MENU – abre o drawer à esquerda
+                                            Builder(
+                                              builder: (ctx) => IconButton(
+                                                icon: Icon(
+                                                  Icons.menu,
+                                                  size: 28,
+                                                  color:
+                                                      headerIconColor, // ✅ Usa cor do cabeçalho
+                                                ),
+                                                onPressed: () =>
+                                                    Scaffold.of(ctx)
+                                                        .openDrawer(),
+                                              ),
+                                            ),
 
-                            // Conteúdo rolável (evita overflow com muitas categorias)
-                            Expanded(
-                              child: ListView(
-                                shrinkWrap: true,
-                                padding: EdgeInsets.zero,
-                                children: [
-                                  // HOME
-                                  ListTile(
-                                    leading: const Icon(Icons.home_outlined),
-                                    title: const Text('Home'),
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                      _searchController.clear();
-                                      _searchNotifier.value = '';
-                                      setState(() {
-                                        _selectedCategory = null;
-                                        _selectedSubcategory = null;
-                                        _clearFiltrosVariacao();
-                                        _currentPageNotifier.value = 0;
-                                      });
-                                      _onCatalogCategoryOrSubChanged();
-                                    },
-                                  ),
+                                            // Clássico: logo no Expanded. Minimal: vazio — layer de logo abaixo.
+                                            Expanded(
+                                              child: useMinimalLayout
+                                                  ? const SizedBox.shrink()
+                                                  : Center(
+                                                      child: logoUrl.isNotEmpty
+                                                          ? SizedBox(
+                                                              height: isDesktop
+                                                                  ? 68
+                                                                  : 56,
+                                                              child: Image(
+                                                                image:
+                                                                    mpImageProvider(
+                                                                        logoUrl),
+                                                                fit: BoxFit
+                                                                    .contain,
+                                                                filterQuality:
+                                                                    FilterQuality
+                                                                        .high,
+                                                                isAntiAlias:
+                                                                    true,
+                                                              ),
+                                                            )
+                                                          : Text(
+                                                              lojaNome,
+                                                              style: TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                                fontSize: 22,
+                                                                color:
+                                                                    headerTextColor, // ✅ Usa cor do cabeçalho
+                                                              ),
+                                                              maxLines: 1,
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                            ),
+                                                    ),
+                                            ),
 
-                                  // PRODUTOS (sem filtro, mostra todos)
-                                  ListTile(
-                                    leading:
-                                        const Icon(Icons.grid_view_outlined),
-                                    title: const Text('Produtos'),
-                                    onTap: () {
-                                      Navigator.pop(context);
-                                      setState(() {
-                                        _selectedCategory = null;
-                                        _selectedSubcategory = null;
-                                        _clearFiltrosVariacao();
-                                        _currentPageNotifier.value = 0;
-                                      });
-                                      _onCatalogCategoryOrSubChanged();
-                                    },
-                                  ),
+                                            // 🌐 BOTÃO ABRIR CATÁLOGO WEB (sempre visível)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  right: 4),
+                                              child: IconButton(
+                                                icon: Icon(
+                                                  Icons.language,
+                                                  size: 26,
+                                                  color:
+                                                      headerIconColor, // ✅ Usa cor do cabeçalho
+                                                ),
+                                                tooltip:
+                                                    'Abrir catálogo online',
+                                                onPressed: () async {
+                                                  final messenger =
+                                                      ScaffoldMessenger.of(
+                                                          context);
+                                                  final url =
+                                                      _publicCatalogShareBase();
+                                                  logD(
+                                                      '🌐 Abrindo catálogo web: $url');
 
-                                  // CATEGORIAS E SUBCATEGORIAS (condicional)
-                                  if (menuShowCategorias &&
-                                      categoriasMenu.isNotEmpty) ...[
-                                    const Padding(
-                                      padding:
-                                          EdgeInsets.fromLTRB(16, 12, 16, 4),
-                                      child: Text(
-                                        'Categorias',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ),
-                                    ...categoriasMenu.expand((cat) {
-                                      final subcategoriasSet = <String>{};
-                                      for (final p in produtos) {
-                                        if (_produtoTemCategoria(p, cat)) {
-                                          for (final sub
-                                              in _produtoSubcategoriasAssociadas(
-                                                  p)) {
-                                            if (sub.isNotEmpty) {
-                                              subcategoriasSet.add(sub);
-                                            }
-                                          }
+                                                  final uri = Uri.parse(url);
+                                                  if (await canLaunchUrl(uri)) {
+                                                    await launchUrl(
+                                                      uri,
+                                                      mode: LaunchMode
+                                                          .externalApplication,
+                                                    );
+
+                                                    if (mounted) {
+                                                      messenger.showSnackBar(
+                                                        SnackBar(
+                                                          content: const Text(
+                                                              'Abrindo navegador...'),
+                                                          duration:
+                                                              const Duration(
+                                                                  seconds: 2),
+                                                          backgroundColor:
+                                                              primaryColor,
+                                                        ),
+                                                      );
+                                                    }
+                                                  } else {
+                                                    if (mounted) {
+                                                      messenger.showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(
+                                                              'Não foi possível abrir: $url'),
+                                                          backgroundColor:
+                                                              Colors.red,
+                                                          action:
+                                                              SnackBarAction(
+                                                            label: 'Copiar',
+                                                            textColor:
+                                                                Colors.white,
+                                                            onPressed: () {
+                                                              Clipboard.setData(
+                                                                  ClipboardData(
+                                                                      text:
+                                                                          url));
+                                                            },
+                                                          ),
+                                                        ),
+                                                      );
+                                                    }
+                                                  }
+                                                },
+                                              ),
+                                            ),
+
+                                            // ✅ Só no preview interno (admin): fallback Web quando não há
+                                            // histórico para voltar. Catálogo público online (preview: false)
+                                            // NUNCA mostra isto — evita levar o cliente para /home do app interno.
+                                            if (kIsWeb &&
+                                                widget.preview &&
+                                                !Navigator.of(context).canPop())
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                    right: 4),
+                                                child: IconButton(
+                                                  icon: const Icon(
+                                                      Icons.home_outlined),
+                                                  color: headerIconColor,
+                                                  tooltip: 'Voltar para Home',
+                                                  onPressed: () {
+                                                    Navigator.of(context)
+                                                        .pushNamed('/home');
+                                                  },
+                                                ),
+                                              ),
+
+                                            // BOTÃO PUBLICAR (só no preview, dentro do app)
+                                            if (widget.preview)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                    right: 4),
+                                                child: FilledButton(
+                                                  style: FilledButton.styleFrom(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                      horizontal: 12,
+                                                    ),
+                                                    minimumSize:
+                                                        const Size(0, 40),
+                                                    backgroundColor:
+                                                        primaryColor,
+                                                    foregroundColor:
+                                                        btnTextColor,
+                                                    shape:
+                                                        RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              20),
+                                                    ),
+                                                  ),
+                                                  onPressed: _publicando
+                                                      ? null
+                                                      : publicarCatalogo,
+                                                  child: Text(
+                                                    _publicando
+                                                        ? 'Publicando...'
+                                                        : 'Publicar',
+                                                    style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+
+                                            // ÍCONE DO CARRINHO (SEM TEXTO)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                  right: 8),
+                                              child: Stack(
+                                                clipBehavior: Clip.none,
+                                                children: [
+                                                  IconButton(
+                                                    icon: const Icon(Icons
+                                                        .shopping_bag_outlined),
+                                                    color:
+                                                        headerIconColor, // ✅ Usa cor do cabeçalho
+                                                    onPressed: () =>
+                                                        _openCartSheet(
+                                                      fretes: fretes,
+                                                      cupons: cupons,
+                                                      primary: primaryColor,
+                                                      buttonText: btnTextColor,
+                                                      textColor: textColor,
+                                                      cardColor: cardColor,
+                                                      checkoutCardColor:
+                                                          checkoutCardColor,
+                                                      checkoutFieldBg:
+                                                          checkoutFieldBg,
+                                                      checkoutFieldBorder:
+                                                          checkoutFieldBorder,
+                                                      checkoutFieldTextColor:
+                                                          checkoutFieldTextColor,
+                                                      checkoutLabelColor:
+                                                          checkoutLabelColor,
+                                                      checkoutTotalColor:
+                                                          checkoutTotalColor,
+                                                      productNameColor:
+                                                          productNameColor,
+                                                      productPriceColor:
+                                                          productPriceColor,
+                                                      whatsappVendedor:
+                                                          whatsappVendedor,
+                                                      lojaNome: lojaNome,
+                                                      paymentAsset:
+                                                          paymentAssets,
+                                                      paymentCodes:
+                                                          _paymentCodesParaPreviaRodape(
+                                                              paymentCodes),
+                                                      instagramUrl:
+                                                          instagramUrl,
+                                                      facebookUrl: facebookUrl,
+                                                      empresaRazao:
+                                                          empresaRazao,
+                                                      empresaCnpj: empresaCnpj,
+                                                      checkoutGateway:
+                                                          checkoutGateway,
+                                                      checkoutButtonLabel:
+                                                          checkoutButtonLabel,
+                                                      pixKey: pixKey,
+                                                      freightToken:
+                                                          freightToken,
+                                                      freteMelhorEnvioModoExibicao:
+                                                          freteMelhorEnvioModoExibicao,
+                                                      mercadoPagoAtivo:
+                                                          mercadoPagoAtivo,
+                                                      checkoutSummaryTokens:
+                                                          catalogCheckoutSummaryTokens,
+                                                      catalogCartUiTokens:
+                                                          catalogCartUiTokens,
+                                                      catalogFirstPurchaseCouponOffer:
+                                                          catalogFirstPurchaseCouponOffer,
+                                                      catalogProducts: produtos,
+                                                    ),
+                                                  ),
+                                                  if (cartCount > 0)
+                                                    Positioned(
+                                                      right: 4,
+                                                      top: 6,
+                                                      child: Container(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .all(3),
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          color:
+                                                              Colors.redAccent,
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(10),
+                                                        ),
+                                                        child: Text(
+                                                          '$cartCount',
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 10,
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color: Colors.white,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        );
+
+                                        if (!useMinimalLayout) {
+                                          return topBarRow;
                                         }
-                                      }
-                                      final subcategorias =
-                                          subcategoriasSet.toList()..sort();
-                                      return [
-                                        ListTile(
-                                          dense: true,
-                                          leading:
-                                              const Icon(Icons.chevron_right),
-                                          title: Text(cat),
-                                          onTap: () {
-                                            Navigator.pop(context);
+                                        final dpr =
+                                            MediaQuery.devicePixelRatioOf(
+                                                context);
+                                        // Proporção ao catálogo: altura próxima à linha de ícones; largura limitada
+                                        // (evita logos horizontais ocuparem a faixa inteira como no screenshot).
+                                        final logoMaxH =
+                                            isDesktop ? 52.0 : 44.0;
+                                        final topBarH = isDesktop ? 56.0 : 48.0;
+                                        return SizedBox(
+                                          height: topBarH,
+                                          width: double.infinity,
+                                          child: Stack(
+                                            clipBehavior: Clip.none,
+                                            alignment: Alignment.center,
+                                            children: [
+                                              if (logoUrl.isNotEmpty)
+                                                Positioned.fill(
+                                                  child: LayoutBuilder(
+                                                    builder: (context, b) {
+                                                      final fullW = b.maxWidth;
+                                                      final logoCapW = math.min(
+                                                        fullW *
+                                                            (isDesktop
+                                                                ? 0.42
+                                                                : 0.48),
+                                                        isDesktop
+                                                            ? 300.0
+                                                            : 220.0,
+                                                      );
+                                                      return Center(
+                                                        child: Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                                  horizontal:
+                                                                      6),
+                                                          child: SizedBox(
+                                                            width: logoCapW,
+                                                            height: logoMaxH,
+                                                            child: Image(
+                                                              image:
+                                                                  ResizeImage(
+                                                                mpImageProvider(
+                                                                    logoUrl),
+                                                                width: (logoCapW *
+                                                                        dpr)
+                                                                    .round()
+                                                                    .clamp(64,
+                                                                        2048),
+                                                                height:
+                                                                    (logoMaxH *
+                                                                            dpr)
+                                                                        .round()
+                                                                        .clamp(
+                                                                            64,
+                                                                            1024),
+                                                                allowUpscaling:
+                                                                    false,
+                                                              ),
+                                                              width: logoCapW,
+                                                              height: logoMaxH,
+                                                              fit: BoxFit
+                                                                  .contain,
+                                                              filterQuality:
+                                                                  FilterQuality
+                                                                      .high,
+                                                              isAntiAlias: true,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
+                                                )
+                                              else
+                                                Positioned.fill(
+                                                  child: Center(
+                                                    child: Padding(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 24),
+                                                      child: FittedBox(
+                                                        fit: BoxFit.scaleDown,
+                                                        child: Text(
+                                                          lojaNome,
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            fontSize: 22,
+                                                            color:
+                                                                headerTextColor,
+                                                          ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              topBarRow,
+                                            ],
+                                          ),
+                                        );
+                                      }(),
+
+                                      const SizedBox(height: 8),
+
+                                      // ======= BARRA DE PESQUISA + CATEGORIAS (mobile; desktop = sidebar) =======
+                                      CatalogSearchBar(
+                                        controller: _searchController,
+                                        headerSearchText: headerSearchText,
+                                        headerSearchHint: headerSearchHint,
+                                        headerSearchBg: useMinimalLayout
+                                            ? (readColorFromCfg(
+                                                    minimalSearchCfg[
+                                                        'background']) ??
+                                                Colors.white)
+                                            : headerSearchBg,
+                                        hintText: (minimalSearchCfg[
+                                                    'placeholder'] ??
+                                                'O que voce esta procurando?')
+                                            .toString(),
+                                        iconOnRight: useMinimalLayout,
+                                        borderColor: useMinimalLayout
+                                            ? (readColorFromCfg(
+                                                    minimalSearchCfg[
+                                                        'borderColor']) ??
+                                                Colors.black12)
+                                            : null,
+                                        borderRadius: useMinimalLayout
+                                            ? safeDouble(
+                                                minimalSearchCfg['radius'], 10)
+                                            : 12,
+                                        height: useMinimalLayout
+                                            ? safeDouble(
+                                                minimalSearchCfg['height'], 44)
+                                            : 42,
+                                        onChanged: _debouncedSearchUpdate,
+                                        onClear: () {
+                                          _searchDebounce?.cancel();
+                                          _searchController.clear();
+                                          _searchNotifier.value = '';
+                                          _currentPageNotifier.value = 0;
+                                          _syncCatalogQueryToBrowserUri();
+                                        },
+                                      ),
+                                      if (!isDesktop && !useMinimalLayout)
+                                        CatalogCategorySubcategoryFilters(
+                                          categoriasMenu: categoriasMenu,
+                                          selectedCategory: _selectedCategory,
+                                          selectedSubcategory:
+                                              _selectedSubcategory,
+                                          produtos: produtos,
+                                          textColor: textColor,
+                                          cardColor: cardColor,
+                                          primaryColor: primaryColor,
+                                          onCategorySelectedNull: () {
+                                            setState(() {
+                                              _selectedCategory = null;
+                                              _selectedSubcategory = null;
+                                              _clearFiltrosVariacao();
+                                              _currentPageNotifier.value = 0;
+                                            });
+                                            _onCatalogCategoryOrSubChanged();
+                                          },
+                                          onCategorySelected: (cat) {
                                             setState(() {
                                               _selectedCategory = cat;
                                               _selectedSubcategory = null;
@@ -5758,1764 +6896,998 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             });
                                             _onCatalogCategoryOrSubChanged();
                                           },
-                                        ),
-                                        ...subcategorias.map((sub) {
-                                          final isDark =
-                                              Theme.of(context).brightness ==
-                                                  Brightness.dark;
-                                          final subcatColor = isDark
-                                              ? Colors.white
-                                              : Colors.black87;
-                                          return ListTile(
-                                            dense: true,
-                                            leading: Icon(
-                                                Icons.subdirectory_arrow_right,
-                                                size: 18,
-                                                color: primaryColor
-                                                    .withOpacity(0.7)),
-                                            title: Text(
-                                              sub,
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: subcatColor,
-                                              ),
-                                            ),
-                                            onTap: () {
-                                              Navigator.pop(context);
-                                              setState(() {
-                                                _selectedCategory = cat;
-                                                _selectedSubcategory = sub;
-                                                _clearFiltrosVariacao();
-                                                _currentPageNotifier.value = 0;
-                                              });
-                                              _onCatalogCategoryOrSubChanged();
-                                            },
-                                          );
-                                        }),
-                                      ];
-                                    }),
-                                  ],
-                                ],
-                              ),
-                            ),
-
-                            const Divider(height: 1),
-
-                            // ENTRAR/CADASTRAR ou PERFIL - depende se está logado (NOVO SISTEMA)
-                            FutureBuilder<Map<String, dynamic>?>(
-                              key: ValueKey(_menuClienteAuthRetryKey),
-                              future: ClienteAuthService.getClienteLogado(),
-                              builder: (context, snapshot) {
-                                if (snapshot.hasError) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 8, vertical: 4),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        ListTile(
-                                          leading: Icon(
-                                            Icons.cloud_off_outlined,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .error,
-                                          ),
-                                          title: const Text(
-                                            'Não foi possível carregar sua sessão',
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          subtitle: Text(
-                                            kDebugMode
-                                                ? snapshot.error.toString()
-                                                : 'Verifique a conexão e tente de novo.',
-                                            maxLines: 3,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall,
-                                          ),
-                                        ),
-                                        TextButton.icon(
-                                          onPressed: () {
-                                            setState(() =>
-                                                _menuClienteAuthRetryKey++);
+                                          onSubcategorySelectedNull: () {
+                                            setState(() {
+                                              _selectedSubcategory = null;
+                                              _clearFiltrosVariacao();
+                                              _currentPageNotifier.value = 0;
+                                            });
+                                            _onCatalogCategoryOrSubChanged();
                                           },
-                                          icon: const Icon(Icons.refresh,
-                                              size: 20),
-                                          label: const Text('Tentar novamente'),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting) {
-                                  return const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 14),
-                                    child: Center(
-                                      child: SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2),
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                final cliente = snapshot.data;
-
-                                if (cliente != null) {
-                                  // Cliente LOGADO - mostrar perfil e opcionalmente Indicar amigo
-                                  final nome = cliente['nome'] ?? 'Cliente';
-                                  final clienteId =
-                                      (cliente['clienteId'] ?? '').toString();
-                                  return Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ListTile(
-                                        leading: CircleAvatar(
-                                          backgroundColor: Colors.blue,
-                                          child: Text(
-                                            nome.isNotEmpty
-                                                ? nome[0].toUpperCase()
-                                                : 'C',
-                                            style: const TextStyle(
-                                                color: Colors.white),
-                                          ),
-                                        ),
-                                        title: Text(
-                                          nome,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        subtitle: const Text('Ver meu perfil'),
-                                        onTap: () async {
-                                          Navigator.pop(context);
-                                          final lojaIdSessao =
-                                              await ClienteAuthService
-                                                  .getLojaId();
-                                          final lojaIdPerfil = lojaIdSessao ??
-                                              _resolvedLojaId ??
-                                              widget.lojaId;
-                                          if (!context.mounted) return;
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  PerfilClienteScreenNovo(
-                                                lojaId: lojaIdPerfil,
-                                                clienteId: clienteId,
-                                              ),
-                                            ),
-                                          ).then((_) async {
-                                            await _loadClienteAndFavoritos();
-                                            if (!mounted) return;
-                                            setState(() =>
-                                                _menuClienteAuthRetryKey++);
-                                          });
-                                        },
-                                      ),
-                                      if (indicacaoAtivo &&
-                                          clienteId.isNotEmpty)
-                                        ListTile(
-                                          leading: Icon(Icons.card_giftcard,
-                                              color: _successColor),
-                                          title: const Text('Indicar amigo'),
-                                          subtitle: const Text(
-                                            'Compartilhe o link; você e seu amigo ganham cupom',
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          onTap: () {
-                                            Navigator.pop(context);
-                                            _mostrarIndicarAmigoSheet(
-                                              context,
-                                              lojaId: _resolvedLojaId ??
-                                                  widget.lojaId,
-                                              clienteId: clienteId,
-                                            );
+                                          onSubcategorySelected: (subcat) {
+                                            setState(() {
+                                              _selectedSubcategory = subcat;
+                                              _clearFiltrosVariacao();
+                                              _currentPageNotifier.value = 0;
+                                            });
+                                            _onCatalogCategoryOrSubChanged();
                                           },
                                         ),
                                     ],
-                                  );
-                                }
-
-                                // Cliente NÃO LOGADO - mostrar botões Entrar/Cadastrar
-                                if (menuShowEntrar) {
-                                  return Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ListTile(
-                                        leading: const Icon(Icons.login),
-                                        title: const Text('Entrar'),
-                                        onTap: () {
-                                          Navigator.pop(context);
-                                          final lojaIdAuth =
-                                              _resolvedLojaId ?? widget.lojaId;
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  LoginScreenCliente(
-                                                      lojaId: lojaIdAuth),
-                                            ),
-                                          ).then((_) async {
-                                            await _loadClienteAndFavoritos();
-                                            if (!mounted) return;
-                                            setState(() =>
-                                                _menuClienteAuthRetryKey++);
-                                          });
-                                        },
-                                      ),
-                                      ListTile(
-                                        leading: const Icon(Icons.person_add),
-                                        title: const Text('Cadastrar'),
-                                        onTap: () {
-                                          Navigator.pop(context);
-                                          final lojaIdAuth =
-                                              _resolvedLojaId ?? widget.lojaId;
-                                          Navigator.push(
-                                            context,
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  CadastroScreenCliente(
-                                                      lojaId: lojaIdAuth),
-                                            ),
-                                          ).then((_) async {
-                                            await _loadClienteAndFavoritos();
-                                            if (!mounted) return;
-                                            setState(() =>
-                                                _menuClienteAuthRetryKey++);
-                                          });
-                                        },
-                                      ),
-                                    ],
-                                  );
-                                }
-
-                                return const SizedBox.shrink();
-                              },
-                            ),
-
-                            // Modo escuro
-                            SwitchListTile(
-                              value: _modoEscuro,
-                              onChanged: (value) => _toggleModoEscuro(value),
-                              title: const Text('Modo escuro'),
-                              secondary: Icon(
-                                _modoEscuro
-                                    ? Icons.dark_mode
-                                    : Icons.light_mode,
-                                color: primaryColor,
-                              ),
-                            ),
-
-                            // SAC (elogios, sugestões e críticas) - condicional
-                            if (menuShowSac)
-                              ListTile(
-                                leading:
-                                    const Icon(Icons.support_agent_outlined),
-                                title: const Text(
-                                    'SAC – elogios, sugestões e críticas',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis),
-                                onTap: () {
-                                  Navigator.pop(context);
-
-                                  final sacNumber =
-                                      sacWhatsapp.trim().isNotEmpty
-                                          ? sacWhatsapp.trim()
-                                          : whatsappVendedor.trim();
-
-                                  if (sacNumber.isEmpty) {
-                                    _snack(
-                                        'WhatsApp de atendimento não configurado.');
-                                  } else {
-                                    _openWhatsappSimple(
-                                      sacNumber,
-                                      'Olá! Gostaria de falar com o SAC (elogios, sugestões ou críticas).',
-                                    );
-                                  }
-                                },
-                              ),
-
-                            // QUEM SOMOS - condicional
-                            if (menuShowQuemSomos)
-                              ListTile(
-                                leading: const Icon(Icons.info_outline),
-                                title: Text(quemSomosTitulo),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  showModalBottomSheet(
-                                    context: context,
-                                    isScrollControlled: true,
-                                    backgroundColor: Theme.of(context)
-                                        .scaffoldBackgroundColor,
-                                    builder: (_) {
-                                      final texto = quemSomosTexto
-                                              .trim()
-                                              .isEmpty
-                                          ? 'Texto de "$quemSomosTitulo" ainda não configurado.\n\nVocê poderá editar esse conteúdo na tela Loja Config.'
-                                          : quemSomosTexto.trim();
-                                      return Padding(
-                                        padding: EdgeInsets.fromLTRB(
-                                          16,
-                                          16,
-                                          16,
-                                          MediaQuery.of(context)
-                                                  .viewInsets
-                                                  .bottom +
-                                              24,
-                                        ),
-                                        child: SingleChildScrollView(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                quemSomosTitulo,
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .titleLarge!
-                                                    .copyWith(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                              ),
-                                              const SizedBox(height: 12),
-                                              Text(
-                                                texto,
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  );
-                                },
-                              ),
-                            // DICAS E INFORMAÇÕES (cuidados, garantias, qualidade) - condicional
-                            if (menuShowDicas)
-                              ListTile(
-                                leading: const Icon(Icons.lightbulb_outline),
-                                title: const Text(
-                                  'Dicas e informações',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                subtitle: const Text(
-                                  'Cuidados, garantias e qualidade',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  final w = MediaQuery.of(context).size.width;
-                                  final isWide = w >= 900;
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => CatalogDicasScreen(
-                                        lojaId:
-                                            _resolvedLojaId ?? widget.lojaId,
-                                        lojaNome: lojaNome,
-                                        dicas: dicasList,
-                                        primaryColor: primaryColor,
-                                        logoUrl:
-                                            logoUrl.isNotEmpty ? logoUrl : null,
-                                        logoHeight: isWide ? 90 : 80,
-                                        bannerHeightCard:
-                                            mediaConfig.bannerH * 0.65,
-                                        bannerHeightDetail:
-                                            mediaConfig.bannerH * 0.85,
-                                        dicasColors: catalogDicasColors,
-                                        contactInfo: DicasContactInfo(
-                                          whatsappNumber: atendimentoWhatsapp,
-                                          instagramUrl: instagramUrl.isNotEmpty
-                                              ? instagramUrl
-                                              : null,
-                                          facebookUrl: facebookUrl.isNotEmpty
-                                              ? facebookUrl
-                                              : null,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
                               ),
-                          ],
+                            );
+                          },
                         ),
                       ),
-                    ),
 
-                    // ================= APPBAR =================
-                    appBar: AppBar(
-                      backgroundColor: headerColor,
-                      elevation: 0,
-                      // Altura dinâmica: desktop maior; mobile inalterado
-                      // Margem extra vs conteúdo do título (busca + chips) para evitar overflow vertical residual.
-                      // Minimal: altura do AppBar equilibrada com ícones + busca (logo não domina a faixa).
-                      toolbarHeight: useMinimalLayout
-                          ? (isDesktop ? 112 : 100)
-                          : (isDesktop
-                              ? (categoriasMenu.isEmpty
-                                  ? 152
-                                  : (!_catalogExibindoTodosCategorias()
-                                      ? 248
-                                      : 198))
-                              : (categoriasMenu.isEmpty
-                                  ? 132
-                                  : (!_catalogExibindoTodosCategorias()
-                                      ? 228
-                                      : 178))),
-                      titleSpacing: 0,
-                      automaticallyImplyLeading: false,
-                      title: LayoutBuilder(
-                        builder: (context, constraints) {
-                          return Align(
-                            alignment: Alignment.topCenter,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.topCenter,
-                              // Não limitar maxHeight aqui: o Column estoura antes do FittedBox escalar (overflow ~20px).
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxWidth: constraints.maxWidth,
+                      // ========== FAB DO CARRINHO ==========
+                      floatingActionButton: _cart.isEmpty
+                          ? null
+                          : FloatingActionButton.extended(
+                              onPressed: () => _openCartSheet(
+                                fretes: fretes,
+                                cupons: cupons,
+                                primary: primaryColor,
+                                buttonText: btnTextColor,
+                                textColor: textColor,
+                                cardColor: cardColor,
+                                checkoutCardColor: checkoutCardColor,
+                                checkoutFieldBg: checkoutFieldBg,
+                                checkoutFieldBorder: checkoutFieldBorder,
+                                checkoutFieldTextColor: checkoutFieldTextColor,
+                                checkoutLabelColor: checkoutLabelColor,
+                                checkoutTotalColor: checkoutTotalColor,
+                                productNameColor: productNameColor,
+                                productPriceColor: productPriceColor,
+                                whatsappVendedor: whatsappVendedor,
+                                lojaNome: lojaNome,
+                                paymentAsset: paymentAssets,
+                                paymentCodes:
+                                    _paymentCodesParaPreviaRodape(paymentCodes),
+                                instagramUrl: instagramUrl,
+                                facebookUrl: facebookUrl,
+                                empresaRazao: empresaRazao,
+                                empresaCnpj: empresaCnpj,
+                                checkoutGateway: checkoutGateway,
+                                checkoutButtonLabel: checkoutButtonLabel,
+                                pixKey: pixKey,
+                                freightToken: freightToken,
+                                freteMelhorEnvioModoExibicao:
+                                    freteMelhorEnvioModoExibicao,
+                                mercadoPagoAtivo: mercadoPagoAtivo,
+                                checkoutSummaryTokens:
+                                    catalogCheckoutSummaryTokens,
+                                catalogCartUiTokens: catalogCartUiTokens,
+                                catalogFirstPurchaseCouponOffer:
+                                    catalogFirstPurchaseCouponOffer,
+                                catalogProducts: produtos,
+                              ),
+                              icon: const Icon(Icons.shopping_bag_outlined),
+                              label: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text('Carrinho ($cartCount)'),
+                              ),
+                            ),
+
+// ================= CORPO =================
+                      body: Stack(
+                        children: [
+                          Column(
+                            children: [
+                              if (useMinimalLayout &&
+                                  _catalogExibindoTodosCategorias() &&
+                                  safeBool(promoBarCfg['enabled'], false))
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                                  child: CatalogPromoBar(
+                                    enabled: true,
+                                    text:
+                                        (promoBarCfg['text'] ?? '').toString(),
+                                    backgroundColor: readColorFromCfg(
+                                            promoBarCfg['backgroundColor']) ??
+                                        const Color(0xFFFF4F96),
+                                    textColor: readColorFromCfg(
+                                            promoBarCfg['textColor']) ??
+                                        Colors.white,
+                                    icon:
+                                        safeBool(promoBarCfg['showIcon'], false)
+                                            ? Icons.local_offer_outlined
+                                            : null,
+                                    height:
+                                        safeDouble(promoBarCfg['height'], 34),
+                                    textAlign: parseTextAlign(
+                                        promoBarCfg['alignment'],
+                                        TextAlign.center),
+                                    bold: safeBool(promoBarCfg['bold'], true),
+                                    marqueeWhenOverflow:
+                                        safeBool(promoBarCfg['marquee'], true),
+                                    onTap: () {
+                                      final link = (promoBarCfg['link'] ?? '')
+                                          .toString()
+                                          .trim();
+                                      if (link.isEmpty) return;
+                                      _openUrl(link);
+                                    },
+                                  ),
                                 ),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    // ======= LINHA SUPERIOR: MENU + LOGO + PUBLICAR + CARRINHO =======
-                                    () {
-                                      // Minimal: logo no centro *global* do AppBar (Stack);
-                                      // a Row só reserva a faixa central; sem logo duplicar offset dos ícones.
-                                      final topBarRow = Row(
-                                        children: [
-                                          // ☰ MENU – abre o drawer à esquerda
-                                          Builder(
-                                            builder: (ctx) => IconButton(
-                                              icon: Icon(
-                                                Icons.menu,
-                                                size: 28,
-                                                color:
-                                                    headerIconColor, // ✅ Usa cor do cabeçalho
-                                              ),
-                                              onPressed: () =>
-                                                  Scaffold.of(ctx).openDrawer(),
-                                            ),
-                                          ),
+                              if (_isOffline)
+                                Container(
+                                  width: double.infinity,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
+                                  color: Colors.orange.shade800,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.wifi_off,
+                                          color: Colors.white, size: 18),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Sem conexão com a internet',
+                                        style: TextStyle(
+                                            color: Colors.white, fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              Expanded(
+                                child: RefreshIndicator(
+                                  onRefresh: () => _onRefreshProducts(lojaId),
+                                  child: ValueListenableBuilder<String>(
+                                    valueListenable: _searchNotifier,
+                                    builder: (context, search, _) =>
+                                        ValueListenableBuilder<int>(
+                                      valueListenable: _currentPageNotifier,
+                                      builder: (context, currentPage, _) =>
+                                          LayoutBuilder(
+                                        builder: (context, c) {
+                                          final isDesktopBody =
+                                              c.maxWidth >= 1024;
+                                          final effCatFilter =
+                                              _effectiveCatalogCategoryFilter();
+                                          final effSubFilter =
+                                              _effectiveCatalogSubcategoryFilter();
+                                          // Quando uma categoria/subcategoria específica está selecionada, o catálogo
+                                          // vira uma listagem direta de produtos. Banners, mais vendidos e destaques
+                                          // devem aparecer apenas em Todos.
+                                          final exibindoTodosCatalogo =
+                                              effCatFilter == null;
+                                          final modoListagemCategoria =
+                                              effCatFilter != null;
+                                          bool matchCategoriaSub(
+                                              Map<String, dynamic> p) {
+                                            final matchCat =
+                                                _produtoTemCategoria(
+                                              p,
+                                              effCatFilter,
+                                            );
+                                            final matchSubcat =
+                                                _produtoTemSubcategoria(
+                                              p,
+                                              effSubFilter,
+                                            );
+                                            return matchCat && matchSubcat;
+                                          }
 
-                                          // Clássico: logo no Expanded. Minimal: vazio — layer de logo abaixo.
-                                          Expanded(
-                                            child: useMinimalLayout
-                                                ? const SizedBox.shrink()
-                                                : Center(
-                                                    child: logoUrl.isNotEmpty
-                                                        ? SizedBox(
-                                                            height: isDesktop
-                                                                ? 68
-                                                                : 56,
-                                                            child: Image(
-                                                              image:
-                                                                  mpImageProvider(
-                                                                      logoUrl),
-                                                              fit: BoxFit
-                                                                  .contain,
-                                                              filterQuality:
-                                                                  FilterQuality
-                                                                      .high,
-                                                              isAntiAlias: true,
-                                                            ),
-                                                          )
-                                                        : Text(
-                                                            lojaNome,
-                                                            style: TextStyle(
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                              fontSize: 22,
-                                                              color:
-                                                                  headerTextColor, // ✅ Usa cor do cabeçalho
-                                                            ),
-                                                            maxLines: 1,
+                                          final produtosParaOpcoesVariacao =
+                                              produtos
+                                                  .where(matchCategoriaSub)
+                                                  .toList();
+                                          final variacaoTamanhosOpcoes =
+                                              CatalogVariationFilter
+                                                  .coletarTamanhos(
+                                                      produtosParaOpcoesVariacao);
+                                          final variacaoCoresOpcoes =
+                                              CatalogVariationFilter.coletarCores(
+                                                  produtosParaOpcoesVariacao);
+                                          final variacaoExtrasOpcoes =
+                                              CatalogVariationFilter
+                                                  .coletarExtras(
+                                                      produtosParaOpcoesVariacao);
+
+                                          // 👉 aplica filtro da busca + categoria + subcategoria
+                                          final listaFiltrada =
+                                              produtos.where((p) {
+                                            final n = (p['nome'] ?? '')
+                                                .toString()
+                                                .toLowerCase();
+                                            final d = (p['descricao'] ?? '')
+                                                .toString()
+                                                .toLowerCase();
+                                            final matchText =
+                                                search.trim().isEmpty
+                                                    ? true
+                                                    : n.contains(search) ||
+                                                        d.contains(search);
+                                            final matchCatSub =
+                                                matchCategoriaSub(p);
+                                            final matchPreco =
+                                                _produtoIntersectsPrecoRange(p);
+                                            final matchEstoque =
+                                                !_apenasEmEstoque ||
+                                                    CatalogEstoqueHelper
+                                                        .produtoPassaFiltroApenasEmEstoque(
+                                                            p);
+                                            final matchVariacao =
+                                                CatalogVariationFilter
+                                                    .produtoMatches(
+                                              p,
+                                              tamanho: _filtroVariacaoTamanho,
+                                              cor: _filtroVariacaoCor,
+                                              variacaoExtra:
+                                                  _filtroVariacaoExtra,
+                                            );
+                                            return matchText &&
+                                                matchCatSub &&
+                                                matchPreco &&
+                                                matchEstoque &&
+                                                matchVariacao;
+                                          }).toList();
+
+                                          // Ordenação
+                                          final listaOrdenada =
+                                              List<Map<String, dynamic>>.from(
+                                                  listaFiltrada);
+                                          if (_ordenacaoProdutos ==
+                                              'preco_asc') {
+                                            listaOrdenada.sort((a, b) {
+                                              final va = catalogPrecoParaOrdenacao(
+                                                  a);
+                                              final vb = catalogPrecoParaOrdenacao(
+                                                  b);
+                                              return va.compareTo(vb);
+                                            });
+                                          } else if (_ordenacaoProdutos ==
+                                              'preco_desc') {
+                                            listaOrdenada.sort((a, b) {
+                                              final va = catalogPrecoParaOrdenacao(
+                                                  a);
+                                              final vb = catalogPrecoParaOrdenacao(
+                                                  b);
+                                              return vb.compareTo(va);
+                                            });
+                                          } else if (_ordenacaoProdutos ==
+                                              'novidade') {
+                                            // Mais recentes primeiro (dataCriacao)
+                                            listaOrdenada.sort((a, b) {
+                                              final dtA =
+                                                  asDateTime(a['dataCriacao']);
+                                              final dtB =
+                                                  asDateTime(b['dataCriacao']);
+                                              if (dtA == null && dtB == null) {
+                                                return 0;
+                                              }
+                                              if (dtA == null) {
+                                                return 1;
+                                              }
+                                              if (dtB == null) {
+                                                return -1;
+                                              }
+                                              return dtB.compareTo(dtA);
+                                            });
+                                          } else {
+                                            // nome (alfabética)
+                                            listaOrdenada.sort((a, b) {
+                                              final an = (a['nome'] ?? '')
+                                                  .toString()
+                                                  .toLowerCase();
+                                              final bn = (b['nome'] ?? '')
+                                                  .toString()
+                                                  .toLowerCase();
+                                              return an.compareTo(bn);
+                                            });
+                                          }
+
+                                          // Paginação: 20 produtos por página
+                                          final totalPaginas =
+                                              (listaOrdenada.length /
+                                                      _produtosPorPagina)
+                                                  .ceil()
+                                                  .clamp(1, 999999);
+                                          _catalogTotalPaginasForUrl =
+                                              totalPaginas;
+
+                                          if (prodSnap.hasData) {
+                                            final categoryAliasesSig =
+                                                _categoryAliasesSignature(
+                                                    categoryAliasesByName);
+                                            final sig =
+                                                '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$effCatFilter|$effSubFilter|$_ordenacaoProdutos|${_precoMin}_$_precoMax|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|${variacaoExtrasOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$_filtroVariacaoExtra|$totalPaginas';
+                                            if (sig !=
+                                                _lastCatalogSanitizeSig) {
+                                              _lastCatalogSanitizeSig = sig;
+                                              final gen = ++_catalogSanitizeGen;
+                                              final tList = List<String>.from(
+                                                  variacaoTamanhosOpcoes);
+                                              final cList = List<String>.from(
+                                                  variacaoCoresOpcoes);
+                                              final xList = List<String>.from(
+                                                  variacaoExtrasOpcoes);
+                                              final catList = List<String>.from(
+                                                  categoriasMenu);
+                                              final aliasCopy =
+                                                  Map<String, Set<String>>.from(
+                                                categoryAliasesByName.map(
+                                                  (k, v) => MapEntry(
+                                                    k,
+                                                    Set<String>.from(v),
+                                                  ),
+                                                ),
+                                              );
+                                              final prodCopy = List<
+                                                  Map<String,
+                                                      dynamic>>.from(produtos);
+                                              final tpSan = totalPaginas;
+                                              WidgetsBinding.instance
+                                                  .addPostFrameCallback((_) {
+                                                if (!mounted ||
+                                                    gen !=
+                                                        _catalogSanitizeGen) {
+                                                  return;
+                                                }
+                                                _sanitizeCatalogUrlDerivedFilters(
+                                                  categoriasMenu: catList,
+                                                  categoryAliasesByName:
+                                                      aliasCopy,
+                                                  produtos: prodCopy,
+                                                  tamanhos: tList,
+                                                  cores: cList,
+                                                  extras: xList,
+                                                  totalPaginas: tpSan,
+                                                );
+                                              });
+                                            }
+                                          }
+
+                                          final paginaAtual = currentPage.clamp(
+                                              0, totalPaginas - 1);
+                                          final start =
+                                              paginaAtual * _produtosPorPagina;
+                                          final listaPaginated = listaOrdenada
+                                              .skip(start)
+                                              .take(_produtosPorPagina)
+                                              .toList();
+
+                                          final minimalSubcats = useMinimalLayout &&
+                                                  effCatFilter != null
+                                              ? _subcategoriasDisponiveisParaCategoria(
+                                                  effCatFilter,
+                                                  produtos,
+                                                )
+                                              : <String>[];
+
+                                          final scrollBody = CustomScrollView(
+                                            controller:
+                                                _catalogScrollController,
+                                            // Web: área maior fora da viewport reduz descarte/rebuild de cards ao rolar.
+                                            cacheExtent: kIsWeb ? 2400 : 800,
+                                            physics: const ClampingScrollPhysics(
+                                                parent:
+                                                    AlwaysScrollableScrollPhysics()),
+                                            slivers: [
+                                              SliverToBoxAdapter(
+                                                child: Column(
+                                                  children: [
+                                                    if (exibindoTodosCatalogo &&
+                                                        banners.isNotEmpty)
+                                                      CatalogBannerCarousel(
+                                                        banners: banners,
+                                                        height: bannerH,
+                                                        resolvedLojaId:
+                                                            _resolvedLojaId ??
+                                                                widget.lojaId,
+                                                        onBannerPressed:
+                                                            (i, url) {
+                                                          if (url
+                                                              .trim()
+                                                              .isEmpty) {
+                                                            return;
+                                                          }
+                                                          _openUrl(url);
+                                                        },
+                                                      ),
+                                                    // Mesmo no modo listagem por categoria, o menu horizontal de categorias deve continuar visível para permitir troca rápida de categoria. Apenas banners, destaques e mais vendidos ficam ocultos.
+                                                    if (useMinimalLayout &&
+                                                        menuShowCategorias &&
+                                                        categoriasMenu
+                                                            .isNotEmpty &&
+                                                        (exibindoTodosCatalogo ||
+                                                            modoListagemCategoria))
+                                                      CatalogMinimalCategoryImageStrip(
+                                                        categories:
+                                                            categoriasMenu,
+                                                        selectedCategory:
+                                                            _selectedCategory,
+                                                        categoryVisuals:
+                                                            categoryVisualsCfg,
+                                                        categoryAliasesByName:
+                                                            categoryAliasesByName,
+                                                        onSelect: (cat) {
+                                                          setState(() {
+                                                            _selectedCategory =
+                                                                cat;
+                                                            _selectedSubcategory =
+                                                                null;
+                                                            _clearFiltrosVariacao();
+                                                            _currentPageNotifier
+                                                                .value = 0;
+                                                          });
+                                                          _onCatalogCategoryOrSubChanged();
+                                                        },
+                                                        onClear: () {
+                                                          setState(() {
+                                                            _selectedCategory =
+                                                                null;
+                                                            _selectedSubcategory =
+                                                                null;
+                                                            _clearFiltrosVariacao();
+                                                            _currentPageNotifier
+                                                                .value = 0;
+                                                          });
+                                                          _onCatalogCategoryOrSubChanged();
+                                                        },
+                                                        textColor: textColor,
+                                                        fallbackBg: cardColor,
+                                                      ),
+                                                    if (useMinimalLayout &&
+                                                        effCatFilter != null &&
+                                                        minimalSubcats
+                                                            .isNotEmpty)
+                                                      CatalogMinimalSubcategoryStrip(
+                                                        subcategories:
+                                                            minimalSubcats,
+                                                        selectedSubcategory:
+                                                            _selectedSubcategory,
+                                                        primaryColor:
+                                                            primaryColor,
+                                                        textColor: textColor,
+                                                        surfaceColor: cardColor,
+                                                        onSelectAll: () {
+                                                          setState(() {
+                                                            _selectedSubcategory =
+                                                                null;
+                                                            _currentPageNotifier
+                                                                .value = 0;
+                                                          });
+                                                          _onCatalogCategoryOrSubChanged();
+                                                        },
+                                                        onSelectSub: (sub) {
+                                                          setState(() {
+                                                            _selectedSubcategory =
+                                                                sub;
+                                                            _currentPageNotifier
+                                                                .value = 0;
+                                                          });
+                                                          _onCatalogCategoryOrSubChanged();
+                                                        },
+                                                      ),
+                                                    if (modoListagemCategoria)
+                                                      Padding(
+                                                        padding:
+                                                            EdgeInsets.fromLTRB(
+                                                          16,
+                                                          useMinimalLayout
+                                                              ? 8
+                                                              : 12,
+                                                          16,
+                                                          useMinimalLayout
+                                                              ? 4
+                                                              : 8,
+                                                        ),
+                                                        child: Align(
+                                                          alignment: Alignment
+                                                              .centerLeft,
+                                                          child: Text(
+                                                            _catalogListagemTituloLinha() ??
+                                                                '',
+                                                            maxLines: 2,
                                                             overflow:
                                                                 TextOverflow
                                                                     .ellipsis,
-                                                          ),
-                                                  ),
-                                          ),
-
-                                          // 🌐 BOTÃO ABRIR CATÁLOGO WEB (sempre visível)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(right: 4),
-                                            child: IconButton(
-                                              icon: Icon(
-                                                Icons.language,
-                                                size: 26,
-                                                color:
-                                                    headerIconColor, // ✅ Usa cor do cabeçalho
-                                              ),
-                                              tooltip: 'Abrir catálogo online',
-                                              onPressed: () async {
-                                                final messenger =
-                                                    ScaffoldMessenger.of(
-                                                        context);
-                                                final url =
-                                                    _publicCatalogShareBase();
-                                                logD(
-                                                    '🌐 Abrindo catálogo web: $url');
-
-                                                final uri = Uri.parse(url);
-                                                if (await canLaunchUrl(uri)) {
-                                                  await launchUrl(
-                                                    uri,
-                                                    mode: LaunchMode
-                                                        .externalApplication,
-                                                  );
-
-                                                  if (mounted) {
-                                                    messenger.showSnackBar(
-                                                      SnackBar(
-                                                        content: const Text(
-                                                            'Abrindo navegador...'),
-                                                        duration:
-                                                            const Duration(
-                                                                seconds: 2),
-                                                        backgroundColor:
-                                                            primaryColor,
-                                                      ),
-                                                    );
-                                                  }
-                                                } else {
-                                                  if (mounted) {
-                                                    messenger.showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                            'Não foi possível abrir: $url'),
-                                                        backgroundColor:
-                                                            Colors.red,
-                                                        action: SnackBarAction(
-                                                          label: 'Copiar',
-                                                          textColor:
-                                                              Colors.white,
-                                                          onPressed: () {
-                                                            Clipboard.setData(
-                                                                ClipboardData(
-                                                                    text: url));
-                                                          },
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }
-                                                }
-                                              },
-                                            ),
-                                          ),
-
-                                          // ✅ Só no preview interno (admin): fallback Web quando não há
-                                          // histórico para voltar. Catálogo público online (preview: false)
-                                          // NUNCA mostra isto — evita levar o cliente para /home do app interno.
-                                          if (kIsWeb &&
-                                              widget.preview &&
-                                              !Navigator.of(context).canPop())
-                                            Padding(
-                                              padding: const EdgeInsets.only(
-                                                  right: 4),
-                                              child: IconButton(
-                                                icon: const Icon(
-                                                    Icons.home_outlined),
-                                                color: headerIconColor,
-                                                tooltip: 'Voltar para Home',
-                                                onPressed: () {
-                                                  Navigator.of(context)
-                                                      .pushNamed('/home');
-                                                },
-                                              ),
-                                            ),
-
-                                          // BOTÃO PUBLICAR (só no preview, dentro do app)
-                                          if (widget.preview)
-                                            Padding(
-                                              padding: const EdgeInsets.only(
-                                                  right: 4),
-                                              child: FilledButton(
-                                                style: FilledButton.styleFrom(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                    horizontal: 12,
-                                                  ),
-                                                  minimumSize:
-                                                      const Size(0, 40),
-                                                  backgroundColor: primaryColor,
-                                                  foregroundColor: btnTextColor,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            20),
-                                                  ),
-                                                ),
-                                                onPressed: _publicando
-                                                    ? null
-                                                    : publicarCatalogo,
-                                                child: Text(
-                                                  _publicando
-                                                      ? 'Publicando...'
-                                                      : 'Publicar',
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-
-                                          // ÍCONE DO CARRINHO (SEM TEXTO)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(right: 8),
-                                            child: Stack(
-                                              clipBehavior: Clip.none,
-                                              children: [
-                                                IconButton(
-                                                  icon: const Icon(Icons
-                                                      .shopping_bag_outlined),
-                                                  color:
-                                                      headerIconColor, // ✅ Usa cor do cabeçalho
-                                                  onPressed: () =>
-                                                      _openCartSheet(
-                                                    fretes: fretes,
-                                                    cupons: cupons,
-                                                    primary: primaryColor,
-                                                    buttonText: btnTextColor,
-                                                    textColor: textColor,
-                                                    cardColor: cardColor,
-                                                    checkoutCardColor:
-                                                        checkoutCardColor,
-                                                    checkoutFieldBg:
-                                                        checkoutFieldBg,
-                                                    checkoutFieldBorder:
-                                                        checkoutFieldBorder,
-                                                    checkoutFieldTextColor:
-                                                        checkoutFieldTextColor,
-                                                    checkoutLabelColor:
-                                                        checkoutLabelColor,
-                                                    checkoutTotalColor:
-                                                        checkoutTotalColor,
-                                                    productNameColor:
-                                                        productNameColor,
-                                                    productPriceColor:
-                                                        productPriceColor,
-                                                    whatsappVendedor:
-                                                        whatsappVendedor,
-                                                    lojaNome: lojaNome,
-                                                    paymentAsset: paymentAssets,
-                                                    paymentCodes:
-                                                        _paymentCodesParaPreviaRodape(
-                                                            paymentCodes),
-                                                    instagramUrl: instagramUrl,
-                                                    facebookUrl: facebookUrl,
-                                                    empresaRazao: empresaRazao,
-                                                    empresaCnpj: empresaCnpj,
-                                                    checkoutGateway:
-                                                        checkoutGateway,
-                                                    checkoutButtonLabel:
-                                                        checkoutButtonLabel,
-                                                    pixKey: pixKey,
-                                                    freightToken: freightToken,
-                                                    freteMelhorEnvioModoExibicao:
-                                                        freteMelhorEnvioModoExibicao,
-                                                    mercadoPagoAtivo:
-                                                        mercadoPagoAtivo,
-                                                    checkoutSummaryTokens:
-                                                        catalogCheckoutSummaryTokens,
-                                                    catalogCartUiTokens:
-                                                        catalogCartUiTokens,
-                                                    catalogFirstPurchaseCouponOffer:
-                                                        catalogFirstPurchaseCouponOffer,
-                                                    catalogProducts: produtos,
-                                                  ),
-                                                ),
-                                                if (cartCount > 0)
-                                                  Positioned(
-                                                    right: 4,
-                                                    top: 6,
-                                                    child: Container(
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                              3),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.redAccent,
-                                                        borderRadius:
-                                                            BorderRadius
-                                                                .circular(10),
-                                                      ),
-                                                      child: Text(
-                                                        '$cartCount',
-                                                        style: const TextStyle(
-                                                          fontSize: 10,
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      );
-
-                                      if (!useMinimalLayout) {
-                                        return topBarRow;
-                                      }
-                                      final dpr = MediaQuery.devicePixelRatioOf(
-                                          context);
-                                      // Proporção ao catálogo: altura próxima à linha de ícones; largura limitada
-                                      // (evita logos horizontais ocuparem a faixa inteira como no screenshot).
-                                      final logoMaxH = isDesktop ? 52.0 : 44.0;
-                                      final topBarH = isDesktop ? 56.0 : 48.0;
-                                      return SizedBox(
-                                        height: topBarH,
-                                        width: double.infinity,
-                                        child: Stack(
-                                          clipBehavior: Clip.none,
-                                          alignment: Alignment.center,
-                                          children: [
-                                            if (logoUrl.isNotEmpty)
-                                              Positioned.fill(
-                                                child: LayoutBuilder(
-                                                  builder: (context, b) {
-                                                    final fullW = b.maxWidth;
-                                                    final logoCapW = math.min(
-                                                      fullW *
-                                                          (isDesktop
-                                                              ? 0.42
-                                                              : 0.48),
-                                                      isDesktop ? 300.0 : 220.0,
-                                                    );
-                                                    return Center(
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .symmetric(
-                                                                horizontal: 6),
-                                                        child: SizedBox(
-                                                          width: logoCapW,
-                                                          height: logoMaxH,
-                                                          child: Image(
-                                                            image: ResizeImage(
-                                                              mpImageProvider(
-                                                                  logoUrl),
-                                                              width: (logoCapW *
-                                                                      dpr)
-                                                                  .round()
-                                                                  .clamp(
-                                                                      64, 2048),
-                                                              height:
-                                                                  (logoMaxH *
-                                                                          dpr)
-                                                                      .round()
-                                                                      .clamp(64,
-                                                                          1024),
-                                                              allowUpscaling:
-                                                                  false,
-                                                            ),
-                                                            width: logoCapW,
-                                                            height: logoMaxH,
-                                                            fit: BoxFit.contain,
-                                                            filterQuality:
-                                                                FilterQuality
-                                                                    .high,
-                                                            isAntiAlias: true,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                                ),
-                                              )
-                                            else
-                                              Positioned.fill(
-                                                child: Center(
-                                                  child: Padding(
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
-                                                        horizontal: 24),
-                                                    child: FittedBox(
-                                                      fit: BoxFit.scaleDown,
-                                                      child: Text(
-                                                        lojaNome,
-                                                        textAlign:
-                                                            TextAlign.center,
-                                                        style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                          fontSize: 22,
-                                                          color:
-                                                              headerTextColor,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            topBarRow,
-                                          ],
-                                        ),
-                                      );
-                                    }(),
-
-                                    const SizedBox(height: 8),
-
-                                    // ======= BARRA DE PESQUISA + CATEGORIAS (mobile; desktop = sidebar) =======
-                                    CatalogSearchBar(
-                                      controller: _searchController,
-                                      headerSearchText: headerSearchText,
-                                      headerSearchHint: headerSearchHint,
-                                      headerSearchBg: useMinimalLayout
-                                          ? (readColorFromCfg(minimalSearchCfg[
-                                                  'background']) ??
-                                              Colors.white)
-                                          : headerSearchBg,
-                                      hintText:
-                                          (minimalSearchCfg['placeholder'] ??
-                                                  'O que voce esta procurando?')
-                                              .toString(),
-                                      iconOnRight: useMinimalLayout,
-                                      borderColor: useMinimalLayout
-                                          ? (readColorFromCfg(minimalSearchCfg[
-                                                  'borderColor']) ??
-                                              Colors.black12)
-                                          : null,
-                                      borderRadius: useMinimalLayout
-                                          ? safeDouble(
-                                              minimalSearchCfg['radius'], 10)
-                                          : 12,
-                                      height: useMinimalLayout
-                                          ? safeDouble(
-                                              minimalSearchCfg['height'], 44)
-                                          : 42,
-                                      onChanged: _debouncedSearchUpdate,
-                                      onClear: () {
-                                        _searchDebounce?.cancel();
-                                        _searchController.clear();
-                                        _searchNotifier.value = '';
-                                        _currentPageNotifier.value = 0;
-                                        _syncCatalogQueryToBrowserUri();
-                                      },
-                                    ),
-                                    if (!isDesktop && !useMinimalLayout)
-                                      CatalogCategorySubcategoryFilters(
-                                        categoriasMenu: categoriasMenu,
-                                        selectedCategory: _selectedCategory,
-                                        selectedSubcategory:
-                                            _selectedSubcategory,
-                                        produtos: produtos,
-                                        textColor: textColor,
-                                        cardColor: cardColor,
-                                        primaryColor: primaryColor,
-                                        onCategorySelectedNull: () {
-                                          setState(() {
-                                            _selectedCategory = null;
-                                            _selectedSubcategory = null;
-                                            _clearFiltrosVariacao();
-                                            _currentPageNotifier.value = 0;
-                                          });
-                                          _onCatalogCategoryOrSubChanged();
-                                        },
-                                        onCategorySelected: (cat) {
-                                          setState(() {
-                                            _selectedCategory = cat;
-                                            _selectedSubcategory = null;
-                                            _clearFiltrosVariacao();
-                                            _currentPageNotifier.value = 0;
-                                          });
-                                          _onCatalogCategoryOrSubChanged();
-                                        },
-                                        onSubcategorySelectedNull: () {
-                                          setState(() {
-                                            _selectedSubcategory = null;
-                                            _clearFiltrosVariacao();
-                                            _currentPageNotifier.value = 0;
-                                          });
-                                          _onCatalogCategoryOrSubChanged();
-                                        },
-                                        onSubcategorySelected: (subcat) {
-                                          setState(() {
-                                            _selectedSubcategory = subcat;
-                                            _clearFiltrosVariacao();
-                                            _currentPageNotifier.value = 0;
-                                          });
-                                          _onCatalogCategoryOrSubChanged();
-                                        },
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    // ========== FAB DO CARRINHO ==========
-                    floatingActionButton: _cart.isEmpty
-                        ? null
-                        : FloatingActionButton.extended(
-                            onPressed: () => _openCartSheet(
-                              fretes: fretes,
-                              cupons: cupons,
-                              primary: primaryColor,
-                              buttonText: btnTextColor,
-                              textColor: textColor,
-                              cardColor: cardColor,
-                              checkoutCardColor: checkoutCardColor,
-                              checkoutFieldBg: checkoutFieldBg,
-                              checkoutFieldBorder: checkoutFieldBorder,
-                              checkoutFieldTextColor: checkoutFieldTextColor,
-                              checkoutLabelColor: checkoutLabelColor,
-                              checkoutTotalColor: checkoutTotalColor,
-                              productNameColor: productNameColor,
-                              productPriceColor: productPriceColor,
-                              whatsappVendedor: whatsappVendedor,
-                              lojaNome: lojaNome,
-                              paymentAsset: paymentAssets,
-                              paymentCodes:
-                                  _paymentCodesParaPreviaRodape(paymentCodes),
-                              instagramUrl: instagramUrl,
-                              facebookUrl: facebookUrl,
-                              empresaRazao: empresaRazao,
-                              empresaCnpj: empresaCnpj,
-                              checkoutGateway: checkoutGateway,
-                              checkoutButtonLabel: checkoutButtonLabel,
-                              pixKey: pixKey,
-                              freightToken: freightToken,
-                              freteMelhorEnvioModoExibicao:
-                                  freteMelhorEnvioModoExibicao,
-                              mercadoPagoAtivo: mercadoPagoAtivo,
-                              checkoutSummaryTokens:
-                                  catalogCheckoutSummaryTokens,
-                              catalogCartUiTokens: catalogCartUiTokens,
-                              catalogFirstPurchaseCouponOffer:
-                                  catalogFirstPurchaseCouponOffer,
-                              catalogProducts: produtos,
-                            ),
-                            icon: const Icon(Icons.shopping_bag_outlined),
-                            label: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text('Carrinho ($cartCount)'),
-                            ),
-                          ),
-
-// ================= CORPO =================
-                    body: Stack(
-                      children: [
-                        Column(
-                          children: [
-                            if (useMinimalLayout &&
-                                _catalogExibindoTodosCategorias() &&
-                                safeBool(promoBarCfg['enabled'], false))
-                              Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(12, 6, 12, 8),
-                                child: CatalogPromoBar(
-                                  enabled: true,
-                                  text: (promoBarCfg['text'] ?? '').toString(),
-                                  backgroundColor: readColorFromCfg(
-                                          promoBarCfg['backgroundColor']) ??
-                                      const Color(0xFFFF4F96),
-                                  textColor: readColorFromCfg(
-                                          promoBarCfg['textColor']) ??
-                                      Colors.white,
-                                  icon: safeBool(promoBarCfg['showIcon'], false)
-                                      ? Icons.local_offer_outlined
-                                      : null,
-                                  height: safeDouble(promoBarCfg['height'], 34),
-                                  textAlign: parseTextAlign(
-                                      promoBarCfg['alignment'],
-                                      TextAlign.center),
-                                  bold: safeBool(promoBarCfg['bold'], true),
-                                  marqueeWhenOverflow:
-                                      safeBool(promoBarCfg['marquee'], true),
-                                  onTap: () {
-                                    final link = (promoBarCfg['link'] ?? '')
-                                        .toString()
-                                        .trim();
-                                    if (link.isEmpty) return;
-                                    _openUrl(link);
-                                  },
-                                ),
-                              ),
-                            if (_isOffline)
-                              Container(
-                                width: double.infinity,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                                color: Colors.orange.shade800,
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.wifi_off,
-                                        color: Colors.white, size: 18),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Sem conexão com a internet',
-                                      style: TextStyle(
-                                          color: Colors.white, fontSize: 13),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            Expanded(
-                              child: RefreshIndicator(
-                                onRefresh: () => _onRefreshProducts(lojaId),
-                                child: ValueListenableBuilder<String>(
-                                  valueListenable: _searchNotifier,
-                                  builder: (context, search, _) =>
-                                      ValueListenableBuilder<int>(
-                                    valueListenable: _currentPageNotifier,
-                                    builder: (context, currentPage, _) =>
-                                        LayoutBuilder(
-                                      builder: (context, c) {
-                                        final isDesktopBody =
-                                            c.maxWidth >= 1024;
-                                        final effCatFilter =
-                                            _effectiveCatalogCategoryFilter();
-                                        final effSubFilter =
-                                            _effectiveCatalogSubcategoryFilter();
-                                        // Quando uma categoria/subcategoria específica está selecionada, o catálogo
-                                        // vira uma listagem direta de produtos. Banners, mais vendidos e destaques
-                                        // devem aparecer apenas em Todos.
-                                        final exibindoTodosCatalogo =
-                                            effCatFilter == null;
-                                        final modoListagemCategoria =
-                                            effCatFilter != null;
-                                        bool matchCategoriaSub(
-                                            Map<String, dynamic> p) {
-                                          final matchCat = _produtoTemCategoria(
-                                            p,
-                                            effCatFilter,
-                                          );
-                                          final matchSubcat =
-                                              _produtoTemSubcategoria(
-                                            p,
-                                            effSubFilter,
-                                          );
-                                          return matchCat && matchSubcat;
-                                        }
-
-                                        final produtosParaOpcoesVariacao =
-                                            produtos
-                                                .where(matchCategoriaSub)
-                                                .toList();
-                                        final variacaoTamanhosOpcoes =
-                                            CatalogVariationFilter
-                                                .coletarTamanhos(
-                                                    produtosParaOpcoesVariacao);
-                                        final variacaoCoresOpcoes =
-                                            CatalogVariationFilter.coletarCores(
-                                                produtosParaOpcoesVariacao);
-                                        final variacaoExtrasOpcoes =
-                                            CatalogVariationFilter
-                                                .coletarExtras(
-                                                    produtosParaOpcoesVariacao);
-
-                                        // 👉 aplica filtro da busca + categoria + subcategoria
-                                        final listaFiltrada =
-                                            produtos.where((p) {
-                                          final n = (p['nome'] ?? '')
-                                              .toString()
-                                              .toLowerCase();
-                                          final d = (p['descricao'] ?? '')
-                                              .toString()
-                                              .toLowerCase();
-                                          final matchText =
-                                              search.trim().isEmpty
-                                                  ? true
-                                                  : n.contains(search) ||
-                                                      d.contains(search);
-                                          final matchCatSub =
-                                              matchCategoriaSub(p);
-                                          final matchPreco =
-                                              _produtoIntersectsPrecoRange(p);
-                                          final matchEstoque = !_apenasEmEstoque ||
-                                              CatalogEstoqueHelper
-                                                  .produtoPassaFiltroApenasEmEstoque(
-                                                      p);
-                                          final matchVariacao =
-                                              CatalogVariationFilter
-                                                  .produtoMatches(
-                                            p,
-                                            tamanho: _filtroVariacaoTamanho,
-                                            cor: _filtroVariacaoCor,
-                                            variacaoExtra: _filtroVariacaoExtra,
-                                          );
-                                          return matchText &&
-                                              matchCatSub &&
-                                              matchPreco &&
-                                              matchEstoque &&
-                                              matchVariacao;
-                                        }).toList();
-
-                                        // Ordenação
-                                        final listaOrdenada =
-                                            List<Map<String, dynamic>>.from(
-                                                listaFiltrada);
-                                        if (_ordenacaoProdutos == 'preco_asc') {
-                                          listaOrdenada.sort((a, b) {
-                                            final va = (a['valor'] ??
-                                                    a['preco'] ??
-                                                    0.0) is num
-                                                ? (a['valor'] ??
-                                                    a['preco'] ??
-                                                    0.0) as num
-                                                : (double.tryParse(
-                                                        '${a['valor'] ?? a['preco'] ?? 0}') ??
-                                                    0.0);
-                                            final vb = (b['valor'] ??
-                                                    b['preco'] ??
-                                                    0.0) is num
-                                                ? (b['valor'] ??
-                                                    b['preco'] ??
-                                                    0.0) as num
-                                                : (double.tryParse(
-                                                        '${b['valor'] ?? b['preco'] ?? 0}') ??
-                                                    0.0);
-                                            return va.compareTo(vb);
-                                          });
-                                        } else if (_ordenacaoProdutos ==
-                                            'preco_desc') {
-                                          listaOrdenada.sort((a, b) {
-                                            final va = (a['valor'] ??
-                                                    a['preco'] ??
-                                                    0.0) is num
-                                                ? (a['valor'] ??
-                                                    a['preco'] ??
-                                                    0.0) as num
-                                                : (double.tryParse(
-                                                        '${a['valor'] ?? a['preco'] ?? 0}') ??
-                                                    0.0);
-                                            final vb = (b['valor'] ??
-                                                    b['preco'] ??
-                                                    0.0) is num
-                                                ? (b['valor'] ??
-                                                    b['preco'] ??
-                                                    0.0) as num
-                                                : (double.tryParse(
-                                                        '${b['valor'] ?? b['preco'] ?? 0}') ??
-                                                    0.0);
-                                            return vb.compareTo(va);
-                                          });
-                                        } else if (_ordenacaoProdutos ==
-                                            'novidade') {
-                                          // Mais recentes primeiro (dataCriacao)
-                                          listaOrdenada.sort((a, b) {
-                                            final dtA =
-                                                asDateTime(a['dataCriacao']);
-                                            final dtB =
-                                                asDateTime(b['dataCriacao']);
-                                            if (dtA == null && dtB == null) {
-                                              return 0;
-                                            }
-                                            if (dtA == null) {
-                                              return 1;
-                                            }
-                                            if (dtB == null) {
-                                              return -1;
-                                            }
-                                            return dtB.compareTo(dtA);
-                                          });
-                                        } else {
-                                          // nome (alfabética)
-                                          listaOrdenada.sort((a, b) {
-                                            final an = (a['nome'] ?? '')
-                                                .toString()
-                                                .toLowerCase();
-                                            final bn = (b['nome'] ?? '')
-                                                .toString()
-                                                .toLowerCase();
-                                            return an.compareTo(bn);
-                                          });
-                                        }
-
-                                        // Paginação: 20 produtos por página
-                                        final totalPaginas =
-                                            (listaOrdenada.length /
-                                                    _produtosPorPagina)
-                                                .ceil()
-                                                .clamp(1, 999999);
-                                        _catalogTotalPaginasForUrl =
-                                            totalPaginas;
-
-                                        if (prodSnap.hasData) {
-                                          final categoryAliasesSig =
-                                              _categoryAliasesSignature(
-                                                  categoryAliasesByName);
-                                          final sig =
-                                              '${produtos.length}|${categoriasMenu.join('\u0001')}|$categoryAliasesSig|$effCatFilter|$effSubFilter|$_ordenacaoProdutos|${_precoMin}_$_precoMax|${variacaoTamanhosOpcoes.join('\u0001')}|${variacaoCoresOpcoes.join('\u0001')}|${variacaoExtrasOpcoes.join('\u0001')}|$search|$_apenasEmEstoque|$_filtroVariacaoTamanho|$_filtroVariacaoCor|$_filtroVariacaoExtra|$totalPaginas';
-                                          if (sig != _lastCatalogSanitizeSig) {
-                                            _lastCatalogSanitizeSig = sig;
-                                            final gen = ++_catalogSanitizeGen;
-                                            final tList = List<String>.from(
-                                                variacaoTamanhosOpcoes);
-                                            final cList = List<String>.from(
-                                                variacaoCoresOpcoes);
-                                            final xList = List<String>.from(
-                                                variacaoExtrasOpcoes);
-                                            final catList = List<String>.from(
-                                                categoriasMenu);
-                                            final aliasCopy =
-                                                Map<String, Set<String>>.from(
-                                              categoryAliasesByName.map(
-                                                (k, v) => MapEntry(
-                                                  k,
-                                                  Set<String>.from(v),
-                                                ),
-                                              ),
-                                            );
-                                            final prodCopy =
-                                                List<Map<String, dynamic>>.from(
-                                                    produtos);
-                                            final tpSan = totalPaginas;
-                                            WidgetsBinding.instance
-                                                .addPostFrameCallback((_) {
-                                              if (!mounted ||
-                                                  gen != _catalogSanitizeGen) {
-                                                return;
-                                              }
-                                              _sanitizeCatalogUrlDerivedFilters(
-                                                categoriasMenu: catList,
-                                                categoryAliasesByName:
-                                                    aliasCopy,
-                                                produtos: prodCopy,
-                                                tamanhos: tList,
-                                                cores: cList,
-                                                extras: xList,
-                                                totalPaginas: tpSan,
-                                              );
-                                            });
-                                          }
-                                        }
-
-                                        final paginaAtual = currentPage.clamp(
-                                            0, totalPaginas - 1);
-                                        final start =
-                                            paginaAtual * _produtosPorPagina;
-                                        final listaPaginated = listaOrdenada
-                                            .skip(start)
-                                            .take(_produtosPorPagina)
-                                            .toList();
-
-                                        final minimalSubcats = useMinimalLayout &&
-                                                effCatFilter != null
-                                            ? _subcategoriasDisponiveisParaCategoria(
-                                                effCatFilter,
-                                                produtos,
-                                              )
-                                            : <String>[];
-
-                                        final scrollBody = CustomScrollView(
-                                          controller: _catalogScrollController,
-                                          // Web: área maior fora da viewport reduz descarte/rebuild de cards ao rolar.
-                                          cacheExtent: kIsWeb ? 2400 : 800,
-                                          physics: const ClampingScrollPhysics(
-                                              parent:
-                                                  AlwaysScrollableScrollPhysics()),
-                                          slivers: [
-                                            SliverToBoxAdapter(
-                                              child: Column(
-                                                children: [
-                                                  if (exibindoTodosCatalogo &&
-                                                      banners.isNotEmpty)
-                                                    CatalogBannerCarousel(
-                                                      banners: banners,
-                                                      height: bannerH,
-                                                      resolvedLojaId:
-                                                          _resolvedLojaId ??
-                                                              widget.lojaId,
-                                                      onBannerPressed:
-                                                          (i, url) {
-                                                        if (url
-                                                            .trim()
-                                                            .isEmpty) {
-                                                          return;
-                                                        }
-                                                        _openUrl(url);
-                                                      },
-                                                    ),
-                                                  // Mesmo no modo listagem por categoria, o menu horizontal de categorias deve continuar visível para permitir troca rápida de categoria. Apenas banners, destaques e mais vendidos ficam ocultos.
-                                                  if (useMinimalLayout &&
-                                                      menuShowCategorias &&
-                                                      categoriasMenu
-                                                          .isNotEmpty &&
-                                                      (exibindoTodosCatalogo ||
-                                                          modoListagemCategoria))
-                                                    CatalogMinimalCategoryImageStrip(
-                                                      categories:
-                                                          categoriasMenu,
-                                                      selectedCategory:
-                                                          _selectedCategory,
-                                                      categoryVisuals:
-                                                          categoryVisualsCfg,
-                                                      categoryAliasesByName:
-                                                          categoryAliasesByName,
-                                                      onSelect: (cat) {
-                                                        setState(() {
-                                                          _selectedCategory =
-                                                              cat;
-                                                          _selectedSubcategory =
-                                                              null;
-                                                          _clearFiltrosVariacao();
-                                                          _currentPageNotifier
-                                                              .value = 0;
-                                                        });
-                                                        _onCatalogCategoryOrSubChanged();
-                                                      },
-                                                      onClear: () {
-                                                        setState(() {
-                                                          _selectedCategory =
-                                                              null;
-                                                          _selectedSubcategory =
-                                                              null;
-                                                          _clearFiltrosVariacao();
-                                                          _currentPageNotifier
-                                                              .value = 0;
-                                                        });
-                                                        _onCatalogCategoryOrSubChanged();
-                                                      },
-                                                      textColor: textColor,
-                                                      fallbackBg: cardColor,
-                                                    ),
-                                                  if (useMinimalLayout &&
-                                                      effCatFilter != null &&
-                                                      minimalSubcats.isNotEmpty)
-                                                    CatalogMinimalSubcategoryStrip(
-                                                      subcategories:
-                                                          minimalSubcats,
-                                                      selectedSubcategory:
-                                                          _selectedSubcategory,
-                                                      primaryColor:
-                                                          primaryColor,
-                                                      textColor: textColor,
-                                                      surfaceColor: cardColor,
-                                                      onSelectAll: () {
-                                                        setState(() {
-                                                          _selectedSubcategory =
-                                                              null;
-                                                          _currentPageNotifier
-                                                              .value = 0;
-                                                        });
-                                                        _onCatalogCategoryOrSubChanged();
-                                                      },
-                                                      onSelectSub: (sub) {
-                                                        setState(() {
-                                                          _selectedSubcategory =
-                                                              sub;
-                                                          _currentPageNotifier
-                                                              .value = 0;
-                                                        });
-                                                        _onCatalogCategoryOrSubChanged();
-                                                      },
-                                                    ),
-                                                  if (modoListagemCategoria)
-                                                    Padding(
-                                                      padding:
-                                                          EdgeInsets.fromLTRB(
-                                                        16,
-                                                        useMinimalLayout
-                                                            ? 8
-                                                            : 12,
-                                                        16,
-                                                        useMinimalLayout
-                                                            ? 4
-                                                            : 8,
-                                                      ),
-                                                      child: Align(
-                                                        alignment: Alignment
-                                                            .centerLeft,
-                                                        child: Text(
-                                                          _catalogListagemTituloLinha() ??
-                                                              '',
-                                                          maxLines: 2,
-                                                          overflow: TextOverflow
-                                                              .ellipsis,
-                                                          style: TextStyle(
-                                                            color: textColor,
-                                                            fontSize: 16,
-                                                            fontWeight:
-                                                                FontWeight.w700,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  if (useMinimalLayout &&
-                                                      exibindoTodosCatalogo)
-                                                    CatalogMinimalHeroBanner(
-                                                      enabled: safeBool(
-                                                          heroBannerCfg[
-                                                              'enabled'],
-                                                          false),
-                                                      title: (heroBannerCfg[
-                                                                  'title'] ??
-                                                              '')
-                                                          .toString(),
-                                                      subtitle: (heroBannerCfg[
-                                                                  'subtitle'] ??
-                                                              '')
-                                                          .toString(),
-                                                      buttonText: (heroBannerCfg[
-                                                                  'buttonText'] ??
-                                                              '')
-                                                          .toString(),
-                                                      imageUrl: (isDesktop
-                                                              ? heroBannerCfg[
-                                                                  'image']
-                                                              : heroBannerCfg[
-                                                                  'mobileImage']) ??
-                                                          heroBannerCfg[
-                                                              'image'] ??
-                                                          '',
-                                                      compactImageUrl:
-                                                          heroBannerCompactImageUrl,
-                                                      bannerSizeMode:
-                                                          heroBannerSizeMode,
-                                                      resolvedLojaId:
-                                                          _resolvedLojaId ??
-                                                              widget.lojaId,
-                                                      backgroundColor:
-                                                          heroBannerCardBg,
-                                                      borderRadius:
-                                                          heroBannerCardRadius,
-                                                      height: safeDouble(
-                                                          heroBannerCfg[
-                                                              'height'],
-                                                          isDesktop
-                                                              ? 240
-                                                              : 180),
-                                                      overlayOpacity: safeDouble(
-                                                          heroBannerCfg[
-                                                              'overlayOpacity'],
-                                                          0.16),
-                                                      titleColor:
-                                                          heroBannerTitleColor,
-                                                      titleFontSize:
-                                                          heroBannerTitleSize,
-                                                      titleFontWeight:
-                                                          heroBannerTitleW,
-                                                      titleLetterCase:
-                                                          heroBannerTitleCase,
-                                                      subtitleColor:
-                                                          heroBannerSubtitleColor,
-                                                      subtitleFontSize:
-                                                          heroBannerSubtitleSize,
-                                                      subtitleFontWeight:
-                                                          heroBannerSubtitleW,
-                                                      subtitleLetterCase:
-                                                          heroBannerSubtitleCase,
-                                                      buttonBackgroundColor:
-                                                          heroBannerBtnBg,
-                                                      buttonTextColor:
-                                                          heroBannerBtnText,
-                                                      buttonFontSize:
-                                                          heroBannerBtnSize,
-                                                      buttonFontWeight:
-                                                          heroBannerBtnW,
-                                                      buttonBorderRadius:
-                                                          heroBannerBtnRadius,
-                                                      buttonLetterCase:
-                                                          heroBannerBtnCase,
-                                                      onTap: heroBannerActionLink !=
-                                                                  null &&
-                                                              heroBannerActionLink
-                                                                  .isNotEmpty
-                                                          ? () => _openUrl(
-                                                                heroBannerActionLink,
-                                                              )
-                                                          : null,
-                                                    ),
-                                                  if (useMinimalLayout &&
-                                                      exibindoTodosCatalogo &&
-                                                      bestSellersSectionEnabled &&
-                                                      produtos.isNotEmpty)
-                                                    CatalogMinimalBestSellersSection(
-                                                      title: bestSellersTitle,
-                                                      productCardSize:
-                                                          productCardSize,
-                                                      products:
-                                                          pickBestSellersForMinimalCatalog(
-                                                        produtos,
-                                                        limit: bestSellersLimit,
-                                                      ),
-                                                      lojaId: lojaId,
-                                                      todosProdutos: produtos,
-                                                      onAdd: (it) => _addToCart(
-                                                          it, produtos),
-                                                      onAbrirCarrinho: () =>
-                                                          _openCartSheet(
-                                                        fretes: fretes,
-                                                        cupons: cupons,
-                                                        primary: primaryColor,
-                                                        buttonText:
-                                                            btnTextColor,
-                                                        textColor: textColor,
-                                                        cardColor: cardColor,
-                                                        checkoutCardColor:
-                                                            checkoutCardColor,
-                                                        checkoutFieldBg:
-                                                            checkoutFieldBg,
-                                                        checkoutFieldBorder:
-                                                            checkoutFieldBorder,
-                                                        checkoutFieldTextColor:
-                                                            checkoutFieldTextColor,
-                                                        checkoutLabelColor:
-                                                            checkoutLabelColor,
-                                                        checkoutTotalColor:
-                                                            checkoutTotalColor,
-                                                        productNameColor:
-                                                            productNameColor,
-                                                        productPriceColor:
-                                                            productPriceColor,
-                                                        whatsappVendedor:
-                                                            whatsappVendedor,
-                                                        lojaNome: lojaNome,
-                                                        paymentAsset:
-                                                            paymentAssets,
-                                                        paymentCodes:
-                                                            paymentCodes,
-                                                        instagramUrl:
-                                                            instagramUrl,
-                                                        facebookUrl:
-                                                            facebookUrl,
-                                                        empresaRazao:
-                                                            empresaRazao,
-                                                        empresaCnpj:
-                                                            empresaCnpj,
-                                                        checkoutGateway:
-                                                            checkoutGateway,
-                                                        checkoutButtonLabel:
-                                                            checkoutButtonLabel,
-                                                        pixKey: pixKey,
-                                                        freightToken:
-                                                            freightToken,
-                                                        freteMelhorEnvioModoExibicao:
-                                                            freteMelhorEnvioModoExibicao,
-                                                        mercadoPagoAtivo:
-                                                            mercadoPagoAtivo,
-                                                        checkoutSummaryTokens:
-                                                            catalogCheckoutSummaryTokens,
-                                                        catalogCartUiTokens:
-                                                            catalogCartUiTokens,
-                                                        catalogFirstPurchaseCouponOffer:
-                                                            catalogFirstPurchaseCouponOffer,
-                                                        catalogProducts:
-                                                            produtos,
-                                                      ),
-                                                      catalogShareUrl:
-                                                          CatalogShareService
-                                                              .buildUrlWithParams(
-                                                        _publicCatalogShareBase(),
-                                                        ref: widget.vendedorRef,
-                                                        indicacao: widget
-                                                            .indicacaoClienteRef,
-                                                      ),
-                                                      textColor: textColor,
-                                                      cardColor: cardColor,
-                                                      priceColor:
-                                                          productPriceColor,
-                                                      prazoEntregaTexto:
-                                                          prazoEntregaTexto,
-                                                      nomeLoja: lojaNome,
-                                                      contatoWhatsapp:
-                                                          whatsappVendedor,
-                                                      politicaFrete: null,
-                                                      onProductViewed:
-                                                          _onProductViewed,
-                                                      onProductUrlFocus:
-                                                          _onProductUrlFocus,
-                                                      onProductUrlBlur:
-                                                          _onProductUrlBlur,
-                                                    ),
-                                                  if (exibindoTodosCatalogo)
-                                                    const SizedBox(height: 16),
-
-                                                  // ✨ BANNER DE CAMPANHAS
-                                                  if (exibindoTodosCatalogo)
-                                                    CampanhaBannerWidget(
-                                                        lojaId: lojaId),
-                                                ],
-                                              ),
-                                            ),
-                                            if (prodSnap.connectionState ==
-                                                ConnectionState.waiting)
-                                              CatalogSkeletonGrid(
-                                                isDesktop: isDesktopBody,
-                                                desktopCols: gridDesktopCols,
-                                                mobileCols:
-                                                    catalogGridMobileCols,
-                                                childAspectRatio: useMinimalLayout
-                                                    ? _minimalCatalogGridAspectRatio(
-                                                        isDesktopBody:
-                                                            isDesktopBody,
-                                                        baseFromSizeOrConfig:
-                                                            CatalogProductCardSize
-                                                                .minimalAspectRatio(
-                                                          productCardSize,
-                                                        ),
-                                                      )
-                                                    : _classicCatalogGridAspectRatio(
-                                                        width: viewportW,
-                                                        baseStandardAspectRatio:
-                                                            CatalogProductCardSize
-                                                                .standardAspectRatio(
-                                                          productCardSize,
-                                                        ),
-                                                      ),
-                                              )
-                                            else if (listaOrdenada.isEmpty)
-                                              modoListagemCategoria &&
-                                                      _catalogSemFiltrosAlemDeCategoria(
-                                                          search)
-                                                  ? SliverFillRemaining(
-                                                      hasScrollBody: false,
-                                                      child: Center(
-                                                        child: Padding(
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(24),
-                                                          child: Text(
-                                                            'Nenhum produto encontrado nesta categoria.',
-                                                            textAlign: TextAlign
-                                                                .center,
                                                             style: TextStyle(
                                                               color: textColor,
                                                               fontSize: 16,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
                                                             ),
                                                           ),
                                                         ),
                                                       ),
-                                                    )
-                                                  : const CatalogEmptyProductsState()
-                                            else ...[
-                                              // Ordenação (filtros) - linha separada da paginação para evitar sobreposição
-                                              SliverToBoxAdapter(
-                                                child:
-                                                    CatalogSortFiltersSection(
-                                                  ordenacaoProdutos:
-                                                      _ordenacaoProdutos,
-                                                  apenasEmEstoque:
-                                                      _apenasEmEstoque,
-                                                  precoMin: _precoMin,
-                                                  precoMax: _precoMax,
-                                                  primaryColor: primaryColor,
-                                                  cardColor: cardColor,
-                                                  textColor: textColor,
-                                                  onSortChanged: (value) {
-                                                    setState(() {
-                                                      _ordenacaoProdutos =
-                                                          value;
-                                                      _currentPageNotifier
-                                                          .value = 0;
-                                                    });
-                                                    _syncCatalogQueryToBrowserUri();
-                                                  },
-                                                  onFilterEmEstoqueToggled: () {
-                                                    setState(() {
-                                                      _apenasEmEstoque =
-                                                          !_apenasEmEstoque;
-                                                      _currentPageNotifier
-                                                          .value = 0;
-                                                    });
-                                                  },
-                                                  onFilterPrecoTap: () =>
-                                                      _mostrarDialogoFiltroPreco(
-                                                          textColor),
-                                                  paginaAtual: paginaAtual,
-                                                  totalPaginas: totalPaginas,
-                                                  onPageChanged: (p) {
-                                                    _currentPageNotifier.value =
-                                                        p;
-                                                  },
-                                                  variacaoTamanhos:
-                                                      variacaoTamanhosOpcoes,
-                                                  variacaoCores:
-                                                      variacaoCoresOpcoes,
-                                                  variacaoExtras:
-                                                      variacaoExtrasOpcoes,
-                                                  filtroVariacaoTamanho:
-                                                      _filtroVariacaoTamanho,
-                                                  filtroVariacaoCor:
-                                                      _filtroVariacaoCor,
-                                                  filtroVariacaoExtra:
-                                                      _filtroVariacaoExtra,
-                                                  onVariacaoTamanhoChanged:
-                                                      (v) {
-                                                    setState(() {
-                                                      _filtroVariacaoTamanho =
-                                                          v;
-                                                      _currentPageNotifier
-                                                          .value = 0;
-                                                    });
-                                                    _syncCatalogQueryToBrowserUri();
-                                                  },
-                                                  onVariacaoCorChanged: (v) {
-                                                    setState(() {
-                                                      _filtroVariacaoCor = v;
-                                                      _currentPageNotifier
-                                                          .value = 0;
-                                                    });
-                                                    _syncCatalogQueryToBrowserUri();
-                                                  },
-                                                  onVariacaoExtraChanged: (v) {
-                                                    setState(() {
-                                                      _filtroVariacaoExtra = v;
-                                                      _currentPageNotifier
-                                                          .value = 0;
-                                                    });
-                                                    _syncCatalogQueryToBrowserUri();
-                                                  },
-                                                  onVariacaoClear: () {
-                                                    setState(() {
-                                                      _clearFiltrosVariacao();
-                                                      _currentPageNotifier
-                                                          .value = 0;
-                                                    });
-                                                    _syncCatalogQueryToBrowserUri();
-                                                  },
+                                                    if (useMinimalLayout &&
+                                                        exibindoTodosCatalogo)
+                                                      CatalogMinimalHeroBanner(
+                                                        enabled: safeBool(
+                                                            heroBannerCfg[
+                                                                'enabled'],
+                                                            false),
+                                                        title: (heroBannerCfg[
+                                                                    'title'] ??
+                                                                '')
+                                                            .toString(),
+                                                        subtitle: (heroBannerCfg[
+                                                                    'subtitle'] ??
+                                                                '')
+                                                            .toString(),
+                                                        buttonText: (heroBannerCfg[
+                                                                    'buttonText'] ??
+                                                                '')
+                                                            .toString(),
+                                                        imageUrl: (isDesktop
+                                                                ? heroBannerCfg[
+                                                                    'image']
+                                                                : heroBannerCfg[
+                                                                    'mobileImage']) ??
+                                                            heroBannerCfg[
+                                                                'image'] ??
+                                                            '',
+                                                        compactImageUrl:
+                                                            heroBannerCompactImageUrl,
+                                                        bannerSizeMode:
+                                                            heroBannerSizeMode,
+                                                        resolvedLojaId:
+                                                            _resolvedLojaId ??
+                                                                widget.lojaId,
+                                                        backgroundColor:
+                                                            heroBannerCardBg,
+                                                        borderRadius:
+                                                            heroBannerCardRadius,
+                                                        height: safeDouble(
+                                                            heroBannerCfg[
+                                                                'height'],
+                                                            isDesktop
+                                                                ? 240
+                                                                : 180),
+                                                        overlayOpacity: safeDouble(
+                                                            heroBannerCfg[
+                                                                'overlayOpacity'],
+                                                            0.16),
+                                                        titleColor:
+                                                            heroBannerTitleColor,
+                                                        titleFontSize:
+                                                            heroBannerTitleSize,
+                                                        titleFontWeight:
+                                                            heroBannerTitleW,
+                                                        titleLetterCase:
+                                                            heroBannerTitleCase,
+                                                        subtitleColor:
+                                                            heroBannerSubtitleColor,
+                                                        subtitleFontSize:
+                                                            heroBannerSubtitleSize,
+                                                        subtitleFontWeight:
+                                                            heroBannerSubtitleW,
+                                                        subtitleLetterCase:
+                                                            heroBannerSubtitleCase,
+                                                        buttonBackgroundColor:
+                                                            heroBannerBtnBg,
+                                                        buttonTextColor:
+                                                            heroBannerBtnText,
+                                                        buttonFontSize:
+                                                            heroBannerBtnSize,
+                                                        buttonFontWeight:
+                                                            heroBannerBtnW,
+                                                        buttonBorderRadius:
+                                                            heroBannerBtnRadius,
+                                                        buttonLetterCase:
+                                                            heroBannerBtnCase,
+                                                        onTap: heroBannerActionLink !=
+                                                                    null &&
+                                                                heroBannerActionLink
+                                                                    .isNotEmpty
+                                                            ? () => _openUrl(
+                                                                  heroBannerActionLink,
+                                                                )
+                                                            : null,
+                                                      ),
+                                                    if (useMinimalLayout &&
+                                                        exibindoTodosCatalogo &&
+                                                        bestSellersSectionEnabled &&
+                                                        produtos.isNotEmpty)
+                                                      CatalogMinimalBestSellersSection(
+                                                        title: bestSellersTitle,
+                                                        productCardSize:
+                                                            productCardSize,
+                                                        products:
+                                                            pickBestSellersForMinimalCatalog(
+                                                          produtos,
+                                                          limit:
+                                                              bestSellersLimit,
+                                                        ),
+                                                        lojaId: lojaId,
+                                                        todosProdutos: produtos,
+                                                        onAdd: (it) =>
+                                                            _addToCart(
+                                                                it, produtos),
+                                                        onAbrirCarrinho: () =>
+                                                            _openCartSheet(
+                                                          fretes: fretes,
+                                                          cupons: cupons,
+                                                          primary: primaryColor,
+                                                          buttonText:
+                                                              btnTextColor,
+                                                          textColor: textColor,
+                                                          cardColor: cardColor,
+                                                          checkoutCardColor:
+                                                              checkoutCardColor,
+                                                          checkoutFieldBg:
+                                                              checkoutFieldBg,
+                                                          checkoutFieldBorder:
+                                                              checkoutFieldBorder,
+                                                          checkoutFieldTextColor:
+                                                              checkoutFieldTextColor,
+                                                          checkoutLabelColor:
+                                                              checkoutLabelColor,
+                                                          checkoutTotalColor:
+                                                              checkoutTotalColor,
+                                                          productNameColor:
+                                                              productNameColor,
+                                                          productPriceColor:
+                                                              productPriceColor,
+                                                          whatsappVendedor:
+                                                              whatsappVendedor,
+                                                          lojaNome: lojaNome,
+                                                          paymentAsset:
+                                                              paymentAssets,
+                                                          paymentCodes:
+                                                              paymentCodes,
+                                                          instagramUrl:
+                                                              instagramUrl,
+                                                          facebookUrl:
+                                                              facebookUrl,
+                                                          empresaRazao:
+                                                              empresaRazao,
+                                                          empresaCnpj:
+                                                              empresaCnpj,
+                                                          checkoutGateway:
+                                                              checkoutGateway,
+                                                          checkoutButtonLabel:
+                                                              checkoutButtonLabel,
+                                                          pixKey: pixKey,
+                                                          freightToken:
+                                                              freightToken,
+                                                          freteMelhorEnvioModoExibicao:
+                                                              freteMelhorEnvioModoExibicao,
+                                                          mercadoPagoAtivo:
+                                                              mercadoPagoAtivo,
+                                                          checkoutSummaryTokens:
+                                                              catalogCheckoutSummaryTokens,
+                                                          catalogCartUiTokens:
+                                                              catalogCartUiTokens,
+                                                          catalogFirstPurchaseCouponOffer:
+                                                              catalogFirstPurchaseCouponOffer,
+                                                          catalogProducts:
+                                                              produtos,
+                                                        ),
+                                                        catalogShareUrl:
+                                                            CatalogShareService
+                                                                .buildUrlWithParams(
+                                                          _publicCatalogShareBase(),
+                                                          ref: widget
+                                                              .vendedorRef,
+                                                          indicacao: widget
+                                                              .indicacaoClienteRef,
+                                                        ),
+                                                        textColor: textColor,
+                                                        cardColor: cardColor,
+                                                        priceColor:
+                                                            productPriceColor,
+                                                        prazoEntregaTexto:
+                                                            prazoEntregaTexto,
+                                                        nomeLoja: lojaNome,
+                                                        contatoWhatsapp:
+                                                            whatsappVendedor,
+                                                        politicaFrete: null,
+                                                        onProductViewed:
+                                                            _onProductViewed,
+                                                        onProductUrlFocus:
+                                                            _onProductUrlFocus,
+                                                        onProductUrlBlur:
+                                                            _onProductUrlBlur,
+                                                      ),
+                                                    if (exibindoTodosCatalogo)
+                                                      const SizedBox(
+                                                          height: 16),
+
+                                                    // ✨ BANNER DE CAMPANHAS
+                                                    if (exibindoTodosCatalogo)
+                                                      CampanhaBannerWidget(
+                                                          lojaId: lojaId),
+                                                  ],
                                                 ),
                                               ),
-                                              if (exibindoTodosCatalogo &&
-                                                  _recentIds.isNotEmpty)
-                                                buildCatalogRecentSectionSliver(
-                                                  recentProducts: () {
-                                                    final pm = {
-                                                      for (final p in produtos)
-                                                        safeStr(p['id']): p
-                                                    };
-                                                    return _recentIds
-                                                        .where((id) =>
-                                                            pm.containsKey(id))
-                                                        .take(8)
-                                                        .map((id) => pm[id]!)
-                                                        .toList();
-                                                  }(),
-                                                  todosProdutos: produtos,
+                                              if (prodSnap.connectionState ==
+                                                  ConnectionState.waiting)
+                                                CatalogSkeletonGrid(
+                                                  isDesktop: isDesktopBody,
+                                                  desktopCols: gridDesktopCols,
+                                                  mobileCols:
+                                                      catalogGridMobileCols,
+                                                  childAspectRatio: useMinimalLayout
+                                                      ? _minimalCatalogGridAspectRatio(
+                                                          isDesktopBody:
+                                                              isDesktopBody,
+                                                          baseFromSizeOrConfig:
+                                                              CatalogProductCardSize
+                                                                  .minimalAspectRatio(
+                                                            productCardSize,
+                                                          ),
+                                                        )
+                                                      : _classicCatalogGridAspectRatio(
+                                                          width: viewportW,
+                                                          baseStandardAspectRatio:
+                                                              CatalogProductCardSize
+                                                                  .standardAspectRatio(
+                                                            productCardSize,
+                                                          ),
+                                                        ),
+                                                )
+                                              else if (listaOrdenada.isEmpty)
+                                                modoListagemCategoria &&
+                                                        _catalogSemFiltrosAlemDeCategoria(
+                                                            search)
+                                                    ? SliverFillRemaining(
+                                                        hasScrollBody: false,
+                                                        child: Center(
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(24),
+                                                            child: Text(
+                                                              'Nenhum produto encontrado nesta categoria.',
+                                                              textAlign:
+                                                                  TextAlign
+                                                                      .center,
+                                                              style: TextStyle(
+                                                                color:
+                                                                    textColor,
+                                                                fontSize: 16,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : const CatalogEmptyProductsState()
+                                              else ...[
+                                                // Ordenação (filtros) - linha separada da paginação para evitar sobreposição
+                                                SliverToBoxAdapter(
+                                                  child:
+                                                      CatalogSortFiltersSection(
+                                                    ordenacaoProdutos:
+                                                        _ordenacaoProdutos,
+                                                    apenasEmEstoque:
+                                                        _apenasEmEstoque,
+                                                    precoMin: _precoMin,
+                                                    precoMax: _precoMax,
+                                                    primaryColor: primaryColor,
+                                                    cardColor: cardColor,
+                                                    textColor: textColor,
+                                                    onSortChanged: (value) {
+                                                      setState(() {
+                                                        _ordenacaoProdutos =
+                                                            value;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                      _syncCatalogQueryToBrowserUri();
+                                                    },
+                                                    onFilterEmEstoqueToggled:
+                                                        () {
+                                                      setState(() {
+                                                        _apenasEmEstoque =
+                                                            !_apenasEmEstoque;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                    },
+                                                    onFilterPrecoTap: () =>
+                                                        _mostrarDialogoFiltroPreco(
+                                                            textColor),
+                                                    paginaAtual: paginaAtual,
+                                                    totalPaginas: totalPaginas,
+                                                    onPageChanged: (p) {
+                                                      _currentPageNotifier
+                                                          .value = p;
+                                                    },
+                                                    variacaoTamanhos:
+                                                        variacaoTamanhosOpcoes,
+                                                    variacaoCores:
+                                                        variacaoCoresOpcoes,
+                                                    variacaoExtras:
+                                                        variacaoExtrasOpcoes,
+                                                    filtroVariacaoTamanho:
+                                                        _filtroVariacaoTamanho,
+                                                    filtroVariacaoCor:
+                                                        _filtroVariacaoCor,
+                                                    filtroVariacaoExtra:
+                                                        _filtroVariacaoExtra,
+                                                    onVariacaoTamanhoChanged:
+                                                        (v) {
+                                                      setState(() {
+                                                        _filtroVariacaoTamanho =
+                                                            v;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                      _syncCatalogQueryToBrowserUri();
+                                                    },
+                                                    onVariacaoCorChanged: (v) {
+                                                      setState(() {
+                                                        _filtroVariacaoCor = v;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                      _syncCatalogQueryToBrowserUri();
+                                                    },
+                                                    onVariacaoExtraChanged:
+                                                        (v) {
+                                                      setState(() {
+                                                        _filtroVariacaoExtra =
+                                                            v;
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                      _syncCatalogQueryToBrowserUri();
+                                                    },
+                                                    onVariacaoClear: () {
+                                                      setState(() {
+                                                        _clearFiltrosVariacao();
+                                                        _currentPageNotifier
+                                                            .value = 0;
+                                                      });
+                                                      _syncCatalogQueryToBrowserUri();
+                                                    },
+                                                  ),
+                                                ),
+                                                if (exibindoTodosCatalogo &&
+                                                    _recentIds.isNotEmpty)
+                                                  buildCatalogRecentSectionSliver(
+                                                    recentProducts: () {
+                                                      final pm = {
+                                                        for (final p
+                                                            in produtos)
+                                                          safeStr(p['id']): p
+                                                      };
+                                                      return _recentIds
+                                                          .where((id) => pm
+                                                              .containsKey(id))
+                                                          .take(8)
+                                                          .map((id) => pm[id])
+                                                          .whereType<
+                                                              Map<String,
+                                                                  dynamic>>()
+                                                          .toList();
+                                                    }(),
+                                                    todosProdutos: produtos,
+                                                    lojaId: lojaId,
+                                                    onAdd: (it) => _addToCart(
+                                                        it, produtos),
+                                                    onProductViewed:
+                                                        _onProductViewed,
+                                                    onProductUrlFocus:
+                                                        _onProductUrlFocus,
+                                                    onProductUrlBlur:
+                                                        _onProductUrlBlur,
+                                                    onToggleFavorito:
+                                                        _toggleFavorito,
+                                                    onAbrirLoginParaFavorito:
+                                                        _abrirLoginParaFavorito,
+                                                    onAbrirCarrinho: () =>
+                                                        _openCartSheet(
+                                                      fretes: fretes,
+                                                      cupons: cupons,
+                                                      primary: primaryColor,
+                                                      buttonText: btnTextColor,
+                                                      textColor: textColor,
+                                                      cardColor: cardColor,
+                                                      checkoutCardColor:
+                                                          checkoutCardColor,
+                                                      checkoutFieldBg:
+                                                          checkoutFieldBg,
+                                                      checkoutFieldBorder:
+                                                          checkoutFieldBorder,
+                                                      checkoutFieldTextColor:
+                                                          checkoutFieldTextColor,
+                                                      checkoutLabelColor:
+                                                          checkoutLabelColor,
+                                                      checkoutTotalColor:
+                                                          checkoutTotalColor,
+                                                      productNameColor:
+                                                          productNameColor,
+                                                      productPriceColor:
+                                                          productPriceColor,
+                                                      whatsappVendedor:
+                                                          whatsappVendedor,
+                                                      lojaNome: lojaNome,
+                                                      paymentAsset:
+                                                          paymentAssets,
+                                                      paymentCodes:
+                                                          _paymentCodesParaPreviaRodape(
+                                                              paymentCodes),
+                                                      instagramUrl:
+                                                          instagramUrl,
+                                                      facebookUrl: facebookUrl,
+                                                      empresaRazao:
+                                                          empresaRazao,
+                                                      empresaCnpj: empresaCnpj,
+                                                      checkoutGateway:
+                                                          checkoutGateway,
+                                                      checkoutButtonLabel:
+                                                          checkoutButtonLabel,
+                                                      pixKey: pixKey,
+                                                      freightToken:
+                                                          freightToken,
+                                                      freteMelhorEnvioModoExibicao:
+                                                          freteMelhorEnvioModoExibicao,
+                                                      mercadoPagoAtivo:
+                                                          mercadoPagoAtivo,
+                                                      checkoutSummaryTokens:
+                                                          catalogCheckoutSummaryTokens,
+                                                      catalogCartUiTokens:
+                                                          catalogCartUiTokens,
+                                                      catalogFirstPurchaseCouponOffer:
+                                                          catalogFirstPurchaseCouponOffer,
+                                                      catalogProducts: produtos,
+                                                    ),
+                                                    clienteId: _clienteId,
+                                                    favoritosIds: _favoritosIds,
+                                                    mostrarEstoqueNoCatalogo:
+                                                        mostrarEstoqueNoCatalogo,
+                                                    mostrarQuantidadeNoCatalogo:
+                                                        mostrarQuantidadeNoCatalogo,
+                                                    cardBorderRadius:
+                                                        cardBorderRadius,
+                                                    cardShowShadow:
+                                                        cardShowShadow,
+                                                    prazoEntregaTexto:
+                                                        prazoEntregaTexto,
+                                                    jurosParcelamento:
+                                                        jurosParcelamento,
+                                                    maxParcelas:
+                                                        maxParcelasClamped,
+                                                    textColor: textColor,
+                                                    useMinimalLayout:
+                                                        useMinimalLayout,
+                                                    productCardSize:
+                                                        productCardSize,
+                                                    cardColor: cardColor,
+                                                    priceColor:
+                                                        productPriceColor,
+                                                    catalogShareUrl:
+                                                        CatalogShareService
+                                                            .buildUrlWithParams(
+                                                      _publicCatalogShareBase(),
+                                                      ref: widget.vendedorRef,
+                                                      indicacao: widget
+                                                          .indicacaoClienteRef,
+                                                    ),
+                                                    nomeLoja: lojaNome,
+                                                    contatoWhatsapp:
+                                                        whatsappVendedor,
+                                                    politicaFrete: null,
+                                                    catalogInitialExtraValor:
+                                                        _filtroVariacaoExtra,
+                                                    onCatalogVariacaoExtraChanged:
+                                                        _onCatalogVariacaoExtraFromProductUi,
+                                                  ),
+                                                buildCatalogProductsGridSliver(
+                                                  products: listaPaginated,
+                                                  todosProdutosParaCombo:
+                                                      produtos,
                                                   lojaId: lojaId,
+                                                  catalogInitialExtraValor:
+                                                      _filtroVariacaoExtra,
+                                                  onCatalogVariacaoExtraChanged:
+                                                      _onCatalogVariacaoExtraFromProductUi,
+                                                  isDesktop: isDesktopBody,
+                                                  desktopCols: gridDesktopCols,
+                                                  mobileCols:
+                                                      catalogGridMobileCols,
+                                                  classicGridWideBody:
+                                                      !useMinimalLayout &&
+                                                          isDesktopBody,
                                                   onAdd: (it) =>
                                                       _addToCart(it, produtos),
                                                   onProductViewed:
@@ -7524,6 +7896,28 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       _onProductUrlFocus,
                                                   onProductUrlBlur:
                                                       _onProductUrlBlur,
+                                                  onProductsGridFirstViewportFrame:
+                                                      _traceProductsGridFirstViewportLogged
+                                                          ? null
+                                                          : () {
+                                                              if (_traceProductsGridFirstViewportLogged) {
+                                                                return;
+                                                              }
+                                                              _traceProductsGridFirstViewportLogged =
+                                                                  true;
+                                                              CatalogStartupTrace
+                                                                  .mark(
+                                                                'CAT_START.products_grid.first_viewport_frame',
+                                                                data: <String,
+                                                                    Object?>{
+                                                                  'loja_id':
+                                                                      lojaId,
+                                                                  'grid_item_count':
+                                                                      listaPaginated
+                                                                          .length,
+                                                                },
+                                                              );
+                                                            },
                                                   onToggleFavorito:
                                                       _toggleFavorito,
                                                   onAbrirLoginParaFavorito:
@@ -7587,23 +7981,109 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                       mostrarEstoqueNoCatalogo,
                                                   mostrarQuantidadeNoCatalogo:
                                                       mostrarQuantidadeNoCatalogo,
-                                                  cardBorderRadius:
-                                                      cardBorderRadius,
-                                                  cardShowShadow:
-                                                      cardShowShadow,
+                                                  cardBorderRadius: useMinimalLayout
+                                                      ? safeDouble(
+                                                          minimalGridCfg[
+                                                              'cardBorderRadius'],
+                                                          cardBorderRadius)
+                                                      : cardBorderRadius,
+                                                  cardShowShadow: useMinimalLayout
+                                                      ? safeBool(
+                                                          minimalGridCfg[
+                                                              'cardShowShadow'],
+                                                          false)
+                                                      : cardShowShadow,
                                                   prazoEntregaTexto:
                                                       prazoEntregaTexto,
                                                   jurosParcelamento:
                                                       jurosParcelamento,
                                                   maxParcelas:
                                                       maxParcelasClamped,
-                                                  textColor: textColor,
-                                                  useMinimalLayout:
-                                                      useMinimalLayout,
-                                                  productCardSize:
-                                                      productCardSize,
-                                                  cardColor: cardColor,
-                                                  priceColor: productPriceColor,
+                                                  imageCacheWidth:
+                                                      useMinimalLayout
+                                                          ? safeInt(
+                                                              minimalGridCfg[
+                                                                  'imageCacheWidth'],
+                                                              CatalogProductCardSize
+                                                                  .gridImageCache(
+                                                                size:
+                                                                    productCardSize,
+                                                                minimalLayout:
+                                                                    true,
+                                                                isWeb: kIsWeb,
+                                                              ).width,
+                                                            )
+                                                          : CatalogProductCardSize
+                                                              .gridImageCache(
+                                                              size:
+                                                                  productCardSize,
+                                                              minimalLayout:
+                                                                  false,
+                                                              isWeb: kIsWeb,
+                                                            ).width,
+                                                  imageCacheHeight:
+                                                      useMinimalLayout
+                                                          ? safeInt(
+                                                              minimalGridCfg[
+                                                                  'imageCacheHeight'],
+                                                              CatalogProductCardSize
+                                                                  .gridImageCache(
+                                                                size:
+                                                                    productCardSize,
+                                                                minimalLayout:
+                                                                    true,
+                                                                isWeb: kIsWeb,
+                                                              ).height,
+                                                            )
+                                                          : CatalogProductCardSize
+                                                              .gridImageCache(
+                                                              size:
+                                                                  productCardSize,
+                                                              minimalLayout:
+                                                                  false,
+                                                              isWeb: kIsWeb,
+                                                            ).height,
+                                                  childAspectRatio: useMinimalLayout
+                                                      ? _minimalCatalogGridAspectRatio(
+                                                          isDesktopBody:
+                                                              isDesktopBody,
+                                                          baseFromSizeOrConfig:
+                                                              safeDouble(
+                                                            minimalGridCfg[
+                                                                'aspectRatio'],
+                                                            CatalogProductCardSize
+                                                                .minimalAspectRatio(
+                                                              productCardSize,
+                                                            ),
+                                                          ),
+                                                        )
+                                                      : _classicCatalogGridAspectRatio(
+                                                          width: viewportW,
+                                                          baseStandardAspectRatio:
+                                                              CatalogProductCardSize
+                                                                  .standardAspectRatio(
+                                                            productCardSize,
+                                                          ),
+                                                        ),
+                                                  mainAxisSpacing: useMinimalLayout
+                                                      ? safeDouble(
+                                                          minimalGridCfg[
+                                                              'mainAxisSpacing'],
+                                                          18)
+                                                      : 16,
+                                                  crossAxisSpacing: useMinimalLayout
+                                                      ? safeDouble(
+                                                          minimalGridCfg[
+                                                              'crossAxisSpacing'],
+                                                          12)
+                                                      : 16,
+                                                  padding: useMinimalLayout
+                                                      ? const EdgeInsets
+                                                          .fromLTRB(
+                                                          12, 0, 12, 24)
+                                                      : const EdgeInsets
+                                                          .fromLTRB(
+                                                          12, 0, 12, 24),
                                                   catalogShareUrl:
                                                       CatalogShareService
                                                           .buildUrlWithParams(
@@ -7612,556 +8092,419 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                     indicacao: widget
                                                         .indicacaoClienteRef,
                                                   ),
-                                                  nomeLoja: lojaNome,
-                                                  contatoWhatsapp:
-                                                      whatsappVendedor,
-                                                  politicaFrete: null,
-                                                  catalogInitialExtraValor:
-                                                      _filtroVariacaoExtra,
-                                                  onCatalogVariacaoExtraChanged:
-                                                      _onCatalogVariacaoExtraFromProductUi,
+                                                  useMinimalLayout:
+                                                      useMinimalLayout,
+                                                  onMinimalSilentAddFeedback:
+                                                      useMinimalLayout
+                                                          ? _snackAdicionadoAoCarrinho
+                                                          : null,
+                                                  productCardSize:
+                                                      productCardSize,
                                                 ),
-                                              buildCatalogProductsGridSliver(
-                                                products: listaPaginated,
-                                                todosProdutosParaCombo:
-                                                    produtos,
-                                                lojaId: lojaId,
-                                                catalogInitialExtraValor:
-                                                    _filtroVariacaoExtra,
-                                                onCatalogVariacaoExtraChanged:
-                                                    _onCatalogVariacaoExtraFromProductUi,
-                                                isDesktop: isDesktopBody,
-                                                desktopCols: gridDesktopCols,
-                                                mobileCols:
-                                                    catalogGridMobileCols,
-                                                classicGridWideBody:
-                                                    !useMinimalLayout &&
-                                                        isDesktopBody,
-                                                onAdd: (it) =>
-                                                    _addToCart(it, produtos),
-                                                onProductViewed:
-                                                    _onProductViewed,
-                                                onProductUrlFocus:
-                                                    _onProductUrlFocus,
-                                                onProductUrlBlur:
-                                                    _onProductUrlBlur,
-                                                onProductsGridFirstViewportFrame:
-                                                    _traceProductsGridFirstViewportLogged
-                                                        ? null
-                                                        : () {
-                                                            if (_traceProductsGridFirstViewportLogged) {
-                                                              return;
-                                                            }
-                                                            _traceProductsGridFirstViewportLogged =
-                                                                true;
-                                                            CatalogStartupTrace
-                                                                .mark(
-                                                              'CAT_START.products_grid.first_viewport_frame',
-                                                              data: <String,
-                                                                  Object?>{
-                                                                'loja_id':
-                                                                    lojaId,
-                                                                'grid_item_count':
-                                                                    listaPaginated
-                                                                        .length,
-                                                              },
-                                                            );
-                                                          },
-                                                onToggleFavorito:
-                                                    _toggleFavorito,
-                                                onAbrirLoginParaFavorito:
-                                                    _abrirLoginParaFavorito,
-                                                onAbrirCarrinho: () =>
-                                                    _openCartSheet(
-                                                  fretes: fretes,
-                                                  cupons: cupons,
-                                                  primary: primaryColor,
-                                                  buttonText: btnTextColor,
-                                                  textColor: textColor,
-                                                  cardColor: cardColor,
-                                                  checkoutCardColor:
-                                                      checkoutCardColor,
-                                                  checkoutFieldBg:
-                                                      checkoutFieldBg,
-                                                  checkoutFieldBorder:
-                                                      checkoutFieldBorder,
-                                                  checkoutFieldTextColor:
-                                                      checkoutFieldTextColor,
-                                                  checkoutLabelColor:
-                                                      checkoutLabelColor,
-                                                  checkoutTotalColor:
-                                                      checkoutTotalColor,
-                                                  productNameColor:
-                                                      productNameColor,
-                                                  productPriceColor:
-                                                      productPriceColor,
-                                                  whatsappVendedor:
-                                                      whatsappVendedor,
+                                                // Paginação: Anterior | Página X de Y | Próxima (sempre visível)
+                                                if (totalPaginas > 1)
+                                                  SliverToBoxAdapter(
+                                                    child: CatalogPaginacaoRow(
+                                                      paginaAtual: paginaAtual,
+                                                      totalPaginas:
+                                                          totalPaginas,
+                                                      primaryColor:
+                                                          primaryColor,
+                                                      cardColor: cardColor,
+                                                      textColor: textColor,
+                                                      onPagePrev: paginaAtual >
+                                                              0
+                                                          ? () =>
+                                                              _currentPageNotifier
+                                                                      .value =
+                                                                  paginaAtual -
+                                                                      1
+                                                          : null,
+                                                      onPageNext: paginaAtual <
+                                                              totalPaginas - 1
+                                                          ? () =>
+                                                              _currentPageNotifier
+                                                                      .value =
+                                                                  paginaAtual +
+                                                                      1
+                                                          : null,
+                                                    ),
+                                                  ),
+                                                if (exibindoTodosCatalogo &&
+                                                    exibirAvaliacoesCatalogo)
+                                                  SliverToBoxAdapter(
+                                                    child:
+                                                        CatalogAvaliacoesSection(
+                                                      lojaId: lojaId,
+                                                      cardColor: cardColor,
+                                                      textColor: textColor,
+                                                      accentColor: primaryColor,
+                                                      ordem:
+                                                          catalogAvaliacoesOrdem,
+                                                    ),
+                                                  ),
+                                              ],
+                                              // Espaçamento entre o grid e o rodapé para evitar sobreposição
+                                              const SliverToBoxAdapter(
+                                                child: SizedBox(height: 40),
+                                              ),
+                                              SliverToBoxAdapter(
+                                                child: CatalogFooter(
+                                                  bg: footerBgColor, // ✅ Usa cor de fundo do rodapé
+                                                  textColor:
+                                                      footerTextColor, // ✅ Usa cor de texto do rodapé
+                                                  textSecondaryColor:
+                                                      footerTextSecondary, // ✅ Texto secundário
+                                                  iconColor:
+                                                      footerIconColor, // ✅ Cor dos ícones
+                                                  linkColor:
+                                                      footerLinkColor, // ✅ Cor dos links
+                                                  dividerColor:
+                                                      footerDividerColor, // ✅ Cor das divisórias
                                                   lojaNome: lojaNome,
-                                                  paymentAsset: paymentAssets,
+                                                  instagramUrl: instagramUrl,
+                                                  facebookUrl: facebookUrl,
+                                                  tiktokUrl: tiktokUrl,
+                                                  telegramUrl: telegramUrl,
+                                                  kwaiUrl: kwaiUrl,
+                                                  linkedinUrl: linkedinUrl,
+                                                  emailUrl: emailUrl,
+                                                  whatsappUrl: whatsappUrl,
+                                                  atendimentoWhatsapp:
+                                                      atendimentoWhatsapp,
+                                                  links: footerLinks,
                                                   paymentCodes:
                                                       _paymentCodesParaPreviaRodape(
                                                           paymentCodes),
-                                                  instagramUrl: instagramUrl,
-                                                  facebookUrl: facebookUrl,
+                                                  paymentAsset: paymentAssets,
+                                                  badgeSSL: badgeSSL,
+                                                  badgeGoogle: badgeGoogle,
                                                   empresaRazao: empresaRazao,
                                                   empresaCnpj: empresaCnpj,
-                                                  checkoutGateway:
-                                                      checkoutGateway,
-                                                  checkoutButtonLabel:
-                                                      checkoutButtonLabel,
-                                                  pixKey: pixKey,
-                                                  freightToken: freightToken,
-                                                  freteMelhorEnvioModoExibicao:
-                                                      freteMelhorEnvioModoExibicao,
-                                                  mercadoPagoAtivo:
-                                                      mercadoPagoAtivo,
-                                                  checkoutSummaryTokens:
-                                                      catalogCheckoutSummaryTokens,
-                                                  catalogCartUiTokens:
-                                                      catalogCartUiTokens,
-                                                  catalogFirstPurchaseCouponOffer:
-                                                      catalogFirstPurchaseCouponOffer,
-                                                  catalogProducts: produtos,
-                                                ),
-                                                clienteId: _clienteId,
-                                                favoritosIds: _favoritosIds,
-                                                mostrarEstoqueNoCatalogo:
-                                                    mostrarEstoqueNoCatalogo,
-                                                mostrarQuantidadeNoCatalogo:
-                                                    mostrarQuantidadeNoCatalogo,
-                                                cardBorderRadius: useMinimalLayout
-                                                    ? safeDouble(
-                                                        minimalGridCfg[
-                                                            'cardBorderRadius'],
-                                                        cardBorderRadius)
-                                                    : cardBorderRadius,
-                                                cardShowShadow: useMinimalLayout
-                                                    ? safeBool(
-                                                        minimalGridCfg[
-                                                            'cardShowShadow'],
-                                                        false)
-                                                    : cardShowShadow,
-                                                prazoEntregaTexto:
-                                                    prazoEntregaTexto,
-                                                jurosParcelamento:
-                                                    jurosParcelamento,
-                                                maxParcelas: maxParcelasClamped,
-                                                imageCacheWidth:
-                                                    useMinimalLayout
-                                                        ? safeInt(
-                                                            minimalGridCfg[
-                                                                'imageCacheWidth'],
-                                                            CatalogProductCardSize
-                                                                .gridImageCache(
-                                                              size:
-                                                                  productCardSize,
-                                                              minimalLayout:
-                                                                  true,
-                                                              isWeb: kIsWeb,
-                                                            ).width,
-                                                          )
-                                                        : CatalogProductCardSize
-                                                            .gridImageCache(
-                                                            size:
-                                                                productCardSize,
-                                                            minimalLayout:
-                                                                false,
-                                                            isWeb: kIsWeb,
-                                                          ).width,
-                                                imageCacheHeight:
-                                                    useMinimalLayout
-                                                        ? safeInt(
-                                                            minimalGridCfg[
-                                                                'imageCacheHeight'],
-                                                            CatalogProductCardSize
-                                                                .gridImageCache(
-                                                              size:
-                                                                  productCardSize,
-                                                              minimalLayout:
-                                                                  true,
-                                                              isWeb: kIsWeb,
-                                                            ).height,
-                                                          )
-                                                        : CatalogProductCardSize
-                                                            .gridImageCache(
-                                                            size:
-                                                                productCardSize,
-                                                            minimalLayout:
-                                                                false,
-                                                            isWeb: kIsWeb,
-                                                          ).height,
-                                                childAspectRatio: useMinimalLayout
-                                                    ? _minimalCatalogGridAspectRatio(
-                                                        isDesktopBody:
-                                                            isDesktopBody,
-                                                        baseFromSizeOrConfig:
-                                                            safeDouble(
-                                                          minimalGridCfg[
-                                                              'aspectRatio'],
-                                                          CatalogProductCardSize
-                                                              .minimalAspectRatio(
-                                                            productCardSize,
-                                                          ),
-                                                        ),
-                                                      )
-                                                    : _classicCatalogGridAspectRatio(
-                                                        width: viewportW,
-                                                        baseStandardAspectRatio:
-                                                            CatalogProductCardSize
-                                                                .standardAspectRatio(
-                                                          productCardSize,
-                                                        ),
-                                                      ),
-                                                mainAxisSpacing: useMinimalLayout
-                                                    ? safeDouble(
-                                                        minimalGridCfg[
-                                                            'mainAxisSpacing'],
-                                                        18)
-                                                    : 16,
-                                                crossAxisSpacing: useMinimalLayout
-                                                    ? safeDouble(
-                                                        minimalGridCfg[
-                                                            'crossAxisSpacing'],
-                                                        12)
-                                                    : 16,
-                                                padding: useMinimalLayout
-                                                    ? const EdgeInsets.fromLTRB(
-                                                        12, 0, 12, 24)
-                                                    : const EdgeInsets.fromLTRB(
-                                                        12, 0, 12, 24),
-                                                catalogShareUrl:
-                                                    CatalogShareService
-                                                        .buildUrlWithParams(
-                                                  _publicCatalogShareBase(),
-                                                  ref: widget.vendedorRef,
-                                                  indicacao: widget
-                                                      .indicacaoClienteRef,
-                                                ),
-                                                useMinimalLayout:
-                                                    useMinimalLayout,
-                                                onMinimalSilentAddFeedback:
-                                                    useMinimalLayout
-                                                        ? _snackAdicionadoAoCarrinho
-                                                        : null,
-                                                productCardSize:
-                                                    productCardSize,
-                                              ),
-                                              // Paginação: Anterior | Página X de Y | Próxima (sempre visível)
-                                              if (totalPaginas > 1)
-                                                SliverToBoxAdapter(
-                                                  child: CatalogPaginacaoRow(
-                                                    paginaAtual: paginaAtual,
-                                                    totalPaginas: totalPaginas,
-                                                    primaryColor: primaryColor,
-                                                    cardColor: cardColor,
-                                                    textColor: textColor,
-                                                    onPagePrev: paginaAtual > 0
-                                                        ? () =>
-                                                            _currentPageNotifier
-                                                                    .value =
-                                                                paginaAtual - 1
-                                                        : null,
-                                                    onPageNext: paginaAtual <
-                                                            totalPaginas - 1
-                                                        ? () =>
-                                                            _currentPageNotifier
-                                                                    .value =
-                                                                paginaAtual + 1
-                                                        : null,
-                                                  ),
-                                                ),
-                                              if (exibindoTodosCatalogo &&
-                                                  exibirAvaliacoesCatalogo)
-                                                SliverToBoxAdapter(
-                                                  child:
-                                                      CatalogAvaliacoesSection(
-                                                    lojaId: lojaId,
-                                                    cardColor: cardColor,
-                                                    textColor: textColor,
-                                                    accentColor: primaryColor,
-                                                    ordem:
-                                                        catalogAvaliacoesOrdem,
-                                                  ),
-                                                ),
-                                            ],
-                                            // Espaçamento entre o grid e o rodapé para evitar sobreposição
-                                            const SliverToBoxAdapter(
-                                              child: SizedBox(height: 40),
-                                            ),
-                                            SliverToBoxAdapter(
-                                              child: CatalogFooter(
-                                                bg: footerBgColor, // ✅ Usa cor de fundo do rodapé
-                                                textColor:
-                                                    footerTextColor, // ✅ Usa cor de texto do rodapé
-                                                textSecondaryColor:
-                                                    footerTextSecondary, // ✅ Texto secundário
-                                                iconColor:
-                                                    footerIconColor, // ✅ Cor dos ícones
-                                                linkColor:
-                                                    footerLinkColor, // ✅ Cor dos links
-                                                dividerColor:
-                                                    footerDividerColor, // ✅ Cor das divisórias
-                                                lojaNome: lojaNome,
-                                                instagramUrl: instagramUrl,
-                                                facebookUrl: facebookUrl,
-                                                tiktokUrl: tiktokUrl,
-                                                telegramUrl: telegramUrl,
-                                                kwaiUrl: kwaiUrl,
-                                                linkedinUrl: linkedinUrl,
-                                                emailUrl: emailUrl,
-                                                whatsappUrl: whatsappUrl,
-                                                atendimentoWhatsapp:
-                                                    atendimentoWhatsapp,
-                                                links: footerLinks,
-                                                paymentCodes:
-                                                    _paymentCodesParaPreviaRodape(
-                                                        paymentCodes),
-                                                paymentAsset: paymentAssets,
-                                                badgeSSL: badgeSSL,
-                                                badgeGoogle: badgeGoogle,
-                                                empresaRazao: empresaRazao,
-                                                empresaCnpj: empresaCnpj,
-                                                onOpenUrl: _openUrl,
-                                                onSobreLojaTap: () {
-                                                  final w =
-                                                      MediaQuery.sizeOf(context)
-                                                          .width;
-                                                  final wide = w >= 900;
-                                                  Navigator.of(context).push(
-                                                    MaterialPageRoute<void>(
-                                                      builder: (ctx) =>
-                                                          CatalogSobreLojaScreen(
-                                                        lojaNome: lojaNome,
-                                                        config: sobreLojaConfig,
-                                                        primaryColor:
-                                                            primaryColor,
-                                                        dicasColors:
-                                                            catalogDicasColors,
-                                                        logoUrl:
-                                                            logoUrl.isNotEmpty
-                                                                ? logoUrl
+                                                  onOpenUrl: _openUrl,
+                                                  onSobreLojaTap: () {
+                                                    final w = MediaQuery.sizeOf(
+                                                            context)
+                                                        .width;
+                                                    final wide = w >= 900;
+                                                    Navigator.of(context).push(
+                                                      MaterialPageRoute<void>(
+                                                        builder: (ctx) =>
+                                                            CatalogSobreLojaScreen(
+                                                          lojaNome: lojaNome,
+                                                          config:
+                                                              sobreLojaConfig,
+                                                          primaryColor:
+                                                              primaryColor,
+                                                          dicasColors:
+                                                              catalogDicasColors,
+                                                          logoUrl:
+                                                              logoUrl.isNotEmpty
+                                                                  ? logoUrl
+                                                                  : null,
+                                                          logoHeight:
+                                                              wide ? 90 : 80,
+                                                          bannerHeightHero:
+                                                              mediaConfig
+                                                                      .bannerH *
+                                                                  0.52,
+                                                          contactInfo:
+                                                              DicasContactInfo(
+                                                            whatsappNumber:
+                                                                atendimentoWhatsapp,
+                                                            instagramUrl:
+                                                                instagramUrl
+                                                                        .isNotEmpty
+                                                                    ? instagramUrl
+                                                                    : null,
+                                                            facebookUrl: facebookUrl
+                                                                    .isNotEmpty
+                                                                ? facebookUrl
                                                                 : null,
-                                                        logoHeight:
-                                                            wide ? 90 : 80,
-                                                        bannerHeightHero:
-                                                            mediaConfig
-                                                                    .bannerH *
-                                                                0.52,
-                                                        contactInfo:
-                                                            DicasContactInfo(
-                                                          whatsappNumber:
-                                                              atendimentoWhatsapp,
-                                                          instagramUrl:
-                                                              instagramUrl
-                                                                      .isNotEmpty
-                                                                  ? instagramUrl
-                                                                  : null,
-                                                          facebookUrl:
-                                                              facebookUrl
-                                                                      .isNotEmpty
-                                                                  ? facebookUrl
-                                                                  : null,
+                                                          ),
+                                                          empresaRazao:
+                                                              empresaRazao,
+                                                          empresaCnpj:
+                                                              empresaCnpj,
+                                                          onOpenUrl: _openUrl,
                                                         ),
-                                                        empresaRazao:
-                                                            empresaRazao,
-                                                        empresaCnpj:
-                                                            empresaCnpj,
-                                                        onOpenUrl: _openUrl,
                                                       ),
-                                                    ),
-                                                  );
-                                                },
-                                                onOpenWhatsapp: () =>
-                                                    _openWhatsappSimple(
-                                                  atendimentoWhatsapp,
-                                                  'Olá, vim pelo catálogo!',
-                                                ),
-                                                faqItems: faqItems,
-                                                politicaPrivacidadeUrl:
-                                                    politicaPrivacidadeUrl,
-                                                termosUsoUrl: termosUsoUrl,
-                                              ),
-                                            ),
-                                            SliverToBoxAdapter(
-                                              child: CatalogCreatorCreditBar(
-                                                backgroundColor: footerBgColor,
-                                                textColor: textColor,
-                                                accentColor: primaryColor,
-                                                onOpenUrl: _openUrl,
-                                              ),
-                                            ),
-                                          ],
-                                        );
-                                        if (isDesktopBody) {
-                                          return Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              // Sidebar categorias (esquerda) – layout desktop
-                                              Container(
-                                                width: 260,
-                                                constraints:
-                                                    const BoxConstraints(
-                                                  minWidth: 260,
-                                                  maxWidth: 260,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: cardColor
-                                                      .withOpacity(0.4),
-                                                  border: Border(
-                                                    right: BorderSide(
-                                                      color: textColor
-                                                          .withOpacity(0.12),
-                                                      width: 1,
-                                                    ),
+                                                    );
+                                                  },
+                                                  onOpenWhatsapp: () =>
+                                                      _openWhatsappSimple(
+                                                    atendimentoWhatsapp,
+                                                    'Olá, vim pelo catálogo!',
                                                   ),
-                                                ),
-                                                child: Column(
-                                                  mainAxisSize:
-                                                      MainAxisSize.max,
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment
-                                                          .stretch,
-                                                  children: [
-                                                    Padding(
-                                                      padding: const EdgeInsets
-                                                          .fromLTRB(
-                                                          20, 20, 20, 12),
-                                                      child: Text(
-                                                        'Categorias',
-                                                        style: TextStyle(
-                                                          fontSize: 11,
-                                                          fontWeight:
-                                                              FontWeight.w600,
-                                                          letterSpacing: 0.8,
-                                                          color: textColor
-                                                              .withOpacity(0.7),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    Expanded(
-                                                      child:
-                                                          CatalogCategorySubcategoryFilters(
-                                                        categoriasMenu:
-                                                            categoriasMenu,
-                                                        selectedCategory:
-                                                            _selectedCategory,
-                                                        selectedSubcategory:
-                                                            _selectedSubcategory,
-                                                        produtos: produtos,
-                                                        textColor: textColor,
-                                                        cardColor: cardColor,
-                                                        primaryColor:
-                                                            primaryColor,
-                                                        verticalLayout: true,
-                                                        onCategorySelectedNull:
-                                                            () {
-                                                          setState(() {
-                                                            _selectedCategory =
-                                                                null;
-                                                            _selectedSubcategory =
-                                                                null;
-                                                            _clearFiltrosVariacao();
-                                                            _currentPageNotifier
-                                                                .value = 0;
-                                                          });
-                                                          _onCatalogCategoryOrSubChanged();
-                                                        },
-                                                        onCategorySelected:
-                                                            (cat) {
-                                                          setState(() {
-                                                            _selectedCategory =
-                                                                cat;
-                                                            _selectedSubcategory =
-                                                                null;
-                                                            _clearFiltrosVariacao();
-                                                            _currentPageNotifier
-                                                                .value = 0;
-                                                          });
-                                                          _onCatalogCategoryOrSubChanged();
-                                                        },
-                                                        onSubcategorySelectedNull:
-                                                            () {
-                                                          setState(() {
-                                                            _selectedSubcategory =
-                                                                null;
-                                                            _clearFiltrosVariacao();
-                                                            _currentPageNotifier
-                                                                .value = 0;
-                                                          });
-                                                          _onCatalogCategoryOrSubChanged();
-                                                        },
-                                                        onSubcategorySelected:
-                                                            (subcat) {
-                                                          setState(() {
-                                                            _selectedSubcategory =
-                                                                subcat;
-                                                            _clearFiltrosVariacao();
-                                                            _currentPageNotifier
-                                                                .value = 0;
-                                                          });
-                                                          _onCatalogCategoryOrSubChanged();
-                                                        },
-                                                      ),
-                                                    ),
-                                                  ],
+                                                  faqItems: faqItems,
+                                                  politicaPrivacidadeUrl:
+                                                      politicaPrivacidadeUrl,
+                                                  termosUsoUrl: termosUsoUrl,
                                                 ),
                                               ),
-                                              Expanded(child: scrollBody),
+                                              SliverToBoxAdapter(
+                                                child: CatalogCreatorCreditBar(
+                                                  backgroundColor:
+                                                      footerBgColor,
+                                                  textColor: textColor,
+                                                  accentColor: primaryColor,
+                                                  onOpenUrl: _openUrl,
+                                                ),
+                                              ),
                                             ],
                                           );
-                                        }
-                                        return scrollBody;
-                                      },
+                                          if (isDesktopBody) {
+                                            return Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                // Sidebar categorias (esquerda) – layout desktop
+                                                Container(
+                                                  width: 260,
+                                                  constraints:
+                                                      const BoxConstraints(
+                                                    minWidth: 260,
+                                                    maxWidth: 260,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: cardColor
+                                                        .withOpacity(0.4),
+                                                    border: Border(
+                                                      right: BorderSide(
+                                                        color: textColor
+                                                            .withOpacity(0.12),
+                                                        width: 1,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  child: Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.max,
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .stretch,
+                                                    children: [
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .fromLTRB(
+                                                                20, 20, 20, 12),
+                                                        child: Text(
+                                                          'Categorias',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            letterSpacing: 0.8,
+                                                            color: textColor
+                                                                .withOpacity(
+                                                                    0.7),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        child:
+                                                            CatalogCategorySubcategoryFilters(
+                                                          categoriasMenu:
+                                                              categoriasMenu,
+                                                          selectedCategory:
+                                                              _selectedCategory,
+                                                          selectedSubcategory:
+                                                              _selectedSubcategory,
+                                                          produtos: produtos,
+                                                          textColor: textColor,
+                                                          cardColor: cardColor,
+                                                          primaryColor:
+                                                              primaryColor,
+                                                          verticalLayout: true,
+                                                          onCategorySelectedNull:
+                                                              () {
+                                                            setState(() {
+                                                              _selectedCategory =
+                                                                  null;
+                                                              _selectedSubcategory =
+                                                                  null;
+                                                              _clearFiltrosVariacao();
+                                                              _currentPageNotifier
+                                                                  .value = 0;
+                                                            });
+                                                            _onCatalogCategoryOrSubChanged();
+                                                          },
+                                                          onCategorySelected:
+                                                              (cat) {
+                                                            setState(() {
+                                                              _selectedCategory =
+                                                                  cat;
+                                                              _selectedSubcategory =
+                                                                  null;
+                                                              _clearFiltrosVariacao();
+                                                              _currentPageNotifier
+                                                                  .value = 0;
+                                                            });
+                                                            _onCatalogCategoryOrSubChanged();
+                                                          },
+                                                          onSubcategorySelectedNull:
+                                                              () {
+                                                            setState(() {
+                                                              _selectedSubcategory =
+                                                                  null;
+                                                              _clearFiltrosVariacao();
+                                                              _currentPageNotifier
+                                                                  .value = 0;
+                                                            });
+                                                            _onCatalogCategoryOrSubChanged();
+                                                          },
+                                                          onSubcategorySelected:
+                                                              (subcat) {
+                                                            setState(() {
+                                                              _selectedSubcategory =
+                                                                  subcat;
+                                                              _clearFiltrosVariacao();
+                                                              _currentPageNotifier
+                                                                  .value = 0;
+                                                            });
+                                                            _onCatalogCategoryOrSubChanged();
+                                                          },
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Expanded(child: scrollBody),
+                                              ],
+                                            );
+                                          }
+                                          return scrollBody;
+                                        },
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        ValueListenableBuilder<double>(
-                          valueListenable: _scrollOffsetNotifier,
-                          builder: (context, offset, _) {
-                            if (offset < 300) return const SizedBox.shrink();
-                            final primaryColor =
-                                Theme.of(context).colorScheme.primary;
-                            return Positioned(
-                              left: 16,
-                              bottom: _cart.isEmpty ? 24 : 88,
-                              child: Material(
-                                elevation: 4,
-                                color: primaryColor.withOpacity(0.9),
-                                borderRadius: BorderRadius.circular(28),
-                                child: InkWell(
-                                  onTap: () =>
-                                      _catalogScrollController.animateTo(
-                                    0,
-                                    duration: const Duration(milliseconds: 400),
-                                    curve: Curves.easeOut,
-                                  ),
+                            ],
+                          ),
+                          ValueListenableBuilder<double>(
+                            valueListenable: _scrollOffsetNotifier,
+                            builder: (context, offset, _) {
+                              if (offset < 300) return const SizedBox.shrink();
+                              final primaryColor =
+                                  Theme.of(context).colorScheme.primary;
+                              return Positioned(
+                                left: 16,
+                                bottom: _cart.isEmpty ? 24 : 88,
+                                child: Material(
+                                  elevation: 4,
+                                  color: primaryColor.withOpacity(0.9),
                                   borderRadius: BorderRadius.circular(28),
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(12),
-                                    child: Icon(Icons.vertical_align_top,
-                                        color: Colors.white, size: 24),
+                                  child: InkWell(
+                                    onTap: () =>
+                                        _catalogScrollController.animateTo(
+                                      0,
+                                      duration:
+                                          const Duration(milliseconds: 400),
+                                      curve: Curves.easeOut,
+                                    ),
+                                    borderRadius: BorderRadius.circular(28),
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: Icon(Icons.vertical_align_top,
+                                          color: Colors.white, size: 24),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            );
-          },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
         ),
-      ),
-    );
+      );
+      if (kIsWeb) {
+        plat.Web.localStorageSet(
+            'mp_catalog_phase', 'publicCatalogScreen.render');
+      }
+      return rendered;
+    } catch (e, st) {
+      if (kIsWeb) {
+        final uri = Uri.base;
+        CatalogNormalTrace.setField(
+            'fallback.reason', 'build_catch_${e.runtimeType}');
+        CatalogNormalTrace.mark(
+            'render.catalog.exception', <String, Object?>{'error': e.toString()});
+        final payload = <String, dynamic>{
+          'buildId': const String.fromEnvironment(
+            'CATALOG_BUILD_ID',
+            defaultValue: 'dev',
+          ),
+          'timestamp': DateTime.now().toIso8601String(),
+          'host': uri.host,
+          'path': uri.path,
+          'query': uri.query,
+          'userAgent': plat.Web.userAgent(),
+          'slug': widget.lojaId,
+          'lojaId': _resolvedLojaId ?? '',
+          'fase': 'publicCatalogScreen.build.catch',
+          'phase': plat.Web.localStorageGet('mp_catalog_phase') ??
+              'publicCatalogScreen.build.start',
+          'error': e.toString(),
+          'stack': st.toString(),
+          'appVersion': 'web',
+          'resolvedLojaId': _resolvedLojaId,
+          'fallbackReason': 'publicCatalogScreen.build.catch',
+        };
+        plat.Web.localStorageSet('mp_last_runtime_error', jsonEncode(payload));
+        CatalogNormalTrace.setField('last_build_stack', st.toString());
+        CatalogNormalTrace.setField('last_build_error', e.toString());
+        CatalogNormalTrace.setField(
+            'last_build_error_type', e.runtimeType.toString());
+        CatalogNormalTrace.setField('mp_catalog_phase_at_catch',
+            plat.Web.localStorageGet('mp_catalog_phase') ?? '');
+        CatalogNormalTrace.persist();
+      }
+      final resolved = _resolvedLojaId;
+      final hasResolved = resolved != null && resolved.isNotEmpty;
+      if (hasResolved) {
+        final parts = <String>[];
+        final d = _catalogOpenFailureDetail?.trim();
+        if (d != null && d.isNotEmpty) parts.add(d);
+        parts.add('Falha ao montar a vitrine: $e');
+        parts.add('error.runtimeType: ${e.runtimeType}');
+        if (_catalogTechnicalDiagEnabled) parts.add(st.toString());
+        return _wrapWithCatStartDiagOverlay(
+          CatalogErrorLojaState(
+            themeData: Theme.of(context),
+            titleOverride: 'Não foi possível exibir o catálogo.',
+            detailMessage: parts.join('\n\n'),
+            showUrlHint: false,
+            diagnosticText: _catalogTraceDiagnosticText(),
+          ),
+        );
+      }
+      if (!_catalogTechnicalDiagEnabled) {
+        return _wrapWithCatStartDiagOverlay(
+          CatalogErrorLojaState(
+            themeData: Theme.of(context),
+            detailMessage: _catalogOpenFailureDetail,
+            diagnosticText: _catalogTraceDiagnosticText(),
+          ),
+        );
+      }
+      return Scaffold(
+        appBar: AppBar(title: const Text('Diagnóstico Catálogo')),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: SelectableText(
+            'error=${e.toString()}\n\nstack=${st.toString()}',
+          ),
+        ),
+      );
+    }
   }
 }
 

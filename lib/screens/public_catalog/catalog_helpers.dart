@@ -72,6 +72,27 @@ const String kCalcFrenetUrl =
 const String kLiveProdutosCol = 'produtos';
 const String kDraftProdutosCol = 'draft_produtos';
 
+/// Ordenação por preço/valor no grid — [asNum] evita TypeError (web minified) com tipos inesperados.
+double catalogPrecoParaOrdenacao(Map<String, dynamic> p) {
+  final raw = p['valor'] ?? p['preco'] ?? p['precoFinal'];
+  final n = asNum(raw);
+  if (n != null) return n.toDouble();
+  return double.tryParse('$raw') ?? 0.0;
+}
+
+/// `precoPorTamanho` com chaves/valores heterogéneos (Firestore/JSON na web).
+Map<String, double>? catalogPrecoPorTamanhoFromDynamic(dynamic raw) {
+  if (raw == null || raw is! Map) return null;
+  final m = asMap(raw);
+  if (m.isEmpty) return null;
+  final out = <String, double>{};
+  m.forEach((k, v) {
+    final n = asNum(v);
+    if (n != null && n > 0) out[k.toString()] = n.toDouble();
+  });
+  return out.isEmpty ? null : out;
+}
+
 // ===================================================================
 // IDENTIDADE NO HEADER (nome exibido)
 // ===================================================================

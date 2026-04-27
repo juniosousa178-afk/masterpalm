@@ -12,6 +12,16 @@ typedef HtmlWindowBase = html.WindowBase;
 
 /// Compila só no Web.
 class Web {
+  static bool isIosWebKit() {
+    final ua = html.window.navigator.userAgent.toLowerCase();
+    final isAppleMobile =
+        ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod');
+    final isWebKit = ua.contains('applewebkit');
+    return isAppleMobile && isWebKit;
+  }
+
+  static String userAgent() => html.window.navigator.userAgent;
+
   // DOM/Janela
   static void scrollToTop() => html.window.scrollTo(0, 0);
 
@@ -29,6 +39,20 @@ class Web {
 
   /// Acesso ao localStorage (usado no _detectSlug)
   static Map<String, String> get localStorage => html.window.localStorage;
+
+  static void localStorageSet(String key, String value) {
+    try {
+      html.window.localStorage[key] = value;
+    } catch (_) {}
+  }
+
+  static String? localStorageGet(String key) {
+    try {
+      return html.window.localStorage[key];
+    } catch (_) {
+      return null;
+    }
+  }
 
   static void setMetaThemeColor(String hex) {
     final el = html.document.querySelector('meta[name="theme-color"]')
@@ -102,5 +126,48 @@ class Web {
     try {
       html.document.getElementById('initial-loader')?.remove();
     } catch (_) {}
+  }
+
+  static String? getMainDartJsScriptSrc() {
+    try {
+      for (final n in html.document.querySelectorAll('script')) {
+        if (n is! html.ScriptElement) continue;
+        final src = n.src;
+        if (src.isNotEmpty && src.contains('main.dart.js')) {
+          return src;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<Map<String, dynamic>> netTestBuildProvenance() async {
+    final out = <String, dynamic>{
+      'mainDartJsScriptSrc': getMainDartJsScriptSrc(),
+    };
+    try {
+      final sw = html.window.navigator.serviceWorker;
+      if (sw != null) {
+        final c = sw.controller;
+        out['serviceWorkerController'] = c?.scriptUrl;
+        out['serviceWorkerControllerIsNull'] = c == null;
+      } else {
+        out['serviceWorker'] = 'unavailable';
+      }
+    } catch (e) {
+      out['serviceWorkerError'] = e.toString();
+    }
+    try {
+      final cs = html.window.caches;
+      if (cs != null) {
+        out['caches'] = await cs.keys();
+      } else {
+        out['caches'] = <String>[];
+        out['cacheStorage'] = 'unavailable';
+      }
+    } catch (e) {
+      out['cachesError'] = e.toString();
+    }
+    return out;
   }
 }

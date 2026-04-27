@@ -12,7 +12,13 @@ class CatalogEmptyProductsState extends StatelessWidget {
     return const SliverFillRemaining(
       hasScrollBody: false,
       child: Center(
-        child: Text('Nenhum produto disponível.'),
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Nenhum produto disponível no momento.',
+            textAlign: TextAlign.center,
+          ),
+        ),
       ),
     );
   }

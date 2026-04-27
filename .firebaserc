@@ -7,11 +7,11 @@
   "targets": {
     "masterpalm-58c46": {
       "hosting": {
-        "mastepalm": [
-          "mastepalm"
-        ],
         "masterpalm-58c46": [
           "masterpalm-58c46"
+        ],
+        "mastepalm": [
+          "mastepalm"
         ]
       }
     }

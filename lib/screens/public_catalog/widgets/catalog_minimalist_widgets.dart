@@ -277,14 +277,26 @@ class CatalogMinimalCategoryImageStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (categories.isEmpty) return const SizedBox.shrink();
-    final double imageSize =
-        (((categoryVisuals['imageSize'] as num?)?.toDouble() ?? 82)
-                .clamp(44, 120))
-            .toDouble();
-    final double spacing =
-        (((categoryVisuals['spacing'] as num?)?.toDouble() ?? 14).clamp(4, 24))
-            .toDouble();
-    final showTitle = (categoryVisuals['showTitle'] as bool?) ?? true;
+    final imageSizeRaw = categoryVisuals['imageSize'];
+    final spacingRaw = categoryVisuals['spacing'];
+    final showTitleRaw = categoryVisuals['showTitle'];
+    final double imageSize = (((imageSizeRaw is num
+                    ? imageSizeRaw.toDouble()
+                    : double.tryParse('$imageSizeRaw')) ??
+                82)
+            .clamp(44, 120))
+        .toDouble();
+    final double spacing = (((spacingRaw is num
+                    ? spacingRaw.toDouble()
+                    : double.tryParse('$spacingRaw')) ??
+                14)
+            .clamp(4, 24))
+        .toDouble();
+    final showTitle = showTitleRaw is bool
+        ? showTitleRaw
+        : (showTitleRaw is String
+            ? showTitleRaw.toLowerCase().trim() != 'false'
+            : true);
     final shape = (categoryVisuals['shape'] ?? 'circle').toString();
 
     BorderRadius radiusForShape() {
@@ -685,10 +697,9 @@ class CatalogMinimalHeroBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!enabled) return const SizedBox.shrink();
     final isCompact = bannerSizeMode == 'compacto';
-    final resolvedImageUrl =
-        (isCompact && compactImageUrl.trim().isNotEmpty)
-            ? compactImageUrl
-            : imageUrl;
+    final resolvedImageUrl = (isCompact && compactImageUrl.trim().isNotEmpty)
+        ? compactImageUrl
+        : imageUrl;
     final hasImage = resolvedImageUrl.trim().isNotEmpty;
     final hasCopy = title.trim().isNotEmpty ||
         subtitle.trim().isNotEmpty ||

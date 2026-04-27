@@ -1,11 +1,14 @@
 // lib/screens/public_catalog/widgets/product_card.dart
 // Wrapper que mapeia Map<String, dynamic> produto para CatalogProductCard (UI extraído de public_catalog_screen.dart)
 
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 
+import '../../../debug/catalog_normal_trace.dart';
 import '../../../services/catalog_share_service.dart';
 import '../../../services/public_store_link_helper.dart';
 import '../../../utils/safe_parse.dart';
+import '../catalog_helpers.dart' show catalogPrecoPorTamanhoFromDynamic;
 import '../catalog_product_card_size.dart';
 import 'catalog_product_card.dart';
 
@@ -93,6 +96,40 @@ class PublicCatalogProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    try {
+      return _buildBody(context);
+    } catch (e, st) {
+      final id = safeStr(produto['id']);
+      final nome = safeStr(produto['nome']);
+      if (kIsWeb) {
+        CatalogNormalTrace.setField('last_product_card_error', e.toString());
+        CatalogNormalTrace.setField(
+            'last_product_card_error_type', e.runtimeType.toString());
+        CatalogNormalTrace.setField('last_product_card_id', id);
+        CatalogNormalTrace.setField(
+            'last_product_card_name', nome.length > 80 ? '${nome.substring(0, 80)}…' : nome);
+        CatalogNormalTrace.setField('last_product_stack', st.toString());
+        CatalogNormalTrace.mark('product_card.build.exception');
+        CatalogNormalTrace.persist();
+      }
+      if (kDebugMode) {
+        debugPrint('PublicCatalogProductCard id=$id error=$e\n$st');
+      }
+      return Card(
+        margin: const EdgeInsets.all(4),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(
+            'Não foi possível exibir este produto.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildBody(BuildContext context) {
     final p = produto;
     final baseCatalogUrl = catalogShareUrl ?? buildPublicCatalogUrl(lojaId) ?? '';
     final deepLinkProduto = safeStr(p['slug']).isNotEmpty ? safeStr(p['slug']) : safeStr(p['id']);
@@ -107,11 +144,8 @@ class PublicCatalogProductCard extends StatelessWidget {
     final price = safeDouble(p['preco']);
     final priceMin = p['priceMin'] != null ? safeDouble(p['priceMin']) : null;
     final priceMax = p['priceMax'] != null ? safeDouble(p['priceMax']) : null;
-    final precoPorTamanho = (p['precoPorTamanho'] != null && p['precoPorTamanho'] is Map)
-        ? Map<String, double>.from(
-            (p['precoPorTamanho'] as Map).map((k, v) => MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0)),
-          )
-        : null;
+    final precoPorTamanho =
+        catalogPrecoPorTamanhoFromDynamic(p['precoPorTamanho']);
 
     final tipoProduto = (p['tipoProduto'] ?? p['tipo'] ?? 'simples').toString();
     final itensComboRaw = p['itensCombo'];
@@ -120,7 +154,7 @@ class PublicCatalogProductCard extends StatelessWidget {
       itensCombo = [];
       for (final e in itensComboRaw) {
         if (e is! Map) continue;
-        itensCombo.add(Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v))));
+        itensCombo.add(asMap(e));
       }
       if (itensCombo.isEmpty) itensCombo = null;
     }

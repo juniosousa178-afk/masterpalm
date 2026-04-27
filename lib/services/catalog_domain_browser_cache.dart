@@ -48,15 +48,17 @@ String? _sanitizePublicStoreLogoUrlForCache(String? raw) {
   if (t.isEmpty) return null;
   final lower = t.toLowerCase();
   if (lower == 'null' || lower == 'undefined') return null;
-  if (!(lower.startsWith('http://') || lower.startsWith('https://'))) return null;
+  if (!(lower.startsWith('http://') || lower.startsWith('https://')))
+    return null;
   return t;
 }
 
-/// Cache leve no navegador: `catalog_domain_cache_v1_{hostNormalizado}`.
+/// Cache leve no navegador: `catalog_domain_cache_v2_{hostNormalizado}`.
 class CatalogDomainBrowserCache {
   CatalogDomainBrowserCache._();
 
-  static const String _prefix = 'catalog_domain_cache_v1_';
+  static const String _prefix = 'catalog_domain_cache_v2_';
+  static const String _legacyPrefix = 'catalog_domain_cache_v1_';
 
   static String _key(String normalizedHost) => '$_prefix$normalizedHost';
 
@@ -109,6 +111,7 @@ class CatalogDomainBrowserCache {
         'cachedAt': DateTime.now().millisecondsSinceEpoch,
       });
       catalogDomainBrowserStorageSet(_key(normalizedHost), payload);
+      catalogDomainBrowserStorageRemove('$_legacyPrefix$normalizedHost');
     } catch (_) {}
 
     if (kDebugMode) {
@@ -122,6 +125,7 @@ class CatalogDomainBrowserCache {
     if (normalizedHost.isEmpty) return;
     try {
       catalogDomainBrowserStorageRemove(_key(normalizedHost));
+      catalogDomainBrowserStorageRemove('$_legacyPrefix$normalizedHost');
     } catch (_) {}
   }
 }

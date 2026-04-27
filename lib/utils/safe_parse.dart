@@ -4,7 +4,8 @@
 
 import '../core/safe_cast.dart';
 
-export '../core/safe_cast.dart' show asMap, asMapDeep, asList, listOfMapStringDynamic, asDateTime;
+export '../core/safe_cast.dart'
+    show asMap, asMapDeep, asList, listOfMapStringDynamic, asDateTime, asNum;
 
 Map<String, dynamic> safeMap(dynamic v) => asMap(v);
 List<dynamic> safeList(dynamic v) => asList(v);

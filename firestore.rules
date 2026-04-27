@@ -634,6 +634,12 @@ service cloud.firestore {
           || (belongsToStore(lojaId) && isVendasCatalogoTotalOnlySafeUpdate());
       }
 
+      // Só o espelho publicado para o catálogo (denormalizado; sem escrita pública list/get).
+      match /produtos_publicos/{produtoId} {
+        allow read: if true;
+        allow create, update, delete: if isAdminOrSystem() || belongsToStore(lojaId);
+      }
+
       match /vendas/{vendaId} {
         allow read: if isAdminOrSystem();
         allow create: if isSignedIn();

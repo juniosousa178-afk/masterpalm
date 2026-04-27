@@ -6,6 +6,7 @@
 // Não depende de lojaId, config nem produtos — só tema + texto.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,11 @@ import '../debug/catalog_startup_trace.dart';
 import '../themes/app_colors.dart';
 import '../web/platform_stub.dart'
     if (dart.library.html) '../web/platform_web.dart' as plat;
+
+const String kCatalogDiagBuildId = String.fromEnvironment(
+  'CATALOG_BUILD_ID',
+  defaultValue: 'dev',
+);
 
 /// Tela leve exibida antes de resolver domínio / Firebase mínimo.
 class CatalogBootstrapLoadingScreen extends StatelessWidget {
@@ -33,9 +39,8 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     // No loader público do catálogo, priorizar logo da loja.
     // Se não houver logo, usar nome da loja. Nunca mostrar MasterPalm para cliente final.
-    final titulo = (nomeLoja ?? '').trim().isNotEmpty
-        ? nomeLoja!.trim()
-        : 'Carregando loja';
+    final nomeLojaSafe = (nomeLoja ?? '').trim();
+    final titulo = nomeLojaSafe.isNotEmpty ? nomeLojaSafe : 'Carregando loja';
     final logo = (logoUrl ?? '').trim();
     final hasLogo = logo.isNotEmpty;
 
@@ -189,6 +194,10 @@ class PublicCatalogBootstrapApp extends StatefulWidget {
 class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
   late String? _nomeLoja;
   late String? _logoUrl;
+  String? _bootstrapErrorMessage;
+  String? _bootstrapTechnicalMessage;
+  String? _bootstrapStack;
+  bool _bootstrapRunning = false;
 
   void _updateNomeLoja(String? nomeLoja) {
     if (!mounted) return;
@@ -217,15 +226,30 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
         plat.Web.hideInitialCatalogLoader();
       });
     }
+    _startBootstrap();
+  }
+
+  void _startBootstrap() {
+    if (_bootstrapRunning) return;
+    _bootstrapErrorMessage = null;
+    _bootstrapTechnicalMessage = null;
+    _bootstrapStack = null;
+    _bootstrapRunning = true;
     unawaited(_run());
   }
 
   Future<void> _run() async {
+    if (kIsWeb) {
+      plat.Web.localStorageSet('mp_catalog_phase', 'catalog.loja.load.start');
+    }
     CatalogStartupTrace.spanStart(widget.firebaseSpanName);
     var firebaseOk = false;
     try {
       if (kDebugMode) debugPrint('[CATALOG_BOOT] firebase.min.begin');
-      firebaseOk = await widget.initFirebase();
+      firebaseOk = await widget.initFirebase().timeout(
+            const Duration(seconds: 20),
+            onTimeout: () => false,
+          );
       if (kDebugMode) {
         debugPrint(
           '[CATALOG_BOOT] firebase.min.${firebaseOk ? 'ok' : 'fail'}',
@@ -233,6 +257,9 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
       }
       if (firebaseOk) {
         FirebaseGuard.markReady();
+      }
+      if (kIsWeb) {
+        plat.Web.localStorageSet('mp_catalog_phase', 'catalog.loja.load.done');
       }
       CatalogStartupTrace.spanEnd(
         widget.firebaseSpanName,
@@ -249,20 +276,109 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
     }
 
     try {
-      await widget.afterFirebaseMinReady(
+      await widget
+          .afterFirebaseMinReady(
         updateNomeLoja: _updateNomeLoja,
         updateLogoUrl: _updateLogoUrl,
+      )
+          .timeout(
+        const Duration(seconds: 12),
+        onTimeout: () {
+          throw TimeoutException('afterFirebaseMinReady timeout');
+        },
       );
     } catch (e, st) {
       logW(
         '⚠️ [CATALOG_BOOT] afterFirebaseMinReady falhou (type=${e.runtimeType})',
       );
       if (kDebugMode) logD('$st');
+      if (mounted) {
+        setState(() {
+          _bootstrapErrorMessage =
+              'Não foi possível carregar a loja agora. Tente novamente.';
+          _bootstrapTechnicalMessage = '${e.runtimeType}: $e';
+          _bootstrapStack = st.toString();
+        });
+      }
+      if (kIsWeb) {
+        final uri = Uri.base;
+        final payload = <String, dynamic>{
+          'buildId': kCatalogDiagBuildId,
+          'timestamp': DateTime.now().toIso8601String(),
+          'host': uri.host,
+          'path': uri.path,
+          'query': uri.query,
+          'userAgent': plat.Web.userAgent(),
+          'error': '$e',
+          'stack': '$st',
+          'fase': 'lojaLoad',
+          'appVersion': 'web',
+        };
+        plat.Web.localStorageSet('mp_last_runtime_error', jsonEncode(payload));
+      }
+    } finally {
+      _bootstrapRunning = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final diag = kIsWeb && Uri.base.queryParameters['diag'] == '1';
+    if (_bootstrapErrorMessage != null) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+        ),
+        home: Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.store_mall_directory_outlined,
+                      size: 60,
+                      color: Colors.grey.shade600,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _bootstrapErrorMessage!,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (diag && _bootstrapTechnicalMessage != null) ...[
+                      const SizedBox(height: 10),
+                      SelectableText(
+                        'buildId=$kCatalogDiagBuildId\n'
+                        'host=${Uri.base.host}\n'
+                        'path=${Uri.base.path}\n'
+                        'query=${Uri.base.query}\n'
+                        'userAgent=${plat.Web.userAgent()}\n'
+                        'error=$_bootstrapTechnicalMessage\n'
+                        'stack=${_bootstrapStack ?? ''}',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.grey.shade700,
+                            ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    FilledButton(
+                      onPressed: _startBootstrap,
+                      child: const Text('Tentar novamente'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return CatalogBootstrapLoadingApp(
       nomeLoja: _nomeLoja,
       logoUrl: _logoUrl,

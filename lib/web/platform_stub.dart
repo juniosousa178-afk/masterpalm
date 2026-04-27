@@ -15,6 +15,9 @@ class HtmlWindowBase {
 }
 
 class Web {
+  static bool isIosWebKit() => false;
+  static String userAgent() => '';
+
   // DOM/Janela (no-ops)
   static void scrollToTop() {}
   static void addPopState(void Function(dynamic) h) {}
@@ -26,6 +29,8 @@ class Web {
 
   // Armazenamento local (vazio no stub)
   static Map<String, String> get localStorage => <String, String>{};
+  static void localStorageSet(String key, String value) {}
+  static String? localStorageGet(String key) => null;
 
   static void setMetaThemeColor(String hex) {}
 
@@ -52,4 +57,10 @@ class Web {
 
   /// Remove o loader estático de [web/index.html] após o primeiro frame Flutter.
   static void hideInitialCatalogLoader() {}
+
+  /// Só Web: origem de `main.dart.js` e estado de SW/Cache (netTest / diagnóstico).
+  static String? getMainDartJsScriptSrc() => null;
+
+  static Future<Map<String, dynamic>> netTestBuildProvenance() async =>
+      <String, dynamic>{};
 }
