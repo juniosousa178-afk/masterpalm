@@ -1,8 +1,17 @@
 # Baseline estável — MasterPalm Web
 
-BuildId: diag-20260427-APPSTARTFIX-f14fe79  
-Data: 2026-04-27  
-Status: Estável validada manualmente
+**BuildId:** `diag-20260427-APPSTARTFIX-f14fe79`  
+**Data:** 2026-04-27
+
+**Status:** Validada em PC, Android, iPhone Web, Safari, Chrome e WhatsApp WebView.
+
+O detalhe por ambiente encontra-se abaixo (tabela de validação).
+
+## BuildId (referência única)
+
+```
+diag-20260427-APPSTARTFIX-f14fe79
+```
 
 ## Ambientes validados
 
@@ -37,10 +46,14 @@ Não alterar nesta fase:
 - catálogo
 - Firestore rules
 - hosting rules
-- diagnóstico web
+- diagnóstico web (sem remoção agressiva)
 
-Os diagnósticos appStartTrace, bootTrace, netTest e overlays diag devem permanecer por enquanto.
+Os diagnósticos appStartTrace, bootTrace, netTest e overlays `diag` devem permanecer por enquanto. Ver [SECURITY_BASELINE.md](SECURITY_BASELINE.md).
 
 ## Observação
 
 Qualquer nova melhoria deve partir desta baseline, com buildId novo e escopo separado.
+
+## Regressão
+
+Testes automáticos: `test/catalog_initial_web_route_test.dart` (ver checklist em [DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md)).

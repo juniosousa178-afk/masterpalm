@@ -79,6 +79,10 @@ import 'screens/relatorios_financeiros_screen.dart';
 import 'screens/public_catalog_screen.dart';
 import 'screens/public_catalog/catalog_url_query_codec.dart';
 import 'catalog/catalog_bootstrap_loading.dart';
+import 'catalog/catalog_initial_web_route.dart';
+import 'debug/web_root_boot_trace_app.dart';
+import 'debug/invalid_public_loja_path_app.dart';
+import 'debug/app_start_trace_collector.dart';
 import 'services/catalog_domain_resolver.dart';
 import 'services/catalog_domain_browser_cache.dart';
 import 'screens/loja_config_screen.dart';
@@ -1143,10 +1147,12 @@ Future<void> _logCatalogRuntimeError({
       'appVersion': 'web',
     };
     web_plat.Web.localStorageSet('mp_last_runtime_error', jsonEncode(payload));
-    if (Firebase.apps.isNotEmpty) {
-      await FirebaseFirestore.instance
-          .collection('catalog_runtime_errors')
-          .add(payload);
+    if (_safeFirebaseAppsIsNotEmpty()) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('catalog_runtime_errors')
+            .add(payload);
+      } on Object catch (_) {}
     }
   } catch (_) {}
 }
@@ -1379,6 +1385,37 @@ class _SnappyScrollBehavior extends MaterialScrollBehavior {
 // ===========================================================================
 Uri? _initialWebUri;
 
+const Duration _kHiveOpenBudget = Duration(seconds: 12);
+const Duration _kHiveInitFlutterBudget = Duration(seconds: 10);
+
+/// `?diag=1&appStartTrace=1` — instrumentação do arranque (raiz web; tela "Preparando tudo" = [_BootApp]).
+bool _isAppStartTraceQuery() {
+  if (!kIsWeb) return false;
+  final u = _initialWebUri ?? Uri.base;
+  return u.queryParameters['diag'] == '1' &&
+      u.queryParameters['appStartTrace'] == '1';
+}
+
+void _appStartMark(
+  String phase, {
+  String? detail,
+  String? finalDecision,
+}) {
+  if (!_isAppStartTraceQuery()) return;
+  AppStartTraceCollector.mark(phase, detail: detail, finalDecision: finalDecision);
+}
+
+/// Decisão de rota inicial (web) — pura, testada em [test/catalog_initial_web_route_test.dart].
+CatalogRouteDecision _catalogRouteDecisionForInitialWebUri() {
+  final u = _initialWebUri ?? Uri.base;
+  return CatalogRouteDecision.fromUri(
+    u,
+    isDefaultAppOrCatalogHostingHost: AppUrls.isDefaultMasterPalmCatalogHost,
+    isPublicMarketingHost: AppUrls.isPublicMarketingHost,
+    customDomainMappingResolved: null,
+  );
+}
+
 /// Web: abertura só como visitante do catálogo (sem precisar do bootstrap pesado do app).
 /// Usa o mesmo critério do roteamento pós-bootstrap: path `/loja` ou host em [catalog_domains].
 Future<bool> _webShouldMinimalBootstrapForPublicCatalogViewer() async {
@@ -1463,18 +1500,6 @@ bool _isPublicMarketingSite() {
   if (p.startsWith('/c/')) return false;
   final atRoot = p.isEmpty || p == '/';
   if (!atRoot) return false;
-  return true;
-}
-
-bool _shouldShowRootStoreNotConfigured(Uri uri) {
-  if (!kIsWeb) return false;
-  final hostNorm = AppUrls.normalizeHostForAppUrlCheck(uri.host);
-  final isAppHost = AppUrls.appWebHostsAll.contains(hostNorm);
-  if (!isAppHost) return false;
-  final atRoot = uri.path.isEmpty || uri.path == '/';
-  if (!atRoot) return false;
-  if (_uriHasLojaPathPriority(uri)) return false;
-  if (_uriHasExplicitCatalogQueryOrFragment(uri)) return false;
   return true;
 }
 
@@ -1671,15 +1696,17 @@ bool _shouldForceNetTest(Uri uri) {
       isTruthy(uri.queryParameters['netTest']);
 }
 
-/// `diag=1&netTest=1` no Web (evita side‑effects pós-init que quebram o WebKit).
+/// `diag+netTest` / `diag+bootTrace` / `diag+appStartTrace` no Web (evita `setPersistence` e leituras pós-init que quebram o WebKit).
 bool _isWebNetTestDiagnosticsQuery(Uri? uri) {
   if (uri == null) return false;
   bool isTruthy(String? value) {
     final v = (value ?? '').trim().toLowerCase();
     return v == '1' || v == 'true' || v == 'yes' || v == 'on';
   }
-  return isTruthy(uri.queryParameters['diag']) &&
-      isTruthy(uri.queryParameters['netTest']);
+  if (!isTruthy(uri.queryParameters['diag'])) return false;
+  return isTruthy(uri.queryParameters['netTest']) ||
+      isTruthy(uri.queryParameters['bootTrace']) ||
+      isTruthy(uri.queryParameters['appStartTrace']);
 }
 
 Map<String, dynamic> _diagErrorDetails(Object error, StackTrace stack) {
@@ -2815,6 +2842,57 @@ class _BootApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       initialRoute: '/',
+      builder: (context, child) {
+        if (!kIsWeb) return child ?? const SizedBox.shrink();
+        final u = Uri.base;
+        if (u.queryParameters['diag'] != '1' ||
+            u.queryParameters['appStartTrace'] != '1') {
+          return child ?? const SizedBox.shrink();
+        }
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Positioned.fill(child: child ?? const SizedBox.shrink()),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Material(
+                color: Colors.black87,
+                child: SafeArea(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 240),
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: AppStartTraceCollector.revision,
+                      builder: (context, _, __) {
+                        return SingleChildScrollView(
+                          padding: const EdgeInsets.all(8),
+                          child: DefaultTextStyle(
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              height: 1.2,
+                              fontFamily: 'monospace',
+                            ),
+                            child: Text(
+                              'buildId=$kCatalogDiagBuildId\n'
+                              'host=${Uri.base.host} path=${Uri.base.path} query=${Uri.base.query}\n'
+                              'UA=${web_plat.Web.userAgent()}\n'
+                              'routeDecision=${_catalogRouteDecisionForInitialWebUri().kind.name}\n'
+                              'appStartTrace (Splash = [_BootApp] "Preparando tudo…")\n\n'
+                              '${AppStartTraceCollector.dumpText()}',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
       // Web path URL: o framework usa a URL como rota inicial; onGenerateInitialRoutes
       // garante que /login, /router ou qualquer path mostre o splash (evita "Could not navigate to initial route")
       onGenerateInitialRoutes: (String initialRoute) {
@@ -2857,13 +2935,28 @@ class _BootError extends StatelessWidget {
 // ===========================================================================
 // 🔥 Inicialização do Firebase com fallback OFFLINE
 // ===========================================================================
+/// WebKit: aceder a [Firebase.apps] antes de um [Firebase.initializeApp] seguro
+/// pode lançar (ex.: *Null check operator used on a null value*). Usar isto no guard.
+///
+/// *Source map* (build web `npx source-map-cli resolve main.dart.js.map <line> <col>`):
+/// `~13026` → [Firebase.apps] (`package:firebase_core/.../firebase.dart`);
+/// `~124972` → [FirebaseCoreWeb] (`firebase_core_web` inject script); stack auxiliar
+/// a `web_root_boot_trace`/`[ensureFirebaseInitializedOnce]`.
+bool _safeFirebaseAppsIsNotEmpty() {
+  try {
+    return Firebase.apps.isNotEmpty;
+  } on Object {
+    return false;
+  }
+}
+
 /// Uma instância de in-flight; duplicar podia disparear dois `initializeApp` em condição de corrida.
 Future<bool>? _firebaseCoreInitFuture;
 
 Future<bool> ensureFirebaseInitializedOnce() => _initFirebaseCore();
 
 Future<bool> _initFirebaseCore() async {
-  if (Firebase.apps.isNotEmpty) {
+  if (_safeFirebaseAppsIsNotEmpty()) {
     if (kDebugMode) {
       debugPrint(
         '[CATALOG_BOOT] firebase.min.ok (already initialized, skip duplicate)',
@@ -2895,9 +2988,9 @@ Future<bool> _initFirebaseCorePerform() async {
       options: firebaseOptionsForInit(),
     ).timeout(const Duration(seconds: 15));
 
-    // Web: manter usuário logado; em `diag&netTest` pula (WebKit: `setPersistence` pode
+    // Web: manter usuário logado; em `diag&netTest` / `diag&bootTrace` pula (WebKit: `setPersistence` pode
     // lançar "Null check" em interop) — o netTest chama `Firebase.initializeApp` isolado.
-    if (kIsWeb && !skipAuthPersistence && Firebase.apps.isNotEmpty) {
+    if (kIsWeb && !skipAuthPersistence && _safeFirebaseAppsIsNotEmpty()) {
       try {
         await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
         logD('🔐 [BOOT] Auth persistência LOCAL (permanece logado até Sair)');
@@ -2927,7 +3020,7 @@ Future<bool> _initFirebaseCorePerform() async {
     ));
     return false;
   } on FirebaseException catch (e) {
-    if (e.code == 'duplicate-app' && Firebase.apps.isNotEmpty) {
+    if (e.code == 'duplicate-app' && _safeFirebaseAppsIsNotEmpty()) {
       logD(
           'ℹ️ Firebase já estava inicializado (duplicate-app). Usando instância existente.');
       boot.mark('firebase.init.duplicate');
@@ -3003,6 +3096,11 @@ Future<void> main() async {
       // Captura URL inicial para decisão catálogo vs app (evita redirect durante bootstrap)
       final initialUri = Uri.base;
       _initialWebUri = initialUri;
+      if (initialUri.queryParameters['diag'] == '1' &&
+          initialUri.queryParameters['appStartTrace'] == '1') {
+        AppStartTraceCollector.clear();
+        AppStartTraceCollector.mark('main.enter', detail: initialUri.toString());
+      }
 
       // GATE ABSOLUTO (antes de qualquer bootstrap/fallback do catálogo):
       // ?diag=1&netTest=1 deve sempre abrir diagnóstico técnico e retornar.
@@ -3024,13 +3122,43 @@ Future<void> main() async {
         runApp(const _CatalogResolveTestApp());
         return;
       }
+
+      // bootTrace+diag: raiz do **web app** (Safari/Chrome/WebView no iPhone = mesmo Flutter Web;
+      // não há APK nativo iOS neste fluxo). Não monta PublicCatalogScreen (ver [WebRootBootTraceApp]).
+      if (initialUri.queryParameters['bootTrace'] == '1' &&
+          initialUri.queryParameters['diag'] == '1') {
+        final d = _catalogRouteDecisionForInitialWebUri();
+        if (d.kind == CatalogInitialRouteKind.appRoot) {
+          final isPublicCat = _uriHasLojaPathPriority(initialUri) &&
+              !_uriIsPagamentoPublicPath(initialUri);
+          runApp(
+            WebRootBootTraceApp(
+              buildId: kCatalogDiagBuildId,
+              initialUri: initialUri,
+              routeDecision: d,
+              isPublicCatalogPath: isPublicCat,
+              isAppHost:
+                  AppUrls.isDefaultMasterPalmCatalogHost(initialUri.host),
+              initFirebase: ensureFirebaseInitializedOnce,
+              onContinue: () {
+                runApp(const _BootApp());
+              },
+            ),
+          );
+          return;
+        }
+      }
     }
 
     logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logD('🚀 [MAIN] Iniciando MasterPalm');
     logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // FAST PATH CIRÚRGICO: catálogo público via /loja/* e domínio próprio.
+    // FAST PATH CIRÚRGICO: catálogo público via /loja/* e domínio próprio (incl. iPhone Web na vitrine).
+    //
+    // [AppUrls.isDefaultMasterPalmCatalogHost] = app + firebase hosting, **não** é domínio de loja.
+    // A raiz `/` nunca deve renderizar [CatalogDomainBootstrapErrorApp] (só domínio próprio sem mapeamento).
+    // Catálogo no host do app: apenas `/loja/{slug}` ou query/fragment legado explícito (`?loja=`, etc.).
     //
     // Catálogo público não deve passar pelo bootstrap pesado do app antes do primeiro frame.
     // Isso causa tela branca. Renderizar loader imediatamente; não chamar `_bootstrapSafe` aqui
@@ -3039,79 +3167,98 @@ Future<void> main() async {
       final uriWeb = _initialWebUri ?? Uri.base;
       _setCatalogPhase('route.detected');
       _debugLogPublicCatalogBootChoice(uriWeb);
-      if (_shouldShowRootStoreNotConfigured(uriWeb)) {
-        unawaited(_logCatalogRuntimeError(
-          fase: 'domainResolver',
-          error: StateError('root_without_store_context'),
-          stack: StackTrace.current,
-          slug: _lojaSlugOrIdFromUrl(),
-          lojaId: '',
-        ));
-        runApp(const CatalogDomainBootstrapErrorApp(
-          message: 'Loja não encontrada ou domínio não configurado.',
-        ));
-        return;
+      if (kDebugMode) {
+        final atRoot = uriWeb.path.isEmpty || uriWeb.path == '/';
+        if (AppUrls.isDefaultMasterPalmCatalogHost(uriWeb.host) &&
+            atRoot &&
+            !_uriHasLojaPathPriority(uriWeb) &&
+            !_uriHasExplicitCatalogQueryOrFragment(uriWeb) &&
+            !_uriIsPagamentoPublicPath(uriWeb)) {
+          final cd = _catalogRouteDecisionForInitialWebUri();
+          assert(
+            cd.kind == CatalogInitialRouteKind.appRoot,
+            'ROUTEGUARD: host do app na raiz deve ser appRoot, nunca ${cd.kind}',
+          );
+        }
       }
+      // Raiz de app.mastepalm.com.br/ → fluxo normal ([_BootApp]/MyApp), nunca erro de catálogo aqui.
 
       final isPublicCatalogPath =
           _uriHasLojaPathPriority(uriWeb) && !_uriIsPagamentoPublicPath(uriWeb);
       if (isPublicCatalogPath) {
-        _setCatalogPhase('catalog.slug.extracted');
-        final lojaSlugOrId = _lojaSlugOrIdFromUrl();
-        _logWebCatalogDiag(
-          source: 'fast_path.loja_path.enter',
-          slugOrId: lojaSlugOrId,
-          resolvedLojaId: lojaSlugOrId,
+        final routeDecision = _catalogRouteDecisionForInitialWebUri();
+        if (routeDecision.kind == CatalogInitialRouteKind.lojaPathOrSlugInvalid ||
+            routeDecision.kind == CatalogInitialRouteKind.legacyQueryInvalid) {
+          _setCatalogPhase('route.loja_path.invalid');
+          runApp(InvalidPublicLojaPathApp(
+            uri: uriWeb,
+            buildId: kCatalogDiagBuildId,
+          ));
+          return;
+        }
+        if (routeDecision.kind == CatalogInitialRouteKind.publicCatalogByLojaPath) {
+          _setCatalogPhase('catalog.slug.extracted');
+          final lojaSlugOrId = routeDecision.extractedSlugOrId?.isNotEmpty == true
+              ? routeDecision.extractedSlugOrId!
+              : _lojaSlugOrIdFromUrl();
+          _logWebCatalogDiag(
+            source: 'fast_path.loja_path.enter',
+            slugOrId: lojaSlugOrId,
+            resolvedLojaId: lojaSlugOrId,
+          );
+          final vendedorRef = _vendedorRefFromUrl();
+          final indicacaoRef = _indicacaoRefFromUrl();
+          final produtoRef = _produtoRefFromUrl();
+          CatalogStartupTrace.mark(
+              'CAT_START.runApp.catalog_bootstrap_gate.loja_path');
+          runApp(PublicCatalogBootstrapApp(
+            firebaseSpanName: 'CAT_START.fast_path.firebase_min_init',
+            initFirebase: ensureFirebaseInitializedOnce,
+            afterFirebaseMinReady: ({
+              required void Function(String? nomeLoja) updateNomeLoja,
+              required void Function(String? logoUrl) updateLogoUrl,
+            }) async {
+              _setCatalogPhase('catalog.loja.load.start');
+              // /loja/{id}: nome costuma vir depois no stream de config; mantemos fallback leve aqui.
+              updateNomeLoja(null);
+              updateLogoUrl(null);
+              StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+                urlSlugOrId: lojaSlugOrId,
+                resolvedCanonicalStoreId: lojaSlugOrId,
+              );
+              _logWebCatalogDiag(
+                source: 'fast_path.loja_path.seeded',
+                slugOrId: lojaSlugOrId,
+                resolvedLojaId: lojaSlugOrId,
+              );
+              CatalogStartupTrace.mark(
+                  'CAT_START.fast_path.public_resolver_seeded',
+                  data: {'loja_slug_or_id': lojaSlugOrId},
+              );
+              CatalogStartupTrace.mark(
+                  'CAT_START.runApp.catalog_web_root.fast_path',
+                  data: {
+                    'loja_slug_or_id': lojaSlugOrId,
+                  },
+              );
+              if (kDebugMode) {
+                debugPrint('[CATALOG_BOOT] catalog.root.render');
+              }
+              _setCatalogPhase('catalog.loja.load.done');
+              _setCatalogPhase('publicCatalogScreen.render');
+              runApp(CatalogWebRoot(
+                lojaId: lojaSlugOrId,
+                vendedorRef: vendedorRef,
+                indicacaoRef: indicacaoRef,
+                produtoRef: produtoRef,
+              ));
+            },
+          ));
+          return;
+        }
+        logW(
+          '⚠️ [MAIN] Rota /loja/* inesperada (${routeDecision.kind}) — sem fast path de catálogo',
         );
-        final vendedorRef = _vendedorRefFromUrl();
-        final indicacaoRef = _indicacaoRefFromUrl();
-        final produtoRef = _produtoRefFromUrl();
-        CatalogStartupTrace.mark(
-            'CAT_START.runApp.catalog_bootstrap_gate.loja_path');
-        runApp(PublicCatalogBootstrapApp(
-          firebaseSpanName: 'CAT_START.fast_path.firebase_min_init',
-          initFirebase: ensureFirebaseInitializedOnce,
-          afterFirebaseMinReady: ({
-            required void Function(String? nomeLoja) updateNomeLoja,
-            required void Function(String? logoUrl) updateLogoUrl,
-          }) async {
-            _setCatalogPhase('catalog.loja.load.start');
-            // /loja/{id}: nome costuma vir depois no stream de config; mantemos fallback leve aqui.
-            updateNomeLoja(null);
-            updateLogoUrl(null);
-            StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
-              urlSlugOrId: lojaSlugOrId,
-              resolvedCanonicalStoreId: lojaSlugOrId,
-            );
-            _logWebCatalogDiag(
-              source: 'fast_path.loja_path.seeded',
-              slugOrId: lojaSlugOrId,
-              resolvedLojaId: lojaSlugOrId,
-            );
-            CatalogStartupTrace.mark(
-              'CAT_START.fast_path.public_resolver_seeded',
-              data: {'loja_slug_or_id': lojaSlugOrId},
-            );
-            CatalogStartupTrace.mark(
-              'CAT_START.runApp.catalog_web_root.fast_path',
-              data: {
-                'loja_slug_or_id': lojaSlugOrId,
-              },
-            );
-            if (kDebugMode) {
-              debugPrint('[CATALOG_BOOT] catalog.root.render');
-            }
-            _setCatalogPhase('catalog.loja.load.done');
-            _setCatalogPhase('publicCatalogScreen.render');
-            runApp(CatalogWebRoot(
-              lojaId: lojaSlugOrId,
-              vendedorRef: vendedorRef,
-              indicacaoRef: indicacaoRef,
-              produtoRef: produtoRef,
-            ));
-          },
-        ));
-        return;
       }
 
       // FAST PATH: domínio próprio (host mapeado em catalog_domains).
@@ -3247,6 +3394,7 @@ Future<void> main() async {
       CatalogStartupTrace.spanStart('CAT_START.bootstrap_safe');
       await _bootstrapSafe();
       CatalogStartupTrace.spanEnd('CAT_START.bootstrap_safe');
+      _appStartMark('post_bootstrap.after_await_bootstrap');
       logD('🟩 [MAIN] _bootstrapSafe() concluído com sucesso');
 
       try {
@@ -3298,6 +3446,15 @@ Future<void> main() async {
         logD('🌐 [MAIN] _isPublicCatalogUrl() → $isCat');
 
         if (isCat) {
+          final routePre = _catalogRouteDecisionForInitialWebUri();
+          if (routePre.kind == CatalogInitialRouteKind.lojaPathOrSlugInvalid ||
+              routePre.kind == CatalogInitialRouteKind.legacyQueryInvalid) {
+            runApp(InvalidPublicLojaPathApp(
+              uri: uriWeb,
+              buildId: kCatalogDiagBuildId,
+            ));
+            return;
+          }
           _setCatalogPhase('catalog.slug.extracted');
           final slugOuId = _lojaSlugOrIdFromUrl();
           _setCatalogPhase('catalog.loja.load.start');
@@ -3326,9 +3483,25 @@ Future<void> main() async {
             indicacaoRef: indicacaoRef,
             produtoRef: produtoRef,
           ));
+        } else if (!isCat &&
+            AppUrls.isDefaultMasterPalmCatalogHost(uriWeb.host) &&
+            !_uriHasLojaPathPriority(uriWeb) &&
+            !_uriHasExplicitCatalogQueryOrFragment(uriWeb)) {
+          // Host do SPA (app / firebase web) na raiz: **não** bloquear em catalog_domains/Firestore
+          // (WebKit podia pendurar o await e deixar a splash "Preparando tudo…" para sempre).
+          _appStartMark('web.route',
+              detail: 'app_host_root_skip_catalog_domains',
+              finalDecision: 'my_app');
+          logD(
+            '🌐 [MAIN] Host admin canónico na raiz (sem /loja) → MyApp sem catalog_domains',
+          );
+          CatalogStartupTrace.mark('CAT_START.runApp.my_app.app_host_root');
+          runApp(const MyApp());
+          registerWebPopStateLogger();
+          return;
         } else if (!_uriHasLojaPathPriority(uriWeb) &&
             !_uriHasExplicitCatalogQueryOrFragment(uriWeb) &&
-            Firebase.apps.isNotEmpty) {
+            _safeFirebaseAppsIsNotEmpty()) {
           final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
           _setCatalogPhase('catalog.domain.resolve.start');
           final fromMappedHost = await resolveLojaIdForPublicCatalogHost(
@@ -3372,6 +3545,7 @@ Future<void> main() async {
           } else {
             logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
             CatalogStartupTrace.mark('CAT_START.runApp.my_app.web_default');
+            _appStartMark('runapp.my_app', detail: 'web_default_inner');
             runApp(const MyApp());
             registerWebPopStateLogger();
           }
@@ -3383,6 +3557,7 @@ Future<void> main() async {
         } else {
           logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
           CatalogStartupTrace.mark('CAT_START.runApp.my_app.web_default');
+          _appStartMark('runapp.my_app', detail: 'web_default_outer');
           runApp(const MyApp());
           registerWebPopStateLogger();
         }
@@ -3393,6 +3568,10 @@ Future<void> main() async {
       }
     } catch (e, st) {
       logE('❌ Bootstrap ERROR (type=${e.runtimeType})', error: e, st: st);
+      if (_isAppStartTraceQuery()) {
+        AppStartTraceCollector.persistError('main.bootstrap', e, st);
+        AppStartTraceCollector.mark('bootstrap.ERROR', detail: e.toString());
+      }
       _logWebCatalogDiag(source: 'main.bootstrap.error');
       unawaited(_logCatalogRuntimeError(
         fase: 'render',
@@ -3493,10 +3672,23 @@ Future<void> _registerHiveAdaptersBootstrapDeferred() async {
   boot.mark('hive.adapters.ok');
 }
 
+Future<Box<dynamic>> _hiveOpenTracked(String name) async {
+  _appStartMark('hive.open.begin', detail: name);
+  try {
+    final b = await Hive.openBox(name).timeout(_kHiveOpenBudget);
+    _appStartMark('hive.open.ok', detail: name);
+    return b;
+  } on TimeoutException catch (_) {
+    _appStartMark('hive.open.TIMEOUT', detail: name);
+    rethrow;
+  }
+}
+
 // ===========================================================================
 // 🧰 BOOTSTRAP
 // ===========================================================================
 Future<void> _bootstrapSafe() async {
+  _appStartMark('bootstrap.enter');
   logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logD('[BOOT-ROUTER] Iniciando _bootstrapSafe()');
   logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -3518,6 +3710,7 @@ Future<void> _bootstrapSafe() async {
   logD('🟢 [BOOT] Intl defaultLocale=pt_BR (date symbols em background)');
 
   final firebaseOk = await _initFirebaseCore();
+  _appStartMark('firebase.done', detail: 'ok=$firebaseOk');
   logD('[BOOT-AUTH] firebaseOk=$firebaseOk');
 
   final webCatalogMinimalBoot = kIsWeb &&
@@ -3545,17 +3738,26 @@ Future<void> _bootstrapSafe() async {
       // Sessão persistida costuma aparecer no 1º evento; visitante sem login nunca
       // recebe usuário não-anônimo — não pode esperar 5s (atrasava muito o 1º acesso).
       logD(
-          '🟡 [BOOT] Web: currentUser null, aguardando restauração auth (até 900ms)...');
+          '🟡 [BOOT] Web: currentUser null, aguardando restauração auth (até 2,5s)...');
+      _appStartMark('auth.stateChanges.wait');
       try {
         await FirebaseAuth.instance
             .authStateChanges()
             .where((x) => x != null && !x.isAnonymous)
             .first
-            .timeout(const Duration(milliseconds: 900), onTimeout: () => null);
+            .timeout(
+              const Duration(milliseconds: 2500),
+              onTimeout: () => null,
+            );
+        _appStartMark('auth.stateChanges.done',
+            detail: FirebaseAuth.instance.currentUser?.uid ?? 'null');
         u = FirebaseAuth.instance.currentUser;
-      } catch (_) {}
+      } catch (_) {
+        _appStartMark('auth.stateChanges.error');
+      }
     }
     hasUser = u != null && !u.isAnonymous;
+    _appStartMark('auth.resolved', detail: 'hasUser=$hasUser');
     logD('[BOOT-AUTH] currentUser → hasUser=$hasUser');
   }
   final isNoUser = !hasUser;
@@ -3573,7 +3775,9 @@ Future<void> _bootstrapSafe() async {
     FirebaseGuard.markReady();
     boot.mark('hive.init.begin');
     if (kIsWeb) {
-      await Hive.initFlutter();
+      _appStartMark('hive.initFlutter.begin');
+      await Hive.initFlutter().timeout(_kHiveInitFlutterBudget);
+      _appStartMark('hive.initFlutter.ok');
     } else {
       final dirPath = await getAppDocsDirPath();
       await Hive.initFlutter(dirPath);
@@ -3583,10 +3787,18 @@ Future<void> _bootstrapSafe() async {
       '[BOOT-FASTPATH] adapters ERP em background (sem bloquear 1º frame; visitante/login)',
     );
     unawaited(_registerHiveAdaptersBootstrapDeferred());
-    await Hive.openBox('sessao');
-    await Hive.openBox('config');
+    await _hiveOpenTracked('sessao');
+    await _hiveOpenTracked('config');
     boot.mark('hive.boxes.critical');
-    await SessionSanity.fixIfNoFirebaseUser();
+    _appStartMark('session_sanity.begin');
+    try {
+      await SessionSanity.fixIfNoFirebaseUser()
+          .timeout(const Duration(seconds: 8));
+    } on TimeoutException {
+      _appStartMark('session_sanity.TIMEOUT');
+    } on Object {
+      _appStartMark('session_sanity.error');
+    }
     initDarkModeFromHive();
     boot.mark('local.fix.ok');
     scheduleBootstrapDeferredWork(
@@ -3598,6 +3810,8 @@ Future<void> _bootstrapSafe() async {
         publicCatalogWebVisitor: webCatalogMinimalBoot,
       ),
     );
+    _appStartMark('bootstrap.fastpath.done',
+        finalDecision: 'login_deferred_in_background');
     logD('✅ [BOOT] Bootstrap fast path concluído – mostrando login');
     logD(boot.dump());
     return;
@@ -3627,6 +3841,7 @@ Future<void> _bootstrapSafe() async {
         logD('[BOOT-OFFLINE] Monitoring timeout – ignorado');
       }).catchError((Object _, StackTrace __) {}),
     ]);
+    _appStartMark('bootstrap.remote_parallel.done');
     boot.mark('remoteconfig.ok');
     boot.mark('appcheck.ok');
     boot.mark('monitoring.ok');
@@ -3664,7 +3879,9 @@ Future<void> _bootstrapSafe() async {
     await Hive.initFlutter(dirPath);
     logD('🟦 [BOOT] Hive.initFlutter() em: $dirPath');
   } else {
-    await Hive.initFlutter();
+    _appStartMark('hive.initFlutter.begin');
+    await Hive.initFlutter().timeout(_kHiveInitFlutterBudget);
+    _appStartMark('hive.initFlutter.ok');
     logD('🟦 [BOOT] Hive.initFlutter() (Web)');
   }
   boot.mark('hive.init.ok');
@@ -3681,7 +3898,7 @@ Future<void> _bootstrapSafe() async {
   Future<void> openDynamicCritical(String name) async {
     if (Hive.isBoxOpen(name)) return;
     try {
-      await Hive.openBox(name);
+      await Hive.openBox(name).timeout(_kHiveOpenBudget);
       logD('[BOOT_CRITICAL] Hive box: $name');
     } catch (e) {
       logD('🟥 [BOOT_CRITICAL] Erro ao abrir $name (type=${e.runtimeType})');
@@ -3706,19 +3923,32 @@ Future<void> _bootstrapSafe() async {
   await openDynamicCritical('config');
   boot.mark('hive.boxes.critical');
 
-  await SessionSanity.fixIfNoFirebaseUser();
+  _appStartMark('session_sanity.begin');
+  try {
+    await SessionSanity.fixIfNoFirebaseUser()
+        .timeout(const Duration(seconds: 8));
+  } on TimeoutException {
+    _appStartMark('session_sanity.TIMEOUT');
+  } on Object {
+    _appStartMark('session_sanity.error');
+  }
 
   // Web com usuário: aguardar Auth restaurar sessão antes de resolver store_id
   if (firebaseOk && kIsWeb && FirebaseAuth.instance.currentUser == null) {
-    logD('🟡 [WEB_BOOT] Aguardando Auth restaurar sessão (até 2s)...');
+    logD('🟡 [WEB_BOOT] Aguardando Auth restaurar sessão (até 4s)...');
+    _appStartMark('auth.web_restore.wait');
     try {
       await FirebaseAuth.instance
           .authStateChanges()
           .where((u) => u != null)
           .first
-          .timeout(const Duration(seconds: 2), onTimeout: () => null);
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
+      _appStartMark('auth.web_restore.done',
+          detail: FirebaseAuth.instance.currentUser?.uid ?? 'null');
       logD('🟢 [WEB_BOOT] Auth restaurado');
-    } catch (_) {}
+    } catch (_) {
+      _appStartMark('auth.web_restore.error');
+    }
   }
 
   await _ensureStoreIdOnBootstrap(firebaseOk: firebaseOk);
@@ -3745,6 +3975,7 @@ Future<void> _bootstrapSafe() async {
 
   _scheduleLoggedInHeavyOnce(firebaseOk: firebaseOk);
 
+  _appStartMark('bootstrap.leave', finalDecision: 'my_app_ready');
   logD('🟢 [BOOT] _bootstrapSafe() finalizado (crítico; pesado em background)');
 }
 
@@ -3753,7 +3984,7 @@ Future<void> _bootstrapDeferred({required bool firebaseOk}) async {
   try {
     await _ensureStoreIdOnBootstrap(firebaseOk: firebaseOk);
     await _fixPedidoLinkBase();
-    if (Firebase.apps.isNotEmpty) {
+    if (_safeFirebaseAppsIsNotEmpty()) {
       await refreshPermissoesLocais();
     }
     await backup_auto_service.BackupAutoService.iniciarAgendamento();

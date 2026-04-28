@@ -77,10 +77,19 @@ Future<void> _persistWebRuntimeError(
       'appVersion': 'web',
     };
     plat.Web.localStorageSet('mp_last_runtime_error', jsonEncode(payload));
-    if (Firebase.apps.isNotEmpty) {
-      await FirebaseFirestore.instance
-          .collection('catalog_runtime_errors')
-          .add(payload);
+    // WebKit: `Firebase.apps` pode lançar antes do init; não derrubar o log do erro.
+    var mayUseFirestore = false;
+    try {
+      mayUseFirestore = Firebase.apps.isNotEmpty;
+    } on Object {
+      mayUseFirestore = false;
+    }
+    if (mayUseFirestore) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('catalog_runtime_errors')
+            .add(payload);
+      } on Object catch (_) {}
     }
   } catch (_) {}
 }
