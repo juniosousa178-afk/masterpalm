@@ -14,6 +14,8 @@ const String kVariacaoExtraLabelNeutra = 'Variação';
 abstract final class ProdutoVariacaoExtra {
   /// Chave reservada dentro da célula de variação para custo por variação.
   static const String kMetaCustoUnitarioKey = '__custoUnitario';
+  /// Chave segura para quantidade quando não há eixo extra.
+  static const String kSemExtraKey = '__sem_extra__';
 
   static bool isMetaKey(String key) => key.trim() == kMetaCustoUnitarioKey;
 
@@ -93,7 +95,7 @@ abstract final class ProdutoVariacaoExtra {
     if (cell is! Map || cell.isEmpty) return false;
     for (final k in cell.keys) {
       final key = k.toString().trim();
-      if (key.isEmpty || isMetaKey(key)) continue;
+      if (key.isEmpty || key == kSemExtraKey || isMetaKey(key)) continue;
       return true;
     }
     return false;
@@ -117,6 +119,7 @@ abstract final class ProdutoVariacaoExtra {
     }
     if (cell is Map) {
       if (extraValorTrim.isEmpty) {
+        if (cell.containsKey(kSemExtraKey)) return _asInt(cell[kSemExtraKey]);
         if (cell.containsKey('')) return _asInt(cell['']);
         final semMeta = cell.entries
             .where((e) => !isMetaKey(e.key.toString()))
@@ -158,7 +161,7 @@ abstract final class ProdutoVariacaoExtra {
       if (isMetaKey(k.toString())) return;
       if (_asInt(v) <= 0) return;
       final ks = k.toString();
-      if (ks.trim().isEmpty) return;
+      if (ks.trim().isEmpty || ks == kSemExtraKey) return;
       out.add(ks);
     });
     out.sort((a, b) => normKey(a).compareTo(normKey(b)));
@@ -201,6 +204,7 @@ abstract final class ProdutoVariacaoExtra {
 
   static String? _resolveMapKeyForExtra(Map<String, dynamic> m, String extraTrim) {
     if (extraTrim.isEmpty) {
+      if (m.containsKey(kSemExtraKey)) return kSemExtraKey;
       if (m.containsKey('')) return '';
       final keysValidas = m.keys
           .where((k) => !isMetaKey(k.toString()))
@@ -259,7 +263,7 @@ abstract final class ProdutoVariacaoExtra {
         cell.map((k, v) => MapEntry(k.toString(), v)),
       );
       var rk = _resolveMapKeyForExtra(m, extraTrim);
-      rk ??= extraTrim.isEmpty ? '' : null;
+      rk ??= extraTrim.isEmpty ? kSemExtraKey : null;
       if (rk != null) {
         m[rk] = _asInt(m[rk]) + qtd;
       } else {
@@ -267,7 +271,7 @@ abstract final class ProdutoVariacaoExtra {
       }
       return m;
     }
-    if (extraTrim.isEmpty) return qtd;
+    if (extraTrim.isEmpty) return <String, dynamic>{kSemExtraKey: qtd};
     return <String, dynamic>{extraTrim: qtd};
   }
 
@@ -283,7 +287,7 @@ abstract final class ProdutoVariacaoExtra {
           if (cell is! Map) continue;
           for (final k in cell.keys) {
             final s = k.toString().trim();
-          if (isMetaKey(s)) continue;
+          if (isMetaKey(s) || s == kSemExtraKey) continue;
             if (s.isNotEmpty) set.add(s);
           }
         }
@@ -307,6 +311,10 @@ abstract final class ProdutoVariacaoExtra {
     if (cm is! Map) return '';
     final ev = extraValor.trim();
     if (ev.isEmpty) {
+      final semExtra = cm[kSemExtraKey];
+      if ((semExtra?.toString().trim() ?? '').isNotEmpty) {
+        return semExtra.toString().trim();
+      }
       final v = cm[''];
       return v?.toString().trim() ?? '';
     }
