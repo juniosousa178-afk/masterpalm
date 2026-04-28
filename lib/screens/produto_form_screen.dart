@@ -68,7 +68,7 @@ String gerarSlug(String texto) {
     if (qtd <= 0) continue;
     final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
     final corFinal = cor.isEmpty ? 'sem-cor' : cor;
-    final ek = extraValor.isEmpty ? '' : extraValor;
+    final ek = extraValor.isEmpty ? ProdutoVariacaoExtra.kSemExtraKey : extraValor;
 
     acc.putIfAbsent(chaveTamanho, () => {});
     acc[chaveTamanho]!.putIfAbsent(corFinal, () => {});
@@ -96,8 +96,10 @@ String gerarSlug(String texto) {
       if (m.isEmpty) continue;
       final hasMetaCusto =
           m.containsKey(ProdutoVariacaoExtra.kMetaCustoUnitarioKey);
-      if (!hasMetaCusto && m.length == 1 && m.containsKey('')) {
-        innerOut[ce.key] = m[''] ?? 0;
+      if (!hasMetaCusto &&
+          m.length == 1 &&
+          (m.containsKey(ProdutoVariacaoExtra.kSemExtraKey) || m.containsKey(''))) {
+        innerOut[ce.key] = m[ProdutoVariacaoExtra.kSemExtraKey] ?? m[''] ?? 0;
       } else {
         innerOut[ce.key] = Map<String, dynamic>.from(m);
       }
@@ -213,6 +215,28 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   Set<String> _tombSessaoV = {};
   Set<String> _tombSessaoT = {};
 
+  void _logDiagnosticoVariacoes({
+    required String evento,
+    required String productId,
+    required Map<String, dynamic> variacoes,
+  }) {
+    debugPrint('[VARIACAO_CUSTO][$evento] productId=$productId variacoes=${variacoes.length}');
+    for (final te in variacoes.entries) {
+      final tamanho = te.key;
+      final mapaCores = te.value;
+      if (mapaCores is! Map) continue;
+      for (final ce in mapaCores.entries) {
+        final cor = ce.key.toString();
+        final cell = ce.value;
+        final custo = ProdutoVariacaoExtra.custoUnitarioNaCelula(cell);
+        final qtd = ProdutoVariacaoExtra.somarCelula(cell);
+        debugPrint(
+          '[VARIACAO_CUSTO][$evento] tam=$tamanho cor=$cor qtd=$qtd custo=${custo?.toStringAsFixed(2) ?? 'fallback'}',
+        );
+      }
+    }
+  }
+
   // Marketplaces selecionados
   final Set<String> _marketplacesSelecionados = {};
 
@@ -315,7 +339,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                   final q = ie.value is num
                       ? (ie.value as num).toInt()
                       : int.tryParse(ie.value?.toString() ?? '') ?? 0;
-                  final evDisp = ev.trim().isEmpty ? '' : ev;
+                  final evDisp = (ev.trim().isEmpty || ev == ProdutoVariacaoExtra.kSemExtraKey)
+                      ? ''
+                      : ev;
                   debugPrint('  ➜ Linha: $tamanho + $cor + extra=$evDisp = $q');
                   _gradeVariacoes.add({
                     'tamanho': tamanho == 'sem-tamanho' ? '' : tamanho,
@@ -331,6 +357,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           }
         }
         debugPrint('  Total de linhas carregadas: ${_gradeVariacoes.length}');
+        _logDiagnosticoVariacoes(
+          evento: 'carregar',
+          productId: p.idFirebase.isNotEmpty ? p.idFirebase : p.slug,
+          variacoes: Map<String, dynamic>.from(p.variacoes!),
+        );
 
         if (_gradeVariacoes.isEmpty) {
           _gradeVariacoes.add({
@@ -1491,6 +1522,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       debugPrint('\n📊 [DEBUG SALVAR] Resultado final:');
       debugPrint('  variacoesMap: $variacoesMap');
       debugPrint('  Total de variações: $quantidadeTotalVariacoes un');
+      _logDiagnosticoVariacoes(
+        evento: 'salvar',
+        productId: (widget.produto?.idFirebase.isNotEmpty ?? false)
+            ? widget.produto!.idFirebase
+            : (widget.produto?.slug ?? 'novo-produto'),
+        variacoes: variacoesMap,
+      );
 
       int quantidadeFinal = variacoesMap.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
       List<String> tamanhosList = tamanhosSet.toList();

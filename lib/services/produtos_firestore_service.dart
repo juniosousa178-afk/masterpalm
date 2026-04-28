@@ -212,7 +212,7 @@ class ProdutosFirestoreService {
           cores: _dedupeStringListPreserveOrder(
             (data['cores'] as List?)?.map((e) => e.toString()).toList(),
           ),
-          variacoes: _parseVariacoesFromFirestore(data['variacoes']),
+          variacoes: parseVariacoesFromFirestore(data['variacoes']),
           variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
               data['variacoesExtraTipo']),
           precoPorTamanho:
@@ -312,9 +312,51 @@ class ProdutosFirestoreService {
   /// Mapas sempre serializados (vazios = limpar no remoto com `merge: true`).
   static Map<String, dynamic> _variacoesParaFirestorePush(Produto p) {
     if (p.variacoes != null && p.variacoes!.isNotEmpty) {
-      return Map<String, dynamic>.from(p.variacoes!);
+      return sanitizeVariacoesForFirestore(Map<String, dynamic>.from(p.variacoes!));
     }
     return <String, dynamic>{};
+  }
+
+  static Map<String, dynamic> sanitizeVariacoesForFirestore(
+    Map<String, dynamic> variacoes,
+  ) {
+    final out = <String, dynamic>{};
+    for (final te in variacoes.entries) {
+      final tamanho = te.key.toString().trim();
+      if (tamanho.isEmpty) continue;
+      final cores = te.value;
+      if (cores is! Map) continue;
+      final outCores = <String, dynamic>{};
+      for (final ce in cores.entries) {
+        final cor = ce.key.toString().trim();
+        if (cor.isEmpty) continue;
+        final cell = ce.value;
+        if (cell is Map) {
+          final outCell = <String, dynamic>{};
+          for (final ie in cell.entries) {
+            var k = ie.key.toString();
+            if (ProdutoVariacaoExtra.isMetaKey(k)) {
+              outCell[k] = ie.value;
+              continue;
+            }
+            if (k.trim().isEmpty) {
+              k = ProdutoVariacaoExtra.kSemExtraKey;
+              logD('variacao com chave vazia convertida para __sem_extra__');
+            }
+            outCell[k] = ie.value;
+          }
+          if (outCell.isNotEmpty) {
+            outCores[cor] = outCell;
+          }
+        } else {
+          outCores[cor] = cell;
+        }
+      }
+      if (outCores.isNotEmpty) {
+        out[tamanho] = outCores;
+      }
+    }
+    return out;
   }
 
   static Map<String, dynamic> _variacoesExtraTipoParaFirestorePush(Produto p) {
@@ -1073,7 +1115,7 @@ class ProdutosFirestoreService {
                     p.variacoes = null;
                     logD('[VARIACAO_PULL] variacoes remotas {} → limpo local');
                   } else {
-                    p.variacoes = _parseVariacoesFromFirestore(varData);
+                    p.variacoes = parseVariacoesFromFirestore(varData);
                   }
                 }
               } else {
@@ -1249,7 +1291,7 @@ class ProdutosFirestoreService {
               cores: _dedupeStringListPreserveOrder(
                 (data['cores'] as List?)?.map((e) => e.toString()).toList(),
               ),
-              variacoes: _parseVariacoesFromFirestore(data['variacoes']),
+              variacoes: parseVariacoesFromFirestore(data['variacoes']),
               variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
                   data['variacoesExtraTipo']),
               precoPorTamanho:
@@ -1680,7 +1722,7 @@ class ProdutosFirestoreService {
   }
 
   /// Converte mapa de variações: cor -> int (legado) ou cor -> { extraValor -> qtd }.
-  static Map<String, dynamic>? _parseVariacoesFromFirestore(dynamic varData) {
+  static Map<String, dynamic>? parseVariacoesFromFirestore(dynamic varData) {
     if (varData == null || varData is! Map) return null;
     final result = <String, dynamic>{};
     for (final entry in varData.entries) {
@@ -1697,7 +1739,6 @@ class ProdutosFirestoreService {
           final m = <String, dynamic>{};
           for (final ie in v.entries) {
             final k = ie.key?.toString() ?? '';
-            if (k.isEmpty) continue;
             if (ProdutoVariacaoExtra.isMetaKey(k)) {
               final c = ie.value is num
                   ? (ie.value as num).toDouble()
@@ -1705,6 +1746,22 @@ class ProdutosFirestoreService {
               if (c != null && c > 0) {
                 m[k] = c;
               }
+              continue;
+            }
+            // Mantém a chave vazia ('') usada no legado para qtd sem extra.
+            // Sem isso, produtos com custo por variação podem perder a quantidade ao carregar.
+            if (k.isEmpty) {
+              final q = ie.value is num
+                  ? (ie.value as num).toInt()
+                  : int.tryParse(ie.value?.toString() ?? '') ?? 0;
+              m[ProdutoVariacaoExtra.kSemExtraKey] = q;
+              continue;
+            }
+            if (k == ProdutoVariacaoExtra.kSemExtraKey) {
+              final q = ie.value is num
+                  ? (ie.value as num).toInt()
+                  : int.tryParse(ie.value?.toString() ?? '') ?? 0;
+              m[ProdutoVariacaoExtra.kSemExtraKey] = q;
               continue;
             }
             final q = ie.value is num
@@ -1715,8 +1772,10 @@ class ProdutosFirestoreService {
           if (m.isNotEmpty) {
             final hasMeta =
                 m.containsKey(ProdutoVariacaoExtra.kMetaCustoUnitarioKey);
-            if (!hasMeta && m.length == 1 && m.containsKey('')) {
-              mapaCor[cor] = m[''] ?? 0;
+            if (!hasMeta &&
+                m.length == 1 &&
+                (m.containsKey(ProdutoVariacaoExtra.kSemExtraKey) || m.containsKey(''))) {
+              mapaCor[cor] = m[ProdutoVariacaoExtra.kSemExtraKey] ?? m[''] ?? 0;
             } else {
               mapaCor[cor] = m;
             }
