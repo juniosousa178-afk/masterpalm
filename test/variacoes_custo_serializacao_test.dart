@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:master_palm/core/produto_variacao_extra.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/screens/produto_form_screen.dart';
@@ -173,6 +176,20 @@ void main() {
     });
   });
 
+  test('precoPorTamanho parse aceita valores numéricos como string', () {
+    final payload = <String, dynamic>{
+      '40cm': '99.90',
+      '45cm': '109,90',
+      '60cm': '129.90',
+    };
+    final parsed = ProdutosFirestoreService.parsePrecoPorTamanhoFromFirestore(payload);
+    expect(parsed, {
+      '40cm': 99.9,
+      '45cm': 109.9,
+      '60cm': 129.9,
+    });
+  });
+
   test('sanitizeVariacoesForFirestore: custo + _sem_extra e nunca __sem_extra__', () {
     final sanitized = ProdutosFirestoreService.sanitizeVariacoesForFirestore(
       <String, dynamic>{
@@ -189,5 +206,50 @@ void main() {
         (sanitized['1'] as Map<String, dynamic>)['sem-cor'] as Map<String, dynamic>;
     expect(cell[ProdutoVariacaoExtra.kSemExtraKey], 1);
     expect(cell[ProdutoVariacaoExtra.kMetaCustoUnitarioKey], 3.0);
+  });
+
+  test('Produto Hive roundtrip preserva precoPorTamanho', () async {
+    final hiveDir = Directory.systemTemp.createTempSync('produto_hive_roundtrip_');
+    Hive.init(hiveDir.path);
+    if (!Hive.isAdapterRegistered(2)) {
+      Hive.registerAdapter(ProdutoAdapter());
+    }
+
+    try {
+      final box = await Hive.openBox<Produto>('produtos_roundtrip_test');
+      final original = Produto(
+        nome: 'Produto Teste',
+        custoReal: 10.0,
+        frete: 0.0,
+        gastosFixos: 0.0,
+        gastosVariaveis: 0.0,
+        precoSugerido: 0.0,
+        precoFinal: 100.0,
+        quantidade: 5,
+        precoUnitario: 100.0,
+        categoria: 'Teste',
+        dataEntrada: DateTime.now(),
+        precoPorTamanho: const {
+          '40cm': 75.9,
+          '45cm': 79.9,
+          '60cm': 119.9,
+        },
+      );
+      final key = await box.add(original);
+      final loaded = box.get(key);
+
+      expect(loaded, isNotNull);
+      expect(loaded!.precoPorTamanho, {
+        '40cm': 75.9,
+        '45cm': 79.9,
+        '60cm': 119.9,
+      });
+      await box.close();
+    } finally {
+      Hive.close();
+      if (hiveDir.existsSync()) {
+        hiveDir.deleteSync(recursive: true);
+      }
+    }
   });
 }

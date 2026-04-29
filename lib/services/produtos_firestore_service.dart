@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/combo_config_canonical.dart';
@@ -310,6 +310,10 @@ class ProdutosFirestoreService {
     }
   }
 
+  static void _tracePrecoTamanho(String msg) {
+    debugPrint(msg);
+  }
+
   /// Mapas sempre serializados (vazios = limpar no remoto com `merge: true`).
   static Map<String, dynamic> _variacoesParaFirestorePush(Produto p) {
     if (p.variacoes != null && p.variacoes!.isNotEmpty) {
@@ -532,7 +536,7 @@ class ProdutosFirestoreService {
         'variacoesKeys=${variacoesPush.length} extraKeys=${variacoesExtraPush.length} '
         'estoquePorTamKeys=${estoquePorTamPush.length}',
       );
-      logD(
+      _tracePrecoTamanho(
         '[PRECO-TAMANHO][FIRESTORE-SAVE] produtoId=$produtoId '
         'precoPorTamanhoPush=$precoPorTamanhoPush',
       );
@@ -607,11 +611,11 @@ class ProdutosFirestoreService {
         'updatedAt': FieldValue.serverTimestamp(),
       };
       final estoquePath = 'lojas/$storeId/${FSPaths.estoqueProdutosCol}/$produtoId';
-      logD(
+      _tracePrecoTamanho(
         '[PRECO-TAMANHO][SAVE-PATH] lojaId=$storeId produtoId=$produtoId '
         'collectionPath=$estoquePath precoPorTamanhoPayload=${produtoData['precoPorTamanho']}',
       );
-      logD(
+      _tracePrecoTamanho(
         '[PRECO-TAMANHO][FIRESTORE-WRITE] path=$estoquePath payload.precoPorTamanho=${produtoData['precoPorTamanho']}',
       );
       if (docSnap.exists) {
@@ -634,7 +638,7 @@ class ProdutosFirestoreService {
       );
       await docRef.set(produtoData, SetOptions(merge: true));
       final estoqueAfterWrite = await docRef.get();
-      logD(
+      _tracePrecoTamanho(
         '[PRECO-TAMANHO][READ-AFTER-WRITE] path=$estoquePath '
         'precoPorTamanho=${estoqueAfterWrite.data()?['precoPorTamanho']}',
       );
@@ -882,7 +886,7 @@ class ProdutosFirestoreService {
           var data = Map<String, dynamic>.from(doc.data());
           final produtoId = doc.id;
           final estoquePath = 'lojas/$lojaId/${FSPaths.estoqueProdutosCol}/$produtoId';
-          logD(
+          _tracePrecoTamanho(
             '[PRECO-TAMANHO][LOAD-PATH] lojaId=$lojaId produtoId=$produtoId '
             'collectionPath=$estoquePath docExists=true '
             'precoPorTamanhoRaw=${data['precoPorTamanho']}',
@@ -1149,11 +1153,18 @@ class ProdutosFirestoreService {
                   tag: 'VARIACAO_GUARD',
                 );
               }
-              final ppt = data['precoPorTamanho'];
-              if (ppt != null && ppt is Map) {
-                p.precoPorTamanho = parsePrecoPorTamanhoFromFirestore(ppt);
-              } else if (ppt == null) {
-                p.precoPorTamanho = null;
+              if (data.containsKey('precoPorTamanho')) {
+                final ppt = data['precoPorTamanho'];
+                if (ppt != null && ppt is Map) {
+                  p.precoPorTamanho = parsePrecoPorTamanhoFromFirestore(ppt);
+                } else if (ppt == null) {
+                  p.precoPorTamanho = null;
+                }
+              } else {
+                _tracePrecoTamanho(
+                  '[PRECO-TAMANHO][PULL] doc sem campo precoPorTamanho; mantendo local '
+                  'produtoId=$produtoId valorLocal=${p.precoPorTamanho}',
+                );
               }
               p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
                   (data['preco'] as num?)?.toDouble() ??
@@ -1718,7 +1729,10 @@ class ProdutosFirestoreService {
       if (k.isEmpty) continue;
       final v = entry.value is num
           ? (entry.value as num).toDouble()
-          : double.tryParse(entry.value?.toString() ?? '') ?? 0.0;
+          : double.tryParse(
+                  (entry.value?.toString() ?? '').trim().replaceAll(',', '.'),
+                ) ??
+                0.0;
       if (v > 0) result[k] = v;
     }
     return result.isEmpty ? null : result;

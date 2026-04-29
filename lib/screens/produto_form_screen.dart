@@ -1195,6 +1195,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ? widget.produto!.idFirebase
           : (widget.produto?.slug ?? 'novo-produto');
       debugPrint(
+        '[PRECO-TAMANHO][REAL-SAVE-PATH] origem=ProdutoFormScreen._salvar '
+        'productId=$produtoIdSaveLog vaiSalvarHive=true vaiSalvarFirestore=true '
+        'pathFirestore=lojas/${lojaId ?? '(null)'}/estoque_produtos/$produtoIdSaveLog '
+        'produto.precoPorTamanho=${widget.produto?.precoPorTamanho}',
+      );
+      debugPrint(
         '[PRECO-TAMANHO][CTRL] '
         'keys=${_precoPorTamanhoCtrl.keys.toList()} '
         'textos=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))} '
@@ -1722,6 +1728,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
           existente.updatedAt = DateTime.now();
           await existente.save();
+          debugPrint(
+            '[PRECO-TAMANHO][HIVE-WRITE] productId=${existente.idFirebase.isNotEmpty ? existente.idFirebase : existente.slug} '
+            'precoPorTamanho salvo no Hive=${existente.precoPorTamanho}',
+          );
+          final existenteHive = produtosBox.get(existente.key);
+          debugPrint(
+            '[PRECO-TAMANHO][HIVE-READ-AFTER-WRITE] productId=${existente.idFirebase.isNotEmpty ? existente.idFirebase : existente.slug} '
+            'precoPorTamanho lido do Hive=${existenteHive?.precoPorTamanho}',
+          );
           remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
             existente,
             lojaId: lojaId,
@@ -1813,6 +1828,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           );
 
           await produtosBox.add(novo);
+          debugPrint(
+            '[PRECO-TAMANHO][HIVE-WRITE] productId=${novo.idFirebase.isNotEmpty ? novo.idFirebase : novo.slug} '
+            'precoPorTamanho salvo no Hive=${novo.precoPorTamanho}',
+          );
+          final novoHive = produtosBox.get(novo.key);
+          debugPrint(
+            '[PRECO-TAMANHO][HIVE-READ-AFTER-WRITE] productId=${novo.idFirebase.isNotEmpty ? novo.idFirebase : novo.slug} '
+            'precoPorTamanho lido do Hive=${novoHive?.precoPorTamanho}',
+          );
           remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
             novo,
             lojaId: lojaId,
@@ -1905,6 +1929,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
         p.updatedAt = DateTime.now();
         await p.save();
+        debugPrint(
+          '[PRECO-TAMANHO][HIVE-WRITE] productId=${p.idFirebase.isNotEmpty ? p.idFirebase : p.slug} '
+          'precoPorTamanho salvo no Hive=${p.precoPorTamanho}',
+        );
+        final pHive = produtosBox.get(p.key);
+        debugPrint(
+          '[PRECO-TAMANHO][HIVE-READ-AFTER-WRITE] productId=${p.idFirebase.isNotEmpty ? p.idFirebase : p.slug} '
+          'precoPorTamanho lido do Hive=${pHive?.precoPorTamanho}',
+        );
         remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
           p,
           lojaId: lojaId,
