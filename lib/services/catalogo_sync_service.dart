@@ -11,6 +11,7 @@ import 'package:file_picker/file_picker.dart' show PlatformFile;
 
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_variacao_extra.dart';
 import '../core/logger.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 import '../models/produto.dart';
@@ -236,7 +237,9 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
           m['productId'] = idFb;
         }
         if (linked.variacoes != null && linked.variacoes!.isNotEmpty) {
-          m['variacoes'] = Map<String, dynamic>.from(linked.variacoes!);
+          m['variacoes'] = ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+            Map<String, dynamic>.from(linked.variacoes!),
+          );
         }
         if (linked.estoquePorTamanho.isNotEmpty) {
           m['estoquePorTamanho'] =
@@ -348,9 +351,16 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       'estoquePorTamanho': pdt.estoquePorTamanho,
       'estoquePorCor': pdt.temVariacaoSoloCor ? pdt.estoquePorCor : null,
       'cores': pdt.cores,
-      'variacoes': pdt.variacoes,
+      'variacoes': pdt.variacoes != null && pdt.variacoes!.isNotEmpty
+          ? ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+              Map<String, dynamic>.from(pdt.variacoes!),
+            )
+          : pdt.variacoes,
       if (pdt.variacoesExtraTipo != null && pdt.variacoesExtraTipo!.isNotEmpty)
-        'variacoesExtraTipo': pdt.variacoesExtraTipo,
+        'variacoesExtraTipo':
+            ProdutoVariacaoExtra.sanitizeVariacoesExtraTipoMapForFirestore(
+          Map<String, dynamic>.from(pdt.variacoesExtraTipo!),
+        ),
       if (pdt.precoPorTamanho != null && pdt.precoPorTamanho!.isNotEmpty)
         'precoPorTamanho': pdt.precoPorTamanho,
       'tipoProduto': pdt.tipoProduto,
@@ -431,6 +441,11 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     String docId,
     Map<String, dynamic> data,
   ) async {
+    final path = 'lojas/$lojaId/${_collectionName(target)}/$docId';
+    logD(
+      '[PRECO-TAMANHO][SAVE-PATH] lojaId=$lojaId produtoId=$docId '
+      'collectionPath=$path precoPorTamanhoPayload=${data['precoPorTamanho']}',
+    );
     await _db
         .collection('lojas')
         .doc(lojaId)

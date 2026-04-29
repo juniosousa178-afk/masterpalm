@@ -173,6 +173,10 @@ class ProdutoAutoSyncService {
 
       // Sempre refletir Hive em estoque_produtos (peso, custo, etc.). Antes só o catálogo era atualizado.
       try {
+        debugPrint(
+          '[PRECO-TAMANHO][AUTO-SYNC-INPUT] productId=${produto.idFirebase.isNotEmpty ? produto.idFirebase : produto.slug} '
+          'produto.precoPorTamanho=${produto.precoPorTamanho}',
+        );
         await ProdutosFirestoreService.syncProduto(
           produto,
           lojaId: lojaId,

@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/combo_config_canonical.dart';
@@ -217,7 +217,7 @@ class ProdutosFirestoreService {
           variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
               data['variacoesExtraTipo']),
           precoPorTamanho:
-              _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
+              parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
           tipoProduto: comboNovo.$1,
           itensCombo: comboNovo.$2,
           comboConfig: comboNovo.$3,
@@ -310,6 +310,10 @@ class ProdutosFirestoreService {
     }
   }
 
+  static void _tracePrecoTamanho(String msg) {
+    debugPrint(msg);
+  }
+
   /// Mapas sempre serializados (vazios = limpar no remoto com `merge: true`).
   static Map<String, dynamic> _variacoesParaFirestorePush(Produto p) {
     if (p.variacoes != null && p.variacoes!.isNotEmpty) {
@@ -321,48 +325,14 @@ class ProdutosFirestoreService {
   static Map<String, dynamic> sanitizeVariacoesForFirestore(
     Map<String, dynamic> variacoes,
   ) {
-    final out = <String, dynamic>{};
-    for (final te in variacoes.entries) {
-      final tamanho = te.key.toString().trim();
-      if (tamanho.isEmpty) continue;
-      final cores = te.value;
-      if (cores is! Map) continue;
-      final outCores = <String, dynamic>{};
-      for (final ce in cores.entries) {
-        final cor = ce.key.toString().trim();
-        if (cor.isEmpty) continue;
-        final cell = ce.value;
-        if (cell is Map) {
-          final outCell = <String, dynamic>{};
-          for (final ie in cell.entries) {
-            var k = ie.key.toString();
-            if (ProdutoVariacaoExtra.isMetaKey(k)) {
-              outCell[k] = ie.value;
-              continue;
-            }
-            if (k.trim().isEmpty) {
-              k = ProdutoVariacaoExtra.kSemExtraKey;
-              logD('variacao com chave vazia convertida para __sem_extra__');
-            }
-            outCell[k] = ie.value;
-          }
-          if (outCell.isNotEmpty) {
-            outCores[cor] = outCell;
-          }
-        } else {
-          outCores[cor] = cell;
-        }
-      }
-      if (outCores.isNotEmpty) {
-        out[tamanho] = outCores;
-      }
-    }
-    return out;
+    return ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(variacoes);
   }
 
   static Map<String, dynamic> _variacoesExtraTipoParaFirestorePush(Produto p) {
     if (p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty) {
-      return Map<String, dynamic>.from(p.variacoesExtraTipo!);
+      return ProdutoVariacaoExtra.sanitizeVariacoesExtraTipoMapForFirestore(
+        Map<String, dynamic>.from(p.variacoesExtraTipo!),
+      );
     }
     return <String, dynamic>{};
   }
@@ -372,6 +342,20 @@ class ProdutosFirestoreService {
       return Map<String, int>.from(p.estoquePorTamanho);
     }
     return <String, int>{};
+  }
+
+  static Map<String, double>? _sanitizePrecoPorTamanhoForFirestore(
+    Map<String, double>? src,
+  ) {
+    if (src == null || src.isEmpty) return null;
+    final out = <String, double>{};
+    for (final e in src.entries) {
+      final key = e.key.toString().trim();
+      if (key.isEmpty) continue;
+      final v = e.value;
+      if (v > 0) out[key] = v;
+    }
+    return out.isEmpty ? null : out;
   }
 
   /// Sincroniza um produto para o Firestore (Hive → Firestore).
@@ -545,10 +529,16 @@ class ProdutosFirestoreService {
         produtoId,
         _estoquePorTamanhoParaFirestorePush(produto),
       );
+      final precoPorTamanhoPush =
+          _sanitizePrecoPorTamanhoForFirestore(produto.precoPorTamanho);
       logD(
         '[VARIACAO_CLEAR] push estoque_produtos/$produtoId '
         'variacoesKeys=${variacoesPush.length} extraKeys=${variacoesExtraPush.length} '
         'estoquePorTamKeys=${estoquePorTamPush.length}',
+      );
+      _tracePrecoTamanho(
+        '[PRECO-TAMANHO][FIRESTORE-SAVE] produtoId=$produtoId '
+        'precoPorTamanhoPush=$precoPorTamanhoPush',
       );
 
       final produtoData = {
@@ -592,9 +582,8 @@ class ProdutosFirestoreService {
         'cores': produto.cores,
         'variacoes': variacoesPush,
         'variacoesExtraTipo': variacoesExtraPush,
-        if (produto.precoPorTamanho != null &&
-            produto.precoPorTamanho!.isNotEmpty)
-          'precoPorTamanho': produto.precoPorTamanho,
+        if (precoPorTamanhoPush != null)
+          'precoPorTamanho': precoPorTamanhoPush,
         'tipoProduto': produto.tipoProduto,
         // itensCombo omitido quando vazio: merge não apaga chave no Firestore.
         // Limpeza remota explícita: enviar []. Pull: applyComboMetadataPullForExisting.
@@ -621,6 +610,14 @@ class ProdutosFirestoreService {
         // Metadata
         'updatedAt': FieldValue.serverTimestamp(),
       };
+      final estoquePath = 'lojas/$storeId/${FSPaths.estoqueProdutosCol}/$produtoId';
+      _tracePrecoTamanho(
+        '[PRECO-TAMANHO][SAVE-PATH] lojaId=$storeId produtoId=$produtoId '
+        'collectionPath=$estoquePath precoPorTamanhoPayload=${produtoData['precoPorTamanho']}',
+      );
+      _tracePrecoTamanho(
+        '[PRECO-TAMANHO][FIRESTORE-WRITE] path=$estoquePath payload.precoPorTamanho=${produtoData['precoPorTamanho']}',
+      );
       if (docSnap.exists) {
         if (createdAtPersistido != null) {
           produtoData['createdAt'] = createdAtPersistido;
@@ -640,6 +637,11 @@ class ProdutosFirestoreService {
         clearPrecoPorTamanho: true,
       );
       await docRef.set(produtoData, SetOptions(merge: true));
+      final estoqueAfterWrite = await docRef.get();
+      _tracePrecoTamanho(
+        '[PRECO-TAMANHO][READ-AFTER-WRITE] path=$estoquePath '
+        'precoPorTamanho=${estoqueAfterWrite.data()?['precoPorTamanho']}',
+      );
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
       if (produto.publicadoNoCatalogo) {
@@ -682,9 +684,8 @@ class ProdutosFirestoreService {
             'subcategoriasExtras': produto.subcategoriasExtras,
             'categoriasAssociadas': produto.categoriasAssociadas,
             'subcategoriasAssociadas': produto.subcategoriasAssociadas,
-            if (produto.precoPorTamanho != null &&
-                produto.precoPorTamanho!.isNotEmpty)
-              'precoPorTamanho': produto.precoPorTamanho,
+            if (precoPorTamanhoPush != null)
+              'precoPorTamanho': precoPorTamanhoPush,
             'emPromocao': produto.emPromocao,
             'percentualPromo': produto.percentualPromo,
             'valorPromo': produto.valorPromo,
@@ -884,6 +885,12 @@ class ProdutosFirestoreService {
         try {
           var data = Map<String, dynamic>.from(doc.data());
           final produtoId = doc.id;
+          final estoquePath = 'lojas/$lojaId/${FSPaths.estoqueProdutosCol}/$produtoId';
+          _tracePrecoTamanho(
+            '[PRECO-TAMANHO][LOAD-PATH] lojaId=$lojaId produtoId=$produtoId '
+            'collectionPath=$estoquePath docExists=true '
+            'precoPorTamanhoRaw=${data['precoPorTamanho']}',
+          );
 
           await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
           if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
@@ -1146,14 +1153,18 @@ class ProdutosFirestoreService {
                   tag: 'VARIACAO_GUARD',
                 );
               }
-              final ppt = data['precoPorTamanho'];
-              if (ppt != null && ppt is Map) {
-                p.precoPorTamanho = Map<String, double>.from(
-                  ppt.map((k, v) =>
-                      MapEntry(k.toString(), (v is num) ? v.toDouble() : 0.0)),
+              if (data.containsKey('precoPorTamanho')) {
+                final ppt = data['precoPorTamanho'];
+                if (ppt != null && ppt is Map) {
+                  p.precoPorTamanho = parsePrecoPorTamanhoFromFirestore(ppt);
+                } else if (ppt == null) {
+                  p.precoPorTamanho = null;
+                }
+              } else {
+                _tracePrecoTamanho(
+                  '[PRECO-TAMANHO][PULL] doc sem campo precoPorTamanho; mantendo local '
+                  'produtoId=$produtoId valorLocal=${p.precoPorTamanho}',
                 );
-              } else if (ppt == null) {
-                p.precoPorTamanho = null;
               }
               p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
                   (data['preco'] as num?)?.toDouble() ??
@@ -1296,7 +1307,7 @@ class ProdutosFirestoreService {
               variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
                   data['variacoesExtraTipo']),
               precoPorTamanho:
-                  _parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
+                  parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
               tipoProduto: comboNovo.$1,
               itensCombo: comboNovo.$2,
               comboConfig: comboNovo.$3,
@@ -1710,13 +1721,18 @@ class ProdutosFirestoreService {
   }
 
   /// Converte mapa precoPorTamanho vindo do Firestore para Map<String, double>.
-  static Map<String, double>? _parsePrecoPorTamanhoFromFirestore(dynamic data) {
+  static Map<String, double>? parsePrecoPorTamanhoFromFirestore(dynamic data) {
     if (data == null || data is! Map) return null;
     final result = <String, double>{};
     for (final entry in data.entries) {
-      final k = entry.key?.toString() ?? '';
+      final k = entry.key?.toString().trim() ?? '';
       if (k.isEmpty) continue;
-      final v = entry.value is num ? (entry.value as num).toDouble() : 0.0;
+      final v = entry.value is num
+          ? (entry.value as num).toDouble()
+          : double.tryParse(
+                  (entry.value?.toString() ?? '').trim().replaceAll(',', '.'),
+                ) ??
+                0.0;
       if (v > 0) result[k] = v;
     }
     return result.isEmpty ? null : result;
@@ -1758,7 +1774,8 @@ class ProdutosFirestoreService {
               m[ProdutoVariacaoExtra.kSemExtraKey] = q;
               continue;
             }
-            if (k == ProdutoVariacaoExtra.kSemExtraKey) {
+            if (k == ProdutoVariacaoExtra.kSemExtraKey ||
+                k == ProdutoVariacaoExtra.kSemExtraKeyLegacy) {
               final q = ie.value is num
                   ? (ie.value as num).toInt()
                   : int.tryParse(ie.value?.toString() ?? '') ?? 0;
@@ -1775,8 +1792,13 @@ class ProdutosFirestoreService {
                 m.containsKey(ProdutoVariacaoExtra.kMetaCustoUnitarioKey);
             if (!hasMeta &&
                 m.length == 1 &&
-                (m.containsKey(ProdutoVariacaoExtra.kSemExtraKey) || m.containsKey(''))) {
-              mapaCor[cor] = m[ProdutoVariacaoExtra.kSemExtraKey] ?? m[''] ?? 0;
+                (m.containsKey(ProdutoVariacaoExtra.kSemExtraKey) ||
+                    m.containsKey(ProdutoVariacaoExtra.kSemExtraKeyLegacy) ||
+                    m.containsKey(''))) {
+              mapaCor[cor] = m[ProdutoVariacaoExtra.kSemExtraKey] ??
+                  m[ProdutoVariacaoExtra.kSemExtraKeyLegacy] ??
+                  m[''] ??
+                  0;
             } else {
               mapaCor[cor] = m;
             }
@@ -1819,9 +1841,13 @@ class ProdutosFirestoreService {
         if (ev is! Map) continue;
         final mapEx = <String, dynamic>{};
         for (final ee in ev.entries) {
-          final k = ee.key?.toString() ?? '';
+          var k = ee.key?.toString() ?? '';
+          if (k.trim().isEmpty) {
+            k = ProdutoVariacaoExtra.kSemExtraKey;
+          } else if (k == ProdutoVariacaoExtra.kSemExtraKeyLegacy) {
+            k = ProdutoVariacaoExtra.kSemExtraKey;
+          }
           final tipo = (ee.value ?? '').toString();
-          if (k.isEmpty) continue;
           mapEx[k] = tipo;
         }
         if (mapEx.isNotEmpty) mapCor[c] = mapEx;
@@ -1847,7 +1873,9 @@ class ProdutosFirestoreService {
 
       // Adicionar variações se fornecidas
       if (variacoes != null) {
-        updateData['variacoes'] = variacoes;
+        updateData['variacoes'] = sanitizeVariacoesForFirestore(
+          Map<String, dynamic>.from(variacoes),
+        );
       }
       if (estoquePorTamanho != null) {
         updateData['estoquePorTamanho'] = estoquePorTamanho;
