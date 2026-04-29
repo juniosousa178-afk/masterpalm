@@ -11,10 +11,12 @@ import 'package:file_picker/file_picker.dart' show PlatformFile;
 
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
+import '../core/logger.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 import '../models/produto.dart';
 import 'catalog_cache_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
+import 'sync_mass_delete_guard.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/upload_manager.dart';
 
@@ -570,6 +572,9 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
 
     // ✅ força loja correta
     String? lojaIdOverride,
+
+    /// Só com `true` permite apagar muitos docs órfãos de uma vez (ex.: correção manual).
+    bool allowMassDelete = false,
   }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
 
@@ -621,8 +626,46 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
         .collection(_collectionName(target));
 
     final snap = await col.get();
+    final remoteCount = snap.docs.length;
+    final allowedCount = allowed.length;
     final toRemove = snap.docs.where((d) => !allowed.contains(d.id)).toList();
+    final deleteCandidatesCount = toRemove.length;
+    final collectionPath = 'lojas/$lojaId/${_collectionName(target)}';
+
+    final blockReason = SyncMassDeleteGuard.catalogBlockReason(
+      allowedCount: allowedCount,
+      remoteCount: remoteCount,
+      deleteCandidatesCount: deleteCandidatesCount,
+      allowMassDelete: allowMassDelete,
+    );
+
+    if (blockReason != SyncMassDeleteBlockReason.none) {
+      if (blockReason == SyncMassDeleteBlockReason.allowedEmptyWithRemote) {
+        logW(
+          '[SYNC-GUARD] Bloqueado delete em massa: allowed vazio e remoteCount > 0 '
+          'lojaId=$lojaId collectionPath=$collectionPath allowedCount=$allowedCount '
+          'remoteCount=$remoteCount deleteCandidatesCount=$deleteCandidatesCount '
+          'allowMassDelete=$allowMassDelete caller=CatalogoSyncService.syncAll',
+        );
+      } else {
+        logW(
+          '[SYNC-GUARD] Bloqueado delete suspeito em catálogo '
+          'lojaId=$lojaId collectionPath=$collectionPath allowedCount=$allowedCount '
+          'remoteCount=$remoteCount deleteCandidatesCount=$deleteCandidatesCount '
+          'allowMassDelete=$allowMassDelete reason=$blockReason '
+          'caller=CatalogoSyncService.syncAll',
+        );
+      }
+      return;
+    }
+
     if (toRemove.isNotEmpty) {
+      logW(
+        '[SYNC-GUARD] catálogo: removendo ${toRemove.length} doc(s) órfão(s) '
+        'lojaId=$lojaId collectionPath=$collectionPath allowedCount=$allowedCount '
+        'remoteCount=$remoteCount deleteCandidatesCount=$deleteCandidatesCount '
+        'allowMassDelete=$allowMassDelete caller=CatalogoSyncService.syncAll',
+      );
       await Future.wait(toRemove.map((d) => _remove(lojaId, target, d.id)));
     }
   }
@@ -630,14 +673,25 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   // ===============================================================
   // Atalhos
   // ===============================================================
-  static Future<void> pushAllToDraft({String? lojaIdOverride}) =>
-      syncAll(target: SyncTarget.draft, lojaIdOverride: lojaIdOverride);
+  static Future<void> pushAllToDraft({
+    String? lojaIdOverride,
+    bool allowMassDelete = false,
+  }) =>
+      syncAll(
+        target: SyncTarget.draft,
+        lojaIdOverride: lojaIdOverride,
+        allowMassDelete: allowMassDelete,
+      );
 
-  static Future<void> pushAllToLive({String? lojaIdOverride}) =>
+  static Future<void> pushAllToLive({
+    String? lojaIdOverride,
+    bool allowMassDelete = false,
+  }) =>
       syncAll(
         target: SyncTarget.live,
         removerSeSemEstoque: true, // ✅ Remove produtos sem estoque do catálogo LIVE
         lojaIdOverride: lojaIdOverride,
+        allowMassDelete: allowMassDelete,
       );
 
   // ---------------------------------------------------------------------------
@@ -683,8 +737,12 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   static Future<void> pushAll(
     String lojaId, {
     bool removerSeSemEstoque = false,
+    bool allowMassDelete = false,
   }) =>
-      pushAllToLive(lojaIdOverride: lojaId);
+      pushAllToLive(
+        lojaIdOverride: lojaId,
+        allowMassDelete: allowMassDelete,
+      );
 
   // ===============================================================
   // MÉTODOS AUXILIARES PARA AUTO-SYNC

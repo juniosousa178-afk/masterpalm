@@ -23,6 +23,7 @@ import 'image_upload_service.dart';
 import 'sync_queue_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produto_pull_skip_guard.dart';
+import 'sync_mass_delete_guard.dart';
 import '../src/blob_fetch_stub.dart'
     if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 
@@ -1897,6 +1898,9 @@ class ProdutosFirestoreService {
   static Future<int> limparProdutosExcedentesNoFirestore({
     required String lojaId,
     required Box<Produto> produtosBox,
+
+    /// Só com `true` permite apagar muitos docs excedentes de uma vez.
+    bool allowMassDelete = false,
   }) async {
     try {
       final idsLocais = produtosBox.values
@@ -1907,6 +1911,9 @@ class ProdutosFirestoreService {
       const batchSize = 500;
       final toDelete = <String>[];
       DocumentSnapshot<Map<String, dynamic>>? lastDoc;
+      var remoteCount = 0;
+      final collectionPath =
+          'lojas/$lojaId/${FSPaths.estoqueProdutosCol}';
 
       while (true) {
         Query<Map<String, dynamic>> query = _db
@@ -1919,6 +1926,7 @@ class ProdutosFirestoreService {
           query = query.startAfterDocument(lastDoc);
         }
         final snapshot = await query.get();
+        remoteCount += snapshot.docs.length;
         for (final doc in snapshot.docs) {
           if (!idsLocais.contains(doc.id)) {
             toDelete.add(doc.id);
@@ -1926,6 +1934,46 @@ class ProdutosFirestoreService {
         }
         if (snapshot.docs.length < batchSize) break;
         lastDoc = snapshot.docs.last;
+      }
+
+      final localIdsCount = idsLocais.length;
+      final deleteCandidatesCount = toDelete.length;
+
+      final blockReason = SyncMassDeleteGuard.estoqueExcedentesBlockReason(
+        localIdsCount: localIdsCount,
+        remoteCount: remoteCount,
+        deleteCandidatesCount: deleteCandidatesCount,
+        allowMassDelete: allowMassDelete,
+      );
+
+      if (blockReason == SyncMassDeleteBlockReason.localIdsEmptyWithRemote) {
+        logW(
+          '[SYNC-GUARD] Bloqueado limparProdutosExcedentesNoFirestore: conjunto local vazio '
+          'lojaId=$lojaId collectionPath=$collectionPath localIdsCount=$localIdsCount '
+          'remoteCount=$remoteCount deleteCandidatesCount=$deleteCandidatesCount '
+          'allowMassDelete=$allowMassDelete caller=ProdutosFirestoreService.limparProdutosExcedentesNoFirestore',
+        );
+        return 0;
+      }
+
+      if (blockReason != SyncMassDeleteBlockReason.none) {
+        logW(
+          '[SYNC-GUARD] Bloqueado delete suspeito em estoque_produtos '
+          'lojaId=$lojaId collectionPath=$collectionPath localIdsCount=$localIdsCount '
+          'remoteCount=$remoteCount deleteCandidatesCount=$deleteCandidatesCount '
+          'allowMassDelete=$allowMassDelete reason=$blockReason '
+          'caller=ProdutosFirestoreService.limparProdutosExcedentesNoFirestore',
+        );
+        return 0;
+      }
+
+      if (toDelete.isNotEmpty) {
+        logW(
+          '[SYNC-GUARD] estoque_produtos: removendo ${toDelete.length} doc(s) excedente(s) '
+          'lojaId=$lojaId collectionPath=$collectionPath localIdsCount=$localIdsCount '
+          'remoteCount=$remoteCount deleteCandidatesCount=$deleteCandidatesCount '
+          'allowMassDelete=$allowMassDelete caller=ProdutosFirestoreService.limparProdutosExcedentesNoFirestore',
+        );
       }
 
       for (final id in toDelete) {
