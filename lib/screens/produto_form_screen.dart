@@ -49,6 +49,24 @@ String gerarSlug(String texto) {
       .replaceAll(RegExp(r'^-|-$'), '');
 }
 
+/// Chave em [Produto.precoPorTamanho] / [variacoes] quando o tamanho na grade está vazio.
+String produtoFormTamanhoKeyPrecoPorTamanho(String tamanhoCampo) {
+  final t = tamanhoCampo.trim();
+  return t.isEmpty ? 'sem-tamanho' : t;
+}
+
+Map<String, double> produtoFormBuildPrecoPorTamanhoFromControllers(
+  Map<String, TextEditingController> controllers,
+) {
+  final out = <String, double>{};
+  for (final e in controllers.entries) {
+    final key = produtoFormTamanhoKeyPrecoPorTamanho(e.key);
+    final v = MoedaInputFormatter.parse(e.value.text);
+    if (v > 0) out[key] = v;
+  }
+  return out;
+}
+
 /// Agrega linhas da grade em [variacoes] / [variacoesExtraTipo] (retrocompatível).
 ({Map<String, dynamic> variacoes, Map<String, dynamic>? variacoesExtraTipo})
     produtoFormMergeVariacoesGrade(
@@ -98,8 +116,13 @@ String gerarSlug(String texto) {
           m.containsKey(ProdutoVariacaoExtra.kMetaCustoUnitarioKey);
       if (!hasMetaCusto &&
           m.length == 1 &&
-          (m.containsKey(ProdutoVariacaoExtra.kSemExtraKey) || m.containsKey(''))) {
-        innerOut[ce.key] = m[ProdutoVariacaoExtra.kSemExtraKey] ?? m[''] ?? 0;
+          (m.containsKey(ProdutoVariacaoExtra.kSemExtraKey) ||
+              m.containsKey(ProdutoVariacaoExtra.kSemExtraKeyLegacy) ||
+              m.containsKey(''))) {
+        innerOut[ce.key] = m[ProdutoVariacaoExtra.kSemExtraKey] ??
+            m[ProdutoVariacaoExtra.kSemExtraKeyLegacy] ??
+            m[''] ??
+            0;
       } else {
         innerOut[ce.key] = Map<String, dynamic>.from(m);
       }
@@ -339,7 +362,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                   final q = ie.value is num
                       ? (ie.value as num).toInt()
                       : int.tryParse(ie.value?.toString() ?? '') ?? 0;
-                  final evDisp = (ev.trim().isEmpty || ev == ProdutoVariacaoExtra.kSemExtraKey)
+                  final evDisp = ProdutoVariacaoExtra.isSemExtraMapKey(ev)
                       ? ''
                       : ev;
                   debugPrint('  ➜ Linha: $tamanho + $cor + extra=$evDisp = $q');
@@ -401,7 +424,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       // 🔹 Preenche preço por tamanho
       if (p.precoPorTamanho != null && p.precoPorTamanho!.isNotEmpty) {
         for (final e in p.precoPorTamanho!.entries) {
-          _precoPorTamanhoCtrl[e.key] = TextEditingController(
+          final key = produtoFormTamanhoKeyPrecoPorTamanho(e.key);
+          _precoPorTamanhoCtrl[key] = TextEditingController(
             text: MoedaInputFormatter.format(e.value),
           );
         }
@@ -409,6 +433,23 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _initTombSessaoBaseline(p);
     }
     _initVariacaoControllers();
+    final produtoIdLog = (widget.produto?.idFirebase.isNotEmpty ?? false)
+        ? widget.produto!.idFirebase
+        : (widget.produto?.slug ?? 'novo-produto');
+    debugPrint(
+      '[PRECO-TAMANHO][LOAD] produtoId=$produtoIdLog '
+      'produto.precoPorTamanho=${widget.produto?.precoPorTamanho} '
+      'tamanhosDetectados=$_tamanhosUnicos '
+      'controllersCriados=${_precoPorTamanhoCtrl.keys.toList()} '
+      'valoresDosControllers=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))}',
+    );
+    debugPrint(
+      '[PRECO-TAMANHO][LOAD-PATH] '
+      'lojaId=$lojaId produtoId=$produtoIdLog '
+      'collectionPath=Hive(produtosBox) '
+      'docExists=${widget.produto != null} '
+      'precoPorTamanhoRaw=${widget.produto?.precoPorTamanho}',
+    );
   }
 
   void _initTombSessaoBaseline(Produto p) {
@@ -484,12 +525,16 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     return true;
   }
 
-  /// Retorna os tamanhos únicos da grade de variações.
+  /// Retorna os tamanhos únicos da grade para [precoPorTamanho] (alinhado ao merge: vazio → sem-tamanho).
   Set<String> get _tamanhosUnicos {
     final set = <String>{};
     for (final c in _variacaoControllers) {
       final t = (c['tamanho']?.text ?? '').trim();
-      if (t.isNotEmpty) set.add(t);
+      final cor = (c['cor']?.text ?? '').trim();
+      final qStr = (c['qtd']?.text ?? '').trim();
+      if (qStr.isEmpty) continue;
+      if (t.isEmpty && cor.isEmpty) continue;
+      set.add(produtoFormTamanhoKeyPrecoPorTamanho(c['tamanho']?.text ?? ''));
     }
     return set;
   }
@@ -498,8 +543,18 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     final tamanhos = _tamanhosUnicos;
     for (final t in _precoPorTamanhoCtrl.keys.toList()) {
       if (!tamanhos.contains(t)) {
-        _precoPorTamanhoCtrl[t]?.dispose();
-        _precoPorTamanhoCtrl.remove(t);
+        final v = MoedaInputFormatter.parse(_precoPorTamanhoCtrl[t]?.text ?? '');
+        if (v <= 0) {
+          _precoPorTamanhoCtrl[t]?.dispose();
+          _precoPorTamanhoCtrl.remove(t);
+          debugPrint(
+            '[PRECO-TAMANHO][CTRL-REMOVE] key=$t valor<=0 e tamanho fora da grade',
+          );
+        } else {
+          debugPrint(
+            '[PRECO-TAMANHO][CTRL-KEEP] key=$t preservado (valor>0) mesmo fora da grade',
+          );
+        }
       }
     }
     for (final t in tamanhos) {
@@ -1134,12 +1189,23 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
         ..fornecedor = _fornecedor.text.trim()
         ..custoEditadoNoCadastro = true;
-      _initPrecoPorTamanhoControllers();
-      final precoPorTamanhoMap = <String, double>{};
-      for (final e in _precoPorTamanhoCtrl.entries) {
-        final v = MoedaInputFormatter.parse(e.value.text);
-        if (v > 0) precoPorTamanhoMap[e.key] = v;
-      }
+      final precoPorTamanhoMap =
+          produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
+      final produtoIdSaveLog = (widget.produto?.idFirebase.isNotEmpty ?? false)
+          ? widget.produto!.idFirebase
+          : (widget.produto?.slug ?? 'novo-produto');
+      debugPrint(
+        '[PRECO-TAMANHO][CTRL] '
+        'keys=${_precoPorTamanhoCtrl.keys.toList()} '
+        'textos=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))} '
+        'mapaFinalPrecoPorTamanho=$precoPorTamanhoMap',
+      );
+      debugPrint(
+        '[PRECO-TAMANHO][SAVE] produtoId=$produtoIdSaveLog '
+        'controllers=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))} '
+        'mapaFinalPrecoPorTamanho=$precoPorTamanhoMap '
+        'produto.precoPorTamanho(antes)=${widget.produto?.precoPorTamanho}',
+      );
       p.precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
       if (variacoesMap.isNotEmpty) p.recalcularQuantidadeTotal();
       if (!await _tentarTombstoneVarRemovidaSessaoSeNecessario(
@@ -1561,12 +1627,17 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         subcategoriaPrincipal,
       );
 
-      _initPrecoPorTamanhoControllers();
-      final Map<String, double> precoPorTamanhoMap = {};
-      for (final e in _precoPorTamanhoCtrl.entries) {
-        final v = MoedaInputFormatter.parse(e.value.text);
-        if (v > 0) precoPorTamanhoMap[e.key] = v;
-      }
+      final precoPorTamanhoMap =
+          produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
+      final produtoIdSaveLog = (widget.produto?.idFirebase.isNotEmpty ?? false)
+          ? widget.produto!.idFirebase
+          : (widget.produto?.slug ?? 'novo-produto');
+      debugPrint(
+        '[PRECO-TAMANHO][SAVE] produtoId=$produtoIdSaveLog '
+        'controllers=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))} '
+        'mapaFinalPrecoPorTamanho=$precoPorTamanhoMap '
+        'produto.precoPorTamanho(antes)=${widget.produto?.precoPorTamanho}',
+      );
 
       // 🔹 Calcula valores de promoção
       double? percentualPromo;
@@ -1637,6 +1708,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..fornecedor = _fornecedor.text.trim()
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
             ..custoEditadoNoCadastro = true;
+          debugPrint(
+            '[PRECO-TAMANHO][PRODUTO-FINAL] '
+            'produtoId=${existente.idFirebase.isNotEmpty ? existente.idFirebase : existente.slug} '
+            'produto.precoPorTamanho=${existente.precoPorTamanho}',
+          );
 
           if (variacoesMap.isNotEmpty) {
             existente.recalcularQuantidadeTotal();
@@ -1730,6 +1806,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             updatedAt: DateTime.now(),
             custoEditadoNoCadastro: true,
           );
+          debugPrint(
+            '[PRECO-TAMANHO][PRODUTO-FINAL] '
+            'produtoId=${novo.idFirebase.isNotEmpty ? novo.idFirebase : novo.slug} '
+            'produto.precoPorTamanho=${novo.precoPorTamanho}',
+          );
 
           await produtosBox.add(novo);
           remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
@@ -1791,6 +1872,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..fornecedor = _fornecedor.text.trim()
           ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
           ..custoEditadoNoCadastro = true;
+        debugPrint(
+          '[PRECO-TAMANHO][PRODUTO-FINAL] '
+          'produtoId=${p.idFirebase.isNotEmpty ? p.idFirebase : p.slug} '
+          'produto.precoPorTamanho=${p.precoPorTamanho}',
+        );
 
         // 🔹 Recalcular quantidade total com base nas variações
         if (variacoesMap.isNotEmpty) {
@@ -2482,7 +2568,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                   child: TextFormField(
                                     controller: e.value,
                                     decoration: InputDecoration(
-                                      labelText: '${e.key} (R\$)',
+                                      labelText: e.key == 'sem-tamanho'
+                                          ? 'Sem tamanho (R\$)'
+                                          : '${e.key} (R\$)',
                                       hintText: '0,00',
                                       filled: true,
                                       fillColor: Colors.grey.shade50,

@@ -293,7 +293,10 @@ class EstoqueTransactionService {
         'updatedAt': FieldValue.serverTimestamp(),
       };
       if (novasVariacoes != null) {
-        updateData['variacoes'] = novasVariacoes;
+        updateData['variacoes'] =
+            ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+          Map<String, dynamic>.from(novasVariacoes),
+        );
         updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
       }
       if (novoEstoquePorTamanho != null) {
@@ -916,7 +919,10 @@ class EstoqueTransactionService {
           'updatedAt': FieldValue.serverTimestamp(),
         };
         if (novasVariacoes != null) {
-          updateData['variacoes'] = novasVariacoes;
+          updateData['variacoes'] =
+              ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+            Map<String, dynamic>.from(novasVariacoes),
+          );
           updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
         }
         if (novoEstoquePorTamanho != null) {
@@ -1135,7 +1141,10 @@ class EstoqueTransactionService {
           'updatedAt': FieldValue.serverTimestamp(),
         };
         if (novasVariacoes != null) {
-          updateData['variacoes'] = novasVariacoes;
+          updateData['variacoes'] =
+              ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+            Map<String, dynamic>.from(novasVariacoes),
+          );
           updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
         }
         if (novoEstoquePorTamanho != null) {

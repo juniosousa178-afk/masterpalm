@@ -355,8 +355,10 @@ class Produto extends HiveObject {
 
   /// Retorna o preço para uma variação (tamanho ou tamanho+cor). Usa precoPorTamanho se houver, senão precoFinal.
   double precoParaVariacao(String tamanho, [String? cor]) {
-    if (precoPorTamanho != null && precoPorTamanho!.containsKey(tamanho)) {
-      return precoPorTamanho![tamanho] ?? precoFinal;
+    final tk =
+        tamanho.trim().isEmpty ? 'sem-tamanho' : tamanho.trim();
+    if (precoPorTamanho != null && precoPorTamanho!.containsKey(tk)) {
+      return precoPorTamanho![tk] ?? precoFinal;
     }
     return precoFinal;
   }

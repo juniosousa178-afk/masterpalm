@@ -697,7 +697,10 @@ class EstoqueService {
 
       // Adicionar variações se existirem
       if (produto.usaVariacoes && produto.variacoes != null) {
-        updateData['variacoes'] = produto.variacoes;
+        updateData['variacoes'] =
+            ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+          Map<String, dynamic>.from(produto.variacoes!),
+        );
       }
       if (produto.estoquePorTamanho.isNotEmpty) {
         updateData['estoquePorTamanho'] = produto.estoquePorTamanho;

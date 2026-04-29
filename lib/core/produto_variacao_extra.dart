@@ -14,10 +14,18 @@ const String kVariacaoExtraLabelNeutra = 'Variação';
 abstract final class ProdutoVariacaoExtra {
   /// Chave reservada dentro da célula de variação para custo por variação.
   static const String kMetaCustoUnitarioKey = '__custoUnitario';
-  /// Chave segura para quantidade quando não há eixo extra.
-  static const String kSemExtraKey = '__sem_extra__';
+  /// Chave segura para quantidade quando não há eixo extra (válida no Firestore).
+  static const String kSemExtraKey = '_sem_extra';
+  /// Legado: Firestore rejeita campos que começam e terminam com `__`.
+  static const String kSemExtraKeyLegacy = '__sem_extra__';
 
   static bool isMetaKey(String key) => key.trim() == kMetaCustoUnitarioKey;
+
+  /// Chave de mapa que representa “sem eixo extra”: `''`, atual ou legado.
+  static bool isSemExtraMapKey(String key) {
+    final s = key.trim();
+    return s.isEmpty || s == kSemExtraKey || s == kSemExtraKeyLegacy;
+  }
 
   static String normKey(String s) {
     var t = s.toLowerCase().trim();
@@ -95,7 +103,7 @@ abstract final class ProdutoVariacaoExtra {
     if (cell is! Map || cell.isEmpty) return false;
     for (final k in cell.keys) {
       final key = k.toString().trim();
-      if (key.isEmpty || key == kSemExtraKey || isMetaKey(key)) continue;
+      if (isSemExtraMapKey(key) || isMetaKey(key)) continue;
       return true;
     }
     return false;
@@ -120,6 +128,9 @@ abstract final class ProdutoVariacaoExtra {
     if (cell is Map) {
       if (extraValorTrim.isEmpty) {
         if (cell.containsKey(kSemExtraKey)) return _asInt(cell[kSemExtraKey]);
+        if (cell.containsKey(kSemExtraKeyLegacy)) {
+          return _asInt(cell[kSemExtraKeyLegacy]);
+        }
         if (cell.containsKey('')) return _asInt(cell['']);
         final semMeta = cell.entries
             .where((e) => !isMetaKey(e.key.toString()))
@@ -161,7 +172,7 @@ abstract final class ProdutoVariacaoExtra {
       if (isMetaKey(k.toString())) return;
       if (_asInt(v) <= 0) return;
       final ks = k.toString();
-      if (ks.trim().isEmpty || ks == kSemExtraKey) return;
+      if (isSemExtraMapKey(ks)) return;
       out.add(ks);
     });
     out.sort((a, b) => normKey(a).compareTo(normKey(b)));
@@ -205,6 +216,7 @@ abstract final class ProdutoVariacaoExtra {
   static String? _resolveMapKeyForExtra(Map<String, dynamic> m, String extraTrim) {
     if (extraTrim.isEmpty) {
       if (m.containsKey(kSemExtraKey)) return kSemExtraKey;
+      if (m.containsKey(kSemExtraKeyLegacy)) return kSemExtraKeyLegacy;
       if (m.containsKey('')) return '';
       final keysValidas = m.keys
           .where((k) => !isMetaKey(k.toString()))
@@ -287,7 +299,7 @@ abstract final class ProdutoVariacaoExtra {
           if (cell is! Map) continue;
           for (final k in cell.keys) {
             final s = k.toString().trim();
-          if (isMetaKey(s) || s == kSemExtraKey) continue;
+          if (isMetaKey(s) || isSemExtraMapKey(s)) continue;
             if (s.isNotEmpty) set.add(s);
           }
         }
@@ -311,12 +323,12 @@ abstract final class ProdutoVariacaoExtra {
     if (cm is! Map) return '';
     final ev = extraValor.trim();
     if (ev.isEmpty) {
-      final semExtra = cm[kSemExtraKey];
+      final semExtra =
+          cm[kSemExtraKey] ?? cm[kSemExtraKeyLegacy] ?? cm[''];
       if ((semExtra?.toString().trim() ?? '').isNotEmpty) {
         return semExtra.toString().trim();
       }
-      final v = cm[''];
-      return v?.toString().trim() ?? '';
+      return '';
     }
     for (final e in cm.entries) {
       if (keysMatch(e.key.toString(), ev)) {
@@ -359,5 +371,82 @@ abstract final class ProdutoVariacaoExtra {
     final e = resumoExtraLinhaDeItemMap(item);
     if (e.isNotEmpty) parts.add(e);
     return parts.join(', ');
+  }
+
+  /// `variacoes` para escrita no Firestore: `''` e [kSemExtraKeyLegacy] viram [kSemExtraKey].
+  static Map<String, dynamic> sanitizeVariacoesMapForFirestore(
+    Map<String, dynamic> variacoes,
+  ) {
+    final out = <String, dynamic>{};
+    for (final te in variacoes.entries) {
+      final tamanho = te.key.toString().trim();
+      if (tamanho.isEmpty) continue;
+      final cores = te.value;
+      if (cores is! Map) continue;
+      final outCores = <String, dynamic>{};
+      for (final ce in cores.entries) {
+        final cor = ce.key.toString().trim();
+        if (cor.isEmpty) continue;
+        final cell = ce.value;
+        if (cell is Map) {
+          final outCell = <String, dynamic>{};
+          for (final ie in cell.entries) {
+            var k = ie.key.toString();
+            if (isMetaKey(k)) {
+              outCell[k] = ie.value;
+              continue;
+            }
+            if (k.trim().isEmpty || k == kSemExtraKeyLegacy) {
+              k = kSemExtraKey;
+            }
+            outCell[k] = ie.value;
+          }
+          if (outCell.isNotEmpty) {
+            outCores[cor] = outCell;
+          }
+        } else {
+          outCores[cor] = cell;
+        }
+      }
+      if (outCores.isNotEmpty) {
+        out[tamanho] = outCores;
+      }
+    }
+    return out;
+  }
+
+  /// `variacoesExtraTipo` para escrita: mesma regra de chaves que [sanitizeVariacoesMapForFirestore].
+  static Map<String, dynamic> sanitizeVariacoesExtraTipoMapForFirestore(
+    Map<String, dynamic> src,
+  ) {
+    final out = <String, dynamic>{};
+    for (final te in src.entries) {
+      final tamanho = te.key.toString().trim();
+      if (tamanho.isEmpty) continue;
+      final inner = te.value;
+      if (inner is! Map) continue;
+      final outCores = <String, dynamic>{};
+      for (final ce in inner.entries) {
+        final cor = ce.key.toString().trim();
+        if (cor.isEmpty) continue;
+        final evMap = ce.value;
+        if (evMap is! Map) continue;
+        final outEx = <String, dynamic>{};
+        for (final ee in evMap.entries) {
+          var k = ee.key.toString();
+          if (k.trim().isEmpty || k == kSemExtraKeyLegacy) {
+            k = kSemExtraKey;
+          }
+          outEx[k] = ee.value;
+        }
+        if (outEx.isNotEmpty) {
+          outCores[cor] = outEx;
+        }
+      }
+      if (outCores.isNotEmpty) {
+        out[tamanho] = outCores;
+      }
+    }
+    return out;
   }
 }

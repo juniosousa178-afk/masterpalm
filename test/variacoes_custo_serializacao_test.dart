@@ -1,8 +1,18 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/core/produto_variacao_extra.dart';
+import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/screens/produto_form_screen.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
+
+void _assertNenhumaChaveLegadaSemExtra(dynamic v) {
+  if (v is Map) {
+    for (final e in v.entries) {
+      expect(e.key, isNot(ProdutoVariacaoExtra.kSemExtraKeyLegacy));
+      _assertNenhumaChaveLegadaSemExtra(e.value);
+    }
+  }
+}
 
 void main() {
   test('parseVariacoesFromFirestore preserva qtd e custo por variacao sem extra', () {
@@ -68,6 +78,7 @@ void main() {
     final cell = (sanitized['1'] as Map<String, dynamic>)['sem-cor'] as Map<String, dynamic>;
 
     expect(cell.containsKey(''), isFalse);
+    expect(cell.containsKey(ProdutoVariacaoExtra.kSemExtraKeyLegacy), isFalse);
     expect(cell.containsKey(ProdutoVariacaoExtra.kSemExtraKey), isTrue);
     expect(cell[ProdutoVariacaoExtra.kSemExtraKey], 2);
     expect(cell[ProdutoVariacaoExtra.kMetaCustoUnitarioKey], 22.99);
@@ -76,5 +87,107 @@ void main() {
     final parsedCell = (parsed!['1'] as Map<String, dynamic>)['sem-cor'];
     expect(ProdutoVariacaoExtra.somarCelula(parsedCell), 2);
     expect(ProdutoVariacaoExtra.custoUnitarioNaCelula(parsedCell), 22.99);
+  });
+
+  test('parseVariacoesFromFirestore aceita chave legada __sem_extra__', () {
+    final raw = <String, dynamic>{
+      'Aro 18': <String, dynamic>{
+        'Branco': <String, dynamic>{
+          ProdutoVariacaoExtra.kSemExtraKeyLegacy: 4,
+          ProdutoVariacaoExtra.kMetaCustoUnitarioKey: 10.0,
+        },
+      },
+    };
+    final parsed = ProdutosFirestoreService.parseVariacoesFromFirestore(raw);
+    final cell = (parsed!['Aro 18'] as Map<String, dynamic>)['Branco'];
+    expect(ProdutoVariacaoExtra.somarCelula(cell), 4);
+    expect(ProdutoVariacaoExtra.custoUnitarioNaCelula(cell), 10.0);
+    expect(
+      (cell as Map<String, dynamic>).containsKey(ProdutoVariacaoExtra.kSemExtraKey),
+      isTrue,
+    );
+  });
+
+  test('sanitizeVariacoesForFirestore converte legado para chave Firestore-safe', () {
+    final variacoes = <String, dynamic>{
+      '1': <String, dynamic>{
+        'sem-cor': <String, dynamic>{
+          ProdutoVariacaoExtra.kSemExtraKeyLegacy: 3,
+          ProdutoVariacaoExtra.kMetaCustoUnitarioKey: 5.0,
+        },
+      },
+    };
+    final sanitized =
+        ProdutosFirestoreService.sanitizeVariacoesForFirestore(variacoes);
+    final cell =
+        (sanitized['1'] as Map<String, dynamic>)['sem-cor'] as Map<String, dynamic>;
+    expect(cell.containsKey(ProdutoVariacaoExtra.kSemExtraKeyLegacy), isFalse);
+    expect(cell[ProdutoVariacaoExtra.kSemExtraKey], 3);
+  });
+
+  test('produtoFormTamanhoKeyPrecoPorTamanho: vazio usa sem-tamanho', () {
+    expect(produtoFormTamanhoKeyPrecoPorTamanho(''), 'sem-tamanho');
+    expect(produtoFormTamanhoKeyPrecoPorTamanho('  P  '), 'P');
+  });
+
+  test('precoParaVariacao usa precoPorTamanho[sem-tamanho] quando tamanho vazio', () {
+    final p = Produto.vazio();
+    p.precoFinal = 99.0;
+    p.precoPorTamanho = {'sem-tamanho': 42.5, 'G': 50.0};
+    expect(p.precoParaVariacao(''), 42.5);
+    expect(p.precoParaVariacao('sem-tamanho'), 42.5);
+    expect(p.precoParaVariacao('G'), 50.0);
+    expect(p.precoParaVariacao('X'), 99.0);
+  });
+
+  test('build precoPorTamanho a partir de controllers canoniza tamanho e ignora vazios', () {
+    final controllers = <String, TextEditingController>{
+      '40cm': TextEditingController(text: '99,90'),
+      ' 45cm ': TextEditingController(text: '109,90'),
+      '': TextEditingController(text: '129,90'),
+      '60cm': TextEditingController(text: ''),
+      '70cm': TextEditingController(text: '0,00'),
+    };
+    final out = produtoFormBuildPrecoPorTamanhoFromControllers(controllers);
+    expect(out, {
+      '40cm': 99.9,
+      '45cm': 109.9,
+      'sem-tamanho': 129.9,
+    });
+    for (final c in controllers.values) {
+      c.dispose();
+    }
+  });
+
+  test('precoPorTamanho roundtrip Firestore preserva valores', () {
+    final payload = <String, dynamic>{
+      '40cm': 99.90,
+      '45cm': 109.90,
+      '60cm': 129.90,
+    };
+    final parsed = ProdutosFirestoreService.parsePrecoPorTamanhoFromFirestore(payload);
+    expect(parsed, {
+      '40cm': 99.90,
+      '45cm': 109.90,
+      '60cm': 129.90,
+    });
+  });
+
+  test('sanitizeVariacoesForFirestore: custo + _sem_extra e nunca __sem_extra__', () {
+    final sanitized = ProdutosFirestoreService.sanitizeVariacoesForFirestore(
+      <String, dynamic>{
+        '1': <String, dynamic>{
+          'sem-cor': <String, dynamic>{
+            '': 1,
+            ProdutoVariacaoExtra.kMetaCustoUnitarioKey: 3.0,
+          },
+        },
+      },
+    );
+    _assertNenhumaChaveLegadaSemExtra(sanitized);
+    final cell =
+        (sanitized['1'] as Map<String, dynamic>)['sem-cor'] as Map<String, dynamic>;
+    expect(cell[ProdutoVariacaoExtra.kSemExtraKey], 1);
+    expect(cell[ProdutoVariacaoExtra.kMetaCustoUnitarioKey], 3.0);
   });
 }
