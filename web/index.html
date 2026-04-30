@@ -64,8 +64,8 @@
     the --base-href argument provided to flutter build.
   -->
   <base href="$FLUTTER_BASE_HREF">
-  <!-- Em /loja/xxx os assets devem vir da raiz (evita ServiceWorker/JS com MIME text/html) -->
-  <script>(function(){if(location.pathname.indexOf('/loja/')===0){var d=document,b=d.querySelector('base');if(b)b.href='/';}})();</script>
+  <!-- Em /loja e /loja/xxx os assets vêm da raiz (evita caminhos relativos /loja/*.js) -->
+  <script>(function(){var p=location.pathname||'';if(p==='/loja'||p.indexOf('/loja/')===0){var b=document.querySelector('base');if(b)b.href='/';}})();</script>
   <!-- Em localhost, não forçar update de SW: evita misturar caches e quebrar dart_sdk (ex. Symbol(_privateNames)). -->
   <script>
     (function () {

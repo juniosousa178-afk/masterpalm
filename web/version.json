@@ -1,8 +1,7 @@
 {
-  "buildId": "diag-20260427-APPSTARTFIX-f14fe79",
-  "timestamp": "2026-04-27T18:00:00-03:00",
+  "buildId": "stable-20260429-VARIACOES-SYNC-33137cf",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "gitCommit": "f14fe79"
+  "gitCommit": "33137cf"
 }
