@@ -66,21 +66,7 @@
   <base href="$FLUTTER_BASE_HREF">
   <!-- Em /loja e /loja/xxx os assets vêm da raiz (evita caminhos relativos /loja/*.js) -->
   <script>(function(){var p=location.pathname||'';if(p==='/loja'||p.indexOf('/loja/')===0){var b=document.querySelector('base');if(b)b.href='/';}})();</script>
-  <!-- Em localhost, não forçar update de SW: evita misturar caches e quebrar dart_sdk (ex. Symbol(_privateNames)). -->
-  <script>
-    (function () {
-      if (!('serviceWorker' in navigator)) return;
-      var h = location.hostname;
-      if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') return;
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.getRegistrations().then(function (regs) {
-          for (var i = 0; i < regs.length; i++) {
-            regs[i].update();
-          }
-        });
-      });
-    })();
-  </script>
+  <!-- Build com --pwa-strategy=none: não registar SW. Limpeza única por buildId evita shell/cache legado sem reload infinito. -->
   <script>
     (function () {
       function isDiagMode() {
@@ -431,7 +417,55 @@
   <!-- App Check: reCAPTCHA v3 (chave via Remote Config). Para debug local, adicione:
        <script>self.FIREBASE_APPCHECK_DEBUG_TOKEN=true;</script> e registre o token no Console. -->
 
-  <!-- Script principal do Flutter (sem async: ordem de carregamento do require.js / dart_sdk) -->
-  <script src="flutter_bootstrap.js"></script>
+  <!-- Flutter bootstrap: após limpeza opcional de SW/Cache Storage por buildId (só produção). -->
+  <script>
+    (function () {
+      function injectFlutterBootstrap() {
+        var s = document.createElement('script');
+        s.src = 'flutter_bootstrap.js';
+        s.async = false;
+        (document.body || document.head).appendChild(s);
+      }
+      var h = location.hostname || '';
+      if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') {
+        injectFlutterBootstrap();
+        return;
+      }
+      var LS = 'mp_web_sw_cleanup_done_for';
+      var vUrl = '/version.json';
+      try {
+        vUrl = new URL('version.json', location.origin + '/').toString();
+      } catch (e) {}
+      fetch(vUrl + (vUrl.indexOf('?') >= 0 ? '&' : '?') + 'cb=' + Date.now(), {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (j) {
+          var bid = String((j && j.buildId) || '').trim();
+          var last = '';
+          try { last = localStorage.getItem(LS) || ''; } catch (e) {}
+          if (!bid || bid === last) return;
+          if (!('serviceWorker' in navigator)) {
+            try { localStorage.setItem(LS, bid); } catch (e) {}
+            return;
+          }
+          return navigator.serviceWorker.getRegistrations().then(function (regs) {
+            return Promise.all(regs.map(function (x) { return x.unregister(); }));
+          }).then(function () {
+            if (!window.caches || !caches.keys) return;
+            return caches.keys().then(function (keys) {
+              return Promise.all(keys.filter(function (k) {
+                return String(k).toLowerCase().indexOf('flutter') >= 0;
+              }).map(function (k) { return caches.delete(k); }));
+            });
+          }).then(function () {
+            try { localStorage.setItem(LS, bid); } catch (e) {}
+          });
+        })
+        .catch(function () {})
+        .finally(function () { injectFlutterBootstrap(); });
+    })();
+  </script>
 </body>
 </html>

@@ -1,1 +1,480 @@
-{"functions":[{"codebase":"default","source":"functions","runtime":"nodejs20"},{"codebase":"main","source":"main","runtime":"nodejs20"}],"hosting":[{"target":"mastepalm","public":"build/web","ignore":["firebase.json","*/.","*/node_modules/*"],"headers":[{"source":"/.well-known/assetlinks.json","headers":[{"key":"Content-Type","value":"application/json"}]},{"source":"/downloads/*.apk","headers":[{"key":"Content-Type","value":"application/vnd.android.package-archive"},{"key":"Content-Disposition","value":"attachment; filename=\"masterpalm.apk\""}]},{"source":"/version.json","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/loja/version.json","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/modelos-importacao.html","headers":[{"key":"Cache-Control","value":"no-cache"}]},{"source":"/modelos-importacao/**","headers":[{"key":"Cache-Control","value":"public, max-age=3600"}]},{"source":"**","headers":[{"key":"Cross-Origin-Opener-Policy","value":"same-origin-allow-popups"}]}],"rewrites":[{"source":"/privacidade","destination":"/privacidade.html"},{"source":"/modelos-importacao","destination":"/modelos-importacao.html"},{"source":"/modelos-importacao/","destination":"/modelos-importacao.html"},{"source":"/mp-oauth","function":{"functionId":"mpOAuthInit","region":"southamerica-east1"}},{"source":"/api/mp/oauth/callback","function":{"functionId":"mpOAuthExchangeCode","region":"southamerica-east1"}},{"source":"/c/**","function":{"functionId":"redirectCatalogo","region":"southamerica-east1"}},{"source":"/loja/flutter_service_worker.js","destination":"/flutter_service_worker.js"},{"source":"/loja/flutter_bootstrap.js","destination":"/flutter_bootstrap.js"},{"source":"/loja/main.dart.js","destination":"/main.dart.js"},{"source":"/loja/version.json","destination":"/version.json"},{"source":"/loja/flutter.js","destination":"/flutter.js"},{"source":"/loja/**","destination":"/index.html"},{"source":"**","destination":"/index.html"}]},{"target":"masterpalm-58c46","public":"build/web","ignore":["firebase.json","*/.","*/node_modules/*"],"headers":[{"source":"/index.html","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/main.dart.js","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"},{"key":"Content-Type","value":"application/javascript; charset=utf-8"}]},{"source":"/loja/main.dart.js","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/flutter_bootstrap.js","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"},{"key":"Content-Type","value":"application/javascript; charset=utf-8"}]},{"source":"/loja/flutter_bootstrap.js","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/flutter.js","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"},{"key":"Content-Type","value":"application/javascript; charset=utf-8"}]},{"source":"/loja/flutter.js","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/flutter_service_worker.js","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"},{"key":"Content-Type","value":"application/javascript; charset=utf-8"}]},{"source":"/loja/flutter_service_worker.js","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/.well-known/assetlinks.json","headers":[{"key":"Content-Type","value":"application/json"}]},{"source":"/downloads/*.apk","headers":[{"key":"Content-Type","value":"application/vnd.android.package-archive"},{"key":"Content-Disposition","value":"attachment; filename=\"masterpalm.apk\""}]},{"source":"/version.json","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"},{"key":"Content-Type","value":"application/json; charset=utf-8"}]},{"source":"/loja/version.json","headers":[{"key":"Cache-Control","value":"no-cache, no-store, must-revalidate"},{"key":"Pragma","value":"no-cache"},{"key":"Expires","value":"0"}]},{"source":"/modelos-importacao.html","headers":[{"key":"Cache-Control","value":"no-cache"}]},{"source":"/modelos-importacao/**","headers":[{"key":"Cache-Control","value":"public, max-age=3600"}]},{"source":"**","headers":[{"key":"Cross-Origin-Opener-Policy","value":"same-origin-allow-popups"}]}],"rewrites":[{"source":"/privacidade","destination":"/privacidade.html"},{"source":"/modelos-importacao","destination":"/modelos-importacao.html"},{"source":"/modelos-importacao/","destination":"/modelos-importacao.html"},{"source":"/mp-oauth","function":{"functionId":"mpOAuthInit","region":"southamerica-east1"}},{"source":"/api/mp/oauth/callback","function":{"functionId":"mpOAuthExchangeCode","region":"southamerica-east1"}},{"source":"/c/**","function":{"functionId":"redirectCatalogo","region":"southamerica-east1"}},{"source":"/loja/flutter_service_worker.js","destination":"/flutter_service_worker.js"},{"source":"/loja/flutter_bootstrap.js","destination":"/flutter_bootstrap.js"},{"source":"/loja/main.dart.js","destination":"/main.dart.js"},{"source":"/loja/version.json","destination":"/version.json"},{"source":"/loja/flutter.js","destination":"/flutter.js"},{"source":"/loja/**","destination":"/index.html"},{"source":"**","destination":"/index.html"}]}],"firestore":{"database":"(default)","location":"southamerica-east1","rules":"firestore.rules","indexes":"firestore.indexes.json"},"storage":{"rules":"storage.rules"},"emulators":{"functions":{"port":5001},"firestore":{"port":8080},"hosting":{"port":5000},"ui":{"enabled":false},"singleProjectMode":true},"flutter":{"platforms":{"android":{"default":{"projectId":"masterpalm-58c46","appId":"1:950139833317:android:01d76e9d022ae1851ebd0c","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"masterpalm-58c46","configurations":{"android":"1:950139833317:android:01d76e9d022ae1851ebd0c","web":"1:950139833317:web:4f94d4108daf8ab31ebd0c"}}}}}}
+{
+  "functions": [
+    {
+      "codebase": "default",
+      "source": "functions",
+      "runtime": "nodejs20"
+    },
+    {
+      "codebase": "main",
+      "source": "main",
+      "runtime": "nodejs20"
+    }
+  ],
+  "hosting": [
+    {
+      "target": "mastepalm",
+      "public": "build/web",
+      "ignore": ["firebase.json", "*/.", "*/node_modules/*"],
+      "headers": [
+        {
+          "source": "/index.html",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" }
+          ]
+        },
+        {
+          "source": "/",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" }
+          ]
+        },
+        {
+          "source": "/flutter_bootstrap.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/flutter_bootstrap.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/flutter.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/flutter.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/main.dart.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/main.dart.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/main.dart.js.map",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" }
+          ]
+        },
+        {
+          "source": "/flutter_service_worker.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/flutter_service_worker.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/version.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/version.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/manifest.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/manifest+json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/assets/AssetManifest.bin.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/assets/FontManifest.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/assets/NOTICES",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" }
+          ]
+        },
+        {
+          "source": "/assets/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" }
+          ]
+        },
+        {
+          "source": "/canvaskit/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" }
+          ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" }
+          ]
+        },
+        {
+          "source": "/.well-known/assetlinks.json",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "source": "/downloads/*.apk",
+          "headers": [
+            { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+            { "key": "Content-Disposition", "value": "attachment; filename=\"masterpalm.apk\"" }
+          ]
+        },
+        {
+          "source": "/modelos-importacao.html",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/modelos-importacao/**",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+        },
+        {
+          "source": "**",
+          "headers": [{ "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }]
+        }
+      ],
+      "rewrites": [
+        { "source": "/privacidade", "destination": "/privacidade.html" },
+        { "source": "/modelos-importacao", "destination": "/modelos-importacao.html" },
+        { "source": "/modelos-importacao/", "destination": "/modelos-importacao.html" },
+        { "source": "/mp-oauth", "function": { "functionId": "mpOAuthInit", "region": "southamerica-east1" } },
+        {
+          "source": "/api/mp/oauth/callback",
+          "function": { "functionId": "mpOAuthExchangeCode", "region": "southamerica-east1" }
+        },
+        { "source": "/c/**", "function": { "functionId": "redirectCatalogo", "region": "southamerica-east1" } },
+        { "source": "/loja/flutter_service_worker.js", "destination": "/flutter_service_worker.js" },
+        { "source": "/loja/flutter_bootstrap.js", "destination": "/flutter_bootstrap.js" },
+        { "source": "/loja/main.dart.js", "destination": "/main.dart.js" },
+        { "source": "/loja/version.json", "destination": "/version.json" },
+        { "source": "/loja/flutter.js", "destination": "/flutter.js" },
+        { "source": "/loja/**", "destination": "/index.html" },
+        { "source": "**", "destination": "/index.html" }
+      ]
+    },
+    {
+      "target": "masterpalm-58c46",
+      "public": "build/web",
+      "ignore": ["firebase.json", "*/.", "*/node_modules/*"],
+      "headers": [
+        {
+          "source": "/index.html",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" }
+          ]
+        },
+        {
+          "source": "/",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" }
+          ]
+        },
+        {
+          "source": "/flutter_bootstrap.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/flutter_bootstrap.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/flutter.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/flutter.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/main.dart.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/main.dart.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/main.dart.js.map",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" }
+          ]
+        },
+        {
+          "source": "/flutter_service_worker.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/flutter_service_worker.js",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/version.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/loja/version.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/manifest.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/manifest+json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/assets/AssetManifest.bin.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/assets/FontManifest.json",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" },
+            { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        {
+          "source": "/assets/NOTICES",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" },
+            { "key": "Expires", "value": "0" }
+          ]
+        },
+        {
+          "source": "/assets/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" }
+          ]
+        },
+        {
+          "source": "/canvaskit/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" }
+          ]
+        },
+        {
+          "source": "/icons/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" },
+            { "key": "Pragma", "value": "no-cache" }
+          ]
+        },
+        {
+          "source": "/.well-known/assetlinks.json",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "source": "/downloads/*.apk",
+          "headers": [
+            { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+            { "key": "Content-Disposition", "value": "attachment; filename=\"masterpalm.apk\"" }
+          ]
+        },
+        {
+          "source": "/modelos-importacao.html",
+          "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+        },
+        {
+          "source": "/modelos-importacao/**",
+          "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+        },
+        {
+          "source": "**",
+          "headers": [{ "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }]
+        }
+      ],
+      "rewrites": [
+        { "source": "/privacidade", "destination": "/privacidade.html" },
+        { "source": "/modelos-importacao", "destination": "/modelos-importacao.html" },
+        { "source": "/modelos-importacao/", "destination": "/modelos-importacao.html" },
+        { "source": "/mp-oauth", "function": { "functionId": "mpOAuthInit", "region": "southamerica-east1" } },
+        {
+          "source": "/api/mp/oauth/callback",
+          "function": { "functionId": "mpOAuthExchangeCode", "region": "southamerica-east1" }
+        },
+        { "source": "/c/**", "function": { "functionId": "redirectCatalogo", "region": "southamerica-east1" } },
+        { "source": "/loja/flutter_service_worker.js", "destination": "/flutter_service_worker.js" },
+        { "source": "/loja/flutter_bootstrap.js", "destination": "/flutter_bootstrap.js" },
+        { "source": "/loja/main.dart.js", "destination": "/main.dart.js" },
+        { "source": "/loja/version.json", "destination": "/version.json" },
+        { "source": "/loja/flutter.js", "destination": "/flutter.js" },
+        { "source": "/loja/**", "destination": "/index.html" },
+        { "source": "**", "destination": "/index.html" }
+      ]
+    }
+  ],
+  "firestore": {
+    "database": "(default)",
+    "location": "southamerica-east1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": { "rules": "storage.rules" },
+  "emulators": {
+    "functions": { "port": 5001 },
+    "firestore": { "port": 8080 },
+    "hosting": { "port": 5000 },
+    "ui": { "enabled": false },
+    "singleProjectMode": true
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "masterpalm-58c46",
+          "appId": "1:950139833317:android:01d76e9d022ae1851ebd0c",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "masterpalm-58c46",
+          "configurations": {
+            "android": "1:950139833317:android:01d76e9d022ae1851ebd0c",
+            "web": "1:950139833317:web:4f94d4108daf8ab31ebd0c"
+          }
+        }
+      }
+    }
+  }
+}
