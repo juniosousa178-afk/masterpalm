@@ -140,6 +140,91 @@ export function inferPeriodEndFromPreapproval(pre, now = new Date()) {
 }
 
 /**
+ * Fim do período de cobrança atual (epoch ms) a partir de doc users/subscriptions.
+ * Usado por plan change / elegibilidade; puro, sem rede.
+ */
+export function resolveCurrentPeriodEndMillis(doc) {
+  if (!doc || typeof doc !== "object") return null;
+  const c = doc.currentPeriodEnd;
+  if (c == null) return null;
+  if (typeof c.toMillis === "function") {
+    try {
+      const ms = Number(c.toMillis());
+      return Number.isFinite(ms) ? ms : null;
+    } catch {
+      return null;
+    }
+  }
+  if (c instanceof Date) {
+    const ms = c.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof c === "number") return Number.isFinite(c) ? c : null;
+  if (typeof c === "string") {
+    const d = new Date(c);
+    return !Number.isNaN(d.getTime()) ? d.getTime() : null;
+  }
+  if (typeof c.seconds === "number") {
+    const ns = typeof c.nanoseconds === "number" ? c.nanoseconds : 0;
+    return c.seconds * 1000 + Math.floor(ns / 1e6);
+  }
+  if (typeof c._seconds === "number") {
+    const ns = typeof c._nanoseconds === "number" ? c._nanoseconds : 0;
+    return c._seconds * 1000 + Math.floor(ns / 1e6);
+  }
+  const pre = doc.preapprovalSnapshot || doc.preapproval;
+  if (pre && typeof pre === "object") {
+    try {
+      const end = inferPeriodEndFromPreapproval(pre);
+      const ms = end.getTime();
+      return Number.isFinite(ms) ? ms : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Impede `runCreatePlanSubscription` quando já há recorrência ativa e o plano pedido é outro
+ * (troca deve passar pelo fluxo de plan change, não por nova subscrição “comum”).
+ */
+export function shouldBlockCreateRecurringSubscription({
+  canonicalRequested,
+  userData,
+  normalizePlanId,
+}) {
+  const norm =
+    typeof normalizePlanId === "function"
+      ? normalizePlanId
+      : (x) => String(x || "").trim().toLowerCase();
+  if (!userData || typeof userData !== "object") {
+    return { blocked: false };
+  }
+  const endMs = resolveCurrentPeriodEndMillis(userData);
+  const periodFuture = endMs != null && endMs > Date.now();
+  const billingMode = String(userData.billingMode || "").toLowerCase();
+  const subId = String(userData.providerSubscriptionId || "").trim();
+  const planStatus = String(userData.planStatus || "").toLowerCase();
+  const status = String(userData.status || "").toLowerCase();
+  const activeLike =
+    planStatus === "active" ||
+    status === "active" ||
+    planStatus === "trialing" ||
+    status === "trialing";
+  const activeRecurring =
+    activeLike && billingMode === "recurring" && !!subId && periodFuture;
+  if (!activeRecurring) {
+    return { blocked: false };
+  }
+  const cur = norm(userData.currentPlanId);
+  const req = norm(canonicalRequested);
+  if (!req || !cur) return { blocked: false };
+  if (req === cur) return { blocked: false };
+  return { blocked: true };
+}
+
+/**
  * Sincroniza users/{uid} a partir de preapproval autorizado/pausado/cancelado.
  * Não promove plano pago só por "pending" sem regra explícita.
  */
