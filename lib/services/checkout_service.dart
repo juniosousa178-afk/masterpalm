@@ -11,6 +11,12 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'license_manager.dart';
 import 'remote_config_service.dart';
 
+/// Resultado mínimo da UX de troca de plano (ex.: deep link / retorno do checkout MP).
+enum PlanChangeCallOutcome {
+  opened,
+  alreadyActive,
+}
+
 /// POST em [planCreatePreference]: credencial MP só no backend (Secret Manager).
 /// No Web: [reload] + [getIdToken(true)] antes do POST; em 401, pausa curta e repete uma vez
 /// com [currentUser] atualizado (evita referência de [User] stale).
