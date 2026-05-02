@@ -5,14 +5,28 @@ import 'package:master_palm/services/pagamentos_mp_firestore_writes.dart';
 void main() {
   test('manualAccessToken não inclui public_key; remove refresh OAuth', () {
     final m = PagamentosMpFirestoreWrites.manualAccessToken('APP_USR-abc');
-    expect(m.keys.toSet(),
-        {'access_token', 'token', 'connected', 'refresh_token'});
+    expect(m.keys.toSet(), {
+      'access_token',
+      'token',
+      'connected',
+      'refresh_token',
+      'mp_connection_kind',
+    });
     expect(m['access_token'], 'APP_USR-abc');
     expect(m['token'], 'APP_USR-abc');
     expect(m['connected'], isTrue);
+    expect(m['mp_connection_kind'], 'manual');
     expect(m['refresh_token'], isA<FieldValue>());
     expect(m.containsKey('public_key'), isFalse);
     expect(m.containsKey('email'), isFalse);
+  });
+
+  test('manualAccessToken com catalogTokenValidated', () {
+    final m = PagamentosMpFirestoreWrites.manualAccessToken(
+      'APP_USR-abc',
+      catalogTokenValidated: true,
+    );
+    expect(m['catalog_token_validated'], isTrue);
   });
 
   test('disconnect remove tokens e marca desconectado', () {
@@ -26,6 +40,9 @@ void main() {
     expect(m['nickname'], isA<FieldValue>());
     expect(m['public_key'], isA<FieldValue>());
     expect(m['access_token_hint'], isA<FieldValue>());
+    expect(m['mp_connection_kind'], isA<FieldValue>());
+    expect(m['catalog_token_validated'], isA<FieldValue>());
+    expect(m['webhook_secret'], isA<FieldValue>());
   });
 
   test('clearIdentityFields só remove campos de exibição', () {

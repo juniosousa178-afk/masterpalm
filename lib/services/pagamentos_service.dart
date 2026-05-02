@@ -69,6 +69,7 @@ class PagamentosService {
       m.remove('access_token');
       m.remove('token');
       m.remove('refresh_token');
+      m.remove('webhook_secret');
       out['mp'] = m;
     }
     if (out['pagseguro'] is Map) {
@@ -115,13 +116,19 @@ class PagamentosService {
   /// Não grava [mp.public_key]: não confundir com chave pública pk_live.
   /// Limpeza de perfil (email/user_id/nickname) antes de trocar token fica a cargo do
   /// fluxo chamador (ex.: [limparPerfilMp] + helper manual) para evitar janela incoerente.
+  /// [catalogTokenValidated] deve ser true apenas quando o token foi validado contra a API MP
+  /// (fluxo manual com sucesso remoto). OAuth usa o callback Cloud e não este método.
   static Future<void> salvarAccessToken(
     String lojaId,
-    String accessToken,
-  ) async {
+    String accessToken, {
+    bool? catalogTokenValidated,
+  }) async {
     await paymentsDoc(lojaId).set(
       {
-        'mp': PagamentosMpFirestoreWrites.manualAccessToken(accessToken),
+        'mp': PagamentosMpFirestoreWrites.manualAccessToken(
+          accessToken,
+          catalogTokenValidated: catalogTokenValidated,
+        ),
         'updatedAt': FieldValue.serverTimestamp(),
       },
       SetOptions(merge: true),
