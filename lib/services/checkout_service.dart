@@ -113,6 +113,54 @@ Future<Map<String, dynamic>?> _tryPlanCreatePreferenceCallOnWeb({
 
 /// Checkout de planos: preferência criada **somente** no backend (token MP fora do app).
 class CheckoutService {
+  static bool _isCriticalRecurringError(Object e) {
+    final s = e.toString().toLowerCase();
+    if (s.contains('mp platform token não configurado') ||
+        s.contains('mp token não configurado') ||
+        s.contains('token not configured')) {
+      return true;
+    }
+    if (s.contains('usuário não autenticado') ||
+        s.contains('unauthenticated') ||
+        s.contains('faça login')) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool _shouldFallbackToOneTimeRecurringError(Object e) {
+    if (_isCriticalRecurringError(e)) return false;
+    if (e is FirebaseFunctionsException) {
+      final code = e.code.toLowerCase();
+      final msg = (e.message ?? '').toLowerCase();
+      if (msg.contains('recurring_plan_billing_disabled')) return true;
+      if (code == 'invalid-argument' ||
+          code == 'failed-precondition' ||
+          code == 'deadline-exceeded' ||
+          code == 'unavailable' ||
+          code == 'internal' ||
+          code == 'unknown') {
+        return true;
+      }
+    }
+    final s = e.toString().toLowerCase();
+    if (s.contains('initpoint') ||
+        s.contains('preapprovalid') ||
+        s.contains('resposta inválida') ||
+        s.contains('timeout') ||
+        s.contains('network') ||
+        s.contains('socket') ||
+        s.contains('http 400') ||
+        s.contains('http 401') ||
+        s.contains('http 403') ||
+        s.contains('http 500') ||
+        s.contains('payload') ||
+        s.contains('valida')) {
+      return true;
+    }
+    return false;
+  }
+
   static String _normalizePlanId(String? raw) {
     final p = (raw ?? '').trim().toLowerCase();
     switch (p) {
@@ -193,21 +241,23 @@ class CheckoutService {
         uid: user.uid,
         email: user.email,
       )) {
+        debugPrint('[PLAN_RECURRING_FLAG] enabled=true (remote config)');
         try {
           return await _abrirCheckoutPlanoRecorrente(
             planApi: plan,
           );
-        } on FirebaseFunctionsException catch (e) {
-          if (e.code == 'failed-precondition' &&
-              (e.message ?? '').contains('RECURRING_PLAN_BILLING_DISABLED')) {
+        } catch (e) {
+          if (_shouldFallbackToOneTimeRecurringError(e)) {
+            final reason = e.toString().replaceAll('\n', ' ');
             debugPrint(
-              '[PlanosPilot] fallback checkout legado: servidor RECURRING_PLAN_BILLING_DISABLED',
+              '[PLAN_RECURRING_FALLBACK_ONE_TIME] motivo=${reason.length > 180 ? reason.substring(0, 180) : reason}',
             );
           } else {
             rethrow;
           }
         }
       }
+      debugPrint('[PLAN_RECURRING_FLAG] enabled=false (fallback one_time)');
 
       final projectId = Firebase.app().options.projectId;
       final url = Uri.parse(

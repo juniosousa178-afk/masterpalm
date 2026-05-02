@@ -3075,12 +3075,27 @@ export const planWebhook = onRequest(
       const qTopic = String(req.query?.topic || req.query?.type || "").toLowerCase();
       const bodyType = String(req.body?.type || "").toLowerCase();
       const bodyAction = String(req.body?.action || "").toLowerCase();
+      const isSubscriptionAuthorizedPaymentEvent =
+        qTopic === "subscription_authorized_payment" ||
+        bodyType === "subscription_authorized_payment" ||
+        bodyAction === "subscription_authorized_payment";
       const isPreapprovalEvent =
         qTopic === "subscription" ||
         qTopic.includes("preapproval") ||
         bodyType === "subscription" ||
         bodyType.includes("preapproval") ||
         bodyAction.includes("preapproval");
+      if (isSubscriptionAuthorizedPaymentEvent) {
+        console.log(
+          JSON.stringify({
+            evt: "PLAN_WEBHOOK_RECEIVED",
+            type: bodyType || qTopic || "subscription_authorized_payment",
+            action: bodyAction || "subscription_authorized_payment",
+            id:
+              String(req.body?.data?.id || req.query?.["data.id"] || req.body?.id || req.query?.id || ""),
+          }),
+        );
+      }
       if (isPreapprovalEvent) {
         const preId = extractMercadoPagoWebhookDataId(req);
         if (preId && isRecurringPlanBillingEnabled()) {
@@ -3283,7 +3298,11 @@ export const planWebhook = onRequest(
                 provider: "mercado_pago",
                 billingVersion: 2,
                 billingSource: "mp_subscription_payment",
+                billingMode: "recurring",
+                planStatus: "active",
                 providerSubscriptionId: String(preapId),
+                mercadoPagoPreapprovalId: String(preapId),
+                subscriptionId: String(preapId),
                 planLastSyncedAt: nowTs,
               }
             : undefined;
@@ -3299,6 +3318,14 @@ export const planWebhook = onRequest(
               billingSource: "mp_subscription_payment",
             }),
           );
+          console.log(
+            JSON.stringify({
+              evt: "PLAN_RECURRING_PAYMENT_CONFIRMED",
+              uid: String(uid),
+              paymentId: String(paymentId),
+              preapprovalId: String(preapId),
+            }),
+          );
         }
         await activatePlanForUser({
           uid,
@@ -3310,6 +3337,16 @@ export const planWebhook = onRequest(
           amount: payment.transaction_amount,
           billingExtras,
         });
+        if (billingExtras?.billingMode === "recurring") {
+          console.log(
+            JSON.stringify({
+              evt: "PLAN_USER_ACTIVATED",
+              uid: String(uid),
+              planId: String(plan || ""),
+              billingMode: "recurring",
+            }),
+          );
+        }
         await processedRef.set(
           {
             paymentId: String(paymentId),
