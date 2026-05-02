@@ -45,8 +45,11 @@ class MercadoPagoManualConnectDeps {
 
   /// Evita perfil antigo com access token novo (chamar antes de [persistAccessToken]).
   final Future<void> Function(String lojaId) clearMpIdentityBeforeToken;
-  final Future<void> Function(String lojaId, String accessToken)
-      persistAccessToken;
+  final Future<void> Function(
+    String lojaId,
+    String accessToken, {
+    bool? catalogTokenValidated,
+  }) persistAccessToken;
   final Future<void> Function(String lojaId, Map<String, dynamic> info)
       mergeMpProfile;
 
@@ -56,7 +59,12 @@ class MercadoPagoManualConnectDeps {
           MercadoPagoService.validarCredenciais(accessToken: t),
       fetchProfile: (t) => MercadoPagoService.obterInfoConta(accessToken: t),
       clearMpIdentityBeforeToken: PagamentosService.limparPerfilMp,
-      persistAccessToken: PagamentosService.salvarAccessToken,
+      persistAccessToken: (lojaId, token, {catalogTokenValidated}) =>
+          PagamentosService.salvarAccessToken(
+        lojaId,
+        token,
+        catalogTokenValidated: catalogTokenValidated,
+      ),
       mergeMpProfile: (lojaId, info) async {
         await PagamentosService.paymentsDoc(lojaId).set({
           'mp': {
@@ -116,7 +124,12 @@ class MercadoPagoManualConnectHelper {
 
       final info = await d.fetchProfile(token);
       await d.clearMpIdentityBeforeToken(lojaId);
-      await d.persistAccessToken(lojaId, token);
+      final validatedForCatalog = remoteOk && !continuedViaWeb;
+      await d.persistAccessToken(
+        lojaId,
+        token,
+        catalogTokenValidated: validatedForCatalog,
+      );
 
       var profileMerged = false;
       String? profileEmail;

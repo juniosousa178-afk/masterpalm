@@ -7,12 +7,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 abstract final class PagamentosMpFirestoreWrites {
   /// Credenciais manuais (access token): não grava public_key (evita confundir com pk_live).
   /// Remove refresh_token legado de OAuth ao colar token manual.
-  static Map<String, dynamic> manualAccessToken(String accessToken) {
+  /// [catalogTokenValidated]: true só após validação remota real (não heurística web).
+  static Map<String, dynamic> manualAccessToken(
+    String accessToken, {
+    bool? catalogTokenValidated,
+  }) {
     return {
       'access_token': accessToken,
       'token': accessToken,
       'connected': true,
       'refresh_token': FieldValue.delete(),
+      'mp_connection_kind': 'manual',
+      if (catalogTokenValidated != null) 'catalog_token_validated': catalogTokenValidated,
     };
   }
 
@@ -37,6 +43,9 @@ abstract final class PagamentosMpFirestoreWrites {
       'nickname': FieldValue.delete(),
       'public_key': FieldValue.delete(),
       'access_token_hint': FieldValue.delete(),
+      'mp_connection_kind': FieldValue.delete(),
+      'catalog_token_validated': FieldValue.delete(),
+      'webhook_secret': FieldValue.delete(),
     };
   }
 }

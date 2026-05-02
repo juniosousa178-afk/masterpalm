@@ -16,9 +16,10 @@ void main() {
         'nickname': 'nick',
       },
       clearMpIdentityBeforeToken: (_) async {},
-      persistAccessToken: (lojaId, accessToken) async {
+      persistAccessToken: (lojaId, accessToken, {catalogTokenValidated}) async {
         persistedLoja = lojaId;
         persistedToken = accessToken;
+        expect(catalogTokenValidated, isTrue);
       },
       mergeMpProfile: (_, info) async {
         merged = Map<String, dynamic>.from(info);
@@ -49,8 +50,9 @@ void main() {
       validateRemote: (_) async => true,
       fetchProfile: (_) async => null,
       clearMpIdentityBeforeToken: (_) async {},
-      persistAccessToken: (_, __) async {
+      persistAccessToken: (_, __, {catalogTokenValidated}) async {
         persistCount++;
+        expect(catalogTokenValidated, isTrue);
       },
       mergeMpProfile: (_, __) async {
         mergeCount++;
@@ -90,8 +92,9 @@ void main() {
       clearMpIdentityBeforeToken: (_) async {
         order.add('clear');
       },
-      persistAccessToken: (_, __) async {
+      persistAccessToken: (_, __, {catalogTokenValidated}) async {
         order.add('persist');
+        expect(catalogTokenValidated, isTrue);
       },
       mergeMpProfile: (_, __) async {},
     );
