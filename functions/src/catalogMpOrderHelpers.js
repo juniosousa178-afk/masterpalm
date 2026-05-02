@@ -13,6 +13,40 @@ export function orderTotalToCents(total) {
 }
 
 /**
+ * Normaliza total BRL para `transaction_amount` no PIX do catálogo (centavos = `orderTotalToCents`).
+ */
+export function normalizeBrlTransactionAmountForMpPix(total) {
+  const n = Number(total);
+  if (!Number.isFinite(n)) {
+    return { ok: false, code: "PIX_AMOUNT_INVALID" };
+  }
+  const cents = orderTotalToCents(n);
+  if (cents == null || cents < 1) {
+    return { ok: false, code: "PIX_AMOUNT_INVALID" };
+  }
+  const transactionAmount = cents / 100;
+  return { ok: true, transactionAmount, cents };
+}
+
+/**
+ * Heurística para mensagens/códigos do provedor MP ligados a valor/amount/transaction_amount.
+ */
+export function mpCatalogPixProviderErrorIsAmountRelated(message) {
+  const s = String(message ?? "").toLowerCase();
+  if (!s.trim()) return false;
+  if (s.includes("transaction_amount") || s.includes("transaction amount")) {
+    return true;
+  }
+  if (s.includes("amount_mismatch") || s.includes("amount mismatch")) {
+    return true;
+  }
+  if (/\bvalor\b/.test(s) && (s.includes("invalid") || s.includes("inválido") || s.includes("invalido"))) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Resolve pedido do catálogo (mesma ordem do mpWebhook): pedidos → pre_pedidos → pedidos_pendentes.
  */
 /**
