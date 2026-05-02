@@ -159,73 +159,195 @@ export async function syncFirestoreFromPreapproval({
     provider: "mercado_pago",
     billingSource: "mp_subscription",
     billingVersion: 2,
+    billingMode: "recurring",
     providerSubscriptionId: id,
+    mercadoPagoPreapprovalId: id,
+    subscriptionId: id,
     planLastSyncedAt: nowTs,
     updatedAt: nowTs,
   };
 
   if (status === "pending") {
     await ref.set(
-      mergePendingPreapprovalPatch({ billingPatch, email, nowTs }),
+      {
+        ...mergePendingPreapprovalPatch({ billingPatch, email, nowTs }),
+        planStatus: "pending",
+        pendingPlanId: canonicalPlanId,
+        pendingSubscriptionId: id,
+        pendingBillingMode: "recurring",
+      },
       { merge: true },
+    );
+    await ref.collection("subscriptions").doc(id).set(
+      {
+        provider: "mercado_pago",
+        billingMode: "recurring",
+        preapprovalId: id,
+        planId: canonicalPlanId,
+        status: "pending",
+        externalReference: String(preapproval.external_reference || ""),
+        source: "planWebhook",
+        updatedAt: nowTs,
+      },
+      { merge: true },
+    );
+    console.log(
+      JSON.stringify({
+        evt: "PLAN_RECURRING_PREAPPROVAL_PENDING",
+        uid,
+        status: "pending",
+        preapprovalId: id,
+      }),
+    );
+    console.log(
+      JSON.stringify({
+        evt: "PLAN_USER_NOT_ACTIVATED",
+        uid,
+        reason: "pending",
+        preapprovalId: id,
+      }),
     );
     return { ok: true, phase: "pending" };
   }
 
+  // Segurança: preapproval authorized/active não ativa plano sem confirmação de cobrança aprovada.
   if (status === "authorized" || status === "active") {
-    const end = inferPeriodEndFromPreapproval(preapproval);
     await ref.set(
       {
         ...billingPatch,
-        currentPlanId: canonicalPlanId,
-        status: "active",
-        trialing: false,
-        trialUsed: true,
-        currentPeriodEnd: Timestamp.fromDate(end),
-        cancelAtPeriodEnd: false,
-        planLastPaymentId: String(preapproval.id || ""),
+        planStatus: "authorized_pending_payment",
+        pendingPlanId: canonicalPlanId,
+        pendingSubscriptionId: id,
+        pendingBillingMode: "recurring",
         updatedAt: nowTs,
       },
       { merge: true },
     );
-
-    await ref.collection("subscriptions").doc(`mp_sub_${id}`).set(
+    await ref.collection("subscriptions").doc(id).set(
       {
+        provider: "mercado_pago",
+        billingMode: "recurring",
+        preapprovalId: id,
         planId: canonicalPlanId,
-        status: "active",
-        kind: "mp_preapproval",
-        providerSubscriptionId: id,
-        currentPeriodEnd: Timestamp.fromDate(end),
-        createdAt: nowTs,
+        status: "authorized_pending_payment",
+        externalReference: String(preapproval.external_reference || ""),
+        source: "planWebhook",
         updatedAt: nowTs,
       },
       { merge: true },
     );
-    return { ok: true, phase: "authorized_active" };
+    console.log(
+      JSON.stringify({
+        evt: "PLAN_RECURRING_PREAPPROVAL_PENDING",
+        uid,
+        status,
+        preapprovalId: id,
+      }),
+    );
+    console.log(
+      JSON.stringify({
+        evt: "PLAN_USER_NOT_ACTIVATED",
+        uid,
+        reason: "authorized_pending_payment",
+        preapprovalId: id,
+      }),
+    );
+    return { ok: true, phase: "authorized_pending_payment" };
+  }
+
+  if (status === "approved") {
+    await ref.set(
+      {
+        ...billingPatch,
+        planStatus: "approved_pending_reconcile",
+        pendingPlanId: canonicalPlanId,
+        pendingSubscriptionId: id,
+        pendingBillingMode: "recurring",
+        updatedAt: nowTs,
+      },
+      { merge: true },
+    );
+    await ref.collection("subscriptions").doc(id).set(
+      {
+        provider: "mercado_pago",
+        billingMode: "recurring",
+        preapprovalId: id,
+        planId: canonicalPlanId,
+        status: "approved_pending_reconcile",
+        externalReference: String(preapproval.external_reference || ""),
+        source: "planWebhook",
+        updatedAt: nowTs,
+      },
+      { merge: true },
+    );
+    console.log(
+      JSON.stringify({
+        evt: "PLAN_RECURRING_PREAPPROVAL_PENDING",
+        uid,
+        status: "approved",
+        preapprovalId: id,
+      }),
+    );
+    console.log(
+      JSON.stringify({
+        evt: "PLAN_USER_NOT_ACTIVATED",
+        uid,
+        reason: "approved_pending_payment_event",
+        preapprovalId: id,
+      }),
+    );
+    return { ok: true, phase: "approved_pending_payment_event" };
   }
 
   if (status === "paused") {
     await ref.set(
       {
         ...billingPatch,
+        planStatus: "paused",
         cancelAtPeriodEnd: true,
         updatedAt: nowTs,
       },
       { merge: true },
     );
+    await ref.collection("subscriptions").doc(id).set(
+      { status: "paused", source: "planWebhook", updatedAt: nowTs },
+      { merge: true },
+    );
+    console.log(
+      JSON.stringify({
+        evt: "PLAN_USER_NOT_ACTIVATED",
+        uid,
+        reason: "paused",
+        preapprovalId: id,
+      }),
+    );
     return { ok: true, phase: "paused" };
   }
 
-  if (status === "cancelled") {
+  if (status === "cancelled" || status === "canceled" || status === "rejected") {
+    const finalStatus = status === "rejected" ? "rejected" : "cancelled";
     await ref.set(
       {
         ...billingPatch,
         billingSource: "mp_subscription_cancelled",
+        planStatus: finalStatus,
         updatedAt: nowTs,
       },
       { merge: true },
     );
-    return { ok: true, phase: "cancelled" };
+    await ref.collection("subscriptions").doc(id).set(
+      { status: finalStatus, source: "planWebhook", updatedAt: nowTs },
+      { merge: true },
+    );
+    console.log(
+      JSON.stringify({
+        evt: "PLAN_USER_NOT_ACTIVATED",
+        uid,
+        reason: finalStatus,
+        preapprovalId: id,
+      }),
+    );
+    return { ok: true, phase: finalStatus };
   }
 
   await ref.set({ ...billingPatch, updatedAt: nowTs }, { merge: true });
@@ -234,6 +356,11 @@ export async function syncFirestoreFromPreapproval({
 
 export function parseExternalReferenceMpRecurring(externalRef) {
   const s = String(externalRef || "").trim();
+  if (s.startsWith("plan:")) {
+    const parts = s.split(":");
+    if (parts.length >= 3) return { uid: parts[1], canonicalPlanId: parts[2] };
+    return null;
+  }
   if (!s.startsWith("mprec|")) return null;
   const parts = s.split("|");
   if (parts.length < 3) return null;
@@ -250,6 +377,14 @@ export async function handlePreapprovalWebhookNotification({
   nowTs,
   normalizePlanId,
 }) {
+  console.log(
+    JSON.stringify({
+      evt: "PLAN_WEBHOOK_RECEIVED",
+      type: "subscription",
+      action: "preapproval",
+      id: String(preapprovalId),
+    }),
+  );
   const processedRef = db.collection(PROCESSED_PLAN_EVENTS).doc(`preapproval_${preapprovalId}`);
   const pr = await processedRef.get();
   if (pr.exists && pr.data()?.status === "processed") {
@@ -264,6 +399,14 @@ export async function handlePreapprovalWebhookNotification({
     console.error("[mpPlanRecurring] get preapproval", preapprovalId, e?.message || e);
     return { consumed: false };
   }
+  console.log(
+    JSON.stringify({
+      evt: "PLAN_WEBHOOK_PREAPPROVAL_FETCHED",
+      preapprovalId: String(preapprovalId),
+      status: String(pre?.status || "").toLowerCase(),
+      externalReference: String(pre?.external_reference || "").slice(0, 160),
+    }),
+  );
 
   const ext = parseExternalReferenceMpRecurring(pre.external_reference);
   let uid = ext?.uid;
@@ -362,8 +505,10 @@ export async function runCreatePlanSubscription({
   normalizePlanId,
 }) {
   if (!isRecurringPlanBillingEnabled()) {
+    console.log(JSON.stringify({ evt: "PLAN_RECURRING_FLAG", enabled: false }));
     throw new HttpsError("failed-precondition", "RECURRING_PLAN_BILLING_DISABLED");
   }
+  console.log(JSON.stringify({ evt: "PLAN_RECURRING_FLAG", enabled: true }));
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Faça login para continuar.");
   }
@@ -385,7 +530,7 @@ export async function runCreatePlanSubscription({
   const canonical = normalizePlanId(planRaw);
   const returnUrl =
     String(data.returnUrl || "").trim() ||
-    `${webBase.replace(/\/$/, "")}/assinatura/${planRaw}/retorno`;
+    `${webBase.replace(/\/$/, "")}/planos/retorno`;
 
   const start = new Date();
   const end = new Date(start);
@@ -393,7 +538,7 @@ export async function runCreatePlanSubscription({
 
   const body = {
     reason: planTitleForMp(canonical),
-    external_reference: `mprec|${uid}|${canonical}`,
+    external_reference: `plan:${uid}:${canonical}:${Date.now()}`,
     payer_email: email || undefined,
     auto_recurring: {
       ...autoRecurringForPlan(canonical, prices),
@@ -401,14 +546,29 @@ export async function runCreatePlanSubscription({
       end_date: end.toISOString(),
     },
     back_url: returnUrl,
-    status: "pending",
+    status: "authorized",
   };
+  console.log(
+    JSON.stringify({
+      evt: "PLAN_RECURRING_CREATE_START",
+      uid,
+      planId: canonical,
+      amount: Number(body.auto_recurring?.transaction_amount || 0),
+      frequencyType: String(body.auto_recurring?.frequency_type || ""),
+    }),
+  );
 
   let mpRes;
   try {
     mpRes = await mpCreatePreapproval(token, body);
   } catch (e) {
     console.error("[createPlanSubscription] MP error", e?.message || e);
+    console.error(
+      JSON.stringify({
+        evt: "PLAN_RECURRING_CREATE_ERROR",
+        message: String(e?.message || "unknown").slice(0, 250),
+      }),
+    );
     throw new HttpsError("internal", e?.message || "Erro ao criar assinatura no Mercado Pago.");
   }
 
@@ -440,9 +600,34 @@ export async function runCreatePlanSubscription({
       provider: "mercado_pago",
       billingVersion: 2,
       billingSource: "mp_preapproval_pending",
+      billingMode: "recurring",
       providerSubscriptionId: preapprovalId,
       providerPreapprovalPlanId: mpRes.preapproval_plan_id || null,
+      planStatus: "pending",
+      pendingPlanId: canonical,
+      pendingSubscriptionId: preapprovalId,
+      pendingBillingMode: "recurring",
       planLastSyncedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  await userRef.collection("subscriptions").doc(preapprovalId).set(
+    {
+      provider: "mercado_pago",
+      billingMode: "recurring",
+      preapprovalId,
+      planId: canonical,
+      planName: canonical,
+      amount: Number(body.auto_recurring?.transaction_amount || 0),
+      currency: String(body.auto_recurring?.currency_id || "BRL"),
+      frequency: Number(body.auto_recurring?.frequency || 1),
+      frequencyType: String(body.auto_recurring?.frequency_type || "months"),
+      status: String(mpRes.status || "pending").toLowerCase() || "pending",
+      externalReference: body.external_reference,
+      initPoint,
+      source: "createPlanSubscription",
+      createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },
@@ -457,6 +642,13 @@ export async function runCreatePlanSubscription({
       billingVersion: 2,
       billingSource: "mp_preapproval_pending",
       decision: "init_ok",
+    }),
+  );
+  console.log(
+    JSON.stringify({
+      evt: "PLAN_RECURRING_CREATE_SUCCESS",
+      preapprovalId,
+      hasInitPoint: !!initPoint,
     }),
   );
 

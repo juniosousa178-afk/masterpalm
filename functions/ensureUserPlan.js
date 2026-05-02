@@ -231,6 +231,43 @@ export async function computePlanState({ db, uid, email }) {
   const canonicalPlan = normalizeCanonicalPlanId(data.currentPlanId || data.plan || "");
   const planAlias = toLegacyPlanAlias(canonicalPlan);
   const renewAt = toDateAny(data.currentPeriodEnd || data.plan_renewsAt);
+  const planStatusRaw = String(data.planStatus || "").trim().toLowerCase();
+  const billingMode = String(data.billingMode || "").trim().toLowerCase();
+
+  // Compatibilidade: billing recorrente/one_time com status canônico separado em planStatus.
+  if (
+    PAID_PLANS_WITH_RENEWAL.includes(canonicalPlan) &&
+    planStatusRaw === "active" &&
+    (billingMode === "recurring" || billingMode === "one_time") &&
+    renewAt &&
+    now <= renewAt
+  ) {
+    const daysLeft = daysBetweenCeil(now, renewAt);
+    await ref.set(
+      {
+        email,
+        currentPlanId: canonicalPlan,
+        status: "active",
+        trialing: false,
+        currentPeriodEnd: Timestamp.fromDate(renewAt),
+        blocked_reason: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return {
+      status: "active",
+      plan: planAlias,
+      isRoot: false,
+      daysLeft,
+      endsAt: renewAt.toISOString(),
+      shouldNotify: false,
+      allowPlans: ["mensal", "anual", "basic_monthly", "intermediate_monthly"],
+      cancelAtPeriodEnd: data.cancelAtPeriodEnd === true,
+      message: "Plano ativo por billing recorrente/one_time.",
+      userDoc: data,
+    };
+  }
 
   if (canonicalPlan === "lifetime") {
     await ref.set(
