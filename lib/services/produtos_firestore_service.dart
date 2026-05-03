@@ -17,7 +17,6 @@ import '../models/produto.dart';
 import 'catalogo_sync_service.dart';
 import 'produto_remote_sync_guard.dart';
 import 'store_resolver_facade.dart';
-import 'catalog_thumbnail_service.dart';
 import 'combo_receita_normalizacao.dart';
 import 'image_upload_service.dart';
 import 'sync_queue_service.dart';
@@ -416,18 +415,8 @@ class ProdutosFirestoreService {
 
       for (final imagemPath in produto.imagens) {
         if (ImageUploadService.isLocalPath(imagemPath)) {
-          logD('📤 [PRODUTOS-SYNC] Fazendo upload da imagem: $imagemPath');
-          String? url;
-          final thumbBytes =
-              await CatalogThumbnailService.generateFromPath(imagemPath);
-          if (thumbBytes != null) {
-            url = await ImageUploadService.uploadImageFromBytes(
-              bytes: thumbBytes,
-              folder: 'produtos',
-              lojaId: storeId,
-            );
-          }
-          url ??= await ImageUploadService.uploadImage(
+          logD('📤 [PRODUTOS-SYNC] Fazendo upload da imagem (ficheiro original): $imagemPath');
+          final url = await ImageUploadService.uploadImage(
             imagePath: imagemPath,
             folder: 'produtos',
             lojaId: storeId,

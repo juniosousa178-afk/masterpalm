@@ -29,7 +29,7 @@ class SmartImage extends StatelessWidget {
         fit: fit,
         width: double.infinity,
         gaplessPlayback: true,
-        filterQuality: kIsWeb ? FilterQuality.medium : FilterQuality.high,
+        filterQuality: FilterQuality.high,
         errorBuilder: (_, __, ___) =>
             const Center(child: Icon(Icons.broken_image)),
       );

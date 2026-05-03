@@ -10,6 +10,12 @@ import 'package:image/image.dart' as img;
 /// Aspect ratio padrão = 3/4 (width/height), como Offstore.
 const double kCatalogThumbnailAspectRatio = 3 / 4; // 0.75
 
+/// Maior lado ao preparar JPEG para upload de **foto de produto** (evita ficheiros gigantes, mantém nitidez).
+const int kProductPhotoUploadMaxSide = 2000;
+
+/// Qualidade JPEG para upload de foto de produto (cadastro / web).
+const int kProductPhotoUploadJpegQuality = 95;
+
 /// Serviço de geração de thumbnails para o catálogo (lógica Offstore).
 class CatalogThumbnailService {
   /// Gera thumbnail a partir de caminho local (mobile).
@@ -37,6 +43,37 @@ class CatalogThumbnailService {
       return _processToThumbnail(src);
     } catch (e, st) {
       debugPrint('❌ [CATALOG-THUMB] Erro ao gerar de bytes (type=${e.runtimeType})');
+      debugPrint('$st');
+      return null;
+    }
+  }
+
+  /// Redimensiona só se o maior lado exceder [maxSide]; exporta JPEG de alta qualidade. Sem letterbox.
+  /// Usado no fluxo de **foto principal** do produto (não substitui [generateFromBytes] para canvas 3:4).
+  static Uint8List? encodeBytesAsOptimizedJpegForProductUpload(
+    Uint8List bytes, {
+    int maxSide = kProductPhotoUploadMaxSide,
+    int quality = kProductPhotoUploadJpegQuality,
+  }) {
+    try {
+      final src = img.decodeImage(bytes);
+      if (src == null) return null;
+      img.Image work = src;
+      final w = work.width;
+      final h = work.height;
+      final longest = w > h ? w : h;
+      if (longest > maxSide) {
+        if (w >= h) {
+          work = img.copyResize(work, width: maxSide);
+        } else {
+          work = img.copyResize(work, height: maxSide);
+        }
+      }
+      return img.encodeJpg(work, quality: quality);
+    } catch (e, st) {
+      debugPrint(
+        '❌ [CATALOG-THUMB] encodeBytesAsOptimizedJpegForProductUpload (type=${e.runtimeType})',
+      );
       debugPrint('$st');
       return null;
     }

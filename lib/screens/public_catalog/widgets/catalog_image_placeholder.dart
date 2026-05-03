@@ -17,7 +17,7 @@ class CatalogImagePlaceholder extends StatefulWidget {
   final BoxFit fit;
   /// Alinhamento da imagem quando não preenche o espaço (contain/fitWidth/fitHeight).
   final AlignmentGeometry alignment;
-  /// Tamanho em pixels para cache. Web: 900 para qualidade; mobile: 600.
+  /// Tamanho em pixels para cache no decode (nativo). Web: sem limite aqui.
   final int? cacheWidth;
   final int? cacheHeight;
   /// ID canónico da loja (Firestore). Quando o URL do Storage usa outro segmento em `lojas/{id}/`,
@@ -101,8 +101,8 @@ class _CatalogImagePlaceholderState extends State<CatalogImagePlaceholder> {
       cw = widget.cacheWidth;
       ch = widget.cacheHeight;
       if (cw == null && ch == null) {
-        cw = 600;
-        ch = 600;
+        cw = 2000;
+        ch = 2000;
       }
     }
 
@@ -124,8 +124,7 @@ class _CatalogImagePlaceholderState extends State<CatalogImagePlaceholder> {
             cacheWidth: cw,
             cacheHeight: ch,
             gaplessPlayback: true,
-            filterQuality:
-                kIsWeb ? FilterQuality.medium : FilterQuality.high,
+            filterQuality: FilterQuality.high,
             errorBuilder: (_, __, ___) => _brokenPlaceholder(),
           );
         },

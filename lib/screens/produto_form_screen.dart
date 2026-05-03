@@ -880,7 +880,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   // ------------------------------
   /// Web: blob URLs não funcionam no Android; fazer upload imediato para Firebase Storage.
   Future<void> _pickImgs() async {
-    final x = await ImagePicker().pickMultiImage(imageQuality: 75);
+    final x = await ImagePicker().pickMultiImage(imageQuality: 95);
     if (x.isEmpty) return;
     if (lojaId == null) return;
     final guard = LimitsGuard();
@@ -918,16 +918,44 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               const Duration(seconds: 15),
               onTimeout: () => throw TimeoutException('Leitura da imagem demorou muito'),
             );
-            // Redimensionar para 600x800 + JPEG 85% = upload ~15x mais rápido
-            final bytes = CatalogThumbnailService.generateJpegFromBytes(rawBytes) ??
-                CatalogThumbnailService.generateFromBytes(rawBytes) ??
-                rawBytes;
+            // JPEG até 2000px no maior lado, qualidade 95 (nitidez no catálogo).
+            final encoded =
+                CatalogThumbnailService.encodeBytesAsOptimizedJpegForProductUpload(
+              rawBytes,
+            );
+            final Uint8List bytes;
+            final String ext;
+            final String contentType;
+            if (encoded != null) {
+              bytes = encoded;
+              ext = 'jpg';
+              contentType = 'image/jpeg';
+            } else {
+              bytes = rawBytes;
+              if (rawBytes.length >= 3 &&
+                  rawBytes[0] == 0xFF &&
+                  rawBytes[1] == 0xD8 &&
+                  rawBytes[2] == 0xFF) {
+                ext = 'jpg';
+                contentType = 'image/jpeg';
+              } else if (rawBytes.length >= 8 &&
+                  rawBytes[0] == 0x89 &&
+                  rawBytes[1] == 0x50 &&
+                  rawBytes[2] == 0x4E &&
+                  rawBytes[3] == 0x47) {
+                ext = 'png';
+                contentType = 'image/png';
+              } else {
+                ext = 'jpg';
+                contentType = 'image/jpeg';
+              }
+            }
             final url = await ImageUploadService.uploadImageFromBytes(
               bytes: bytes,
               folder: 'produtos',
               lojaId: lojaId!,
-              extension: 'jpg',
-              contentType: 'image/jpeg',
+              extension: ext,
+              contentType: contentType,
             ).timeout(
               const Duration(seconds: 60),
               onTimeout: () => throw TimeoutException('Upload da imagem ${i + 1} demorou muito'),

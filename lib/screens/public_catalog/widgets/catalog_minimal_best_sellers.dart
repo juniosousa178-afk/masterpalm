@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../utils/safe_parse.dart';
+import '../catalog_helpers.dart' show catalogPrimaryProductImageUrl;
 import '../catalog_product_card_size.dart';
 import '../../../widgets/smart_image.dart';
 import 'catalog_product_detail_screen.dart';
@@ -151,9 +152,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
                   separatorBuilder: (_, __) => SizedBox(width: gap),
                   itemBuilder: (context, i) {
                     final p = products[i];
-                    final img = safeListString(p['imagens']).isNotEmpty
-                        ? safeListString(p['imagens']).first
-                        : safeStr(p['imageUrl']);
+                    final img = catalogPrimaryProductImageUrl(p);
                     final nome = safeStr(p['nome'], 'Produto');
                     final preco = safeDouble(p['preco']);
                     final temFaixa = p['priceMin'] != null &&
