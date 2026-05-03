@@ -8,7 +8,11 @@ import '../../../debug/catalog_normal_trace.dart';
 import '../../../services/catalog_share_service.dart';
 import '../../../services/public_store_link_helper.dart';
 import '../../../utils/safe_parse.dart';
-import '../catalog_helpers.dart' show catalogPrecoPorTamanhoFromDynamic;
+import '../catalog_helpers.dart'
+    show
+        catalogPrecoPorTamanhoFromDynamic,
+        catalogProductImageUrlLooksLikeGeneratedThumbnail,
+        catalogProductImageUrlsForDisplay;
 import '../catalog_product_card_size.dart';
 import 'catalog_product_card.dart';
 
@@ -147,6 +151,16 @@ class PublicCatalogProductCard extends StatelessWidget {
     final precoPorTamanho =
         catalogPrecoPorTamanhoFromDynamic(p['precoPorTamanho']);
 
+    final imageUrls = catalogProductImageUrlsForDisplay(p);
+    if (kDebugMode && imageUrls.isNotEmpty) {
+      final primary = imageUrls.first;
+      debugPrint(
+        '[CATALOG-IMG] id=${safeStr(p['id'])} fieldOrder=imagens+imageUrl '
+        'primaryLooksThumb=${catalogProductImageUrlLooksLikeGeneratedThumbnail(primary)} '
+        'url=${primary.length > 120 ? "${primary.substring(0, 120)}…" : primary}',
+      );
+    }
+
     final tipoProduto = (p['tipoProduto'] ?? p['tipo'] ?? 'simples').toString();
     final itensComboRaw = p['itensCombo'];
     List<Map<String, dynamic>>? itensCombo;
@@ -169,8 +183,8 @@ class PublicCatalogProductCard extends StatelessWidget {
       priceMin: priceMin,
       priceMax: priceMax,
       precoPorTamanho: precoPorTamanho,
-      imageUrl: safeStr(p['imageUrl']),
-      imagens: safeListString(p['imagens']),
+      imageUrl: imageUrls.isNotEmpty ? imageUrls.first : '',
+      imagens: imageUrls,
       descricao: safeStr(p['descricao']),
       slug: safeStr(p['slug']),
       peso: safeDouble(p['peso']),

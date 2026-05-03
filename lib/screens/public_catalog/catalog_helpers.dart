@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:hive/hive.dart';
 
-import '../../core/safe_cast.dart';
+import '../../utils/safe_parse.dart';
 
 /// E-mail mínimo aceitável para enviar ao Mercado Pago (evita erros de "e-mail inválido").
 bool catalogIsPlausibleMpBuyerEmail(String? raw) {
@@ -311,6 +311,73 @@ bool isValidHttpUrl(String? url) {
   final uri = Uri.tryParse(url);
   if (uri == null) return false;
   return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
+}
+
+/// Heurística: thumbnails gerados no Storage (ex.: CF `generateProductThumbnail`) usam `.../thumbnails/...`.
+bool catalogProductImageUrlLooksLikeGeneratedThumbnail(String url) {
+  final t = url.trim().toLowerCase();
+  if (t.isEmpty) return false;
+  final normalized = t.replaceAll('%2f', '/').replaceAll('%5c', '/');
+  return normalized.contains('/thumbnails/');
+}
+
+/// URLs de fotos do produto para o catálogo público: ordem preservada, dedupe, e **ficheiros grandes antes** de thumbs.
+List<String> catalogProductImageUrlsForDisplay(Map<String, dynamic> p) {
+  final raw = <String>[];
+
+  void addOne(String s) {
+    final u = s.trim();
+    if (u.isNotEmpty) raw.add(u);
+  }
+
+  for (final img in safeListString(p['imagens'])) {
+    addOne(img);
+  }
+  for (final img in safeListString(p['images'])) {
+    addOne(img);
+  }
+  for (final img in safeListString(p['fotos'])) {
+    addOne(img);
+  }
+  for (final img in safeListString(p['imgs'])) {
+    addOne(img);
+  }
+
+  for (final k in const [
+    'imageUrl',
+    'imagem_principal',
+    'fotoOriginalUrl',
+    'imagemUrl',
+  ]) {
+    addOne(safeStr(p[k], ''));
+  }
+
+  final seen = <String>{};
+  final deduped = <String>[];
+  for (final u in raw) {
+    if (seen.add(u)) deduped.add(u);
+  }
+
+  final hi = <String>[];
+  final lo = <String>[];
+  for (final u in deduped) {
+    if (catalogProductImageUrlLooksLikeGeneratedThumbnail(u)) {
+      lo.add(u);
+    } else {
+      hi.add(u);
+    }
+  }
+  final out = [...hi, ...lo];
+  if (out.isEmpty) {
+    final t = safeStr(p['fotoThumbUrl'], '').trim();
+    if (t.isNotEmpty) return [t];
+  }
+  return out;
+}
+
+String catalogPrimaryProductImageUrl(Map<String, dynamic> p) {
+  final urls = catalogProductImageUrlsForDisplay(p);
+  return urls.isNotEmpty ? urls.first : '';
 }
 
 // ===================================================================

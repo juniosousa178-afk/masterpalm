@@ -1584,8 +1584,10 @@ insetPadding:
                           alignment: isMinimalPage
                               ? Alignment.center
                               : Alignment.topCenter,
-                          cacheWidth: widget.imageCacheWidth ?? (kIsWeb ? 600 : 500),
-                          cacheHeight: widget.imageCacheHeight ?? (kIsWeb ? 800 : 667),
+                          cacheWidth: widget.imageCacheWidth ??
+                              (kIsWeb ? 1000 : 900),
+                          cacheHeight: widget.imageCacheHeight ??
+                              (kIsWeb ? 1400 : 1200),
                         ),
                       ),
                     ),

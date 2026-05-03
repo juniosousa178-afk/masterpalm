@@ -684,7 +684,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   }
 
   Future<void> _pickImgs() async {
-    final x = await ImagePicker().pickMultiImage(imageQuality: 90);
+    final x = await ImagePicker().pickMultiImage(imageQuality: 95);
     if (x.isEmpty || lojaId == null) return;
     final guard = LimitsGuard();
     final max = await guard.maxImagesPerProduct(null);
