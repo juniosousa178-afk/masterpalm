@@ -10,9 +10,11 @@ import '../../../services/public_store_link_helper.dart';
 import '../../../utils/safe_parse.dart';
 import '../catalog_helpers.dart'
     show
+        catalogImageUrlMaskForLog,
         catalogPrecoPorTamanhoFromDynamic,
         catalogProductImageUrlLooksLikeGeneratedThumbnail,
-        catalogProductImageUrlsForDisplay;
+        catalogProductImagesForHeroAndGallery,
+        selectCatalogPrimaryImageUrlFromProdutoMap;
 import '../catalog_product_card_size.dart';
 import 'catalog_product_card.dart';
 
@@ -151,13 +153,14 @@ class PublicCatalogProductCard extends StatelessWidget {
     final precoPorTamanho =
         catalogPrecoPorTamanhoFromDynamic(p['precoPorTamanho']);
 
-    final imageUrls = catalogProductImageUrlsForDisplay(p);
-    if (kDebugMode && imageUrls.isNotEmpty) {
-      final primary = imageUrls.first;
+    final imageUrls = catalogProductImagesForHeroAndGallery(p);
+    if (kDebugMode) {
+      final primary = selectCatalogPrimaryImageUrlFromProdutoMap(p);
       debugPrint(
-        '[CATALOG-IMG] id=${safeStr(p['id'])} fieldOrder=imagens+imageUrl '
+        '[CATALOG-IMG] id=${safeStr(p['id'])} '
+        'primary=${catalogImageUrlMaskForLog(primary)} '
         'primaryLooksThumb=${catalogProductImageUrlLooksLikeGeneratedThumbnail(primary)} '
-        'url=${primary.length > 120 ? "${primary.substring(0, 120)}…" : primary}',
+        'imagensCount=${imageUrls.length}',
       );
     }
 

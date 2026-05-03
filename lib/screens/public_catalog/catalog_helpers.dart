@@ -321,6 +321,113 @@ bool catalogProductImageUrlLooksLikeGeneratedThumbnail(String url) {
   return normalized.contains('/thumbnails/');
 }
 
+String _catalogImageUrlPathLower(String url) =>
+    url.trim().split('?').first.toLowerCase();
+
+/// Heurística: PNG do pipeline antigo (canvas ~600×800) costumava usar `.../produtos/img_<ts>.png`.
+bool catalogImageUrlLikelyOldPipelinePng(String url) {
+  final path = _catalogImageUrlPathLower(url);
+  if (!path.endsWith('.png')) return false;
+  final norm = url.trim().toLowerCase().replaceAll('%2f', '/');
+  return norm.contains('/produtos/img_');
+}
+
+/// Escolhe a URL da **foto principal** para catálogo (hero, `imageUrl` no sync, etc.).
+///
+/// Ordem: [fotoOriginalUrl] válida → primeira em [imagens] que não seja thumb Storage;
+/// se houver **qualquer não-PNG** na lista, usa a **primeira** (ordem do utilizador);
+/// senão tenta excluir PNGs `img_*.png` legados; depois `imagem_principal` / `imageUrl`;
+/// o campo `thumbnail` só se não houver outra URL “melhor”; último recurso thumbs.
+String selectCatalogPrimaryImageUrl({
+  required List<String> imagens,
+  String? fotoOriginalUrl,
+  String? imageUrl,
+  String? imagem_principal,
+  String? thumbnail,
+}) {
+  bool isThumb(String u) => catalogProductImageUrlLooksLikeGeneratedThumbnail(u);
+
+  final fo = (fotoOriginalUrl ?? '').trim();
+  if (fo.isNotEmpty && !isThumb(fo)) return fo;
+
+  final nonThumb = <String>[];
+  for (final s in imagens) {
+    final u = s.trim();
+    if (u.isEmpty || isThumb(u)) continue;
+    nonThumb.add(u);
+  }
+
+  if (nonThumb.isNotEmpty) {
+    final hasNonPng =
+        nonThumb.any((u) => !_catalogImageUrlPathLower(u).endsWith('.png'));
+    if (hasNonPng) {
+      for (final u in nonThumb) {
+        if (!_catalogImageUrlPathLower(u).endsWith('.png')) return u;
+      }
+    }
+    final modern =
+        nonThumb.where((u) => !catalogImageUrlLikelyOldPipelinePng(u)).toList();
+    if (modern.isNotEmpty) return modern.first;
+    return nonThumb.first;
+  }
+
+  for (final raw in [imagem_principal, imageUrl]) {
+    final u = (raw ?? '').trim();
+    if (u.isNotEmpty && !isThumb(u)) return u;
+  }
+
+  final th = (thumbnail ?? '').trim();
+  if (th.isNotEmpty && !isThumb(th)) return th;
+
+  for (final s in imagens) {
+    final u = s.trim();
+    if (u.isNotEmpty) return u;
+  }
+  for (final raw in [imagem_principal, imageUrl, thumbnail]) {
+    final u = (raw ?? '').trim();
+    if (u.isNotEmpty) return u;
+  }
+  return '';
+}
+
+String selectCatalogPrimaryImageUrlFromProdutoMap(Map<String, dynamic> p) {
+  return selectCatalogPrimaryImageUrl(
+    imagens: safeListString(p['imagens']),
+    fotoOriginalUrl: safeStr(p['fotoOriginalUrl']),
+    imageUrl: safeStr(p['imageUrl']),
+    imagem_principal: safeStr(p['imagem_principal']),
+    thumbnail: safeStr(p['thumbnail']),
+  );
+}
+
+/// URL para logs (query mascarada — evita expor tokens longos).
+String catalogImageUrlMaskForLog(String url) {
+  final u = url.trim();
+  if (u.isEmpty) return '';
+  final uri = Uri.tryParse(u);
+  if (uri == null) {
+    return u.length > 120 ? '${u.substring(0, 120)}…' : u;
+  }
+  final base = '${uri.scheme}://${uri.host}${uri.path}';
+  final shortened = base.length > 140 ? '${base.substring(0, 140)}…' : base;
+  if (uri.query.isEmpty) return shortened;
+  return '$shortened?…';
+}
+
+/// URLs para card/detalhe: dedupe + thumbs no fim ([catalogProductImageUrlsForDisplay]),
+/// depois **[0] = principal** ([selectCatalogPrimaryImageUrlFromProdutoMap]) sem duplicar.
+List<String> catalogProductImagesForHeroAndGallery(Map<String, dynamic> p) {
+  final ordered = catalogProductImageUrlsForDisplay(p);
+  final primary = selectCatalogPrimaryImageUrlFromProdutoMap(p);
+  if (primary.isEmpty || ordered.isEmpty) return ordered;
+  if (ordered.first == primary) return ordered;
+  final rest = <String>[];
+  for (final u in ordered) {
+    if (u != primary) rest.add(u);
+  }
+  return [primary, ...rest];
+}
+
 /// URLs de fotos do produto para o catálogo público: ordem preservada, dedupe, e **ficheiros grandes antes** de thumbs.
 List<String> catalogProductImageUrlsForDisplay(Map<String, dynamic> p) {
   final raw = <String>[];
@@ -376,8 +483,7 @@ List<String> catalogProductImageUrlsForDisplay(Map<String, dynamic> p) {
 }
 
 String catalogPrimaryProductImageUrl(Map<String, dynamic> p) {
-  final urls = catalogProductImageUrlsForDisplay(p);
-  return urls.isNotEmpty ? urls.first : '';
+  return selectCatalogPrimaryImageUrlFromProdutoMap(p);
 }
 
 // ===================================================================

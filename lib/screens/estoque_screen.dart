@@ -3554,8 +3554,10 @@ Future<String?> _baixarEEnviarParaStorage({
     if (bytes.isEmpty) return null;
 
     final ext = _extFromUrl(url);
+    // Path único por upload: evita sobrescrever o mesmo objeto no Storage (mesma URL + cache imutável).
+    final ts = DateTime.now().millisecondsSinceEpoch;
     final path =
-        'lojas/$lojaId/produtos/$produtoSlug/${index.toString().padLeft(2, '0')}.$ext';
+        'lojas/$lojaId/produtos/$produtoSlug/${index.toString().padLeft(2, '0')}_$ts.$ext';
 
     final ref = FirebaseStorage.instance.ref().child(path);
 
