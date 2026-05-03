@@ -20,6 +20,11 @@ import 'produto_exclusao_tombstone_service.dart';
 import 'sync_mass_delete_guard.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/upload_manager.dart';
+import '../screens/public_catalog/catalog_helpers.dart'
+    show
+        catalogImageUrlMaskForLog,
+        catalogProductImageUrlLooksLikeGeneratedThumbnail,
+        selectCatalogPrimaryImageUrl;
 
 /// Alvos de sincronização:
 ///  - draft → lojas/{lojaId}/draft_produtos   (Public Catalog / rascunho)
@@ -298,7 +303,15 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
 
     final slug =
         pdt.slug.trim().isNotEmpty ? pdt.slug.trim() : slugify(pdt.nome);
-    final principal = imgs.isNotEmpty ? imgs.first : '';
+    final principal = selectCatalogPrimaryImageUrl(imagens: imgs);
+    if (kDebugMode) {
+      debugPrint(
+        '[CATALOG-SYNC-IMG] docId=$docId '
+        'primary=${catalogImageUrlMaskForLog(principal)} '
+        'primaryLooksThumb=${catalogProductImageUrlLooksLikeGeneratedThumbnail(principal)} '
+        'imagensCount=${imgs.length}',
+      );
+    }
     final preco = pdt.precoFinal.toDouble();
     // Preço por variação (opcional): se tiver, catálogo exibe faixa "R$ X a R$ Y"
     double priceMin = preco;
