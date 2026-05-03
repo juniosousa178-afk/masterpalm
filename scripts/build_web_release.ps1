@@ -29,12 +29,54 @@ Write-Host "==> flutter build web --release --source-maps --pwa-strategy=none"
 flutter build web --release --source-maps --pwa-strategy=none "--dart-define=CATALOG_BUILD_ID=$BuildId"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$fswSrc = Join-Path $ProjectRoot "web\flutter_service_worker.js"
-$fswOut = Join-Path $ProjectRoot "build\web\flutter_service_worker.js"
-if (Test-Path -LiteralPath $fswSrc) {
-  Copy-Item -LiteralPath $fswSrc -Destination $fswOut -Force
-  Write-Host "==> flutter_service_worker.js: copiado web/ -> build/web (stub)"
+Write-Host '==> Reparar artefactos web (manifests / SW - evita SPA fallback = HTML em URLs estaticas)'
+$bw = Join-Path $ProjectRoot "build\web"
+$assets = Join-Path $bw "assets"
+if (-not (Test-Path -LiteralPath $assets)) {
+  Write-Error "Pasta em falta após build: $assets"
+  exit 1
 }
+$amJson = Join-Path $assets "AssetManifest.json"
+if (-not (Test-Path -LiteralPath $amJson)) {
+  Write-Warning 'AssetManifest.json ausente: criando JSON vazio {} (evita index.html do SPA neste URL).'
+  Set-Content -LiteralPath $amJson -Value '{}' -Encoding utf8
+}
+$amBin = Join-Path $assets "AssetManifest.bin.json"
+if (-not (Test-Path -LiteralPath $amBin)) {
+  Copy-Item -LiteralPath $amJson -Destination $amBin -Force
+  Write-Host "==> AssetManifest.bin.json criado a partir de AssetManifest.json" -ForegroundColor Cyan
+}
+$fontM = Join-Path $assets "FontManifest.json"
+if (-not (Test-Path -LiteralPath $fontM)) {
+  Set-Content -LiteralPath $fontM -Value "[]`n" -Encoding utf8
+  Write-Host '==> FontManifest.json criado (JSON [])' -ForegroundColor Cyan
+}
+$rootManifest = Join-Path $bw "manifest.json"
+$webManifest = Join-Path $ProjectRoot "web\manifest.json"
+if (-not (Test-Path -LiteralPath $rootManifest)) {
+  if (Test-Path -LiteralPath $webManifest) {
+    Copy-Item -LiteralPath $webManifest -Destination $rootManifest -Force
+    Write-Host "==> manifest.json: copiado web/ -> build/web" -ForegroundColor Cyan
+  }
+  else {
+    $minimal = [ordered]@{
+      name       = "MasterPalm"
+      short_name = "MasterPalm"
+      start_url  = "."
+      display    = "standalone"
+    }
+    (($minimal | ConvertTo-Json -Compress) + "`n") | Set-Content -LiteralPath $rootManifest -Encoding utf8
+    Write-Host '==> manifest.json minimo MasterPalm criado' -ForegroundColor Cyan
+  }
+}
+$fswSrc = Join-Path $ProjectRoot "web\flutter_service_worker.js"
+$fswOut = Join-Path $bw "flutter_service_worker.js"
+if (-not (Test-Path -LiteralPath $fswSrc)) {
+  Write-Error "web/flutter_service_worker.js em falta (stub obrigatório com --pwa-strategy=none)"
+  exit 1
+}
+Copy-Item -LiteralPath $fswSrc -Destination $fswOut -Force
+Write-Host "==> flutter_service_worker.js: stub web/ -> build/web" -ForegroundColor Cyan
 
 $gitShort = "unknown"
 try { $gitShort = (git rev-parse --short HEAD 2>$null).Trim() } catch { }
