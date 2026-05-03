@@ -8,6 +8,7 @@
 #
 # Só validar pasta build\web existente:
 #   .\scripts\pre_deploy_web_check.ps1 -ValidateOnly
+# (Aplica reparacao de manifests/SW em falta, depois valida JSON/HTML.)
 #
 # Uso: .\scripts\pre_deploy_web_check.ps1
 # Opcional: $env:CATALOG_BUILD_ID = "stable-20260503-..."
@@ -61,16 +62,80 @@ function Write-MasterPalmVersionJson {
 
 function Test-FileNotHtmlDocument {
   param([string]$LiteralPath)
-  $bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
-  if ($bytes.Length -lt 9) { return $true }
-  $prefix = [System.Text.Encoding]::ASCII.GetString($bytes[0..8])
-  return ($prefix -ne '<!DOCTYPE')
+  $fs = [System.IO.File]::OpenRead($LiteralPath)
+  try {
+    $buf = New-Object byte[] 512
+    $n = $fs.Read($buf, 0, 512)
+    if ($n -lt 2) { return $true }
+    $text = [System.Text.Encoding]::UTF8.GetString($buf, 0, $n)
+    $t = $text.TrimStart([char]0xFEFF).TrimStart()
+    if ($t.Length -lt 2) { return $true }
+    $low = $t.ToLowerInvariant()
+    if ($low.StartsWith('<!doctype')) { return $false }
+    if ($low.StartsWith('<html')) { return $false }
+    return $true
+  }
+  finally { $fs.Dispose() }
 }
 
 function Test-JsonFile {
   param([string]$LiteralPath)
   $raw = Get-Content -LiteralPath $LiteralPath -Raw -Encoding utf8
   $null = $raw | ConvertFrom-Json
+}
+
+function Repair-MasterPalmWebBuildArtifacts {
+  param([string]$ProjectRoot)
+  $bw = Join-Path $ProjectRoot "build\web"
+  $assets = Join-Path $bw "assets"
+  if (-not (Test-Path -LiteralPath $assets)) {
+    throw "Pasta em falta após build: $assets"
+  }
+
+  $amJson = Join-Path $assets "AssetManifest.json"
+  if (-not (Test-Path -LiteralPath $amJson)) {
+    Write-Warning 'AssetManifest.json ausente: criando JSON vazio {} (evita index.html do SPA neste URL).'
+    Set-Content -LiteralPath $amJson -Value '{}' -Encoding utf8
+  }
+
+  $amBin = Join-Path $assets "AssetManifest.bin.json"
+  if (-not (Test-Path -LiteralPath $amBin)) {
+    Copy-Item -LiteralPath $amJson -Destination $amBin -Force
+    Write-Host "==> AssetManifest.bin.json criado a partir de AssetManifest.json" -ForegroundColor Cyan
+  }
+
+  $fontM = Join-Path $assets "FontManifest.json"
+  if (-not (Test-Path -LiteralPath $fontM)) {
+    Set-Content -LiteralPath $fontM -Value "[]`n" -Encoding utf8
+    Write-Host '==> FontManifest.json criado (JSON [])' -ForegroundColor Cyan
+  }
+
+  $rootManifest = Join-Path $bw "manifest.json"
+  $webManifest = Join-Path $ProjectRoot "web\manifest.json"
+  if (-not (Test-Path -LiteralPath $rootManifest)) {
+    if (Test-Path -LiteralPath $webManifest) {
+      Copy-Item -LiteralPath $webManifest -Destination $rootManifest -Force
+      Write-Host "==> manifest.json: copiado web/ -> build/web" -ForegroundColor Cyan
+    }
+    else {
+      $minimal = [ordered]@{
+        name       = "MasterPalm"
+        short_name = "MasterPalm"
+        start_url  = "."
+        display    = "standalone"
+      }
+      (($minimal | ConvertTo-Json -Compress) + "`n") | Set-Content -LiteralPath $rootManifest -Encoding utf8
+      Write-Host '==> manifest.json minimo MasterPalm criado' -ForegroundColor Cyan
+    }
+  }
+
+  $fswSrc = Join-Path $ProjectRoot "web\flutter_service_worker.js"
+  $fswOut = Join-Path $bw "flutter_service_worker.js"
+  if (-not (Test-Path -LiteralPath $fswSrc)) {
+    throw "web/flutter_service_worker.js em falta (stub obrigatório com --pwa-strategy=none)"
+  }
+  Copy-Item -LiteralPath $fswSrc -Destination $fswOut -Force
+  Write-Host "==> flutter_service_worker.js: stub web/ -> build/web" -ForegroundColor Cyan
 }
 
 if (-not $ValidateOnly) {
@@ -90,20 +155,21 @@ if (-not $ValidateOnly) {
   flutter build web --release --source-maps --pwa-strategy=none "--dart-define=CATALOG_BUILD_ID=$BuildId"
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-  # Com --pwa-strategy=none o tooling pode omitir este ficheiro; o stub em web/ evita 404/SPA no URL do SW.
-  $fswSrc = Join-Path $ProjectRoot "web\flutter_service_worker.js"
-  $fswOut = Join-Path $ProjectRoot "build\web\flutter_service_worker.js"
-  if (Test-Path -LiteralPath $fswSrc) {
-    Copy-Item -LiteralPath $fswSrc -Destination $fswOut -Force
-    Write-Host "==> flutter_service_worker.js: copiado web/ -> build/web (stub)"
-  }
-
   $vjOut = Join-Path $ProjectRoot "build\web\version.json"
   Write-Host "==> gravar build/web/version.json (buildId + gitCommit)"
   Write-MasterPalmVersionJson -OutPath $vjOut -Id $BuildId
 }
 else {
   Write-Host "==> ValidateOnly (sem build)" -ForegroundColor Cyan
+}
+
+Write-Host '==> Artefactos web (reparacao se necessario)' -ForegroundColor Cyan
+try {
+  Repair-MasterPalmWebBuildArtifacts -ProjectRoot $ProjectRoot
+}
+catch {
+  Write-Error $_
+  exit 1
 }
 
 $fb = Join-Path $ProjectRoot "build\web\flutter_bootstrap.js"
@@ -113,10 +179,15 @@ $map = Join-Path $ProjectRoot "build\web\main.dart.js.map"
 $fsw = Join-Path $ProjectRoot "build\web\flutter_service_worker.js"
 $amJson = Join-Path $ProjectRoot "build\web\assets\AssetManifest.json"
 $amBin = Join-Path $ProjectRoot "build\web\assets\AssetManifest.bin.json"
+$fontM = Join-Path $ProjectRoot "build\web\assets\FontManifest.json"
+$rootManifest = Join-Path $ProjectRoot "build\web\manifest.json"
 
-foreach ($p in @($fb, $vj, $js, $fsw)) {
+$criticalJs = @($fb, $js, $fsw)
+$criticalJson = @($vj, $amJson, $amBin, $fontM, $rootManifest)
+
+foreach ($p in ($criticalJs + $criticalJson)) {
   if (-not (Test-Path -LiteralPath $p)) {
-    Write-Error "Ficheiro em falta: $p"
+    Write-Error "Ficheiro critico em falta: $p"
     exit 1
   }
   Write-Host "OK existe: $p"
@@ -129,61 +200,35 @@ else {
   Write-Host "OK existe: $map"
 }
 
-foreach ($p in @($fb, $js, $fsw)) {
+foreach ($p in $criticalJs) {
   if (-not (Test-FileNotHtmlDocument -LiteralPath $p)) {
-    Write-Error "Conteúdo inválido (parece HTML, não JS): $p"
+    Write-Error "Conteudo invalido (parece HTML, nao JS): $p"
     exit 1
   }
+  Write-Host "OK nao-HTML (JS): $p"
 }
 
-try {
-  Test-JsonFile -LiteralPath $vj
-}
-catch {
-  Write-Error "version.json não é JSON válido: $vj"
-  exit 1
+foreach ($p in $criticalJson) {
+  if (-not (Test-FileNotHtmlDocument -LiteralPath $p)) {
+    Write-Error "Conteudo invalido (parece HTML / SPA fallback): $p"
+    exit 1
+  }
+  try {
+    Test-JsonFile -LiteralPath $p
+  }
+  catch {
+    Write-Error "JSON invalido: $p - $($_.Exception.Message)"
+    exit 1
+  }
+  Write-Host "OK JSON + nao-HTML: $p"
 }
 
 $rawVj = Get-Content -LiteralPath $vj -Raw -Encoding utf8
 if ($rawVj -notmatch [regex]::Escape($BuildId)) {
-  Write-Warning "version.json não contém buildId esperado '$BuildId' — ajustar CATALOG_BUILD_ID ou voltar a correr build."
+  Write-Warning "version.json nao contem buildId esperado '$BuildId' - ajustar CATALOG_BUILD_ID ou voltar a correr build."
 }
 else {
-  Write-Host "OK: version.json contém buildId $BuildId"
-}
-
-if (-not (Test-FileNotHtmlDocument -LiteralPath $vj)) {
-  Write-Error "version.json parece HTML (rewrite SPA?) — $vj"
-  exit 1
-}
-
-$hasAmJson = Test-Path -LiteralPath $amJson
-$hasAmBin = Test-Path -LiteralPath $amBin
-if (-not $hasAmJson -and -not $hasAmBin) {
-  Write-Error "Nem AssetManifest.json nem AssetManifest.bin.json em build/web/assets/"
-  exit 1
-}
-if ($hasAmJson) {
-  if (-not (Test-FileNotHtmlDocument -LiteralPath $amJson)) {
-    Write-Error "AssetManifest.json parece HTML: $amJson"
-    exit 1
-  }
-  try { Test-JsonFile -LiteralPath $amJson } catch {
-    Write-Error "AssetManifest.json não é JSON válido: $amJson"
-    exit 1
-  }
-  Write-Host "OK: assets/AssetManifest.json"
-}
-if ($hasAmBin) {
-  if (-not (Test-FileNotHtmlDocument -LiteralPath $amBin)) {
-    Write-Error "AssetManifest.bin.json parece HTML: $amBin"
-    exit 1
-  }
-  try { Test-JsonFile -LiteralPath $amBin } catch {
-    Write-Error "AssetManifest.bin.json não é JSON válido: $amBin"
-    exit 1
-  }
-  Write-Host "OK: assets/AssetManifest.bin.json"
+  Write-Host "OK: version.json contem buildId $BuildId"
 }
 
 $fbSrc = Join-Path $ProjectRoot "web\flutter_bootstrap.js"
@@ -196,4 +241,4 @@ if (Test-Path -LiteralPath $fbSrc) {
 
 Write-Host ""
 Write-Host "Proximo passo manual: firebase deploy --only hosting:masterpalm-58c46"
-Write-Host "Pos-deploy: validar URLs (checklist pos-deploy no relatorio WEB-CACHE)."
+Write-Host 'Pos-deploy: validar URLs (checklist pos-deploy no relatorio WEB-CACHE).'
