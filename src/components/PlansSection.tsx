@@ -11,16 +11,16 @@ export function PlansSection() {
       className="py-20 px-4 sm:px-6 lg:px-8"
       aria-labelledby="plans-title"
     >
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <h2 id="plans-title" className="text-3xl sm:text-4xl font-bold text-white text-center mb-4">
           Planos
         </h2>
         <p className="text-gray-400 text-center mb-12 max-w-2xl mx-auto">
-          Escolha como começar: teste grátis com experiência Pro no app, depois Free limitado se não assinar, ou vá direto ao Pro mensal/anual (valores finais no checkout conforme Remote Config).
+          Compare capacidade e recursos. No aplicativo você também pode começar pelo teste grátis antes de assinar.
         </p>
 
         {/* Como funcionam os planos */}
-        <div className="mb-16 p-6 sm:p-8 rounded-2xl border border-graphite-700 bg-graphite-800/80">
+        <div className="mb-12 p-6 sm:p-8 rounded-2xl border border-graphite-700 bg-graphite-800/80">
           <h3 className="text-xl font-semibold text-white mb-6 flex items-center gap-2">
             <svg className="w-6 h-6 text-accent-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -37,11 +37,15 @@ export function PlansSection() {
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-3 gap-6">
+        <p className="text-center text-gray-300 text-sm sm:text-base mb-8 max-w-xl mx-auto leading-relaxed">
+          {siteConfig.plansTrialCallout}
+        </p>
+
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
           {siteConfig.plans.map((plan: Plan, index: number) => (
             <article
               key={index}
-              className={`relative p-8 rounded-2xl border ${
+              className={`relative p-6 sm:p-8 rounded-2xl border flex flex-col h-full ${
                 plan.badge === "Recomendado"
                   ? "bg-graphite-800 border-accent-blue shadow-glow"
                   : "bg-graphite-800/80 border-graphite-700"
@@ -52,14 +56,14 @@ export function PlansSection() {
                   {plan.badge}
                 </span>
               )}
-              <h3 className="text-xl font-semibold text-white mb-2 pr-24">{plan.name}</h3>
+              <h3 className="text-xl font-semibold text-white mb-2 pr-20">{plan.name}</h3>
               <p className="text-2xl font-bold text-accent-blue mb-1">
                 {plan.price}
                 {"period" in plan && plan.period && (
                   <span className="text-base font-normal text-gray-400"> {plan.period}</span>
                 )}
               </p>
-              <ul className="space-y-3 mt-6">
+              <ul className="space-y-3 mt-6 flex-1">
                 {plan.features.map((feature, i) => (
                   <li key={i} className="flex items-start gap-2 text-gray-400 text-sm">
                     <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
