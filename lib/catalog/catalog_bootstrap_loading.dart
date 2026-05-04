@@ -23,26 +23,54 @@ const String kCatalogDiagBuildId = String.fromEnvironment(
   defaultValue: 'dev',
 );
 
+/// Textos do primeiro loader Web: app administrativo vs vitrine pública.
+enum WebInitialLoadingContext {
+  /// SPA gestão / admin (host canónico, fora de `/loja/…`).
+  app,
+
+  /// Catálogo público (`/loja/…`, query legada ou domínio da loja).
+  catalog,
+}
+
 /// Tela leve exibida antes de resolver domínio / Firebase mínimo.
 class CatalogBootstrapLoadingScreen extends StatelessWidget {
   const CatalogBootstrapLoadingScreen({
     super.key,
     this.nomeLoja,
     this.logoUrl,
+    this.loadingContext = WebInitialLoadingContext.catalog,
   });
 
   final String? nomeLoja;
   final String? logoUrl;
 
+  /// [catalog] — textos da vitrine; [app] — gestão MasterPalm Web.
+  final WebInitialLoadingContext loadingContext;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // No loader público do catálogo, priorizar logo da loja.
-    // Se não houver logo, usar nome da loja. Nunca mostrar MasterPalm para cliente final.
     final nomeLojaSafe = (nomeLoja ?? '').trim();
-    final titulo = nomeLojaSafe.isNotEmpty ? nomeLojaSafe : 'Carregando loja';
     final logo = (logoUrl ?? '').trim();
     final hasLogo = logo.isNotEmpty;
+
+    final String tituloPill;
+    final String? tituloCentral;
+    final String frase;
+    switch (loadingContext) {
+      case WebInitialLoadingContext.app:
+        tituloPill = nomeLojaSafe.isNotEmpty ? nomeLojaSafe : 'MasterPalm';
+        tituloCentral = 'Aguarde';
+        frase =
+            'Estamos preparando sua experiência MasterPalm. Em instantes, você verá tudo pronto para vender mais.';
+        break;
+      case WebInitialLoadingContext.catalog:
+        tituloPill = nomeLojaSafe.isNotEmpty ? nomeLojaSafe : 'Carregando loja';
+        tituloCentral =
+            nomeLojaSafe.isNotEmpty ? 'Carregando loja' : null;
+        frase = 'Estamos preparando a loja para você.';
+        break;
+    }
 
     Widget fallbackPill() {
       return Container(
@@ -55,7 +83,7 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
-          titulo,
+          tituloPill,
           textAlign: TextAlign.center,
           style: const TextStyle(
             color: Colors.white,
@@ -93,18 +121,21 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
                     )
                   else
                     fallbackPill(),
-                  const SizedBox(height: 36),
+                  if (tituloCentral != null) ...[
+                    const SizedBox(height: 36),
+                    Text(
+                      tituloCentral,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                  ] else
+                    const SizedBox(height: 36),
                   Text(
-                    'Carregando catálogo...',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Estamos preparando a loja para você.',
+                    frase,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: AppColors.textSecondary,
@@ -139,10 +170,12 @@ class CatalogBootstrapLoadingApp extends StatelessWidget {
     super.key,
     this.nomeLoja,
     this.logoUrl,
+    this.loadingContext = WebInitialLoadingContext.catalog,
   });
 
   final String? nomeLoja;
   final String? logoUrl;
+  final WebInitialLoadingContext loadingContext;
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +189,7 @@ class CatalogBootstrapLoadingApp extends StatelessWidget {
       home: CatalogBootstrapLoadingScreen(
         nomeLoja: nomeLoja,
         logoUrl: logoUrl,
+        loadingContext: loadingContext,
       ),
     );
   }
@@ -382,6 +416,7 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
     return CatalogBootstrapLoadingApp(
       nomeLoja: _nomeLoja,
       logoUrl: _logoUrl,
+      loadingContext: WebInitialLoadingContext.catalog,
     );
   }
 }

@@ -21,10 +21,22 @@ class CatalogConfigLoadingState extends StatelessWidget {
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
             Text(
-              'Carregando catálogo...',
+              'Carregando loja',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: theme.colorScheme.onSurface,
-                fontSize: 16,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Estamos preparando a loja para você.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: theme.colorScheme.onSurface.withOpacity(0.75),
+                fontSize: 14,
+                height: 1.45,
               ),
             ),
           ],

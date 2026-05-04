@@ -401,13 +401,71 @@
 
   <div id="initial-loader" aria-live="polite">
     <div class="loader-card">
-      <div class="loader-logo">Carregando loja</div>
-      <div class="loader-text">Carregando catálogo...</div>
-      <div class="loader-sub">Estamos preparando a loja para você.</div>
+      <div class="loader-logo" id="initial-loader-logo">MasterPalm</div>
+      <div class="loader-text" id="initial-loader-title">Aguarde</div>
+      <div class="loader-sub" id="initial-loader-sub">Estamos preparando sua experiência MasterPalm. Em instantes, você verá tudo pronto para vender mais.</div>
       <div class="loader-spin" aria-hidden="true"></div>
     </div>
   </div>
   <script>
+    (function () {
+      function normHost(host) {
+        host = (host || '').trim().toLowerCase();
+        if (host.indexOf('www.') === 0) host = host.substring(4);
+        return host;
+      }
+      function isDefaultMasterPalmHost(host) {
+        var h = normHost(host);
+        if (h === 'app.mastepalm.com.br' || h === 'app.masterpalm.com.br') return true;
+        if (h === 'masterpalm-58c46.web.app') return true;
+        return false;
+      }
+      function hasLojaPath(path) {
+        path = (path || '').toLowerCase();
+        if (path.indexOf('/loja/') !== -1) return true;
+        var parts = path.split('/').filter(function (s) { return s.length > 0; });
+        return parts.length > 0 && parts[0] === 'loja';
+      }
+      function hasCatalogQuery(search) {
+        if (!search || search === '?') return false;
+        var q = search.charAt(0) === '?' ? search.slice(1) : search;
+        return /(^|&)loja=/.test(q) || /(^|&)slug=/.test(q) || /(^|&)store_id=/.test(q);
+      }
+      function hasCatalogHash(hash) {
+        var f = (hash || '').replace(/^#/, '');
+        return f.indexOf('loja/') !== -1 || f.indexOf('/loja/') !== -1;
+      }
+      function isCatalogFirstPaint() {
+        var path = location.pathname || '/';
+        if (hasLojaPath(path)) return true;
+        if (hasCatalogQuery(location.search || '')) return true;
+        if (hasCatalogHash(location.hash || '')) return true;
+        if (!isDefaultMasterPalmHost(location.hostname || '')) return true;
+        return false;
+      }
+      var logoEl = document.getElementById('initial-loader-logo');
+      var titleEl = document.getElementById('initial-loader-title');
+      var subEl = document.getElementById('initial-loader-sub');
+      if (!logoEl || !subEl) return;
+      if (isCatalogFirstPaint()) {
+        logoEl.textContent = 'Carregando loja';
+        if (titleEl) {
+          titleEl.textContent = '';
+          titleEl.style.display = 'none';
+          titleEl.style.marginBottom = '0';
+        }
+        subEl.textContent = 'Estamos preparando a loja para você.';
+      } else {
+        logoEl.textContent = 'MasterPalm';
+        if (titleEl) {
+          titleEl.style.display = '';
+          titleEl.style.marginBottom = '';
+          titleEl.textContent = 'Aguarde';
+        }
+        subEl.textContent =
+          'Estamos preparando sua experiência MasterPalm. Em instantes, você verá tudo pronto para vender mais.';
+      }
+    })();
     window.addEventListener('flutter-first-frame', function () {
       var el = document.getElementById('initial-loader');
       if (el) el.remove();
