@@ -4277,14 +4277,17 @@ String _formatGradeTexto(Produto p) {
           ],
         ),
         leadingWidth: Navigator.of(context).canPop() ? 112 : 56,
+        titleSpacing: 8,
+        centerTitle: false,
         title: _modoSelecao
             ? Text(
                 '${_produtosSelecionados.length} selecionado(s)',
                 style: const TextStyle(color: _surfaceColor, fontWeight: FontWeight.bold),
               )
-            : const Text(
-                'Estoque',
-                style: TextStyle(color: _surfaceColor, fontWeight: FontWeight.bold),
+            : Row(
+                children: [
+                  Expanded(child: _buildEstoqueAppBarSearchField()),
+                ],
               ),
         actions: [
           if (_modoSelecao) ...[
@@ -4311,6 +4314,67 @@ String _formatGradeTexto(Produto p) {
               ),
               onPressed: _toggleModoSelecao,
               tooltip: 'Cancelar seleção',
+            ),
+          ] else ...[
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const Size(40, 40),
+                padding: const EdgeInsets.all(8),
+              ),
+              tooltip: _contagemFiltrosAtivos() > 0
+                  ? 'Filtros (${_contagemFiltrosAtivos()} ativos)'
+                  : 'Filtros',
+              onPressed: _abrirPainelFiltros,
+              icon: Badge(
+                isLabelVisible: _contagemFiltrosAtivos() > 0,
+                label: Text('${_contagemFiltrosAtivos()}'),
+                child: const Icon(Icons.tune, color: _surfaceColor, size: 22),
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Ordenar',
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: const Size(40, 40),
+                padding: const EdgeInsets.all(8),
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.sort, color: _surfaceColor, size: 22),
+              onSelected: (v) => setState(() => _ordenacao = v),
+              itemBuilder: (context) => [
+                CheckedPopupMenuItem<String>(
+                  value: 'nome_asc',
+                  checked: _ordenacao == 'nome_asc',
+                  child: const Text('Nome (A-Z)'),
+                ),
+                CheckedPopupMenuItem<String>(
+                  value: 'nome_desc',
+                  checked: _ordenacao == 'nome_desc',
+                  child: const Text('Nome (Z-A)'),
+                ),
+                CheckedPopupMenuItem<String>(
+                  value: 'preco_asc',
+                  checked: _ordenacao == 'preco_asc',
+                  child: const Text('Preço (menor)'),
+                ),
+                CheckedPopupMenuItem<String>(
+                  value: 'preco_desc',
+                  checked: _ordenacao == 'preco_desc',
+                  child: const Text('Preço (maior)'),
+                ),
+                CheckedPopupMenuItem<String>(
+                  value: 'qtd_asc',
+                  checked: _ordenacao == 'qtd_asc',
+                  child: const Text('Estoque (menor)'),
+                ),
+                CheckedPopupMenuItem<String>(
+                  value: 'qtd_desc',
+                  checked: _ordenacao == 'qtd_desc',
+                  child: const Text('Estoque (maior)'),
+                ),
+              ],
             ),
           ],
           const AppHelpIconButton(iconColor: _surfaceColor),
@@ -4428,124 +4492,6 @@ String _formatGradeTexto(Produto p) {
                 ),
               // Statistics Header
               _buildStatisticsHeader(currencyFormat),
-
-              // Search
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: ValueListenableBuilder<String>(
-                  valueListenable: _searchTextNotifier,
-                  builder: (_, searchText, __) {
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: _cardColor,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: TextField(
-                        controller: _pesquisaController,
-                        decoration: InputDecoration(
-                          hintText: 'Pesquisar produtos...',
-                          hintStyle: TextStyle(color: Colors.grey[400]),
-                          prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                tooltip: 'Ler código de barras',
-                                icon: Icon(Icons.qr_code_scanner, color: Colors.grey[400]),
-                                onPressed: () async {
-                                  final code = await BarcodeScannerScreen.scan(context);
-                                  if (code != null && code.isNotEmpty && mounted) {
-                                    _pesquisaController.text = code;
-                                  }
-                                },
-                              ),
-                              if (searchText.isNotEmpty)
-                                IconButton(
-                                  icon: Icon(Icons.clear, color: Colors.grey[400]),
-                                  onPressed: () => _pesquisaController.clear(),
-                                ),
-                            ],
-                          ),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-
-              // Filtros (painel único — ver _abrirPainelFiltros)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _abrirPainelFiltros,
-                    icon: Badge(
-                      isLabelVisible: _contagemFiltrosAtivos() > 0,
-                      label: Text('${_contagemFiltrosAtivos()}'),
-                      child: const Icon(Icons.tune),
-                    ),
-                    label: Text(
-                      _contagemFiltrosAtivos() > 0
-                          ? 'Filtros (${_contagemFiltrosAtivos()} ativos)'
-                          : 'Filtros',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _surfaceColor,
-                      side: BorderSide(color: _primaryColor.withOpacity(0.45)),
-                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                      alignment: Alignment.centerLeft,
-                    ),
-                  ),
-                ),
-              ),
-
-              // Ordenação
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _ordenacao,
-                      isExpanded: true,
-                      icon: const Icon(Icons.sort, color: _primaryColor),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      onChanged: (v) {
-                        if (v != null) setState(() => _ordenacao = v);
-                      },
-                      items: const [
-                        DropdownMenuItem(value: 'nome_asc', child: Text('Ordenar: Nome (A-Z)')),
-                        DropdownMenuItem(value: 'nome_desc', child: Text('Ordenar: Nome (Z-A)')),
-                        DropdownMenuItem(value: 'preco_asc', child: Text('Ordenar: Preço (menor)')),
-                        DropdownMenuItem(value: 'preco_desc', child: Text('Ordenar: Preço (maior)')),
-                        DropdownMenuItem(value: 'qtd_asc', child: Text('Ordenar: Estoque (menor)')),
-                        DropdownMenuItem(value: 'qtd_desc', child: Text('Ordenar: Estoque (maior)')),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
 
               // Products List
               Expanded(
@@ -4700,128 +4646,261 @@ String _formatGradeTexto(Produto p) {
     );
   }
 
-  Widget _buildStatisticsHeader(NumberFormat currencyFormat) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: _primaryColor.withOpacity(0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
+  /// Campo de pesquisa na [AppBar] (mesmo controller, debounce e filtro da lista).
+  Widget _buildEstoqueAppBarSearchField() {
+    return ValueListenableBuilder<String>(
+      valueListenable: _searchTextNotifier,
+      builder: (_, searchText, __) {
+        return Material(
+          color: _backgroundColor,
+          borderRadius: BorderRadius.circular(10),
+          child: TextField(
+            controller: _pesquisaController,
+            style: const TextStyle(fontSize: 15, color: _surfaceColor),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: 'Pesquisar produtos...',
+              hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+              prefixIcon: Icon(Icons.search, color: Colors.grey[400], size: 22),
+              prefixIconConstraints: const BoxConstraints(minWidth: 40, maxHeight: 40),
+              suffixIcon: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 40),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      tooltip: 'Ler código de barras',
+                      icon: Icon(Icons.qr_code_scanner, color: Colors.grey[500], size: 22),
+                      onPressed: () async {
+                        final code = await BarcodeScannerScreen.scan(context);
+                        if (code != null && code.isNotEmpty && mounted) {
+                          _pesquisaController.text = code;
+                        }
+                      },
+                    ),
+                    if (searchText.isNotEmpty)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                        icon: Icon(Icons.clear, color: Colors.grey[500], size: 22),
+                        onPressed: () => _pesquisaController.clear(),
+                      ),
+                  ],
                 ),
-                child: const Icon(Icons.inventory_2, color: Colors.white, size: 28),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
+              suffixIconConstraints: const BoxConstraints(maxHeight: 40),
+              filled: false,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatisticsHeader(NumberFormat currencyFormat) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 520;
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [_primaryColor, _primaryColor.withOpacity(0.82)],
+            ),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: _primaryColor.withOpacity(0.22),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.inventory_2, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Estoque',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            height: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Total em estoque: $_totalEstoque itens',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (wide)
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Total em Estoque',
-                      style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14),
+                    Expanded(
+                      child: _buildStatCard(
+                        'Publicados',
+                        '$_totalPublicados',
+                        Icons.storefront,
+                        compact: true,
+                      ),
                     ),
-                    Text(
-                      '$_totalEstoque itens',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatCard(
+                        'Custo total',
+                        currencyFormat.format(_custoTotal),
+                        Icons.shopping_cart,
+                        compact: true,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatCard(
+                        'Valor de venda',
+                        currencyFormat.format(_valorTotal),
+                        Icons.attach_money,
+                        compact: true,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatCard(
+                        'Qtd. produtos',
+                        '$_totalProdutos',
+                        Icons.layers_outlined,
+                        compact: true,
+                      ),
+                    ),
+                  ],
+                )
+              else ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildStatCard(
+                        'Publicados',
+                        '$_totalPublicados',
+                        Icons.storefront,
+                        compact: true,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatCard(
+                        'Custo total',
+                        currencyFormat.format(_custoTotal),
+                        Icons.shopping_cart,
+                        compact: true,
                       ),
                     ),
                   ],
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _buildStatCard(
+                        'Valor de venda',
+                        currencyFormat.format(_valorTotal),
+                        Icons.attach_money,
+                        compact: true,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildStatCard(
+                        'Qtd. produtos',
+                        '$_totalProdutos',
+                        Icons.layers_outlined,
+                        compact: true,
+                      ),
+                    ),
+                  ],
                 ),
-                child: Text(
-                  '$_totalProdutos produtos',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                ),
-              ),
+              ],
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  'Publicados',
-                  '$_totalPublicados',
-                  Icons.storefront,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  'Custo total',
-                  currencyFormat.format(_custoTotal),
-                  Icons.shopping_cart,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  'Valor de venda',
-                  currencyFormat.format(_valorTotal),
-                  Icons.attach_money,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon) {
+  Widget _buildStatCard(String label, String value, IconData icon, {bool compact = false}) {
+    final pad = compact ? 8.0 : 12.0;
+    final iconSize = compact ? 18.0 : 20.0;
+    final labelSize = compact ? 10.0 : 11.0;
+    final valueSize = compact ? 12.5 : 14.0;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(pad),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(compact ? 10 : 12),
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white, size: 20),
-          const SizedBox(width: 8),
+          Icon(icon, color: Colors.white, size: iconSize),
+          SizedBox(width: compact ? 6 : 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
+                  style: TextStyle(color: Colors.white.withOpacity(0.82), fontSize: labelSize),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
                     value,
-                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: valueSize,
+                      fontWeight: FontWeight.bold,
+                    ),
                     maxLines: 1,
                   ),
                 ),
