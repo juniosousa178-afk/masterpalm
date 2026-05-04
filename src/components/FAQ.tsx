@@ -4,19 +4,19 @@ import { useState } from "react";
 
 const faqs = [
   {
-    question: "O que acontece depois do período de teste grátis?",
+    question: "O que acontece depois do teste grátis?",
     answer:
-      "Você continua com acesso ao MasterPalm no plano Free limitado. Seus dados não são apagados: dá para visualizar e editar o que já cadastrou. Novos cadastros e alguns módulos ficam sujeitos aos limites do gratuito; para voltar ao pacote completo (como no Pro), assine um plano pago no app.",
+      "Você continua com acesso ao MasterPalm no plano Free limitado. Seus dados não são apagados. Você pode visualizar e editar o que já cadastrou, mas novos cadastros e recursos ficam limitados até escolher um plano pago.",
   },
   {
     question: "Meus dados são apagados se eu não assinar?",
     answer:
-      "Não. Seus dados permanecem salvos. O plano gratuito limitado restringe crescimento e recursos avançados, mas não apaga o histórico por falta de assinatura.",
+      "Não. Seus dados permanecem salvos. O plano gratuito apenas limita novos cadastros e alguns recursos avançados.",
   },
   {
-    question: "O plano pago libera o catálogo completo?",
+    question: "Qual plano devo escolher?",
     answer:
-      "Sim. Os planos pagos no app liberam níveis crescentes de catálogo, pedidos, relatórios e backup; o Pro mensal e anual correspondem ao pacote completo descrito na tela de planos do aplicativo.",
+      "O Básico é ideal para começar a organizar a loja. O Intermediário é indicado para quem já controla compras, fornecedores e precificação. O Pro é a opção mais completa, com mais recursos, integrações e gestão avançada.",
   },
   {
     question: "O MasterPalm funciona offline?",
