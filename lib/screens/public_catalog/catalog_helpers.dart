@@ -321,23 +321,77 @@ bool catalogProductImageUrlLooksLikeGeneratedThumbnail(String url) {
   return normalized.contains('/thumbnails/');
 }
 
-String _catalogImageUrlPathLower(String url) =>
-    url.trim().split('?').first.toLowerCase();
-
-/// Heurística: PNG do pipeline antigo (canvas ~600×800) costumava usar `.../produtos/img_<ts>.png`.
-bool catalogImageUrlLikelyOldPipelinePng(String url) {
-  final path = _catalogImageUrlPathLower(url);
-  if (!path.endsWith('.png')) return false;
-  final norm = url.trim().toLowerCase().replaceAll('%2f', '/');
-  return norm.contains('/produtos/img_');
+/// Dentro de uma lista já ordenada pelo utilizador, ignora só um **prefixo** de
+/// thumbnails Storage (`/thumbnails/`) — ex.: sync colocou thumb antes da foto real.
+String _firstCatalogCoverFromOrderedUserUrls(List<String> urls) {
+  final t = urls.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  if (t.isEmpty) return '';
+  var i = 0;
+  while (i < t.length &&
+      catalogProductImageUrlLooksLikeGeneratedThumbnail(t[i])) {
+    i++;
+  }
+  if (i < t.length) return t[i];
+  return t.first;
 }
 
-/// Escolhe a URL da **foto principal** para catálogo (hero, `imageUrl` no sync, etc.).
+/// URL da **capa** do produto no catálogo e campos espelhados no sync (`imageUrl`, etc.).
 ///
-/// Ordem: [fotoOriginalUrl] válida → primeira em [imagens] que não seja thumb Storage;
-/// se houver **qualquer não-PNG** na lista, usa a **primeira** (ordem do utilizador);
-/// senão tenta excluir PNGs `img_*.png` legados; depois `imagem_principal` / `imageUrl`;
-/// o campo `thumbnail` só se não houver outra URL “melhor”; último recurso thumbs.
+/// Regra: ordem do cadastro — [imagens] → [images] → [fotos] → [imgs]; depois campos
+/// soltos `imagem_principal`, `imageUrl`, `cover`, `fotoOriginalUrl`, `imagemUrl`;
+/// por último `thumbnail` / `fotoThumbUrl`. Sem reordenar por formato, tamanho ou data.
+/// Só se remove prefixo inicial de URLs `/thumbnails/` dentro da mesma lista (dados espúrios).
+String selectCatalogCoverImageUrl({
+  required List<String> imagens,
+  List<String>? images,
+  List<String>? fotos,
+  List<String>? imgs,
+  String? imageUrl,
+  String? imagem_principal,
+  String? cover,
+  String? fotoOriginalUrl,
+  String? imagemUrl,
+  String? thumbnail,
+  String? fotoThumbUrl,
+}) {
+  final imgLists = <List<String>>[
+    imagens,
+    images ?? const [],
+    fotos ?? const [],
+    imgs ?? const [],
+  ];
+  for (final list in imgLists) {
+    final u = _firstCatalogCoverFromOrderedUserUrls(list);
+    if (u.isNotEmpty) return u;
+  }
+
+  bool isStorageThumb(String u) =>
+      catalogProductImageUrlLooksLikeGeneratedThumbnail(u);
+
+  for (final raw in [imageUrl, imagem_principal, cover, fotoOriginalUrl, imagemUrl]) {
+    final u = (raw ?? '').trim();
+    if (u.isNotEmpty && !isStorageThumb(u)) return u;
+  }
+  for (final raw in [thumbnail, fotoThumbUrl]) {
+    final u = (raw ?? '').trim();
+    if (u.isNotEmpty && !isStorageThumb(u)) return u;
+  }
+  for (final raw in [
+    imageUrl,
+    imagem_principal,
+    cover,
+    fotoOriginalUrl,
+    imagemUrl,
+    thumbnail,
+    fotoThumbUrl,
+  ]) {
+    final u = (raw ?? '').trim();
+    if (u.isNotEmpty) return u;
+  }
+  return '';
+}
+
+/// Compat: sync e código legado — só recebe [imagens] + campos espelhados do modelo.
 String selectCatalogPrimaryImageUrl({
   required List<String> imagens,
   String? fotoOriginalUrl,
@@ -345,58 +399,34 @@ String selectCatalogPrimaryImageUrl({
   String? imagem_principal,
   String? thumbnail,
 }) {
-  bool isThumb(String u) => catalogProductImageUrlLooksLikeGeneratedThumbnail(u);
-
-  final fo = (fotoOriginalUrl ?? '').trim();
-  if (fo.isNotEmpty && !isThumb(fo)) return fo;
-
-  final nonThumb = <String>[];
-  for (final s in imagens) {
-    final u = s.trim();
-    if (u.isEmpty || isThumb(u)) continue;
-    nonThumb.add(u);
-  }
-
-  if (nonThumb.isNotEmpty) {
-    final hasNonPng =
-        nonThumb.any((u) => !_catalogImageUrlPathLower(u).endsWith('.png'));
-    if (hasNonPng) {
-      for (final u in nonThumb) {
-        if (!_catalogImageUrlPathLower(u).endsWith('.png')) return u;
-      }
-    }
-    final modern =
-        nonThumb.where((u) => !catalogImageUrlLikelyOldPipelinePng(u)).toList();
-    if (modern.isNotEmpty) return modern.first;
-    return nonThumb.first;
-  }
-
-  for (final raw in [imagem_principal, imageUrl]) {
-    final u = (raw ?? '').trim();
-    if (u.isNotEmpty && !isThumb(u)) return u;
-  }
-
-  final th = (thumbnail ?? '').trim();
-  if (th.isNotEmpty && !isThumb(th)) return th;
-
-  for (final s in imagens) {
-    final u = s.trim();
-    if (u.isNotEmpty) return u;
-  }
-  for (final raw in [imagem_principal, imageUrl, thumbnail]) {
-    final u = (raw ?? '').trim();
-    if (u.isNotEmpty) return u;
-  }
-  return '';
+  return selectCatalogCoverImageUrl(
+    imagens: imagens,
+    images: const [],
+    fotos: const [],
+    imgs: const [],
+    imageUrl: imageUrl,
+    imagem_principal: imagem_principal,
+    cover: null,
+    fotoOriginalUrl: fotoOriginalUrl,
+    imagemUrl: null,
+    thumbnail: thumbnail,
+    fotoThumbUrl: null,
+  );
 }
 
 String selectCatalogPrimaryImageUrlFromProdutoMap(Map<String, dynamic> p) {
-  return selectCatalogPrimaryImageUrl(
+  return selectCatalogCoverImageUrl(
     imagens: safeListString(p['imagens']),
-    fotoOriginalUrl: safeStr(p['fotoOriginalUrl']),
+    images: safeListString(p['images']),
+    fotos: safeListString(p['fotos']),
+    imgs: safeListString(p['imgs']),
     imageUrl: safeStr(p['imageUrl']),
     imagem_principal: safeStr(p['imagem_principal']),
+    cover: safeStr(p['cover']),
+    fotoOriginalUrl: safeStr(p['fotoOriginalUrl']),
+    imagemUrl: safeStr(p['imagemUrl']),
     thumbnail: safeStr(p['thumbnail']),
+    fotoThumbUrl: safeStr(p['fotoThumbUrl']),
   );
 }
 
@@ -414,21 +444,13 @@ String catalogImageUrlMaskForLog(String url) {
   return '$shortened?…';
 }
 
-/// URLs para card/detalhe: dedupe + thumbs no fim ([catalogProductImageUrlsForDisplay]),
-/// depois **[0] = principal** ([selectCatalogPrimaryImageUrlFromProdutoMap]) sem duplicar.
+/// Mesma ordem que [catalogProductImageUrlsForDisplay] (galeria / card lista).
 List<String> catalogProductImagesForHeroAndGallery(Map<String, dynamic> p) {
-  final ordered = catalogProductImageUrlsForDisplay(p);
-  final primary = selectCatalogPrimaryImageUrlFromProdutoMap(p);
-  if (primary.isEmpty || ordered.isEmpty) return ordered;
-  if (ordered.first == primary) return ordered;
-  final rest = <String>[];
-  for (final u in ordered) {
-    if (u != primary) rest.add(u);
-  }
-  return [primary, ...rest];
+  return catalogProductImageUrlsForDisplay(p);
 }
 
-/// URLs de fotos do produto para o catálogo público: ordem preservada, dedupe, e **ficheiros grandes antes** de thumbs.
+/// URLs do produto no catálogo: ordem do cadastro ([imagens] → [images] → …),
+/// dedupe sem alterar ordem, **sem** mover thumbnails para o fim.
 List<String> catalogProductImageUrlsForDisplay(Map<String, dynamic> p) {
   final raw = <String>[];
 
@@ -453,6 +475,7 @@ List<String> catalogProductImageUrlsForDisplay(Map<String, dynamic> p) {
   for (final k in const [
     'imageUrl',
     'imagem_principal',
+    'cover',
     'fotoOriginalUrl',
     'imagemUrl',
   ]) {
@@ -465,21 +488,13 @@ List<String> catalogProductImageUrlsForDisplay(Map<String, dynamic> p) {
     if (seen.add(u)) deduped.add(u);
   }
 
-  final hi = <String>[];
-  final lo = <String>[];
-  for (final u in deduped) {
-    if (catalogProductImageUrlLooksLikeGeneratedThumbnail(u)) {
-      lo.add(u);
-    } else {
-      hi.add(u);
-    }
-  }
-  final out = [...hi, ...lo];
-  if (out.isEmpty) {
-    final t = safeStr(p['fotoThumbUrl'], '').trim();
-    if (t.isNotEmpty) return [t];
-  }
-  return out;
+  if (deduped.isNotEmpty) return deduped;
+
+  final th = safeStr(p['thumbnail'], '').trim();
+  if (th.isNotEmpty) return [th];
+  final ft = safeStr(p['fotoThumbUrl'], '').trim();
+  if (ft.isNotEmpty) return [ft];
+  return [];
 }
 
 String catalogPrimaryProductImageUrl(Map<String, dynamic> p) {

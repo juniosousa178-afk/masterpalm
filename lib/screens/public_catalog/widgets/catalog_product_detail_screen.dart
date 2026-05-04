@@ -13,7 +13,7 @@ import '../../../services/ia_uso_limite_service.dart';
 import '../../../utils/image_provider.dart';
 import '../../../utils/platform_adaptive.dart';
 import '../../../utils/safe_parse.dart';
-import '../catalog_helpers.dart' show catalogProductImagesForHeroAndGallery;
+import '../catalog_helpers.dart' show catalogProductImageUrlsForDisplay;
 import 'catalog_product_selection_sheet.dart';
 import 'catalog_combo_configurable_sheet.dart';
 
@@ -150,7 +150,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
     }
     final ehCombo = tipoProduto == 'combo' ||
         (itensCombo != null && itensCombo.isNotEmpty);
-    final imagensCatalogo = catalogProductImagesForHeroAndGallery(asMap(p));
+    final imagensCatalogo = catalogProductImageUrlsForDisplay(asMap(p));
     final maxPar = safeBool(p['divideSemJuros'])
         ? safeInt(p['maxParcelasSemJuros'], 12).clamp(1, 24)
         : 12;

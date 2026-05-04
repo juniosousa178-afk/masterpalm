@@ -2,83 +2,86 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/screens/public_catalog/catalog_helpers.dart';
 
 void main() {
-  group('selectCatalogPrimaryImageUrl', () {
-    const oldPipelinePng =
-        'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Fimg_1777327271112.png';
-    const hqJpg =
-        'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Fphoto_hq.jpg';
-    const thumbStorage =
-        'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Fthumbnails%2Fphoto.webp';
+  const urlA = 'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Ffirst.jpg';
+  const urlB =
+      'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Fsecond_hq.jpg';
+  const oldPng =
+      'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Fimg_1777327271112.png';
+  const thumbStorage =
+      'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Fthumbnails%2Fphoto.webp';
 
-    test('fotoOriginalUrl válida ganha de thumbnail', () {
+  group('selectCatalogCoverImageUrl / capa', () {
+    test('A: primeira na lista vence mesmo se a segunda parece HQ', () {
       expect(
-        selectCatalogPrimaryImageUrl(
+        selectCatalogCoverImageUrl(imagens: [urlA, urlB]),
+        urlA,
+      );
+    });
+
+    test('B: PNG antigo primeiro e JPG HQ segundo — capa continua o primeiro', () {
+      expect(
+        selectCatalogCoverImageUrl(imagens: [oldPng, urlB]),
+        oldPng,
+      );
+    });
+
+    test('C: imagens vazias — usa imageUrl', () {
+      expect(
+        selectCatalogCoverImageUrl(
           imagens: const [],
-          fotoOriginalUrl: hqJpg,
-          thumbnail: 'https://x.com/thumb.jpg',
+          imageUrl: urlA,
         ),
-        hqJpg,
+        urlA,
       );
     });
 
-    test('thumbnail não ganha de imagens nem fotoOriginalUrl', () {
+    test('D: imagens[0] normal e campo thumbnail separado — capa é imagens[0]', () {
+      const thumbField = 'https://x.com/thumb-only.jpg';
       expect(
-        selectCatalogPrimaryImageUrl(
-          imagens: [hqJpg],
-          fotoOriginalUrl: null,
-          thumbnail: 'https://x.com/some-thumb.jpg',
+        selectCatalogCoverImageUrl(
+          imagens: [urlA],
+          thumbnail: thumbField,
         ),
-        hqJpg,
+        urlA,
       );
     });
 
-    test('PNG legado img_*.png depois de JPG HQ — escolhe JPG (ordem lista)', () {
+    test(
+        'E: imagens[0] é /thumbnails/ e [1] é normal — capa salta só o prefixo thumb Storage',
+        () {
       expect(
-        selectCatalogPrimaryImageUrl(imagens: [oldPipelinePng, hqJpg]),
-        hqJpg,
-      );
-    });
-
-    test('JPG HQ primeiro na lista — mantém JPG', () {
-      expect(
-        selectCatalogPrimaryImageUrl(imagens: [hqJpg, oldPipelinePng]),
-        hqJpg,
-      );
-    });
-
-    test('só entradas /thumbnails/ em imagens — usa imageUrl', () {
-      const full =
-          'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Fbig.jpg';
-      expect(
-        selectCatalogPrimaryImageUrl(
-          imagens: [thumbStorage],
-          imageUrl: full,
+        selectCatalogCoverImageUrl(
+          imagens: [thumbStorage, urlA],
         ),
-        full,
+        urlA,
       );
     });
 
-    test('fotoOriginalUrl em pasta thumbnails ignora e usa imagens', () {
+    test('imagens vazias: imageUrl antes de thumbnail no fallback solto', () {
       expect(
-        selectCatalogPrimaryImageUrl(
-          imagens: [hqJpg],
-          fotoOriginalUrl: thumbStorage,
+        selectCatalogCoverImageUrl(
+          imagens: const [],
+          imageUrl: urlA,
+          thumbnail: 'https://x.com/t.jpg',
         ),
-        hqJpg,
+        urlA,
       );
-    });
-
-    test('catalogProductImagesForHeroAndGallery coloca principal escolhida em [0]', () {
-      final urls = catalogProductImagesForHeroAndGallery({
-        'imagens': [oldPipelinePng, hqJpg],
-      });
-      expect(urls.first, hqJpg);
-      expect(urls.length, 2);
     });
   });
 
-  group('catalogProductImageUrlsForDisplay', () {
-    test('prioriza URL principal antes de thumb no Storage', () {
+  group('selectCatalogPrimaryImageUrlFromProdutoMap', () {
+    test('delega à mesma regra de capa (listas + map)', () {
+      expect(
+        selectCatalogPrimaryImageUrlFromProdutoMap({
+          'imagens': [urlA, urlB],
+        }),
+        urlA,
+      );
+    });
+  });
+
+  group('catalogProductImageUrlsForDisplay / galeria', () {
+    test('preserva ordem; não move thumbnail para o fim', () {
       const full =
           'https://x.firebasestorage.app/o/lojas%2Fa%2Fprodutos%2Fp%2Fphoto.jpg';
       const thumb =
@@ -86,8 +89,7 @@ void main() {
       final urls = catalogProductImageUrlsForDisplay({
         'imagens': [thumb, full],
       });
-      expect(urls.first, full);
-      expect(urls.length, 2);
+      expect(urls, [thumb, full]);
     });
 
     test('usa fotoThumbUrl só se não houver outra', () {
@@ -99,7 +101,7 @@ void main() {
       expect(urls, [thumb]);
     });
 
-    test('dedupe e ordem dos campos', () {
+    test('dedupe sem mudar ordem do primeiro visto', () {
       const u = 'https://example.com/a.jpg';
       final urls = catalogProductImageUrlsForDisplay({
         'imageUrl': u,
@@ -107,6 +109,13 @@ void main() {
         'imagem_principal': u,
       });
       expect(urls, [u]);
+    });
+
+    test('catalogProductImagesForHeroAndGallery espelha a galeria', () {
+      final urls = catalogProductImagesForHeroAndGallery({
+        'imagens': [oldPng, urlB],
+      });
+      expect(urls, [oldPng, urlB]);
     });
   });
 }
