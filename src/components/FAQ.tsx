@@ -4,6 +4,21 @@ import { useState } from "react";
 
 const faqs = [
   {
+    question: "O que acontece depois do período de teste grátis?",
+    answer:
+      "Você continua com acesso ao MasterPalm no plano Free limitado. Seus dados não são apagados: dá para visualizar e editar o que já cadastrou. Novos cadastros e alguns módulos ficam sujeitos aos limites do gratuito; para voltar ao pacote completo (como no Pro), assine um plano pago no app.",
+  },
+  {
+    question: "Meus dados são apagados se eu não assinar?",
+    answer:
+      "Não. Seus dados permanecem salvos. O plano gratuito limitado restringe crescimento e recursos avançados, mas não apaga o histórico por falta de assinatura.",
+  },
+  {
+    question: "O plano pago libera o catálogo completo?",
+    answer:
+      "Sim. Os planos pagos no app liberam níveis crescentes de catálogo, pedidos, relatórios e backup; o Pro mensal e anual correspondem ao pacote completo descrito na tela de planos do aplicativo.",
+  },
+  {
     question: "O MasterPalm funciona offline?",
     answer: "Sim. O APK para Android opera em modo offline e sincroniza automaticamente os dados quando a conexão com a internet for restabelecida. O AppWeb requer conexão para funcionar.",
   },
@@ -75,7 +90,7 @@ export function FAQ() {
                 id={`faq-answer-${index}`}
                 role="region"
                 aria-labelledby={`faq-question-${index}`}
-                className={`overflow-hidden transition-all ${openIndex === index ? "max-h-96" : "max-h-0"}`}
+                className={`overflow-hidden transition-all ${openIndex === index ? "max-h-[48rem]" : "max-h-0"}`}
               >
                 <div className="px-6 pb-4 text-gray-400 text-sm leading-relaxed">
                   {faq.answer}

@@ -48,40 +48,42 @@ export const siteConfig = {
 
   // Planos MasterPalm — fonte única para a landing mastepalm.com.br
   // Se alterar preços/recursos aqui, é preciso: 1) npm run build  2) publicar na Vercel (vercel --prod ou push no Git).
-  // Preços no app vêm do Firebase Remote Config; mantenha este bloco alinhado aos valores do app (lib/services/remote_config_service.dart).
+  // Preços exibidos no app vêm do Firebase Remote Config; os fallbacks no código estão em lib/services/remote_config_service.dart (_defaultPlanoMensalPreco / _defaultPlanoAnualPreco). Em produção o valor pode diferir conforme o RC.
+  // Limites numéricos aplicados no app: lib/core/plan_matrix.dart (via LimitsGuard). Textos da tela de planos: lib/screens/planos_screen.dart.
   plans: [
     {
-      name: "Teste grátis (90 dias)",
+      name: "Teste grátis",
       price: "R$ 0",
-      period: "por 90 dias",
+      period: "durante o trial",
       features: [
-        "Até 80 produtos, 150 clientes e 50 vendas/mês",
-        "3 fotos por produto e até 6 banners",
-        "Catálogo online, pedidos e relatórios",
-        "Após 90 dias vira Free limitado; upgrade no app quando quiser",
+        "Enquanto o trial estiver ativo, você usa o MasterPalm como no plano Pro (todos os módulos liberados)",
+        "Contas novas em geral: 30 dias de trial; contas com trial de 90 dias seguem válidas até o fim do período",
+        "Limites técnicos altos: produtos, clientes e vendas na prática ilimitados; até 10 fotos por produto e até 10 banners",
+        "Catálogo, pedidos e relatórios conforme o nível Pro durante o trial",
+        "Ao terminar o trial: migração automática para o Free limitado, sem apagar seus dados",
       ],
     },
     {
-      name: "Plano Mensal",
-      price: "R$ 25,90",
+      name: "Plano Pro mensal",
+      price: "R$ 39,99",
       period: "/ mês",
       features: [
-        "Produtos, clientes e vendas ilimitados",
-        "6 fotos por produto e até 6 banners",
-        "Catálogo completo, relatórios e backup",
-        "Suporte por e-mail e WhatsApp",
+        "Produtos, clientes e vendas ilimitados (tetos altos no sistema)",
+        "Até 10 fotos por produto e até 10 banners",
+        "Catálogo completo, pedidos, relatórios avançados, backup e integrações do plano Pro",
+        "Equipe ampliada, IA, campanhas e demais recursos Pro descritos no app",
+        "Suporte pelos canais oficiais (e-mail e WhatsApp deste site, quando configurados)",
       ],
     },
     {
-      name: "Plano Anual",
-      price: "R$ 299,90",
+      name: "Plano Pro anual",
+      price: "R$ 349,99",
       period: "/ ano",
       badge: "Recomendado",
       features: [
-        "Tudo do plano Mensal",
-        "Melhor custo-benefício no ano",
-        "Suporte prioritário",
-        "Ideal para lojas em crescimento",
+        "Mesmo acesso do Pro mensal",
+        "Melhor custo-benefício no ano e previsibilidade de custo",
+        "Renovação anual; ideal para quem quer escalar a operação",
       ],
     },
   ],
@@ -91,19 +93,19 @@ export const siteConfig = {
     title: "Como funcionam os planos",
     steps: [
       {
-        title: "1º Teste grátis (90 dias)",
+        title: "1º Teste grátis",
         description:
-          "Durante 90 dias você tem: 80 produtos, 150 clientes, 50 vendas por mês, 3 fotos por produto e até 6 banners. É suficiente para testar o app com sua loja.",
+          "Durante o trial ativo, o app se comporta como no plano Pro: módulos liberados e limites técnicos altos (produtos, clientes e vendas na prática ilimitados; até 10 fotos por produto e até 10 banners). Em contas novas o trial costuma ser de 30 dias; contas com período de 90 dias permanecem válidas até a data de término.",
       },
       {
-        title: "2º Após os 90 dias (Free limitado)",
+        title: "2º Após o trial: Free limitado",
         description:
-          "O plano vira Free limitado automaticamente — não bloqueia o acesso. Seus dados não são apagados: você continua vendo e editando todos os produtos e clientes já cadastrados. Os limites (10 produtos, 20 clientes, 10 vendas/mês, 1 foto por produto, 1 banner) valem só para adicionar coisas novas: não poderá cadastrar novo produto nem novo cliente até ficar dentro do limite ou assinar o plano pago. Para continuar crescendo sem reduzir nada, assine o Mensal ou Anual.",
+          "O acesso continua e seus dados não são apagados: você ainda visualiza e edita o que já cadastrou. Para crescer além dos limites do plano gratuito, é preciso assinar um plano pago no app. No Free limitado aplicam-se tetos de crescimento: até 30 produtos, 20 clientes, 10 vendas por mês, 1 foto por produto, 1 banner e 1 usuário — válidos para novos cadastros e uso dentro desses limites; módulos avançados podem pedir upgrade, conforme a tela de planos do app.",
       },
       {
-        title: "3º Planos Mensal e Anual (pago)",
+        title: "3º Planos pagos (Pro mensal ou anual)",
         description:
-          "Produtos, clientes e vendas ilimitados. 6 fotos por produto e até 6 banners. Catálogo completo, relatórios, backup e suporte.",
+          "Para gestão completa com tetos altos, assine o Pro mensal ou anual no app. Os valores exibidos no checkout seguem o Firebase Remote Config; no código do app, os fallbacks atuais são R$ 39,99/mês e R$ 349,99/ano. O app também oferece planos Básico e Intermediário com faixas intermediárias de recursos e limites.",
       },
     ],
   },

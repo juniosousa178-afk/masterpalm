@@ -16,7 +16,7 @@ export function PlansSection() {
           Planos
         </h2>
         <p className="text-gray-400 text-center mb-12 max-w-2xl mx-auto">
-          Escolha o plano ideal para sua loja. Teste grátis por 90 dias ou assine Mensal/Anual com tudo liberado.
+          Escolha como começar: teste grátis com experiência Pro no app, depois Free limitado se não assinar, ou vá direto ao Pro mensal/anual (valores finais no checkout conforme Remote Config).
         </p>
 
         {/* Como funcionam os planos */}
