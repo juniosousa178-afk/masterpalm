@@ -8,11 +8,13 @@ import 'package:intl/intl.dart';
 import '../../core/hive_box_names.dart';
 import '../../financeiro/financeiro_constants.dart';
 import '../../financeiro/lancamento_financeiro_competencia_ui.dart';
+import '../../models/conta_receber.dart';
 import '../../models/lancamento_financeiro.dart';
 import '../../models/venda.dart';
 import '../../services/fechamento_service.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
+import '../../services/financeiro_pdf_service.dart';
 import '../../services/financeiro_service.dart';
 import '../../services/financeiro_ui_prefs_service.dart';
 import '../../services/gasto_fixo_lancamento_service.dart';
@@ -69,6 +71,9 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     double pix,
     double cartao
   })? _resumoVendasMes;
+
+  double _totalContasReceberPendentes = 0;
+  String _nomeLojaExibicao = '';
 
   /// Última migração F2C (Hive→Firestore) — informativo; não bloqueia reexecução.
   FinanceiroMigracaoF2cRegistroLeitura? _ultimaMigrF2c;
@@ -196,6 +201,27 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         _resumoVendasMes = null;
       }
 
+      var nomeLojaUi = '';
+      try {
+        final cfg = Hive.isBoxOpen('config')
+            ? Hive.box('config')
+            : await Hive.openBox('config');
+        nomeLojaUi = (cfg.get('store_name') ?? '').toString().trim();
+      } catch (_) {}
+
+      var totalCr = 0.0;
+      try {
+        final crName = HiveBoxNames.contasReceber(id);
+        final crBox = Hive.isBoxOpen(crName)
+            ? Hive.box<ContaReceber>(crName)
+            : await Hive.openBox<ContaReceber>(crName);
+        for (final c in crBox.values) {
+          if (c.lojaId == id && !c.pago) {
+            totalCr += c.valor;
+          }
+        }
+      } catch (_) {}
+
       FinanceiroMigracaoF2cRegistroLeitura? regMigr;
       try {
         regMigr = await FinanceiroFirestoreService.lerUltimaMigracaoF2c(id);
@@ -214,6 +240,10 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         setState(() {
           _ultimaMigrF2c = regMigr;
           _ultimaPullF2d = regPull;
+          if (nomeLojaUi.isNotEmpty) {
+            _nomeLojaExibicao = nomeLojaUi;
+          }
+          _totalContasReceberPendentes = totalCr;
           _loading = false;
         });
       }
@@ -1044,6 +1074,16 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         actions: [
           const AppHelpIconButton(iconColor: Colors.white),
           IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            onPressed: (_loading ||
+                    _lojaId.isEmpty ||
+                    _acessoNegado ||
+                    _erro != null)
+                ? null
+                : _abrirEscolhaPdf,
+            tooltip: 'Exportar PDF',
+          ),
+          IconButton(
             icon: const Icon(Icons.cloud_download_outlined),
             onPressed: (_loading ||
                     _migrando ||
@@ -1205,6 +1245,21 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                               onPressed: _loading ? null : _irParaMesAtual,
                               child: const Text('Mês atual'),
                             ),
+                        ],
+                      ),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        alignment: WrapAlignment.center,
+                        children: [
+                          ActionChip(
+                            label: const Text('Este mês'),
+                            onPressed: _loading ? null : _irParaMesAtual,
+                          ),
+                          ActionChip(
+                            label: const Text('Mês anterior'),
+                            onPressed: _loading ? null : () => _mudarMes(-1),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -1398,6 +1453,90 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     );
   }
 
+  FinanceiroPdfPayload _montarPayloadPdf() {
+    final y = _mesSelecionado.year;
+    final m = _mesSelecionado.month;
+    final ini = DateTime(y, m, 1);
+    final fim = DateTime(y, m + 1, 0, 23, 59, 59, 999);
+    final rv = _resumoVendasMes;
+    final det = _lancBox == null
+        ? <LancamentoFinanceiro>[]
+        : (FinanceiroService.lancamentosPagosNoPeriodo(
+            _lancBox!,
+            _lojaId,
+            ini,
+            fim,
+          ).toList()
+          ..sort(
+            (a, b) => b.dataEfetivaPagamentoOuLancamento.compareTo(
+              a.dataEfetivaPagamentoOuLancamento,
+            ),
+          ));
+
+    return FinanceiroPdfPayload(
+      nomeLoja: _nomeLojaExibicao,
+      lojaId: _lojaId,
+      periodoInicio: ini,
+      periodoFim: fim,
+      modulo: _moduloMes,
+      totalVendido: rv?.venda ?? 0,
+      custoProdutos: rv?.custo ?? 0,
+      taxas: rv?.taxas ?? 0,
+      lucroOperacionalVendas: rv?.lucro ?? 0,
+      totalDinheiro: rv?.dinheiro ?? 0,
+      totalPix: rv?.pix ?? 0,
+      totalCartao: rv?.cartao ?? 0,
+      totalContasReceberAberto: _totalContasReceberPendentes,
+      lancamentosDetalhe: det,
+      vendasDetalhe: const [],
+    );
+  }
+
+  Future<void> _exportarPdf(FinanceiroPdfTipo tipo) async {
+    try {
+      await FinanceiroPdfService.gerar(
+        tipo: tipo,
+        payload: _montarPayloadPdf(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao gerar PDF: $e')),
+      );
+    }
+  }
+
+  Future<void> _abrirEscolhaPdf() async {
+    final tipo = await showModalBottomSheet<FinanceiroPdfTipo>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Exportar relatório em PDF',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ...FinanceiroPdfTipo.values.map(
+              (t) => ListTile(
+                title: Text(FinanceiroPdfService.nomeTipo(t)),
+                onTap: () => Navigator.pop(ctx, t),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (tipo != null && mounted) {
+      await _exportarPdf(tipo);
+    }
+  }
+
   Widget _cardResumo() {
     final rv = _resumoVendasMes;
     final lucroOpVendas = rv?.lucro;
@@ -1416,6 +1555,8 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
             modulo: _moduloMes,
           )
         : _moduloMes.impactoLiquidoModulo;
+    final entrouSimples = somaFormas + _moduloMes.totalEntradasExtras;
+    final despesasResumo = _moduloMes.despesasParaResultadoGerencial;
 
     return Card(
       elevation: 0,
@@ -1426,76 +1567,29 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (rv != null) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: _miniMetric(
-                      'Vendas (mês)',
-                      _moeda.format(rv.venda),
-                      _primary,
-                    ),
-                  ),
-                  Expanded(
-                    child: _miniMetric(
-                      'Lucro operacional de vendas',
-                      _moeda.format(rv.lucro),
-                      _success,
-                    ),
-                  ),
-                ],
+            Text(
+              'Visão simples',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade800,
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _miniMetric(
-                      'Resultado gerencial do mês',
-                      _moeda.format(resultadoGerencial ?? 0),
-                      resultadoGerencial != null && resultadoGerencial >= 0
-                          ? _success
-                          : Colors.redAccent,
-                    ),
-                  ),
-                  Expanded(
-                    child: _miniMetric(
-                      'Fluxo de caixa (vendas + lançamentos)',
-                      _moeda.format(fluxoCaixa),
-                      fluxoCaixa >= 0 ? _primary : Colors.redAccent,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ] else ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: _miniMetric(
-                      'Fluxo de caixa (só lançamentos)',
-                      _moeda.format(_moduloMes.impactoLiquidoModulo),
-                      _moduloMes.impactoLiquidoModulo >= 0
-                          ? _primary
-                          : Colors.redAccent,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
                   child: _miniMetric(
-                    'Entradas extras (caixa)',
-                    _moeda.format(_moduloMes.totalEntradasExtras),
+                    'Quanto entrou',
+                    _moeda.format(entrouSimples),
                     _success,
                   ),
                 ),
                 Expanded(
                   child: _miniMetric(
-                    'Saídas (módulo, todas)',
+                    'Quanto saiu',
                     _moeda.format(_moduloMes.totalSaidasExplicitas),
                     _warning,
                   ),
@@ -1507,31 +1601,185 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
               children: [
                 Expanded(
                   child: _miniMetric(
-                    'Compra mercadoria (caixa)',
+                    'Quanto sobrou (fluxo de caixa)',
+                    _moeda.format(fluxoCaixa),
+                    fluxoCaixa >= 0 ? _primary : Colors.redAccent,
+                  ),
+                ),
+                Expanded(
+                  child: _miniMetric(
+                    'Lucro das vendas',
+                    _moeda.format(rv?.lucro ?? 0),
+                    (rv?.lucro ?? 0) >= 0 ? _success : Colors.redAccent,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _miniMetric(
+                    'Gastos com mercadoria',
                     _moeda.format(_moduloMes.totalCompraMercadoria),
                     Colors.brown,
                   ),
                 ),
                 Expanded(
                   child: _miniMetric(
-                    'Investimentos / retiradas',
-                    _moeda.format(
-                      _moduloMes.totalInvestimentos + _moduloMes.totalRetiradas,
-                    ),
-                    Colors.deepPurple,
+                    'Despesas',
+                    _moeda.format(despesasResumo),
+                    Colors.deepOrange,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Lucro operacional de vendas = vendas − custoProdutos − taxas (config/fechamento). '
-              'Resultado gerencial = esse lucro − (gastos fixos + variáveis + despesa legada + equipe) + ajustes; '
-              'não inclui compra de mercadoria (CMV nas vendas), investimento, retirada nem entrada extra. '
-              'Fluxo de caixa = recebimentos (dinheiro+pix+cartão) + entradas extras − saídas + ajustes. '
-              'Gastos fixos: use “Gerar lançamentos do mês” na tela de cadastro ou lance manualmente. '
-              'Sugestões ficam pendentes até marcar como pagas.',
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _miniMetric(
+                    'Contas a receber (aberto)',
+                    _moeda.format(_totalContasReceberPendentes),
+                    const Color(0xFF6366F1),
+                  ),
+                ),
+                Expanded(
+                  child: _miniMetric(
+                    'Taxas pagas',
+                    _moeda.format(rv?.taxas ?? 0),
+                    Colors.purple,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  'Detalhes técnicos',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+                subtitle: Text(
+                  'CMV, DRE, resultado gerencial, fluxo de caixa e lançamentos',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+                children: [
+                  if (rv != null) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _miniMetric(
+                            'Vendas (mês)',
+                            _moeda.format(rv.venda),
+                            _primary,
+                          ),
+                        ),
+                        Expanded(
+                          child: _miniMetric(
+                            'Lucro operacional de vendas',
+                            _moeda.format(rv.lucro),
+                            _success,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _miniMetric(
+                            'Resultado gerencial do mês',
+                            _moeda.format(resultadoGerencial ?? 0),
+                            resultadoGerencial != null &&
+                                    resultadoGerencial >= 0
+                                ? _success
+                                : Colors.redAccent,
+                          ),
+                        ),
+                        Expanded(
+                          child: _miniMetric(
+                            'Fluxo de caixa (vendas + lançamentos)',
+                            _moeda.format(fluxoCaixa),
+                            fluxoCaixa >= 0 ? _primary : Colors.redAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ] else ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _miniMetric(
+                            'Fluxo de caixa (só lançamentos)',
+                            _moeda.format(_moduloMes.impactoLiquidoModulo),
+                            _moduloMes.impactoLiquidoModulo >= 0
+                                ? _primary
+                                : Colors.redAccent,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _miniMetric(
+                          'Entradas extras (caixa)',
+                          _moeda.format(_moduloMes.totalEntradasExtras),
+                          _success,
+                        ),
+                      ),
+                      Expanded(
+                        child: _miniMetric(
+                          'Saídas (módulo, todas)',
+                          _moeda.format(_moduloMes.totalSaidasExplicitas),
+                          _warning,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _miniMetric(
+                          'Compra mercadoria (caixa)',
+                          _moeda.format(_moduloMes.totalCompraMercadoria),
+                          Colors.brown,
+                        ),
+                      ),
+                      Expanded(
+                        child: _miniMetric(
+                          'Investimentos / retiradas',
+                          _moeda.format(
+                            _moduloMes.totalInvestimentos +
+                                _moduloMes.totalRetiradas,
+                          ),
+                          Colors.deepPurple,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Lucro operacional de vendas = vendas − custoProdutos − taxas (config/fechamento). '
+                    'Resultado gerencial = esse lucro − (gastos fixos + variáveis + despesa legada + equipe) + ajustes; '
+                    'não inclui compra de mercadoria (CMV nas vendas), investimento, retirada nem entrada extra. '
+                    'Fluxo de caixa = recebimentos (dinheiro+pix+cartão) + entradas extras − saídas + ajustes. '
+                    'Gastos fixos: use “Gerar lançamentos do mês” na tela de cadastro ou lance manualmente. '
+                    'Sugestões ficam pendentes até marcar como pagas.',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

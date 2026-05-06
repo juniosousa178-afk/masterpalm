@@ -279,8 +279,21 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
   late DateTime _dataLanc;
   DateTime? _dataPag;
   late bool _recorrente;
+  bool _solicitarEstoqueCompra = false;
 
   bool _salvando = false;
+
+  DateTime get _dataCompetenciaVisual {
+    if (_status == FinanceiroStatusLancamento.pago) {
+      return _dataPag ?? _dataLanc;
+    }
+    return _dataLanc;
+  }
+
+  bool get _avisoMesAnterior {
+    final n = DateTime.now();
+    return _dataCompetenciaVisual.isBefore(DateTime(n.year, n.month, 1));
+  }
 
   @override
   void initState() {
@@ -305,6 +318,7 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
     _dataLanc = e?.dataLancamento ?? DateTime.now();
     _dataPag = e?.dataPagamento;
     _recorrente = e?.recorrente ?? false;
+    _solicitarEstoqueCompra = e?.solicitarAtualizacaoEstoque ?? false;
   }
 
   @override
@@ -357,6 +371,7 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
       _dataLanc = DateTime.now();
       _dataPag = null;
       _recorrente = false;
+      _solicitarEstoqueCompra = false;
     });
   }
 
@@ -405,6 +420,10 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
         anexoComprovante: comp?.anexoComprovante ?? '',
         referenciaExterna: _refExternaCtrl.text.trim(),
         origem: FinanceiroOrigemLancamento.manual,
+        solicitarAtualizacaoEstoque:
+            _tipo == FinanceiroTipoLancamento.compraMercadoria
+                ? _solicitarEstoqueCompra
+                : false,
       );
 
       final prosseguir =
@@ -438,6 +457,33 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
                 );
               },
             ),
+          ),
+        );
+      }
+
+      final avisos = <String>[];
+      if (_avisoMesAnterior) {
+        avisos.add(
+          'Este lançamento será registrado em um mês anterior e aparecerá nos relatórios daquele período.',
+        );
+      }
+      if (_tipo == FinanceiroTipoLancamento.compraMercadoria &&
+          _avisoMesAnterior) {
+        avisos.add(
+          'Este lançamento afeta o financeiro. O estoque não muda aqui; use a marcação só para lembrar de conferir o estoque depois.',
+        );
+      }
+      if (_tipo == FinanceiroTipoLancamento.compraMercadoria &&
+          _solicitarEstoqueCompra) {
+        avisos.add(
+          'Lembrete registrado. Para alterar quantidades, use compras com produtos ou ajuste manual no cadastro.',
+        );
+      }
+      if (avisos.isNotEmpty) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(avisos.join('\n\n')),
+            duration: const Duration(seconds: 9),
           ),
         );
       }
@@ -600,7 +646,12 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
                         ),
                       )
                       .toList(),
-                  onChanged: (v) => setState(() => _tipo = v ?? _tipo),
+                  onChanged: (v) => setState(() {
+                    _tipo = v ?? _tipo;
+                    if (_tipo != FinanceiroTipoLancamento.compraMercadoria) {
+                      _solicitarEstoqueCompra = false;
+                    }
+                  }),
                 ),
                 if (_tipo == FinanceiroTipoLancamento.compraMercadoria) ...[
                   const SizedBox(height: 12),
@@ -625,6 +676,47 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Solicitar ajuste de estoque depois'),
+                    subtitle: const Text(
+                      'Este lançamento não altera o estoque automaticamente. Use esta marcação apenas para lembrar que o estoque precisa ser conferido.',
+                    ),
+                    value: _solicitarEstoqueCompra,
+                    onChanged: (v) =>
+                        setState(() => _solicitarEstoqueCompra = v ?? false),
+                  ),
+                ],
+                if (_avisoMesAnterior) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.blue.shade800),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _tipo == FinanceiroTipoLancamento.compraMercadoria
+                                ? 'Este lançamento será registrado em um mês anterior e aparecerá nos relatórios daquele período.\n\n'
+                                    'Este lançamento afeta o financeiro. O estoque não é alterado aqui; marque “Solicitar ajuste de estoque depois” só como lembrete para conferir depois.'
+                                : 'Este lançamento será registrado em um mês anterior e aparecerá nos relatórios daquele período.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade900,
                             ),
                           ),
                         ),

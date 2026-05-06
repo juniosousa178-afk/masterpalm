@@ -76,6 +76,10 @@ class LancamentoFinanceiro extends HiveObject {
   @HiveField(21, defaultValue: '')
   String referenciaExterna;
 
+  /// Só relevante para [FinanceiroTipoLancamento.compraMercadoria]: intenção de refletir no estoque (não automático sem módulo de compras).
+  @HiveField(22, defaultValue: false)
+  bool solicitarAtualizacaoEstoque;
+
   LancamentoFinanceiro({
     required this.id,
     required this.lojaId,
@@ -99,6 +103,7 @@ class LancamentoFinanceiro extends HiveObject {
     this.centroCusto = '',
     this.anexoComprovante = '',
     this.referenciaExterna = '',
+    this.solicitarAtualizacaoEstoque = false,
   })  : competenciaMes = competenciaMes ?? dataLancamento.month,
         competenciaAno = competenciaAno ?? dataLancamento.year;
 
@@ -128,6 +133,7 @@ class LancamentoFinanceiro extends HiveObject {
     String? centroCusto,
     String? anexoComprovante,
     String? referenciaExterna,
+    bool? solicitarAtualizacaoEstoque,
   }) {
     return LancamentoFinanceiro(
       id: id ?? this.id,
@@ -152,6 +158,8 @@ class LancamentoFinanceiro extends HiveObject {
       centroCusto: centroCusto ?? this.centroCusto,
       anexoComprovante: anexoComprovante ?? this.anexoComprovante,
       referenciaExterna: referenciaExterna ?? this.referenciaExterna,
+      solicitarAtualizacaoEstoque:
+          solicitarAtualizacaoEstoque ?? this.solicitarAtualizacaoEstoque,
     );
   }
 }

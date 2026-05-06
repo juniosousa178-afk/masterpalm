@@ -11,12 +11,14 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
 import '../core/hive_box_names.dart';
+import '../models/conta_receber.dart';
 import '../models/venda.dart';
 import '../models/meta.dart';
 import '../models/fechamento_mensal.dart';
 import '../models/lancamento_financeiro.dart';
 import '../services/fechamento_service.dart';
 import '../services/financeiro_hive_store.dart';
+import '../services/financeiro_pdf_service.dart';
 import '../services/financeiro_service.dart';
 import '../services/meta_firestore_service.dart';
 import '../utils/chart_utils.dart';
@@ -68,6 +70,9 @@ class _RelatoriosFinanceirosScreenState
   /// Taxas de relatório (Loja Config) — mesmo critério que Relatório Financeiro e fechamento.
   RelatorioTaxasConfig _taxasCfg = RelatorioTaxasConfig.defaults;
 
+  double _totalContasReceberPendentes = 0;
+  String _nomeLojaRelatorio = '';
+
   // Cores do tema
   static const _primaryColor = Color(0xFF00A8FF);
   static const _bgColor = Color(0xFF0A0A0F);
@@ -111,6 +116,32 @@ class _RelatoriosFinanceirosScreenState
           '';
       if (_lojaId.isEmpty) {
         throw Exception('Loja não encontrada. Faça login novamente.');
+      }
+
+      try {
+        final cfg = Hive.isBoxOpen('config')
+            ? Hive.box('config')
+            : await Hive.openBox('config');
+        _nomeLojaRelatorio =
+            (cfg.get('store_name') ?? '').toString().trim();
+      } catch (_) {
+        _nomeLojaRelatorio = '';
+      }
+
+      try {
+        final crName = HiveBoxNames.contasReceber(_lojaId);
+        final crBox = Hive.isBoxOpen(crName)
+            ? Hive.box<ContaReceber>(crName)
+            : await Hive.openBox<ContaReceber>(crName);
+        var s = 0.0;
+        for (final c in crBox.values) {
+          if (c.lojaId == _lojaId && !c.pago) {
+            s += c.valor;
+          }
+        }
+        _totalContasReceberPendentes = s;
+      } catch (_) {
+        _totalContasReceberPendentes = 0;
       }
 
       _lancamentosFinanceirosBox =
@@ -300,6 +331,107 @@ class _RelatoriosFinanceirosScreenState
   double _valorPorForma(Venda v, String forma) =>
       FinanceiroRelatorioTaxas.valorPorForma(v, forma);
 
+  double get _fluxoCaixaSimples {
+    final r = _resumoModuloFinanceiro ?? const ResumoFinanceiroModulo();
+    return FinanceiroService.fluxoCaixaComVendas(
+      somaFormasPagamentoVendas: _totalDinheiro + _totalPix + _totalCartao,
+      modulo: r,
+    );
+  }
+
+  double get _quantoEntrouSimples {
+    final ex = _resumoModuloFinanceiro?.totalEntradasExtras ?? 0;
+    return _totalDinheiro + _totalPix + _totalCartao + ex;
+  }
+
+  FinanceiroPdfPayload _montarPayloadPdfRelatorios() {
+    final ini = _dataInicio ?? DateTime.now();
+    final fim = _dataFim ?? DateTime.now();
+    final mod = _resumoModuloFinanceiro ?? const ResumoFinanceiroModulo();
+    final det = _lancamentosFinanceirosBox == null
+        ? <LancamentoFinanceiro>[]
+        : (FinanceiroService.lancamentosPagosNoPeriodo(
+            _lancamentosFinanceirosBox!,
+            _lojaId,
+            ini,
+            fim,
+          ).toList()
+          ..sort(
+            (a, b) => b.dataEfetivaPagamentoOuLancamento.compareTo(
+              a.dataEfetivaPagamentoOuLancamento,
+            ),
+          ));
+
+    return FinanceiroPdfPayload(
+      nomeLoja: _nomeLojaRelatorio,
+      lojaId: _lojaId,
+      periodoInicio: ini,
+      periodoFim: fim,
+      modulo: mod,
+      totalVendido: _totalVendido,
+      custoProdutos: _custoProdutos,
+      taxas: _totalTaxas,
+      lucroOperacionalVendas: _lucroEstimado,
+      totalDinheiro: _totalDinheiro,
+      totalPix: _totalPix,
+      totalCartao: _totalCartao,
+      totalContasReceberAberto: _totalContasReceberPendentes,
+      lancamentosDetalhe: det,
+      vendasDetalhe: FinanceiroPdfService.vendasParaPdf(_vendasFiltradas),
+    );
+  }
+
+  Future<void> _exportarPdfRelatorio(FinanceiroPdfTipo tipo) async {
+    try {
+      await FinanceiroPdfService.gerar(
+        tipo: tipo,
+        payload: _montarPayloadPdfRelatorios(),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('Erro ao gerar PDF: $e', isError: true);
+    }
+  }
+
+  Future<void> _abrirEscolhaPdf() async {
+    final tipo = await showModalBottomSheet<FinanceiroPdfTipo>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: _cardColor,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Exportar relatório em PDF',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            ...FinanceiroPdfTipo.values.map(
+              (t) => ListTile(
+                title: Text(
+                  FinanceiroPdfService.nomeTipo(t),
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                onTap: () => Navigator.pop(ctx, t),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (tipo != null && mounted) {
+      await _exportarPdfRelatorio(tipo);
+    }
+  }
+
   // =================== METAS ===================
 
   double get _metaMensal => _metaAtual?.metaMensal ?? 0;
@@ -431,6 +563,14 @@ class _RelatoriosFinanceirosScreenState
           title: const Text('Financeiro & Metas'),
           actions: [
             const AppHelpIconButton(),
+            if (_isAdmin)
+              IconButton(
+                icon: const Icon(Icons.picture_as_pdf_outlined),
+                onPressed: _carregando || _erro.isNotEmpty
+                    ? null
+                    : _abrirEscolhaPdf,
+                tooltip: 'Exportar PDF',
+              ),
             IconButton(
               icon: const Icon(Icons.auto_awesome),
               onPressed: _abrirSugestoesIa,
@@ -516,6 +656,20 @@ class _RelatoriosFinanceirosScreenState
             _buildFiltros(),
             const SizedBox(height: 24),
 
+            // ========== VISÃO SIMPLES ==========
+            _buildSecaoTitulo('Visão simples', Icons.widgets_outlined),
+            const SizedBox(height: 8),
+            Text(
+              'Mesmos totais do app, em linguagem simples.',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white.withOpacity(0.45),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildVisaoSimplesCards(),
+            const SizedBox(height: 24),
+
             // ========== RESUMO FINANCEIRO ==========
             _buildSecaoTitulo('Resumo Financeiro', Icons.attach_money),
             const SizedBox(height: 4),
@@ -527,13 +681,36 @@ class _RelatoriosFinanceirosScreenState
               ),
             ),
             const SizedBox(height: 12),
-            if (_vendasFiltradas.isEmpty)
-              _buildEmptyState()
-            else ...[
-              _buildCardsFinanceiros(),
-              const SizedBox(height: 8),
-              _buildLegendaBaseLucroVendas(),
-            ],
+            if (_vendasFiltradas.isEmpty) _buildEmptyState(),
+            if (_vendasFiltradas.isEmpty) const SizedBox(height: 12),
+            Theme(
+              data: Theme.of(context)
+                  .copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                collapsedIconColor: Colors.white54,
+                iconColor: Colors.white54,
+                title: const Text(
+                  'Detalhes técnicos',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  'CMV, DRE, taxas, ticket médio e demais métricas completas',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 12,
+                  ),
+                ),
+                children: [
+                  _buildCardsFinanceiros(),
+                  const SizedBox(height: 8),
+                  _buildLegendaBaseLucroVendas(),
+                ],
+              ),
+            ),
             if (_resumoModuloFinanceiro?.temAlgumDado == true) ...[
               const SizedBox(height: 16),
               _buildSecaoModuloFinanceiro(),
@@ -918,8 +1095,9 @@ class _RelatoriosFinanceirosScreenState
             runSpacing: 8,
             children: [
               _buildChipFiltro('Hoje', 'hoje'),
-              _buildChipFiltro('Semana', 'semana'),
-              _buildChipFiltro('Mês', 'mes'),
+              _buildChipFiltro('Esta semana', 'semana'),
+              _buildChipFiltro('Este mês', 'mes'),
+              _buildChipFiltro('Mês anterior', 'mes_anterior'),
               _buildChipFiltro('Ano', 'ano'),
               _buildChipFiltro('Personalizado', 'personalizado'),
             ],
@@ -992,6 +1170,11 @@ class _RelatoriosFinanceirosScreenState
         case 'mes':
           _dataInicio = DateTime(agora.year, agora.month, 1);
           _dataFim = DateTime(agora.year, agora.month + 1, 0, 23, 59, 59);
+          break;
+        case 'mes_anterior':
+          final ref = DateTime(agora.year, agora.month - 1, 1);
+          _dataInicio = ref;
+          _dataFim = DateTime(ref.year, ref.month + 1, 0, 23, 59, 59);
           break;
         case 'ano':
           _dataInicio = DateTime(agora.year, 1, 1);
@@ -1180,6 +1363,106 @@ class _RelatoriosFinanceirosScreenState
       'Sem snapshot do mês · cálculo ao vivo. Lucro operacional: taxas operacionais da config ou valor gravado na venda. '
         '${temReal ? 'Resultado gerencial e fluxo de caixa usam as regras do módulo; não duplique com taxas ou despesas da mesma natureza.' : ''}',
       style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.55)),
+    );
+  }
+
+  // =================== VISÃO SIMPLES (CARDS) ===================
+
+  Widget _buildVisaoSimplesCards() {
+    final saidas = _resumoModuloFinanceiro?.totalSaidasExplicitas ?? 0;
+    final compra = _resumoModuloFinanceiro?.totalCompraMercadoria ?? 0;
+    final despesas =
+        _resumoModuloFinanceiro?.despesasParaResultadoGerencial ?? 0;
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _buildCardMetrica(
+                'Quanto entrou',
+                'R\$ ${_fmt(_quantoEntrouSimples)}',
+                Icons.south_west,
+                _successColor,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildCardMetrica(
+                'Quanto saiu',
+                'R\$ ${_fmt(saidas)}',
+                Icons.north_east,
+                _warningColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildCardMetrica(
+                'Quanto sobrou',
+                'R\$ ${_fmt(_fluxoCaixaSimples)}',
+                Icons.savings_outlined,
+                _fluxoCaixaSimples >= 0 ? _primaryColor : _dangerColor,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildCardMetrica(
+                'Lucro das vendas',
+                'R\$ ${_fmt(_lucroEstimado)}',
+                Icons.trending_up,
+                _lucroEstimado >= 0 ? _successColor : _dangerColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildCardMetrica(
+                'Gastos com mercadoria',
+                'R\$ ${_fmt(compra)}',
+                Icons.inventory_2_outlined,
+                Colors.orange,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildCardMetrica(
+                'Despesas',
+                'R\$ ${_fmt(despesas)}',
+                Icons.receipt_long_outlined,
+                _warningColor,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildCardMetrica(
+                'Contas a receber',
+                'R\$ ${_fmt(_totalContasReceberPendentes)}',
+                Icons.account_balance_wallet_outlined,
+                _primaryColor,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildCardMetrica(
+                'Taxas pagas',
+                'R\$ ${_fmt(_totalTaxas)}',
+                Icons.percent,
+                Colors.purpleAccent,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
