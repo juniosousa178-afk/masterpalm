@@ -623,6 +623,8 @@ class CatalogoVendaService {
         produtosBox: produtosBox,
         lojaId: lojaId,
         subtotalParaFallbackHeuristica: subtotal,
+        vendaParaRastreio: venda,
+        linhasCatalogoVendaItens: vendaItens,
       );
       final uMerc = VendaCustoMercadoria.unidadesMercadoriaDesdeItensCatalogo(
         items: items,
@@ -1245,6 +1247,8 @@ class CatalogoVendaService {
         produtosBox: produtosBox,
         lojaId: lojaId,
         subtotalParaFallbackHeuristica: subtotal,
+        vendaParaRastreio: venda,
+        linhasCatalogoVendaItens: vendaItens,
       );
       final uMercFin = VendaCustoMercadoria.unidadesMercadoriaDesdeItensCatalogo(
         items: itens,

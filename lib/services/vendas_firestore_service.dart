@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/venda_origem_custo.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
 import 'package:hive/hive.dart';
@@ -39,6 +40,9 @@ class VendasFirestoreService {
         variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString().trim(),
         extraValor: (m['extraValor'] ?? '').toString().trim(),
         custoUnitario: (m['custoUnitario'] as num?)?.toDouble(),
+        origemCustoItem: VendaOrigemCusto.normalizarOuNull(
+          (m['origemCustoItem'] as String?)?.trim(),
+        ),
       );
     }).toList();
 
@@ -75,6 +79,9 @@ class VendasFirestoreService {
       orderId: data['orderId'] as String?,
       prePedidoId: (data['prePedidoId'] ?? data['origemPrePedido']) as String?,
       pedidoId: data['pedidoId'] as String?,
+      origemCusto: VendaOrigemCusto.normalizarOuNull(
+        (data['origemCusto'] as String?)?.trim(),
+      ),
     );
   }
 
@@ -220,7 +227,8 @@ class VendasFirestoreService {
           if (item.variacaoExtraResumo.trim().isNotEmpty)
             'variacaoExtraResumo': item.variacaoExtraResumo.trim(),
           if (item.extraValor.trim().isNotEmpty) 'extraValor': item.extraValor.trim(),
-          if ((item.custoUnitario ?? 0) > 0) 'custoUnitario': item.custoUnitario,
+          'custoUnitario': item.custoUnitario ?? 0.0,
+          'origemCustoItem': item.origemCustoItem ?? VendaOrigemCusto.desconhecido,
         }).toList(),
 
         // Cliente estável (para consultas)
@@ -236,6 +244,8 @@ class VendasFirestoreService {
           'pedidoId': venda.pedidoId!.trim(),
         if (venda.origemVenda != null && venda.origemVenda!.trim().isNotEmpty)
           'origemVenda': venda.origemVenda!.trim(),
+        if (venda.origemCusto != null && venda.origemCusto!.trim().isNotEmpty)
+          'origemCusto': venda.origemCusto!.trim(),
         if (venda.statusVenda != null && venda.statusVenda!.trim().isNotEmpty)
           'statusVenda': venda.statusVenda!.trim(),
         'cancelada': venda.cancelada,

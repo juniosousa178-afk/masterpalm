@@ -109,6 +109,10 @@ class Venda extends HiveObject {
   @HiveField(29)
   String? pedidoId;
 
+  /// Rastreio do CMV agregado: [VendaOrigemCusto] — opcional (vendas antigas).
+  @HiveField(30)
+  String? origemCusto;
+
   Venda({
     required this.clienteNome,
     required this.produtosDescricao,
@@ -140,6 +144,7 @@ class Venda extends HiveObject {
     this.orderId,
     this.prePedidoId,
     this.pedidoId,
+    this.origemCusto,
   });
 
   /// Itens da venda (nunca null, fallback para [] em vendas antigas)

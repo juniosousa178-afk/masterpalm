@@ -39,6 +39,10 @@ class VendaItem {
   @HiveField(9)
   double? custoUnitario;
 
+  /// Rastreio: [VendaOrigemCusto] — opcional (vendas antigas).
+  @HiveField(10)
+  String? origemCustoItem;
+
   VendaItem({
     required this.produtoNome,
     required this.quantidade,
@@ -50,5 +54,6 @@ class VendaItem {
     this.variacaoExtraResumo = '',
     this.extraValor = '',
     this.custoUnitario,
+    this.origemCustoItem,
   });
 }
