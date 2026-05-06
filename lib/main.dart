@@ -635,20 +635,15 @@ Future<void> initFirebaseMonitoring() async {
       }
       logE('💥 [PlatformDispatcher/Web] $unwrapped',
           error: unwrapped, st: unwrappedStack);
-      // Web não tem Crashlytics: contagem agregada no Analytics (só tipo, sem mensagem/PII).
-      if (Firebase.apps.isNotEmpty) {
-        final typeStr = unwrapped.runtimeType.toString();
-        final typeParam =
-            typeStr.length > 36 ? typeStr.substring(0, 36) : typeStr;
-        unawaited(
-          FirebaseAnalytics.instance.logEvent(
-            name: 'web_uncaught_error',
-            parameters: {'exception_type': typeParam},
-          ).catchError((Object _) {}),
-        );
-      }
       return true;
     };
+  }
+
+  if (kIsWeb) {
+    logD(
+      'ℹ️ Analytics omitido no Web para evitar FirebaseAnalyticsWeb indisponível.',
+    );
+    return;
   }
 
   try {
