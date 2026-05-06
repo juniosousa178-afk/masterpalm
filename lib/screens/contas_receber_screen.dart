@@ -353,9 +353,9 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
 
         await c.delete();
 
-        final hoje = DateTime.now();
+        final baseParcelamento = dataRecebimento;
         for (var i = 0; i < n; i++) {
-          final venc = hoje.add(Duration(days: dias1 + i * intervalo));
+          final venc = baseParcelamento.add(Duration(days: dias1 + i * intervalo));
           final obsParcela = n > 1
               ? 'Parcela ${i + 1}/$n (saldo)${baseObs.isNotEmpty ? ' · $baseObs' : ''}'
               : (baseObs.isNotEmpty ? baseObs : 'Saldo');
@@ -502,88 +502,128 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
   Future<void> _adicionarManual() async {
     final nomeCtrl = TextEditingController();
     final valorCtrl = TextEditingController();
-    final diasCtrl = TextEditingController(text: '30');
     final obsCtrl = TextEditingController();
+    DateTime dataVendaSelecionada = DateTime.now();
+    DateTime dataVencimentoSelecionada = DateTime.now().add(const Duration(days: 30));
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Nova conta a receber'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nomeCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Cliente',
-                  border: OutlineInputBorder(),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Nova conta a receber'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nomeCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Cliente',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: valorCtrl,
-                // iPhone/Safari: teclado "number" puro costuma não ter vírgula/ponto.
-                // Só dígitos + MoedaInputFormatter → vírgula e centavos automáticos (ex.: 1050 → 10,50).
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: false,
-                  signed: false,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: valorCtrl,
+                  // iPhone/Safari: teclado "number" puro costuma não ter vírgula/ponto.
+                  // Só dígitos + MoedaInputFormatter → vírgula e centavos automáticos (ex.: 1050 → 10,50).
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: false,
+                    signed: false,
+                  ),
+                  inputFormatters: [MoedaInputFormatter()],
+                  decoration: const InputDecoration(
+                    labelText: 'Valor (R\$)',
+                    hintText: 'Digite só números: 1500 = R\$ 15,00',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-                inputFormatters: [MoedaInputFormatter()],
-                decoration: const InputDecoration(
-                  labelText: 'Valor (R\$)',
-                  hintText: 'Digite só números: 1500 = R\$ 15,00',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Data da venda / lançamento'),
+                  subtitle: Text(DateFormat('dd/MM/yyyy').format(dataVendaSelecionada)),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final selecionada = await showDatePicker(
+                      context: ctx,
+                      initialDate: dataVendaSelecionada,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (selecionada == null) return;
+                    setDialogState(() {
+                      dataVendaSelecionada = selecionada;
+                    });
+                  },
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: diasCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Vencimento em (dias)',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 8),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Data de vencimento'),
+                  subtitle: Text(DateFormat('dd/MM/yyyy').format(dataVencimentoSelecionada)),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final selecionada = await showDatePicker(
+                      context: ctx,
+                      initialDate: dataVencimentoSelecionada,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (selecionada == null) return;
+                    setDialogState(() {
+                      dataVencimentoSelecionada = selecionada;
+                    });
+                  },
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: obsCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Observação',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: obsCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Observação',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
                 ),
-                maxLines: 2,
-              ),
-            ],
+              ],
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () {
+                if (nomeCtrl.text.trim().isEmpty || valorCtrl.text.trim().isEmpty) return;
+                Navigator.pop(ctx, true);
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              if (nomeCtrl.text.trim().isEmpty || valorCtrl.text.trim().isEmpty) return;
-              Navigator.pop(ctx, true);
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
       ),
     );
     if (ok != true || !mounted) return;
     final valor = MoedaInputFormatter.parse(valorCtrl.text);
-    final dias = int.tryParse(diasCtrl.text) ?? 30;
     if (valor <= 0 && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Informe um valor maior que zero.'), backgroundColor: Colors.orange),
       );
       return;
     }
-    final now = DateTime.now();
+    final dataVenda = DateTime(
+      dataVendaSelecionada.year,
+      dataVendaSelecionada.month,
+      dataVendaSelecionada.day,
+    );
+    final dataVencimento = DateTime(
+      dataVencimentoSelecionada.year,
+      dataVencimentoSelecionada.month,
+      dataVencimentoSelecionada.day,
+    );
     final conta = ContaReceber(
       lojaId: _lojaId!,
       clienteNome: nomeCtrl.text.trim(),
       valor: valor,
-      dataVencimento: now.add(Duration(days: dias)),
-      dataVenda: now,
+      dataVencimento: dataVencimento,
+      dataVenda: dataVenda,
       observacao: obsCtrl.text.trim(),
     );
     await _box.add(conta);
