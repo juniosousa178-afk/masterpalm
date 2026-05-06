@@ -123,7 +123,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   void initState() {
     super.initState();
     _pesquisaController.addListener(_onSearchChanged);
-    _setup();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _setup();
+    });
   }
 
   @override
@@ -150,7 +153,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     try {
       if (kIsWeb) {
         logD(
-          '[WEB_NAV] Estoque._setup inicio (referência) uri=${Uri.base} route=${ModalRoute.of(context)?.settings.name ?? "null"}',
+          '[WEB_NAV] Estoque._setup inicio (referência) uri=${Uri.base}',
         );
       }
       // Alinhado a Vendas/Clientes/Financeiro: timeout + fallback sessão/Hive
@@ -196,8 +199,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       _syncEstoqueEmBackground(lojaId);
     } catch (e, st) {
       logE("Erro no setup Estoque (type=${e.runtimeType})", error: e, st: st);
-      _showSnackBar("Erro ao iniciar Estoque: $e", isError: true);
       if (mounted) setState(() => _erroResolucaoLoja = true);
+      _showSnackBar("Erro ao iniciar Estoque: $e", isError: true);
     }
   }
 
@@ -2474,27 +2477,30 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   void _showSnackBar(String message, {bool isError = false, Duration? duration}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        duration: duration ?? const Duration(seconds: 4),
-        content: Row(
-          children: [
-            Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
-              color: Colors.white,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.showSnackBar(
+        SnackBar(
+          duration: duration ?? const Duration(seconds: 4),
+          content: Row(
+            children: [
+              Icon(
+                isError ? Icons.error_outline : Icons.check_circle_outline,
+                color: Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text(message)),
+            ],
+          ),
+          backgroundColor: isError ? _errorColor : _successColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
         ),
-        backgroundColor: isError ? _errorColor : _successColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
+      );
+    });
   }
 
   Future<bool?> _showConfirmSheet(String title, String message, {

@@ -741,7 +741,9 @@ export const rootGrantPlan = onCall(async (request) => {
 });
 
 // =============== TRIAL (30 dias — novas contas; callable mantém nome legado) ===============
-export const activateUserTrial90d = onCall(async (request) => {
+export const activateUserTrial90d = onCall(
+  { region: "southamerica-east1" },
+  async (request) => {
   try {
     if (!request.auth?.uid) {
       throw new HttpsError("unauthenticated", "Faça login para continuar.");
@@ -794,4 +796,5 @@ export const activateUserTrial90d = onCall(async (request) => {
     if (err instanceof HttpsError) throw err;
     throw new HttpsError("internal", "Erro ao ativar trial.");
   }
-});
+  },
+);

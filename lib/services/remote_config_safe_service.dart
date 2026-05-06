@@ -5,6 +5,7 @@
 import 'dart:convert';
 
 import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../core/logger.dart';
 
@@ -16,6 +17,7 @@ class RemoteConfigSafeService {
   /// Retorna true apenas se a chave estiver ativa (true no RC).
   /// Em qualquer falha, retorna [fallback].
   static bool isFlagOn(String key, {bool fallback = false}) {
+    if (kIsWeb) return fallback;
     try {
       return _rc.getBool(key);
     } catch (e, st) {
@@ -29,6 +31,7 @@ class RemoteConfigSafeService {
   /// Sanitiza: trim, lowercase, remove vazios e duplicados.
   /// Em qualquer falha, retorna [fallback].
   static List<String> getStringListFromJson(String key, {List<String> fallback = const []}) {
+    if (kIsWeb) return fallback;
     try {
       final raw = _rc.getString(key).trim();
       if (raw.isEmpty) return fallback;

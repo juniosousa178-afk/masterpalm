@@ -3,7 +3,7 @@
 // Fallback para valores padrão se Remote Config falhar.
 
 import 'package:firebase_remote_config/firebase_remote_config.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
 import '../core/logger.dart';
 
@@ -67,6 +67,15 @@ class RemoteConfigService {
   /// Chamar após Firebase.initializeApp().
   static Future<void> init() async {
     if (_initialized) return;
+
+    // Firebase Remote Config Web não expõe o plugin nativo; evita crash (FirebaseRemoteConfigWeb undefined).
+    if (kIsWeb) {
+      _initialized = true;
+      logD(
+        '🌐 [RemoteConfig] Web: plugin indisponível — usando valores padrão locais.',
+      );
+      return;
+    }
 
     try {
       await _rc.setConfigSettings(RemoteConfigSettings(

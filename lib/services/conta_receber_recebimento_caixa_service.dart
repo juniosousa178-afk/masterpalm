@@ -23,7 +23,7 @@ class ContaReceberRecebimentoCaixaService {
     );
   }
 
-  /// Grava [entrada_extra] paga na data atual (competência = mês do recebimento) e tenta sync Firestore.
+  /// Grava [entrada_extra] paga na [dataRecebimento] (competência = mês dessa data) e tenta sync Firestore.
   static Future<void> registrarRecebimento({
     required String lojaId,
     required double valor,
@@ -31,6 +31,7 @@ class ContaReceberRecebimentoCaixaService {
     required String clienteNome,
     String observacaoConta = '',
     int? contaHiveKey,
+    DateTime? dataRecebimento,
   }) async {
     final loja = lojaId.trim();
     if (loja.isEmpty || valor <= 1e-9) return;
@@ -50,6 +51,7 @@ class ContaReceberRecebimentoCaixaService {
     } catch (_) {}
 
     final now = DateTime.now();
+    final quando = dataRecebimento ?? now;
     final id = const Uuid().v4();
     final ref = contaHiveKey != null
         ? 'cr_receb_${contaHiveKey}_${now.millisecondsSinceEpoch}'
@@ -70,10 +72,10 @@ class ContaReceberRecebimentoCaixaService {
       observacao: obsConta.isEmpty
           ? 'Conta a receber'
           : 'Conta a receber · $obsConta',
-      dataLancamento: now,
-      dataPagamento: now,
-      competenciaMes: now.month,
-      competenciaAno: now.year,
+      dataLancamento: quando,
+      dataPagamento: quando,
+      competenciaMes: quando.month,
+      competenciaAno: quando.year,
       recorrente: false,
       origem: FinanceiroOrigemLancamento.contaReceberFiado,
       usuarioId: usuarioId,

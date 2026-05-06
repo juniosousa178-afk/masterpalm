@@ -27,13 +27,14 @@ class VendaItemAdapter extends TypeAdapter<VendaItem> {
       variacaoExtraResumo: fields[7] == null ? '' : fields[7] as String,
       extraValor: fields[8] == null ? '' : fields[8] as String,
       custoUnitario: fields[9] as double?,
+      origemCustoItem: fields[10] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, VendaItem obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.produtoNome)
       ..writeByte(1)
@@ -53,7 +54,9 @@ class VendaItemAdapter extends TypeAdapter<VendaItem> {
       ..writeByte(8)
       ..write(obj.extraValor)
       ..writeByte(9)
-      ..write(obj.custoUnitario);
+      ..write(obj.custoUnitario)
+      ..writeByte(10)
+      ..write(obj.origemCustoItem);
   }
 
   @override

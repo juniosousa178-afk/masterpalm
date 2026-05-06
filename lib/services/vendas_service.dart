@@ -364,18 +364,29 @@ class VendasService {
       clienteExistente: clienteExistente,
     );
 
+    final explicitExp = List<bool>.generate(
+      itensParaEstoque.length,
+      (i) => itensParaEstoque[i].custoUnitario != null,
+    );
     for (var i = 0; i < itensParaEstoque.length; i++) {
       final itemExp = itensParaEstoque[i];
       final pExp = produtosEncontrados[i];
       itemExp.custoUnitario = _resolverCustoItem(pExp, itemExp);
     }
-    for (final itemOriginal in itens) {
+    final explicitOrig = List<bool>.generate(
+      itens.length,
+      (i) => itens[i].custoUnitario != null,
+    );
+    final produtosLinhaOriginal = <Produto>[];
+    for (var k = 0; k < itens.length; k++) {
+      final itemOriginal = itens[k];
       final pLocal = encontrarProdutoNoEstoque(
         produtosBox: produtosBox,
         productId: itemOriginal.productId,
         nome: itemOriginal.produtoNome,
         lojaId: lojaEfetiva,
       );
+      produtosLinhaOriginal.add(pLocal ?? Produto.vazio());
       if (pLocal != null) {
         itemOriginal.custoUnitario = _resolverCustoItem(pLocal, itemOriginal);
       }
@@ -461,6 +472,28 @@ class VendasService {
       produtos: produtosEncontrados,
       linhaContaCustoMercadoria: linhaContaCustoMercadoria,
     );
+    VendaCustoMercadoria.aplicarRastreioOrigemAposSomarCustoReal(
+      itens: itensParaEstoque,
+      produtos: produtosEncontrados,
+      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+      tinhaCustoUnitarioExplicitoAntesDoResolver: explicitExp,
+    );
+    VendaCustoMercadoria.aplicarRastreioOrigemAposSomarCustoReal(
+      itens: itens,
+      produtos: produtosLinhaOriginal,
+      linhaContaCustoMercadoria: List<bool>.filled(itens.length, true),
+      tinhaCustoUnitarioExplicitoAntesDoResolver: explicitOrig,
+    );
+    final origensAtivas = <String?>[];
+    for (var i = 0; i < itensParaEstoque.length; i++) {
+      if (linhaContaCustoMercadoria[i]) {
+        origensAtivas.add(itensParaEstoque[i].origemCustoItem);
+      }
+    }
+    final origemCustoVenda = VendaCustoMercadoria.agregarOrigemCustoVenda(
+      custoProdutos: custoProdutos,
+      origensLinhasAtivas: origensAtivas,
+    );
     final totalUnidades = VendaCustoMercadoria.unidadesMercadoria(
       itens: itensParaEstoque,
       linhaContaCustoMercadoria: linhaContaCustoMercadoria,
@@ -532,6 +565,7 @@ class VendasService {
       descontoValor: subtotal * (descontoPct / 100),
       lojaId: lojaEfetiva,
       clienteId: cliente.key?.toString() ?? cliente.idFirebase,
+      origemCusto: origemCustoVenda,
     );
 
     // Em edição: reutiliza idFirebase da venda antiga (evita duplicata no Firestore)

@@ -120,6 +120,7 @@ class FinanceiroFirestoreService {
       'centroCusto': l.centroCusto,
       'anexoComprovante': l.anexoComprovante,
       'referenciaExterna': l.referenciaExterna,
+      'solicitarAtualizacaoEstoque': l.solicitarAtualizacaoEstoque,
       'dataPagamento': l.dataPagamento != null
           ? Timestamp.fromDate(l.dataPagamento!)
           : FieldValue.delete(),
@@ -223,6 +224,8 @@ class FinanceiroFirestoreService {
         centroCusto: _fsString(data['centroCusto']),
         anexoComprovante: _fsString(data['anexoComprovante']),
         referenciaExterna: _fsString(data['referenciaExterna']),
+        solicitarAtualizacaoEstoque:
+            _fsBool(data['solicitarAtualizacaoEstoque'], false),
       );
     } catch (e) {
       debugPrint(

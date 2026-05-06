@@ -188,6 +188,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
 
     final valorCtrl = TextEditingController(text: MoedaInputFormatter.format(saldo));
     String forma = 'Dinheiro';
+    var dataRecebimento = DateTime.now();
     var dividirRestante = false;
     final qtdParcelasCtrl = TextEditingController(text: '2');
     final intervaloCtrl = TextEditingController(text: '30');
@@ -236,6 +237,22 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
                         onChanged: (v) {
                           if (v == null) return;
                           setLocal(() => forma = v);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Data do recebimento no caixa'),
+                        subtitle: Text(DateFormat('dd/MM/yyyy').format(dataRecebimento)),
+                        trailing: const Icon(Icons.calendar_today),
+                        onTap: () async {
+                          final d = await showDatePicker(
+                            context: ctx,
+                            initialDate: dataRecebimento,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2100),
+                          );
+                          if (d != null) setLocal(() => dataRecebimento = d);
                         },
                       ),
                       const SizedBox(height: 8),
@@ -311,6 +328,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
         clienteNome: c.clienteNome,
         observacaoConta: c.observacao,
         contaHiveKey: c.key is int ? c.key as int : null,
+        dataRecebimento: dataRecebimento,
       );
 
       final restante = (saldo - pago).clamp(0.0, double.infinity);
@@ -359,16 +377,22 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
 
       if (!mounted) return;
       setState(() {});
+      final agora = DateTime.now();
+      final retro = dataRecebimento.isBefore(DateTime(agora.year, agora.month, 1));
+      final msgBase = quitado
+          ? 'Recebimento registrado. Conta quitada.'
+          : dividirRestante
+              ? 'Recebimento registrado. Saldo dividido em novas parcelas.'
+              : 'Recebimento registrado. Saldo atualizado.';
+      final msgFinal = retro
+          ? '$msgBase\n\n'
+              'Este lançamento será registrado em um mês anterior e aparecerá nos relatórios daquele período.'
+          : msgBase;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            quitado
-                ? 'Recebimento registrado. Conta quitada.'
-                : dividirRestante
-                    ? 'Recebimento registrado. Saldo dividido em novas parcelas.'
-                    : 'Recebimento registrado. Saldo atualizado.',
-          ),
+          content: Text(msgFinal),
           backgroundColor: _successColor,
+          duration: Duration(seconds: retro ? 8 : 4),
         ),
       );
     } catch (e) {

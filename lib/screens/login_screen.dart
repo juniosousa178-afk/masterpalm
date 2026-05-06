@@ -211,39 +211,106 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     required String uid,
     required String email,
   }) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[LOGIN-DIAG] Firestore lookup coleção=usuarios | kIsWeb=$kIsWeb | '
+        'email_chave=$email | uid=$uid (sem senha)',
+      );
+    }
     final col = FirebaseFirestore.instance.collection('usuarios');
     Map<String, dynamic>? d;
 
-    // Web: doc().get() pode causar JSNoSuchMethodError; usar query como workaround.
-    // Coleção usuarios usa email como ID do documento; busca por uid usa campo authUid.
+    // Web: alinhado ao Android — doc(email) → doc(uid) → query authUid; users só em diagnóstico (debug).
     if (kIsWeb) {
+      final emailKey = email.toLowerCase().trim();
+
       try {
-        final byEmailQuery = await col
-            .where(FieldPath.documentId, isEqualTo: email)
-            .limit(1)
-            .get();
-        if (byEmailQuery.docs.isNotEmpty) {
-          d = byEmailQuery.docs.first.data();
+        if (kDebugMode) {
+          debugPrint('[LOGIN-DIAG] Web: (1) usuarios.doc("$emailKey").get()');
         }
+        final byEmailDoc = await col.doc(emailKey).get();
+        if (kDebugMode) {
+          debugPrint(
+            '[LOGIN-DIAG] Web: (1) usuarios/$emailKey exists=${byEmailDoc.exists}',
+          );
+        }
+        if (byEmailDoc.exists) d = byEmailDoc.data();
       } catch (e) {
-        debugPrint('[_carregarUsuarioDoFirestore] Erro query por email (type=${e.runtimeType})');
+        debugPrint('[_carregarUsuarioDoFirestore] Web (1) email doc (type=${e.runtimeType})');
+        if (kDebugMode) {
+          debugPrint('[LOGIN-DIAG] Web: (1) exceção: $e');
+        }
       }
+
       if (d == null) {
         try {
+          if (kDebugMode) {
+            debugPrint('[LOGIN-DIAG] Web: (2) usuarios.doc("$uid").get()');
+          }
+          final byUidDoc = await col.doc(uid).get();
+          if (kDebugMode) {
+            debugPrint(
+              '[LOGIN-DIAG] Web: (2) usuarios/$uid exists=${byUidDoc.exists}',
+            );
+          }
+          if (byUidDoc.exists) d = byUidDoc.data();
+        } catch (e) {
+          debugPrint('[_carregarUsuarioDoFirestore] Web (2) uid doc (type=${e.runtimeType})');
+          if (kDebugMode) {
+            debugPrint('[LOGIN-DIAG] Web: (2) exceção: $e');
+          }
+        }
+      }
+
+      if (d == null) {
+        try {
+          if (kDebugMode) {
+            debugPrint(
+              '[LOGIN-DIAG] Web: (3) query usuarios where authUid == "$uid"',
+            );
+          }
           final byUidQuery = await col
               .where('authUid', isEqualTo: uid)
               .limit(1)
               .get();
+          if (kDebugMode) {
+            debugPrint(
+              '[LOGIN-DIAG] Web: (3) authUid query count=${byUidQuery.docs.length}',
+            );
+          }
           if (byUidQuery.docs.isNotEmpty) {
             d = byUidQuery.docs.first.data();
           }
         } catch (e) {
-          debugPrint('[_carregarUsuarioDoFirestore] Erro query por authUid (type=${e.runtimeType})');
+          debugPrint('[_carregarUsuarioDoFirestore] Web (3) authUid (type=${e.runtimeType})');
+          if (kDebugMode) {
+            debugPrint('[LOGIN-DIAG] Web: (3) exceção: $e');
+          }
+        }
+      }
+
+      if (d == null && kDebugMode) {
+        try {
+          debugPrint('[LOGIN-DIAG] Web: (4) diagnóstico users/$uid (não usado para sessão)');
+          final userProf =
+              await FirebaseFirestore.instance.collection('users').doc(uid).get();
+          debugPrint(
+            '[LOGIN-DIAG] Web: (4) users/$uid exists=${userProf.exists} '
+            '(só diagnóstico; login continua exigindo usuarios/)',
+          );
+        } catch (e) {
+          debugPrint('[LOGIN-DIAG] Web: (4) users diagnóstico erro: $e');
         }
       }
     } else {
       try {
+        if (kDebugMode) {
+          debugPrint('[LOGIN-DIAG] Native: usuarios.doc("$uid").get()');
+        }
         final byUid = await col.doc(uid).get();
+        if (kDebugMode) {
+          debugPrint('[LOGIN-DIAG] Native: usuarios/$uid exists=${byUid.exists}');
+        }
         if (byUid.exists) d = byUid.data();
       } catch (e) {
         debugPrint('[_carregarUsuarioDoFirestore] Erro ao buscar por uid (type=${e.runtimeType})');
@@ -251,7 +318,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
       if (d == null) {
         try {
+          if (kDebugMode) {
+            debugPrint('[LOGIN-DIAG] Native: usuarios.doc("$email").get()');
+          }
           final byEmail = await col.doc(email).get();
+          if (kDebugMode) {
+            debugPrint(
+              '[LOGIN-DIAG] Native: usuarios/$email exists=${byEmail.exists}',
+            );
+          }
           if (byEmail.exists) d = byEmail.data();
         } catch (e) {
           debugPrint('[_carregarUsuarioDoFirestore] Erro ao buscar por email (type=${e.runtimeType})');
@@ -259,7 +334,16 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       }
     }
 
-    if (d == null) return null;
+    if (d == null) {
+      if (kDebugMode) {
+        debugPrint(
+          '[LOGIN-DIAG] usuarios: documento NÃO encontrado após tentativas '
+          '(Web: doc email → doc uid → query authUid; ver users/$uid no debug). '
+          'Auth costuma estar OK.',
+        );
+      }
+      return null;
+    }
 
     _dadosExtrasUsuario = d;
 
@@ -434,6 +518,21 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
         final uid = cred?.user?.uid ?? '';
         if (uid.isEmpty) throw Exception("UID vazio");
+
+        if (kDebugMode) {
+          final authEmail =
+              (cred?.user?.email ?? '').trim().toLowerCase();
+          debugPrint(
+            '[LOGIN-DIAG] signInWithEmailAndPassword OK | email_campo=$login | '
+            'firebaseAuth.user.email=$authEmail | uid=$uid',
+          );
+          if (authEmail.isNotEmpty && authEmail != login) {
+            debugPrint(
+              '[LOGIN-DIAG] Atenção: e-mail do Auth difere do campo (normalização). '
+              'Firestore usuarios usa o e-mail do login: $login',
+            );
+          }
+        }
 
         usuario = await _carregarUsuarioDoFirestore(uid: uid, email: login);
 
