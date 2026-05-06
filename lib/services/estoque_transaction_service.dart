@@ -1248,6 +1248,14 @@ class EstoqueTransactionService {
       touchProdutoUpdatedAtParaHivePosTransacao(produto);
       await produto.save();
       debugPrint('[ESTOQUE-TX] Hive atualizado: ${produto.nome}');
+    } else {
+      final slug = result.produtoSlug?.trim();
+      debugPrint(
+        '[ESTOQUE-TX-HIVE-MISS] Baixa Firestore aplicada, mas Hive local não encontrou produto para espelhar | '
+        'lojaId=$lojaId | productId=${result.produtoId} | slug=${slug ?? '(vazio)'} | nome=${result.produtoNome} | '
+        'tamanho=${tamanho.isEmpty ? '(vazio)' : tamanho} | cor=${cor.isEmpty ? '(vazio)' : cor} | '
+        'motivo=sem match por idFirebase/slug/nome na Box<Produto> desta loja',
+      );
     }
   }
 }

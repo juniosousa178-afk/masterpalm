@@ -1,6 +1,7 @@
 // lib/screens/nova_venda_modal.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -381,6 +382,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
   double _precoDoProduto(Produto p) =>
       p.precoFinal > 0 ? p.precoFinal : (p.precoUnitario > 0 ? p.precoUnitario : 0.0);
+
+  /// Combo já configurado na linha — preservar [preco] definido pelo sheet (não repor pelo cadastro).
+  bool _linhaComboProtegida(Map<String, dynamic> item) {
+    final sel = item['itensComboComSelecao'];
+    if (sel is List && sel.isNotEmpty) return true;
+    if ((item['comboConfiguravelResumo'] ?? '').toString().trim().isNotEmpty) {
+      return true;
+    }
+    return false;
+  }
 
   Map<String, dynamic> _produtoParaCatalogMap(Produto p) {
     return <String, dynamic>{
@@ -1873,14 +1884,25 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     onTextChanged: (v) {
                                       setState(() {
                                         produtosSelecionados[index]['produto'] = v;
+                                        final linha = produtosSelecionados[index];
                                         final p = produtosDaLoja.firstWhereOrNull(
                                           (x) => x.nome.toLowerCase() == v.trim().toLowerCase(),
                                         );
+                                        if (_linhaComboProtegida(linha)) {
+                                          if (p != null) {
+                                            linha['productId'] =
+                                                p.idFirebase.trim().isNotEmpty ? p.idFirebase : null;
+                                          } else {
+                                            linha.remove('productId');
+                                          }
+                                          return;
+                                        }
                                         if (p != null) {
-                                          produtosSelecionados[index]['preco'] = _precoDoProduto(p);
-                                          produtosSelecionados[index]['productId'] = p.idFirebase.trim().isNotEmpty ? p.idFirebase : null;
+                                          linha['preco'] = _precoDoProduto(p);
+                                          linha['productId'] =
+                                              p.idFirebase.trim().isNotEmpty ? p.idFirebase : null;
                                         } else {
-                                          produtosSelecionados[index].remove('productId');
+                                          linha.remove('productId');
                                         }
                                       });
                                     },
@@ -2148,16 +2170,32 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 ),
                                 const SizedBox(height: 6),
                                 if (_descontoEmReais)
-                                  MoedaTextField(
-                                    key: const ValueKey('desconto_reais'),
-                                    controller: descontoController,
-                                    labelText: 'Valor do desconto',
-                                    hintText: 'Ex: 10,00',
-                                    onChanged: (value) {
-                                      desconto = value;
-                                      setState(() {});
-                                    },
-                                  )
+                                  kIsWeb
+                                      ? TextFormField(
+                                          key: const ValueKey('desconto_reais'),
+                                          controller: descontoController,
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: [MoedaInputFormatter()],
+                                          decoration: const InputDecoration(
+                                            labelText: 'Valor do desconto',
+                                            hintText: 'Ex: 10,00',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          onChanged: (s) {
+                                            desconto = MoedaInputFormatter.parse(s);
+                                            setState(() {});
+                                          },
+                                        )
+                                      : MoedaTextField(
+                                          key: const ValueKey('desconto_reais'),
+                                          controller: descontoController,
+                                          labelText: 'Valor do desconto',
+                                          hintText: 'Ex: 10,00',
+                                          onChanged: (value) {
+                                            desconto = value;
+                                            setState(() {});
+                                          },
+                                        )
                                 else
                                   TextFormField(
                                     key: const ValueKey('desconto_pct'),
