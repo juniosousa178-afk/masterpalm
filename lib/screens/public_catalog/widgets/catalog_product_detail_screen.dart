@@ -2,6 +2,7 @@
 // Tela de detalhes do produto para layout minimalista – full screen, visual clean.
 
 import 'dart:math' as math;
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,9 +14,56 @@ import '../../../services/ia_uso_limite_service.dart';
 import '../../../utils/image_provider.dart';
 import '../../../utils/platform_adaptive.dart';
 import '../../../utils/safe_parse.dart';
-import '../catalog_helpers.dart' show catalogProductImageUrlsForDisplay;
-import 'catalog_product_selection_sheet.dart';
+import '../catalog_helpers.dart' show
+    catalogProductImageUrlsForDisplay,
+    catalogSugestoesRelacionadasParaDetalhe,
+    selectCatalogPrimaryImageUrlFromProdutoMap;
 import 'catalog_combo_configurable_sheet.dart';
+import 'catalog_product_variation_pick_body.dart';
+import '../catalog_theme_extension.dart';
+
+Color _detailCatalogAccent(ThemeData theme) =>
+    theme.extension<CatalogThemeExtension>()?.chipFilterSelectedBg ??
+    theme.extension<CatalogThemeExtension>()?.buttonComprarBg ??
+    theme.colorScheme.primary;
+
+Color _detailCatalogOnAccent(ThemeData theme) =>
+    theme.extension<CatalogThemeExtension>()?.chipFilterSelectedText ??
+    theme.extension<CatalogThemeExtension>()?.buttonComprarText ??
+    theme.colorScheme.onPrimary;
+
+Color _detailBuyButtonBg(ThemeData theme) =>
+    theme.extension<CatalogThemeExtension>()?.buttonComprarBg ??
+        _detailCatalogAccent(theme);
+
+Color _detailBuyButtonFg(ThemeData theme) =>
+    theme.extension<CatalogThemeExtension>()?.buttonComprarText ??
+        _detailCatalogOnAccent(theme);
+
+Color _detailProductPriceColor(ThemeData theme) =>
+    theme.extension<CatalogThemeExtension>()?.productPriceColor ??
+        _detailCatalogAccent(theme);
+
+Color? _detailProductNameColor(ThemeData theme) =>
+    theme.extension<CatalogThemeExtension>()?.productNameColor;
+
+Color _detailBackdropSeed(ThemeData theme) =>
+    theme.extension<CatalogThemeExtension>()?.buttonComprarBg ??
+        theme.colorScheme.primary;
+
+double _catalogDetailMaxInnerWidth(double viewportW) {
+  if (viewportW >= 1024) return 900;
+  if (viewportW >= 800) return 820;
+  if (viewportW >= 680) return 760;
+  return viewportW;
+}
+
+/// Rotas fullscreen do [Navigator] entram no [Overlay] lateral à pilha, fora da
+/// subárvore onde o catálogo aplica [CatalogThemeExtension]. Sem isto,
+/// `Theme.extension<CatalogThemeExtension>()` volta null e cores caem no tema
+/// global (ex.: botão/preto/cinza). Repete aqui o [Theme] válido na origem da navegação.
+Widget catalogReplayOpenedTheme(BuildContext openerContext, Widget child) =>
+    Theme(data: Theme.of(openerContext), child: child);
 
 Map<String, int> _estoqueMapForDetail(Map<String, dynamic> raw) {
   final result = <String, int>{};
@@ -28,7 +76,7 @@ Map<String, int> _estoqueMapForDetail(Map<String, dynamic> raw) {
 
 /// Tela full-screen de detalhes do produto para layout minimalista.
 /// Prioriza galeria, nome, preço, descrição e botão "Adicionar ao carrinho".
-class CatalogProductDetailScreen extends StatelessWidget {
+class CatalogProductDetailScreen extends StatefulWidget {
   final String id;
   final String name;
   final String descricao;
@@ -66,6 +114,11 @@ class CatalogProductDetailScreen extends StatelessWidget {
   final VoidCallback? onAbrirCarrinho;
   final String? initialCatalogExtraValor;
   final void Function(String? value)? onCatalogVariacaoExtraChanged;
+  /// Produtos já carregados (grid + sugestões no detalhe).
+  final List<Map<String, dynamic>> fonteCatalogoParaSugestoes;
+  /// Snapshot do mapa do produto (categoria/subcategoria para sugestões).
+  final Map<String, dynamic> produtoCatalogoSnap;
+  final double? jurosParcelamento;
 
   const CatalogProductDetailScreen({
     super.key,
@@ -106,6 +159,9 @@ class CatalogProductDetailScreen extends StatelessWidget {
     this.onAbrirCarrinho,
     this.initialCatalogExtraValor,
     this.onCatalogVariacaoExtraChanged,
+    this.fonteCatalogoParaSugestoes = const [],
+    this.produtoCatalogoSnap = const {},
+    this.jurosParcelamento,
   });
 
   /// Abre a mesma tela a partir do mapa de produto do catálogo (mesma origem do [PublicCatalogProductCard]).
@@ -120,6 +176,7 @@ class CatalogProductDetailScreen extends StatelessWidget {
     String? politicaFrete,
     String? prazoEntregaTexto,
     List<Map<String, dynamic>>? todosProdutos,
+    List<Map<String, dynamic>>? listaCatalogoMemoria,
     String? initialCatalogExtraValor,
     void Function(String? value)? onCatalogVariacaoExtraChanged,
   }) {
@@ -154,6 +211,9 @@ class CatalogProductDetailScreen extends StatelessWidget {
     final maxPar = safeBool(p['divideSemJuros'])
         ? safeInt(p['maxParcelasSemJuros'], 12).clamp(1, 24)
         : 12;
+
+    final produtoSnap =
+        Map<String, dynamic>.from(p.map((k, v) => MapEntry(k.toString(), v)));
 
     return CatalogProductDetailScreen(
       id: safeStr(p['id'], ''),
@@ -199,153 +259,634 @@ class CatalogProductDetailScreen extends StatelessWidget {
       onAbrirCarrinho: onAbrirCarrinho,
       initialCatalogExtraValor: initialCatalogExtraValor,
       onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
+      fonteCatalogoParaSugestoes:
+          listaCatalogoMemoria ?? todosProdutos ?? const [],
+      produtoCatalogoSnap: produtoSnap,
+      jurosParcelamento: p['jurosParcelamento'] is num
+          ? (p['jurosParcelamento'] as num).toDouble()
+          : double.tryParse('${p['jurosParcelamento']}'),
     );
   }
 
+  @override
+  State<CatalogProductDetailScreen> createState() =>
+      _CatalogProductDetailScreenState();
+}
+
+
+
+class _CatalogProductDetailScreenState extends State<CatalogProductDetailScreen> {
+  final GlobalKey<CatalogProductVariationPickBodyState> _pickKey =
+      GlobalKey<CatalogProductVariationPickBodyState>();
+  bool _descricaoExpandida = false;
+
   bool get _temFaixaPreco =>
-      priceMin != null &&
-      priceMax != null &&
-      (priceMin! - priceMax!).abs() > 0.001;
+      widget.priceMin != null &&
+      widget.priceMax != null &&
+      (widget.priceMin! - widget.priceMax!).abs() > 0.001;
 
-  String _fmt2(num v) =>
-      v.toStringAsFixed(2).replaceAll('.', ',');
+  String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
-  void _openFullscreenGallery(BuildContext context, int initialIndex) {
-    if (imagens.isEmpty || imagens.every((e) => e.trim().isEmpty)) return;
+  double _parcelaComJuros(double valor, double taxaMensalPct, int n) {
+    if (n <= 0 || taxaMensalPct <= 0) return valor / n;
+    final i = taxaMensalPct / 100;
+    var p = 1.0;
+    for (var k = 0; k < n; k++) {
+      p *= (1 + i);
+    }
+    return valor * (i * p) / (p - 1);
+  }
+
+  bool get _variacoesInline {
+    if (widget.ehCombo) return false;
+    return (widget.estoquePorTamanho != null &&
+            widget.estoquePorTamanho!.isNotEmpty) ||
+        (widget.estoquePorCor != null && widget.estoquePorCor!.isNotEmpty) ||
+        (widget.variacoes != null && widget.variacoes!.isNotEmpty);
+  }
+
+  double _precoBaseParcelamentoPix() {
+    final v = _pickKey.currentState;
+    if (_temFaixaPreco) return widget.priceMin ?? widget.price;
+    if (_variacoesInline && v != null) return v.precoVariacaoAtual;
+    return widget.price;
+  }
+
+  double _precoTituloOuPromoRed() {
+    if (_temFaixaPreco) return widget.priceMin ?? widget.price;
+    final v = _pickKey.currentState;
+    if (_variacoesInline && v != null) return v.precoVariacaoAtual;
+    return widget.price;
+  }
+
+  String _textoParcelasResumo() {
+    final valor = _precoBaseParcelamentoPix();
+    final n = widget.maxParcelas.clamp(1, 24);
+    final pref = _temFaixaPreco ? 'A partir de ' : '';
+    if (widget.divideSemJuros) {
+      return '$pref${n}x R\$ ${_fmt2(valor / n)} sem juros';
+    }
+    final juros = widget.jurosParcelamento;
+    if (juros != null && juros > 0) {
+      final parc = _parcelaComJuros(valor, juros, n);
+      return '${pref}até ${n}x R\$ ${_fmt2(parc)}';
+    }
+    return '${pref}em até ${n}x R\$ ${_fmt2(valor / n)}';
+  }
+
+  List<Map<String, dynamic>> _sugestados() =>
+      catalogSugestoesRelacionadasParaDetalhe(
+        fonteCompletaCatalogo: widget.fonteCatalogoParaSugestoes,
+        produtoAtual: widget.produtoCatalogoSnap,
+        limite: 8,
+      );
+
+  void _abrirDetalheRelacionado(Map<String, dynamic> p) {
+    final opener = context;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _CatalogFullscreenGallery(
-          images: imagens.where((e) => e.trim().isNotEmpty).toList(),
-          initialIndex: initialIndex,
-          heroPrefix: id,
+        builder: (_) => catalogReplayOpenedTheme(
+          opener,
+          CatalogProductDetailScreen.fromProdutoMap(
+            p: p,
+            lojaId: widget.lojaId,
+            onAdd: widget.onAdd,
+            onAbrirCarrinho: widget.onAbrirCarrinho,
+            catalogShareUrl: widget.catalogShareUrl,
+            nomeLoja: widget.nomeLoja,
+            contatoWhatsapp: widget.contatoWhatsapp,
+            politicaFrete: widget.politicaFrete,
+            prazoEntregaTexto: widget.prazoEntrega,
+            todosProdutos: widget.todosProdutosForCombo,
+            listaCatalogoMemoria: widget.fonteCatalogoParaSugestoes,
+            initialCatalogExtraValor: widget.initialCatalogExtraValor,
+            onCatalogVariacaoExtraChanged:
+                widget.onCatalogVariacaoExtraChanged,
+          ),
         ),
       ),
     );
   }
 
+  void _openFullscreenGallery(BuildContext context, int initialIndex) {
+    if (widget.imagens.isEmpty ||
+        widget.imagens.every((e) => e.trim().isEmpty)) {
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _CatalogFullscreenGallery(
+          images:
+              widget.imagens.where((e) => e.trim().isNotEmpty).toList(),
+          initialIndex: initialIndex,
+          heroPrefix: widget.id,
+        ),
+      ),
+    );
+  }
+
+  void _onCommitVariacao(
+    String? tamanho,
+    String? cor,
+    double preco,
+    String extraValor,
+    String extraTipo,
+  ) {
+    final img = widget.imagens.isNotEmpty ? widget.imagens.first : '';
+    final ex = extraValor.trim();
+    final resumoExtra = ex.isNotEmpty
+        ? ProdutoVariacaoExtra.textoResumoExtra(
+            extraTipo: extraTipo,
+            extraValor: ex,
+          )
+        : '';
+    widget.onAdd({
+      'produtosId': widget.id,
+      'id': widget.id,
+      'nome': widget.name,
+      'preco': preco,
+      'percentualDescontoPix': widget.percentualDescontoPix,
+      'divideSemJuros': widget.divideSemJuros,
+      'maxParcelasSemJuros': widget.maxParcelas,
+      'quantidade': 1,
+      'imageUrl': img,
+      'url_foto': img,
+      'slug': widget.slug,
+      'peso': widget.peso,
+      'tipoEmbalagem': widget.tipoEmbalagem,
+      'tamanho': tamanho ?? '',
+      'cor': cor ?? '',
+      if (ex.isNotEmpty) 'extraValor': ex,
+      if (extraTipo.trim().isNotEmpty) 'extraTipo': extraTipo.trim(),
+      if (resumoExtra.isNotEmpty) 'variacaoExtraResumo': resumoExtra,
+    });
+    if (mounted) Navigator.of(context).pop();
+    widget.onAbrirCarrinho?.call();
+  }
+
   void _addToCart(BuildContext context) {
-    if (ehCombo && comboProductMap != null && todosProdutosForCombo != null) {
+    if (widget.ehCombo &&
+        widget.comboProductMap != null &&
+        widget.todosProdutosForCombo != null) {
       showCatalogComboVariationSheet(
         context: context,
-        comboProduct: comboProductMap!,
-        todosProdutos: todosProdutosForCombo!,
-        onAdd: onAdd,
+        comboProduct: widget.comboProductMap!,
+        todosProdutos: widget.todosProdutosForCombo!,
+        onAdd: widget.onAdd,
         onAbrirCarrinho: () {
           Navigator.of(context).pop();
-          onAbrirCarrinho?.call();
+          widget.onAbrirCarrinho?.call();
         },
       );
       return;
     }
-    final hasVariacoes = (estoquePorTamanho != null && estoquePorTamanho!.isNotEmpty) ||
-        (estoquePorCor != null && estoquePorCor!.isNotEmpty) ||
-        (variacoes != null && variacoes!.isNotEmpty);
-    if (hasVariacoes) {
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => CatalogProductSelectionSheet(
-          name: name,
-          price: price,
-          precoPorTamanho: precoPorTamanho,
-          precoOriginal: precoOriginal,
-          emPromocao: emPromocao,
-          imageUrl: imagens.isNotEmpty ? imagens.first : '',
-          estoquePorTamanho: estoquePorTamanho ?? {},
-          estoquePorCor: estoquePorCor ?? {},
-          variacoes: variacoes,
-          variacoesExtraTipo: variacoesExtraTipo,
-          initialExtraValor: initialCatalogExtraValor,
-          onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
-          percentualDescontoPix: percentualDescontoPix,
-          mostrarQuantidadeNoCatalogo: false,
-          onAddToCart: (tamanho, cor, preco, extraValor, extraTipo) {
-            final img = imagens.isNotEmpty ? imagens.first : '';
-            final ex = extraValor.trim();
-            final resumoExtra = ex.isNotEmpty
-                ? ProdutoVariacaoExtra.textoResumoExtra(
-                    extraTipo: extraTipo,
-                    extraValor: ex,
-                  )
-                : '';
-            onAdd({
-              'produtosId': id,
-              'id': id,
-              'nome': name,
-              'preco': preco,
-              'percentualDescontoPix': percentualDescontoPix,
-              'divideSemJuros': divideSemJuros,
-              'maxParcelasSemJuros': maxParcelas,
-              'quantidade': 1,
-              'imageUrl': img,
-              'url_foto': img,
-              'slug': slug,
-              'peso': peso,
-              'tipoEmbalagem': tipoEmbalagem,
-              'tamanho': tamanho ?? '',
-              'cor': cor ?? '',
-              if (ex.isNotEmpty) 'extraValor': ex,
-              if (extraTipo.trim().isNotEmpty) 'extraTipo': extraTipo.trim(),
-              if (resumoExtra.isNotEmpty) 'variacaoExtraResumo': resumoExtra,
-            });
-            Navigator.of(context).pop();
-            Navigator.of(context).pop();
-            onAbrirCarrinho?.call();
-          },
-        ),
-      );
-    } else {
-      final img = imagens.isNotEmpty ? imagens.first : '';
-      onAdd({
-        'produtosId': id,
-        'id': id,
-        'nome': name,
-        'preco': price,
-        'percentualDescontoPix': percentualDescontoPix,
-        'divideSemJuros': divideSemJuros,
-        'maxParcelasSemJuros': maxParcelas,
-        'quantidade': 1,
-        'imageUrl': img,
-        'url_foto': img,
-        'slug': slug,
-        'peso': peso,
-        'tipoEmbalagem': tipoEmbalagem,
-        'tamanho': '',
-        'cor': '',
-      });
-      Navigator.of(context).pop();
-      onAbrirCarrinho?.call();
+    if (_variacoesInline) {
+      _pickKey.currentState?.commitPickToCart();
+      return;
     }
+    final img = widget.imagens.isNotEmpty ? widget.imagens.first : '';
+    widget.onAdd({
+      'produtosId': widget.id,
+      'id': widget.id,
+      'nome': widget.name,
+      'preco': widget.price,
+      'percentualDescontoPix': widget.percentualDescontoPix,
+      'divideSemJuros': widget.divideSemJuros,
+      'maxParcelasSemJuros': widget.maxParcelas,
+      'quantidade': 1,
+      'imageUrl': img,
+      'url_foto': img,
+      'slug': widget.slug,
+      'peso': widget.peso,
+      'tipoEmbalagem': widget.tipoEmbalagem,
+      'tamanho': '',
+      'cor': '',
+    });
+    if (mounted) Navigator.of(context).pop();
+    widget.onAbrirCarrinho?.call();
+  }
+
+  bool _podeAcaoPrincipal() {
+    if (widget.quantidade <= 0) return false;
+    if (widget.ehCombo) return true;
+    if (_variacoesInline) {
+      return _pickKey.currentState?.podeAdicionarVariacao ?? false;
+    }
+    return true;
+  }
+
+  String _rotuloAcaoPrincipal() {
+    if (widget.quantidade <= 0) return 'Indisponível';
+    if (!_variacoesInline || widget.ehCombo) {
+      return 'Adicionar ao carrinho';
+    }
+    return _pickKey.currentState?.textoBotaoVariacao ??
+        'Selecione as opções';
+  }
+
+  void _abrirDuvidasPergunte(BuildContext context) {
+    final perguntaCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => _DuvidasPergunteDialogDetail(
+        produtoNome: widget.name,
+        temEstoque: widget.quantidade > 0,
+        nomeLoja: widget.nomeLoja,
+        contatoWhatsapp: widget.contatoWhatsapp,
+        politicaFrete: widget.politicaFrete,
+        perguntaCtrl: perguntaCtrl,
+        lojaId: widget.lojaId,
+      ),
+    );
+  }
+
+  Widget _buildProdutosKit(ThemeData theme) {
+    final itens = widget.itensCombo;
+    if (itens == null || itens.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 22,
+              color: _detailCatalogAccent(theme),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Produtos do kit',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: _detailCatalogAccent(theme),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: _detailCatalogAccent(theme).withOpacity(0.09),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _detailCatalogAccent(theme).withOpacity(0.26),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Este kit contém:',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: theme.hintColor,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 10),
+              ...itens.asMap().entries.map((entry) {
+                final idx = entry.key + 1;
+                final item = entry.value;
+                final nomeItem =
+                    (item['nome'] ?? item['name'] ?? '').toString();
+                final qtd = (item['quantidade'] is num)
+                    ? (item['quantidade'] as num).toInt()
+                    : int.tryParse('${item['quantidade']}') ?? 1;
+                final tam = (item['tamanho'] ?? '').toString().trim();
+                final cor = (item['cor'] ?? '').toString().trim();
+                final extras = <String>[];
+                if (tam.isNotEmpty) extras.add('Tamanho: $tam');
+                if (cor.isNotEmpty) extras.add('Cor: $cor');
+                final extraLinha =
+                    ProdutoVariacaoExtra.resumoExtraLinhaDeItemMap(
+                  Map<String, dynamic>.from(item),
+                );
+                if (extraLinha.isNotEmpty) extras.add(extraLinha);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 24,
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color:
+                              _detailCatalogAccent(theme).withOpacity(0.18),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          '$idx',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: _detailCatalogAccent(theme),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nomeItem,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (extras.isNotEmpty)
+                              Text(
+                                extras.join(' · '),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: theme.hintColor,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest
+                              .withOpacity(0.35),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '${qtd}x',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _detailCatalogAccent(theme),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Altura mínima do carrossel de sugestões: imagem + nome (2 linhas) + preço + paddings.
+  /// Evita BOTTOM OVERFLOWED em [Column] quando a faixa vertical do [ListView] horizontal
+  /// é menor que a soma dos filhos.
+  double _detailSuggestionCarouselHeight(double imgH) {
+    const padTopNome = 10.0;
+    const padAfterNome = 8.0;
+    const padBottomPreco = 12.0;
+    const nomeSize = 13.0;
+    const nomeLineHeight = 1.35;
+    const precoSize = 14.5;
+    const precoLineHeight = 1.25;
+    const buffer = 14.0;
+    const nomeBlock =
+        padTopNome + nomeSize * nomeLineHeight * 2 + padAfterNome;
+    const precoBlock = precoSize * precoLineHeight + padBottomPreco;
+    return imgH + nomeBlock + precoBlock + buffer;
+  }
+
+  Widget _buildSugestoes(ThemeData theme, double viewportW) {
+    final list = _sugestados();
+    if (list.isEmpty) return const SizedBox.shrink();
+    final cardW =
+        viewportW >= 900 ? 186.0 : (viewportW >= 600 ? 172.0 : 156.0);
+    final imgH = viewportW >= 900 ? 126.0 : (viewportW >= 600 ? 118.0 : 112.0);
+    final listHeight = _detailSuggestionCarouselHeight(imgH);
+    final accent = _detailCatalogAccent(theme);
+    final priceCol = _detailProductPriceColor(theme);
+    final scrollPhysics = viewportW >= 900
+        ? const ClampingScrollPhysics()
+        : const BouncingScrollPhysics();
+    final carouselDrag = ScrollConfiguration.of(context).copyWith(
+      dragDevices: {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad,
+      },
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 4,
+              height: 22,
+              decoration: BoxDecoration(
+                color: accent,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Você também pode gostar',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: listHeight,
+          child: ScrollConfiguration(
+            behavior: carouselDrag,
+            child: ListView.separated(
+              physics: scrollPhysics,
+              scrollDirection: Axis.horizontal,
+              itemCount: list.length,
+              primary: false,
+              padding: EdgeInsets.fromLTRB(0, 0, viewportW >= 840 ? 8 : 6, 12),
+              separatorBuilder: (_, __) =>
+                  SizedBox(width: viewportW >= 900 ? 16 : 12),
+              itemBuilder: (ctx, i) {
+              final p = list[i];
+              final thumb =
+                  selectCatalogPrimaryImageUrlFromProdutoMap(asMap(p));
+              final nome = safeStr(p['nome'], 'Produto');
+              final pre = safeDouble(p['preco']);
+              return SizedBox(
+                height: listHeight,
+                width: cardW,
+                child: Material(
+                  color: theme.cardColor,
+                  elevation: 3,
+                  shadowColor: accent.withOpacity(0.12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    side: BorderSide(
+                      color: theme.colorScheme.outlineVariant.withOpacity(0.4),
+                    ),
+                  ),
+                  child: InkWell(
+                    onTap: () => _abrirDetalheRelacionado(p),
+                    borderRadius: BorderRadius.circular(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ClipRRect(
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(18),
+                          ),
+                          child: SizedBox(
+                            height: imgH,
+                            width: cardW,
+                            child: thumb.isEmpty
+                                ? ColoredBox(
+                                    color: theme.colorScheme
+                                        .surfaceContainerHighest,
+                                    child: Icon(
+                                      Icons.image_outlined,
+                                      color: theme.hintColor,
+                                    ),
+                                  )
+                                : Image(
+                                    image: mpImageProvider(thumb),
+                                    width: cardW,
+                                    height: imgH,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => Icon(
+                                      Icons.broken_image_outlined,
+                                      color: theme.hintColor,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                                10, 10, 10, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  nome,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.35,
+                                    color:
+                                        theme.textTheme.bodyMedium?.color,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  'R\$ ${_fmt2(pre)}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.3,
+                                    height: 1.2,
+                                    color: priceCol,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final primaryColor = theme.colorScheme.primary;
-    final galleryHeight = MediaQuery.of(context).size.width < 420 ? 300.0 : 340.0;
+    final seed = _detailBackdropSeed(theme);
+    final layeredBg = Color.alphaBlend(
+      seed.withOpacity(0.065),
+      theme.scaffoldBackgroundColor,
+    );
+    final accent = _detailCatalogAccent(theme);
+    final priceCol = _detailProductPriceColor(theme);
+    final nomeCol = _detailProductNameColor(theme);
+    final w = MediaQuery.of(context).size.width;
+    final galleryHeight =
+        w < 420 ? 300.0 : (w >= 900 ? 392.0 : 340.0);
+    final precoLinhaSel = _precoTituloOuPromoRed();
+    final precoParcelPixBase = _precoBaseParcelamentoPix();
+    final galleryBackdrop = Color.alphaBlend(
+      theme.colorScheme.surfaceContainerHighest.withOpacity(0.42),
+      theme.colorScheme.surface,
+    );
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: layeredBg,
       appBar: AppBar(
-        backgroundColor: theme.appBarTheme.backgroundColor ?? theme.cardColor,
+        backgroundColor: Color.alphaBlend(
+          seed.withOpacity(0.14),
+          theme.colorScheme.surface,
+        ),
+        foregroundColor: theme.colorScheme.onSurface,
+        iconTheme: IconThemeData(color: theme.colorScheme.onSurface),
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0.5,
+        shadowColor: seed.withOpacity(0.06),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(
+            height: 1,
+            thickness: 1,
+            color: theme.dividerColor.withOpacity(0.12),
+          ),
+        ),
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
         ),
         actions: [
-          if (catalogShareUrl != null && catalogShareUrl!.isNotEmpty)
+          if (widget.catalogShareUrl != null &&
+              widget.catalogShareUrl!.isNotEmpty)
             IconButton(
               onPressed: () async {
                 final precoTexto = _temFaixaPreco
-                    ? 'R\$ ${_fmt2(priceMin!)} a R\$ ${_fmt2(priceMax!)}'
-                    : 'R\$ ${_fmt2(price)}';
+                    ? 'R\$ ${_fmt2(widget.priceMin!)} a R\$ ${_fmt2(widget.priceMax!)}'
+                    : 'R\$ ${_fmt2(precoLinhaSel)}';
                 final msg = CatalogShareService.buildProductShareMessage(
-                  nome: name,
+                  nome: widget.name,
                   precoTexto: precoTexto,
-                  descricaoCurta: descricao.trim().isEmpty ? null : descricao,
-                  url: catalogShareUrl!,
+                  descricaoCurta: widget.descricao.trim().isEmpty
+                      ? null
+                      : widget.descricao,
+                  url: widget.catalogShareUrl!,
                 );
                 final uri = Uri.parse(
                   'https://wa.me/?text=${CatalogShareService.encodeForWhatsApp(msg)}',
@@ -358,78 +899,166 @@ class CatalogProductDetailScreen extends StatelessWidget {
             ),
         ],
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Galeria
-            SizedBox(
-              height: galleryHeight,
-              child: _CatalogInlineGallery(
-                productId: id,
-                imagens: imagens,
-                cardColor: theme.cardColor,
-                onOpenFullscreen: _openFullscreenGallery,
+      bottomNavigationBar: widget.quantidade > 0
+          ? Material(
+              elevation: 10,
+              color: theme.colorScheme.surface,
+              shadowColor: accent.withOpacity(0.14),
+              surfaceTintColor: Colors.transparent,
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: theme.dividerColor.withOpacity(0.09),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+                      child: SizedBox(
+                        height: 54,
+                        child: FilledButton(
+                          onPressed: _podeAcaoPrincipal()
+                              ? () => _addToCart(context)
+                              : null,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _detailBuyButtonBg(theme),
+                            foregroundColor: _detailBuyButtonFg(theme),
+                            disabledBackgroundColor: theme.colorScheme.surfaceContainerHighest,
+                            disabledForegroundColor:
+                                theme.colorScheme.onSurface.withOpacity(0.38),
+                            elevation: 1,
+                            shadowColor:
+                                accent.withOpacity(_podeAcaoPrincipal() ? 0.22 : 0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: Text(
+                            _rotuloAcaoPrincipal(),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 18,
+            )
+          : null,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color.alphaBlend(
+                seed.withOpacity(
+                    theme.brightness == Brightness.dark ? 0.12 : 0.082),
+                layeredBg,
+              ),
+              layeredBg,
+            ],
+          ),
+        ),
+        child: Center(
+          child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: math.min(w, _catalogDetailMaxInnerWidth(w)),
+          ),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.only(bottom: widget.quantidade > 0 ? 14 : 28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: Material(
+                    elevation: 5,
+                    borderRadius: BorderRadius.circular(24),
+                    shadowColor: accent.withOpacity(0.12),
+                    color: Colors.transparent,
+                    clipBehavior: Clip.antiAlias,
+                    child: SizedBox(
+                      height: galleryHeight,
+                      child: ColoredBox(
+                        color: galleryBackdrop,
+                        child: _CatalogInlineGallery(
+                          productId: widget.id,
+                          imagens: widget.imagens,
+                          cardColor: galleryBackdrop,
+                          onOpenFullscreen: _openFullscreenGallery,
+                        ),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 22, 16, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(
+                    widget.name,
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      height: 1.15,
+                      letterSpacing: -0.3,
+                      color: nomeCol,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   if (_temFaixaPreco)
                     Text(
-                      'R\$ ${_fmt2(priceMin!)} a R\$ ${_fmt2(priceMax!)}',
+                      'R\$ ${_fmt2(widget.priceMin!)} a R\$ ${_fmt2(widget.priceMax!)}',
                       style: TextStyle(
-                        color: primaryColor,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        color: priceCol,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
                       ),
                     )
-                  else if (emPromocao && precoOriginal != null)
+                  else if (widget.emPromocao && widget.precoOriginal != null)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
                         Text(
-                          'R\$ ${_fmt2(precoOriginal!)}',
+                          'R\$ ${_fmt2(widget.precoOriginal!)}',
                           style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 13,
+                            color: theme.hintColor,
+                            fontSize: 14,
                             decoration: TextDecoration.lineThrough,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'R\$ ${_fmt2(price)}',
+                          'R\$ ${_fmt2(precoLinhaSel)}',
                           style: TextStyle(
-                            color: Colors.red[700],
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
+                            color: priceCol,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        if (percentualPromo > 0) ...[
-                          const SizedBox(width: 6),
+                        if (widget.percentualPromo > 0) ...[
+                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                                horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.red[700],
-                              borderRadius: BorderRadius.circular(4),
+                              color: accent.withOpacity(0.94),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              '-${percentualPromo.toStringAsFixed(0)}%',
-                              style: const TextStyle(
-                                color: Colors.white,
+                              '-${widget.percentualPromo.toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                color: _detailCatalogOnAccent(theme),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -440,98 +1069,237 @@ class CatalogProductDetailScreen extends StatelessWidget {
                     )
                   else
                     Text(
-                      'R\$ ${_fmt2(price)}',
+                      'R\$ ${_fmt2(precoLinhaSel)}',
                       style: TextStyle(
-                        color: primaryColor,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        color: priceCol,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                  if (percentualDescontoPix > 0) ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Icon(Icons.pix, size: 16, color: Colors.green[700]),
-                        const SizedBox(width: 4),
-                        Text(
-                          'ou R\$ ${_fmt2(price * (1 - percentualDescontoPix / 100))} no PIX (${percentualDescontoPix == percentualDescontoPix.truncateToDouble() ? percentualDescontoPix.toInt() : _fmt2(percentualDescontoPix)}% off)',
-                          style: TextStyle(
-                            color: Colors.green[700],
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (prazoEntrega != null && prazoEntrega!.trim().isNotEmpty) ...[
+                  if (widget.percentualDescontoPix > 0) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Icon(Icons.local_shipping_outlined,
-                            size: 16, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Entrega: $prazoEntrega',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey[600],
+                        Icon(Icons.pix, size: 18, color: Colors.green[700]),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'ou R\$ ${_fmt2(precoParcelPixBase * (1 - widget.percentualDescontoPix / 100))} no PIX (${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off)',
+                            style: TextStyle(
+                              color: Colors.green[700],
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ],
-                  if (descricao.trim().isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Descrição',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
+                  if (widget.maxParcelas > 1 ||
+                      widget.divideSemJuros ||
+                      (widget.jurosParcelamento != null &&
+                          widget.jurosParcelamento! > 0)) ...[
                     const SizedBox(height: 6),
                     Text(
-                      descricao,
+                      _textoParcelasResumo(),
                       style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 14,
-                        height: 1.5,
+                        fontSize: 13,
+                        color: theme.hintColor,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: FilledButton(
-                      onPressed: quantidade > 0 ? () => _addToCart(context) : null,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: primaryColor,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                  if (widget.prazoEntrega != null &&
+                      widget.prazoEntrega!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(Icons.local_shipping_outlined,
+                            size: 18, color: theme.hintColor),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Entrega: ${widget.prazoEntrega}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: theme.hintColor,
+                            ),
+                          ),
                         ),
-                        elevation: 0,
+                      ],
+                    ),
+                  ],
+                  if (widget.descricao.trim().isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    Card(
+                      margin: EdgeInsets.zero,
+                      elevation: 2,
+                      shadowColor: accent.withOpacity(0.08),
+                      surfaceTintColor: Colors.transparent,
+                      color: theme.cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(
+                          color: theme.colorScheme.outlineVariant
+                              .withOpacity(0.42),
+                        ),
                       ),
-                      child: Text(
-                        quantidade > 0 ? 'Adicionar ao carrinho' : 'Indisponível',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.article_outlined,
+                                  size: 21,
+                                  color: accent,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Descrição',
+                                  style:
+                                      theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            AnimatedCrossFade(
+                              firstChild: Text(
+                                widget.descricao,
+                                maxLines: 4,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  height: 1.55,
+                                  color: theme.textTheme.bodyLarge?.color
+                                      ?.withOpacity(0.9),
+                                ),
+                              ),
+                              secondChild: Text(
+                                widget.descricao,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  height: 1.55,
+                                  color: theme.textTheme.bodyLarge?.color
+                                      ?.withOpacity(0.9),
+                                ),
+                              ),
+                              crossFadeState: _descricaoExpandida
+                                  ? CrossFadeState.showSecond
+                                  : CrossFadeState.showFirst,
+                              duration:
+                                  const Duration(milliseconds: 200),
+                            ),
+                            if (widget.descricao.trim().length > 180)
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: TextButton(
+                                  onPressed: () => setState(
+                                    () => _descricaoExpandida =
+                                        !_descricaoExpandida,
+                                  ),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: accent,
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  child: Text(
+                                    _descricaoExpandida
+                                        ? 'Ver menos'
+                                        : 'Ver descrição completa',
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
+                  ],
+                  if (widget.ehCombo) _buildProdutosKit(theme),
+                  if (_variacoesInline) ...[
+                    const SizedBox(height: 22),
+                    Card(
+                      margin: EdgeInsets.zero,
+                      elevation: 2,
+                      shadowColor: accent.withOpacity(0.08),
+                      surfaceTintColor: Colors.transparent,
+                      color: theme.cardColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                        side: BorderSide(
+                          color: theme.colorScheme.outlineVariant
+                              .withOpacity(0.42),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
+                        child: CatalogProductVariationPickBody(
+                          key: _pickKey,
+                          name: widget.name,
+                          price: widget.price,
+                          precoOriginal: widget.precoOriginal,
+                          emPromocao: widget.emPromocao,
+                          imageUrl:
+                              widget.imagens.isNotEmpty ? widget.imagens.first : '',
+                          estoquePorTamanho: widget.estoquePorTamanho ?? {},
+                          estoquePorCor: widget.estoquePorCor ?? {},
+                          variacoes: widget.variacoes,
+                          variacoesExtraTipo: widget.variacoesExtraTipo,
+                          precoPorTamanho: widget.precoPorTamanho,
+                          onPickCommit: _onCommitVariacao,
+                          percentualDescontoPix: widget.percentualDescontoPix,
+                          mostrarQuantidadeNoCatalogo: false,
+                          initialExtraValor: widget.initialCatalogExtraValor,
+                          onCatalogVariacaoExtraChanged:
+                              widget.onCatalogVariacaoExtraChanged,
+                          showProductSnippet: false,
+                          showAddToCartButton: false,
+                          showSectionTitle: true,
+                          onSelectionsChanged: () => setState(() {}),
+                        ),
+                      ),
+                    ),
+                  ],
+                  _buildSugestoes(theme, w),
+                  const SizedBox(height: 12),
+                  if (widget.quantidade <= 0) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: null,
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Indisponível',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   OutlinedButton.icon(
                     onPressed: () => _abrirDuvidasPergunte(context),
-                    icon: const Icon(Icons.help_outline, size: 18),
-                    label: const Text('Dúvidas? Pergunte'),
+                    icon: Icon(Icons.help_outline,
+                        size: 20, color: accent),
+                    label: Text('Dúvidas? Pergunte',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, color: accent)),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      foregroundColor: accent,
+                      side: BorderSide(color: accent.withOpacity(0.42)),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                   ),
@@ -541,22 +1309,9 @@ class CatalogProductDetailScreen extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  void _abrirDuvidasPergunte(BuildContext context) {
-    final perguntaCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => _DuvidasPergunteDialogDetail(
-        produtoNome: name,
-        temEstoque: quantidade > 0,
-        nomeLoja: nomeLoja,
-        contatoWhatsapp: contatoWhatsapp,
-        politicaFrete: politicaFrete,
-        perguntaCtrl: perguntaCtrl,
-        lojaId: lojaId,
-      ),
+    ),
+    ),
+    ),
     );
   }
 }

@@ -245,6 +245,8 @@ class PublicCatalogProductCard extends StatelessWidget {
       productCardSize: productCardSize,
       initialCatalogExtraValor: catalogInitialExtraValor,
       onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
+      produtoCatalogoMap: p,
+      catalogListaMemoriaParaSugestoes: todosProdutos,
     );
   }
 }

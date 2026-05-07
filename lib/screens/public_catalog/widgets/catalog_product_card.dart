@@ -89,6 +89,10 @@ class CatalogProductCard extends StatefulWidget {
   final String productCardSize;
   final String? initialCatalogExtraValor;
   final void Function(String? value)? onCatalogVariacaoExtraChanged;
+  /// Mapa original do produto (abre detalhe rico no catálogo público).
+  final Map<String, dynamic>? produtoCatalogoMap;
+  /// Produtos já em memória (sugestões no detalhe). No grid costuma ser a lista completa.
+  final List<Map<String, dynamic>>? catalogListaMemoriaParaSugestoes;
 
   /// Construtor não-const para conversão defensiva num→double/int (evita TypeError em release).
   CatalogProductCard({
@@ -147,6 +151,8 @@ class CatalogProductCard extends StatefulWidget {
     this.productCardSize = CatalogProductCardSize.medium,
     this.initialCatalogExtraValor,
     this.onCatalogVariacaoExtraChanged,
+    this.produtoCatalogoMap,
+    this.catalogListaMemoriaParaSugestoes,
   })  : price = price.toDouble(),
         peso = peso.toDouble(),
         precoOriginal = precoOriginal?.toDouble(),
@@ -303,11 +309,41 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     }
     void onClosed() => widget.onProductUrlBlur?.call();
 
+    if (widget.produtoCatalogoMap != null) {
+      Navigator.of(context)
+          .push(
+        MaterialPageRoute(
+          builder: (_) => catalogReplayOpenedTheme(
+            context,
+            CatalogProductDetailScreen.fromProdutoMap(
+            p: widget.produtoCatalogoMap!,
+            lojaId: widget.lojaId,
+            onAdd: widget.onAdd,
+            onAbrirCarrinho: widget.onAbrirCarrinho,
+            catalogShareUrl: widget.catalogShareUrl,
+            prazoEntregaTexto: widget.prazoEntrega,
+            todosProdutos: widget.todosProdutosForCombo,
+            listaCatalogoMemoria: widget.catalogListaMemoriaParaSugestoes ??
+                widget.todosProdutosForCombo ??
+                const [],
+            initialCatalogExtraValor: widget.initialCatalogExtraValor,
+            onCatalogVariacaoExtraChanged:
+                widget.onCatalogVariacaoExtraChanged,
+          ),
+        ),
+        ),
+      )
+          .then((_) => onClosed());
+      return;
+    }
+
     if (widget.minimalLayout) {
       Navigator.of(context)
           .push(
         MaterialPageRoute(
-          builder: (_) => CatalogProductDetailScreen(
+          builder: (_) => catalogReplayOpenedTheme(
+            context,
+            CatalogProductDetailScreen(
             id: widget.id,
             name: widget.name,
             descricao: widget.descricao,
@@ -322,7 +358,8 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             emPromocao: widget.emPromocao,
             percentualPromo: widget.percentualPromo,
             valorPromo: widget.valorPromo,
-            imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
+            imagens:
+                widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
             quantidade: widget.quantidade,
             estoquePorTamanho: widget.estoquePorTamanho,
             estoquePorCor: widget.estoquePorCor,
@@ -343,73 +380,75 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             initialCatalogExtraValor: widget.initialCatalogExtraValor,
             onCatalogVariacaoExtraChanged:
                 widget.onCatalogVariacaoExtraChanged,
+            jurosParcelamento: widget.jurosParcelamento,
           ),
+        ),
         ),
       )
           .then((_) => onClosed());
-    } else {
-      final wideChrome = usePointerFirstChrome(context);
+      return;
+    }
+    final wideChrome = usePointerFirstChrome(context);
 
-      Widget detailsContent() {
-        return CatalogProductDetailsSheet(
-          name: widget.name,
-          descricao: widget.descricao,
-          price: widget.price,
-          priceMin: widget.priceMin,
-          priceMax: widget.priceMax,
-          precoOriginal: widget.precoOriginal,
-          emPromocao: widget.emPromocao,
-          percentualPromo: widget.percentualPromo,
-          valorPromo: widget.valorPromo,
-          imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
-          quantidade: widget.quantidade,
-          estoquePorTamanho: widget.estoquePorTamanho,
-          estoquePorCor: widget.estoquePorCor,
-          variacoes: widget.variacoes,
-          catalogShareUrl: widget.catalogShareUrl,
-          prazoEntrega: widget.prazoEntrega,
-          percentualDescontoPix: widget.percentualDescontoPix,
-          itensCombo: widget.itensCombo,
-          lojaId: widget.lojaId,
-        );
-      }
+    Widget detailsContent() {
+      return CatalogProductDetailsSheet(
+        name: widget.name,
+        descricao: widget.descricao,
+        price: widget.price,
+        priceMin: widget.priceMin,
+        priceMax: widget.priceMax,
+        precoOriginal: widget.precoOriginal,
+        emPromocao: widget.emPromocao,
+        percentualPromo: widget.percentualPromo,
+        valorPromo: widget.valorPromo,
+        imagens: widget.imagens.isNotEmpty ? widget.imagens : [widget.imageUrl],
+        quantidade: widget.quantidade,
+        estoquePorTamanho: widget.estoquePorTamanho,
+        estoquePorCor: widget.estoquePorCor,
+        variacoes: widget.variacoes,
+        catalogShareUrl: widget.catalogShareUrl,
+        prazoEntrega: widget.prazoEntrega,
+        percentualDescontoPix: widget.percentualDescontoPix,
+        itensCombo: widget.itensCombo,
+        lojaId: widget.lojaId,
+      );
+    }
 
-      if (wideChrome) {
-        showDialog<void>(
-          context: context,
-          barrierDismissible: true,
-          builder: (sheetContext) {
-            final mq = MediaQuery.of(sheetContext);
-            final theme = Theme.of(sheetContext);
-            final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
-            return Dialog(
-insetPadding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: maxW,
-                  maxHeight: mq.size.height * 0.92,
-                ),
-                child: Material(
-                  color: theme.cardColor,
-                  borderRadius: BorderRadius.circular(20),
-                  clipBehavior: Clip.antiAlias,
-                  child: detailsContent(),
-                ),
+    if (wideChrome) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (sheetContext) {
+          final mq = MediaQuery.of(sheetContext);
+          final theme = Theme.of(sheetContext);
+          final maxW = math.min(kMaxContentWidth, mq.size.width - 40);
+          return Dialog(
+            insetPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: maxW,
+                maxHeight: mq.size.height * 0.92,
               ),
-            );
-          },
-        ).then((_) => onClosed());
-      } else {
-        showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => detailsContent(),
-        ).then((_) => onClosed());
-      }
+              child: Material(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(20),
+                clipBehavior: Clip.antiAlias,
+                child: detailsContent(),
+              ),
+            ),
+          );
+        },
+      ).then((_) => onClosed());
+    } else {
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => detailsContent(),
+      ).then((_) => onClosed());
     }
   }
 
