@@ -10,6 +10,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../models/produto.dart';
@@ -41,6 +42,29 @@ class EstoqueTransactionResult {
 /// Serviço de baixa de estoque atômica via Firestore Transaction
 class EstoqueTransactionService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  /// Idempotência de devolução **só no dispositivo** — evita coleção `estoque_devolucao` no Firestore
+  /// (costuma dar permission-denied nas rules sem deploy dedicado).
+  static String? _devolucaoLocalPrefsKeyOrNull(String lojaId, String vendaId) {
+    final lid = lojaId.trim();
+    final vid = vendaId.trim();
+    if (lid.isEmpty || vid.isEmpty) return null;
+    return 'estoque_devolvido_v1_${lid}_$vid';
+  }
+
+  static Future<bool> _devolucaoLocalJaFeita(String lojaId, String vendaId) async {
+    final key = _devolucaoLocalPrefsKeyOrNull(lojaId, vendaId);
+    if (key == null) return false;
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(key) ?? false;
+  }
+
+  static Future<void> _marcarDevolucaoLocalFeita(String lojaId, String vendaId) async {
+    final key = _devolucaoLocalPrefsKeyOrNull(lojaId, vendaId);
+    if (key == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, true);
+  }
 
   /// Hive: atualiza [Produto.updatedAt] ao persistir saldo após transação em [atualizarHiveAposTransacao].
   /// Mesmo critério do +/- na lista e da devolução: evita pull com snapshot remoto velho se Hive e nuvem desalinharem.
@@ -998,6 +1022,30 @@ class EstoqueTransactionService {
     }
   }
 
+  /// Indica se a devolução já foi feita neste dispositivo (idempotência local).
+  static Future<bool> devolucaoVendaJaAplicada(
+    String lojaId,
+    String vendaId,
+  ) async {
+    return _devolucaoLocalJaFeita(lojaId, vendaId);
+  }
+
+  /// Remove o marcador de idempotência local (ex.: após desfazer exclusão da venda).
+  static Future<void> removerMarcadorDevolucaoVenda(
+    String lojaId,
+    String vendaId,
+  ) async {
+    final key = _devolucaoLocalPrefsKeyOrNull(lojaId, vendaId);
+    if (key == null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+      debugPrint('[ESTOQUE-TX] Marcador devolução local removido key=$key');
+    } catch (e) {
+      debugPrint('[ESTOQUE-TX] Falha ao remover marcador devolução local: $e');
+    }
+  }
+
   /// Devolve estoque de múltiplos itens (cancelamento/desfazer venda).
   /// Atualiza estoque_produtos e produtos. Idempotente quando [vendaIdParaIdempotencia] informado.
   static Future<List<EstoqueTransactionResult>> devolverEstoqueTransactionBatch({
@@ -1007,15 +1055,12 @@ class EstoqueTransactionService {
   }) async {
     if (itens.isEmpty) return [];
 
-    if (vendaIdParaIdempotencia != null && vendaIdParaIdempotencia.trim().isNotEmpty) {
-      final devolucaoRef = _db
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('estoque_devolucao')
-          .doc(vendaIdParaIdempotencia.trim());
-      final snap = await devolucaoRef.get();
-      if (snap.exists && (snap.data()?['devolvido'] == true)) {
-        debugPrint('[ESTOQUE-TX] Devolução já aplicada (idempotente): vendaId=$vendaIdParaIdempotencia');
+    final vidTrim = (vendaIdParaIdempotencia ?? '').trim();
+    if (vidTrim.isNotEmpty) {
+      if (await _devolucaoLocalJaFeita(lojaId, vidTrim)) {
+        debugPrint(
+          '[ESTOQUE-TX] Devolução já aplicada (idempotente local): vendaId=$vidTrim',
+        );
         return [];
       }
     }
@@ -1052,25 +1097,8 @@ class EstoqueTransactionService {
       }
     }
 
-    return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
-      if (vendaIdParaIdempotencia != null && vendaIdParaIdempotencia.trim().isNotEmpty) {
-        final devolucaoRef = _db
-            .collection('lojas')
-            .doc(lojaId)
-            .collection('estoque_devolucao')
-            .doc(vendaIdParaIdempotencia.trim());
-        final snap = await transaction.get(devolucaoRef);
-        if (snap.exists && (snap.data()?['devolvido'] == true)) {
-          return [];
-        }
-        transaction.set(devolucaoRef, {
-          'devolvido': true,
-          'lojaId': lojaId,
-          'vendaId': vendaIdParaIdempotencia,
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-
+    final resultados =
+        await _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
       final updates = <({DocumentReference<Map<String, dynamic>> ref, DocumentReference<Map<String, dynamic>>? estoqueRef, Map<String, dynamic> updateData, EstoqueTransactionResult result})>[];
 
       for (final resolved in resolvedItems) {
@@ -1184,6 +1212,14 @@ class EstoqueTransactionService {
       const Duration(seconds: 25),
       onTimeout: () => throw TimeoutException('Transação de devolução demorou muito. Tente novamente.'),
     );
+
+    if (vidTrim.isNotEmpty) {
+      await _marcarDevolucaoLocalFeita(lojaId, vidTrim);
+      debugPrint(
+        '[ESTOQUE-TX] Idempotência devolução gravada localmente vendaId=$vidTrim',
+      );
+    }
+    return resultados;
   }
 
   /// Remove produto do catálogo (produtos e draft_produtos) quando estoque zerou.
@@ -1248,6 +1284,14 @@ class EstoqueTransactionService {
       touchProdutoUpdatedAtParaHivePosTransacao(produto);
       await produto.save();
       debugPrint('[ESTOQUE-TX] Hive atualizado: ${produto.nome}');
+    } else {
+      final slug = result.produtoSlug?.trim();
+      debugPrint(
+        '[ESTOQUE-TX-HIVE-MISS] Baixa Firestore aplicada, mas Hive local não encontrou produto para espelhar | '
+        'lojaId=$lojaId | productId=${result.produtoId} | slug=${slug ?? '(vazio)'} | nome=${result.produtoNome} | '
+        'tamanho=${tamanho.isEmpty ? '(vazio)' : tamanho} | cor=${cor.isEmpty ? '(vazio)' : cor} | '
+        'motivo=sem match por idFirebase/slug/nome na Box<Produto> desta loja',
+      );
     }
   }
 }

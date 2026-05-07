@@ -1932,8 +1932,24 @@ class _VendasScreenState extends State<VendasScreen>
             ),
           );
         }
-      } catch (e) {
-        if (mounted) _showSnackBar('Erro ao excluir venda: $e', isError: true);
+      } catch (e, st) {
+        if (e is FirebaseException) {
+          debugPrint(
+            '[VENDA-DELETE] etapa=erro type=FirebaseException code=${e.code} message=${e.message}',
+          );
+        } else {
+          debugPrint(
+            '[VENDA-DELETE] etapa=erro type=${e.runtimeType} erro=$e',
+          );
+        }
+        debugPrint('[VENDA-DELETE] etapa=erro stack=$st');
+        if (mounted) {
+          final msg = e is FirebaseException && e.code == 'permission-denied'
+              ? 'Sem permissão para concluir a exclusão (Firestore). '
+                  'Se o problema continuar, contacte o suporte. Detalhe: ${e.message}'
+              : 'Erro ao excluir venda: $e';
+          _showSnackBar(msg, isError: true);
+        }
       }
     }
   }

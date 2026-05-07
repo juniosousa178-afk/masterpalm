@@ -5143,58 +5143,70 @@ String _formatGradeTexto(Produto p) {
                         runSpacing: 4,
                         children: [
                           if (p.estoquePorTamanho.isEmpty)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildInfoChip(
-                                  Icons.inventory,
-                                  'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
-                                  p.quantidade == 0
-                                      ? _errorColor
-                                      : (p.quantidade < 3 ? _warningColor : _primaryColor),
-                                ),
-                                const SizedBox(width: 4),
-                                Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(6),
-                                    onTap: () => _ajustarQuantidade(p, -1),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: _primaryColor.withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(6),
+                            _ehKitVirtualPorReceitaExibicao(p)
+                                ? _buildInfoChip(
+                                    Icons.layers_outlined,
+                                    _chipKitReceitaLabel,
+                                    const Color(0xFF64748B),
+                                  )
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildInfoChip(
+                                        Icons.inventory,
+                                        'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
+                                        p.quantidade == 0
+                                            ? _errorColor
+                                            : (p.quantidade < 3 ? _warningColor : _primaryColor),
                                       ),
-                                      child: const Icon(Icons.remove, size: 14, color: _primaryColor),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 2),
-                                Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(6),
-                                    onTap: () => _ajustarQuantidade(p, 1),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: _successColor.withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(6),
+                                      const SizedBox(width: 4),
+                                      Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(6),
+                                          onTap: () => _ajustarQuantidade(p, -1),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: _primaryColor.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Icon(Icons.remove, size: 14, color: _primaryColor),
+                                          ),
+                                        ),
                                       ),
-                                      child: const Icon(Icons.add, size: 14, color: _successColor),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
+                                      const SizedBox(width: 2),
+                                      Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(6),
+                                          onTap: () => _ajustarQuantidade(p, 1),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: _successColor.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Icon(Icons.add, size: 14, color: _successColor),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
                           else
-                            _buildInfoChip(
-                              Icons.inventory,
-                              'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
-                              p.quantidade == 0
-                                  ? _errorColor
-                                  : (p.quantidade < 3 ? _warningColor : _primaryColor),
-                            ),
+                            _ehKitVirtualPorReceitaExibicao(p)
+                                ? _buildInfoChip(
+                                    Icons.layers_outlined,
+                                    _chipKitReceitaLabel,
+                                    const Color(0xFF64748B),
+                                  )
+                                : _buildInfoChip(
+                                    Icons.inventory,
+                                    'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
+                                    p.quantidade == 0
+                                        ? _errorColor
+                                        : (p.quantidade < 3 ? _warningColor : _primaryColor),
+                                  ),
                           if (gradeTexto != 'Único')
                             ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 150),
@@ -5539,6 +5551,15 @@ String _formatGradeTexto(Produto p) {
       ),
     );
   }
+
+  /// Combos/kits por receita: a baixa é nos componentes; não exibir [quantidade] do cadastro como estoque físico do kit.
+  bool _ehKitVirtualPorReceitaExibicao(Produto p) {
+    return p.ehCombo ||
+        (p.itensCombo != null && p.itensCombo!.isNotEmpty) ||
+        p.temComboConfigEfetivo;
+  }
+
+  static const String _chipKitReceitaLabel = 'Kit por receita · pelos itens';
 
   Widget _buildInfoChip(IconData icon, String text, Color color) {
     return Container(

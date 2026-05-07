@@ -882,14 +882,9 @@ class VendasService {
     await venda.delete();
   }
 
-  /// Executa devolução de estoque e exclusão do Firestore.
-  /// Usado pelo SoftDeleteService quando a exclusão se torna definitiva após 5 s.
-  /// Não altera vendasBox nem clientesBox (venda já está na lixeira).
-  ///
-  /// Se a devolução de estoque (incl. ajuste piso combo) falhar, propaga erro:
-  /// a exclusão definitiva deve ser abortada pelo chamador — não apagar Firestore
-  /// com estoque inconsistente.
-  static Future<void> executarExclusaoPermanente({
+  /// Devolve estoque ao remover venda (soft delete imediato ou exclusão permanente).
+  /// Idempotente por vendaId em [EstoqueTransactionService.devolverEstoqueTransactionBatch].
+  static Future<void> devolverEstoqueParaVendaRemovida({
     required Venda venda,
     required Box<Produto> produtosBox,
     required String lojaId,
@@ -899,7 +894,6 @@ class VendasService {
         : 'hive_${venda.key}';
     debugPrint('[VENDA_DELETE] devolucao_estoque_inicio vendaId=$vendaId');
 
-    // 1. Devolver produtos ao estoque (transacional, idempotente)
     var devolucaoResultsExclusao = <EstoqueTransactionResult>[];
     if (venda.itens != null && venda.itens!.isNotEmpty) {
       final (itensDevolucao, _, _) = VendaComboEstoqueExpansion.expandirCombos(
@@ -1058,8 +1052,90 @@ class VendasService {
     }
 
     debugPrint('[VENDA_DELETE] devolucao_estoque_sucesso vendaId=$vendaId');
+  }
 
-    // 2. Deletar do Firestore (somente após estoque + catálogo auxiliar OK)
+  /// Reaplica baixa de estoque após desfazer exclusão (devolução já tinha sido feita no soft delete).
+  static Future<void> reaplicarBaixaEstoquePosUndoExclusaoVenda({
+    required Venda venda,
+    required Box<Produto> produtosBox,
+    required String lojaId,
+  }) async {
+    final lid = lojaId.trim();
+    if (lid.isEmpty) return;
+    if (venda.itens == null || venda.itens!.isEmpty) {
+      debugPrint('[VENDA_UNDO] Sem itens estruturados; não reaplica baixa automática');
+      return;
+    }
+    final (itensParaBaixa, produtosEnc, _) =
+        VendaComboEstoqueExpansion.expandirCombos(
+      itens: venda.itens!,
+      produtosBox: produtosBox,
+      lojaId: lid,
+      itensComboSelecaoPorIndice: null,
+    );
+    VendaComboEstoqueExpansion.validarExpansaoParaBaixaFirestore(
+      itensParaEstoque: itensParaBaixa,
+      produtosEncontrados: produtosEnc,
+    );
+    final txItems = VendaComboEstoqueExpansion.montarTxItemsParaBaixaEstoque(
+      itensParaEstoque: itensParaBaixa,
+      produtosEncontrados: produtosEnc,
+    );
+    if (txItems.isEmpty) return;
+
+    final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+      lojaId: lid,
+      itens: txItems,
+    );
+    await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lid, txResults);
+    for (final result in txResults) {
+      await EstoqueTransactionService.atualizarHiveAposTransacao(
+        produtosBox: produtosBox,
+        lojaId: lid,
+        result: result,
+      );
+    }
+    final txCap = await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+      lojaId: lid,
+      produtosBox: produtosBox,
+      produtoIdsDebitadosNaVenda:
+          ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
+    );
+    await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+      lojaId: lid,
+      produtosBox: produtosBox,
+      resultadosPrincipais: txResults,
+      resultadosComboExtra: txCap,
+    );
+  }
+
+  /// Executa devolução de estoque e exclusão do Firestore.
+  /// Usado pelo SoftDeleteService quando a exclusão se torna definitiva após 5 s.
+  /// Não altera vendasBox nem clientesBox (venda já está na lixeira).
+  ///
+  /// Se a devolução de estoque (incl. ajuste piso combo) falhar, propaga erro:
+  /// a exclusão definitiva deve ser abortada pelo chamador — não apagar Firestore
+  /// com estoque inconsistente.
+  static Future<void> executarExclusaoPermanente({
+    required Venda venda,
+    required Box<Produto> produtosBox,
+    required String lojaId,
+  }) async {
+    final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
+        ? venda.idFirebase!.trim()
+        : 'hive_${venda.key}';
+    if (!await EstoqueTransactionService.devolucaoVendaJaAplicada(lojaId, vendaId)) {
+      await devolverEstoqueParaVendaRemovida(
+        venda: venda,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+      );
+    } else {
+      debugPrint(
+        '[VENDA_DELETE] devolucao_ja_aplicada_skip_permanente vendaId=$vendaId',
+      );
+    }
+
     if (venda.idFirebase != null && venda.idFirebase!.isNotEmpty) {
       await VendasFirestoreService.deleteVenda(venda.idFirebase!, lojaId: lojaId);
     }
