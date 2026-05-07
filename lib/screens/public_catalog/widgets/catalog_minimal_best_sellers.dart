@@ -76,7 +76,9 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
     Navigator.of(context)
         .push(
       MaterialPageRoute(
-        builder: (_) => CatalogProductDetailScreen.fromProdutoMap(
+        builder: (_) => catalogReplayOpenedTheme(
+          context,
+          CatalogProductDetailScreen.fromProdutoMap(
           p: p,
           lojaId: lojaId,
           onAdd: onAdd,
@@ -89,6 +91,7 @@ class CatalogMinimalBestSellersSection extends StatelessWidget {
           todosProdutos: todosProdutos,
           initialCatalogExtraValor: catalogInitialExtraValor,
           onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
+        ),
         ),
       ),
     )

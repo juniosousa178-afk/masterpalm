@@ -501,6 +501,73 @@ String catalogPrimaryProductImageUrl(Map<String, dynamic> p) {
   return selectCatalogPrimaryImageUrlFromProdutoMap(p);
 }
 
+/// Normaliza texto de categoria/subcategoria para sugestões do detalhe.
+String catalogNormCatSub(dynamic v) =>
+    (v ?? '').toString().trim().toLowerCase();
+
+/// Sugestões com dados já em memória: prioriza mesma subcategoria, depois mesma categoria.
+List<Map<String, dynamic>> catalogSugestoesRelacionadasParaDetalhe({
+  required List<Map<String, dynamic>> fonteCompletaCatalogo,
+  required Map<String, dynamic> produtoAtual,
+  int limite = 8,
+}) {
+  if (fonteCompletaCatalogo.isEmpty || limite <= 0) return const [];
+  final idAtual = safeStr(produtoAtual['id']);
+  final cat = catalogNormCatSub(
+      produtoAtual['categoria'] ?? produtoAtual['categoriaId']);
+  final sub = catalogNormCatSub(
+      produtoAtual['subcategoria'] ?? produtoAtual['subcategoriaId']);
+
+  final outros = fonteCompletaCatalogo
+      .where((p) => safeStr(p['id']).isNotEmpty && safeStr(p['id']) != idAtual)
+      .toList();
+
+  bool temEstoquePositivo(Map<String, dynamic> p) =>
+      safeInt(p['quantidade']) > 0;
+
+  bool mesmaSub(Map<String, dynamic> p) {
+    final s =
+        catalogNormCatSub(p['subcategoria'] ?? p['subcategoriaId']);
+    return sub.isNotEmpty && s.isNotEmpty && s == sub;
+  }
+
+  bool mesmaCat(Map<String, dynamic> p) {
+    final c =
+        catalogNormCatSub(p['categoria'] ?? p['categoriaId']);
+    return cat.isNotEmpty && c.isNotEmpty && c == cat;
+  }
+
+  final vista = <String>{};
+  final saida = <Map<String, dynamic>>[];
+
+  void addAll(
+    Iterable<Map<String, dynamic>> candidatos,
+    bool Function(Map<String, dynamic>) pred,
+  ) {
+    for (final p in candidatos) {
+      if (saida.length >= limite) return;
+      final id = safeStr(p['id']);
+      if (!temEstoquePositivo(p) || !pred(p) || !vista.add(id)) continue;
+      saida.add(p);
+    }
+  }
+
+  addAll(outros, mesmaSub);
+  addAll(outros, mesmaCat);
+
+  if (saida.length < limite) {
+    for (final p in outros) {
+      if (saida.length >= limite) break;
+      final id = safeStr(p['id']);
+      if (temEstoquePositivo(p) && vista.add(id)) {
+        saida.add(p);
+      }
+    }
+  }
+
+  return saida;
+}
+
 // ===================================================================
 // BANNER HERO (CATÁLOGO MINIMALISTA)
 // ===================================================================

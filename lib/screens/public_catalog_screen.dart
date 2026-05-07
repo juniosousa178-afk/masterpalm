@@ -79,7 +79,6 @@ import 'public_catalog/widgets/catalog_skeleton_grid.dart';
 import 'public_catalog/widgets/catalog_minimalist_widgets.dart';
 import 'public_catalog/widgets/catalog_minimal_best_sellers.dart';
 import 'public_catalog/widgets/catalog_product_detail_screen.dart';
-import 'public_catalog/widgets/catalog_product_details_sheet.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import 'public_catalog/catalog_sobre_loja_screen.dart';
@@ -1814,7 +1813,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   void _tryHandleInitialProdutoDeepLink({
     required List<Map<String, dynamic>> produtos,
-    required bool useMinimalLayout,
   }) {
     if (_initialProdutoHandled) return;
     final target = _pendingInitialProdutoId?.trim();
@@ -1846,18 +1844,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _syncCatalogQueryToBrowserUri();
       }
       if (productId.isNotEmpty) _onProductViewed(productId);
-      Map<String, int>? mapEstoque(dynamic raw) {
-        if (raw is! Map) return null;
-        final out = <String, int>{};
-        raw.forEach((k, v) {
-          final n = v is num ? v.toInt() : int.tryParse('$v');
-          if (n != null && n > 0) out[k.toString()] = n;
-        });
-        return out.isEmpty ? null : out;
-      }
-
-      final estoqueTam = mapEstoque(p['estoquePorTamanho']);
-      final estoqueCor = mapEstoque(p['estoquePorCor']);
 
       void onDetailClosed() {
         if (!kIsWeb) return;
@@ -1865,104 +1851,40 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _syncCatalogQueryToBrowserUri();
       }
 
-      if (useMinimalLayout) {
-        Navigator.of(context)
-            .push(
-              MaterialPageRoute(
-                builder: (_) => CatalogProductDetailScreen(
-                  id: productId,
-                  name: safeStr(p['nome'], 'Produto'),
-                  descricao: safeStr(p['descricao']),
-                  slug: safeStr(p['slug']),
-                  peso: safeDouble(p['peso']),
-                  tipoEmbalagem: safeStr(p['tipoEmbalagem'], 'padrao'),
-                  price: safeDouble(p['preco']),
-                  priceMin:
-                      p['priceMin'] != null ? safeDouble(p['priceMin']) : null,
-                  priceMax:
-                      p['priceMax'] != null ? safeDouble(p['priceMax']) : null,
-                  precoPorTamanho:
-                      catalogPrecoPorTamanhoFromDynamic(p['precoPorTamanho']),
-                  precoOriginal: p['emPromocao'] == true
-                      ? safeDouble(p['precoFinal'])
-                      : null,
-                  emPromocao: safeBool(p['emPromocao']),
-                  percentualPromo: safeDouble(p['percentualPromo']),
-                  valorPromo: safeDouble(p['valorPromo']),
-                  imagens: safeListString(p['imagens']),
-                  quantidade: safeInt(p['quantidade']),
-                  estoquePorTamanho: estoqueTam,
-                  estoquePorCor: estoqueCor,
-                  variacoes: (p['variacoes'] != null &&
-                          asMapDeep(p['variacoes']).isNotEmpty)
-                      ? asMapDeep(p['variacoes'])
-                      : null,
-                  variacoesExtraTipo: (p['variacoesExtraTipo'] != null &&
-                          asMapDeep(p['variacoesExtraTipo']).isNotEmpty)
-                      ? asMapDeep(p['variacoesExtraTipo'])
-                      : null,
-                  prazoEntrega: null,
-                  percentualDescontoPix: safeDouble(p['percentualDescontoPix']),
-                  divideSemJuros: safeBool(p['divideSemJuros']),
-                  maxParcelas:
-                      safeInt(p['maxParcelasSemJuros'], 12).clamp(1, 24),
-                  catalogShareUrl: CatalogShareService.buildUrlWithParams(
-                    _publicCatalogShareBase(),
-                    ref: widget.vendedorRef,
-                    indicacao: widget.indicacaoClienteRef,
-                    prod: safeStr(p['slug']).isNotEmpty
-                        ? safeStr(p['slug'])
-                        : productId,
-                  ),
-                  lojaId: lojaId,
-                  initialCatalogExtraValor: _filtroVariacaoExtra,
-                  onCatalogVariacaoExtraChanged:
-                      _onCatalogVariacaoExtraFromProductUi,
-                  onAdd: (it) => _addToCart(it, produtos),
-                  onAbrirCarrinho: null,
+      final lid = _resolvedLojaId ?? widget.lojaId;
+
+      Navigator.of(context)
+          .push(
+            MaterialPageRoute(
+              builder: (_) => catalogReplayOpenedTheme(
+                context,
+                CatalogProductDetailScreen.fromProdutoMap(
+                p: p,
+                lojaId: lid,
+                onAdd: (it) => _addToCart(it, produtos),
+                onAbrirCarrinho: null,
+                catalogShareUrl: CatalogShareService.buildUrlWithParams(
+                  _publicCatalogShareBase(),
+                  ref: widget.vendedorRef,
+                  indicacao: widget.indicacaoClienteRef,
+                  prod: safeStr(p['slug']).isNotEmpty
+                      ? safeStr(p['slug'])
+                      : productId,
                 ),
+                nomeLoja: null,
+                contatoWhatsapp: null,
+                politicaFrete: null,
+                prazoEntregaTexto: null,
+                todosProdutos: produtos,
+                listaCatalogoMemoria: produtos,
+                initialCatalogExtraValor: _filtroVariacaoExtra,
+                onCatalogVariacaoExtraChanged:
+                    _onCatalogVariacaoExtraFromProductUi,
               ),
-            )
-            .then((_) => onDetailClosed());
-      } else {
-        showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => CatalogProductDetailsSheet(
-            name: safeStr(p['nome'], 'Produto'),
-            descricao: safeStr(p['descricao']),
-            price: safeDouble(p['preco']),
-            priceMin: p['priceMin'] != null ? safeDouble(p['priceMin']) : null,
-            priceMax: p['priceMax'] != null ? safeDouble(p['priceMax']) : null,
-            precoOriginal:
-                p['emPromocao'] == true ? safeDouble(p['precoFinal']) : null,
-            emPromocao: safeBool(p['emPromocao']),
-            percentualPromo: safeDouble(p['percentualPromo']),
-            valorPromo: safeDouble(p['valorPromo']),
-            imagens: safeListString(p['imagens']),
-            quantidade: safeInt(p['quantidade']),
-            estoquePorTamanho: estoqueTam,
-            estoquePorCor: estoqueCor,
-            variacoes:
-                (p['variacoes'] != null && asMapDeep(p['variacoes']).isNotEmpty)
-                    ? asMapDeep(p['variacoes'])
-                    : null,
-            catalogShareUrl: CatalogShareService.buildUrlWithParams(
-              _publicCatalogShareBase(),
-              ref: widget.vendedorRef,
-              indicacao: widget.indicacaoClienteRef,
-              prod: safeStr(p['slug']).isNotEmpty
-                  ? safeStr(p['slug'])
-                  : productId,
             ),
-            prazoEntrega: null,
-            percentualDescontoPix: safeDouble(p['percentualDescontoPix']),
-            itensCombo: null,
-            lojaId: lojaId,
-          ),
-        ).then((_) => onDetailClosed());
-      }
+            ),
+          )
+          .then((_) => onDetailClosed());
     });
   }
 
@@ -5604,7 +5526,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         : gridMobileCols;
                     _tryHandleInitialProdutoDeepLink(
                       produtos: produtos,
-                      useMinimalLayout: useMinimalLayout,
                     );
                     final promoBarCfg = mpMapDyn(cfg['promoBar']);
                     final minimalSearchCfg = mpMapDyn(cfg['minimalSearch']);
