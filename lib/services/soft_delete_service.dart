@@ -7,7 +7,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -17,10 +18,12 @@ import '../core/logger.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
+import '../models/venda_item.dart';
 import 'produto_exclusao_remota_service.dart';
 import 'produto_pull_skip_guard.dart';
 import 'produtos_firestore_service.dart';
 import 'clientes_firestore_service.dart';
+import 'estoque_transaction_service.dart';
 import 'vendas_firestore_service.dart';
 import 'vendas_service.dart';
 
@@ -86,6 +89,65 @@ class _PendingRecord {
   }
 
   DateTime get deleteAtDt => DateTime.parse(deleteAt);
+}
+
+/// Cópia profunda de [VendaItem] (não é [HiveObject]; clonar evita partilhar referências mutáveis).
+List<VendaItem>? _cloneVendaItens(List<VendaItem>? itens) {
+  if (itens == null) return null;
+  return itens
+      .map(
+        (e) => VendaItem(
+          produtoNome: e.produtoNome,
+          quantidade: e.quantidade,
+          precoUnitario: e.precoUnitario,
+          tamanho: e.tamanho,
+          lojaId: e.lojaId,
+          cor: e.cor,
+          productId: e.productId,
+          variacaoExtraResumo: e.variacaoExtraResumo,
+          extraValor: e.extraValor,
+          custoUnitario: e.custoUnitario,
+          origemCustoItem: e.origemCustoItem,
+        ),
+      )
+      .toList();
+}
+
+/// Nova instância de [Venda] para gravar noutra box/key — nunca reutilizar o mesmo [HiveObject].
+Venda _cloneVendaParaHive(Venda v) {
+  return Venda(
+    clienteNome: v.clienteNome,
+    produtosDescricao: v.produtosDescricao,
+    quantidade: v.quantidade,
+    preco: v.preco,
+    total: v.total,
+    formasPagamento: v.formasPagamento,
+    data: v.data,
+    tamanho: v.tamanho,
+    desconto: v.desconto,
+    frete: v.frete,
+    vendedor: v.vendedor,
+    observacao: v.observacao,
+    itens: _cloneVendaItens(v.itens),
+    pagamentoDinheiro: v.pagamentoDinheiro,
+    pagamentoPix: v.pagamentoPix,
+    pagamentoCartao: v.pagamentoCartao,
+    taxas: v.taxas,
+    custoProdutos: v.custoProdutos,
+    descontoValor: v.descontoValor,
+    lojaId: v.lojaId,
+    idFirebase: v.idFirebase,
+    clienteId: v.clienteId,
+    statusVenda: v.statusVenda,
+    cancelada: v.cancelada,
+    estornada: v.estornada,
+    origemVenda: v.origemVenda,
+    paymentId: v.paymentId,
+    orderId: v.orderId,
+    prePedidoId: v.prePedidoId,
+    pedidoId: v.pedidoId,
+    origemCusto: v.origemCusto,
+  );
 }
 
 class SoftDeleteService {
@@ -226,26 +288,66 @@ class SoftDeleteService {
     final key = venda.key as int?;
     if (key == null) return null;
 
+    debugPrint('[VENDA-DELETE] etapa=remover_contas_start lojaId=$lojaId vendaKey=$key');
     await VendasService.removerContasReceberVinculadasAVenda(
       lojaId: lojaId,
       vendaKey: key,
     );
+    debugPrint('[VENDA-DELETE] etapa=remover_contas_ok');
+
+    debugPrint('[VENDA-DELETE] etapa=devolver_estoque_start');
+    final produtosBox =
+        await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
+    try {
+      await VendasService.devolverEstoqueParaVendaRemovida(
+        venda: venda,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+      );
+    } catch (e, st) {
+      if (e is FirebaseException) {
+        debugPrint(
+          '[VENDA-DELETE] etapa=erro type=FirebaseException code=${e.code} message=${e.message}',
+        );
+      } else {
+        debugPrint(
+          '[VENDA-DELETE] etapa=erro type=${e.runtimeType} erro=$e',
+        );
+      }
+      debugPrint('[VENDA-DELETE] etapa=erro stack=$st');
+      rethrow;
+    }
+    debugPrint('[VENDA-DELETE] etapa=devolver_estoque_ok');
 
     final idFb = (venda.idFirebase ?? '').trim();
     if (idFb.isNotEmpty) {
+      debugPrint('[VENDA-DELETE] etapa=delete_firestore_start idFb=$idFb');
       try {
         await VendasFirestoreService.deleteVenda(idFb, lojaId: lojaId);
+        debugPrint('[VENDA-DELETE] etapa=delete_firestore_ok');
       } catch (e) {
+        if (e is FirebaseException) {
+          debugPrint(
+            '[VENDA-DELETE] etapa=erro type=FirebaseException code=${e.code} message=${e.message}',
+          );
+        } else {
+          debugPrint(
+            '[VENDA-DELETE] etapa=erro type=${e.runtimeType} erro=$e',
+          );
+        }
         logW(
           '[SOFT-DELETE] Falha ao remover venda do Firestore ao excluir (type=${e.runtimeType})',
         );
       }
+    } else {
+      debugPrint('[VENDA-DELETE] etapa=delete_firestore_skip (sem idFirebase)');
     }
 
+    debugPrint('[VENDA-DELETE] etapa=hive_delete_start');
     final trashBox = await _trashVendasBox();
     venda.lojaId = lojaId;
-    await vendasBox.delete(key);
-    final trashKey = await trashBox.add(venda);
+    final vendaLixeira = _cloneVendaParaHive(venda);
+    vendaLixeira.lojaId = lojaId;
 
     Cliente? cliente;
     try {
@@ -263,6 +365,9 @@ class SoftDeleteService {
       } catch (_) {}
     }
 
+    await vendasBox.delete(key);
+    final trashKey = await trashBox.add(vendaLixeira);
+
     final id = const Uuid().v4();
     final deleteAt = DateTime.now().add(_undoWindow);
     _pending.add(_PendingRecord(
@@ -276,6 +381,7 @@ class SoftDeleteService {
     ));
     await _save();
     _startTimerIfNeeded();
+    debugPrint('[VENDA-DELETE] etapa=schedule_concluido undoId=$id');
     return id;
   }
 
@@ -377,24 +483,25 @@ class SoftDeleteService {
       }
       if (r.type == 'venda') {
         final trashBox = await _trashVendasBox();
-        final venda = trashBox.get(r.trashKey);
-        if (venda == null) {
+        final vendaNaLixeira = trashBox.get(r.trashKey);
+        if (vendaNaLixeira == null) {
           logW('⚠️ [SOFT-DELETE] undo: venda ausente na lixeira (trashKey=${r.trashKey})');
           return false;
         }
+        final vendaParaRestaurar = _cloneVendaParaHive(vendaNaLixeira);
+        vendaParaRestaurar.lojaId = r.lojaId;
         final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(r.lojaId));
         final clientesBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(r.lojaId));
-        venda.lojaId = r.lojaId;
         await trashBox.delete(r.trashKey);
         try {
-          await vendasBox.add(venda);
+          await vendasBox.add(vendaParaRestaurar);
         } catch (e, st) {
           logE(
             '❌ [SOFT-DELETE] Falha ao restaurar venda na box; recolocando na lixeira (type=${e.runtimeType})',
             error: e,
             st: st,
           );
-          final nk = await trashBox.add(venda);
+          final nk = await trashBox.add(_cloneVendaParaHive(vendaParaRestaurar));
           _pending[idx] = _PendingRecord(
             id: r.id,
             type: r.type,
@@ -410,19 +517,39 @@ class SoftDeleteService {
         Cliente? cliente;
         try {
           cliente = clientesBox.values.firstWhere(
-            (c) => c.lojaId == r.lojaId && c.nome == venda.clienteNome,
+            (c) => c.lojaId == r.lojaId && c.nome == vendaParaRestaurar.clienteNome,
           );
         } catch (_) {
           cliente = null;
         }
         if (cliente != null) {
-          cliente.adicionarHistorico(venda, lojaId: r.lojaId);
+          cliente.adicionarHistorico(vendaParaRestaurar, lojaId: r.lojaId);
           try {
             await ClientesFirestoreService.syncCliente(cliente, lojaId: r.lojaId);
           } catch (_) {}
         }
         try {
-          await VendasFirestoreService.syncVenda(venda, lojaId: r.lojaId);
+          final produtosBoxUndo =
+              await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
+          final vid = (vendaParaRestaurar.idFirebase ?? '').trim().isNotEmpty
+              ? vendaParaRestaurar.idFirebase!.trim()
+              : 'hive_${vendaParaRestaurar.key}';
+          await VendasService.reaplicarBaixaEstoquePosUndoExclusaoVenda(
+            venda: vendaParaRestaurar,
+            produtosBox: produtosBoxUndo,
+            lojaId: r.lojaId,
+          );
+          await EstoqueTransactionService.removerMarcadorDevolucaoVenda(
+            r.lojaId,
+            vid,
+          );
+        } catch (e) {
+          logW(
+            '[SOFT-DELETE] undo venda: reaplicar baixa ou marcador falhou (type=${e.runtimeType})',
+          );
+        }
+        try {
+          await VendasFirestoreService.syncVenda(vendaParaRestaurar, lojaId: r.lojaId);
         } catch (e) {
           logW(
             '[SOFT-DELETE] undo venda: sync Firestore falhou (type=${e.runtimeType})',
@@ -430,7 +557,7 @@ class SoftDeleteService {
         }
         try {
           await VendasService.recriarContaReceberFiadoAposUndoSeAplicavel(
-            venda: venda,
+            venda: vendaParaRestaurar,
             lojaId: r.lojaId,
           );
         } catch (e) {

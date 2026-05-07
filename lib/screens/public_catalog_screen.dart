@@ -535,10 +535,28 @@ void _precoMinMaxProduto(Map<String, dynamic> p, List<double> outMinMax) {
 }
 
 /// Aplica preço do combo = soma dos produtos do kit com desconto (valor ou %). Mais atrativo = menor preço final.
+///
+/// Por defeito **não** substitui o preço já vindo do estoque/publicação (`precoFinal` / `preco`).
+/// Só recalcula pela soma quando não há preço cadastrado válido ou quando o documento pede
+/// explicitamente com `precoComboCalcularPelaSoma` / `precoComboUsarSomaItens` == true.
 void _aplicarPrecoComboFromSoma(List<Map<String, dynamic>> produtos) {
   for (final p in produtos) {
     final itens = p['itensCombo'];
     if (itens is! List || itens.isEmpty) continue;
+
+    final forcarSoma = p['precoComboCalcularPelaSoma'] == true ||
+        p['precoComboUsarSomaItens'] == true;
+    if (!forcarSoma) {
+      final pf = p['precoFinal'];
+      final pr = p['preco'];
+      final baseEstoque = (pf is num && pf.toDouble() > 0.009)
+          ? pf.toDouble()
+          : ((pr is num) ? pr.toDouble() : 0.0);
+      if (baseEstoque > 0.009) {
+        continue;
+      }
+    }
+
     double somaMin = 0, somaMax = 0;
     for (final e in itens) {
       if (e is! Map) continue;
