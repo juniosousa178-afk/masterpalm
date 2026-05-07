@@ -1,6 +1,8 @@
 // Expansão de combo e montagem da transação de estoque — mesma regra que
 // [VendasService.registrarVendaMulti] (nova venda / PDV). Reutilizado no pós-pagamento do pré-pedido.
 
+import 'dart:convert';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
@@ -284,5 +286,55 @@ class VendaComboEstoqueExpansion {
       });
     }
     return txItems;
+  }
+
+  /// Persistência em [Venda.itensComboSelecaoJson] (Hive/Firestore).
+  static String? serializeItensComboSelecaoPorIndice(
+    Map<int, List<Map<String, dynamic>>>? m,
+  ) {
+    if (m == null || m.isEmpty) return null;
+    final jsonMap = <String, dynamic>{};
+    for (final e in m.entries) {
+      if (e.value.isEmpty) continue;
+      jsonMap['${e.key}'] = e.value;
+    }
+    if (jsonMap.isEmpty) return null;
+    try {
+      return jsonEncode(jsonMap);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Leitura de [Venda.itensComboSelecaoJson] para o mesmo mapa usado em [expandirCombos].
+  static Map<int, List<Map<String, dynamic>>>? parseItensComboSelecaoPorIndiceJson(
+    String? raw,
+  ) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final out = <int, List<Map<String, dynamic>>>{};
+      for (final e in decoded.entries) {
+        final idx = int.tryParse(e.key.toString());
+        if (idx == null) continue;
+        final list = e.value;
+        if (list is! List) continue;
+        final segura = <Map<String, dynamic>>[];
+        for (final item in list) {
+          if (item is Map) {
+            segura.add(
+              Map<String, dynamic>.from(
+                item.map((k, v) => MapEntry(k.toString(), v)),
+              ),
+            );
+          }
+        }
+        if (segura.isNotEmpty) out[idx] = segura;
+      }
+      return out.isEmpty ? null : out;
+    } catch (_) {
+      return null;
+    }
   }
 }

@@ -1061,6 +1061,9 @@ class EstoqueTransactionService {
         debugPrint(
           '[ESTOQUE-TX] Devolução já aplicada (idempotente local): vendaId=$vidTrim',
         );
+        debugPrint(
+          '[COMBO-DEVOLUCAO-RESULT] vendaId=$vidTrim count=0 ids= motivo=idempotencia_local',
+        );
         return [];
       }
     }
@@ -1074,7 +1077,15 @@ class EstoqueTransactionService {
 
     final resolvedItems = await _resolverItensMescladosDevolucao(lojaId, itens);
 
-    if (resolvedItems.isEmpty) return [];
+    if (resolvedItems.isEmpty) {
+      if (itens.isNotEmpty) {
+        throw StateError(
+          '[ESTOQUE-TX] Devolução: nenhum documento resolvido para ${itens.length} item(ns). '
+          'Verifique productId, slug e nome nos logs [COMBO-DEVOLUCAO-ITEM].',
+        );
+      }
+      return [];
+    }
 
     await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
     for (final r in resolvedItems) {
@@ -1213,7 +1224,17 @@ class EstoqueTransactionService {
       onTimeout: () => throw TimeoutException('Transação de devolução demorou muito. Tente novamente.'),
     );
 
-    if (vidTrim.isNotEmpty) {
+    if (resultados.isEmpty && resolvedItems.isNotEmpty) {
+      debugPrint(
+        '[COMBO-DEVOLUCAO-RESULT] vendaId=$vidTrim count=0 ids= motivo=nenhum_snapshot_atualizado',
+      );
+      throw StateError(
+        '[ESTOQUE-TX] Devolução: nenhum documento atualizado (snapshots inexistentes?). '
+        'Itens resolvidos: ${resolvedItems.length}.',
+      );
+    }
+
+    if (vidTrim.isNotEmpty && resultados.isNotEmpty) {
       await _marcarDevolucaoLocalFeita(lojaId, vidTrim);
       debugPrint(
         '[ESTOQUE-TX] Idempotência devolução gravada localmente vendaId=$vidTrim',

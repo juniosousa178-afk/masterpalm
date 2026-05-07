@@ -82,6 +82,10 @@ class VendasFirestoreService {
       origemCusto: VendaOrigemCusto.normalizarOuNull(
         (data['origemCusto'] as String?)?.trim(),
       ),
+      itensComboSelecaoJson: () {
+        final s = (data['itensComboSelecaoJson'] ?? '').toString().trim();
+        return s.isEmpty ? null : s;
+      }(),
     );
   }
 
@@ -246,6 +250,9 @@ class VendasFirestoreService {
           'origemVenda': venda.origemVenda!.trim(),
         if (venda.origemCusto != null && venda.origemCusto!.trim().isNotEmpty)
           'origemCusto': venda.origemCusto!.trim(),
+        if (venda.itensComboSelecaoJson != null &&
+            venda.itensComboSelecaoJson!.trim().isNotEmpty)
+          'itensComboSelecaoJson': venda.itensComboSelecaoJson!.trim(),
         if (venda.statusVenda != null && venda.statusVenda!.trim().isNotEmpty)
           'statusVenda': venda.statusVenda!.trim(),
         'cancelada': venda.cancelada,

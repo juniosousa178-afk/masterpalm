@@ -113,6 +113,11 @@ class Venda extends HiveObject {
   @HiveField(30)
   String? origemCusto;
 
+  /// JSON: mapa índice da linha → lista de itens da receita/seleção do combo no momento da venda.
+  /// Usado na devolução de estoque (kit virtual baixa só componentes).
+  @HiveField(31)
+  String? itensComboSelecaoJson;
+
   Venda({
     required this.clienteNome,
     required this.produtosDescricao,
@@ -145,6 +150,7 @@ class Venda extends HiveObject {
     this.prePedidoId,
     this.pedidoId,
     this.origemCusto,
+    this.itensComboSelecaoJson,
   });
 
   /// Itens da venda (nunca null, fallback para [] em vendas antigas)

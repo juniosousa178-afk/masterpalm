@@ -147,6 +147,7 @@ Venda _cloneVendaParaHive(Venda v) {
     prePedidoId: v.prePedidoId,
     pedidoId: v.pedidoId,
     origemCusto: v.origemCusto,
+    itensComboSelecaoJson: v.itensComboSelecaoJson,
   );
 }
 

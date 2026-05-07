@@ -201,6 +201,201 @@ class VendasService {
     return null;
   }
 
+  static bool _vendaPareceIncluirKitOuComboReceita({
+    required List<VendaItem> itens,
+    required Box<Produto> produtosBox,
+    required String lojaId,
+  }) {
+    for (final it in itens) {
+      final p = encontrarProdutoNoEstoque(
+        produtosBox: produtosBox,
+        productId: it.productId,
+        nome: it.produtoNome,
+        lojaId: lojaId,
+      );
+      if (p == null) continue;
+      if (p.ehCombo ||
+          p.temComboConfigEfetivo ||
+          (p.itensCombo != null && p.itensCombo!.isNotEmpty)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Mapas para [EstoqueTransactionService.devolverEstoqueTransactionBatch]: só **componentes**;
+  /// nunca o produto kit virtual (cabeçalho com `linhaContaCustoMercadoria == false` ou `ehCombo`).
+  static List<Map<String, dynamic>> _montarItensFirestoreDevolucaoAgrupados({
+    required Venda venda,
+    required Box<Produto> produtosBox,
+    required String lojaId,
+    required String vendaIdLog,
+  }) {
+    final itensVenda = venda.itens;
+    if (itensVenda == null || itensVenda.isEmpty) return [];
+
+    final rawJson = venda.itensComboSelecaoJson;
+    final selecaoPersistida =
+        VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(
+      rawJson,
+    );
+    final snapKeys = selecaoPersistida?.keys.toList() ?? <int>[];
+    final jsonVazio = rawJson == null || rawJson.trim().isEmpty;
+    debugPrint(
+      '[COMBO-DEVOLUCAO] vendaId=$vendaIdLog json_vazio=$jsonVazio keys=$snapKeys',
+    );
+    if (!jsonVazio && selecaoPersistida == null) {
+      debugPrint(
+        '[COMBO-DEVOLUCAO] vendaId=$vendaIdLog aviso=json_presente_mas_parse_falhou',
+      );
+    }
+
+    final (itensDevolucao, produtosEnc, linhaFlags) =
+        VendaComboEstoqueExpansion.expandirCombos(
+      itens: itensVenda,
+      produtosBox: produtosBox,
+      lojaId: lojaId,
+      itensComboSelecaoPorIndice: selecaoPersistida,
+    );
+
+    final Map<String,
+            ({
+              String? productId,
+              String? slug,
+              String nomeOriginal,
+              String tam,
+              String cor,
+              String extra,
+              int qtd
+            })>
+        agrupado = {};
+
+    for (var i = 0; i < itensDevolucao.length; i++) {
+      if (i >= linhaFlags.length || i >= produtosEnc.length) break;
+      if (!linhaFlags[i]) {
+        debugPrint(
+          '[COMBO-DEVOLUCAO] vendaId=$vendaIdLog item=$i tipo=cabecalho_kit_skip nome=${itensDevolucao[i].produtoNome}',
+        );
+        continue;
+      }
+      if (produtosEnc[i].ehCombo) {
+        debugPrint(
+          '[COMBO-DEVOLUCAO] vendaId=$vendaIdLog item=$i tipo=produto_combo_skip nome=${produtosEnc[i].nome}',
+        );
+        continue;
+      }
+      final it = itensDevolucao[i];
+      final pComp = produtosEnc[i];
+      final pidLog =
+          (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : pComp.idFirebase.trim();
+      debugPrint(
+        '[COMBO-DEVOLUCAO] vendaId=$vendaIdLog item=$i tipo=componente produtoId=$pidLog nome=${it.produtoNome} qtd=${it.quantidade}',
+      );
+      final pid =
+          (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
+      final slugComp = pComp.slug.trim().isNotEmpty ? pComp.slug.trim() : null;
+      final nomeLower = it.produtoNome.trim().toLowerCase();
+      final nomeOriginal = it.produtoNome.trim();
+      final tam = it.tamanho.trim();
+      final cor = it.cor.trim();
+      final extra = it.extraValor.trim();
+      final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor\x00$extra';
+      final existing = agrupado[key];
+      if (existing != null) {
+        agrupado[key] = (
+          productId: existing.productId,
+          slug: existing.slug ?? slugComp,
+          nomeOriginal: existing.nomeOriginal,
+          tam: existing.tam,
+          cor: existing.cor,
+          extra: existing.extra,
+          qtd: existing.qtd + it.quantidade,
+        );
+      } else {
+        agrupado[key] = (
+          productId: pid,
+          slug: slugComp,
+          nomeOriginal: nomeOriginal,
+          tam: tam,
+          cor: cor,
+          extra: extra,
+          qtd: it.quantidade,
+        );
+      }
+    }
+
+    final maps = agrupado.entries
+        .where((e) => e.value.qtd > 0)
+        .map(
+          (e) => {
+            'productId': e.value.productId,
+            if (e.value.slug != null && e.value.slug!.trim().isNotEmpty)
+              'slug': e.value.slug!.trim(),
+            'nome': e.value.nomeOriginal,
+            'quantidade': e.value.qtd,
+            'tamanho': e.value.tam,
+            'cor': e.value.cor,
+            if (e.value.extra.isNotEmpty) 'extraValor': e.value.extra,
+          },
+        )
+        .toList();
+
+    debugPrint(
+      '[COMBO-DEVOLUCAO] vendaId=$vendaIdLog componentes_count=${maps.length}',
+    );
+
+    if (maps.isEmpty &&
+        _vendaPareceIncluirKitOuComboReceita(
+          itens: itensVenda,
+          produtosBox: produtosBox,
+          lojaId: lojaId,
+        )) {
+      debugPrint(
+        '[COMBO-DEVOLUCAO] sem_componentes motivo=expansao_filtrou_tudo_ou_receita_indisponivel vendaId=$vendaIdLog',
+      );
+      throw StateError(
+        'Devolução de estoque do kit: não há linhas de componentes para devolver. '
+        'Sincronize o app ou verifique se a receita do combo ainda existe no cadastro.',
+      );
+    }
+
+    return maps;
+  }
+
+  /// Logs [COMBO-DEVOLUCAO-ITEM] / [COMBO-DEVOLUCAO-RESULT]; falha se `count==0` sem idempotência prévia.
+  static Future<List<EstoqueTransactionResult>> _devolverEstoqueComLogsCombo({
+    required String lojaId,
+    required String vendaId,
+    required List<Map<String, dynamic>> itens,
+  }) async {
+    for (final m in itens) {
+      debugPrint(
+        '[COMBO-DEVOLUCAO-ITEM] productId=${m['productId']} slug=${m['slug']} nome=${m['nome']} qtd=${m['quantidade']}',
+      );
+    }
+    final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+      lojaId: lojaId,
+      itens: itens,
+      vendaIdParaIdempotencia: vendaId,
+    );
+    final ids = results.map((r) => r.produtoId).join(',');
+    debugPrint(
+      '[COMBO-DEVOLUCAO-RESULT] vendaId=$vendaId count=${results.length} ids=$ids',
+    );
+    if (results.isEmpty && itens.isNotEmpty) {
+      final ja = await EstoqueTransactionService.devolucaoVendaJaAplicada(
+        lojaId,
+        vendaId,
+      );
+      if (!ja) {
+        throw StateError(
+          '[COMBO-DEVOLUCAO-RESULT] count=0 com itens=${itens.length} e sem idempotência local — devolução não aplicada.',
+        );
+      }
+    }
+    return results;
+  }
+
   /// Garante e retorna o cliente (cria se não existir), respeitando a loja.
   /// Se [clienteExistente] for fornecido, usa esse cliente (evita matching errado).
   static Cliente _getOrCreateCliente({
@@ -566,6 +761,10 @@ class VendasService {
       lojaId: lojaEfetiva,
       clienteId: cliente.key?.toString() ?? cliente.idFirebase,
       origemCusto: origemCustoVenda,
+      itensComboSelecaoJson:
+          VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
+        itensComboSelecaoPorIndice,
+      ),
     );
 
     // Em edição: reutiliza idFirebase da venda antiga (evita duplicata no Firestore)
@@ -577,6 +776,20 @@ class VendasService {
     debugPrint('📤 [SYNC-DEBUG] VendasService.salvarVenda → lojaId=$lojaEfetiva | cliente=${cliente.nome} | total=R\$ ${_fmt2(total)}');
 
     await vendasBox.add(venda);
+
+    final vIdSnapshot = (venda.idFirebase ?? '').trim().isNotEmpty
+        ? venda.idFirebase!.trim()
+        : 'hive_${venda.key}';
+    final snapRaw = venda.itensComboSelecaoJson;
+    final snapKeys =
+        VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(snapRaw)
+                ?.keys
+                .toList() ??
+            <int>[];
+    final snapVazio = snapRaw == null || snapRaw.trim().isEmpty;
+    debugPrint(
+      '[COMBO-SNAPSHOT-SAVE] vendaId=$vIdSnapshot json_vazio=$snapVazio keys=$snapKeys',
+    );
 
     // 8.1) se fiado, criar conta a receber (falha = rollback da venda atual)
     if (isFiado && dataVencimentoFiado != null) {
@@ -689,59 +902,18 @@ class VendasService {
         : 'hive_${venda.key}';
     var devolucaoResults = <EstoqueTransactionResult>[];
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      final (itensDevolucao, _, _) = VendaComboEstoqueExpansion.expandirCombos(
-        itens: venda.itens!,
+      final itens = _montarItensFirestoreDevolucaoAgrupados(
+        venda: venda,
         produtosBox: produtosBox,
         lojaId: lojaId,
-        itensComboSelecaoPorIndice: null,
+        vendaIdLog: vendaId,
       );
-      final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, String extra, int qtd})> agrupado = {};
-      for (final it in itensDevolucao) {
-        final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
-        final nomeLower = it.produtoNome.trim().toLowerCase();
-        final nomeOriginal = it.produtoNome.trim();
-        final tam = it.tamanho.trim();
-        final cor = it.cor.trim();
-        final extra = it.extraValor.trim();
-        final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor\x00$extra';
-        final existing = agrupado[key];
-        if (existing != null) {
-          agrupado[key] = (
-            productId: existing.productId,
-            nomeOriginal: existing.nomeOriginal,
-            tam: existing.tam,
-            cor: existing.cor,
-            extra: existing.extra,
-            qtd: existing.qtd + it.quantidade,
-          );
-        } else {
-          agrupado[key] = (
-            productId: pid,
-            nomeOriginal: nomeOriginal,
-            tam: tam,
-            cor: cor,
-            extra: extra,
-            qtd: it.quantidade,
-          );
-        }
-      }
-      final itens = agrupado.entries
-          .where((e) => e.value.qtd > 0)
-          .map((e) => {
-                'productId': e.value.productId,
-                'nome': e.value.nomeOriginal,
-                'quantidade': e.value.qtd,
-                'tamanho': e.value.tam,
-                'cor': e.value.cor,
-                if (e.value.extra.isNotEmpty) 'extraValor': e.value.extra,
-              })
-          .toList();
       if (itens.isNotEmpty) {
         try {
-          final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+          final results = await _devolverEstoqueComLogsCombo(
             lojaId: lojaId,
+            vendaId: vendaId,
             itens: itens,
-            vendaIdParaIdempotencia: vendaId,
           );
           devolucaoResults = results;
           for (final r in results) {
@@ -751,7 +923,9 @@ class VendasService {
               result: r,
             );
           }
-          if (results.isNotEmpty) debugPrint('✅ Estoque devolvido (transacional): ${results.length} itens');
+          if (results.isNotEmpty) {
+            debugPrint('✅ Estoque devolvido (transacional): ${results.length} itens');
+          }
         } catch (e, st) {
           debugPrint(
             '[DESFAZER-VENDA] Falha na devolução de estoque — venda NÃO removida (Firestore/Hive intactos). Erro: $e',
@@ -896,59 +1070,18 @@ class VendasService {
 
     var devolucaoResultsExclusao = <EstoqueTransactionResult>[];
     if (venda.itens != null && venda.itens!.isNotEmpty) {
-      final (itensDevolucao, _, _) = VendaComboEstoqueExpansion.expandirCombos(
-        itens: venda.itens!,
+      final itens = _montarItensFirestoreDevolucaoAgrupados(
+        venda: venda,
         produtosBox: produtosBox,
         lojaId: lojaId,
-        itensComboSelecaoPorIndice: null,
+        vendaIdLog: vendaId,
       );
-      final Map<String, ({String? productId, String nomeOriginal, String tam, String cor, String extra, int qtd})> agrupado = {};
-      for (final it in itensDevolucao) {
-        final pid = (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
-        final nomeLower = it.produtoNome.trim().toLowerCase();
-        final nomeOriginal = it.produtoNome.trim();
-        final tam = it.tamanho.trim();
-        final cor = it.cor.trim();
-        final extra = it.extraValor.trim();
-        final key = '${pid ?? ''}\x00$nomeLower\x00$tam\x00$cor\x00$extra';
-        final existing = agrupado[key];
-        if (existing != null) {
-          agrupado[key] = (
-            productId: existing.productId,
-            nomeOriginal: existing.nomeOriginal,
-            tam: existing.tam,
-            cor: existing.cor,
-            extra: existing.extra,
-            qtd: existing.qtd + it.quantidade,
-          );
-        } else {
-          agrupado[key] = (
-            productId: pid,
-            nomeOriginal: nomeOriginal,
-            tam: tam,
-            cor: cor,
-            extra: extra,
-            qtd: it.quantidade,
-          );
-        }
-      }
-      final itens = agrupado.entries
-          .where((e) => e.value.qtd > 0)
-          .map((e) => {
-                'productId': e.value.productId,
-                'nome': e.value.nomeOriginal,
-                'quantidade': e.value.qtd,
-                'tamanho': e.value.tam,
-                'cor': e.value.cor,
-                if (e.value.extra.isNotEmpty) 'extraValor': e.value.extra,
-              })
-          .toList();
       if (itens.isNotEmpty) {
         try {
-          final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+          final results = await _devolverEstoqueComLogsCombo(
             lojaId: lojaId,
+            vendaId: vendaId,
             itens: itens,
-            vendaIdParaIdempotencia: vendaId,
           );
           devolucaoResultsExclusao = results;
           for (final r in results) {
@@ -1066,20 +1199,38 @@ class VendasService {
       debugPrint('[VENDA_UNDO] Sem itens estruturados; não reaplica baixa automática');
       return;
     }
-    final (itensParaBaixa, produtosEnc, _) =
+    final selecaoUndo =
+        VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(
+      venda.itensComboSelecaoJson,
+    );
+    if (selecaoUndo != null) {
+      debugPrint(
+        '[COMBO-DEVOLUCAO] vendaId=${(venda.idFirebase ?? '').trim().isNotEmpty ? venda.idFirebase! : 'hive_${venda.key}'} undo_baixa fonte=itensComboSelecaoJson',
+      );
+    }
+    final (itensParaBaixa, produtosEnc, linhaFlags) =
         VendaComboEstoqueExpansion.expandirCombos(
       itens: venda.itens!,
       produtosBox: produtosBox,
       lojaId: lid,
-      itensComboSelecaoPorIndice: null,
+      itensComboSelecaoPorIndice: selecaoUndo,
     );
+    final itensS = <VendaItem>[];
+    final prodS = <Produto>[];
+    for (var i = 0; i < itensParaBaixa.length; i++) {
+      if (i >= linhaFlags.length || i >= produtosEnc.length) break;
+      if (!linhaFlags[i]) continue;
+      if (produtosEnc[i].ehCombo) continue;
+      itensS.add(itensParaBaixa[i]);
+      prodS.add(produtosEnc[i]);
+    }
     VendaComboEstoqueExpansion.validarExpansaoParaBaixaFirestore(
-      itensParaEstoque: itensParaBaixa,
-      produtosEncontrados: produtosEnc,
+      itensParaEstoque: itensS,
+      produtosEncontrados: prodS,
     );
     final txItems = VendaComboEstoqueExpansion.montarTxItemsParaBaixaEstoque(
-      itensParaEstoque: itensParaBaixa,
-      produtosEncontrados: produtosEnc,
+      itensParaEstoque: itensS,
+      produtosEncontrados: prodS,
     );
     if (txItems.isEmpty) return;
 
