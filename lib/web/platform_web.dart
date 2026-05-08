@@ -35,6 +35,11 @@ class Web {
         ua.contains('tiktok');
   }
 
+  static bool catalogLikelyAndroidEmbeddedSocialBrowser() {
+    final ua = html.window.navigator.userAgent.toLowerCase();
+    return ua.contains('android') && catalogLikelyEmbeddedSocialBrowser();
+  }
+
   // DOM/Janela
   static void scrollToTop() => html.window.scrollTo(0, 0);
 
