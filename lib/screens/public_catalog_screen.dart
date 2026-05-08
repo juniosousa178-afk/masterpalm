@@ -80,7 +80,7 @@ import 'public_catalog/widgets/catalog_minimalist_widgets.dart';
 import 'public_catalog/widgets/catalog_minimal_best_sellers.dart';
 import 'public_catalog/widgets/catalog_product_detail_screen.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
-import 'public_catalog/widgets/catalog_checkout_external_browser_gate.dart';
+import 'public_catalog/widgets/catalog_android_embedded_checkout_screen.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import 'public_catalog/catalog_sobre_loja_screen.dart';
 import '../core/logger.dart';
@@ -3427,17 +3427,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     CatalogFirstPurchaseCouponOffer? catalogFirstPurchaseCouponOffer,
     required List<Map<String, dynamic>> catalogProducts,
   }) async {
-    if (kIsWeb && plat.Web.catalogLikelyAndroidEmbeddedSocialBrowser()) {
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => CatalogCheckoutExternalBrowserGate(
-            catalogUrl: Uri.base.toString(),
-          ),
-        ),
-      );
-      return;
-    }
-
     if (_cart.isEmpty) {
       _snack('Seu carrinho está vazio.');
       return;
@@ -3447,7 +3436,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final fretesEff = _fretesParaPreviaCart(fretes);
     final gatewayEff = _gatewayParaPreviaCart(checkoutGateway);
 
-    final Map<String, dynamic>? initialFormData = _cachedCatalogCartForm;
+    Map<String, dynamic>? initialFormData = _cachedCatalogCartForm;
 
     if (!mounted) return;
     final wideChrome = usePointerFirstChrome(context);
@@ -4196,6 +4185,64 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
 
     if (!mounted) return;
+    if (kIsWeb && plat.Web.catalogLikelyAndroidEmbeddedSocialBrowser()) {
+      final nativeFormData = await Navigator.of(context).push<Map<String, dynamic>>(
+        MaterialPageRoute<Map<String, dynamic>>(
+          fullscreenDialog: true,
+          builder: (_) => CatalogAndroidEmbeddedCheckoutScreen(
+            items: _cart,
+            fretes: fretesEff,
+            initialFormData: initialFormData,
+            primary: primary,
+            cardColor: cardColor,
+            textColor: textColor,
+            catalogUrl: Uri.base.toString(),
+          ),
+        ),
+      );
+      if (!mounted || nativeFormData == null) return;
+
+      final copy = Map<String, dynamic>.from(nativeFormData);
+      initialFormData = copy;
+      setState(() => _cachedCatalogCartForm = copy);
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString('catalog_cart_form_$lojaId', jsonEncode(copy));
+      });
+
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (sheetContext) {
+            return Theme(
+              data: Theme.of(context),
+              child: Scaffold(
+                resizeToAvoidBottomInset: true,
+                backgroundColor: cardColor,
+                appBar: AppBar(
+                  elevation: 0,
+                  scrolledUnderElevation: 0,
+                  backgroundColor: cardColor,
+                  foregroundColor: primary,
+                  surfaceTintColor: Colors.transparent,
+                  title: const Text('Carrinho'),
+                  leading: IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Fechar',
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                  ),
+                ),
+                body: SafeArea(
+                  child: carrinhoContent(sheetContext),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+      return;
+    }
+
     if (embeddedSocial) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
