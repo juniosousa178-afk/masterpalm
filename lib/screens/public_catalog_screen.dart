@@ -3439,6 +3439,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
     if (!mounted) return;
     final wideChrome = usePointerFirstChrome(context);
+    final embeddedSocial =
+        kIsWeb && plat.Web.catalogLikelyEmbeddedSocialBrowser();
 
     if (kDebugMode) {
       debugPrint(
@@ -4182,7 +4184,38 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
 
     if (!mounted) return;
-    if (wideChrome) {
+    if (embeddedSocial) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (sheetContext) {
+            return Theme(
+              data: Theme.of(context),
+              child: Scaffold(
+                resizeToAvoidBottomInset: true,
+                backgroundColor: cardColor,
+                appBar: AppBar(
+                  elevation: 0,
+                  scrolledUnderElevation: 0,
+                  backgroundColor: cardColor,
+                  foregroundColor: primary,
+                  surfaceTintColor: Colors.transparent,
+                  title: const Text('Carrinho'),
+                  leading: IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Fechar',
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                  ),
+                ),
+                body: SafeArea(
+                  child: carrinhoContent(sheetContext),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    } else if (wideChrome) {
       await showDialog<void>(
         context: context,
         barrierDismissible: true,

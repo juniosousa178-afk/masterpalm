@@ -18,6 +18,8 @@ class Web {
   static bool isIosWebKit() => false;
   static String userAgent() => '';
 
+  static bool catalogLikelyEmbeddedSocialBrowser() => false;
+
   // DOM/Janela (no-ops)
   static void scrollToTop() {}
   static void addPopState(void Function(dynamic) h) {}

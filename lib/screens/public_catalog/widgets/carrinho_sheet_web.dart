@@ -1507,6 +1507,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             final isWide = c.maxWidth > 1080;
             final padH = c.maxWidth < 420 ? 12.0 : 16.0;
             final gapStack = c.maxWidth < 420 ? 18.0 : 22.0;
+            final kbInset = MediaQuery.viewInsetsOf(context).bottom;
             final summaryW =
                 math.min(400.0, (c.maxWidth * 0.34).clamp(300.0, 420.0));
             final mainCheckout = Column(
@@ -1520,7 +1521,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
               ],
             );
             return Padding(
-              padding: EdgeInsets.fromLTRB(padH, 10, padH, 24),
+              padding:
+                  EdgeInsets.fromLTRB(padH, 10, padH, 24.0 + kbInset),
               child: SingleChildScrollView(
                 child: Center(
                   child: ConstrainedBox(
