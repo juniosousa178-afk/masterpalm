@@ -80,6 +80,7 @@ import 'public_catalog/widgets/catalog_minimalist_widgets.dart';
 import 'public_catalog/widgets/catalog_minimal_best_sellers.dart';
 import 'public_catalog/widgets/catalog_product_detail_screen.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
+import 'public_catalog/widgets/catalog_checkout_external_browser_gate.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import 'public_catalog/catalog_sobre_loja_screen.dart';
 import '../core/logger.dart';
@@ -3426,6 +3427,17 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     CatalogFirstPurchaseCouponOffer? catalogFirstPurchaseCouponOffer,
     required List<Map<String, dynamic>> catalogProducts,
   }) async {
+    if (kIsWeb && plat.Web.catalogLikelyAndroidEmbeddedSocialBrowser()) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => CatalogCheckoutExternalBrowserGate(
+            catalogUrl: Uri.base.toString(),
+          ),
+        ),
+      );
+      return;
+    }
+
     if (_cart.isEmpty) {
       _snack('Seu carrinho está vazio.');
       return;

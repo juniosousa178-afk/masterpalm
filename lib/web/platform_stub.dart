@@ -19,6 +19,7 @@ class Web {
   static String userAgent() => '';
 
   static bool catalogLikelyEmbeddedSocialBrowser() => false;
+  static bool catalogLikelyAndroidEmbeddedSocialBrowser() => false;
 
   // DOM/Janela (no-ops)
   static void scrollToTop() {}
