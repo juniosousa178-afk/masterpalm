@@ -22,6 +22,19 @@ class Web {
 
   static String userAgent() => html.window.navigator.userAgent;
 
+  /// WebViews típicos (Instagram, FB IAB, LINE, TikTok) onde modal/sheet pode
+  /// impedir o teclado no Flutter Web — preferir checkout em rota fullscreen.
+  static bool catalogLikelyEmbeddedSocialBrowser() {
+    final ua = html.window.navigator.userAgent.toLowerCase();
+    return ua.contains('instagram') ||
+        ua.contains('fban') ||
+        ua.contains('fbav') ||
+        ua.contains('fb_iab') ||
+        ua.contains('fbiab') ||
+        ua.contains(' line/') ||
+        ua.contains('tiktok');
+  }
+
   // DOM/Janela
   static void scrollToTop() => html.window.scrollTo(0, 0);
 
