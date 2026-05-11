@@ -174,6 +174,12 @@ class ImportarVendasFirestoreService {
 
             await vendasBox.add(venda);
             importadas++;
+            await VendasFirestoreService.linkMpImportedVendaToClienteFromPrePedidoIfNeeded(
+              lojaId: lojaId,
+              vendasBox: vendasBox,
+              venda: venda,
+              firestoreData: Map<String, dynamic>.from(data),
+            );
             logD('✅ [IMPORT-VENDAS] Venda $vendaId importada (cliente=${venda.clienteNome}, total=R\$${venda.total.toStringAsFixed(2)})');
           } catch (e, st) {
             erros++;

@@ -162,6 +162,26 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         p == 'pix'; // PIX via gateway
   }
 
+  /// Firestore/webhook usam `paid` / `pago` no mesmo campo que a logística — aqui é só pagamento aprovado.
+  bool _isStatusPagoAguardandoLogistica(String statusNorm) {
+    return statusNorm == 'paid' || statusNorm == 'pago';
+  }
+
+  bool _podeAtualizarStatusLogistico(String statusNorm) {
+    return statusNorm == 'confirmado' ||
+        statusNorm == 'embalando' ||
+        statusNorm == 'em_preparacao' ||
+        statusNorm == 'enviado' ||
+        _isStatusPagoAguardandoLogistica(statusNorm);
+  }
+
+  /// Para o diálogo de próximos passos, equivaler pagamento aprovado a "confirmado" logístico inicial.
+  String _statusLogisticoParaFluxoDialogo(String statusRaw) {
+    final s = statusRaw.toString().toLowerCase().trim();
+    if (_isStatusPagoAguardandoLogistica(s)) return 'confirmado';
+    return s;
+  }
+
   Future<void> _abrirWhatsApp(String? telefone, String clienteNome) async {
     if (telefone == null || telefone.trim().isEmpty) {
       _showModernSnackBar('Telefone não informado', isWarning: true);
@@ -1113,7 +1133,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
   Widget _buildPrePedidoCard(Map<String, dynamic> prePedido) {
     final prePedidoId = prePedido['id'] ?? '';
-    final status = prePedido['status'] ?? 'pendente';
+    final statusNorm =
+        (prePedido['status'] ?? 'pendente').toString().toLowerCase().trim();
     final statusPagamento =
         (prePedido['statusPagamento'] ?? 'pendente').toString();
     final cliente = prePedido['cliente'] as Map<String, dynamic>?;
@@ -1129,18 +1150,18 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     final isAbandonoPotencial = operacional ==
         PrePedidoFilaOperacional.potencialmenteAbandonado;
     final isGateway = _isPagamentoGateway(pagamento);
-    final aguardandoPagamento =
-        isGateway && (statusPagamento == 'pendente' || status == 'pendente');
+    final aguardandoPagamento = isGateway &&
+        (statusPagamento == 'pendente' || statusNorm == 'pendente');
 
     Color statusColor;
     IconData statusIcon;
     String statusLabel;
-    switch (status) {
+    switch (statusNorm) {
       case 'paid':
       case 'pago':
         statusColor = _successColor;
         statusIcon = Icons.payment;
-        statusLabel = 'Pago';
+        statusLabel = 'Pago · enviar';
         break;
       case 'confirmado':
         statusColor = _successColor;
@@ -1527,7 +1548,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           ),
 
           // Ações
-          if (status == 'pendente')
+          if (statusNorm == 'pendente')
             Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(
@@ -1586,10 +1607,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 ],
               ),
             )
-          else if (status == 'confirmado' ||
-              status == 'embalando' ||
-              status == 'em_preparacao' ||
-              status == 'enviado')
+          else if (_podeAtualizarStatusLogistico(statusNorm))
             Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(
@@ -1635,7 +1653,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 ],
               ),
             )
-          else if (status == 'entregue' || status == 'cancelado')
+          else if (statusNorm == 'entregue' || statusNorm == 'cancelado')
             Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(
@@ -1715,7 +1733,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       prePedidoId: prePedido['id'] ?? '',
       lojaId: widget.lojaId,
     );
-    final status = (prePedido['status'] ?? 'pendente').toString();
+    final status =
+        (prePedido['status'] ?? 'pendente').toString().toLowerCase().trim();
     final isPendente = status == 'pendente';
 
     await showModalBottomSheet(
@@ -1776,7 +1795,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       // Cliente
                       _buildSectionTitle(Icons.person, 'Cliente'),
                       const SizedBox(height: 8),
-                      _buildDetalheCliente(prePedido['cliente']),
+                      _buildDetalhePedidoClienteCompleto(prePedido),
 
                       const SizedBox(height: 24),
 
@@ -1893,7 +1912,19 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     );
   }
 
-  Widget _buildDetalheCliente(Map<String, dynamic>? cliente) {
+  String _pickCampoEndereco(Map<String, dynamic>? map, List<String> keys) {
+    if (map == null) return '';
+    for (final k in keys) {
+      final v = map[k];
+      if (v != null && v.toString().trim().isNotEmpty) {
+        return v.toString().trim();
+      }
+    }
+    return '';
+  }
+
+  Widget _buildDetalhePedidoClienteCompleto(Map<String, dynamic> prePedido) {
+    final cliente = prePedido['cliente'] as Map<String, dynamic>?;
     if (cliente == null) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -1901,9 +1932,43 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           color: Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Text('Não informado'),
+        child: const Text('Cliente não informado'),
       );
     }
+
+    Map<String, dynamic>? endMap;
+    final rawEnd = cliente['endereco'];
+    if (rawEnd is Map) {
+      endMap = Map<String, dynamic>.from(rawEnd);
+    }
+
+    final cep = _pickCampoEndereco(endMap, ['cep', 'CEP', 'zipcode', 'zip']);
+    final rua = _pickCampoEndereco(endMap, ['rua', 'logradouro', 'street', 'address']);
+    final numero =
+        _pickCampoEndereco(endMap, ['numero', 'número', 'number', 'nr']);
+    final bairro = _pickCampoEndereco(endMap, ['bairro', 'district']);
+    final cidade = _pickCampoEndereco(endMap, ['cidade', 'localidade', 'city']);
+    final estado =
+        _pickCampoEndereco(endMap, ['estado', 'uf', 'state', 'provincia']);
+    final complemento =
+        _pickCampoEndereco(endMap, ['complemento', 'compl', 'referencia', 'referência']);
+
+    final cpf = (cliente['cpf'] ?? cliente['documento'] ?? '').toString().trim();
+    final obsPedido =
+        (prePedido['observacao'] ?? prePedido['obs'] ?? '').toString().trim();
+    final fmt = (cliente['enderecoFormatado'] ?? '').toString().trim();
+
+    final statusPg =
+        (prePedido['statusPagamento'] ?? 'pendente').toString().trim();
+    final paymentId = (prePedido['paymentId'] ?? '').toString().trim();
+    final paymentMethod = (prePedido['paymentMethod'] ?? '').toString().trim();
+    String paidAtStr = '';
+    final paidAt = prePedido['paidAt'];
+    try {
+      if (paidAt != null) {
+        paidAtStr = (paidAt as dynamic).toDate().toString();
+      }
+    } catch (_) {}
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1914,12 +1979,43 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildDetalheRow(
-              Icons.person_outline, 'Nome', cliente['nome'] ?? '-'),
-          _buildDetalheRow(Icons.phone, 'Telefone', cliente['telefone'] ?? '-'),
-          _buildDetalheRow(Icons.email, 'Email', cliente['email'] ?? '-'),
-          _buildDetalheRow(Icons.location_on, 'Endereço',
-              cliente['enderecoFormatado'] ?? '-'),
+          _buildDetalheRow(Icons.person_outline, 'Nome',
+              (cliente['nome'] ?? '-').toString()),
+          if (cpf.isNotEmpty)
+            _buildDetalheRow(Icons.badge_outlined, 'CPF', cpf),
+          _buildDetalheRow(Icons.phone, 'Telefone',
+              (cliente['telefone'] ?? '-').toString()),
+          _buildDetalheRow(Icons.email, 'E-mail',
+              (cliente['email'] ?? '-').toString()),
+          const SizedBox(height: 10),
+          _buildSectionTitle(Icons.location_on, 'Endereço'),
+          if (cep.isNotEmpty) _buildDetalheRow(Icons.pin_drop, 'CEP', cep),
+          if (rua.isNotEmpty) _buildDetalheRow(Icons.home_outlined, 'Rua', rua),
+          if (numero.isNotEmpty) _buildDetalheRow(Icons.pin_outlined, 'Nº', numero),
+          if (bairro.isNotEmpty)
+            _buildDetalheRow(Icons.map_outlined, 'Bairro', bairro),
+          if (cidade.isNotEmpty)
+            _buildDetalheRow(Icons.location_city, 'Cidade', cidade),
+          if (estado.isNotEmpty)
+            _buildDetalheRow(Icons.flag_outlined, 'Estado', estado),
+          if (complemento.isNotEmpty)
+            _buildDetalheRow(Icons.home_work_outlined, 'Complemento', complemento),
+          if (fmt.isNotEmpty)
+            _buildDetalheRowLong(Icons.format_align_left, 'Endereço formatado', fmt),
+          if (obsPedido.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildSectionTitle(Icons.notes, 'Observações'),
+            _buildDetalheRowLong(Icons.short_text, 'Obs.', obsPedido),
+          ],
+          const SizedBox(height: 10),
+          _buildSectionTitle(Icons.payment, 'Pagamento (gateway)'),
+          _buildDetalheRow(Icons.info_outline, 'Status pag.', statusPg),
+          if (paymentId.isNotEmpty)
+            _buildDetalheRowLong(Icons.tag, 'Payment ID', paymentId),
+          if (paymentMethod.isNotEmpty)
+            _buildDetalheRow(Icons.credit_card, 'Meio', paymentMethod),
+          if (paidAtStr.isNotEmpty)
+            _buildDetalheRow(Icons.schedule, 'Pago em', paidAtStr),
         ],
       ),
     );
@@ -1946,6 +2042,32 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
               style: const TextStyle(fontWeight: FontWeight.w500),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetalheRowLong(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.grey[500]),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -2072,24 +2194,39 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     final valor = (frete['valor'] as num?)?.toDouble() ?? 0.0;
     final gratis = frete['gratis'] == true;
 
+    final tipo =
+        (frete['tipo'] ?? frete['tipoEntrega'] ?? '').toString().trim();
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _surfaceColor,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.local_shipping, color: _primaryColor),
-          const SizedBox(width: 12),
-          Expanded(child: Text(nome)),
-          Text(
-            gratis ? 'GRÁTIS' : 'R\$ ${valor.toStringAsFixed(2)}',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: gratis ? _successColor : Colors.grey[800],
-            ),
+          Row(
+            children: [
+              const Icon(Icons.local_shipping, color: _primaryColor),
+              const SizedBox(width: 12),
+              Expanded(child: Text(nome)),
+              Text(
+                gratis ? 'GRÁTIS' : 'R\$ ${valor.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: gratis ? _successColor : Colors.grey[800],
+                ),
+              ),
+            ],
           ),
+          if (tipo.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Tipo: $tipo',
+              style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+            ),
+          ],
         ],
       ),
     );
@@ -2098,23 +2235,27 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
   Future<void> _mostrarDialogoAtualizarStatus(
       Map<String, dynamic> prePedido) async {
     final prePedidoId = prePedido['id']?.toString() ?? '';
-    final statusAtual = prePedido['status']?.toString() ?? 'confirmado';
+    final statusAtualRaw = prePedido['status']?.toString() ?? 'confirmado';
+    final statusFluxo = _statusLogisticoParaFluxoDialogo(statusAtualRaw);
 
     final opcoes = <Map<String, String>>[];
-    if (statusAtual == 'confirmado') {
+    if (statusFluxo == 'confirmado') {
       opcoes.addAll([
         {'valor': 'em_preparacao', 'label': 'Em preparação'},
         {'valor': 'enviado', 'label': 'Enviado / postado'},
         {'valor': 'entregue', 'label': 'Entregue'},
+        {'valor': 'cancelado', 'label': 'Cancelar pedido'},
       ]);
-    } else if (statusAtual == 'embalando' || statusAtual == 'em_preparacao') {
+    } else if (statusFluxo == 'embalando' || statusFluxo == 'em_preparacao') {
       opcoes.addAll([
         {'valor': 'enviado', 'label': 'Enviado / postado'},
         {'valor': 'entregue', 'label': 'Entregue'},
+        {'valor': 'cancelado', 'label': 'Cancelar pedido'},
       ]);
-    } else if (statusAtual == 'enviado') {
+    } else if (statusFluxo == 'enviado') {
       opcoes.addAll([
         {'valor': 'entregue', 'label': 'Entregue'},
+        {'valor': 'cancelado', 'label': 'Cancelar pedido'},
       ]);
     }
 
