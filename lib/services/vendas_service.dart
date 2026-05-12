@@ -742,6 +742,7 @@ class VendasService {
           ].join('\n');
 
     // 8) cria venda (com todos os itens + clienteId estável)
+    final dataRegistro = dataHoraVenda ?? DateTime.now();
     final venda = Venda(
       clienteNome: cliente.nome,
       produtosDescricao: "$produtosDescricao\n$formasPagamentoTexto",
@@ -749,7 +750,7 @@ class VendasService {
       preco: subtotal,
       total: total,
       formasPagamento: formasPagamentoTexto,
-      data: dataHoraVenda ?? DateTime.now(),
+      data: dataRegistro,
       tamanho: '',
       vendedor: vendedor,
       frete: frete,
