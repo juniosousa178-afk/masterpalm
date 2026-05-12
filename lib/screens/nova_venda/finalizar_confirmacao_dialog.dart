@@ -34,6 +34,12 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
   final double frete;
   final double desconto;
   final List<Map<String, dynamic>>? initialPagamentos;
+  /// Modo edição: abre já com fiado e campos preenchidos (evita confundir com Pix).
+  final bool initialVendaFiada;
+  final int? initialDiasVencimentoFiado;
+  final int? initialQuantidadeParcelasFiado;
+  final int? initialIntervaloParcelasFiado;
+  final bool initialFiadoParcelado;
   final VoidCallback onCancelar;
   final void Function(FinalizarVendaResult result) onConfirmar;
 
@@ -44,6 +50,11 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
     this.frete = 0,
     this.desconto = 0,
     this.initialPagamentos,
+    this.initialVendaFiada = false,
+    this.initialDiasVencimentoFiado,
+    this.initialQuantidadeParcelasFiado,
+    this.initialIntervaloParcelasFiado,
+    this.initialFiadoParcelado = false,
     required this.onCancelar,
     required this.onConfirmar,
   });
@@ -55,6 +66,11 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
     double frete = 0,
     double desconto = 0,
     List<Map<String, dynamic>>? initialPagamentos,
+    bool initialVendaFiada = false,
+    int? initialDiasVencimentoFiado,
+    int? initialQuantidadeParcelasFiado,
+    int? initialIntervaloParcelasFiado,
+    bool initialFiadoParcelado = false,
   }) async {
     return showDialog<FinalizarVendaResult>(
       context: context,
@@ -65,6 +81,11 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
         frete: frete,
         desconto: desconto,
         initialPagamentos: initialPagamentos,
+        initialVendaFiada: initialVendaFiada,
+        initialDiasVencimentoFiado: initialDiasVencimentoFiado,
+        initialQuantidadeParcelasFiado: initialQuantidadeParcelasFiado,
+        initialIntervaloParcelasFiado: initialIntervaloParcelasFiado,
+        initialFiadoParcelado: initialFiadoParcelado,
       ),
     );
   }
@@ -80,6 +101,11 @@ class _DialogHolder extends StatelessWidget {
   final double frete;
   final double desconto;
   final List<Map<String, dynamic>>? initialPagamentos;
+  final bool initialVendaFiada;
+  final int? initialDiasVencimentoFiado;
+  final int? initialQuantidadeParcelasFiado;
+  final int? initialIntervaloParcelasFiado;
+  final bool initialFiadoParcelado;
 
   const _DialogHolder({
     required this.total,
@@ -87,6 +113,11 @@ class _DialogHolder extends StatelessWidget {
     required this.frete,
     required this.desconto,
     this.initialPagamentos,
+    this.initialVendaFiada = false,
+    this.initialDiasVencimentoFiado,
+    this.initialQuantidadeParcelasFiado,
+    this.initialIntervaloParcelasFiado,
+    this.initialFiadoParcelado = false,
   });
 
   @override
@@ -97,6 +128,11 @@ class _DialogHolder extends StatelessWidget {
       frete: frete,
       desconto: desconto,
       initialPagamentos: initialPagamentos,
+      initialVendaFiada: initialVendaFiada,
+      initialDiasVencimentoFiado: initialDiasVencimentoFiado,
+      initialQuantidadeParcelasFiado: initialQuantidadeParcelasFiado,
+      initialIntervaloParcelasFiado: initialIntervaloParcelasFiado,
+      initialFiadoParcelado: initialFiadoParcelado,
       onCancelar: () => Navigator.pop(context),
       onConfirmar: (r) => Navigator.pop(context, r),
     );
@@ -117,6 +153,31 @@ class _FinalizarVendaConfirmacaoDialogState
   @override
   void initState() {
     super.initState();
+    if (widget.initialVendaFiada) {
+      _vendaFiada = true;
+      if (widget.initialDiasVencimentoFiado != null) {
+        _diasVencimentoController.text =
+            widget.initialDiasVencimentoFiado!.clamp(1, 3650).toString();
+      }
+      final qIni = widget.initialQuantidadeParcelasFiado ?? 1;
+      if (qIni > 1 || widget.initialFiadoParcelado) {
+        _fiadoParcelado = true;
+        _quantidadeParcelasController.text = qIni.clamp(1, 48).toString();
+      }
+      if (widget.initialIntervaloParcelasFiado != null) {
+        _intervaloParcelasController.text =
+            widget.initialIntervaloParcelasFiado!.clamp(1, 120).toString();
+      }
+      // Linha dummy só para dispose estável; UI de pagamentos fica oculta com fiado.
+      _pagamentos = [
+        {'forma': 'Pix', 'valor': 0.0, 'valorRecebido': null},
+      ];
+      _valorControllers.add(
+        TextEditingController(text: MoedaInputFormatter.format(0)),
+      );
+      _valorRecebidoControllers.add(TextEditingController());
+      return;
+    }
     // Preserva a seleção do formulário principal (Pix/Dinheiro/Cartão)
     final init = widget.initialPagamentos;
     if (init != null && init.isNotEmpty) {
