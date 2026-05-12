@@ -529,6 +529,8 @@ class VendasService {
     DateTime? dataVencimentoFiado, // 🔹 vencimento da conta (quando isFiado)
     int quantidadeParcelasFiado = 1, // 🔹 número de parcelas do fiado
     int intervaloParcelasDias = 30, // 🔹 intervalo em dias entre parcelas
+    /// Edição de venda fiada: reutiliza vencimentos exatos (uma data por parcela), evitando recalendarizar.
+    List<DateTime>? parcelasDataVencimentoFiadoPreservadas,
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
     void Function(String? numeroSorte)? onNumeroSorteGerado,
   }) async {
@@ -799,8 +801,17 @@ class VendasService {
         final qtdParcelas = quantidadeParcelasFiado.clamp(1, 48);
         final intervalo = intervaloParcelasDias.clamp(1, 120);
         final valoresParcelas = _parcelarValores(total, qtdParcelas);
+        final preservadas = parcelasDataVencimentoFiadoPreservadas;
+        final usarPreservadas =
+            preservadas != null && preservadas.length == qtdParcelas;
         for (var i = 0; i < qtdParcelas; i++) {
-          final venc = dataVencimentoFiado.add(Duration(days: i * intervalo));
+          final DateTime venc;
+          if (usarPreservadas) {
+            final d = preservadas[i];
+            venc = DateTime(d.year, d.month, d.day);
+          } else {
+            venc = dataVencimentoFiado.add(Duration(days: i * intervalo));
+          }
           final conta = ContaReceber(
             lojaId: lojaEfetiva,
             clienteNome: cliente.nome,

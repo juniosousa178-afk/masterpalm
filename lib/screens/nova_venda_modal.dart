@@ -6,12 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/combo_configuravel_resumo.dart';
+import '../core/hive_box_names.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/venda_metrics_filter.dart';
 import 'package:hive/hive.dart';
 
 import '../models/cliente.dart';
+import '../models/conta_receber.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
@@ -104,6 +106,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   int _pendenteQtdParcelasFiado = 1;
   int _pendenteIntervaloParcelasDias = 30;
 
+  /// Modo edição: vencimentos por parcela lidos do Hive antes do save (recriação após [desfazerVenda]).
+  List<DateTime>? _edicaoFiadoVencimentosParcelas;
+
   /// produtos: produto, preço, qtd, tamanho, cor, extraValor (técnico), variacaoExtraResumo (exibição)
   List<Map<String, dynamic>> produtosSelecionados = [
     {
@@ -131,15 +136,36 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     _quantityControllers.add(TextEditingController(text: '1'));
     _carregarConfigRoleta();
     if (widget.vendaParaEditar != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (mounted && widget.vendaParaEditar != null) {
-          _carregarVendaParaEdicao(widget.vendaParaEditar!);
+          await _carregarVendaParaEdicao(widget.vendaParaEditar!);
         }
       });
     }
   }
 
-  void _carregarVendaParaEdicao(Venda v) {
+  void _aplicarFiadoDefaultsFromVendaTexto(Venda v) {
+    final match = RegExp(
+      r'Vencimento:\s*(\d{2})/(\d{2})/(\d{4})',
+      caseSensitive: false,
+    ).firstMatch(v.formasPagamento);
+    if (match != null) {
+      final venc = DateTime(
+        int.parse(match.group(3)!),
+        int.parse(match.group(2)!),
+        int.parse(match.group(1)!),
+      );
+      final hoje = DateTime.now();
+      final baseHoje = DateTime(hoje.year, hoje.month, hoje.day);
+      final baseV = DateTime(venc.year, venc.month, venc.day);
+      _pendenteDiasVencimento = baseV.difference(baseHoje).inDays.clamp(0, 3650);
+    } else {
+      _pendenteDiasVencimento = 30;
+    }
+  }
+
+  Future<void> _carregarVendaParaEdicao(Venda v) async {
+    _edicaoFiadoVencimentosParcelas = null;
     clienteController.text = v.clienteNome;
     observacaoController.text = v.observacao;
     frete = v.frete;
@@ -199,11 +225,82 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       ];
     }
 
-    pagamentos = [];
-    if (v.pagamentoDinheiro > 0) pagamentos.add({'forma': 'Dinheiro', 'valor': v.pagamentoDinheiro});
-    if (v.pagamentoPix > 0) pagamentos.add({'forma': 'Pix', 'valor': v.pagamentoPix});
-    if (v.pagamentoCartao > 0) pagamentos.add({'forma': 'Cartão', 'valor': v.pagamentoCartao});
-    if (pagamentos.isEmpty) pagamentos.add({'forma': 'Pix', 'valor': v.total});
+    final vk = v.key is int ? v.key as int : 0;
+    final contasLinked = <ContaReceber>[];
+    if (vk > 0) {
+      try {
+        final crName = HiveBoxNames.contasReceber(lojaId);
+        final crBox = Hive.isBoxOpen(crName)
+            ? Hive.box<ContaReceber>(crName)
+            : await Hive.openBox<ContaReceber>(crName);
+        for (final c in crBox.values) {
+          if (c.lojaId == lojaId && c.vendaKey == vk) {
+            contasLinked.add(c);
+          }
+        }
+      } catch (_) {}
+    }
+    contasLinked.sort((a, b) => a.parcelaNumero.compareTo(b.parcelaNumero));
+
+    final fiadoPorTexto = v.formasPagamento.toLowerCase().contains('fiado');
+    final usarFiado = contasLinked.isNotEmpty || fiadoPorTexto;
+
+    if (usarFiado) {
+      _pendenteFiado = true;
+      _pendenteIntervaloParcelasDias = 30;
+      if (contasLinked.isNotEmpty) {
+        var totPar = 1;
+        for (final c in contasLinked) {
+          if (c.parcelaTotal > totPar) totPar = c.parcelaTotal;
+        }
+        _pendenteQtdParcelasFiado = totPar.clamp(1, 48);
+
+        final esperado =
+            <int>{for (var i = 1; i <= _pendenteQtdParcelasFiado; i++) i};
+        final porNumero = <int, ContaReceber>{};
+        for (final c in contasLinked) {
+          porNumero[c.parcelaNumero] = c;
+        }
+        if (porNumero.length == _pendenteQtdParcelasFiado &&
+            esperado.difference(porNumero.keys.toSet()).isEmpty) {
+          _edicaoFiadoVencimentosParcelas = List.generate(
+            _pendenteQtdParcelasFiado,
+            (i) {
+              final dt = porNumero[i + 1]!.dataVencimento;
+              return DateTime(dt.year, dt.month, dt.day);
+            },
+          );
+          if (_edicaoFiadoVencimentosParcelas!.length >= 2) {
+            final d0 = _edicaoFiadoVencimentosParcelas![0];
+            final d1 = _edicaoFiadoVencimentosParcelas![1];
+            final gap = d1.difference(d0).inDays;
+            if (gap > 0 && gap <= 120) {
+              _pendenteIntervaloParcelasDias = gap;
+            }
+          }
+          final hoje = DateTime.now();
+          final baseHoje = DateTime(hoje.year, hoje.month, hoje.day);
+          final v0 = _edicaoFiadoVencimentosParcelas!.first;
+          _pendenteDiasVencimento = v0.difference(baseHoje).inDays.clamp(0, 3650);
+        } else {
+          _edicaoFiadoVencimentosParcelas = null;
+          _aplicarFiadoDefaultsFromVendaTexto(v);
+        }
+      } else {
+        _pendenteQtdParcelasFiado = 1;
+        _aplicarFiadoDefaultsFromVendaTexto(v);
+      }
+      pagamentos = [];
+    } else {
+      _pendenteFiado = false;
+      _pendenteQtdParcelasFiado = 1;
+      _pendenteIntervaloParcelasDias = 30;
+      pagamentos = [];
+      if (v.pagamentoDinheiro > 0) pagamentos.add({'forma': 'Dinheiro', 'valor': v.pagamentoDinheiro});
+      if (v.pagamentoPix > 0) pagamentos.add({'forma': 'Pix', 'valor': v.pagamentoPix});
+      if (v.pagamentoCartao > 0) pagamentos.add({'forma': 'Cartão', 'valor': v.pagamentoCartao});
+      if (pagamentos.isEmpty) pagamentos.add({'forma': 'Pix', 'valor': v.total});
+    }
 
     for (final c in _valorControllers) {
       c.dispose();
@@ -222,7 +319,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _quantityControllers.add(TextEditingController(text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
     }
 
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   Future<void> _carregarConfigRoleta() async {
@@ -1146,6 +1243,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       produtosSelecionados[i]['quantidade'] = q < 1 ? 1 : q;
     }
 
+    final fiadoDiasAntes = _pendenteDiasVencimento;
+    final fiadoQtdAntes = _pendenteQtdParcelasFiado;
+    final fiadoIntAntes = _pendenteIntervaloParcelasDias;
+
     // Abre dialog de confirmação com pagamento split e troco
     // Passa pagamentos atuais para preservar Pix/Dinheiro/Cartão selecionado
     final result = await FinalizarVendaConfirmacaoDialog.show(
@@ -1158,11 +1259,22 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         'forma': p['forma'],
         'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
       }).toList(),
+      initialVendaFiada: _modoEdicao && _pendenteFiado,
+      initialDiasVencimentoFiado: _modoEdicao && _pendenteFiado ? _pendenteDiasVencimento : null,
+      initialQuantidadeParcelasFiado: _modoEdicao && _pendenteFiado ? _pendenteQtdParcelasFiado : null,
+      initialIntervaloParcelasFiado: _modoEdicao && _pendenteFiado ? _pendenteIntervaloParcelasDias : null,
+      initialFiadoParcelado: _modoEdicao && _pendenteFiado && _pendenteQtdParcelasFiado > 1,
     );
 
     if (result == null || !mounted) return;
 
     if (result.isFiado) {
+      if (_edicaoFiadoVencimentosParcelas != null &&
+          (result.quantidadeParcelasFiado != fiadoQtdAntes ||
+              result.diasVencimento != fiadoDiasAntes ||
+              result.intervaloParcelasDias != fiadoIntAntes)) {
+        _edicaoFiadoVencimentosParcelas = null;
+      }
       _pendenteFiado = true;
       _pendenteDiasVencimento = result.diasVencimento;
       _pendenteQtdParcelasFiado = result.quantidadeParcelasFiado;
@@ -1172,6 +1284,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _pendenteFiado = false;
       _pendenteQtdParcelasFiado = 1;
       _pendenteIntervaloParcelasDias = 30;
+      _edicaoFiadoVencimentosParcelas = null;
     }
 
     // Atualiza pagamentos com o que veio do dialog
@@ -1517,6 +1630,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final vendaParaEditarRef = widget.vendaParaEditar;
       final onVendaFinalizadaRef = widget.onVendaFinalizada;
 
+      final preservadasFiado = _pendenteFiado &&
+              _edicaoFiadoVencimentosParcelas != null &&
+              _edicaoFiadoVencimentosParcelas!.length == _pendenteQtdParcelasFiado
+          ? List<DateTime>.from(_edicaoFiadoVencimentosParcelas!)
+          : null;
+
       // Só fecha o modal após o salvamento principal ter sido concluído com sucesso.
       final (ok, numeroSorte, mensagemErro) = await _salvarVendaEmBackground(
         produtosBox: produtosBox,
@@ -1538,8 +1657,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         quantidadeParcelasFiado: _pendenteQtdParcelasFiado,
         intervaloParcelasDias: _pendenteIntervaloParcelasDias,
         vendaParaEditar: vendaParaEditarRef,
+        parcelasVencimentoFiadoPreservadas: preservadasFiado,
       );
       _pendenteFiado = false;
+      _edicaoFiadoVencimentosParcelas = null;
       if (!mounted) return;
       if (ok) {
         // Mostrar dialog com número da sorte (CampaignEngine já envia WhatsApp/Email)
@@ -1589,6 +1710,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     int quantidadeParcelasFiado = 1,
     int intervaloParcelasDias = 30,
     Venda? vendaParaEditar,
+    List<DateTime>? parcelasVencimentoFiadoPreservadas,
   }) async {
     try {
       String? idFirebaseToReuse;
@@ -1608,6 +1730,20 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         const msg = 'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
         onErro?.call(msg);
         return (false, null, msg);
+      }
+
+      DateTime? dataVencimentoFiadoArg;
+      List<DateTime>? parcelasPreservadasArg;
+      if (isFiado) {
+        if (parcelasVencimentoFiadoPreservadas != null &&
+            parcelasVencimentoFiadoPreservadas.length == quantidadeParcelasFiado) {
+          parcelasPreservadasArg = parcelasVencimentoFiadoPreservadas;
+          final d0 = parcelasPreservadasArg.first;
+          dataVencimentoFiadoArg = DateTime(d0.year, d0.month, d0.day);
+        } else {
+          dataVencimentoFiadoArg =
+              DateTime.now().add(Duration(days: diasVencimentoFiado));
+        }
       }
 
       // ✅ ETAPA 1: Fluxo único de participação — apenas CampaignEngine (via VendasService).
@@ -1631,9 +1767,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         idFirebaseToReuse: idFirebaseToReuse,
         onSyncError: onErro,
         isFiado: isFiado,
-        dataVencimentoFiado: isFiado ? DateTime.now().add(Duration(days: diasVencimentoFiado)) : null,
+        dataVencimentoFiado: dataVencimentoFiadoArg,
         quantidadeParcelasFiado: quantidadeParcelasFiado,
         intervaloParcelasDias: intervaloParcelasDias,
+        parcelasDataVencimentoFiadoPreservadas: parcelasPreservadasArg,
         itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
         onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
       );
@@ -1652,8 +1789,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   Widget build(BuildContext context) {
     final total = _calcularTotal();
     final totalPago = _somarPagamentos();
-    final troco = totalPago > total ? totalPago - total : 0.0;
-    final falta = total > totalPago ? total - totalPago : 0.0;
+    final troco = !_pendenteFiado && totalPago > total ? totalPago - total : 0.0;
+    final falta = !_pendenteFiado && total > totalPago ? total - totalPago : 0.0;
 
     return Container(
       decoration: BoxDecoration(
@@ -2223,8 +2360,57 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
                     const SizedBox(height: 16),
 
-                    // Formas de pagamento
-                    Column(
+                    if (_pendenteFiado && pagamentos.isEmpty)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Formas de Pagamento',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.indigo.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.indigo.shade100),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Fiado (conta a receber)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _pendenteQtdParcelasFiado > 1
+                                      ? '$_pendenteQtdParcelasFiado parcelas · intervalo $_pendenteIntervaloParcelasDias dia(s) · 1º vencimento em $_pendenteDiasVencimento dia(s) (a partir de hoje)'
+                                      : 'À vista · vencimento em $_pendenteDiasVencimento dia(s) (a partir de hoje)',
+                                  style: const TextStyle(fontSize: 13, height: 1.35),
+                                ),
+                                if (_modoEdicao)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      'Ao salvar, confirme no diálogo para manter ou ajustar fiado e parcelas.',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
