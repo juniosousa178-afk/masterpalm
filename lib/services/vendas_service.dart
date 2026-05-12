@@ -524,6 +524,8 @@ class VendasService {
     String? lojaId, // 🔹 multi-loja
     Cliente? clienteExistente, // 🔹 quando já identificado (evita matching errado)
     String? idFirebaseToReuse, // 🔹 em edição: reutiliza o id da venda antiga (evita duplicata)
+    /// Edição: preserva data/hora original da venda (relatórios e fiado). Null = venda nova (usa agora).
+    DateTime? dataHoraVenda,
     void Function(String message)? onSyncError, // 🔹 feedback ao usuário quando sync Firestore falhar
     bool isFiado = false, // 🔹 venda fiada: gera conta a receber
     DateTime? dataVencimentoFiado, // 🔹 vencimento da conta (quando isFiado)
@@ -747,7 +749,7 @@ class VendasService {
       preco: subtotal,
       total: total,
       formasPagamento: formasPagamentoTexto,
-      data: DateTime.now(),
+      data: dataHoraVenda ?? DateTime.now(),
       tamanho: '',
       vendedor: vendedor,
       frete: frete,

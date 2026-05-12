@@ -405,6 +405,56 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     });
   }
 
+  /// Chave estável por produto/variação (edição: comparar quantidade antiga vs nova).
+  String _chaveLinhaProdutoVenda({
+    String? productId,
+    required String nome,
+    required String tamanho,
+    required String cor,
+    required String extraValor,
+  }) {
+    final pid = (productId ?? '').trim();
+    return '$pid\x00${nome.trim().toLowerCase()}\x00${tamanho.trim()}\x00${cor.trim()}\x00${extraValor.trim()}';
+  }
+
+  Map<String, int> _quantidadesOriginaisPorChave(Venda v) {
+    final out = <String, int>{};
+    if (v.itens != null && v.itens!.isNotEmpty) {
+      for (final it in v.itens!) {
+        final k = _chaveLinhaProdutoVenda(
+          productId: it.productId,
+          nome: it.produtoNome,
+          tamanho: it.tamanho,
+          cor: it.cor,
+          extraValor: it.extraValor,
+        );
+        out[k] = (out[k] ?? 0) + it.quantidade;
+      }
+      return out;
+    }
+    try {
+      final linhas = v.produtosDescricao.split('\n');
+      final linha = linhas.isNotEmpty ? linhas.first.trim() : '';
+      if (linha.contains(' x ')) {
+        final partes = linha.split(' x ');
+        final qtd = int.tryParse(partes[0].trim()) ?? v.quantidade;
+        var nome = partes[1].split(' - R\$').first.trim();
+        if (nome.contains(' - ')) nome = nome.split(' - ').first.trim();
+        if (nome.isNotEmpty) {
+          final k = _chaveLinhaProdutoVenda(
+            productId: null,
+            nome: nome,
+            tamanho: v.tamanho,
+            cor: '',
+            extraValor: '',
+          );
+          out[k] = (out[k] ?? 0) + qtd.clamp(1, 999999);
+        }
+      }
+    } catch (_) {}
+    return out;
+  }
+
   static double _parsePercentualBrasil(String raw) {
     final s = raw.trim().replaceAll(',', '.');
     if (s.isEmpty) return 0.0;
@@ -1352,6 +1402,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     // 3) Validação dos produtos (estoque + produto não cadastrado + tamanho + cor)
+    final novoPorChave = <String, int>{};
+    final exemploItemPorChave = <String, Map<String, dynamic>>{};
     for (var i = 0; i < produtosSelecionados.length; i++) {
       final item = produtosSelecionados[i];
       final nome = (item['produto'] ?? '').toString().trim();
@@ -1473,10 +1525,60 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         }
       }
 
-      // 🔹 Calcula estoque disponível: variações, por tamanho, ou total
+      final chaveLinha = _chaveLinhaProdutoVenda(
+        productId: productId,
+        nome: nome,
+        tamanho: tamanho,
+        cor: cor,
+        extraValor: extraValor,
+      );
+      novoPorChave[chaveLinha] = (novoPorChave[chaveLinha] ?? 0) + qtd;
+      exemploItemPorChave.putIfAbsent(
+        chaveLinha,
+        () => Map<String, dynamic>.from(item),
+      );
+    }
+
+    final origPorChave = _modoEdicao && widget.vendaParaEditar != null
+        ? _quantidadesOriginaisPorChave(widget.vendaParaEditar!)
+        : const <String, int>{};
+
+    for (final e in novoPorChave.entries) {
+      final chaveLinha = e.key;
+      final novoTotal = e.value;
+      final origTotal = origPorChave[chaveLinha] ?? 0;
+      final delta = novoTotal - origTotal;
+      if (delta <= 0) continue;
+
+      final item = exemploItemPorChave[chaveLinha]!;
+      final nome = (item['produto'] ?? '').toString().trim();
+      final tamanho = (item['tamanho'] ?? '').toString().trim();
+      final cor = (item['cor'] ?? '').toString().trim();
+      final extraValor = (item['extraValor'] ?? '').toString().trim();
+      final productId = (item['productId'] as String?)?.trim();
+      Produto prod = Produto.vazio();
+      if (productId != null && productId.isNotEmpty) {
+        try {
+          prod = widget.produtosBox.values.firstWhere(
+            (p) =>
+                p.lojaId == lojaId &&
+                (p.idFirebase == productId || p.key?.toString() == productId),
+            orElse: () => Produto.vazio(),
+          );
+        } catch (_) {}
+      }
+      if (prod.nome.isEmpty) {
+        prod = widget.produtosBox.values.firstWhere(
+          (p) =>
+              p.lojaId == lojaId &&
+              p.nome.trim().toLowerCase() == nome.trim().toLowerCase(),
+          orElse: () => Produto.vazio(),
+        );
+      }
+      if (prod.nome.isEmpty) continue;
+
       int disponivel;
       String msgEstoque = '';
-
       if (prod.temVariacaoSoloCor && cor.isNotEmpty) {
         disponivel = prod.obterEstoqueVariacao('', cor, extraValor);
         msgEstoque = 'cor $cor';
@@ -1493,23 +1595,24 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         msgEstoque = '';
       }
 
-      if (disponivel < qtd) {
-        final msg = msgEstoque.isNotEmpty
-            ? 'Estoque insuficiente para "$nome" no $msgEstoque. Disponível: $disponivel.'
-            : 'Estoque insuficiente para "$nome". Disponível: $disponivel.';
+      if (disponivel < delta) {
+        final msgBase = msgEstoque.isNotEmpty
+            ? 'Para "$nome" ($msgEstoque) é preciso mais $delta unidade(s) (acréscimo sobre a venda original). Disponível agora: $disponivel.'
+            : 'Para "$nome" é preciso mais $delta unidade(s) (acréscimo sobre a venda original). Disponível agora: $disponivel.';
 
         if (!mounted) return;
         final acao = await showDialog<String>(
           context: context,
           builder: (_) => AlertDialog(
-            title: const Text('Produto com estoque zerado'),
+            title: const Text('Estoque insuficiente para o acréscimo'),
             content: Text(
-              '$msg\n\nO que deseja fazer?',
+              '$msgBase\n\n'
+              'Em edição de venda só validamos o que você aumentou em relação à venda original.',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, 'remover'),
-                child: const Text('Remover da venda'),
+                onPressed: () => Navigator.pop(context, 'fechar'),
+                child: const Text('Fechar'),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, 'atualizar'),
@@ -1519,22 +1622,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           ),
         );
 
-        if (acao == 'remover') {
-          produtosSelecionados.removeAt(i);
-          if (produtosSelecionados.isEmpty) {
-            produtosSelecionados.add({
-              'produto': '',
-              'preco': 0.0,
-              'quantidade': 1,
-              'tamanho': '',
-              'cor': '',
-              'extraValor': '',
-              'variacaoExtraResumo': '',
-            });
-          }
-          setState(() {});
-          return;
-        }
         if (acao == 'atualizar') {
           if (!mounted) return;
           await Navigator.of(context).push(
@@ -1714,7 +1801,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }) async {
     try {
       String? idFirebaseToReuse;
+      DateTime? dataHoraVendaPreservar;
       if (vendaParaEditar != null) {
+        dataHoraVendaPreservar = vendaParaEditar.data;
         idFirebaseToReuse = vendaParaEditar.idFirebase;
         await VendasService.desfazerVenda(
           produtosBox: produtosBox,
@@ -1741,8 +1830,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           final d0 = parcelasPreservadasArg.first;
           dataVencimentoFiadoArg = DateTime(d0.year, d0.month, d0.day);
         } else {
+          final base = dataHoraVendaPreservar ?? DateTime.now();
           dataVencimentoFiadoArg =
-              DateTime.now().add(Duration(days: diasVencimentoFiado));
+              base.add(Duration(days: diasVencimentoFiado));
         }
       }
 
@@ -1765,6 +1855,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         lojaId: lojaId,
         clienteExistente: cliente,
         idFirebaseToReuse: idFirebaseToReuse,
+        dataHoraVenda: dataHoraVendaPreservar,
         onSyncError: onErro,
         isFiado: isFiado,
         dataVencimentoFiado: dataVencimentoFiadoArg,
