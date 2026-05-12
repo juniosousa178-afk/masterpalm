@@ -1,7 +1,7 @@
 // lib/screens/nova_venda_modal.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -505,8 +505,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     double subtotal = 0.0;
 
     for (var item in produtosSelecionados) {
-      final preco = (item['preco'] ?? 0.0) as double;
-      final qtd = (item['quantidade'] ?? 1) as int;
+      final preco = _precoMapSeguro(item['preco']);
+      final qtd = _quantidadeMapSegura(item['quantidade']);
       subtotal += preco * qtd;
     }
 
@@ -772,8 +772,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             await _abrirSeletorCombo(
               index: index,
               combo: prod,
-              quantidadeInicial: (item['quantidade'] ?? 1) as int,
-              precoFallback: (item['preco'] ?? 0.0) as double,
+              quantidadeInicial: _quantidadeMapSegura(item['quantidade']),
+              precoFallback: _precoMapSeguro(item['preco']),
             );
           } else if (temVariacao) {
             await NovaVendaVariacaoSheet.show(
@@ -993,13 +993,47 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
   }
 
+  int _quantidadeMapSegura(dynamic raw) {
+    final n = raw is int
+        ? raw
+        : (raw is num
+            ? raw.round()
+            : int.tryParse(raw?.toString() ?? '') ?? 1);
+    if (n < 1) return 1;
+    if (n > 999999) return 999999;
+    return n;
+  }
+
+  double _precoMapSeguro(dynamic raw) {
+    if (raw is double) return raw;
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString() ?? '') ?? 0.0;
+  }
+
   /// Extrai o erro real quando vem encapsulado (comum no app web)
   String _extrairErroReal(Object e) {
     try {
       final dyn = e as dynamic;
-      if (dyn.error != null) return dyn.error.toString();
+      final inner = dyn.error;
+      if (inner != null) {
+        try {
+          final s = inner.toString();
+          if (s.trim().isNotEmpty) return s;
+        } catch (_) {}
+      }
+      final msg = dyn.message;
+      if (msg != null) {
+        try {
+          final s = msg.toString();
+          if (s.trim().isNotEmpty) return s;
+        } catch (_) {}
+      }
     } catch (_) {}
-    return e.toString();
+    try {
+      return e.toString();
+    } catch (_) {
+      return e.runtimeType.toString();
+    }
   }
 
   String? _extrairPathFirestore(String texto) {
@@ -1008,35 +1042,39 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }
 
   String _detalharErroSalvarVenda(Object e) {
-    final erroReal = _extrairErroReal(e);
-    String? code;
-    String? plugin;
-    String? message;
     try {
-      final dyn = e as dynamic;
-      code = dyn.code?.toString();
-      plugin = dyn.plugin?.toString();
-      message = dyn.message?.toString();
-    } catch (_) {}
+      final erroReal = _extrairErroReal(e);
+      String? code;
+      String? plugin;
+      String? message;
+      try {
+        final dyn = e as dynamic;
+        code = dyn.code?.toString();
+        plugin = dyn.plugin?.toString();
+        message = dyn.message?.toString();
+      } catch (_) {}
 
-    if (e is FirebaseException) {
-      code ??= e.code;
-      plugin ??= e.plugin;
-      message ??= e.message;
+      if (e is FirebaseException) {
+        code ??= e.code;
+        plugin ??= e.plugin;
+        message ??= e.message;
+      }
+
+      final path = _extrairPathFirestore('$erroReal ${message ?? ''}');
+      final extra = <String>[
+        if (plugin != null && plugin.isNotEmpty) 'plugin=$plugin',
+        if (code != null && code.isNotEmpty) 'code=$code',
+        if (path != null && path.isNotEmpty) 'path=$path',
+      ].join(' | ');
+
+      if ((code ?? '').toLowerCase() == 'not-found') {
+        return 'Firestore not-found${extra.isNotEmpty ? ' ($extra)' : ''}';
+      }
+      if (extra.isNotEmpty) return '$erroReal ($extra)';
+      return erroReal;
+    } catch (_) {
+      return '${e.runtimeType} (falha ao formatar mensagem de erro)';
     }
-
-    final path = _extrairPathFirestore('$erroReal ${message ?? ''}');
-    final extra = <String>[
-      if (plugin != null && plugin.isNotEmpty) 'plugin=$plugin',
-      if (code != null && code.isNotEmpty) 'code=$code',
-      if (path != null && path.isNotEmpty) 'path=$path',
-    ].join(' | ');
-
-    if ((code ?? '').toLowerCase() == 'not-found') {
-      return 'Firestore not-found${extra.isNotEmpty ? ' ($extra)' : ''}';
-    }
-    if (extra.isNotEmpty) return '$erroReal ($extra)';
-    return erroReal;
   }
 
   void _logErroSalvarVenda({
@@ -1044,8 +1082,31 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     required Object erro,
     StackTrace? st,
   }) {
-    final detalhe = _detalharErroSalvarVenda(erro);
-    logE('❌ [VENDA][$etapa] $detalhe', error: erro, st: st);
+    try {
+      final detalhe = _detalharErroSalvarVenda(erro);
+      logE('❌ [VENDA][$etapa] $detalhe', error: erro, st: st);
+      if (kDebugMode) {
+        debugPrint(
+          '❌ [VENDA_DEBUG][$etapa] runtimeType=${erro.runtimeType} | detalhe=$detalhe',
+        );
+        if (st != null) {
+          debugPrint('❌ [VENDA_DEBUG][$etapa] stackTrace:\n$st');
+        }
+      }
+    } catch (_) {
+      if (kDebugMode) {
+        debugPrint(
+          '❌ [VENDA_DEBUG][$etapa] log falhou; runtimeType=${erro.runtimeType}',
+        );
+      }
+    }
+  }
+
+  void _notificarErroSalvarSeguro(void Function(String message)? onErro, String msg) {
+    if (onErro == null) return;
+    try {
+      onErro(msg);
+    } catch (_) {}
   }
 
   Future<void> _mostrarErro(String mensagem) async {
@@ -1407,7 +1468,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     for (var i = 0; i < produtosSelecionados.length; i++) {
       final item = produtosSelecionados[i];
       final nome = (item['produto'] ?? '').toString().trim();
-      final qtd = (item['quantidade'] ?? 1) as int;
+      final qtd = _quantidadeMapSegura(item['quantidade']);
       final tamanho = (item['tamanho'] ?? '').toString().trim();
       final cor = (item['cor'] ?? '').toString().trim();
       final extraValor = (item['extraValor'] ?? '').toString().trim();
@@ -1665,8 +1726,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         final productId = (m['productId'] as String?)?.trim();
         itens.add(VendaItem(
           produtoNome: nome,
-          quantidade: (m['quantidade'] ?? 1) as int,
-          precoUnitario: (m['preco'] ?? 0.0) as double,
+          quantidade: _quantidadeMapSegura(m['quantidade']),
+          precoUnitario: _precoMapSeguro(m['preco']),
           tamanho: (m['tamanho'] ?? '').toString(),
           cor: (m['cor'] ?? '').toString(),
           lojaId: lojaId,
@@ -1767,10 +1828,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     } catch (e, stackTrace) {
       if (!mounted) return;
       _logErroSalvarVenda(etapa: 'UI_FINALIZAR', erro: e, st: stackTrace);
+      final detalhe = _detalharErroSalvarVenda(e);
       await _mostrarErro(
         'Erro ao salvar venda. '
         'Verifique sua conexão e se o produto está no estoque. '
-        'Detalhe: ${_detalharErroSalvarVenda(e)}',
+        'Detalhe: $detalhe',
       );
     }
   }
@@ -1800,10 +1862,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     List<DateTime>? parcelasVencimentoFiadoPreservadas,
   }) async {
     try {
+      final dataHoraVendaPreservar = vendaParaEditar?.data;
       String? idFirebaseToReuse;
-      DateTime? dataHoraVendaPreservar;
       if (vendaParaEditar != null) {
-        dataHoraVendaPreservar = vendaParaEditar.data;
         idFirebaseToReuse = vendaParaEditar.idFirebase;
         await VendasService.desfazerVenda(
           produtosBox: produtosBox,
@@ -1813,12 +1874,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         );
       }
 
-      final guard = LimitsGuard();
-      final podeVenda = await guard.canAddVenda(lojaId);
-      if (!podeVenda) {
-        const msg = 'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
-        onErro?.call(msg);
-        return (false, null, msg);
+      // Edição retroativa: não consumir cota mensal (createdAt no Firestore muda no merge).
+      if (vendaParaEditar == null) {
+        final guard = LimitsGuard();
+        final podeVenda = await guard.canAddVenda(lojaId);
+        if (!podeVenda) {
+          const msg =
+              'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
+          _notificarErroSalvarSeguro(onErro, msg);
+          return (false, null, msg);
+        }
       }
 
       DateTime? dataVencimentoFiadoArg;
@@ -1830,7 +1895,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           final d0 = parcelasPreservadasArg.first;
           dataVencimentoFiadoArg = DateTime(d0.year, d0.month, d0.day);
         } else {
-          final base = dataHoraVendaPreservar ?? DateTime.now();
+          final hoje =
+              DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+          final base = dataHoraVendaPreservar != null
+              ? DateTime(
+                  dataHoraVendaPreservar.year,
+                  dataHoraVendaPreservar.month,
+                  dataHoraVendaPreservar.day,
+                )
+              : hoje;
           dataVencimentoFiadoArg =
               base.add(Duration(days: diasVencimentoFiado));
         }
@@ -1871,7 +1944,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _logErroSalvarVenda(etapa: 'BACKGROUND_SAVE', erro: e, st: stackTrace);
       final msg =
           'Erro ao salvar venda. Verifique conexão e estoque. ${_detalharErroSalvarVenda(e)}';
-      onErro?.call(msg);
+      _notificarErroSalvarSeguro(onErro, msg);
       return (false, null, msg);
     }
   }
