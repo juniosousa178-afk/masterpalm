@@ -17,6 +17,7 @@ import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
 import '../services/clientes_firestore_service.dart'; // 🔹 sincronização de clientes
 import '../services/vendas_firestore_service.dart'; // 🔹 sincronização com Firestore
+import 'contas_receber_firestore_service.dart';
 import 'catalogo_web_apos_estoque_service.dart';
 import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
@@ -392,10 +393,20 @@ class VendasService {
   static Future<void> removerContasReceberVinculadasAVenda({
     required String lojaId,
     required int vendaKey,
+    String? vendaFirebaseId,
   }) async {
     if (vendaKey <= 0) return;
     final loja = lojaId.trim();
     if (loja.isEmpty) return;
+    try {
+      await ContasReceberFirestoreService.marcarContasDaVendaComoCanceladasOuExcluidas(
+        lojaId: loja,
+        vendaKey: vendaKey,
+        vendaFirebaseId: vendaFirebaseId,
+      );
+    } catch (e) {
+      debugPrint('[VENDAS-SERVICE] marcar contas FS excluídas: $e');
+    }
     try {
       final crBoxName = HiveBoxNames.contasReceber(loja);
       final crBox = Hive.isBoxOpen(crBoxName)
@@ -446,19 +457,30 @@ class VendasService {
     final crBox = Hive.isBoxOpen(crBoxName)
         ? Hive.box<ContaReceber>(crBoxName)
         : await Hive.openBox<ContaReceber>(crBoxName);
-    await crBox.add(
-      ContaReceber(
-        lojaId: loja,
-        clienteNome: venda.clienteNome,
-        valor: venda.total,
-        dataVencimento: venc,
-        dataVenda: venda.data,
-        vendaKey: vk,
-        observacao: venda.observacao.trim().isEmpty
-            ? 'Venda fiada'
-            : venda.observacao.trim(),
-      ),
+    final novaConta = ContaReceber(
+      lojaId: loja,
+      clienteNome: venda.clienteNome,
+      valor: venda.total,
+      dataVencimento: venc,
+      dataVenda: venda.data,
+      vendaKey: vk,
+      observacao: venda.observacao.trim().isEmpty
+          ? 'Venda fiada'
+          : venda.observacao.trim(),
     );
+    await crBox.add(novaConta);
+    try {
+      await ContasReceberFirestoreService.upsertConta(
+        conta: novaConta,
+        lojaId: loja,
+        vendaFirebaseId: (venda.idFirebase ?? '').trim().isEmpty
+            ? null
+            : venda.idFirebase!.trim(),
+        formaOrigem: 'sync_hive',
+      );
+    } catch (e) {
+      debugPrint('[VENDAS-SERVICE] upsert conta FS após undo: $e');
+    }
   }
 
   /// Procura o produto no estoque por productId (preferencial), slug ou nome.
@@ -1135,6 +1157,7 @@ class VendasService {
     );
 
     // 8.1) se fiado, criar conta a receber (falha = rollback da venda atual)
+    final contasFiadoCriadas = <ContaReceber>[];
     if (isFiado && dataVencimentoFiado != null) {
       try {
         final crBoxName = HiveBoxNames.contasReceber(lojaEfetiva);
@@ -1167,6 +1190,7 @@ class VendasService {
             parcelaTotal: qtdParcelas,
           );
           await crBox.add(conta);
+          contasFiadoCriadas.add(conta);
         }
       } catch (e) {
         debugPrint('⚠️ [VENDAS-SERVICE] Erro ao criar conta a receber (type=${e.runtimeType})');
@@ -1202,7 +1226,23 @@ class VendasService {
       onSyncError?.call('Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.');
     }
 
-    // 11) 🎯 Registra participação em campanhas de sorteio (CENTRALIZADO)
+    if (contasFiadoCriadas.isNotEmpty) {
+      try {
+        await ContasReceberFirestoreService.upsertContasDeVendaFiada(
+          contas: contasFiadoCriadas,
+          lojaId: lojaEfetiva,
+          vendaFirebaseId: (venda.idFirebase ?? '').trim().isEmpty
+              ? null
+              : venda.idFirebase!.trim(),
+        );
+      } catch (e) {
+        debugPrint(
+          '⚠️ [VENDAS-SERVICE] Espelho Firestore contas a receber (fiado) falhou (type=${e.runtimeType})',
+        );
+      }
+    }
+
+    // 12) 🎯 Registra participação em campanhas de sorteio (CENTRALIZADO)
     if (!suprimirCampanhaSorteio) {
       try {
         final resultado = await CampaignEngineService.onVendaConcluida(
@@ -1370,6 +1410,9 @@ class VendasService {
       await removerContasReceberVinculadasAVenda(
         lojaId: lojaId,
         vendaKey: vendaHiveKey,
+        vendaFirebaseId: (venda.idFirebase ?? '').trim().isEmpty
+            ? null
+            : venda.idFirebase!.trim(),
       );
     }
 

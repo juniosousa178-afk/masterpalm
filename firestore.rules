@@ -745,6 +745,19 @@ service cloud.firestore {
           && resource.data.lojaId == lojaId;
       }
 
+      // Contas a receber / fiado (espelho Hive ↔ Firestore; doc id estável por venda+parcela).
+      match /contas_receber/{docId} {
+        allow read: if canAccessLojaFinanceiro(lojaId)
+          && resource != null
+          && resource.data.lojaId == lojaId;
+        allow create: if canAccessLojaFinanceiro(lojaId)
+          && request.resource.data.lojaId == lojaId;
+        allow update: if canAccessLojaFinanceiro(lojaId)
+          && request.resource.data.lojaId == lojaId
+          && resource.data.lojaId == lojaId;
+        allow delete: if false;
+      }
+
       match /gastos_fixos_mensais/{docId} {
         allow read: if canAccessLojaFinanceiro(lojaId)
           && resource != null

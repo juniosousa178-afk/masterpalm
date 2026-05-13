@@ -10,6 +10,7 @@ import '../core/hive_box_names.dart';
 import '../models/cliente.dart';
 import '../models/conta_receber.dart';
 import '../services/conta_receber_recebimento_caixa_service.dart';
+import '../services/contas_receber_firestore_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/notificacao_service.dart';
 import '../services/pagamentos_service.dart';
@@ -62,6 +63,10 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
     try {
       final name = HiveBoxNames.contasReceber(_lojaId!);
       _box = Hive.isBoxOpen(name) ? Hive.box(name) : await Hive.openBox(name);
+      await ContasReceberFirestoreService.sincronizarFirestoreParaHive(
+        lojaId: _lojaId!,
+        box: _box,
+      );
       await _carregarTemplateMensagem();
       await _verificarLembretesDoisDias();
     } catch (e) {
@@ -337,9 +342,32 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
       if (quitado) {
         c.pago = true;
         await c.save();
+        try {
+          await ContasReceberFirestoreService.upsertConta(
+            conta: c,
+            lojaId: _lojaId!,
+            formaOrigem: 'sync_hive',
+          );
+          await ContasReceberFirestoreService.marcarContaPaga(
+            conta: c,
+            lojaId: _lojaId!,
+            dataPagamento: dataRecebimento,
+          );
+        } catch (e) {
+          debugPrint('⚠️ [ContasReceberScreen] FS quitado conta: $e');
+        }
       } else if (!dividirRestante) {
         c.valor = restante;
         await c.save();
+        try {
+          await ContasReceberFirestoreService.upsertConta(
+            conta: c,
+            lojaId: _lojaId!,
+            formaOrigem: 'sync_hive',
+          );
+        } catch (e) {
+          debugPrint('⚠️ [ContasReceberScreen] FS saldo parcial: $e');
+        }
       } else {
         final n = (int.tryParse(qtdParcelasCtrl.text.trim()) ?? 2).clamp(2, 48);
         final intervalo = (int.tryParse(intervaloCtrl.text.trim()) ?? 30).clamp(1, 120);
@@ -351,6 +379,15 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
         final dataVenda = c.dataVenda;
         final vendaKey = c.vendaKey;
 
+        try {
+          await ContasReceberFirestoreService.marcarContaComoExcluidaNoFirestore(
+            lojaId: _lojaId!,
+            conta: c,
+          );
+        } catch (e) {
+          debugPrint('⚠️ [ContasReceberScreen] FS excluir conta subdividida: $e');
+        }
+
         await c.delete();
 
         final baseParcelamento = dataRecebimento;
@@ -359,19 +396,27 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
           final obsParcela = n > 1
               ? 'Parcela ${i + 1}/$n (saldo)${baseObs.isNotEmpty ? ' · $baseObs' : ''}'
               : (baseObs.isNotEmpty ? baseObs : 'Saldo');
-          await _box.add(
-            ContaReceber(
-              lojaId: loja,
-              clienteNome: cliente,
-              valor: partes[i],
-              dataVencimento: venc,
-              dataVenda: dataVenda,
-              vendaKey: vendaKey,
-              observacao: obsParcela,
-              parcelaNumero: i + 1,
-              parcelaTotal: n,
-            ),
+          final nova = ContaReceber(
+            lojaId: loja,
+            clienteNome: cliente,
+            valor: partes[i],
+            dataVencimento: venc,
+            dataVenda: dataVenda,
+            vendaKey: vendaKey,
+            observacao: obsParcela,
+            parcelaNumero: i + 1,
+            parcelaTotal: n,
           );
+          await _box.add(nova);
+          try {
+            await ContasReceberFirestoreService.upsertConta(
+              conta: nova,
+              lojaId: _lojaId!,
+              formaOrigem: 'manual',
+            );
+          } catch (e) {
+            debugPrint('⚠️ [ContasReceberScreen] FS upsert parcela subdiv: $e');
+          }
         }
       }
 
@@ -627,6 +672,15 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
       observacao: obsCtrl.text.trim(),
     );
     await _box.add(conta);
+    try {
+      await ContasReceberFirestoreService.upsertConta(
+        conta: conta,
+        lojaId: _lojaId!,
+        formaOrigem: 'manual',
+      );
+    } catch (e) {
+      debugPrint('⚠️ [ContasReceberScreen] upsert FS conta manual: $e');
+    }
     setState(() {});
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

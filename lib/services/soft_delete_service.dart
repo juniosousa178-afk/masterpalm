@@ -293,6 +293,9 @@ class SoftDeleteService {
     await VendasService.removerContasReceberVinculadasAVenda(
       lojaId: lojaId,
       vendaKey: key,
+      vendaFirebaseId: (venda.idFirebase ?? '').trim().isEmpty
+          ? null
+          : venda.idFirebase!.trim(),
     );
     debugPrint('[VENDA-DELETE] etapa=remover_contas_ok');
 
@@ -683,6 +686,7 @@ class SoftDeleteService {
       await VendasService.removerContasReceberVinculadasAVenda(
         lojaId: r.lojaId,
         vendaKey: r.hiveKey,
+        vendaFirebaseId: r.idFirebase.trim().isEmpty ? null : r.idFirebase.trim(),
       );
       if (venda != null) {
         final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
