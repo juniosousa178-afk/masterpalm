@@ -1785,7 +1785,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           : null;
 
       // Só fecha o modal após o salvamento principal ter sido concluído com sucesso.
-      final (ok, numeroSorte, mensagemErro) = await _salvarVendaEmBackground(
+      final (ok, numeroSorte, mensagemErro, vendaOriginalRestaurada) =
+          await _salvarVendaEmBackground(
         produtosBox: produtosBox,
         clientesBox: clientesBox,
         vendasBox: vendasBox,
@@ -1821,9 +1822,20 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         onVendaFinalizadaRef();
         Navigator.of(context).pop(true);
       } else if (mensagemErro != null && mensagemErro.isNotEmpty) {
-        await _mostrarErro(
-          'A venda não foi salva.\n\n$mensagemErro',
-        );
+        if (vendaOriginalRestaurada) {
+          await _mostrarErro(
+            'A edição não foi salva, mas a venda original foi restaurada.\n\n$mensagemErro',
+          );
+        } else if (vendaParaEditarRef != null) {
+          await _mostrarErro(
+            'A edição falhou e não foi possível restaurar automaticamente a venda original. '
+            'Procure o suporte antes de fazer novas alterações.\n\n$mensagemErro',
+          );
+        } else {
+          await _mostrarErro(
+            'A venda não foi salva.\n\n$mensagemErro',
+          );
+        }
       }
     } catch (e, stackTrace) {
       if (!mounted) return;
@@ -1838,8 +1850,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }
 
   /// Executa guard, registrarVendaMulti e participação em campanha (CampaignEngine).
-  /// Retorna (sucesso, numeroSorte?, mensagemErro?) — não usa widget/context.
-  Future<(bool, String?, String?)> _salvarVendaEmBackground({
+  /// Retorna (sucesso, numeroSorte?, mensagemErro?, vendaOriginalRestaurada?) — não usa widget/context.
+  Future<(bool, String?, String?, bool)> _salvarVendaEmBackground({
     required Box<Produto> produtosBox,
     required Box<Cliente> clientesBox,
     required Box<Venda> vendasBox,
@@ -1861,10 +1873,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     Venda? vendaParaEditar,
     List<DateTime>? parcelasVencimentoFiadoPreservadas,
   }) async {
+    EdicaoVendaRollbackSnapshot? rollbackSnap;
+    var vendaOriginalDesfeita = false;
     try {
       final dataHoraVendaPreservar = vendaParaEditar?.data;
       String? idFirebaseToReuse;
       if (vendaParaEditar != null) {
+        rollbackSnap = await VendasService.capturarSnapshotEdicaoVenda(
+          venda: vendaParaEditar,
+          lojaId: lojaId,
+        );
         idFirebaseToReuse = vendaParaEditar.idFirebase;
         await VendasService.desfazerVenda(
           produtosBox: produtosBox,
@@ -1872,6 +1890,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           vendasBox: vendasBox,
           venda: vendaParaEditar,
         );
+        vendaOriginalDesfeita = true;
       }
 
       // Edição retroativa: não consumir cota mensal (createdAt no Firestore muda no merge).
@@ -1882,7 +1901,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           const msg =
               'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
           _notificarErroSalvarSeguro(onErro, msg);
-          return (false, null, msg);
+          return (false, null, msg, false);
         }
       }
 
@@ -1939,13 +1958,34 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
       );
 
-      return (true, numeroSorteRecebido, null);
+      return (true, numeroSorteRecebido, null, false);
     } catch (e, stackTrace) {
+      var restaurouOriginal = false;
+      if (vendaParaEditar != null &&
+          vendaOriginalDesfeita &&
+          rollbackSnap != null) {
+        try {
+          restaurouOriginal =
+              await VendasService.tentarRestaurarVendaOriginalAposFalhaEdicao(
+            snap: rollbackSnap,
+            produtosBox: produtosBox,
+            clientesBox: clientesBox,
+            vendasBox: vendasBox,
+            clienteHint: cliente,
+            onSyncError: onErro,
+          );
+        } catch (e2, st2) {
+          if (kDebugMode) {
+            logD('[EDICAO-VENDA-ROLLBACK] falha na restauração: $e2');
+            logD('$st2');
+          }
+        }
+      }
       _logErroSalvarVenda(etapa: 'BACKGROUND_SAVE', erro: e, st: stackTrace);
       final msg =
           'Erro ao salvar venda. Verifique conexão e estoque. ${_detalharErroSalvarVenda(e)}';
       _notificarErroSalvarSeguro(onErro, msg);
-      return (false, null, msg);
+      return (false, null, msg, restaurouOriginal);
     }
   }
 
