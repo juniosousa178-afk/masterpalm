@@ -220,11 +220,18 @@ class ContasReceberFirestoreService {
   }) async {
     final id = (conta.idFirebase ?? '').trim();
     if (id.isEmpty) return;
+    final lid = lojaId.trim();
+    if (lid.isEmpty) return;
     try {
-      await _col(lojaId).doc(id).set(
+      final ts = FieldValue.serverTimestamp();
+      await _col(lid).doc(id).set(
         {
           'status': 'excluido',
-          'updatedAt': FieldValue.serverTimestamp(),
+          'lojaId': lid,
+          'excluidaEm': ts,
+          'deletedAt': ts,
+          'updatedAt': ts,
+          'origemExclusao': _origemApp(),
           'origem': _origemApp(),
         },
         SetOptions(merge: true),
@@ -354,6 +361,24 @@ class ContasReceberFirestoreService {
         if (snap.docs.isEmpty) break;
 
         for (final doc in snap.docs) {
+          final m = doc.data();
+          final statusRaw = (m['status'] ?? 'pendente').toString();
+          if (statusRaw == 'excluido' || statusRaw == 'cancelado') {
+            for (final c in box.values.toList()) {
+              if (c.lojaId != lid) continue;
+              if ((c.idFirebase ?? '').trim() != doc.id) continue;
+              try {
+                await c.delete();
+              } catch (e, st) {
+                debugPrint(
+                  '⚠️ [CR-FS] Hive delete após remoto excluído doc=${doc.id}: $e',
+                );
+                debugPrint('$st');
+              }
+            }
+            continue;
+          }
+
           final remote = _contaFromRemoteDoc(doc, lid);
           if (remote == null) continue;
 
