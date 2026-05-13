@@ -12,6 +12,8 @@ class FSPaths {
   static const String estoqueProdutosCol = 'estoque_produtos';
   static const String estoqueClientesCol = 'estoque_clientes'; // DOMÍNIO ADMIN: sync/histórico, não é perfil catálogo
   static const String estoqueVendasCol = 'estoque_vendas';
+  /// Contas a receber (fiado / manual) — espelho Firestore ↔ Hive.
+  static const String contasReceberCol = 'contas_receber';
   static const String draftProdutosCol = 'draft_produtos';
 
   /// Exclusão definitiva (tombstone) p/ impedir ressurreição pós sync multi‑dispositivo.
