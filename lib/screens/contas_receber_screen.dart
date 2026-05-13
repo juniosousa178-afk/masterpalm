@@ -95,6 +95,64 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
     await _abrirDialogRecebimento(c);
   }
 
+  Future<void> _confirmarCancelarConta(ContaReceber c) async {
+    if (_lojaId == null || _lojaId!.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancelar conta a receber?'),
+        content: const Text(
+          'Ela será removida da tela e marcada como excluída na nuvem. '
+          'Esta ação não altera estoque nem apaga a venda original.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Voltar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirmar cancelamento'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    try {
+      final docId = (c.idFirebase ?? '').trim();
+      if (docId.isNotEmpty) {
+        await ContasReceberFirestoreService.marcarContaComoExcluidaNoFirestore(
+          lojaId: _lojaId!,
+          conta: c,
+        );
+      } else {
+        debugPrint(
+          '[CONTAS-RECEBER] Cancelar: sem idFirebase — removendo só do Hive; '
+          'nada a espelhar no Firestore.',
+        );
+      }
+      await c.delete();
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Conta removida da lista.'),
+          backgroundColor: _successColor,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Não foi possível cancelar: $e'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
   void _mostrarExplicacaoFiadoECaixa() {
     showDialog<void>(
       context: context,
@@ -833,6 +891,23 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
                                   tooltip: 'Registrar recebimento',
                                 ),
                               ],
+                              PopupMenuButton<String>(
+                                tooltip: 'Mais opções',
+                                icon: const Icon(Icons.more_vert),
+                                onSelected: (v) {
+                                  if (v == 'cancelar') _confirmarCancelarConta(c);
+                                },
+                                itemBuilder: (ctx) => [
+                                  PopupMenuItem<String>(
+                                    value: 'cancelar',
+                                    child: ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      leading: Icon(Icons.delete_outline, color: Colors.red.shade400),
+                                      title: const Text('Cancelar conta'),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
