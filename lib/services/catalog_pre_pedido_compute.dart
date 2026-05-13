@@ -1,6 +1,8 @@
 // Cálculo puro de itens normalizados + subtotal + total do pré-pedido do catálogo.
 // Espelha a primeira fase de [PrePedidoService.criarPrePedido] (sem Firestore).
 
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+
 /// Resultado estável para persistência no documento de pré-pedido (itens + valores).
 class CatalogPrePedidoMoneySnapshot {
   const CatalogPrePedidoMoneySnapshot({
@@ -21,17 +23,27 @@ CatalogPrePedidoMoneySnapshot computeCatalogPrePedidoMoneySnapshot({
   required String pagamento,
   double desconto = 0.0,
 }) {
+  int qtyFromItem(Map<String, dynamic> item) {
+    final q = item['quantidade'] ?? item['qty'];
+    if (q is int) return q;
+    if (q is num) return q.round();
+    return int.tryParse(q?.toString() ?? '') ?? 1;
+  }
+
   double subtotal = 0.0;
   final itensList = <Map<String, dynamic>>[];
   final isPix = pagamento.toUpperCase() == 'PIX';
 
   for (final item in items) {
-    final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
-    final price = (item['preco'] as num?)?.toDouble() ??
-        (item['price'] as num?)?.toDouble() ??
-        0.0;
-    final pctPix =
-        (item['percentualDescontoPix'] as num?)?.toDouble() ?? 0.0;
+    final qty = qtyFromItem(item);
+    final pRaw = item['preco'] ?? item['price'];
+    final price = pRaw is num
+        ? pRaw.toDouble()
+        : (double.tryParse(pRaw?.toString() ?? '') ?? 0.0);
+    final pctRaw = item['percentualDescontoPix'];
+    final pctPix = pctRaw is num
+        ? pctRaw.toDouble()
+        : (double.tryParse(pctRaw?.toString() ?? '') ?? 0.0);
     final precoEfetivo =
         (isPix && pctPix > 0) ? price * (1 - pctPix / 100) : price;
     final itemTotal = precoEfetivo * qty;
@@ -40,6 +52,19 @@ CatalogPrePedidoMoneySnapshot computeCatalogPrePedidoMoneySnapshot({
     final productId = (item['productId'] ?? item['id'] ?? item['produtosId'] ?? '')
         .toString()
         .trim();
+    final nomeRaw = (item['nome'] ?? item['name'] ?? '').toString().trim();
+    if (kDebugMode) {
+      if (productId.isEmpty) {
+        debugPrint(
+          '[PRE-PEDIDO-SNAP] item sem productId (nome="$nomeRaw")',
+        );
+      }
+      if (nomeRaw.isEmpty && productId.isNotEmpty) {
+        debugPrint(
+          '[PRE-PEDIDO-SNAP] item sem nome (productId=$productId)',
+        );
+      }
+    }
     final storedItem = <String, dynamic>{
       'productId': productId,
       'id': productId,

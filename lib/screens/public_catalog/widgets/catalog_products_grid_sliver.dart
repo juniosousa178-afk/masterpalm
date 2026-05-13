@@ -7,6 +7,19 @@ import '../../../utils/safe_parse.dart';
 import '../catalog_product_card_size.dart';
 import 'product_card.dart';
 
+/// Key estável por produto (evita reuso estranho de elemento ao filtrar/paginar/rebuild).
+Key catalogGridProductKey(Map<String, dynamic> p) {
+  final id = safeStr(p['id']).trim();
+  if (id.isNotEmpty) return ValueKey<String>('cat_prod|$id');
+  final pid = safeStr(p['produtosId']).trim();
+  if (pid.isNotEmpty) return ValueKey<String>('cat_prod|$pid');
+  final slug = safeStr(p['slug']).trim();
+  if (slug.isNotEmpty) return ValueKey<String>('cat_slug|$slug');
+  final nome = safeStr(p['nome']).trim();
+  final h = nome.isEmpty ? 0 : Object.hash(nome, p['preco']);
+  return ValueKey<String>('cat_nom|$h');
+}
+
 /// Retorna o Sliver do grid de produtos (SliverPadding + SliverGrid + SliverChildBuilderDelegate).
 /// Paginação e lista (listaPaginated) continuam no chamador.
 /// [isDesktop] true = usa [desktopCols], senão usa [mobileCols] (config da aba Layout no Loja Config).
@@ -80,6 +93,7 @@ Widget buildCatalogProductsGridSliver({
           final p = products[index];
           return RepaintBoundary(
             child: PublicCatalogProductCard(
+              key: catalogGridProductKey(p),
               produto: p,
               lojaId: lojaId,
               onAdd: onAdd,

@@ -100,6 +100,48 @@ const String _catalogMaintenanceDefaultMessage =
 const String _catalogMaintenanceWhatsappPrefill =
     'Olá! Vim pelo catálogo e gostaria de comprar pelo WhatsApp.';
 
+/// Espelha chaves de identidade/preço/exibição sem inventar dados (snapshot consistente p/ carrinho).
+Map<String, dynamic> _normalizarSnapshotCarrinhoCatalogo(Map<String, dynamic> raw) {
+  final m = Map<String, dynamic>.from(raw);
+  final id = '${m['id'] ?? m['produtosId'] ?? m['productId'] ?? ''}'.trim();
+  if (id.isNotEmpty) {
+    m['id'] = id;
+    final pidRaw = '${m['produtosId'] ?? ''}'.trim();
+    m['produtosId'] = pidRaw.isEmpty ? id : pidRaw;
+    final px = '${m['productId'] ?? ''}'.trim();
+    m['productId'] = px.isEmpty ? id : px;
+  }
+  final nome = (m['nome'] ?? m['name'] ?? '').toString().trim();
+  if (nome.isNotEmpty) {
+    m['nome'] = nome;
+    m['name'] = nome;
+  }
+  final pRaw = m['preco'] ?? m['price'];
+  if (pRaw != null) {
+    final pd =
+        pRaw is num ? pRaw.toDouble() : double.tryParse(pRaw.toString());
+    if (pd != null) {
+      m['preco'] = pd;
+      m['price'] = pd;
+    }
+  }
+  final img =
+      (m['imageUrl'] ?? m['url_foto'] ?? m['image'] ?? '').toString().trim();
+  if (img.isNotEmpty) {
+    m['imageUrl'] = img;
+    m['url_foto'] = img;
+  }
+  final pctPix = m['percentualDescontoPix'];
+  if (pctPix != null) {
+    final v =
+        pctPix is num ? pctPix.toDouble() : double.tryParse(pctPix.toString());
+    if (v != null) {
+      m['percentualDescontoPix'] = v;
+    }
+  }
+  return m;
+}
+
 class PublicCatalogScreen extends StatefulWidget {
   final String lojaId;
   final bool preview;
@@ -1937,7 +1979,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     );
     if (mounted) {
       _cart.clear();
-      _cart.addAll(items);
+      for (final e in items) {
+        _cart.add(
+          _normalizarSnapshotCarrinhoCatalogo(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        );
+      }
+      if (_lastProdutosProcessados.isNotEmpty) {
+        _reconciliarCarrinhoComCatalogo(_lastProdutosProcessados);
+      }
       _clearPrePedidoReuseSession();
       setState(() {});
     }
@@ -1987,7 +2038,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         if (decoded is List && mounted) {
           _cart.clear();
           for (final e in decoded) {
-            if (e is Map) _cart.add(Map<String, dynamic>.from(e));
+            if (e is Map) {
+              _cart.add(
+                _normalizarSnapshotCarrinhoCatalogo(
+                  Map<String, dynamic>.from(e),
+                ),
+              );
+            }
+          }
+          if (_lastProdutosProcessados.isNotEmpty) {
+            _reconciliarCarrinhoComCatalogo(_lastProdutosProcessados);
           }
           _clearPrePedidoReuseSession();
           setState(() {});
@@ -2018,6 +2078,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       _saveCarrinho();
       setState(() {});
     }
+    _reconciliarCarrinhoComCatalogo(produtos);
   }
 
   /// Reseta o estado da roleta (chamado quando inicia nova compra, ex: após checkout)
@@ -2743,23 +2804,190 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     return true;
   }
 
+  void _logDivergenciaMergeCarrinhoSeDebug(
+    int idx,
+    Map<String, dynamic> incoming,
+  ) {
+    if (!kDebugMode) return;
+    final alvo = _cart[idx];
+    final id = '${incoming['id'] ?? incoming['produtosId'] ?? ''}'.trim();
+    String s(dynamic v) => (v ?? '').toString();
+    final na = s(alvo['nome'] ?? alvo['name']);
+    final nn = s(incoming['nome'] ?? incoming['name']);
+    double pd(dynamic v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse(s(v)) ?? 0.0;
+    }
+
+    final pa = pd(alvo['preco'] ?? alvo['price']);
+    final pn = pd(incoming['preco'] ?? incoming['price']);
+    final ia = s(alvo['imageUrl'] ?? alvo['url_foto']);
+    final inn = s(incoming['imageUrl'] ?? incoming['url_foto']);
+    if (na != nn ||
+        (pa - pn).abs() > 0.001 ||
+        (ia.isNotEmpty && inn.isNotEmpty && ia != inn)) {
+      logD(
+        '⚠️ [CART-MERGE] id=$id merge: nome antigo="$na" novo="$nn" | '
+        'preco antigo=$pa novo=$pn | img antiga=${ia.isNotEmpty} nova=${inn.isNotEmpty}',
+      );
+    }
+  }
+
+  /// Atualiza snapshot comercial da linha com o clique mais recente (preserva quantidade no caller).
+  void _copiarSnapshotComercialParaLinhaCarrinho(
+    Map<String, dynamic> alvo,
+    Map<String, dynamic> origem,
+  ) {
+    void copyKey(String k) {
+      if (!origem.containsKey(k)) return;
+      final v = origem[k];
+      if (v == null) return;
+      alvo[k] = v;
+    }
+
+    copyKey('nome');
+    copyKey('name');
+    copyKey('preco');
+    copyKey('price');
+    copyKey('percentualDescontoPix');
+    copyKey('imageUrl');
+    copyKey('url_foto');
+    copyKey('slug');
+    copyKey('peso');
+    copyKey('tipoEmbalagem');
+    copyKey('divideSemJuros');
+    copyKey('maxParcelasSemJuros');
+    copyKey('maxParcelas');
+    copyKey('emPromocao');
+    copyKey('percentualPromo');
+    copyKey('valorPromo');
+    copyKey('precoFinal');
+    copyKey('descricao');
+    copyKey('tamanho');
+    copyKey('cor');
+    copyKey('extraValor');
+    copyKey('extraTipo');
+    copyKey('variacaoExtraResumo');
+    copyKey('comboConfiguravelResumo');
+    final id = '${origem['id'] ?? origem['produtosId'] ?? ''}'.trim();
+    if (id.isNotEmpty) {
+      alvo['id'] = id;
+      alvo['produtosId'] = origem['produtosId'] ?? id;
+      alvo['productId'] = origem['productId'] ?? id;
+    }
+  }
+
+  /// Alinha nome/imagem/preço base e % Pix com o catálogo atual quando o produto ainda existe.
+  void _reconciliarCarrinhoComCatalogo(List<Map<String, dynamic>> produtos) {
+    if (_cart.isEmpty || produtos.isEmpty) return;
+    var changed = false;
+    for (var i = 0; i < _cart.length;) {
+      final line = _cart[i];
+      final comboRaw = line['itensComboComSelecao'];
+      if (comboRaw is List && comboRaw.isNotEmpty) {
+        i++;
+        continue;
+      }
+      final idTrim =
+          '${line['id'] ?? line['produtosId'] ?? line['productId'] ?? ''}'
+              .trim();
+      final nomeLinha = (line['nome'] ?? line['name'] ?? '').toString().trim();
+      final precoDyn = line['preco'] ?? line['price'];
+      final precoLinha = precoDyn is num
+          ? precoDyn.toDouble()
+          : (double.tryParse('$precoDyn') ?? 0.0);
+
+      if (idTrim.isEmpty && nomeLinha.isEmpty && precoLinha <= 0) {
+        _cart.removeAt(i);
+        changed = true;
+        if (kDebugMode) {
+          logD('[CART-RECON] linha inválida removida (sem id, nome e preço)');
+        }
+        continue;
+      }
+      if (idTrim.isEmpty) {
+        i++;
+        continue;
+      }
+
+      final p = CatalogEstoqueHelper.findProductInList(produtos, idTrim);
+      if (p == null) {
+        i++;
+        continue;
+      }
+
+      final nomeCat = safeStr(p['nome']).trim();
+      final imgCat = selectCatalogPrimaryImageUrlFromProdutoMap(p);
+      final precoCat = safeDouble(p['preco']);
+      final pctPixCat = safeDouble(p['percentualDescontoPix']);
+
+      final tam = (line['tamanho'] ?? '').toString().trim();
+      final cor = (line['cor'] ?? '').toString().trim();
+      final ex =
+          (line['extraValor'] ?? line['variacaoExtra'] ?? '').toString().trim();
+      final temVariacao = tam.isNotEmpty || cor.isNotEmpty || ex.isNotEmpty;
+
+      if (nomeCat.isNotEmpty && nomeCat != nomeLinha) {
+        if (kDebugMode) {
+          logD(
+            '[CART-RECON] id=$idTrim nome "$nomeLinha" -> "$nomeCat"',
+          );
+        }
+        line['nome'] = nomeCat;
+        changed = true;
+      }
+      if (imgCat.isNotEmpty) {
+        final curImg =
+            (line['imageUrl'] ?? line['url_foto'] ?? '').toString().trim();
+        if (curImg != imgCat) {
+          if (kDebugMode) {
+            logD('[CART-RECON] id=$idTrim imagem atualizada');
+          }
+          line['imageUrl'] = imgCat;
+          line['url_foto'] = imgCat;
+          changed = true;
+        }
+      }
+      if ((pctPixCat - safeDouble(line['percentualDescontoPix'])).abs() >
+          0.0001) {
+        line['percentualDescontoPix'] = pctPixCat;
+        changed = true;
+      }
+      if (!temVariacao && precoCat > 0 && (precoCat - precoLinha).abs() > 0.009) {
+        if (kDebugMode) {
+          logD('[CART-RECON] id=$idTrim preço base $precoLinha -> $precoCat');
+        }
+        line['preco'] = precoCat;
+        line['price'] = precoCat;
+        changed = true;
+      }
+      i++;
+    }
+    if (changed) {
+      _clearPrePedidoReuseSession();
+      _saveCarrinho();
+      setState(() {});
+    }
+  }
+
   bool _addToCart(
     Map<String, dynamic> item,
     List<Map<String, dynamic>> catalogProducts,
   ) {
+    final incoming = _normalizarSnapshotCarrinhoCatalogo(item);
     if (kDebugMode) {
       logD(
-          '📦 [_addToCart] Item: ${item['nome']} tam:${item['tamanho']} cor:${item['cor']}');
+          '📦 [_addToCart] Item: ${incoming['nome']} tam:${incoming['tamanho']} cor:${incoming['cor']}');
     }
 
-    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
-    final tam = (item['tamanho'] ?? '').toString().trim();
-    final cor = (item['cor'] ?? '').toString().trim();
+    final id = '${incoming['id'] ?? incoming['produtosId'] ?? ''}';
+    final tam = (incoming['tamanho'] ?? '').toString().trim();
+    final cor = (incoming['cor'] ?? '').toString().trim();
     final ex =
-        (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
+        (incoming['extraValor'] ?? incoming['variacaoExtra'] ?? '').toString().trim();
     final addQty =
-        CatalogEstoqueHelper.parseCartItemQuantidade(item['quantidade']);
-    final comboRaw = item['itensComboComSelecao'];
+        CatalogEstoqueHelper.parseCartItemQuantidade(incoming['quantidade']);
+    final comboRaw = incoming['itensComboComSelecao'];
     final isComboLine = comboRaw is List && comboRaw.isNotEmpty;
 
     if (!isComboLine) {
@@ -2779,7 +3007,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       }
       final avail =
           CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, ex);
-      final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
+      final lineKey = CatalogEstoqueHelper.cartLineIdentity(incoming);
       var already = 0;
       for (final e in _cart) {
         if (CatalogEstoqueHelper.cartLineIdentity(e) == lineKey) {
@@ -2796,15 +3024,17 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
 
     setState(() {
-      final key = CatalogEstoqueHelper.cartLineIdentity(item);
+      final key = CatalogEstoqueHelper.cartLineIdentity(incoming);
       final idx = _cart
           .indexWhere((e) => CatalogEstoqueHelper.cartLineIdentity(e) == key);
       if (idx >= 0) {
         final cur = CatalogEstoqueHelper.parseCartItemQuantidade(
             _cart[idx]['quantidade']);
+        _logDivergenciaMergeCarrinhoSeDebug(idx, incoming);
+        _copiarSnapshotComercialParaLinhaCarrinho(_cart[idx], incoming);
         _cart[idx]['quantidade'] = cur + addQty;
       } else {
-        final copy = Map<String, dynamic>.from(item);
+        final copy = Map<String, dynamic>.from(incoming);
         copy['quantidade'] = addQty;
         _cart.add(copy);
       }
@@ -5515,7 +5745,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       if (_lastCartCleanupSig != cleanupSig) {
                         _lastCartCleanupSig = cleanupSig;
                         WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) _limparCartDeProdutosRemovidos(produtos);
+                          if (mounted) {
+                            _limparCartDeProdutosRemovidos(produtos);
+                          }
                         });
                       }
                     }
