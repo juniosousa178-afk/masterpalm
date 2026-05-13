@@ -3,7 +3,7 @@
 // Serviço de vendas para a tela "Nova Venda"
 // ATUALIZADO: Agora sincroniza estoque no Firestore após baixar variações
 import 'package:collection/collection.dart'; // firstWhereOrNull
-import 'package:flutter/foundation.dart'; // debugPrint
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:hive/hive.dart';
 
 import '../models/cliente.dart';
@@ -24,12 +24,348 @@ import 'movimentacao_estoque_service.dart';
 import 'venda_combo_estoque_expansion.dart';
 import 'venda_custo_mercadoria.dart';
 
+/// Dados congelados da venda original antes de [VendasService.desfazerVenda] na edição.
+/// Não altera typeIds Hive — só transporta cópias em memória.
+class EdicaoVendaRollbackSnapshot {
+  EdicaoVendaRollbackSnapshot({
+    required this.lojaId,
+    required this.itens,
+    required this.clienteNome,
+    this.clienteIdRef,
+    this.itensComboSelecaoJson,
+    required this.dinheiro,
+    required this.pix,
+    required this.cartao,
+    required this.frete,
+    required this.descontoPct,
+    required this.observacao,
+    required this.vendedor,
+    required this.dataHora,
+    this.idFirebase,
+    required this.isFiado,
+    required this.quantidadeParcelasFiado,
+    required this.intervaloParcelasDias,
+    this.parcelasDataVencimentoFiadoPreservadas,
+  });
+
+  final String lojaId;
+  final List<VendaItem> itens;
+  final String clienteNome;
+  final String? clienteIdRef;
+  final String? itensComboSelecaoJson;
+  final double dinheiro;
+  final double pix;
+  final double cartao;
+  final double frete;
+  final double descontoPct;
+  final String observacao;
+  final String vendedor;
+  final DateTime dataHora;
+  final String? idFirebase;
+  final bool isFiado;
+  final int quantidadeParcelasFiado;
+  final int intervaloParcelasDias;
+  final List<DateTime>? parcelasDataVencimentoFiadoPreservadas;
+}
+
 class VendasService {
   // ---------------------------
   // Helpers
   // ---------------------------
 
   static String _fmt2(double v) => v.toStringAsFixed(2);
+
+  static VendaItem _cloneVendaItemParaRollback(VendaItem i, String lojaId) {
+    return VendaItem(
+      produtoNome: i.produtoNome,
+      quantidade: i.quantidade,
+      precoUnitario: i.precoUnitario,
+      tamanho: i.tamanho,
+      lojaId: i.lojaId.trim().isNotEmpty ? i.lojaId : lojaId,
+      cor: i.cor,
+      productId: i.productId,
+      variacaoExtraResumo: i.variacaoExtraResumo,
+      extraValor: i.extraValor,
+      custoUnitario: i.custoUnitario,
+      origemCustoItem: i.origemCustoItem,
+    );
+  }
+
+  static List<VendaItem> _itensRollbackLegadoSemLista(Venda v, String lojaId) {
+    String nomeProd = '';
+    var qtdLegado = v.quantidade;
+    var precoLegado = v.preco;
+    try {
+      final linhas = v.produtosDescricao.split('\n');
+      final linha = linhas.isNotEmpty ? linhas.first.trim() : '';
+      if (linha.isEmpty) {
+        nomeProd = 'Produto';
+      } else {
+        nomeProd = linha;
+        final idxX = linha.indexOf(' x ');
+        if (idxX >= 0) {
+          final rest = linha.substring(idxX + 3);
+          final idxDelim = rest.indexOf(' - R\$');
+          nomeProd = idxDelim >= 0 ? rest.substring(0, idxDelim).trim() : rest.trim();
+          final qtdStr = linha.substring(0, idxX).trim();
+          qtdLegado = int.tryParse(qtdStr) ?? v.quantidade;
+        }
+      }
+    } catch (_) {
+      nomeProd = v.produtosDescricao.trim().isNotEmpty
+          ? v.produtosDescricao.split('\n').first.trim()
+          : 'Produto';
+    }
+    return [
+      VendaItem(
+        produtoNome: nomeProd,
+        quantidade: qtdLegado < 1 ? 1 : qtdLegado,
+        precoUnitario: precoLegado,
+        tamanho: v.tamanho,
+        lojaId: lojaId,
+        cor: '',
+        extraValor: '',
+        variacaoExtraResumo: '',
+      ),
+    ];
+  }
+
+  static List<VendaItem> clonarItensOuLegadoParaRollback(Venda v, String lojaId) {
+    if (v.itens != null && v.itens!.isNotEmpty) {
+      return v.itens!.map((e) => _cloneVendaItemParaRollback(e, lojaId)).toList();
+    }
+    return _itensRollbackLegadoSemLista(v, lojaId);
+  }
+
+  /// Captura estado da venda antes de [desfazerVenda] (incl. parcelas fiado no Hive).
+  static Future<EdicaoVendaRollbackSnapshot> capturarSnapshotEdicaoVenda({
+    required Venda venda,
+    required String lojaId,
+  }) async {
+    final lid = lojaId.trim();
+    if (lid.isEmpty) {
+      throw ArgumentError('lojaId obrigatório para snapshot de edição');
+    }
+    final itens = clonarItensOuLegadoParaRollback(venda, lid);
+    final fiadoPorTexto =
+        venda.formasPagamento.toLowerCase().contains('fiado');
+    final vk = venda.key is int ? venda.key as int : 0;
+    final contasLinked = <ContaReceber>[];
+    if (vk > 0) {
+      try {
+        final crName = HiveBoxNames.contasReceber(lid);
+        final crBox = Hive.isBoxOpen(crName)
+            ? Hive.box<ContaReceber>(crName)
+            : await Hive.openBox<ContaReceber>(crName);
+        for (final c in crBox.values) {
+          if (c.lojaId == lid && c.vendaKey == vk) {
+            contasLinked.add(c);
+          }
+        }
+      } catch (_) {}
+    }
+    contasLinked.sort((a, b) => a.parcelaNumero.compareTo(b.parcelaNumero));
+
+    final usarFiado = contasLinked.isNotEmpty || fiadoPorTexto;
+    List<DateTime>? parcelasPreservadas;
+    var qtdParc = 1;
+    var intervalo = 30;
+
+    if (usarFiado && contasLinked.isNotEmpty) {
+      var totPar = 1;
+      for (final c in contasLinked) {
+        if (c.parcelaTotal > totPar) totPar = c.parcelaTotal;
+      }
+      qtdParc = totPar.clamp(1, 48);
+      final esperado =
+          <int>{for (var i = 1; i <= qtdParc; i++) i};
+      final porNumero = <int, ContaReceber>{};
+      for (final c in contasLinked) {
+        porNumero[c.parcelaNumero] = c;
+      }
+      if (porNumero.length == qtdParc &&
+          esperado.difference(porNumero.keys.toSet()).isEmpty) {
+        parcelasPreservadas = List.generate(
+          qtdParc,
+          (i) {
+            final dt = porNumero[i + 1]!.dataVencimento;
+            return DateTime(dt.year, dt.month, dt.day);
+          },
+        );
+        if (parcelasPreservadas.length >= 2) {
+          final gap =
+              parcelasPreservadas[1].difference(parcelasPreservadas[0]).inDays;
+          if (gap > 0 && gap <= 120) {
+            intervalo = gap;
+          }
+        }
+      } else {
+        parcelasPreservadas = [
+          for (final c in contasLinked)
+            DateTime(
+              c.dataVencimento.year,
+              c.dataVencimento.month,
+              c.dataVencimento.day,
+            ),
+        ];
+        qtdParc = parcelasPreservadas.length.clamp(1, 48);
+        if (parcelasPreservadas.length >= 2) {
+          final gap =
+              parcelasPreservadas[1].difference(parcelasPreservadas[0]).inDays;
+          if (gap > 0 && gap <= 120) {
+            intervalo = gap;
+          }
+        }
+      }
+    } else if (usarFiado && contasLinked.isEmpty) {
+      final match = RegExp(
+        r'Vencimento:\s*(\d{2})/(\d{2})/(\d{4})',
+        caseSensitive: false,
+      ).firstMatch(venda.formasPagamento);
+      if (match != null) {
+        final venc = DateTime(
+          int.parse(match.group(3)!),
+          int.parse(match.group(2)!),
+          int.parse(match.group(1)!),
+        );
+        parcelasPreservadas = [DateTime(venc.year, venc.month, venc.day)];
+        qtdParc = 1;
+      }
+    }
+
+    return EdicaoVendaRollbackSnapshot(
+      lojaId: lid,
+      itens: itens,
+      clienteNome: venda.clienteNome,
+      clienteIdRef: venda.clienteId,
+      itensComboSelecaoJson: venda.itensComboSelecaoJson,
+      dinheiro: venda.pagamentoDinheiro,
+      pix: venda.pagamentoPix,
+      cartao: venda.pagamentoCartao,
+      frete: venda.frete,
+      descontoPct: venda.desconto,
+      observacao: venda.observacao,
+      vendedor: venda.vendedor,
+      dataHora: venda.data,
+      idFirebase: venda.idFirebase,
+      isFiado: usarFiado,
+      quantidadeParcelasFiado: qtdParc,
+      intervaloParcelasDias: intervalo,
+      parcelasDataVencimentoFiadoPreservadas: parcelasPreservadas,
+    );
+  }
+
+  /// Após falha ao salvar edição: remove venda órfã com o mesmo [idFirebase] (se houver) e
+  /// recria a venda original via [registrarVendaMulti] (nova baixa de estoque — coerente com [desfazerVenda]).
+  static Future<bool> tentarRestaurarVendaOriginalAposFalhaEdicao({
+    required EdicaoVendaRollbackSnapshot snap,
+    required Box<Produto> produtosBox,
+    required Box<Cliente> clientesBox,
+    required Box<Venda> vendasBox,
+    Cliente? clienteHint,
+    void Function(String message)? onSyncError,
+  }) async {
+    try {
+      final targetId = (snap.idFirebase ?? '').trim();
+      if (targetId.isNotEmpty) {
+        final orphans = vendasBox.values
+            .where((x) => (x.idFirebase ?? '').trim() == targetId)
+            .toList();
+        for (final orphan in orphans) {
+          await desfazerVenda(
+            produtosBox: produtosBox,
+            clientesBox: clientesBox,
+            vendasBox: vendasBox,
+            venda: orphan,
+          );
+        }
+      }
+
+      Cliente? clienteExistente;
+      if (clienteHint != null &&
+          clienteHint.nome.trim().toLowerCase() ==
+              snap.clienteNome.trim().toLowerCase()) {
+        clienteExistente = clienteHint;
+      }
+      final idRef = snap.clienteIdRef?.trim();
+      if (clienteExistente == null && idRef != null && idRef.isNotEmpty) {
+        clienteExistente = clientesBox.values.firstWhereOrNull(
+          (c) =>
+              c.lojaId == snap.lojaId &&
+              (c.key?.toString() == idRef || c.idFirebase == idRef),
+        );
+      }
+      clienteExistente ??= clientesBox.values.firstWhereOrNull(
+        (c) =>
+            c.lojaId == snap.lojaId &&
+            c.nome.trim().toLowerCase() ==
+                snap.clienteNome.trim().toLowerCase(),
+      );
+
+      final comboMap =
+          VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(
+        snap.itensComboSelecaoJson,
+      );
+
+      DateTime? dataVencimentoFiadoArg;
+      List<DateTime>? parcelasArg = snap.parcelasDataVencimentoFiadoPreservadas;
+      if (snap.isFiado) {
+        if (parcelasArg != null &&
+            parcelasArg.length == snap.quantidadeParcelasFiado) {
+          final d0 = parcelasArg.first;
+          dataVencimentoFiadoArg = DateTime(d0.year, d0.month, d0.day);
+        } else {
+          final base = DateTime(
+            snap.dataHora.year,
+            snap.dataHora.month,
+            snap.dataHora.day,
+          );
+          dataVencimentoFiadoArg =
+              base.add(Duration(days: snap.intervaloParcelasDias));
+          parcelasArg = null;
+        }
+      } else {
+        dataVencimentoFiadoArg = null;
+        parcelasArg = null;
+      }
+
+      await registrarVendaMulti(
+        produtosBox: produtosBox,
+        clientesBox: clientesBox,
+        vendasBox: vendasBox,
+        clienteNome: snap.clienteNome,
+        itens: snap.itens,
+        dinheiro: snap.dinheiro,
+        pix: snap.pix,
+        cartao: snap.cartao,
+        vendedor: snap.vendedor,
+        observacao: snap.observacao,
+        frete: snap.frete,
+        descontoPct: snap.descontoPct,
+        lojaId: snap.lojaId,
+        clienteExistente: clienteExistente,
+        idFirebaseToReuse: snap.idFirebase,
+        dataHoraVenda: snap.dataHora,
+        onSyncError: onSyncError,
+        isFiado: snap.isFiado,
+        dataVencimentoFiado: dataVencimentoFiadoArg,
+        quantidadeParcelasFiado: snap.quantidadeParcelasFiado,
+        intervaloParcelasDias: snap.intervaloParcelasDias,
+        parcelasDataVencimentoFiadoPreservadas: parcelasArg,
+        itensComboSelecaoPorIndice: comboMap,
+        suprimirCampanhaSorteio: true,
+      );
+      return true;
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint(
+          '[EDICAO-VENDA-ROLLBACK] Falha ao restaurar venda original: $e',
+        );
+        debugPrint('$st');
+      }
+      return false;
+    }
+  }
   static List<double> _parcelarValores(double total, int parcelas) {
     final qtd = parcelas.clamp(1, 48);
     final totalCentavos = (total * 100).round();
@@ -535,6 +871,8 @@ class VendasService {
     List<DateTime>? parcelasDataVencimentoFiadoPreservadas,
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
     void Function(String? numeroSorte)? onNumeroSorteGerado,
+    /// Rollback pós-edição: evita novo número de sorteio ao recriar a venda original.
+    bool suprimirCampanhaSorteio = false,
   }) async {
     if (itens.isEmpty) {
       throw Exception('Nenhum item informado.');
@@ -865,28 +1203,30 @@ class VendasService {
     }
 
     // 11) 🎯 Registra participação em campanhas de sorteio (CENTRALIZADO)
-    try {
-      final resultado = await CampaignEngineService.onVendaConcluida(
-        lojaId: lojaEfetiva,
-        venda: venda,
-        vendaId: venda.key?.toString(),
-        clienteNome: cliente.nome,
-        clienteId: cliente.key?.toString(),
-        telefone: cliente.telefone, // 🔥 Adicionado para WhatsApp
-        email: cliente.email,       // 🔥 Adicionado para Email
-        valorTotal: total,
-        origem: 'manual',
-        nomeLoja: lojaEfetiva,
-      );
+    if (!suprimirCampanhaSorteio) {
+      try {
+        final resultado = await CampaignEngineService.onVendaConcluida(
+          lojaId: lojaEfetiva,
+          venda: venda,
+          vendaId: venda.key?.toString(),
+          clienteNome: cliente.nome,
+          clienteId: cliente.key?.toString(),
+          telefone: cliente.telefone, // 🔥 Adicionado para WhatsApp
+          email: cliente.email,       // 🔥 Adicionado para Email
+          valorTotal: total,
+          origem: 'manual',
+          nomeLoja: lojaEfetiva,
+        );
 
-      if (resultado.sucesso) {
-        debugPrint('🎫 [VENDA-MANUAL] Número da sorte gerado: ${resultado.numero}');
-        onNumeroSorteGerado?.call(resultado.numero);
-      } else if (resultado.erro != null) {
-        debugPrint('ℹ️ [VENDA-MANUAL] Campanha: ${resultado.erro}');
+        if (resultado.sucesso) {
+          debugPrint('🎫 [VENDA-MANUAL] Número da sorte gerado: ${resultado.numero}');
+          onNumeroSorteGerado?.call(resultado.numero);
+        } else if (resultado.erro != null) {
+          debugPrint('ℹ️ [VENDA-MANUAL] Campanha: ${resultado.erro}');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [VENDA-MANUAL] Campanha/sorteio: ${e.runtimeType}');
       }
-    } catch (e) {
-      debugPrint('⚠️ [VENDA-MANUAL] Campanha/sorteio: ${e.runtimeType}');
     }
 
     return venda;
