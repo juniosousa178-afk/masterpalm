@@ -74,6 +74,7 @@ import '../widgets/update_app_dialog.dart';
 import '../widgets/notificacao_centro_sheet.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/dashboard_home_cards.dart';
+import '../widgets/master_ui/master_ui.dart';
 import '../utils/catalog_payment_support_nav.dart';
 import '../widgets/dashboard_insights_section.dart';
 import '../widgets/home_intelligent_section.dart';
@@ -1498,7 +1499,8 @@ class _HomeScreenState extends State<HomeScreen>
   }) {
     final cardColor = color ?? _primaryColor;
 
-    return InkWell(
+    return MasterCard(
+      backgroundColor: _cardColor,
       onTap: () {
         final nav = navigatorKey.currentState;
         if (nav == null) return;
@@ -1515,53 +1517,40 @@ class _HomeScreenState extends State<HomeScreen>
           nav.pushNamed(route);
         }
       },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: _cardColor,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: cardColor.withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: cardColor.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 24, color: cardColor),
+            child: Icon(icon, size: 24, color: cardColor),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _surfaceColor,
             ),
-            const SizedBox(height: 6),
+            textAlign: TextAlign.center,
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
             Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: _surfaceColor,
+              subtitle,
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.grey[500],
               ),
               textAlign: TextAlign.center,
             ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey[500],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1580,47 +1569,35 @@ class _HomeScreenState extends State<HomeScreen>
     if (applyPlanGate &&
         planFeature != null &&
         !PlanMatrix.allows(menuPlanTier, planFeature)) {
-      return InkWell(
+      return MasterCard(
+        backgroundColor: _cardColor,
+        borderColor: _warningColor.withOpacity(0.35),
         onTap: () => navigatorKey.currentState?.pushNamed('/planos'),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: _cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _warningColor.withOpacity(0.35)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.lock_outline, size: 22, color: _warningColor),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: _surfaceColor,
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 22, color: _warningColor),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _surfaceColor,
-                ),
+              textAlign: TextAlign.center,
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+              child: Text(
+                PlanMatrix.upgradeHint(planFeature),
+                style: TextStyle(fontSize: 9, color: Colors.grey[600]),
                 textAlign: TextAlign.center,
+                maxLines: 3,
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-                child: Text(
-                  PlanMatrix.upgradeHint(planFeature),
-                  style: TextStyle(fontSize: 9, color: Colors.grey[600]),
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
     }
@@ -2615,50 +2592,23 @@ class _HomeScreenState extends State<HomeScreen>
     required VoidCallback onRetry,
     required Widget Function(List<Widget> items) onData,
   }) {
-    final theme = Theme.of(context);
     if (snap.hasError) {
-      return Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.cloud_off_outlined,
-                size: 48,
-                color: theme.colorScheme.error,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Não foi possível carregar',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                kDebugMode
-                    ? snap.error.toString()
-                    : 'Verifique a conexão e tente novamente.',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodySmall,
-                maxLines: 5,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Tentar novamente'),
-              ),
-            ],
-          ),
+      return MasterEmptyState(
+        icon: Icons.cloud_off_outlined,
+        title: 'Não foi possível carregar',
+        message: kDebugMode
+            ? snap.error.toString()
+            : 'Verifique a conexão e tente novamente.',
+        action: MasterButton(
+          onPressed: onRetry,
+          label: 'Tentar novamente',
+          icon: Icons.refresh,
+          variant: MasterButtonVariant.filled,
         ),
       );
     }
     if (snap.connectionState == ConnectionState.waiting) {
-      return const Center(
-        child: CircularProgressIndicator(color: _primaryColor),
-      );
+      return const MasterLoading(compact: true);
     }
     return onData(snap.data ?? const <Widget>[]);
   }
@@ -2683,26 +2633,9 @@ class _HomeScreenState extends State<HomeScreen>
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: _primaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const CircularProgressIndicator(color: _primaryColor),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Carregando...',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
+          child: MasterLoading(
+            boxed: true,
+            message: 'Carregando...',
           ),
         ),
       );
@@ -2761,6 +2694,10 @@ class _HomeScreenState extends State<HomeScreen>
                   const SizedBox(height: 6),
                   DashboardHomeCards(lojaId: _lojaIdInterno),
                 ],
+                const MasterSectionTitle(
+                  title: 'Acesso rápido',
+                  subtitle: 'Toque num atalho para abrir',
+                ),
                 const SizedBox(height: 8),
                 // Grid de acesso (Loja, Estoque, Vendas, etc.)
                 Expanded(
