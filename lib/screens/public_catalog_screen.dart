@@ -60,13 +60,9 @@ import 'public_catalog/catalog_theme.dart';
 import 'public_catalog/catalog_checkout_summary_tokens.dart';
 import 'public_catalog/catalog_cart_checkout_visual_config.dart';
 import 'public_catalog/widgets/catalog_banner_carousel.dart';
-import 'public_catalog/widgets/catalog_config_error_state.dart';
-import 'public_catalog/widgets/catalog_config_loading_state.dart';
-import 'public_catalog/widgets/catalog_empty_products_state.dart';
-import 'public_catalog/widgets/catalog_error_loja_state.dart';
+import 'public_catalog/widgets/catalog_vitrine_visual_states.dart';
 import 'public_catalog/widgets/catalog_footer.dart';
 import 'public_catalog/widgets/catalog_creator_credit_bar.dart';
-import 'public_catalog/widgets/catalog_loading_state.dart';
 import 'public_catalog/widgets/catalog_search_filters_bar.dart';
 import 'public_catalog/catalog_variation_filter.dart';
 import 'public_catalog/catalog_url_query_codec.dart';
@@ -712,7 +708,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   // ✅ FONTE ÚNICA: lojaId resolvido de forma assíncrona
   String? _resolvedLojaId;
   bool _loadingLojaId = true;
-  /// Exposto em [CatalogErrorLojaState] quando a loja não abre (ex.: flags / resolver).
+  /// Exposto em [CatalogVitrineErrorLojaState] quando a loja não abre (ex.: flags / resolver).
   String? _catalogOpenFailureDetail;
   bool _traceFirstUsefulPaintLogged = false;
   bool _traceInteractiveLogged = false;
@@ -4976,13 +4972,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final themeForStates = Theme.of(context);
       if (_loadingLojaId) {
         return _wrapWithCatStartDiagOverlay(
-          CatalogLoadingState(themeData: themeForStates),
+          CatalogVitrineLoadingState(themeData: themeForStates),
         );
       }
 
       if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
         return _wrapWithCatStartDiagOverlay(
-          CatalogErrorLojaState(
+          CatalogVitrineErrorLojaState(
             themeData: themeForStates,
             detailMessage: _catalogOpenFailureDetail,
             diagnosticText: _catalogTraceDiagnosticText(),
@@ -5018,7 +5014,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     data: <String, Object?>{'loja_id': lojaId},
                   );
                 }
-                return CatalogConfigLoadingState(themeData: themeForStates);
+                return CatalogVitrineConfigLoadingState(themeData: themeForStates);
               }
               if (!cfgSnap.hasData) {
                 CatalogNormalTrace.setField('config.exists', false);
@@ -5026,7 +5022,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     'fallback.reason', 'config_stream_no_data');
                 CatalogNormalTrace.mark('config.missing_or_empty',
                     <String, Object?>{'loja_id': lojaId});
-                return CatalogConfigErrorState(themeData: themeForStates);
+                return CatalogVitrineConfigErrorState(themeData: themeForStates);
               }
               if (!_normalTraceRenderCatalogStartLogged) {
                 _normalTraceRenderCatalogStartLogged = true;
@@ -5668,40 +5664,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       });
                     }
                     if (prodSnap.hasError) {
-                      return Scaffold(
-                        body: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.error_outline,
-                                    size: 64, color: Colors.red.shade300),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Erro ao carregar produtos',
-                                  style:
-                                      Theme.of(context).textTheme.titleMedium,
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${prodSnap.error}',
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 24),
-                                FilledButton.icon(
-                                  onPressed: () => _onRefreshProducts(lojaId),
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('Tentar novamente'),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                      return CatalogVitrineProductsStreamError(
+                        error: prodSnap.error,
+                        onRetry: () => _onRefreshProducts(lojaId),
                       );
                     }
                     final docs = prodSnap.hasData && prodSnap.data != null
@@ -7904,28 +7869,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 modoListagemCategoria &&
                                                         _catalogSemFiltrosAlemDeCategoria(
                                                             search)
-                                                    ? SliverFillRemaining(
-                                                        hasScrollBody: false,
-                                                        child: Center(
-                                                          child: Padding(
-                                                            padding:
-                                                                const EdgeInsets
-                                                                    .all(24),
-                                                            child: Text(
-                                                              'Nenhum produto encontrado nesta categoria.',
-                                                              textAlign:
-                                                                  TextAlign
-                                                                      .center,
-                                                              style: TextStyle(
-                                                                color:
-                                                                    textColor,
-                                                                fontSize: 16,
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        ),
+                                                    ? CatalogVitrineEmptyProductsSliver(
+                                                        message:
+                                                            'Nenhum produto encontrado nesta categoria.',
+                                                        textColor: textColor,
                                                       )
-                                                    : const CatalogEmptyProductsState()
+                                                    : CatalogVitrineEmptyProductsSliver(
+                                                        textColor: textColor,
+                                                      )
                                               else ...[
                                                 // Ordenação (filtros) - linha separada da paginação para evitar sobreposição
                                                 SliverToBoxAdapter(
@@ -8780,7 +8731,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         parts.add('error.runtimeType: ${e.runtimeType}');
         if (_catalogTechnicalDiagEnabled) parts.add(st.toString());
         return _wrapWithCatStartDiagOverlay(
-          CatalogErrorLojaState(
+          CatalogVitrineErrorLojaState(
             themeData: Theme.of(context),
             titleOverride: 'Não foi possível exibir o catálogo.',
             detailMessage: parts.join('\n\n'),
@@ -8791,7 +8742,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       }
       if (!_catalogTechnicalDiagEnabled) {
         return _wrapWithCatStartDiagOverlay(
-          CatalogErrorLojaState(
+          CatalogVitrineErrorLojaState(
             themeData: Theme.of(context),
             detailMessage: _catalogOpenFailureDetail,
             diagnosticText: _catalogTraceDiagnosticText(),
