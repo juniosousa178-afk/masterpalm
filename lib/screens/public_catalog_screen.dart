@@ -7201,7 +7201,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       ),
 
                       // ========== FAB DO CARRINHO ==========
-                      floatingActionButton: _cart.isEmpty
+                      // Mobile/tablet: CatalogStickyCartBar substitui o FAB.
+                      floatingActionButton: (_cart.isEmpty || !isDesktop)
                           ? null
                           : FloatingActionButton.extended(
                               onPressed: () => openPublicCartSheet(),
