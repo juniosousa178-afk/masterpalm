@@ -80,6 +80,7 @@ import 'public_catalog/widgets/catalog_minimalist_widgets.dart';
 import 'public_catalog/widgets/catalog_minimal_best_sellers.dart';
 import 'public_catalog/widgets/catalog_product_detail_screen.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
+import 'public_catalog/widgets/catalog_sticky_cart_bar.dart';
 import 'public_catalog/widgets/catalog_android_embedded_checkout_screen.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import 'public_catalog/catalog_sobre_loja_screen.dart';
@@ -5825,6 +5826,55 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             s +
                             CatalogEstoqueHelper.parseCartItemQuantidade(
                                 e['quantidade']));
+                    final stickySubtotalBruto = _cart.fold<double>(0.0, (s, e) {
+                      final price = (e['preco'] as num?)?.toDouble() ?? 0.0;
+                      final qty =
+                          CatalogEstoqueHelper.parseCartItemQuantidade(
+                              e['quantidade']);
+                      return s + price * qty;
+                    });
+                    final stickySubtotalLabel =
+                        'R\$ ${stickySubtotalBruto.toStringAsFixed(2).replaceAll('.', ',')}';
+
+                    Future<void> openPublicCartSheet() => _openCartSheet(
+                          fretes: fretes,
+                          cupons: cupons,
+                          primary: primaryColor,
+                          buttonText: btnTextColor,
+                          textColor: textColor,
+                          cardColor: cardColor,
+                          checkoutCardColor: checkoutCardColor,
+                          checkoutFieldBg: checkoutFieldBg,
+                          checkoutFieldBorder: checkoutFieldBorder,
+                          checkoutFieldTextColor: checkoutFieldTextColor,
+                          checkoutLabelColor: checkoutLabelColor,
+                          checkoutTotalColor: checkoutTotalColor,
+                          productNameColor: productNameColor,
+                          productPriceColor: productPriceColor,
+                          whatsappVendedor: whatsappVendedor,
+                          lojaNome: lojaNome,
+                          paymentAsset: paymentAssets,
+                          paymentCodes:
+                              _paymentCodesParaPreviaRodape(paymentCodes),
+                          instagramUrl: instagramUrl,
+                          facebookUrl: facebookUrl,
+                          empresaRazao: empresaRazao,
+                          empresaCnpj: empresaCnpj,
+                          checkoutGateway: checkoutGateway,
+                          checkoutButtonLabel: checkoutButtonLabel,
+                          pixKey: pixKey,
+                          freightToken: freightToken,
+                          freteMelhorEnvioModoExibicao:
+                              freteMelhorEnvioModoExibicao,
+                          mercadoPagoAtivo: mercadoPagoAtivo,
+                          checkoutSummaryTokens:
+                              catalogCheckoutSummaryTokens,
+                          catalogCartUiTokens: catalogCartUiTokens,
+                          catalogFirstPurchaseCouponOffer:
+                              catalogFirstPurchaseCouponOffer,
+                          catalogProducts: produtos,
+                        );
+
                     if (!_traceEssentialActionsEnabledLogged) {
                       _traceEssentialActionsEnabledLogged = true;
                       CatalogStartupTrace.mark(
@@ -7189,44 +7239,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       floatingActionButton: _cart.isEmpty
                           ? null
                           : FloatingActionButton.extended(
-                              onPressed: () => _openCartSheet(
-                                fretes: fretes,
-                                cupons: cupons,
-                                primary: primaryColor,
-                                buttonText: btnTextColor,
-                                textColor: textColor,
-                                cardColor: cardColor,
-                                checkoutCardColor: checkoutCardColor,
-                                checkoutFieldBg: checkoutFieldBg,
-                                checkoutFieldBorder: checkoutFieldBorder,
-                                checkoutFieldTextColor: checkoutFieldTextColor,
-                                checkoutLabelColor: checkoutLabelColor,
-                                checkoutTotalColor: checkoutTotalColor,
-                                productNameColor: productNameColor,
-                                productPriceColor: productPriceColor,
-                                whatsappVendedor: whatsappVendedor,
-                                lojaNome: lojaNome,
-                                paymentAsset: paymentAssets,
-                                paymentCodes:
-                                    _paymentCodesParaPreviaRodape(paymentCodes),
-                                instagramUrl: instagramUrl,
-                                facebookUrl: facebookUrl,
-                                empresaRazao: empresaRazao,
-                                empresaCnpj: empresaCnpj,
-                                checkoutGateway: checkoutGateway,
-                                checkoutButtonLabel: checkoutButtonLabel,
-                                pixKey: pixKey,
-                                freightToken: freightToken,
-                                freteMelhorEnvioModoExibicao:
-                                    freteMelhorEnvioModoExibicao,
-                                mercadoPagoAtivo: mercadoPagoAtivo,
-                                checkoutSummaryTokens:
-                                    catalogCheckoutSummaryTokens,
-                                catalogCartUiTokens: catalogCartUiTokens,
-                                catalogFirstPurchaseCouponOffer:
-                                    catalogFirstPurchaseCouponOffer,
-                                catalogProducts: produtos,
-                              ),
+                              onPressed: () => openPublicCartSheet(),
                               icon: const Icon(Icons.shopping_bag_outlined),
                               label: FittedBox(
                                 fit: BoxFit.scaleDown,
@@ -8646,15 +8659,42 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               ),
                             ],
                           ),
+                          if (!isDesktop && _cart.isNotEmpty)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: SafeArea(
+                                top: false,
+                                child: CatalogStickyCartBar(
+                                  itemCount: cartCount,
+                                  subtotalLabel: stickySubtotalLabel,
+                                  primaryColor: primaryColor,
+                                  buttonForegroundColor: btnTextColor,
+                                  surfaceColor: cardColor,
+                                  onOpenCart: () {
+                                    openPublicCartSheet();
+                                  },
+                                ),
+                              ),
+                            ),
                           ValueListenableBuilder<double>(
                             valueListenable: _scrollOffsetNotifier,
                             builder: (context, offset, _) {
                               if (offset < 300) return const SizedBox.shrink();
                               final primaryColor =
                                   Theme.of(context).colorScheme.primary;
+                              final mq = MediaQuery.of(context);
+                              final stickyH =
+                                  mq.padding.bottom + 52;
+                              final scrollBottom = _cart.isEmpty
+                                  ? 24.0
+                                  : (isDesktop
+                                      ? 88.0
+                                      : (24.0 + stickyH));
                               return Positioned(
                                 left: 16,
-                                bottom: _cart.isEmpty ? 24 : 88,
+                                bottom: scrollBottom,
                                 child: Material(
                                   elevation: 4,
                                   color: primaryColor.withOpacity(0.9),
