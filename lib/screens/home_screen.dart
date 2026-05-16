@@ -75,6 +75,7 @@ import '../widgets/notificacao_centro_sheet.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/dashboard_home_cards.dart';
 import '../widgets/master_ui/master_ui.dart';
+import '../widgets/master_ui/master_home_welcome_header.dart';
 import '../utils/catalog_payment_support_nav.dart';
 import '../widgets/dashboard_insights_section.dart';
 import '../widgets/home_intelligent_section.dart';
@@ -1499,8 +1500,13 @@ class _HomeScreenState extends State<HomeScreen>
   }) {
     final cardColor = color ?? _primaryColor;
 
+    final theme = Theme.of(context);
+    final onSurface = theme.colorScheme.onSurface;
+    final muted = onSurface.withOpacity(0.58);
+
     return MasterCard(
-      backgroundColor: _cardColor,
+      backgroundColor: theme.colorScheme.surface,
+      borderColor: cardColor.withOpacity(0.22),
       onTap: () {
         final nav = navigatorKey.currentState;
         if (nav == null) return;
@@ -1517,37 +1523,53 @@ class _HomeScreenState extends State<HomeScreen>
           nav.pushNamed(route);
         }
       },
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      borderRadius: 16,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
-              color: cardColor.withOpacity(0.1),
+              color: cardColor.withOpacity(0.12),
               shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: cardColor.withOpacity(0.18),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-            child: Icon(icon, size: 24, color: cardColor),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 26, color: cardColor),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: _surfaceColor,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: onSurface,
+              height: 1.2,
             ),
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
           if (subtitle != null) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(
               subtitle,
-              style: TextStyle(
+              style: theme.textTheme.bodySmall?.copyWith(
                 fontSize: 10,
-                color: Colors.grey[500],
+                color: muted,
+                height: 1.2,
               ),
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ],
@@ -1569,30 +1591,47 @@ class _HomeScreenState extends State<HomeScreen>
     if (applyPlanGate &&
         planFeature != null &&
         !PlanMatrix.allows(menuPlanTier, planFeature)) {
+      final theme = Theme.of(context);
+      final onSurface = theme.colorScheme.onSurface;
       return MasterCard(
-        backgroundColor: _cardColor,
-        borderColor: _warningColor.withOpacity(0.35),
+        backgroundColor: theme.colorScheme.surface,
+        borderColor: _warningColor.withOpacity(0.4),
         onTap: () => navigatorKey.currentState?.pushNamed('/planos'),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        borderRadius: 16,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.lock_outline, size: 22, color: _warningColor),
-            const SizedBox(height: 6),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: _warningColor.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.lock_outline, size: 24, color: _warningColor),
+            ),
+            const SizedBox(height: 10),
             Text(
               label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: _surfaceColor,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: onSurface,
               ),
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
               child: Text(
                 PlanMatrix.upgradeHint(planFeature),
-                style: TextStyle(fontSize: 9, color: Colors.grey[600]),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontSize: 10,
+                  color: onSurface.withOpacity(0.55),
+                ),
                 textAlign: TextAlign.center,
                 maxLines: 3,
               ),
@@ -2646,29 +2685,39 @@ class _HomeScreenState extends State<HomeScreen>
     // Conteúdo principal (body) – layout compacto, uma tela sem overflow
     final mainBody = SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_usuario.isNotEmpty && !desktopWeb)
+                  MasterHomeWelcomeHeader(
+                    greeting: _getGreeting(),
+                    userName: _getFirstName(_usuario),
+                  ),
+                if (_usuario.isNotEmpty && !desktopWeb)
+                  const SizedBox(height: 12),
                 // Header compacto (insight do mês)
-                if (isValidForPublicLink(_lojaSlugPublico))
+                if (isValidForPublicLink(_lojaSlugPublico)) ...[
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
+                        colors: [
+                          _primaryColor,
+                          _primaryColor.withOpacity(0.78),
+                        ],
                       ),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: _primaryColor.withOpacity(0.25),
-                          blurRadius: 8,
+                          color: _primaryColor.withOpacity(0.22),
+                          blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
                       ],
@@ -2680,25 +2729,39 @@ class _HomeScreenState extends State<HomeScreen>
                           _tipo == 'vendedor' ? _getFirstName(_usuario) : null,
                     ),
                   ),
-                if (_lojaIdInterno.isNotEmpty) const SizedBox(height: 8),
+                  const SizedBox(height: 12),
+                ],
                 // Atalhos inteligentes (Motor, Campanhas, Catálogo) – interno + slug público
                 if (_lojaIdInterno.isNotEmpty)
                   HomeIntelligentSection(
                     lojaIdInterno: _lojaIdInterno,
                     lojaSlugPublico: _lojaSlugPublico,
                   ),
-                const SizedBox(height: 6),
                 // Painel Crescimento + Dashboard (sempre lojaId interno)
                 if (_lojaIdInterno.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  const MasterSectionTitle(
+                    title: 'Crescimento',
+                    subtitle: 'Painel e indicadores da loja',
+                  ),
+                  const SizedBox(height: 8),
                   PainelCrescimentoWidget(lojaId: _lojaIdInterno),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   DashboardHomeCards(lojaId: _lojaIdInterno),
                 ],
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: Theme.of(context).dividerColor.withOpacity(0.35),
+                  ),
+                ),
                 const MasterSectionTitle(
                   title: 'Acesso rápido',
-                  subtitle: 'Toque num atalho para abrir',
+                  subtitle: 'Toque num atalho para abrir o módulo',
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 // Grid de acesso (Loja, Estoque, Vendas, etc.)
                 Expanded(
                   child: FutureBuilder<List<Widget>>(
@@ -2711,9 +2774,9 @@ class _HomeScreenState extends State<HomeScreen>
                         onData: (children) => GridView.count(
                           crossAxisCount: responsiveGridCount(context,
                               mobile: 2, tablet: 3, desktop: 4),
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: desktopWeb ? 1.4 : 1.35,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: desktopWeb ? 1.32 : 1.22,
                           padding: EdgeInsets.zero,
                           children: children,
                         ),
@@ -2924,24 +2987,38 @@ class _HomeScreenState extends State<HomeScreen>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.store, size: 22, color: theme.colorScheme.onSurface),
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: _primaryColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.storefront_rounded,
+                    size: 18,
+                    color: _primaryColor,
+                  ),
+                ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'MasterPalm',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.onSurface,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 2),
             Text(
-              'Gerencie sua loja com facilidade',
+              _usuario.isNotEmpty
+                  ? '${_getGreeting()}, ${_getFirstName(_usuario)}'
+                  : 'Gerencie sua loja com facilidade',
               style: TextStyle(
                 fontSize: 12,
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
+                color: theme.colorScheme.onSurface.withOpacity(0.62),
               ),
             ),
           ],
