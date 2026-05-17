@@ -42,49 +42,36 @@ class DashboardHomeCards extends StatelessWidget {
         final metaAtingida = d['metaAtingida'] as double;
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
             children: [
-              const MasterSectionTitle(
-                title: 'Resumo do dia',
-                subtitle: 'Vendas, estoque e meta do mês',
+              Expanded(
+                child: _DashboardCard(
+                  icon: Icons.point_of_sale,
+                  label: 'Vendas hoje',
+                  value: 'R\$ ${vendasHoje.toStringAsFixed(2).replaceAll('.', ',')}',
+                  color: _successColor,
+                ),
               ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _DashboardCard(
-                      icon: Icons.point_of_sale_rounded,
-                      label: 'Vendas hoje',
-                      value:
-                          'R\$ ${vendasHoje.toStringAsFixed(2).replaceAll('.', ',')}',
-                      color: _successColor,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _DashboardCard(
-                      icon: Icons.inventory_2_outlined,
-                      label: 'Estoque baixo',
-                      value: '$qtdEstoqueBaixo',
-                      color:
-                          qtdEstoqueBaixo > 0 ? _warningColor : _primaryColor,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _DashboardCard(
-                      icon: Icons.flag_outlined,
-                      label: 'Meta do mês',
-                      value: metaAtual <= 0
-                          ? '—'
-                          : '${(metaAtingida / metaAtual * 100).toStringAsFixed(0)}%',
-                      color: _primaryColor,
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: _DashboardCard(
+                  icon: Icons.inventory_2_outlined,
+                  label: 'Estoque baixo',
+                  value: '$qtdEstoqueBaixo',
+                  color: qtdEstoqueBaixo > 0 ? _warningColor : _primaryColor,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _DashboardCard(
+                  icon: Icons.flag_outlined,
+                  label: 'Meta do mês',
+                  value: metaAtual <= 0
+                      ? '—'
+                      : '${(metaAtingida / metaAtual * 100).toStringAsFixed(0)}%',
+                  color: _primaryColor,
+                ),
               ),
             ],
           ),
@@ -203,50 +190,32 @@ class _DashboardCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final onSurface = theme.colorScheme.onSurface;
-    final muted = onSurface.withOpacity(0.62);
-
     return MasterCard(
-      backgroundColor: theme.colorScheme.surface,
-      borderColor: color.withOpacity(0.32),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-      borderRadius: 14,
+      backgroundColor: color.withOpacity(0.12),
+      borderColor: color.withOpacity(0.28),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      borderRadius: 12,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.14),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 18, color: color),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            value,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-              color: onSurface,
-              height: 1.1,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 3),
+          Icon(icon, size: 16, color: color),
+          const SizedBox(height: 4),
           Text(
             label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: muted,
-              height: 1.2,
+            style: TextStyle(
+              fontSize: 9,
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
             ),
-            maxLines: 2,
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
+            ),
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
         ],
