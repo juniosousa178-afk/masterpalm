@@ -25,6 +25,8 @@ import {
 import {
   orderTotalToCents,
   validateMpPaymentAgainstOrder,
+  mapCatalogOrderPagamentoToVendaFields,
+  resolveCatalogStockItemDocIds,
 } from "./catalogMpOrderHelpers.js";
 import { emitWebhookLog } from "./mpStructuredLogsMp.js";
 
@@ -443,6 +445,7 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
   }
 
   const items = order.items || order.itens || [];
+  const itemsForStock = await resolveCatalogStockItemDocIds(getDb(), resolvedLojaId, items);
 
   emitWebhookLog({
     event: "mpWebhook_stock_update_started",
@@ -500,10 +503,11 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
     if (isPrePedido || isPedidoPendente) {
       updatePayload.statusPagamento = "aprovado";
     }
+    updatePayload.estoqueBaixado = true;
     tx.set(orderRefToUse, updatePayload, { merge: true });
 
-    for (const it of items) {
-      const pId = it.productId || it.produtosId || it.id || it.slug;
+    for (const it of itemsForStock) {
+      const pId = it.__resolvedDocId;
       if (!pId) continue;
       const qty = Number(it.qty ?? it.quantidade ?? 0);
       if (qty <= 0) continue;
@@ -642,6 +646,11 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
     const cliente = order.cliente || {};
     const clienteNome = cliente.nome || "Cliente";
     const total = Number(order.total || 0);
+    const pagamentoFields = mapCatalogOrderPagamentoToVendaFields(
+      order.pagamento,
+      total,
+      payment,
+    );
     const itensVenda = (order.itens || []).map((it) => ({
       produtoNome: it.nome || "",
       quantidade: Number(it.quantidade || 0),
@@ -665,7 +674,7 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
           total,
           desconto: 0,
           descontoValor: 0,
-          formasPagamento: "Mercado Pago",
+          formasPagamento: pagamentoFields.formasPagamento,
           frete: Number((order.frete || {}).valor || 0),
           clienteNome,
           produtosDescricao: itensVenda.map((i) => `${i.quantidade}x ${i.produtoNome}`).join(", "),
@@ -674,9 +683,9 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
           tamanho: "",
           vendedor: "Catálogo Web",
           observacao: order.observacao || "",
-          pagamentoDinheiro: 0,
-          pagamentoPix: 0,
-          pagamentoCartao: total,
+          pagamentoDinheiro: pagamentoFields.pagamentoDinheiro,
+          pagamentoPix: pagamentoFields.pagamentoPix,
+          pagamentoCartao: pagamentoFields.pagamentoCartao,
           taxas: 0,
           custoProdutos: 0,
           itens: itensVenda,

@@ -148,3 +148,92 @@ export function validateMpPaymentAgainstOrder({
   }
   return { ok: true };
 }
+
+/**
+ * Mapeia `pedido.pagamento` (catálogo) para campos da venda em estoque_vendas.
+ * Fallback: payment_method_id / payment_type_id do MP quando o pedido não tiver pagamento.
+ */
+export function mapCatalogOrderPagamentoToVendaFields(pagamento, total, payment) {
+  const totalN = Number(total) || 0;
+  let pagamentoStr = String(pagamento ?? "").trim();
+  if (!pagamentoStr && payment && typeof payment === "object") {
+    const pm = String(payment.payment_method_id ?? "").toLowerCase();
+    const pt = String(payment.payment_type_id ?? "").toLowerCase();
+    if (pm === "pix" || pt === "bank_transfer") pagamentoStr = "PIX";
+    else if (pt === "credit_card" || pt === "debit_card") pagamentoStr = "Cartão";
+  }
+  const upper = pagamentoStr.toUpperCase();
+  let pagamentoPix = 0;
+  let pagamentoCartao = 0;
+  let pagamentoDinheiro = 0;
+  let formasPagamento = pagamentoStr || "Mercado Pago";
+
+  if (upper === "PIX" || (upper.includes("PIX") && !upper.includes("CART"))) {
+    pagamentoPix = totalN;
+    formasPagamento = pagamentoStr || "PIX";
+  } else if (
+    upper.includes("CART") ||
+    upper.includes("CARTÃO") ||
+    upper === "MERCADO PAGO" ||
+    upper.includes("MERCADO PAGO")
+  ) {
+    pagamentoCartao = totalN;
+    formasPagamento = pagamentoStr || "Cartão";
+  } else if (upper.includes("DINHEIRO")) {
+    pagamentoDinheiro = totalN;
+    formasPagamento = pagamentoStr || "Dinheiro";
+  } else if (payment && String(payment.payment_method_id ?? "").toLowerCase() === "pix") {
+    pagamentoPix = totalN;
+    formasPagamento = "PIX";
+  } else if (pagamentoStr) {
+    pagamentoPix = totalN;
+    formasPagamento = pagamentoStr;
+  } else {
+    pagamentoCartao = totalN;
+    formasPagamento = "Mercado Pago";
+  }
+
+  return { formasPagamento, pagamentoPix, pagamentoCartao, pagamentoDinheiro };
+}
+
+/**
+ * Resolve docId em estoque_produtos (productId/id ou consulta por slug).
+ * Itens sem ID resolvível são omitidos (logados pelo caller).
+ */
+export async function resolveCatalogStockItemDocIds(db, lojaId, items) {
+  const lid = String(lojaId);
+  const out = [];
+  for (const it of items || []) {
+    let pId = String(it.productId ?? it.produtosId ?? it.id ?? "").trim();
+    if (!pId) {
+      const slug = String(it.slug ?? "").trim();
+      if (slug) {
+        try {
+          const q = await db
+            .collection(COLLECTION_LOJAS)
+            .doc(lid)
+            .collection("estoque_produtos")
+            .where("slug", "==", slug)
+            .limit(2)
+            .get();
+          if (q.size === 1) {
+            pId = q.docs[0].id;
+          } else if (q.size > 1) {
+            console.warn(`[mpWebhook] slug duplicado em estoque_produtos: ${slug}`);
+          }
+        } catch (e) {
+          console.warn("[mpWebhook] resolve slug estoque:", e && e.message);
+        }
+      }
+    }
+    if (!pId) {
+      console.warn(
+        "[mpWebhook] item sem productId resolvível:",
+        (it.nome ?? it.name ?? "").toString(),
+      );
+      continue;
+    }
+    out.push({ ...it, __resolvedDocId: pId });
+  }
+  return out;
+}

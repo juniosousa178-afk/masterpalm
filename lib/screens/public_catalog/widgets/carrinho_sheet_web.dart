@@ -379,6 +379,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
   String _pagamento = 'PIX';
   int _freteIndex = 0;
+  /// true quando o cliente escolheu frete no modal (não sobrescrever com auto-seleção).
+  bool _freteEscolhaExplicita = false;
 
   String _normalizarTextoIdentificacaoFrete(String? raw) {
     if (raw == null) return '';
@@ -1186,6 +1188,28 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         _camposComErro.add('estado');
         obrigatorios.add('UF');
       }
+      if (_fretesLocal.isEmpty) {
+        _erroValidacao ??=
+            'Calcule o frete pelo CEP e selecione a forma de entrega antes de finalizar.';
+      } else if (!_freteEscolhaExplicita) {
+        final idx = _freteIndex.clamp(0, _fretesLocal.length - 1);
+        final sel = _fretesLocal[idx];
+        final plat = (sel['plataforma'] ?? 'manual').toString();
+        final val = (sel['valor'] as num?)?.toDouble() ?? 0.0;
+        final tipoSel = (sel['tipo'] ?? '').toString().toLowerCase().trim();
+        final manualGratis = plat == 'manual' &&
+            val <= 0 &&
+            (tipoSel == 'retirada' || tipoSel == 'combinar');
+        final temFretePagoApi = _fretesLocal.any((f) {
+          final p = (f['plataforma'] ?? '').toString();
+          final v = (f['valor'] as num?)?.toDouble() ?? 0.0;
+          return p.isNotEmpty && p != 'manual' && v > 0;
+        });
+        if (manualGratis && temFretePagoApi) {
+          _erroValidacao ??=
+              'Selecione a forma de entrega (toque em "Selecionar frete") antes de pagar.';
+        }
+      }
     }
 
     if (_erroValidacao == null && obrigatorios.isNotEmpty) {
@@ -1941,7 +1965,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                       logD('🖱️ [SELEÇÃO] Frete completo: $f');
 
                                       // Atualizar seleção
-                                      setState(() => _freteIndex = i);
+                                      setState(() {
+                                        _freteIndex = i;
+                                        _freteEscolhaExplicita = true;
+                                      });
                                       setModalState(
                                           () {}); // Atualiza o modal também
 
@@ -2390,6 +2417,34 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       } else {
         logD(
             '📍 [CATALOGO] Mantendo seleção do usuário: ${_fretesLocal[_freteIndex]['nome']} (índice $_freteIndex)');
+      }
+
+      if (!_freteEscolhaExplicita && _fretesLocal.isNotEmpty) {
+        final idxAtual = _freteIndex.clamp(0, _fretesLocal.length - 1);
+        final selAtual = _fretesLocal[idxAtual];
+        final platAtual = (selAtual['plataforma'] ?? 'manual').toString();
+        final valorAtual = (selAtual['valor'] as num?)?.toDouble() ?? 0.0;
+        final tipoAtual =
+            (selAtual['tipo'] ?? '').toString().toLowerCase().trim();
+        final manualGratis = platAtual == 'manual' &&
+            valorAtual <= 0 &&
+            (tipoAtual == 'retirada' || tipoAtual == 'combinar');
+        if (manualGratis) {
+          for (int i = 0; i < _fretesLocal.length; i++) {
+            final plat = (_fretesLocal[i]['plataforma'] ?? '').toString();
+            final val = (_fretesLocal[i]['valor'] as num?)?.toDouble() ?? 0.0;
+            if (plat.isNotEmpty &&
+                plat != 'manual' &&
+                val > 0) {
+              _freteIndex = i;
+              logD(
+                '📍 [CATALOGO] Auto-selecionou frete pago após cálculo: '
+                '${_fretesLocal[i]['nome']} (índice $i)',
+              );
+              break;
+            }
+          }
+        }
       }
 
       logD(
