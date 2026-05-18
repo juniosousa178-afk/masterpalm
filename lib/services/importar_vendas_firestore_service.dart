@@ -180,6 +180,11 @@ class ImportarVendasFirestoreService {
               venda: venda,
               firestoreData: Map<String, dynamic>.from(data),
             );
+            await VendasFirestoreService.reconcileMpVendaPagamentoFromPrePedidoIfNeeded(
+              lojaId: lojaId,
+              venda: venda,
+              firestoreData: Map<String, dynamic>.from(data),
+            );
             logD('✅ [IMPORT-VENDAS] Venda $vendaId importada (cliente=${venda.clienteNome}, total=R\$${venda.total.toStringAsFixed(2)})');
           } catch (e, st) {
             erros++;

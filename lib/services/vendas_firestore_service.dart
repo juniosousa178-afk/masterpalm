@@ -426,6 +426,11 @@ class VendasFirestoreService {
             venda: venda,
             firestoreData: Map<String, dynamic>.from(data),
           );
+          await reconcileMpVendaPagamentoFromPrePedidoIfNeeded(
+            lojaId: lojaId,
+            venda: venda,
+            firestoreData: Map<String, dynamic>.from(data),
+          );
 
           logD('✅ [VENDAS-SYNC] Venda $vendaId sincronizada do Firestore');
         } catch (e, st) {
@@ -590,6 +595,85 @@ class VendasFirestoreService {
     final o =
         (v.origemVenda ?? data['origemVenda'] ?? '').toString().toLowerCase();
     return o == 'mp_webhook' || o.contains('mp_webhook');
+  }
+
+  /// Aplica forma de pagamento do pedido catálogo nos campos discriminados da [Venda].
+  static void aplicarPagamentoCatalogoNaVenda({
+    required Venda venda,
+    required String pagamento,
+    required double total,
+  }) {
+    final p = pagamento.trim();
+    if (p.isEmpty || total <= 0) return;
+    final upper = p.toUpperCase();
+    venda.formasPagamento = p;
+    venda.pagamentoPix = 0;
+    venda.pagamentoCartao = 0;
+    venda.pagamentoDinheiro = 0;
+    if (upper == 'PIX' || (upper.contains('PIX') && !upper.contains('CART'))) {
+      venda.pagamentoPix = total;
+    } else if (upper.contains('CART') ||
+        upper.contains('CARTÃO') ||
+        upper == 'MERCADO PAGO' ||
+        upper.contains('MERCADO PAGO')) {
+      venda.pagamentoCartao = total;
+    } else if (upper.contains('DINHEIRO')) {
+      venda.pagamentoDinheiro = total;
+    } else {
+      venda.pagamentoPix = total;
+    }
+  }
+
+  /// Corrige vendas MP espelhadas com `pagamentoCartao = total` indevido (legado webhook).
+  static bool _vendaMpPrecisaReconciliarPagamento(Venda v) {
+    if (v.total <= 0) return false;
+    if (v.pagamentoPix > 0.01) return false;
+    if (v.pagamentoCartao >= v.total * 0.99) {
+      final fp = v.formasPagamento.toUpperCase();
+      if (fp == 'MERCADO PAGO' || fp.isEmpty) return true;
+    }
+    return false;
+  }
+
+  /// Lê `pre_pedidos/{id}.pagamento` e alinha Hive após import/sync.
+  static Future<void> reconcileMpVendaPagamentoFromPrePedidoIfNeeded({
+    required String lojaId,
+    required Venda venda,
+    required Map<String, dynamic> firestoreData,
+  }) async {
+    if (!_isMpWebhookVenda(firestoreData, venda)) return;
+    if (!_vendaMpPrecisaReconciliarPagamento(venda)) return;
+
+    final prePedidoId = _resolvePrePedidoIdForMp(venda, firestoreData);
+    if (prePedidoId == null || prePedidoId.isEmpty) return;
+
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('pre_pedidos')
+          .doc(prePedidoId)
+          .get();
+      if (!snap.exists) return;
+      final pedido = snap.data();
+      if (pedido == null) return;
+      final pagamento = (pedido['pagamento'] ?? '').toString().trim();
+      if (pagamento.isEmpty) return;
+
+      aplicarPagamentoCatalogoNaVenda(
+        venda: venda,
+        pagamento: pagamento,
+        total: venda.total,
+      );
+      await venda.save();
+      logD(
+        '[MP-PAGAMENTO] Venda ${venda.idFirebase} reconciliada: $pagamento',
+      );
+    } catch (e) {
+      logW(
+        '[MP-PAGAMENTO] Falha ao reconciliar pagamento (type=${e.runtimeType}): $e',
+      );
+    }
   }
 
   static String? _resolvePrePedidoIdForMp(Venda v, Map<String, dynamic> data) {
