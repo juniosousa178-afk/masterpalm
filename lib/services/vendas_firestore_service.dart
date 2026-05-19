@@ -142,7 +142,13 @@ class VendasFirestoreService {
   ///
   /// [enqueueOnFailure] Se true, enfileira para retry quando falhar após 3 tentativas.
   /// Use false quando chamado pela SyncQueueService para evitar duplicação de itens na fila.
-  static Future<bool> syncVenda(Venda venda, {String? lojaId, bool enqueueOnFailure = true}) async {
+  static Future<bool> syncVenda(
+    Venda venda, {
+    String? lojaId,
+    bool enqueueOnFailure = true,
+    String? vendaAnteriorJson,
+    String? substituirDocIdAntigo,
+  }) async {
     const maxAttempts = 3;
     const baseDelay = Duration(milliseconds: 500);
 
@@ -179,17 +185,24 @@ class VendasFirestoreService {
             .collection(FSPaths.estoqueVendasCol);
 
         final remoteSnap = await colRef.doc(vendaId).get();
+        final remoteData = remoteSnap.data();
         if (remoteSnap.exists && isMpCanonicalVendaDocId(vendaId)) {
           logD(
             '[MP-IDEMPOTENCIA] doc já existe no Firestore ($vendaId); merge sem segundo UUID',
           );
         }
 
-        // Remover doc antigo se migramos de ID numérico (evita duplicata no Firestore)
+        // Migração ID numérico legado → tombstone (não delete físico)
         if (oldIdIfNumeric != null && oldIdIfNumeric != vendaId) {
           try {
-            await colRef.doc(oldIdIfNumeric).delete();
-            logD('[SYNC-VENDAS] 🗑️ Doc antigo $oldIdIfNumeric removido (migrado para $vendaId)');
+            await marcarVendaSubstituida(
+              vendaIdSubstituida: oldIdIfNumeric,
+              substituidaPor: vendaId,
+              lojaId: storeId,
+            );
+            logD(
+              '[SYNC-VENDAS] Doc legado $oldIdIfNumeric marcado substituida → $vendaId',
+            );
           } catch (_) {}
         }
 
@@ -258,13 +271,28 @@ class VendasFirestoreService {
         'cancelada': venda.cancelada,
         'estornada': venda.estornada,
 
+        if (vendaAnteriorJson != null && vendaAnteriorJson.trim().isNotEmpty)
+          'vendaAnteriorJson': vendaAnteriorJson.trim(),
+
         // Metadata
-        'createdAt': FieldValue.serverTimestamp(),
+        'createdAt': remoteData?['createdAt'] ?? FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'status': 'concluida',
         };
 
         await colRef.doc(vendaId).set(vendaData, SetOptions(merge: true));
+
+        final docAntigo = (substituirDocIdAntigo ?? '').trim();
+        if (docAntigo.isNotEmpty && docAntigo != vendaId) {
+          await marcarVendaSubstituida(
+            vendaIdSubstituida: docAntigo,
+            substituidaPor: vendaId,
+            lojaId: storeId,
+          );
+          logD(
+            '[SYNC-VENDAS] Tombstone pós-sync: $docAntigo → substituidaPor $vendaId',
+          );
+        }
 
         logD('✅ [SYNC-VENDAS] Venda $vendaId sincronizada (lojaId=$storeId)');
         logD('[SYNC-VENDAS] 📤 OK → lojaId=$storeId | vendaId=$vendaId | cliente=${venda.clienteNome}');
@@ -379,6 +407,10 @@ class VendasFirestoreService {
         for (final doc in snapshot.docs) {
         try {
           final data = doc.data();
+          if (_isVendaSubstituidaMap(data)) {
+            logD('[SYNC-VENDAS] ⏭️ venda ${doc.id} substituida — não importa');
+            continue;
+          }
           final vendaId = doc.id;
           firestoreVendaIds.add(vendaId);
 
@@ -419,18 +451,6 @@ class VendasFirestoreService {
           // Salvar no Hive
           await vendasBox.add(venda);
           sincronizadas++;
-
-          await linkMpImportedVendaToClienteFromPrePedidoIfNeeded(
-            lojaId: lojaId,
-            vendasBox: vendasBox,
-            venda: venda,
-            firestoreData: Map<String, dynamic>.from(data),
-          );
-          await reconcileMpVendaPagamentoFromPrePedidoIfNeeded(
-            lojaId: lojaId,
-            venda: venda,
-            firestoreData: Map<String, dynamic>.from(data),
-          );
 
           logD('✅ [VENDAS-SYNC] Venda $vendaId sincronizada do Firestore');
         } catch (e, st) {
@@ -524,7 +544,42 @@ class VendasFirestoreService {
     }
   }
 
-  /// Deleta uma venda do Firestore
+  /// Marca venda como substituída (tombstone lógico — sem delete físico).
+  static Future<void> marcarVendaSubstituida({
+    required String vendaIdSubstituida,
+    required String substituidaPor,
+    String? lojaId,
+  }) async {
+    final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
+    if (storeId == null || storeId.isEmpty) return;
+    final antigo = vendaIdSubstituida.trim();
+    final novo = substituidaPor.trim();
+    if (antigo.isEmpty || novo.isEmpty || antigo == novo) return;
+
+    await _db
+        .collection('lojas')
+        .doc(storeId)
+        .collection(FSPaths.estoqueVendasCol)
+        .doc(antigo)
+        .set(
+      {
+        'status': 'substituida',
+        'substituidaPor': novo,
+        'substituidaEm': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    logD('[SYNC-VENDAS] Venda $antigo marcada substituida (por $novo)');
+  }
+
+  static bool _isVendaSubstituidaMap(Map<String, dynamic>? data) {
+    if (data == null) return false;
+    final st = (data['status'] ?? '').toString().trim().toLowerCase();
+    return st == 'substituida';
+  }
+
+  /// Deleta uma venda do Firestore (exclusão permanente / legado)
   static Future<void> deleteVenda(String vendaId, {String? lojaId}) async {
     try {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
@@ -561,6 +616,7 @@ class VendasFirestoreService {
 
       for (final doc in vendasSnap.docs) {
         final data = doc.data();
+        if (_isVendaSubstituidaMap(data)) continue;
         if (!incluirVendaFirestoreMap(data)) continue;
         quantidadeVendas++;
         final total = (data['total'] as num?)?.toDouble() ?? 0;
@@ -584,297 +640,6 @@ class VendasFirestoreService {
     } catch (e, st) {
       logE('❌ [VENDAS-SYNC] Erro ao buscar estatísticas (type=${e.runtimeType})', error: e, st: st);
       return {};
-    }
-  }
-
-  static String _digitsOnly(String? s) =>
-      RegExp(r'\d').allMatches(s ?? '').map((m) => m.group(0)!).join();
-
-  static bool _isMpWebhookVenda(Map<String, dynamic> data, Venda v) {
-    if (isMpCanonicalVendaDocId(v.idFirebase)) return true;
-    final o =
-        (v.origemVenda ?? data['origemVenda'] ?? '').toString().toLowerCase();
-    return o == 'mp_webhook' || o.contains('mp_webhook');
-  }
-
-  /// Aplica forma de pagamento do pedido catálogo nos campos discriminados da [Venda].
-  static void aplicarPagamentoCatalogoNaVenda({
-    required Venda venda,
-    required String pagamento,
-    required double total,
-  }) {
-    final p = pagamento.trim();
-    if (p.isEmpty || total <= 0) return;
-    final upper = p.toUpperCase();
-    venda.formasPagamento = p;
-    venda.pagamentoPix = 0;
-    venda.pagamentoCartao = 0;
-    venda.pagamentoDinheiro = 0;
-    if (upper == 'PIX' || (upper.contains('PIX') && !upper.contains('CART'))) {
-      venda.pagamentoPix = total;
-    } else if (upper.contains('CART') ||
-        upper.contains('CARTÃO') ||
-        upper == 'MERCADO PAGO' ||
-        upper.contains('MERCADO PAGO')) {
-      venda.pagamentoCartao = total;
-    } else if (upper.contains('DINHEIRO')) {
-      venda.pagamentoDinheiro = total;
-    } else {
-      venda.pagamentoPix = total;
-    }
-  }
-
-  /// Corrige vendas MP espelhadas com `pagamentoCartao = total` indevido (legado webhook).
-  static bool _vendaMpPrecisaReconciliarPagamento(Venda v) {
-    if (v.total <= 0) return false;
-    if (v.pagamentoPix > 0.01) return false;
-    if (v.pagamentoCartao >= v.total * 0.99) {
-      final fp = v.formasPagamento.toUpperCase();
-      if (fp == 'MERCADO PAGO' || fp.isEmpty) return true;
-    }
-    return false;
-  }
-
-  /// Lê `pre_pedidos/{id}.pagamento` e alinha Hive após import/sync.
-  static Future<void> reconcileMpVendaPagamentoFromPrePedidoIfNeeded({
-    required String lojaId,
-    required Venda venda,
-    required Map<String, dynamic> firestoreData,
-  }) async {
-    if (!_isMpWebhookVenda(firestoreData, venda)) return;
-    if (!_vendaMpPrecisaReconciliarPagamento(venda)) return;
-
-    final prePedidoId = _resolvePrePedidoIdForMp(venda, firestoreData);
-    if (prePedidoId == null || prePedidoId.isEmpty) return;
-
-    try {
-      final snap = await _db
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('pre_pedidos')
-          .doc(prePedidoId)
-          .get();
-      if (!snap.exists) return;
-      final pedido = snap.data();
-      if (pedido == null) return;
-      final pagamento = (pedido['pagamento'] ?? '').toString().trim();
-      if (pagamento.isEmpty) return;
-
-      aplicarPagamentoCatalogoNaVenda(
-        venda: venda,
-        pagamento: pagamento,
-        total: venda.total,
-      );
-      await venda.save();
-      logD(
-        '[MP-PAGAMENTO] Venda ${venda.idFirebase} reconciliada: $pagamento',
-      );
-    } catch (e) {
-      logW(
-        '[MP-PAGAMENTO] Falha ao reconciliar pagamento (type=${e.runtimeType}): $e',
-      );
-    }
-  }
-
-  static String? _resolvePrePedidoIdForMp(Venda v, Map<String, dynamic> data) {
-    String? pick(String? a, String? b) {
-      final x = (a ?? '').trim();
-      if (x.isNotEmpty) return x;
-      final y = (b ?? '').trim();
-      return y.isNotEmpty ? y : null;
-    }
-
-    final fromVenda = pick(v.prePedidoId, v.orderId);
-    if (fromVenda != null) return fromVenda;
-
-    final d1 = data['prePedidoId']?.toString().trim();
-    if (d1 != null && d1.isNotEmpty) return d1;
-    final d2 = data['origemPrePedido']?.toString().trim();
-    if (d2 != null && d2.isNotEmpty) return d2;
-    final d3 = data['orderId']?.toString().trim();
-    if (d3 != null && d3.isNotEmpty) return d3;
-    return null;
-  }
-
-  static String _pickEnderecoCampo(Map<String, dynamic>? m, List<String> keys) {
-    if (m == null) return '';
-    for (final k in keys) {
-      final v = m[k];
-      if (v != null && v.toString().trim().isNotEmpty) {
-        return v.toString().trim();
-      }
-    }
-    return '';
-  }
-
-  static String _linhaEnderecoPreferFormatado(
-    Map<String, dynamic> customer,
-    Map<String, dynamic>? endMap,
-  ) {
-    final fmt = (customer['enderecoFormatado'] ?? '').toString().trim();
-    if (fmt.isNotEmpty) return fmt;
-    if (endMap == null || endMap.isEmpty) return '';
-    final rua = _pickEnderecoCampo(endMap, ['rua', 'logradouro', 'street']);
-    final numero = _pickEnderecoCampo(endMap, ['numero', 'número', 'number']);
-    final bairro = _pickEnderecoCampo(endMap, ['bairro']);
-    final cidade = _pickEnderecoCampo(endMap, ['cidade', 'localidade']);
-    final uf = _pickEnderecoCampo(endMap, ['estado', 'uf']);
-    final cep = _pickEnderecoCampo(endMap, ['cep', 'CEP']);
-    final comp = _pickEnderecoCampo(endMap, ['complemento']);
-    final parts = <String>[];
-    if (rua.isNotEmpty) {
-      parts.add(numero.isNotEmpty ? '$rua, nº $numero' : rua);
-    } else if (numero.isNotEmpty) {
-      parts.add('nº $numero');
-    }
-    if (bairro.isNotEmpty) parts.add(bairro);
-    if (cidade.isNotEmpty) parts.add(cidade);
-    if (uf.isNotEmpty) parts.add(uf);
-    if (cep.isNotEmpty) parts.add('CEP $cep');
-    if (comp.isNotEmpty) parts.add(comp);
-    return parts.join(' — ');
-  }
-
-  /// Após importar venda MP (`estoque_vendas` → Hive): lê `pre_pedidos`, cria/atualiza [Cliente] local e histórico.
-  /// Idempotente; não altera estoque nem pagamento.
-  static Future<void> linkMpImportedVendaToClienteFromPrePedidoIfNeeded({
-    required String lojaId,
-    required Box<Venda> vendasBox,
-    required Venda venda,
-    required Map<String, dynamic> firestoreData,
-  }) async {
-    try {
-      if (!_isMpWebhookVenda(firestoreData, venda)) return;
-
-      final prePedidoId = _resolvePrePedidoIdForMp(venda, firestoreData);
-      if (prePedidoId == null || prePedidoId.isEmpty) return;
-
-      final snap = await _db
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('pre_pedidos')
-          .doc(prePedidoId)
-          .get();
-
-      if (!snap.exists) return;
-      final pedido = snap.data();
-      if (pedido == null) return;
-
-      final rawCliente = pedido['cliente'];
-      if (rawCliente is! Map) return;
-      final customer = Map<String, dynamic>.from(rawCliente);
-
-      final telDigits = _digitsOnly(customer['telefone']?.toString());
-      final emailNorm =
-          (customer['email'] ?? '').toString().trim().toLowerCase();
-
-      if (telDigits.isEmpty && emailNorm.isEmpty) return;
-
-      Map<String, dynamic>? endMap;
-      final endRaw = customer['endereco'];
-      if (endRaw is Map) {
-        endMap = Map<String, dynamic>.from(endRaw);
-      }
-
-      final cep = _pickEnderecoCampo(endMap, ['cep', 'CEP']);
-      final cidade =
-          _pickEnderecoCampo(endMap, ['cidade', 'localidade', 'city']);
-      final linhaEnd =
-          _linhaEnderecoPreferFormatado(customer, endMap).trim();
-
-      final clientesBox =
-          await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
-
-      Cliente? found;
-      for (final c in clientesBox.values) {
-        if (c.lojaId.isNotEmpty && c.lojaId != lojaId) continue;
-        if (telDigits.isNotEmpty && _digitsOnly(c.telefone) == telDigits) {
-          found = c;
-          break;
-        }
-        final ce = (c.email ?? '').trim().toLowerCase();
-        if (emailNorm.isNotEmpty && ce == emailNorm) {
-          found = c;
-          break;
-        }
-      }
-
-      final nomeIn = (customer['nome'] ?? '').toString().trim();
-      final nomeFinal = nomeIn.isNotEmpty
-          ? nomeIn
-          : (venda.clienteNome.trim().isNotEmpty ? venda.clienteNome : 'Cliente');
-
-      if (found == null) {
-        final telDisplay = (customer['telefone'] ?? '').toString();
-        found = Cliente(
-          nome: nomeFinal,
-          telefone: telDisplay,
-          instagram: '',
-          cep: cep,
-          cidade: cidade.isNotEmpty ? cidade : '',
-          email: emailNorm.isEmpty
-              ? null
-              : customer['email']?.toString().trim(),
-          endereco: linhaEnd.isNotEmpty ? linhaEnd : null,
-          lojaId: lojaId,
-        );
-        await clientesBox.add(found);
-      } else {
-        if (nomeFinal.isNotEmpty) found.nome = nomeFinal;
-        final tel = (customer['telefone'] ?? '').toString();
-        if (tel.isNotEmpty) found.telefone = tel;
-        final em = (customer['email'] ?? '').toString().trim();
-        if (em.isNotEmpty) found.email = em;
-        if (cep.isNotEmpty) found.cep = cep;
-        if (cidade.isNotEmpty) found.cidade = cidade;
-        if (linhaEnd.isNotEmpty) found.endereco = linhaEnd;
-        await found.save();
-      }
-
-      final pay = (venda.paymentId ?? '').trim();
-      final ordKey =
-          (venda.prePedidoId ?? venda.orderId ?? prePedidoId).trim();
-
-      // ignore: experimental_member_use
-      found.historico ??= HiveList(vendasBox);
-
-      final jaTem = found.historico!.any((h) {
-        if (identical(h, venda)) return true;
-        if (h.key != null &&
-            venda.key != null &&
-            h.key == venda.key) {
-          return true;
-        }
-        final hid = (h.idFirebase ?? '').trim();
-        final vid = (venda.idFirebase ?? '').trim();
-        if (hid.isNotEmpty && vid.isNotEmpty && hid == vid) return true;
-        final hp = (h.paymentId ?? '').trim();
-        if (pay.isNotEmpty && hp == pay) {
-          final ho = (h.prePedidoId ?? h.orderId ?? '').trim();
-          if (ho.isNotEmpty &&
-              ordKey.isNotEmpty &&
-              ho == ordKey) {
-            return true;
-          }
-        }
-        return false;
-      });
-
-      if (!jaTem) {
-        found.historico!.add(venda);
-        await found.save();
-      }
-
-      if ((venda.clienteId ?? '').trim().isEmpty && found.key != null) {
-        venda.clienteId = found.key.toString();
-        await venda.save();
-      }
-    } catch (e, st) {
-      logE(
-        '⚠️ [MP-CLIENTE-HIVE] Vincular cliente pós-import (não crítico)',
-        error: e,
-        st: st,
-      );
     }
   }
 }

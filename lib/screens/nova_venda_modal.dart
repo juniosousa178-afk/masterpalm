@@ -1,19 +1,17 @@
 // lib/screens/nova_venda_modal.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/combo_configuravel_resumo.dart';
-import '../core/hive_box_names.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/venda_metrics_filter.dart';
 import 'package:hive/hive.dart';
 
 import '../models/cliente.dart';
-import '../models/conta_receber.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
@@ -106,9 +104,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   int _pendenteQtdParcelasFiado = 1;
   int _pendenteIntervaloParcelasDias = 30;
 
-  /// Modo edição: vencimentos por parcela lidos do Hive antes do save (recriação após [desfazerVenda]).
-  List<DateTime>? _edicaoFiadoVencimentosParcelas;
-
   /// produtos: produto, preço, qtd, tamanho, cor, extraValor (técnico), variacaoExtraResumo (exibição)
   List<Map<String, dynamic>> produtosSelecionados = [
     {
@@ -136,36 +131,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     _quantityControllers.add(TextEditingController(text: '1'));
     _carregarConfigRoleta();
     if (widget.vendaParaEditar != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && widget.vendaParaEditar != null) {
-          await _carregarVendaParaEdicao(widget.vendaParaEditar!);
+          _carregarVendaParaEdicao(widget.vendaParaEditar!);
         }
       });
     }
   }
 
-  void _aplicarFiadoDefaultsFromVendaTexto(Venda v) {
-    final match = RegExp(
-      r'Vencimento:\s*(\d{2})/(\d{2})/(\d{4})',
-      caseSensitive: false,
-    ).firstMatch(v.formasPagamento);
-    if (match != null) {
-      final venc = DateTime(
-        int.parse(match.group(3)!),
-        int.parse(match.group(2)!),
-        int.parse(match.group(1)!),
-      );
-      final hoje = DateTime.now();
-      final baseHoje = DateTime(hoje.year, hoje.month, hoje.day);
-      final baseV = DateTime(venc.year, venc.month, venc.day);
-      _pendenteDiasVencimento = baseV.difference(baseHoje).inDays.clamp(0, 3650);
-    } else {
-      _pendenteDiasVencimento = 30;
-    }
-  }
-
-  Future<void> _carregarVendaParaEdicao(Venda v) async {
-    _edicaoFiadoVencimentosParcelas = null;
+  void _carregarVendaParaEdicao(Venda v) {
     clienteController.text = v.clienteNome;
     observacaoController.text = v.observacao;
     frete = v.frete;
@@ -225,82 +199,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       ];
     }
 
-    final vk = v.key is int ? v.key as int : 0;
-    final contasLinked = <ContaReceber>[];
-    if (vk > 0) {
-      try {
-        final crName = HiveBoxNames.contasReceber(lojaId);
-        final crBox = Hive.isBoxOpen(crName)
-            ? Hive.box<ContaReceber>(crName)
-            : await Hive.openBox<ContaReceber>(crName);
-        for (final c in crBox.values) {
-          if (c.lojaId == lojaId && c.vendaKey == vk) {
-            contasLinked.add(c);
-          }
-        }
-      } catch (_) {}
-    }
-    contasLinked.sort((a, b) => a.parcelaNumero.compareTo(b.parcelaNumero));
-
-    final fiadoPorTexto = v.formasPagamento.toLowerCase().contains('fiado');
-    final usarFiado = contasLinked.isNotEmpty || fiadoPorTexto;
-
-    if (usarFiado) {
-      _pendenteFiado = true;
-      _pendenteIntervaloParcelasDias = 30;
-      if (contasLinked.isNotEmpty) {
-        var totPar = 1;
-        for (final c in contasLinked) {
-          if (c.parcelaTotal > totPar) totPar = c.parcelaTotal;
-        }
-        _pendenteQtdParcelasFiado = totPar.clamp(1, 48);
-
-        final esperado =
-            <int>{for (var i = 1; i <= _pendenteQtdParcelasFiado; i++) i};
-        final porNumero = <int, ContaReceber>{};
-        for (final c in contasLinked) {
-          porNumero[c.parcelaNumero] = c;
-        }
-        if (porNumero.length == _pendenteQtdParcelasFiado &&
-            esperado.difference(porNumero.keys.toSet()).isEmpty) {
-          _edicaoFiadoVencimentosParcelas = List.generate(
-            _pendenteQtdParcelasFiado,
-            (i) {
-              final dt = porNumero[i + 1]!.dataVencimento;
-              return DateTime(dt.year, dt.month, dt.day);
-            },
-          );
-          if (_edicaoFiadoVencimentosParcelas!.length >= 2) {
-            final d0 = _edicaoFiadoVencimentosParcelas![0];
-            final d1 = _edicaoFiadoVencimentosParcelas![1];
-            final gap = d1.difference(d0).inDays;
-            if (gap > 0 && gap <= 120) {
-              _pendenteIntervaloParcelasDias = gap;
-            }
-          }
-          final hoje = DateTime.now();
-          final baseHoje = DateTime(hoje.year, hoje.month, hoje.day);
-          final v0 = _edicaoFiadoVencimentosParcelas!.first;
-          _pendenteDiasVencimento = v0.difference(baseHoje).inDays.clamp(0, 3650);
-        } else {
-          _edicaoFiadoVencimentosParcelas = null;
-          _aplicarFiadoDefaultsFromVendaTexto(v);
-        }
-      } else {
-        _pendenteQtdParcelasFiado = 1;
-        _aplicarFiadoDefaultsFromVendaTexto(v);
-      }
-      pagamentos = [];
-    } else {
-      _pendenteFiado = false;
-      _pendenteQtdParcelasFiado = 1;
-      _pendenteIntervaloParcelasDias = 30;
-      pagamentos = [];
-      if (v.pagamentoDinheiro > 0) pagamentos.add({'forma': 'Dinheiro', 'valor': v.pagamentoDinheiro});
-      if (v.pagamentoPix > 0) pagamentos.add({'forma': 'Pix', 'valor': v.pagamentoPix});
-      if (v.pagamentoCartao > 0) pagamentos.add({'forma': 'Cartão', 'valor': v.pagamentoCartao});
-      if (pagamentos.isEmpty) pagamentos.add({'forma': 'Pix', 'valor': v.total});
-    }
+    pagamentos = [];
+    if (v.pagamentoDinheiro > 0) pagamentos.add({'forma': 'Dinheiro', 'valor': v.pagamentoDinheiro});
+    if (v.pagamentoPix > 0) pagamentos.add({'forma': 'Pix', 'valor': v.pagamentoPix});
+    if (v.pagamentoCartao > 0) pagamentos.add({'forma': 'Cartão', 'valor': v.pagamentoCartao});
+    if (pagamentos.isEmpty) pagamentos.add({'forma': 'Pix', 'valor': v.total});
 
     for (final c in _valorControllers) {
       c.dispose();
@@ -319,7 +222,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _quantityControllers.add(TextEditingController(text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
     }
 
-    if (mounted) setState(() {});
+    setState(() {});
   }
 
   Future<void> _carregarConfigRoleta() async {
@@ -405,56 +308,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     });
   }
 
-  /// Chave estável por produto/variação (edição: comparar quantidade antiga vs nova).
-  String _chaveLinhaProdutoVenda({
-    String? productId,
-    required String nome,
-    required String tamanho,
-    required String cor,
-    required String extraValor,
-  }) {
-    final pid = (productId ?? '').trim();
-    return '$pid\x00${nome.trim().toLowerCase()}\x00${tamanho.trim()}\x00${cor.trim()}\x00${extraValor.trim()}';
-  }
-
-  Map<String, int> _quantidadesOriginaisPorChave(Venda v) {
-    final out = <String, int>{};
-    if (v.itens != null && v.itens!.isNotEmpty) {
-      for (final it in v.itens!) {
-        final k = _chaveLinhaProdutoVenda(
-          productId: it.productId,
-          nome: it.produtoNome,
-          tamanho: it.tamanho,
-          cor: it.cor,
-          extraValor: it.extraValor,
-        );
-        out[k] = (out[k] ?? 0) + it.quantidade;
-      }
-      return out;
-    }
-    try {
-      final linhas = v.produtosDescricao.split('\n');
-      final linha = linhas.isNotEmpty ? linhas.first.trim() : '';
-      if (linha.contains(' x ')) {
-        final partes = linha.split(' x ');
-        final qtd = int.tryParse(partes[0].trim()) ?? v.quantidade;
-        var nome = partes[1].split(' - R\$').first.trim();
-        if (nome.contains(' - ')) nome = nome.split(' - ').first.trim();
-        if (nome.isNotEmpty) {
-          final k = _chaveLinhaProdutoVenda(
-            productId: null,
-            nome: nome,
-            tamanho: v.tamanho,
-            cor: '',
-            extraValor: '',
-          );
-          out[k] = (out[k] ?? 0) + qtd.clamp(1, 999999);
-        }
-      }
-    } catch (_) {}
-    return out;
-  }
-
   static double _parsePercentualBrasil(String raw) {
     final s = raw.trim().replaceAll(',', '.');
     if (s.isEmpty) return 0.0;
@@ -505,8 +358,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     double subtotal = 0.0;
 
     for (var item in produtosSelecionados) {
-      final preco = _precoMapSeguro(item['preco']);
-      final qtd = _quantidadeMapSegura(item['quantidade']);
+      final preco = (item['preco'] ?? 0.0) as double;
+      final qtd = (item['quantidade'] ?? 1) as int;
       subtotal += preco * qtd;
     }
 
@@ -772,8 +625,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             await _abrirSeletorCombo(
               index: index,
               combo: prod,
-              quantidadeInicial: _quantidadeMapSegura(item['quantidade']),
-              precoFallback: _precoMapSeguro(item['preco']),
+              quantidadeInicial: (item['quantidade'] ?? 1) as int,
+              precoFallback: (item['preco'] ?? 0.0) as double,
             );
           } else if (temVariacao) {
             await NovaVendaVariacaoSheet.show(
@@ -993,47 +846,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
   }
 
-  int _quantidadeMapSegura(dynamic raw) {
-    final n = raw is int
-        ? raw
-        : (raw is num
-            ? raw.round()
-            : int.tryParse(raw?.toString() ?? '') ?? 1);
-    if (n < 1) return 1;
-    if (n > 999999) return 999999;
-    return n;
-  }
-
-  double _precoMapSeguro(dynamic raw) {
-    if (raw is double) return raw;
-    if (raw is num) return raw.toDouble();
-    return double.tryParse(raw?.toString() ?? '') ?? 0.0;
-  }
-
   /// Extrai o erro real quando vem encapsulado (comum no app web)
   String _extrairErroReal(Object e) {
     try {
       final dyn = e as dynamic;
-      final inner = dyn.error;
-      if (inner != null) {
-        try {
-          final s = inner.toString();
-          if (s.trim().isNotEmpty) return s;
-        } catch (_) {}
-      }
-      final msg = dyn.message;
-      if (msg != null) {
-        try {
-          final s = msg.toString();
-          if (s.trim().isNotEmpty) return s;
-        } catch (_) {}
-      }
+      if (dyn.error != null) return dyn.error.toString();
     } catch (_) {}
-    try {
-      return e.toString();
-    } catch (_) {
-      return e.runtimeType.toString();
-    }
+    return e.toString();
   }
 
   String? _extrairPathFirestore(String texto) {
@@ -1042,39 +861,35 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }
 
   String _detalharErroSalvarVenda(Object e) {
+    final erroReal = _extrairErroReal(e);
+    String? code;
+    String? plugin;
+    String? message;
     try {
-      final erroReal = _extrairErroReal(e);
-      String? code;
-      String? plugin;
-      String? message;
-      try {
-        final dyn = e as dynamic;
-        code = dyn.code?.toString();
-        plugin = dyn.plugin?.toString();
-        message = dyn.message?.toString();
-      } catch (_) {}
+      final dyn = e as dynamic;
+      code = dyn.code?.toString();
+      plugin = dyn.plugin?.toString();
+      message = dyn.message?.toString();
+    } catch (_) {}
 
-      if (e is FirebaseException) {
-        code ??= e.code;
-        plugin ??= e.plugin;
-        message ??= e.message;
-      }
-
-      final path = _extrairPathFirestore('$erroReal ${message ?? ''}');
-      final extra = <String>[
-        if (plugin != null && plugin.isNotEmpty) 'plugin=$plugin',
-        if (code != null && code.isNotEmpty) 'code=$code',
-        if (path != null && path.isNotEmpty) 'path=$path',
-      ].join(' | ');
-
-      if ((code ?? '').toLowerCase() == 'not-found') {
-        return 'Firestore not-found${extra.isNotEmpty ? ' ($extra)' : ''}';
-      }
-      if (extra.isNotEmpty) return '$erroReal ($extra)';
-      return erroReal;
-    } catch (_) {
-      return '${e.runtimeType} (falha ao formatar mensagem de erro)';
+    if (e is FirebaseException) {
+      code ??= e.code;
+      plugin ??= e.plugin;
+      message ??= e.message;
     }
+
+    final path = _extrairPathFirestore('$erroReal ${message ?? ''}');
+    final extra = <String>[
+      if (plugin != null && plugin.isNotEmpty) 'plugin=$plugin',
+      if (code != null && code.isNotEmpty) 'code=$code',
+      if (path != null && path.isNotEmpty) 'path=$path',
+    ].join(' | ');
+
+    if ((code ?? '').toLowerCase() == 'not-found') {
+      return 'Firestore not-found${extra.isNotEmpty ? ' ($extra)' : ''}';
+    }
+    if (extra.isNotEmpty) return '$erroReal ($extra)';
+    return erroReal;
   }
 
   void _logErroSalvarVenda({
@@ -1082,31 +897,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     required Object erro,
     StackTrace? st,
   }) {
-    try {
-      final detalhe = _detalharErroSalvarVenda(erro);
-      logE('❌ [VENDA][$etapa] $detalhe', error: erro, st: st);
-      if (kDebugMode) {
-        debugPrint(
-          '❌ [VENDA_DEBUG][$etapa] runtimeType=${erro.runtimeType} | detalhe=$detalhe',
-        );
-        if (st != null) {
-          debugPrint('❌ [VENDA_DEBUG][$etapa] stackTrace:\n$st');
-        }
-      }
-    } catch (_) {
-      if (kDebugMode) {
-        debugPrint(
-          '❌ [VENDA_DEBUG][$etapa] log falhou; runtimeType=${erro.runtimeType}',
-        );
-      }
-    }
-  }
-
-  void _notificarErroSalvarSeguro(void Function(String message)? onErro, String msg) {
-    if (onErro == null) return;
-    try {
-      onErro(msg);
-    } catch (_) {}
+    final detalhe = _detalharErroSalvarVenda(erro);
+    logE('❌ [VENDA][$etapa] $detalhe', error: erro, st: st);
   }
 
   Future<void> _mostrarErro(String mensagem) async {
@@ -1354,10 +1146,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       produtosSelecionados[i]['quantidade'] = q < 1 ? 1 : q;
     }
 
-    final fiadoDiasAntes = _pendenteDiasVencimento;
-    final fiadoQtdAntes = _pendenteQtdParcelasFiado;
-    final fiadoIntAntes = _pendenteIntervaloParcelasDias;
-
     // Abre dialog de confirmação com pagamento split e troco
     // Passa pagamentos atuais para preservar Pix/Dinheiro/Cartão selecionado
     final result = await FinalizarVendaConfirmacaoDialog.show(
@@ -1370,22 +1158,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         'forma': p['forma'],
         'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
       }).toList(),
-      initialVendaFiada: _modoEdicao && _pendenteFiado,
-      initialDiasVencimentoFiado: _modoEdicao && _pendenteFiado ? _pendenteDiasVencimento : null,
-      initialQuantidadeParcelasFiado: _modoEdicao && _pendenteFiado ? _pendenteQtdParcelasFiado : null,
-      initialIntervaloParcelasFiado: _modoEdicao && _pendenteFiado ? _pendenteIntervaloParcelasDias : null,
-      initialFiadoParcelado: _modoEdicao && _pendenteFiado && _pendenteQtdParcelasFiado > 1,
     );
 
     if (result == null || !mounted) return;
 
     if (result.isFiado) {
-      if (_edicaoFiadoVencimentosParcelas != null &&
-          (result.quantidadeParcelasFiado != fiadoQtdAntes ||
-              result.diasVencimento != fiadoDiasAntes ||
-              result.intervaloParcelasDias != fiadoIntAntes)) {
-        _edicaoFiadoVencimentosParcelas = null;
-      }
       _pendenteFiado = true;
       _pendenteDiasVencimento = result.diasVencimento;
       _pendenteQtdParcelasFiado = result.quantidadeParcelasFiado;
@@ -1395,7 +1172,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _pendenteFiado = false;
       _pendenteQtdParcelasFiado = 1;
       _pendenteIntervaloParcelasDias = 30;
-      _edicaoFiadoVencimentosParcelas = null;
     }
 
     // Atualiza pagamentos com o que veio do dialog
@@ -1463,12 +1239,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     // 3) Validação dos produtos (estoque + produto não cadastrado + tamanho + cor)
-    final novoPorChave = <String, int>{};
-    final exemploItemPorChave = <String, Map<String, dynamic>>{};
     for (var i = 0; i < produtosSelecionados.length; i++) {
       final item = produtosSelecionados[i];
       final nome = (item['produto'] ?? '').toString().trim();
-      final qtd = _quantidadeMapSegura(item['quantidade']);
+      final qtd = (item['quantidade'] ?? 1) as int;
       final tamanho = (item['tamanho'] ?? '').toString().trim();
       final cor = (item['cor'] ?? '').toString().trim();
       final extraValor = (item['extraValor'] ?? '').toString().trim();
@@ -1586,60 +1360,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         }
       }
 
-      final chaveLinha = _chaveLinhaProdutoVenda(
-        productId: productId,
-        nome: nome,
-        tamanho: tamanho,
-        cor: cor,
-        extraValor: extraValor,
-      );
-      novoPorChave[chaveLinha] = (novoPorChave[chaveLinha] ?? 0) + qtd;
-      exemploItemPorChave.putIfAbsent(
-        chaveLinha,
-        () => Map<String, dynamic>.from(item),
-      );
-    }
-
-    final origPorChave = _modoEdicao && widget.vendaParaEditar != null
-        ? _quantidadesOriginaisPorChave(widget.vendaParaEditar!)
-        : const <String, int>{};
-
-    for (final e in novoPorChave.entries) {
-      final chaveLinha = e.key;
-      final novoTotal = e.value;
-      final origTotal = origPorChave[chaveLinha] ?? 0;
-      final delta = novoTotal - origTotal;
-      if (delta <= 0) continue;
-
-      final item = exemploItemPorChave[chaveLinha]!;
-      final nome = (item['produto'] ?? '').toString().trim();
-      final tamanho = (item['tamanho'] ?? '').toString().trim();
-      final cor = (item['cor'] ?? '').toString().trim();
-      final extraValor = (item['extraValor'] ?? '').toString().trim();
-      final productId = (item['productId'] as String?)?.trim();
-      Produto prod = Produto.vazio();
-      if (productId != null && productId.isNotEmpty) {
-        try {
-          prod = widget.produtosBox.values.firstWhere(
-            (p) =>
-                p.lojaId == lojaId &&
-                (p.idFirebase == productId || p.key?.toString() == productId),
-            orElse: () => Produto.vazio(),
-          );
-        } catch (_) {}
-      }
-      if (prod.nome.isEmpty) {
-        prod = widget.produtosBox.values.firstWhere(
-          (p) =>
-              p.lojaId == lojaId &&
-              p.nome.trim().toLowerCase() == nome.trim().toLowerCase(),
-          orElse: () => Produto.vazio(),
-        );
-      }
-      if (prod.nome.isEmpty) continue;
-
+      // 🔹 Calcula estoque disponível: variações, por tamanho, ou total
       int disponivel;
       String msgEstoque = '';
+
       if (prod.temVariacaoSoloCor && cor.isNotEmpty) {
         disponivel = prod.obterEstoqueVariacao('', cor, extraValor);
         msgEstoque = 'cor $cor';
@@ -1656,24 +1380,23 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         msgEstoque = '';
       }
 
-      if (disponivel < delta) {
-        final msgBase = msgEstoque.isNotEmpty
-            ? 'Para "$nome" ($msgEstoque) é preciso mais $delta unidade(s) (acréscimo sobre a venda original). Disponível agora: $disponivel.'
-            : 'Para "$nome" é preciso mais $delta unidade(s) (acréscimo sobre a venda original). Disponível agora: $disponivel.';
+      if (disponivel < qtd) {
+        final msg = msgEstoque.isNotEmpty
+            ? 'Estoque insuficiente para "$nome" no $msgEstoque. Disponível: $disponivel.'
+            : 'Estoque insuficiente para "$nome". Disponível: $disponivel.';
 
         if (!mounted) return;
         final acao = await showDialog<String>(
           context: context,
           builder: (_) => AlertDialog(
-            title: const Text('Estoque insuficiente para o acréscimo'),
+            title: const Text('Produto com estoque zerado'),
             content: Text(
-              '$msgBase\n\n'
-              'Em edição de venda só validamos o que você aumentou em relação à venda original.',
+              '$msg\n\nO que deseja fazer?',
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, 'fechar'),
-                child: const Text('Fechar'),
+                onPressed: () => Navigator.pop(context, 'remover'),
+                child: const Text('Remover da venda'),
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, 'atualizar'),
@@ -1683,6 +1406,22 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           ),
         );
 
+        if (acao == 'remover') {
+          produtosSelecionados.removeAt(i);
+          if (produtosSelecionados.isEmpty) {
+            produtosSelecionados.add({
+              'produto': '',
+              'preco': 0.0,
+              'quantidade': 1,
+              'tamanho': '',
+              'cor': '',
+              'extraValor': '',
+              'variacaoExtraResumo': '',
+            });
+          }
+          setState(() {});
+          return;
+        }
         if (acao == 'atualizar') {
           if (!mounted) return;
           await Navigator.of(context).push(
@@ -1726,8 +1465,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         final productId = (m['productId'] as String?)?.trim();
         itens.add(VendaItem(
           produtoNome: nome,
-          quantidade: _quantidadeMapSegura(m['quantidade']),
-          precoUnitario: _precoMapSeguro(m['preco']),
+          quantidade: (m['quantidade'] ?? 1) as int,
+          precoUnitario: (m['preco'] ?? 0.0) as double,
           tamanho: (m['tamanho'] ?? '').toString(),
           cor: (m['cor'] ?? '').toString(),
           lojaId: lojaId,
@@ -1778,15 +1517,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final vendaParaEditarRef = widget.vendaParaEditar;
       final onVendaFinalizadaRef = widget.onVendaFinalizada;
 
-      final preservadasFiado = _pendenteFiado &&
-              _edicaoFiadoVencimentosParcelas != null &&
-              _edicaoFiadoVencimentosParcelas!.length == _pendenteQtdParcelasFiado
-          ? List<DateTime>.from(_edicaoFiadoVencimentosParcelas!)
-          : null;
-
       // Só fecha o modal após o salvamento principal ter sido concluído com sucesso.
-      final (ok, numeroSorte, mensagemErro, vendaOriginalRestaurada) =
-          await _salvarVendaEmBackground(
+      final (ok, numeroSorte, mensagemErro) = await _salvarVendaEmBackground(
         produtosBox: produtosBox,
         clientesBox: clientesBox,
         vendasBox: vendasBox,
@@ -1806,10 +1538,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         quantidadeParcelasFiado: _pendenteQtdParcelasFiado,
         intervaloParcelasDias: _pendenteIntervaloParcelasDias,
         vendaParaEditar: vendaParaEditarRef,
-        parcelasVencimentoFiadoPreservadas: preservadasFiado,
       );
       _pendenteFiado = false;
-      _edicaoFiadoVencimentosParcelas = null;
       if (!mounted) return;
       if (ok) {
         // Mostrar dialog com número da sorte (CampaignEngine já envia WhatsApp/Email)
@@ -1822,36 +1552,24 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         onVendaFinalizadaRef();
         Navigator.of(context).pop(true);
       } else if (mensagemErro != null && mensagemErro.isNotEmpty) {
-        if (vendaOriginalRestaurada) {
-          await _mostrarErro(
-            'A edição não foi salva, mas a venda original foi restaurada.\n\n$mensagemErro',
-          );
-        } else if (vendaParaEditarRef != null) {
-          await _mostrarErro(
-            'A edição falhou e não foi possível restaurar automaticamente a venda original. '
-            'Procure o suporte antes de fazer novas alterações.\n\n$mensagemErro',
-          );
-        } else {
-          await _mostrarErro(
-            'A venda não foi salva.\n\n$mensagemErro',
-          );
-        }
+        await _mostrarErro(
+          'A venda não foi salva.\n\n$mensagemErro',
+        );
       }
     } catch (e, stackTrace) {
       if (!mounted) return;
       _logErroSalvarVenda(etapa: 'UI_FINALIZAR', erro: e, st: stackTrace);
-      final detalhe = _detalharErroSalvarVenda(e);
       await _mostrarErro(
         'Erro ao salvar venda. '
         'Verifique sua conexão e se o produto está no estoque. '
-        'Detalhe: $detalhe',
+        'Detalhe: ${_detalharErroSalvarVenda(e)}',
       );
     }
   }
 
   /// Executa guard, registrarVendaMulti e participação em campanha (CampaignEngine).
-  /// Retorna (sucesso, numeroSorte?, mensagemErro?, vendaOriginalRestaurada?) — não usa widget/context.
-  Future<(bool, String?, String?, bool)> _salvarVendaEmBackground({
+  /// Retorna (sucesso, numeroSorte?, mensagemErro?) — não usa widget/context.
+  Future<(bool, String?, String?)> _salvarVendaEmBackground({
     required Box<Produto> produtosBox,
     required Box<Cliente> clientesBox,
     required Box<Venda> vendasBox,
@@ -1871,121 +1589,82 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     int quantidadeParcelasFiado = 1,
     int intervaloParcelasDias = 30,
     Venda? vendaParaEditar,
-    List<DateTime>? parcelasVencimentoFiadoPreservadas,
   }) async {
-    EdicaoVendaRollbackSnapshot? rollbackSnap;
-    var vendaOriginalDesfeita = false;
     try {
-      final dataHoraVendaPreservar = vendaParaEditar?.data;
-      String? idFirebaseToReuse;
+      String? numeroSorteRecebido;
+
       if (vendaParaEditar != null) {
-        rollbackSnap = await VendasService.capturarSnapshotEdicaoVenda(
-          venda: vendaParaEditar,
-          lojaId: lojaId,
-        );
-        idFirebaseToReuse = vendaParaEditar.idFirebase;
-        await VendasService.desfazerVenda(
+        // P0: merge Firestore primeiro; sem delete antecipado; tombstone só se docId mudar.
+        await VendasService.substituirVendaEditada(
+          vendaAntiga: vendaParaEditar,
           produtosBox: produtosBox,
           clientesBox: clientesBox,
           vendasBox: vendasBox,
-          venda: vendaParaEditar,
+          clienteNome: nomeClienteFinal,
+          itens: itens,
+          dinheiro: valorDinheiro,
+          pix: valorPix,
+          cartao: valorCartao,
+          vendedor: vendedor,
+          observacao: observacao,
+          frete: frete,
+          descontoPct: _descontoPctEquivalenteParaSalvar(),
+          lojaId: lojaId,
+          clienteExistente: cliente,
+          onSyncError: onErro,
+          isFiado: isFiado,
+          dataVencimentoFiado: isFiado
+              ? DateTime.now().add(Duration(days: diasVencimentoFiado))
+              : null,
+          quantidadeParcelasFiado: quantidadeParcelasFiado,
+          intervaloParcelasDias: intervaloParcelasDias,
+          itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+          onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
         );
-        vendaOriginalDesfeita = true;
-      }
-
-      // Edição retroativa: não consumir cota mensal (createdAt no Firestore muda no merge).
-      if (vendaParaEditar == null) {
+      } else {
         final guard = LimitsGuard();
         final podeVenda = await guard.canAddVenda(lojaId);
         if (!podeVenda) {
           const msg =
               'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
-          _notificarErroSalvarSeguro(onErro, msg);
-          return (false, null, msg, false);
+          onErro?.call(msg);
+          return (false, null, msg);
         }
+
+        await VendasService.registrarVendaMulti(
+          produtosBox: produtosBox,
+          clientesBox: clientesBox,
+          vendasBox: vendasBox,
+          clienteNome: nomeClienteFinal,
+          itens: itens,
+          dinheiro: valorDinheiro,
+          pix: valorPix,
+          cartao: valorCartao,
+          vendedor: vendedor,
+          observacao: observacao,
+          frete: frete,
+          descontoPct: _descontoPctEquivalenteParaSalvar(),
+          lojaId: lojaId,
+          clienteExistente: cliente,
+          onSyncError: onErro,
+          isFiado: isFiado,
+          dataVencimentoFiado: isFiado
+              ? DateTime.now().add(Duration(days: diasVencimentoFiado))
+              : null,
+          quantidadeParcelasFiado: quantidadeParcelasFiado,
+          intervaloParcelasDias: intervaloParcelasDias,
+          itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+          onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
+        );
       }
 
-      DateTime? dataVencimentoFiadoArg;
-      List<DateTime>? parcelasPreservadasArg;
-      if (isFiado) {
-        if (parcelasVencimentoFiadoPreservadas != null &&
-            parcelasVencimentoFiadoPreservadas.length == quantidadeParcelasFiado) {
-          parcelasPreservadasArg = parcelasVencimentoFiadoPreservadas;
-          final d0 = parcelasPreservadasArg.first;
-          dataVencimentoFiadoArg = DateTime(d0.year, d0.month, d0.day);
-        } else {
-          final hoje =
-              DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-          final base = dataHoraVendaPreservar != null
-              ? DateTime(
-                  dataHoraVendaPreservar.year,
-                  dataHoraVendaPreservar.month,
-                  dataHoraVendaPreservar.day,
-                )
-              : hoje;
-          dataVencimentoFiadoArg =
-              base.add(Duration(days: diasVencimentoFiado));
-        }
-      }
-
-      // ✅ ETAPA 1: Fluxo único de participação — apenas CampaignEngine (via VendasService).
-      // Removido _registrarNumeroSorteio (SorteioNumeroService) para evitar duplicidade.
-      String? numeroSorteRecebido;
-      await VendasService.registrarVendaMulti(
-        produtosBox: produtosBox,
-        clientesBox: clientesBox,
-        vendasBox: vendasBox,
-        clienteNome: nomeClienteFinal,
-        itens: itens,
-        dinheiro: valorDinheiro,
-        pix: valorPix,
-        cartao: valorCartao,
-        vendedor: vendedor,
-        observacao: observacao,
-        frete: frete,
-        descontoPct: _descontoPctEquivalenteParaSalvar(),
-        lojaId: lojaId,
-        clienteExistente: cliente,
-        idFirebaseToReuse: idFirebaseToReuse,
-        dataHoraVenda: dataHoraVendaPreservar,
-        onSyncError: onErro,
-        isFiado: isFiado,
-        dataVencimentoFiado: dataVencimentoFiadoArg,
-        quantidadeParcelasFiado: quantidadeParcelasFiado,
-        intervaloParcelasDias: intervaloParcelasDias,
-        parcelasDataVencimentoFiadoPreservadas: parcelasPreservadasArg,
-        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
-        onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
-      );
-
-      return (true, numeroSorteRecebido, null, false);
+      return (true, numeroSorteRecebido, null);
     } catch (e, stackTrace) {
-      var restaurouOriginal = false;
-      if (vendaParaEditar != null &&
-          vendaOriginalDesfeita &&
-          rollbackSnap != null) {
-        try {
-          restaurouOriginal =
-              await VendasService.tentarRestaurarVendaOriginalAposFalhaEdicao(
-            snap: rollbackSnap,
-            produtosBox: produtosBox,
-            clientesBox: clientesBox,
-            vendasBox: vendasBox,
-            clienteHint: cliente,
-            onSyncError: onErro,
-          );
-        } catch (e2, st2) {
-          if (kDebugMode) {
-            logD('[EDICAO-VENDA-ROLLBACK] falha na restauração: $e2');
-            logD('$st2');
-          }
-        }
-      }
       _logErroSalvarVenda(etapa: 'BACKGROUND_SAVE', erro: e, st: stackTrace);
       final msg =
           'Erro ao salvar venda. Verifique conexão e estoque. ${_detalharErroSalvarVenda(e)}';
-      _notificarErroSalvarSeguro(onErro, msg);
-      return (false, null, msg, restaurouOriginal);
+      onErro?.call(msg);
+      return (false, null, msg);
     }
   }
 
@@ -1993,8 +1672,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   Widget build(BuildContext context) {
     final total = _calcularTotal();
     final totalPago = _somarPagamentos();
-    final troco = !_pendenteFiado && totalPago > total ? totalPago - total : 0.0;
-    final falta = !_pendenteFiado && total > totalPago ? total - totalPago : 0.0;
+    final troco = totalPago > total ? totalPago - total : 0.0;
+    final falta = total > totalPago ? total - totalPago : 0.0;
 
     return Container(
       decoration: BoxDecoration(
@@ -2564,57 +2243,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
                     const SizedBox(height: 16),
 
-                    if (_pendenteFiado && pagamentos.isEmpty)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Formas de Pagamento',
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.indigo.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.indigo.shade100),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Fiado (conta a receber)',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  _pendenteQtdParcelasFiado > 1
-                                      ? '$_pendenteQtdParcelasFiado parcelas · intervalo $_pendenteIntervaloParcelasDias dia(s) · 1º vencimento em $_pendenteDiasVencimento dia(s) (a partir de hoje)'
-                                      : 'À vista · vencimento em $_pendenteDiasVencimento dia(s) (a partir de hoje)',
-                                  style: const TextStyle(fontSize: 13, height: 1.35),
-                                ),
-                                if (_modoEdicao)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: Text(
-                                      'Ao salvar, confirme no diálogo para manter ou ajustar fiado e parcelas.',
-                                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      Column(
+                    // Formas de pagamento
+                    Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
