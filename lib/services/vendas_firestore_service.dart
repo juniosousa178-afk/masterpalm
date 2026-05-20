@@ -642,4 +642,293 @@ class VendasFirestoreService {
       return {};
     }
   }
+
+  static String _digitsOnly(String? s) =>
+      RegExp(r'\d').allMatches(s ?? '').map((m) => m.group(0)!).join();
+
+  static bool _isMpWebhookVenda(Map<String, dynamic> data, Venda v) {
+    if (isMpCanonicalVendaDocId(v.idFirebase)) return true;
+    final o =
+        (v.origemVenda ?? data['origemVenda'] ?? '').toString().toLowerCase();
+    return o == 'mp_webhook' || o.contains('mp_webhook');
+  }
+
+  /// Aplica forma de pagamento do pedido catálogo nos campos discriminados da [Venda].
+  static void aplicarPagamentoCatalogoNaVenda({
+    required Venda venda,
+    required String pagamento,
+    required double total,
+  }) {
+    final p = pagamento.trim();
+    if (p.isEmpty || total <= 0) return;
+    final upper = p.toUpperCase();
+    venda.formasPagamento = p;
+    venda.pagamentoPix = 0;
+    venda.pagamentoCartao = 0;
+    venda.pagamentoDinheiro = 0;
+    if (upper == 'PIX' || (upper.contains('PIX') && !upper.contains('CART'))) {
+      venda.pagamentoPix = total;
+    } else if (upper.contains('CART') ||
+        upper.contains('CARTÃO') ||
+        upper == 'MERCADO PAGO' ||
+        upper.contains('MERCADO PAGO')) {
+      venda.pagamentoCartao = total;
+    } else if (upper.contains('DINHEIRO')) {
+      venda.pagamentoDinheiro = total;
+    } else {
+      venda.pagamentoPix = total;
+    }
+  }
+
+  static bool _vendaMpPrecisaReconciliarPagamento(Venda v) {
+    if (v.total <= 0) return false;
+    if (v.pagamentoPix > 0.01) return false;
+    if (v.pagamentoCartao >= v.total * 0.99) {
+      final fp = v.formasPagamento.toUpperCase();
+      if (fp == 'MERCADO PAGO' || fp.isEmpty) return true;
+    }
+    return false;
+  }
+
+  /// Lê `pre_pedidos/{id}.pagamento` e alinha Hive após import/sync.
+  static Future<void> reconcileMpVendaPagamentoFromPrePedidoIfNeeded({
+    required String lojaId,
+    required Venda venda,
+    required Map<String, dynamic> firestoreData,
+  }) async {
+    if (!_isMpWebhookVenda(firestoreData, venda)) return;
+    if (!_vendaMpPrecisaReconciliarPagamento(venda)) return;
+
+    final prePedidoId = _resolvePrePedidoIdForMp(venda, firestoreData);
+    if (prePedidoId == null || prePedidoId.isEmpty) return;
+
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('pre_pedidos')
+          .doc(prePedidoId)
+          .get();
+      if (!snap.exists) return;
+      final pedido = snap.data();
+      if (pedido == null) return;
+      final pagamento = (pedido['pagamento'] ?? '').toString().trim();
+      if (pagamento.isEmpty) return;
+
+      aplicarPagamentoCatalogoNaVenda(
+        venda: venda,
+        pagamento: pagamento,
+        total: venda.total,
+      );
+      await venda.save();
+      logD(
+        '[MP-PAGAMENTO] Venda ${venda.idFirebase} reconciliada: $pagamento',
+      );
+    } catch (e) {
+      logW(
+        '[MP-PAGAMENTO] Falha ao reconciliar pagamento (type=${e.runtimeType}): $e',
+      );
+    }
+  }
+
+  static String? _resolvePrePedidoIdForMp(Venda v, Map<String, dynamic> data) {
+    String? pick(String? a, String? b) {
+      final x = (a ?? '').trim();
+      if (x.isNotEmpty) return x;
+      final y = (b ?? '').trim();
+      return y.isNotEmpty ? y : null;
+    }
+
+    final fromVenda = pick(v.prePedidoId, v.orderId);
+    if (fromVenda != null) return fromVenda;
+
+    final d1 = data['prePedidoId']?.toString().trim();
+    if (d1 != null && d1.isNotEmpty) return d1;
+    final d2 = data['origemPrePedido']?.toString().trim();
+    if (d2 != null && d2.isNotEmpty) return d2;
+    final d3 = data['orderId']?.toString().trim();
+    if (d3 != null && d3.isNotEmpty) return d3;
+    return null;
+  }
+
+  static String _pickEnderecoCampo(Map<String, dynamic>? m, List<String> keys) {
+    if (m == null) return '';
+    for (final k in keys) {
+      final v = m[k];
+      if (v != null && v.toString().trim().isNotEmpty) {
+        return v.toString().trim();
+      }
+    }
+    return '';
+  }
+
+  static String _linhaEnderecoPreferFormatado(
+    Map<String, dynamic> customer,
+    Map<String, dynamic>? endMap,
+  ) {
+    final fmt = (customer['enderecoFormatado'] ?? '').toString().trim();
+    if (fmt.isNotEmpty) return fmt;
+    if (endMap == null || endMap.isEmpty) return '';
+    final rua = _pickEnderecoCampo(endMap, ['rua', 'logradouro', 'street']);
+    final numero = _pickEnderecoCampo(endMap, ['numero', 'número', 'number']);
+    final bairro = _pickEnderecoCampo(endMap, ['bairro']);
+    final cidade = _pickEnderecoCampo(endMap, ['cidade', 'localidade']);
+    final uf = _pickEnderecoCampo(endMap, ['estado', 'uf']);
+    final cep = _pickEnderecoCampo(endMap, ['cep', 'CEP']);
+    final comp = _pickEnderecoCampo(endMap, ['complemento']);
+    final parts = <String>[];
+    if (rua.isNotEmpty) {
+      parts.add(numero.isNotEmpty ? '$rua, nº $numero' : rua);
+    } else if (numero.isNotEmpty) {
+      parts.add('nº $numero');
+    }
+    if (bairro.isNotEmpty) parts.add(bairro);
+    if (cidade.isNotEmpty) parts.add(cidade);
+    if (uf.isNotEmpty) parts.add(uf);
+    if (cep.isNotEmpty) parts.add('CEP $cep');
+    if (comp.isNotEmpty) parts.add(comp);
+    return parts.join(' — ');
+  }
+
+  /// Após importar venda MP: lê `pre_pedidos`, cria/atualiza [Cliente] local e histórico.
+  static Future<void> linkMpImportedVendaToClienteFromPrePedidoIfNeeded({
+    required String lojaId,
+    required Box<Venda> vendasBox,
+    required Venda venda,
+    required Map<String, dynamic> firestoreData,
+  }) async {
+    try {
+      if (!_isMpWebhookVenda(firestoreData, venda)) return;
+
+      final prePedidoId = _resolvePrePedidoIdForMp(venda, firestoreData);
+      if (prePedidoId == null || prePedidoId.isEmpty) return;
+
+      final snap = await _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('pre_pedidos')
+          .doc(prePedidoId)
+          .get();
+
+      if (!snap.exists) return;
+      final pedido = snap.data();
+      if (pedido == null) return;
+
+      final rawCliente = pedido['cliente'];
+      if (rawCliente is! Map) return;
+      final customer = Map<String, dynamic>.from(rawCliente);
+
+      final telDigits = _digitsOnly(customer['telefone']?.toString());
+      final emailNorm =
+          (customer['email'] ?? '').toString().trim().toLowerCase();
+
+      if (telDigits.isEmpty && emailNorm.isEmpty) return;
+
+      Map<String, dynamic>? endMap;
+      final endRaw = customer['endereco'];
+      if (endRaw is Map) {
+        endMap = Map<String, dynamic>.from(endRaw);
+      }
+
+      final cep = _pickEnderecoCampo(endMap, ['cep', 'CEP']);
+      final cidade =
+          _pickEnderecoCampo(endMap, ['cidade', 'localidade', 'city']);
+      final linhaEnd =
+          _linhaEnderecoPreferFormatado(customer, endMap).trim();
+
+      final clientesBox =
+          await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
+
+      Cliente? found;
+      for (final c in clientesBox.values) {
+        if (c.lojaId.isNotEmpty && c.lojaId != lojaId) continue;
+        if (telDigits.isNotEmpty && _digitsOnly(c.telefone) == telDigits) {
+          found = c;
+          break;
+        }
+        final ce = (c.email ?? '').trim().toLowerCase();
+        if (emailNorm.isNotEmpty && ce == emailNorm) {
+          found = c;
+          break;
+        }
+      }
+
+      final nomeIn = (customer['nome'] ?? '').toString().trim();
+      final nomeFinal = nomeIn.isNotEmpty
+          ? nomeIn
+          : (venda.clienteNome.trim().isNotEmpty ? venda.clienteNome : 'Cliente');
+
+      if (found == null) {
+        final telDisplay = (customer['telefone'] ?? '').toString();
+        found = Cliente(
+          nome: nomeFinal,
+          telefone: telDisplay,
+          instagram: '',
+          cep: cep,
+          cidade: cidade.isNotEmpty ? cidade : '',
+          email: emailNorm.isEmpty
+              ? null
+              : customer['email']?.toString().trim(),
+          endereco: linhaEnd.isNotEmpty ? linhaEnd : null,
+          lojaId: lojaId,
+        );
+        await clientesBox.add(found);
+      } else {
+        if (nomeFinal.isNotEmpty) found.nome = nomeFinal;
+        final tel = (customer['telefone'] ?? '').toString();
+        if (tel.isNotEmpty) found.telefone = tel;
+        final em = (customer['email'] ?? '').toString().trim();
+        if (em.isNotEmpty) found.email = em;
+        if (cep.isNotEmpty) found.cep = cep;
+        if (cidade.isNotEmpty) found.cidade = cidade;
+        if (linhaEnd.isNotEmpty) found.endereco = linhaEnd;
+        await found.save();
+      }
+
+      final pay = (venda.paymentId ?? '').trim();
+      final ordKey =
+          (venda.prePedidoId ?? venda.orderId ?? prePedidoId).trim();
+
+      // ignore: experimental_member_use
+      found.historico ??= HiveList(vendasBox);
+
+      final jaTem = found.historico!.any((h) {
+        if (identical(h, venda)) return true;
+        if (h.key != null &&
+            venda.key != null &&
+            h.key == venda.key) {
+          return true;
+        }
+        final hid = (h.idFirebase ?? '').trim();
+        final vid = (venda.idFirebase ?? '').trim();
+        if (hid.isNotEmpty && vid.isNotEmpty && hid == vid) return true;
+        final hp = (h.paymentId ?? '').trim();
+        if (pay.isNotEmpty && hp == pay) {
+          final ho = (h.prePedidoId ?? h.orderId ?? '').trim();
+          if (ho.isNotEmpty &&
+              ordKey.isNotEmpty &&
+              ho == ordKey) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (!jaTem) {
+        found.historico!.add(venda);
+        await found.save();
+      }
+
+      if ((venda.clienteId ?? '').trim().isEmpty && found.key != null) {
+        venda.clienteId = found.key.toString();
+        await venda.save();
+      }
+    } catch (e, st) {
+      logE(
+        '⚠️ [MP-CLIENTE-HIVE] Vincular cliente pós-import (não crítico)',
+        error: e,
+        st: st,
+      );
+    }
+  }
 }
