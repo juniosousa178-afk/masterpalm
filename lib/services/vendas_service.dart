@@ -19,6 +19,7 @@ import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
 import '../services/clientes_firestore_service.dart'; // 🔹 sincronização de clientes
 import '../services/vendas_firestore_service.dart'; // 🔹 sincronização com Firestore
+import 'contas_receber_firestore_service.dart';
 import 'catalogo_web_apos_estoque_service.dart';
 import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
@@ -102,13 +103,24 @@ class VendasService {
   }
 
   /// Remove contas a receber criadas para esta venda (mesmo [vendaKey] Hive).
+  /// [vendaFirebaseId] opcional: marca contas espelhadas no Firestore (compat. soft delete).
   static Future<void> removerContasReceberVinculadasAVenda({
     required String lojaId,
     required int vendaKey,
+    String? vendaFirebaseId,
   }) async {
     if (vendaKey <= 0) return;
     final loja = lojaId.trim();
     if (loja.isEmpty) return;
+    try {
+      await ContasReceberFirestoreService.marcarContasDaVendaComoCanceladasOuExcluidas(
+        lojaId: loja,
+        vendaKey: vendaKey,
+        vendaFirebaseId: vendaFirebaseId,
+      );
+    } catch (e) {
+      debugPrint('[VENDAS-SERVICE] marcar contas FS excluídas: $e');
+    }
     try {
       final crBoxName = HiveBoxNames.contasReceber(loja);
       final crBox = Hive.isBoxOpen(crBoxName)
