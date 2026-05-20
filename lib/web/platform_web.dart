@@ -22,22 +22,106 @@ class Web {
 
   static String userAgent() => html.window.navigator.userAgent;
 
-  /// WebViews típicos (Instagram, FB IAB, LINE, TikTok) onde modal/sheet pode
-  /// impedir o teclado no Flutter Web — preferir checkout em rota fullscreen.
+  /// Navegador embutido de redes sociais (Instagram, Facebook/Messenger IAB, etc.).
+  /// No Flutter Web, `showModalBottomSheet` + teclado costuma falhar nesses WebViews.
   static bool catalogLikelyEmbeddedSocialBrowser() {
     final ua = html.window.navigator.userAgent.toLowerCase();
-    return ua.contains('instagram') ||
-        ua.contains('fban') ||
-        ua.contains('fbav') ||
-        ua.contains('fb_iab') ||
-        ua.contains('fbiab') ||
-        ua.contains(' line/') ||
-        ua.contains('tiktok');
+    if (ua.contains('instagram')) return true;
+    if (ua.contains('fban') || ua.contains('fbav')) return true;
+    if (ua.contains('fb_iab') || ua.contains('fbiab')) return true;
+    if (ua.contains(' line/')) return true;
+    if (ua.contains('tiktok')) return true;
+    return false;
   }
 
-  static bool catalogLikelyAndroidEmbeddedSocialBrowser() {
+  /// Instagram in-app browser no Android (link da bio). Exclui iPhone/iPad.
+  static bool isInstagramAndroidWebView() {
     final ua = html.window.navigator.userAgent.toLowerCase();
-    return ua.contains('android') && catalogLikelyEmbeddedSocialBrowser();
+    if (!ua.contains('instagram')) return false;
+    if (ua.contains('iphone') ||
+        ua.contains('ipad') ||
+        ua.contains('ipod')) {
+      return false;
+    }
+    return ua.contains('android');
+  }
+
+  /// Métricas de viewport para diagnóstico de layout (sem dados pessoais).
+  static Map<String, dynamic> catalogViewportMetrics() {
+    final w = html.window;
+    final doc = html.document.documentElement;
+    double? vvW;
+    double? vvH;
+    try {
+      final vv = w.visualViewport;
+      if (vv != null) {
+        vvW = vv.width?.toDouble();
+        vvH = vv.height?.toDouble();
+      }
+    } catch (_) {}
+    return <String, dynamic>{
+      'innerWidth': w.innerWidth,
+      'innerHeight': w.innerHeight,
+      'clientWidth': doc?.client.width,
+      'clientHeight': doc?.client.height,
+      'devicePixelRatio': w.devicePixelRatio,
+      'visualViewportWidth': vvW,
+      'visualViewportHeight': vvH,
+    };
+  }
+
+  /// Evita faixa lateral por overflow horizontal no host Flutter (IG Android).
+  static void applyCatalogIgAndroidDomGuards() {
+    try {
+      const styleId = 'mp-ig-android-catalog-guards';
+      if (html.document.getElementById(styleId) != null) {
+        html.document.body?.classes.add('mp-ig-android-webview');
+        return;
+      }
+      final style = html.StyleElement()
+        ..id = styleId
+        ..text = '''
+html, body {
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+body.mp-ig-android-webview {
+  overflow-x: hidden !important;
+  overscroll-behavior-x: none;
+}
+flt-glass-pane, flutter-view, #flutter-view {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
+''';
+      html.document.head?.append(style);
+      html.document.body?.classes.add('mp-ig-android-webview');
+    } catch (_) {}
+  }
+
+  static void consoleLog(String message) {
+    try {
+      // ignore: avoid_print
+      html.window.console.log(message);
+    } catch (_) {}
+  }
+
+  static StreamSubscription<void>? listenVisualViewportResize(
+    void Function() onResize,
+  ) {
+    try {
+      final vv = html.window.visualViewport;
+      if (vv == null) return null;
+      return vv.onResize.listen((_) => onResize());
+    } catch (_) {
+      return null;
+    }
   }
 
   // DOM/Janela

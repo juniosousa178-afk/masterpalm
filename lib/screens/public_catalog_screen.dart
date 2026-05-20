@@ -60,9 +60,13 @@ import 'public_catalog/catalog_theme.dart';
 import 'public_catalog/catalog_checkout_summary_tokens.dart';
 import 'public_catalog/catalog_cart_checkout_visual_config.dart';
 import 'public_catalog/widgets/catalog_banner_carousel.dart';
-import 'public_catalog/widgets/catalog_vitrine_visual_states.dart';
+import 'public_catalog/widgets/catalog_config_error_state.dart';
+import 'public_catalog/widgets/catalog_config_loading_state.dart';
+import 'public_catalog/widgets/catalog_empty_products_state.dart';
+import 'public_catalog/widgets/catalog_error_loja_state.dart';
 import 'public_catalog/widgets/catalog_footer.dart';
 import 'public_catalog/widgets/catalog_creator_credit_bar.dart';
+import 'public_catalog/widgets/catalog_loading_state.dart';
 import 'public_catalog/widgets/catalog_search_filters_bar.dart';
 import 'public_catalog/catalog_variation_filter.dart';
 import 'public_catalog/catalog_url_query_codec.dart';
@@ -76,10 +80,12 @@ import 'public_catalog/widgets/catalog_minimalist_widgets.dart';
 import 'public_catalog/widgets/catalog_minimal_best_sellers.dart';
 import 'public_catalog/widgets/catalog_product_detail_screen.dart';
 import 'public_catalog/widgets/carrinho_sheet_web.dart';
-import 'public_catalog/widgets/catalog_sticky_cart_bar.dart';
-import 'public_catalog/widgets/catalog_android_embedded_checkout_screen.dart';
 import 'public_catalog/catalog_dicas_screen.dart';
 import 'public_catalog/catalog_sobre_loja_screen.dart';
+import 'public_catalog/helpers/catalog_ig_checkout_frete_recalc.dart';
+import 'public_catalog/helpers/ig_checkout_html_pure_bridge.dart' as ig_html;
+import 'public_catalog/helpers/ig_html_checkout_confirm_page.dart';
+import 'public_catalog/helpers/catalog_ig_android_webview.dart';
 import '../core/logger.dart';
 import '../core/plan_matrix.dart';
 import '../models/catalog_avaliacoes_ordem.dart';
@@ -96,48 +102,6 @@ const String _catalogMaintenanceDefaultMessage =
     'Estamos preparando algo incrível para você ter a melhor experiência.';
 const String _catalogMaintenanceWhatsappPrefill =
     'Olá! Vim pelo catálogo e gostaria de comprar pelo WhatsApp.';
-
-/// Espelha chaves de identidade/preço/exibição sem inventar dados (snapshot consistente p/ carrinho).
-Map<String, dynamic> _normalizarSnapshotCarrinhoCatalogo(Map<String, dynamic> raw) {
-  final m = Map<String, dynamic>.from(raw);
-  final id = '${m['id'] ?? m['produtosId'] ?? m['productId'] ?? ''}'.trim();
-  if (id.isNotEmpty) {
-    m['id'] = id;
-    final pidRaw = '${m['produtosId'] ?? ''}'.trim();
-    m['produtosId'] = pidRaw.isEmpty ? id : pidRaw;
-    final px = '${m['productId'] ?? ''}'.trim();
-    m['productId'] = px.isEmpty ? id : px;
-  }
-  final nome = (m['nome'] ?? m['name'] ?? '').toString().trim();
-  if (nome.isNotEmpty) {
-    m['nome'] = nome;
-    m['name'] = nome;
-  }
-  final pRaw = m['preco'] ?? m['price'];
-  if (pRaw != null) {
-    final pd =
-        pRaw is num ? pRaw.toDouble() : double.tryParse(pRaw.toString());
-    if (pd != null) {
-      m['preco'] = pd;
-      m['price'] = pd;
-    }
-  }
-  final img =
-      (m['imageUrl'] ?? m['url_foto'] ?? m['image'] ?? '').toString().trim();
-  if (img.isNotEmpty) {
-    m['imageUrl'] = img;
-    m['url_foto'] = img;
-  }
-  final pctPix = m['percentualDescontoPix'];
-  if (pctPix != null) {
-    final v =
-        pctPix is num ? pctPix.toDouble() : double.tryParse(pctPix.toString());
-    if (v != null) {
-      m['percentualDescontoPix'] = v;
-    }
-  }
-  return m;
-}
 
 class PublicCatalogScreen extends StatefulWidget {
   final String lojaId;
@@ -708,7 +672,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   // ✅ FONTE ÚNICA: lojaId resolvido de forma assíncrona
   String? _resolvedLojaId;
   bool _loadingLojaId = true;
-  /// Exposto em [CatalogVitrineErrorLojaState] quando a loja não abre (ex.: flags / resolver).
+
+  /// Exposto em [CatalogErrorLojaState] quando a loja não abre (ex.: flags / resolver).
   String? _catalogOpenFailureDetail;
   bool _traceFirstUsefulPaintLogged = false;
   bool _traceInteractiveLogged = false;
@@ -734,6 +699,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _normalTraceRenderCatalogStartLogged = false;
   bool _normalTraceRenderSuccessLogged = false;
 
+  /// Instagram Android WebView: estado para diagnóstico (sem PII).
+  bool _igAndroidCartOpen = false;
+
   final List<Map<String, dynamic>> _cart = [];
   bool _publicando = false;
 
@@ -753,6 +721,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   double? _cupomRoletaDesconto;
   String? _premioRoletaDescricao;
   bool _freteGratisRoleta = false;
+
+  /// Instagram HTML checkout: retorno `?igCheckoutReady=1` (Web).
+  StreamSubscription<dynamic>? _igHtmlPopStateSub;
+  Timer? _igHtmlConsumeRetryTimer;
+  String? _pendingIgCheckoutSessionId;
+  int _igHtmlConsumeAttempts = 0;
+  static const int _kIgHtmlConsumeMaxAttempts = 48;
+  bool _igHtmlConsumeInFlight = false;
+  String? _igHtmlResumeHandledSessionId;
+  Map<String, dynamic> _catalogCheckoutCfgSnapshot = const {};
 
   int _refreshCounter = 0;
 
@@ -930,8 +908,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         setState(() {
           _loadingLojaId = false;
           _resolvedLojaId = null;
-          _catalogOpenFailureDetail =
-              e is TimeoutException ? (e.message ?? 'Tempo esgotado') : e.toString();
+          _catalogOpenFailureDetail = e is TimeoutException
+              ? (e.message ?? 'Tempo esgotado')
+              : e.toString();
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -944,6 +923,21 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     });
     _initConnectivity();
     _loadModoEscuro();
+    if (kIsWeb) {
+      if (CatalogIgAndroidWebview.isActive) {
+        CatalogIgAndroidWebview.ensureDomGuards();
+      }
+      _igHtmlPopStateSub =
+          ig_html.IgCheckoutHtmlPureBridge.listenPopState(() {
+        if (!mounted) return;
+        _igHtmlConsumeAttempts = 0;
+        unawaited(_consumeIgHtmlCheckoutReturn());
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_consumeIgHtmlCheckoutReturn());
+      });
+    }
   }
 
   /// Visitas, recentes e cliente/favoritos não devem atrasar a 1ª pintura útil.
@@ -1725,6 +1719,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _currentPageNotifier.dispose();
     _catalogScrollController.dispose();
     _connectivitySubscription?.cancel();
+    _igHtmlConsumeRetryTimer?.cancel();
+    _igHtmlPopStateSub?.cancel();
     super.dispose();
   }
 
@@ -1899,29 +1895,29 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               builder: (_) => catalogReplayOpenedTheme(
                 context,
                 CatalogProductDetailScreen.fromProdutoMap(
-                p: p,
-                lojaId: lid,
-                onAdd: (it) => _addToCart(it, produtos),
-                onAbrirCarrinho: null,
-                catalogShareUrl: CatalogShareService.buildUrlWithParams(
-                  _publicCatalogShareBase(),
-                  ref: widget.vendedorRef,
-                  indicacao: widget.indicacaoClienteRef,
-                  prod: safeStr(p['slug']).isNotEmpty
-                      ? safeStr(p['slug'])
-                      : productId,
+                  p: p,
+                  lojaId: lid,
+                  onAdd: (it) => _addToCart(it, produtos),
+                  onAbrirCarrinho: null,
+                  catalogShareUrl: CatalogShareService.buildUrlWithParams(
+                    _publicCatalogShareBase(),
+                    ref: widget.vendedorRef,
+                    indicacao: widget.indicacaoClienteRef,
+                    prod: safeStr(p['slug']).isNotEmpty
+                        ? safeStr(p['slug'])
+                        : productId,
+                  ),
+                  nomeLoja: null,
+                  contatoWhatsapp: null,
+                  politicaFrete: null,
+                  prazoEntregaTexto: null,
+                  todosProdutos: produtos,
+                  listaCatalogoMemoria: produtos,
+                  initialCatalogExtraValor: _filtroVariacaoExtra,
+                  onCatalogVariacaoExtraChanged:
+                      _onCatalogVariacaoExtraFromProductUi,
                 ),
-                nomeLoja: null,
-                contatoWhatsapp: null,
-                politicaFrete: null,
-                prazoEntregaTexto: null,
-                todosProdutos: produtos,
-                listaCatalogoMemoria: produtos,
-                initialCatalogExtraValor: _filtroVariacaoExtra,
-                onCatalogVariacaoExtraChanged:
-                    _onCatalogVariacaoExtraFromProductUi,
               ),
-            ),
             ),
           )
           .then((_) => onDetailClosed());
@@ -1976,16 +1972,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     );
     if (mounted) {
       _cart.clear();
-      for (final e in items) {
-        _cart.add(
-          _normalizarSnapshotCarrinhoCatalogo(
-            Map<String, dynamic>.from(e as Map),
-          ),
-        );
-      }
-      if (_lastProdutosProcessados.isNotEmpty) {
-        _reconciliarCarrinhoComCatalogo(_lastProdutosProcessados);
-      }
+      _cart.addAll(items);
       _clearPrePedidoReuseSession();
       setState(() {});
     }
@@ -2035,16 +2022,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         if (decoded is List && mounted) {
           _cart.clear();
           for (final e in decoded) {
-            if (e is Map) {
-              _cart.add(
-                _normalizarSnapshotCarrinhoCatalogo(
-                  Map<String, dynamic>.from(e),
-                ),
-              );
-            }
-          }
-          if (_lastProdutosProcessados.isNotEmpty) {
-            _reconciliarCarrinhoComCatalogo(_lastProdutosProcessados);
+            if (e is Map) _cart.add(Map<String, dynamic>.from(e));
           }
           _clearPrePedidoReuseSession();
           setState(() {});
@@ -2075,7 +2053,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       _saveCarrinho();
       setState(() {});
     }
-    _reconciliarCarrinhoComCatalogo(produtos);
   }
 
   /// Reseta o estado da roleta (chamado quando inicia nova compra, ex: após checkout)
@@ -2286,13 +2263,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   String? _catalogTraceDiagnosticText() {
     if (!_catalogTechnicalDiagEnabled) return null;
-    final buf = StringBuffer()..writeln(CatalogNormalTrace.toDiagnosticString());
+    final buf = StringBuffer()
+      ..writeln(CatalogNormalTrace.toDiagnosticString());
     if (kIsWeb) {
       final phase = plat.Web.localStorageGet('mp_catalog_phase') ?? '';
       buf.writeln('— runtime —');
       buf.writeln('mp_catalog_phase: $phase');
-      buf.writeln(
-          'resolvedLojaId(widget): ${_resolvedLojaId ?? '(null)'}');
+      buf.writeln('resolvedLojaId(widget): ${_resolvedLojaId ?? '(null)'}');
       buf.writeln(
           'buildId: ${const String.fromEnvironment('CATALOG_BUILD_ID', defaultValue: 'dev')}');
     }
@@ -2458,6 +2435,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           preview: widget.preview,
           resolveSourceHint: _catalogResolveSourceHint(),
         );
+        if (kIsWeb) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            unawaited(_consumeIgHtmlCheckoutReturn());
+          });
+        }
       } else {
         // ════════════════════════════════════════════════════════════
         // CONTEXTO ADMIN/PREVIEW: Usa loja do usuário logado
@@ -2503,6 +2486,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           preview: widget.preview,
           resolveSourceHint: 'admin_preview_dashboard',
         );
+        if (kIsWeb) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            unawaited(_consumeIgHtmlCheckoutReturn());
+          });
+        }
       }
 
       logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -2801,190 +2790,23 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     return true;
   }
 
-  void _logDivergenciaMergeCarrinhoSeDebug(
-    int idx,
-    Map<String, dynamic> incoming,
-  ) {
-    if (!kDebugMode) return;
-    final alvo = _cart[idx];
-    final id = '${incoming['id'] ?? incoming['produtosId'] ?? ''}'.trim();
-    String s(dynamic v) => (v ?? '').toString();
-    final na = s(alvo['nome'] ?? alvo['name']);
-    final nn = s(incoming['nome'] ?? incoming['name']);
-    double pd(dynamic v) {
-      if (v is num) return v.toDouble();
-      return double.tryParse(s(v)) ?? 0.0;
-    }
-
-    final pa = pd(alvo['preco'] ?? alvo['price']);
-    final pn = pd(incoming['preco'] ?? incoming['price']);
-    final ia = s(alvo['imageUrl'] ?? alvo['url_foto']);
-    final inn = s(incoming['imageUrl'] ?? incoming['url_foto']);
-    if (na != nn ||
-        (pa - pn).abs() > 0.001 ||
-        (ia.isNotEmpty && inn.isNotEmpty && ia != inn)) {
-      logD(
-        '⚠️ [CART-MERGE] id=$id merge: nome antigo="$na" novo="$nn" | '
-        'preco antigo=$pa novo=$pn | img antiga=${ia.isNotEmpty} nova=${inn.isNotEmpty}',
-      );
-    }
-  }
-
-  /// Atualiza snapshot comercial da linha com o clique mais recente (preserva quantidade no caller).
-  void _copiarSnapshotComercialParaLinhaCarrinho(
-    Map<String, dynamic> alvo,
-    Map<String, dynamic> origem,
-  ) {
-    void copyKey(String k) {
-      if (!origem.containsKey(k)) return;
-      final v = origem[k];
-      if (v == null) return;
-      alvo[k] = v;
-    }
-
-    copyKey('nome');
-    copyKey('name');
-    copyKey('preco');
-    copyKey('price');
-    copyKey('percentualDescontoPix');
-    copyKey('imageUrl');
-    copyKey('url_foto');
-    copyKey('slug');
-    copyKey('peso');
-    copyKey('tipoEmbalagem');
-    copyKey('divideSemJuros');
-    copyKey('maxParcelasSemJuros');
-    copyKey('maxParcelas');
-    copyKey('emPromocao');
-    copyKey('percentualPromo');
-    copyKey('valorPromo');
-    copyKey('precoFinal');
-    copyKey('descricao');
-    copyKey('tamanho');
-    copyKey('cor');
-    copyKey('extraValor');
-    copyKey('extraTipo');
-    copyKey('variacaoExtraResumo');
-    copyKey('comboConfiguravelResumo');
-    final id = '${origem['id'] ?? origem['produtosId'] ?? ''}'.trim();
-    if (id.isNotEmpty) {
-      alvo['id'] = id;
-      alvo['produtosId'] = origem['produtosId'] ?? id;
-      alvo['productId'] = origem['productId'] ?? id;
-    }
-  }
-
-  /// Alinha nome/imagem/preço base e % Pix com o catálogo atual quando o produto ainda existe.
-  void _reconciliarCarrinhoComCatalogo(List<Map<String, dynamic>> produtos) {
-    if (_cart.isEmpty || produtos.isEmpty) return;
-    var changed = false;
-    for (var i = 0; i < _cart.length;) {
-      final line = _cart[i];
-      final comboRaw = line['itensComboComSelecao'];
-      if (comboRaw is List && comboRaw.isNotEmpty) {
-        i++;
-        continue;
-      }
-      final idTrim =
-          '${line['id'] ?? line['produtosId'] ?? line['productId'] ?? ''}'
-              .trim();
-      final nomeLinha = (line['nome'] ?? line['name'] ?? '').toString().trim();
-      final precoDyn = line['preco'] ?? line['price'];
-      final precoLinha = precoDyn is num
-          ? precoDyn.toDouble()
-          : (double.tryParse('$precoDyn') ?? 0.0);
-
-      if (idTrim.isEmpty && nomeLinha.isEmpty && precoLinha <= 0) {
-        _cart.removeAt(i);
-        changed = true;
-        if (kDebugMode) {
-          logD('[CART-RECON] linha inválida removida (sem id, nome e preço)');
-        }
-        continue;
-      }
-      if (idTrim.isEmpty) {
-        i++;
-        continue;
-      }
-
-      final p = CatalogEstoqueHelper.findProductInList(produtos, idTrim);
-      if (p == null) {
-        i++;
-        continue;
-      }
-
-      final nomeCat = safeStr(p['nome']).trim();
-      final imgCat = selectCatalogPrimaryImageUrlFromProdutoMap(p);
-      final precoCat = safeDouble(p['preco']);
-      final pctPixCat = safeDouble(p['percentualDescontoPix']);
-
-      final tam = (line['tamanho'] ?? '').toString().trim();
-      final cor = (line['cor'] ?? '').toString().trim();
-      final ex =
-          (line['extraValor'] ?? line['variacaoExtra'] ?? '').toString().trim();
-      final temVariacao = tam.isNotEmpty || cor.isNotEmpty || ex.isNotEmpty;
-
-      if (nomeCat.isNotEmpty && nomeCat != nomeLinha) {
-        if (kDebugMode) {
-          logD(
-            '[CART-RECON] id=$idTrim nome "$nomeLinha" -> "$nomeCat"',
-          );
-        }
-        line['nome'] = nomeCat;
-        changed = true;
-      }
-      if (imgCat.isNotEmpty) {
-        final curImg =
-            (line['imageUrl'] ?? line['url_foto'] ?? '').toString().trim();
-        if (curImg != imgCat) {
-          if (kDebugMode) {
-            logD('[CART-RECON] id=$idTrim imagem atualizada');
-          }
-          line['imageUrl'] = imgCat;
-          line['url_foto'] = imgCat;
-          changed = true;
-        }
-      }
-      if ((pctPixCat - safeDouble(line['percentualDescontoPix'])).abs() >
-          0.0001) {
-        line['percentualDescontoPix'] = pctPixCat;
-        changed = true;
-      }
-      if (!temVariacao && precoCat > 0 && (precoCat - precoLinha).abs() > 0.009) {
-        if (kDebugMode) {
-          logD('[CART-RECON] id=$idTrim preço base $precoLinha -> $precoCat');
-        }
-        line['preco'] = precoCat;
-        line['price'] = precoCat;
-        changed = true;
-      }
-      i++;
-    }
-    if (changed) {
-      _clearPrePedidoReuseSession();
-      _saveCarrinho();
-      setState(() {});
-    }
-  }
-
   bool _addToCart(
     Map<String, dynamic> item,
     List<Map<String, dynamic>> catalogProducts,
   ) {
-    final incoming = _normalizarSnapshotCarrinhoCatalogo(item);
     if (kDebugMode) {
       logD(
-          '📦 [_addToCart] Item: ${incoming['nome']} tam:${incoming['tamanho']} cor:${incoming['cor']}');
+          '📦 [_addToCart] Item: ${item['nome']} tam:${item['tamanho']} cor:${item['cor']}');
     }
 
-    final id = '${incoming['id'] ?? incoming['produtosId'] ?? ''}';
-    final tam = (incoming['tamanho'] ?? '').toString().trim();
-    final cor = (incoming['cor'] ?? '').toString().trim();
+    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
+    final tam = (item['tamanho'] ?? '').toString().trim();
+    final cor = (item['cor'] ?? '').toString().trim();
     final ex =
-        (incoming['extraValor'] ?? incoming['variacaoExtra'] ?? '').toString().trim();
+        (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
     final addQty =
-        CatalogEstoqueHelper.parseCartItemQuantidade(incoming['quantidade']);
-    final comboRaw = incoming['itensComboComSelecao'];
+        CatalogEstoqueHelper.parseCartItemQuantidade(item['quantidade']);
+    final comboRaw = item['itensComboComSelecao'];
     final isComboLine = comboRaw is List && comboRaw.isNotEmpty;
 
     if (!isComboLine) {
@@ -3004,7 +2826,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       }
       final avail =
           CatalogEstoqueHelper.estoqueDisponivelVariacao(p, tam, cor, ex);
-      final lineKey = CatalogEstoqueHelper.cartLineIdentity(incoming);
+      final lineKey = CatalogEstoqueHelper.cartLineIdentity(item);
       var already = 0;
       for (final e in _cart) {
         if (CatalogEstoqueHelper.cartLineIdentity(e) == lineKey) {
@@ -3021,17 +2843,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
 
     setState(() {
-      final key = CatalogEstoqueHelper.cartLineIdentity(incoming);
+      final key = CatalogEstoqueHelper.cartLineIdentity(item);
       final idx = _cart
           .indexWhere((e) => CatalogEstoqueHelper.cartLineIdentity(e) == key);
       if (idx >= 0) {
         final cur = CatalogEstoqueHelper.parseCartItemQuantidade(
             _cart[idx]['quantidade']);
-        _logDivergenciaMergeCarrinhoSeDebug(idx, incoming);
-        _copiarSnapshotComercialParaLinhaCarrinho(_cart[idx], incoming);
         _cart[idx]['quantidade'] = cur + addQty;
       } else {
-        final copy = Map<String, dynamic>.from(incoming);
+        final copy = Map<String, dynamic>.from(item);
         copy['quantidade'] = addQty;
         _cart.add(copy);
       }
@@ -3439,7 +3259,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   '⚠️ [CATÁLOGO] Sem permissão para produtos - catálogo vazio');
               CatalogNormalTrace.setField(
                   'fallback.reason', 'produtos_permission_denied');
-              CatalogNormalTrace.mark('produtos.stream.error', <String, Object?>{
+              CatalogNormalTrace.mark(
+                  'produtos.stream.error', <String, Object?>{
                 'code': 'permission-denied',
               });
             }
@@ -3663,25 +3484,50 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final fretesEff = _fretesParaPreviaCart(fretes);
     final gatewayEff = _gatewayParaPreviaCart(checkoutGateway);
 
-    Map<String, dynamic>? initialFormData = _cachedCatalogCartForm;
+    final Map<String, dynamic>? initialFormData = _cachedCatalogCartForm;
 
     if (!mounted) return;
     final wideChrome = usePointerFirstChrome(context);
-    final embeddedSocial =
+    final instagramWebview =
         kIsWeb && plat.Web.catalogLikelyEmbeddedSocialBrowser();
 
     if (kDebugMode) {
+      final rawUa = kIsWeb ? plat.Web.userAgent() : '';
+      final uaLog = rawUa.length > 160 ? '${rawUa.substring(0, 160)}…' : rawUa;
+      debugPrint(
+        '[CHECKOUT-FOCUS] open_checkout ua=$uaLog '
+        'instagram_webview=$instagramWebview wideChrome=$wideChrome',
+      );
       debugPrint(
         '[CART_WIDGET_REAL] OPEN_CARRINHO public_catalog → '
         'CarrinhoSheetWeb (wideChrome=$wideChrome, preview=${widget.preview})',
       );
     }
 
-    Widget carrinhoContent(BuildContext sheetContext) {
+    Widget carrinhoContent(
+      BuildContext sheetContext, {
+      bool embeddedSocialFullscreen = false,
+    }) {
       return ScaffoldMessenger(
         child: Scaffold(
           resizeToAvoidBottomInset: true,
-          backgroundColor: Colors.transparent,
+          backgroundColor:
+              embeddedSocialFullscreen ? cardColor : Colors.transparent,
+          appBar: embeddedSocialFullscreen
+              ? AppBar(
+                  elevation: 0,
+                  scrolledUnderElevation: 0,
+                  backgroundColor: cardColor,
+                  foregroundColor: primary,
+                  surfaceTintColor: Colors.transparent,
+                  title: const Text('Carrinho'),
+                  leading: IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Fechar',
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                  ),
+                )
+              : null,
           body: Builder(
             builder: (BuildContext cartCtx) {
               void showCartSnack(String message) {
@@ -4412,90 +4258,21 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
 
     if (!mounted) return;
-    if (kIsWeb && plat.Web.catalogLikelyAndroidEmbeddedSocialBrowser()) {
-      final nativeFormData = await Navigator.of(context).push<Map<String, dynamic>>(
-        MaterialPageRoute<Map<String, dynamic>>(
-          fullscreenDialog: true,
-          builder: (_) => CatalogAndroidEmbeddedCheckoutScreen(
-            items: _cart,
-            fretes: fretesEff,
-            initialFormData: initialFormData,
-            primary: primary,
-            cardColor: cardColor,
-            textColor: textColor,
-            catalogUrl: Uri.base.toString(),
-          ),
-        ),
-      );
-      if (!mounted || nativeFormData == null) return;
-
-      final copy = Map<String, dynamic>.from(nativeFormData);
-      initialFormData = copy;
-      setState(() => _cachedCatalogCartForm = copy);
-      SharedPreferences.getInstance().then((prefs) {
-        prefs.setString('catalog_cart_form_$lojaId', jsonEncode(copy));
+    if (CatalogIgAndroidWebview.isActive) {
+      _safeSetStateAfterFrame(() {
+        if (mounted) setState(() => _igAndroidCartOpen = true);
       });
-
-      if (!mounted) return;
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          fullscreenDialog: true,
-          builder: (sheetContext) {
-            return Theme(
-              data: Theme.of(context),
-              child: Scaffold(
-                resizeToAvoidBottomInset: true,
-                backgroundColor: cardColor,
-                appBar: AppBar(
-                  elevation: 0,
-                  scrolledUnderElevation: 0,
-                  backgroundColor: cardColor,
-                  foregroundColor: primary,
-                  surfaceTintColor: Colors.transparent,
-                  title: const Text('Carrinho'),
-                  leading: IconButton(
-                    icon: const Icon(Icons.close),
-                    tooltip: 'Fechar',
-                    onPressed: () => Navigator.of(sheetContext).pop(),
-                  ),
-                ),
-                body: SafeArea(
-                  child: carrinhoContent(sheetContext),
-                ),
-              ),
-            );
-          },
-        ),
-      );
-      return;
     }
-
-    if (embeddedSocial) {
+    if (instagramWebview) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           fullscreenDialog: true,
           builder: (sheetContext) {
             return Theme(
               data: Theme.of(context),
-              child: Scaffold(
-                resizeToAvoidBottomInset: true,
-                backgroundColor: cardColor,
-                appBar: AppBar(
-                  elevation: 0,
-                  scrolledUnderElevation: 0,
-                  backgroundColor: cardColor,
-                  foregroundColor: primary,
-                  surfaceTintColor: Colors.transparent,
-                  title: const Text('Carrinho'),
-                  leading: IconButton(
-                    icon: const Icon(Icons.close),
-                    tooltip: 'Fechar',
-                    onPressed: () => Navigator.of(sheetContext).pop(),
-                  ),
-                ),
-                body: SafeArea(
-                  child: carrinhoContent(sheetContext),
-                ),
+              child: carrinhoContent(
+                sheetContext,
+                embeddedSocialFullscreen: true,
               ),
             );
           },
@@ -4547,7 +4324,902 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       );
     }
     if (mounted) {
+      if (CatalogIgAndroidWebview.isActive) {
+        setState(() => _igAndroidCartOpen = false);
+      }
       ScaffoldMessenger.of(context).clearSnackBars();
+    }
+  }
+
+  void _igHtmlLog(String m) {
+    debugPrint('[IG-HTML-CHECKOUT] $m');
+  }
+
+  void _scheduleIgHtmlConsumeRetry(String reason) {
+    if (!kIsWeb) return;
+    _igHtmlConsumeRetryTimer?.cancel();
+    _igHtmlConsumeAttempts++;
+    if (_igHtmlConsumeAttempts > _kIgHtmlConsumeMaxAttempts) {
+      _igHtmlLog(
+        'consume.retry.scheduled skip=max_attempts reason=$reason attempts=$_igHtmlConsumeAttempts',
+      );
+      return;
+    }
+    _igHtmlLog(
+      'consume.retry.scheduled reason=$reason attempt=$_igHtmlConsumeAttempts delayMs=280',
+    );
+    _igHtmlConsumeRetryTimer = Timer(const Duration(milliseconds: 280), () {
+      if (!mounted) return;
+      unawaited(_consumeIgHtmlCheckoutReturn());
+    });
+  }
+
+  void _igStripIgParamsFromBrowserUri() {
+    if (!kIsWeb) return;
+    final u = ig_html.IgCheckoutHtmlPureBridge.currentUri();
+    final qp = Map<String, String>.from(u.queryParameters);
+    final hadIg = qp.containsKey('igCheckoutReady') ||
+        qp.containsKey('igCheckoutSession') ||
+        qp.containsKey('igCheckoutPayload');
+    if (!hadIg) {
+      _igHtmlLog('payload.clear.skipped reason=no_ig_query_params');
+      return;
+    }
+    qp.remove('igCheckoutReady');
+    qp.remove('igCheckoutSession');
+    qp.remove('igCheckoutPayload');
+    final nu = Uri(
+      scheme: u.scheme,
+      host: u.host,
+      port: u.hasPort ? u.port : null,
+      path: u.path,
+      queryParameters: qp.isEmpty ? null : qp,
+      fragment: u.fragment.isEmpty ? null : u.fragment,
+    );
+    ig_html.IgCheckoutHtmlPureBridge.igCheckoutHistoryReplaceState(nu);
+    _igHtmlLog('uri.strip.done new=$nu');
+  }
+
+  void _igHtmlClearCheckoutStorage(String lid, {required String reason}) {
+    if (!kIsWeb) return;
+    ig_html.IgCheckoutHtmlPureBridge.localStorageRemove(
+      'mp_ig_checkout_payload_$lid',
+    );
+    ig_html.IgCheckoutHtmlPureBridge.localStorageRemove(
+      'mp_ig_checkout_session_$lid',
+    );
+    _igHtmlLog('payload.clear.success lid=$lid reason=$reason');
+  }
+
+  Map<String, dynamic> _igHtmlCartFormFromPayload({
+    required Map<String, dynamic> payload,
+    required Map<String, dynamic> normalizedEntrega,
+    required List<Map<String, dynamic>> fretesCatalogo,
+  }) {
+    final cust = asMap(payload['customer']);
+    final endRaw = cust['endereco'];
+    final end = endRaw is Map ? asMap(endRaw) : <String, dynamic>{};
+    var freteIndex = 0;
+    final idxRaw =
+        normalizedEntrega['_igMatchedFreteIndex'] ?? payload['freteIndex'];
+    if (idxRaw is int) {
+      freteIndex = idxRaw;
+    } else if (idxRaw is num) {
+      freteIndex = idxRaw.toInt();
+    }
+    final maxF = fretesCatalogo.isEmpty ? 0 : fretesCatalogo.length - 1;
+    freteIndex = freteIndex.clamp(0, math.max(0, maxF));
+    return <String, dynamic>{
+      'nome': cust['nome'] ?? '',
+      'cpf': cust['cpf'] ?? '',
+      'email': cust['email'] ?? '',
+      'tel': (cust['telefone'] ?? cust['tel'] ?? '').toString(),
+      'cep': end['cep'] ?? '',
+      'rua': end['rua'] ?? '',
+      'numero': end['numero'] ?? '',
+      'bairro': end['bairro'] ?? '',
+      'cidade': end['cidade'] ?? '',
+      'estado': end['estado'] ?? '',
+      'complemento': end['complemento'] ?? '',
+      'obs': (payload['observacao'] ?? '').toString(),
+      'cupomCodigo': (payload['cupomCodigo'] ?? '').toString(),
+      'freteIndex': freteIndex,
+      'pagamento': (payload['pagamento'] ?? 'PIX').toString(),
+    };
+  }
+
+  Map<String, dynamic> _igHtmlCustomerForResume(
+    Map<String, dynamic> custRaw,
+    Map<String, dynamic> entrega,
+  ) {
+    final cust = asMapDeep(custRaw);
+    final end = asMap(cust['endereco']);
+    final email = (cust['email'] ?? '').toString().trim();
+    final tipoFrete =
+        (entrega['tipo'] ?? '').toString().trim().toLowerCase();
+    final isRetirada = tipoFrete == 'retirada';
+    final comp = (end['complemento'] ?? '').toString().trim();
+    final enderecoFmt = isRetirada
+        ? 'Retirada em loja'
+        : 'CEP ${end['cep'].toString().trim()} - ${end['rua'].toString().trim()}, ${end['numero'].toString().trim()} - ${end['bairro'].toString().trim()}, ${end['cidade'].toString().trim()}'
+            '${comp.isNotEmpty ? ' ($comp)' : ''}';
+    return {
+      'nome': cust['nome'].toString().trim(),
+      'cpf': cust['cpf'].toString().trim(),
+      'email': email.isEmpty ? '' : email.toLowerCase(),
+      'telefone': (cust['telefone'] ?? cust['tel'] ?? '').toString().trim(),
+      'endereco': {
+        'cep': end['cep'].toString().trim(),
+        'rua': end['rua'].toString().trim(),
+        'numero': end['numero'].toString().trim(),
+        'bairro': end['bairro'].toString().trim(),
+        'cidade': end['cidade'].toString().trim(),
+        'estado': end['estado'].toString().trim(),
+        'complemento': comp,
+      },
+      'enderecoFormatado': enderecoFmt,
+    };
+  }
+
+  String _igHtmlCheckoutGatewayFromCfg(Map<String, dynamic> cfg) {
+    final checkoutCfg = resolveCheckoutCfgFromData(cfg);
+    final checkoutInner = mpMapDyn(checkoutCfg['checkout']);
+    dynamic g = checkoutInner['gateway'] ??
+        checkoutInner['gatewayPadrao'] ??
+        checkoutInner['principal'] ??
+        checkoutCfg['gateway'] ??
+        checkoutCfg['gatewayPadrao'] ??
+        cfg['checkoutGateway'] ??
+        cfg['gateway'];
+    final s = (g ?? '').toString().toLowerCase().trim();
+    if (s.contains('whatsapp') || s.replaceAll(RegExp(r'[\s_-]+'), '') == 'zap') {
+      return 'whatsapp';
+    }
+    return 'mp';
+  }
+
+  Future<bool> _igHtmlRunMercadoPagoResume({
+    required String lid,
+    required Map<String, dynamic> customer,
+    required Map<String, dynamic> entrega,
+    required String pagamento,
+    required String observacao,
+    String? cupomCodigo,
+    String? cupomFreteCodigo,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
+    String? premioRoletaDescricao,
+    required double descontoCupom,
+    required double valorTotalCheckout,
+  }) async {
+    void showErr(String msg) => _snack(msg);
+
+    final fpMp = _prePedidoReuseFingerprintFromCheckout(
+      customer: customer,
+      entrega: entrega,
+      pagamento: pagamento,
+      observacao: observacao,
+      cupomCodigo: cupomCodigo,
+      cupomFreteCodigo: cupomFreteCodigo,
+      descontoCupom: descontoCupom,
+      valorTotalCheckout: valorTotalCheckout,
+      canal: 'mercadopago',
+      cupomRoletaCodigo: cupomRoletaCodigo,
+      cupomRoletaDesconto: cupomRoletaDesconto,
+      premioRoletaDescricao: premioRoletaDescricao,
+    );
+    final bool reuseMpOk = _ultimoPrePedidoId != null &&
+        _prePedidoReuseFingerprint == fpMp &&
+        _prePedidoReuseCanal == 'mercadopago';
+    String? pedidoId = reuseMpOk ? _ultimoPrePedidoId : null;
+    if (pedidoId == null) {
+      try {
+        final cliente = await ClienteAuthService.getClienteLogado();
+        final prePedido = await PrePedidoService.criarPrePedido(
+          lojaId: lid,
+          customer: customer,
+          items: _cart,
+          clienteId: cliente?['clienteId']?.toString(),
+          entrega: entrega,
+          pagamento: pagamento,
+          observacao: observacao,
+          cupomCodigo: cupomCodigo,
+          cupomFreteCodigo: cupomFreteCodigo,
+          desconto: descontoCupom,
+          cupomRoletaCodigo: cupomRoletaCodigo,
+          cupomRoletaDesconto: cupomRoletaDesconto,
+          premioRoletaDescricao: premioRoletaDescricao,
+          vendedorRef: widget.vendedorRef,
+          indicacaoClienteId: widget.indicacaoClienteRef,
+          portalTokenFromSession: cliente?['portalToken']?.toString(),
+          origemCheckout: 'mercadopago',
+          substituiPrePedidoId: _ultimoPrePedidoId,
+          checkoutFingerprint: fpMp,
+        );
+        pedidoId = prePedido?['id']?.toString();
+        if (pedidoId != null && mounted) {
+          setState(() {
+            _ultimoPrePedidoId = pedidoId;
+            _ultimoPrePedidoData = prePedido;
+            _prePedidoReuseFingerprint = fpMp;
+            _prePedidoReuseCanal = 'mercadopago';
+          });
+        } else {
+          showErr('Erro ao criar pedido. Tente novamente.');
+          return false;
+        }
+      } catch (e) {
+        logD('❌ [IG-HTML] pré-pedido MP ${e.runtimeType}');
+        showErr('Erro ao criar pedido. Tente novamente.');
+        return false;
+      }
+    }
+
+    try {
+      final valorTotal = valorTotalCheckout;
+      if (valorTotal < 0.01) {
+        showErr('Valor do pedido inválido. Tente novamente.');
+        return false;
+      }
+      final isPix = pagamento.toUpperCase() == 'PIX';
+      if (isPix &&
+          !catalogCheckoutBuyerValidForMpPix(
+            email: customer['email']?.toString(),
+            cpf: customer['cpf']?.toString(),
+          )) {
+        showErr(
+          'E-mail ou CPF inválidos para PIX. Use um e-mail completo (ex.: '
+          'nome@provedor.com) e CPF com dígitos corretos.',
+        );
+        return false;
+      }
+      int? maxInstallmentsSemJuros;
+      if (!isPix) {
+        final limites = _cart
+            .where((e) => e['divideSemJuros'] == true)
+            .map((e) => safeInt(e['maxParcelasSemJuros'], 12))
+            .where((v) => v > 0)
+            .toList();
+        if (limites.isNotEmpty) {
+          limites.sort();
+          maxInstallmentsSemJuros = limites.first.clamp(1, 24);
+        }
+      }
+
+      Map<String, dynamic>? paymentData;
+      try {
+        final paymentOrigin = kIsWeb
+            ? Uri.base.origin
+            : 'https://app.mastepalm.com.br';
+        final body = <String, dynamic>{
+          'lojaId': lid,
+          'orderId': pedidoId,
+          'externalReference': pedidoId,
+          'type': isPix ? 'pix' : 'preference',
+          if (isPix) ...{
+            'descricao': 'Pedido #$pedidoId',
+            'email': (customer['email'] ?? '').toString().trim(),
+            'cpf': customer['cpf']?.toString(),
+          } else ...{
+            'titulo': 'Pedido #$pedidoId',
+            'quantidade': 1,
+            'descricao': 'Compra em $lid',
+            if (maxInstallmentsSemJuros != null)
+              'maxInstallments': maxInstallmentsSemJuros,
+            if (maxInstallmentsSemJuros != null)
+              'paymentMethods': {
+                'installments': maxInstallmentsSemJuros,
+              },
+            'backUrls': {
+              'success': '$paymentOrigin/pagamento/sucesso?loja=$lid',
+              'failure': '$paymentOrigin/pagamento/falha?loja=$lid',
+              'pending': '$paymentOrigin/pagamento/pendente?loja=$lid',
+            },
+          },
+        };
+        final response = await HttpClientHelper.post(
+          Uri.parse(kMpCatalogPaymentUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+          timeout: HttpTimeouts.payment,
+        );
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          paymentData = asMap(jsonDecode(response.body));
+        } else {
+          String errMsg =
+              'Erro ao criar pagamento no Mercado Pago. Tente novamente.';
+          if (response.body.isNotEmpty) {
+            try {
+              final errJson = asMap(jsonDecode(response.body));
+              final friendly = userMessageForMpCheckoutErrorJson(errJson);
+              if (friendly != null) {
+                errMsg = friendly;
+              } else if (errJson['error'] != null) {
+                errMsg = errJson['error'].toString();
+                if (errMsg.toLowerCase().contains('bad_request') ||
+                    errMsg == 'bad_request') {
+                  errMsg =
+                      'Dados inválidos para PIX. Verifique e-mail e CPF e tente novamente.';
+                }
+              }
+            } catch (_) {}
+          }
+          showErr(errMsg);
+          return false;
+        }
+      } catch (e) {
+        logD('❌ [IG-HTML] mpCatalogPayment ${e.runtimeType}');
+        showErr(
+            'Erro ao criar pagamento no Mercado Pago. Tente novamente.');
+        return false;
+      }
+
+      final qrCode = paymentData['qr_code']?.toString();
+      final ticketUrl = paymentData['ticket_url']?.toString();
+      final initPoint = paymentData['init_point']?.toString();
+
+      if (initPoint != null && initPoint.isNotEmpty) {
+        final uri = Uri.tryParse(initPoint);
+        if (uri != null) {
+          final ok = await _launchPaymentUrl(uri);
+          if (!mounted) return false;
+          if (!ok) {
+            showErr('Não foi possível abrir o link de pagamento.');
+            return false;
+          }
+          _igHtmlClearCheckoutStorage(lid, reason: 'mercadopago_opened');
+          _snack('Pagamento criado! Abrindo checkout...');
+          return true;
+        }
+      }
+
+      if (ticketUrl != null && ticketUrl.isNotEmpty) {
+        final uri = Uri.tryParse(ticketUrl);
+        if (uri != null) {
+          final ok = await _launchPaymentUrl(uri);
+          if (!mounted) return false;
+          if (!ok) {
+            showErr('Não foi possível abrir o comprovante PIX.');
+            return false;
+          }
+          _igHtmlClearCheckoutStorage(lid, reason: 'mercadopago_ticket');
+          _snack('PIX gerado! Abrindo comprovante...');
+          return true;
+        }
+      }
+
+      if (qrCode != null && qrCode.isNotEmpty) {
+        if (mounted) {
+          await _runStateAfterFrame(() {
+            if (!mounted) return;
+            _snack('PIX gerado! Escaneie o QR Code para pagar.');
+            showPixQrDialog(
+              context: context,
+              pixPayload: qrCode,
+              valor: valorTotal,
+              pedidoId: pedidoId,
+            );
+          });
+        }
+        _igHtmlClearCheckoutStorage(lid, reason: 'mercadopago_qr');
+        return true;
+      }
+
+      showErr('Pagamento criado, mas sem dados de QR Code.');
+      return false;
+    } catch (e) {
+      logD('❌ [IG-HTML] MP resume ${e.runtimeType}');
+      showErr('Erro ao processar pagamento: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _igHtmlRunWhatsappResume({
+    required String lid,
+    required String whatsappVendedor,
+    required Map<String, dynamic> customer,
+    required Map<String, dynamic> entrega,
+    required String pagamento,
+    required String observacao,
+    String? cupomCodigo,
+    String? cupomFreteCodigo,
+    String? cupomRoletaCodigo,
+    double? cupomRoletaDesconto,
+    String? premioRoletaDescricao,
+    required double descontoCupom,
+    required double valorTotalCheckout,
+  }) async {
+    void showErr(String msg) => _snack(msg);
+
+    try {
+      final fpWhatsapp = _prePedidoReuseFingerprintFromCheckout(
+        customer: customer,
+        entrega: entrega,
+        pagamento: pagamento,
+        observacao: observacao,
+        cupomCodigo: cupomCodigo,
+        cupomFreteCodigo: cupomFreteCodigo,
+        descontoCupom: descontoCupom,
+        valorTotalCheckout: valorTotalCheckout,
+        canal: 'whatsapp',
+        cupomRoletaCodigo: cupomRoletaCodigo,
+        cupomRoletaDesconto: cupomRoletaDesconto,
+        premioRoletaDescricao: premioRoletaDescricao,
+      );
+      Map<String, dynamic>? prePedido;
+      if (_ultimoPrePedidoId != null &&
+          _ultimoPrePedidoData != null &&
+          _prePedidoReuseFingerprint == fpWhatsapp &&
+          _prePedidoReuseCanal == 'whatsapp') {
+        prePedido = _ultimoPrePedidoData;
+      } else {
+        try {
+          final clienteLogado = await ClienteAuthService.getClienteLogado();
+          prePedido = await PrePedidoService.criarPrePedido(
+            lojaId: lid,
+            customer: customer,
+            items: _cart,
+            entrega: entrega,
+            pagamento: pagamento,
+            observacao: observacao,
+            cupomCodigo: cupomCodigo,
+            cupomFreteCodigo: cupomFreteCodigo,
+            desconto: descontoCupom,
+            cupomRoletaCodigo: cupomRoletaCodigo,
+            cupomRoletaDesconto: cupomRoletaDesconto,
+            premioRoletaDescricao: premioRoletaDescricao,
+            vendedorRef: widget.vendedorRef,
+            indicacaoClienteId: widget.indicacaoClienteRef,
+            clienteId: clienteLogado?['clienteId']?.toString(),
+            origemCheckout: 'whatsapp',
+            portalTokenFromSession:
+                clienteLogado?['portalToken']?.toString(),
+            substituiPrePedidoId: _ultimoPrePedidoId,
+            checkoutFingerprint: fpWhatsapp,
+          );
+          if (prePedido == null) {
+            showErr('Erro ao criar pedido. Tente novamente.');
+            return false;
+          }
+          if (mounted) {
+            setState(() {
+              _ultimoPrePedidoId = prePedido!['id']?.toString();
+              _ultimoPrePedidoData = prePedido;
+              _prePedidoReuseFingerprint = fpWhatsapp;
+              _prePedidoReuseCanal = 'whatsapp';
+            });
+          }
+        } catch (e) {
+          logD('❌ [IG-HTML] pré-pedido ZAP ${e.runtimeType}');
+          showErr('Erro ao criar pedido. Tente novamente.');
+          return false;
+        }
+      }
+
+      final prePedidoVal = prePedido;
+      if (prePedidoVal == null) {
+        showErr('Erro ao criar pedido. Tente novamente.');
+        return false;
+      }
+
+      String? lojaSlug;
+      try {
+        final lojaDoc =
+            await FirebaseFirestore.instance.collection('lojas').doc(lid).get();
+        if (lojaDoc.exists) {
+          lojaSlug = asMap(lojaDoc.data())['slug']?.toString() ?? lid;
+        }
+      } catch (_) {
+        lojaSlug = lid;
+      }
+
+      final msg = PrePedidoService.formatarParaWhatsApp(
+        prePedido: prePedidoVal,
+        lojaId: lid,
+        baseUrl: 'https://app.mastepalm.com.br',
+        lojaSlug: lojaSlug,
+      );
+
+      final prePedidoId = prePedidoVal['id']?.toString();
+      try {
+        final cliente = await ClienteAuthService.getClienteLogado();
+        if (cliente != null &&
+            prePedidoId != null &&
+            prePedidoId.isNotEmpty) {
+          final total = prePedidoVal['total'] ?? 0.0;
+          final requestBody = {
+            'lojaId': lid,
+            'clienteId': cliente['clienteId'],
+            'pedidoId': prePedidoId,
+            'valorPedido': total,
+            'clienteEmail': cliente['email'] ?? customer['email'] ?? '',
+            'clienteNome': cliente['nome'] ?? customer['nome'] ?? '',
+            'clienteTelefone': customer['telefone'] ?? '',
+          };
+          final response = await HttpClientHelper.post(
+            Uri.parse(
+                'https://southamerica-east1-masterpalm-58c46.cloudfunctions.net/gerarCupomNumeroSorte'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(requestBody),
+            timeout: HttpTimeouts.cloudFunction,
+          );
+          if (response.statusCode == 200) {
+            try {
+              final data = asMap(json.decode(response.body));
+              final cupom = asMap(data['cupom']);
+              final cupCodigo = cupom['codigo']?.toString() ?? '';
+              final cupDesconto = cupom['desconto']?.toString() ?? '0';
+              final cupValidade = cupom['validade']?.toString() ?? '';
+              final numeroSorte = data['numeroSorte']?.toString() ?? '';
+              final cupomMsg = '\n\n🎁 *Parabéns!*\n\n'
+                  'Você ganhou um cupom de $cupDesconto% de desconto:\n'
+                  '📌 *$cupCodigo*\n'
+                  '${cupValidade.isNotEmpty ? 'Válido até $cupValidade\n\n' : ''}'
+                  '🎰 *Seu número da sorte:* $numeroSorte\n'
+                  'Boa sorte! 🍀';
+              await _openWhatsappSimple(whatsappVendedor, msg + cupomMsg);
+              if (mounted) {
+                setState(() {
+                  _cart.clear();
+                  _resetRoletaState();
+                  _clearPrePedidoReuseSession();
+                });
+              }
+              _saveCarrinho();
+              _igHtmlClearCheckoutStorage(lid, reason: 'whatsapp_cupom');
+              return true;
+            } catch (_) {}
+          }
+        }
+      } catch (e, st) {
+        logD('❌ [IG-HTML] cupom zap ${e.runtimeType} $st');
+      }
+
+      if (whatsappVendedor.trim().isEmpty) {
+        showErr('WhatsApp do vendedor não configurado.');
+        return false;
+      }
+
+      await _openWhatsappSimple(whatsappVendedor, msg);
+      if (mounted) {
+        setState(() {
+          _cart.clear();
+          _resetRoletaState();
+          _clearPrePedidoReuseSession();
+        });
+      }
+      _saveCarrinho();
+      _igHtmlClearCheckoutStorage(lid, reason: 'whatsapp_opened');
+      return true;
+    } catch (e, st) {
+      logD('❌ [IG-HTML] whatsapp resume ${e.runtimeType} $st');
+      showErr('Erro ao processar. Tente novamente.');
+      return false;
+    }
+  }
+
+  /// Decodifica [igCheckoutPayload] na URL (base64url, UTF-8) para uma string JSON.
+  String? _igHtmlDecodeCheckoutPayloadQueryParam(String? encoded) {
+    if (encoded == null) return null;
+    final punct = encoded.trim();
+    if (punct.isEmpty) return null;
+    try {
+      var normalized = punct.replaceAll('-', '+').replaceAll('_', '/');
+      final rem = normalized.length % 4;
+      if (rem == 2) {
+        normalized += '==';
+      } else if (rem == 3) {
+        normalized += '=';
+      } else if (rem == 1) {
+        return null;
+      }
+      final bytes = base64Decode(normalized);
+      return utf8.decode(bytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _igHtmlConsumeReturnLog({
+    required String reason,
+    String? sessionIdForLog,
+    required bool hasPayloadLocalStorage,
+    required bool hasPayloadUrl,
+    required Uri uri,
+  }) {
+    _igHtmlLog(
+      'consume.return reason=$reason '
+      'sessionId=${sessionIdForLog ?? "(null)"} '
+      'hasPayloadLocalStorage=$hasPayloadLocalStorage '
+      'hasPayloadUrl=$hasPayloadUrl '
+      'cartLength=${_cart.length} '
+      'resolvedLojaId=${_resolvedLojaId ?? "(null)"} '
+      'loadingLojaId=$_loadingLojaId '
+      'configSnapshotEmpty=${_catalogCheckoutCfgSnapshot.isEmpty} '
+      'uri=$uri',
+    );
+  }
+
+  Future<void> _consumeIgHtmlCheckoutReturn() async {
+    if (!kIsWeb) return;
+
+    final uri = ig_html.IgCheckoutHtmlPureBridge.currentUri();
+    final qp = uri.queryParameters;
+    final payloadUrlEnc = qp['igCheckoutPayload'];
+    final hasPayloadUrl =
+        payloadUrlEnc != null && payloadUrlEnc.trim().isNotEmpty;
+    final ready = qp['igCheckoutReady'] == '1';
+    final sessionFromUrl = qp['igCheckoutSession']?.trim();
+    final sessionId = (sessionFromUrl != null && sessionFromUrl.isNotEmpty)
+        ? sessionFromUrl
+        : _pendingIgCheckoutSessionId;
+
+    void logReturn(
+      String reason, {
+      bool hasPayloadLs = false,
+    }) {
+      _igHtmlConsumeReturnLog(
+        reason: reason,
+        sessionIdForLog: sessionId,
+        hasPayloadLocalStorage: hasPayloadLs,
+        hasPayloadUrl: hasPayloadUrl,
+        uri: uri,
+      );
+    }
+
+    if (!ready && sessionId == null) {
+      logReturn('no_ready_no_session');
+      return;
+    }
+    if (sessionId == null || sessionId.isEmpty) {
+      logReturn('session_id_empty');
+      _igHtmlLog('consume.start skip (sem sessionId) uri=$uri');
+      return;
+    }
+
+    _igHtmlLog(
+      'consume.start sessionId=$sessionId uri=$uri resolvedLojaId=${_resolvedLojaId ?? "(null)"} widget.lojaId=${widget.lojaId} loading=$_loadingLojaId',
+    );
+
+    if (_igHtmlConsumeInFlight) {
+      logReturn('consume_inflight');
+      _igHtmlLog('consume.skip inflight');
+      return;
+    }
+
+    if (_loadingLojaId ||
+        _resolvedLojaId == null ||
+        _resolvedLojaId!.trim().isEmpty) {
+      _pendingIgCheckoutSessionId = sessionId;
+      final resolved = _resolvedLojaId?.trim() ?? '';
+      logReturn('defer_resolved_empty');
+      _igHtmlLog(
+        'consume.defer.resolved_empty sessionId=$sessionId resolved="$resolved" '
+        'loading=$_loadingLojaId widget.lojaId=${widget.lojaId}',
+      );
+      _scheduleIgHtmlConsumeRetry('resolved_empty');
+      return;
+    }
+
+    final lid = _resolvedLojaId!.trim();
+
+    if (_catalogCheckoutCfgSnapshot.isEmpty) {
+      _pendingIgCheckoutSessionId = sessionId;
+      logReturn('defer_config_empty');
+      _igHtmlLog('consume.defer.config_empty sessionId=$sessionId');
+      _scheduleIgHtmlConsumeRetry('config_empty');
+      return;
+    }
+
+    _pendingIgCheckoutSessionId = sessionId;
+
+    final sessionStored = ig_html.IgCheckoutHtmlPureBridge.localStorageGet(
+            'mp_ig_checkout_session_$lid')
+        ?.trim();
+    final payloadLsRaw = ig_html.IgCheckoutHtmlPureBridge.localStorageGet(
+        'mp_ig_checkout_payload_$lid');
+    final hasPayloadLs = payloadLsRaw != null && payloadLsRaw.isNotEmpty;
+    final hasSessionKey = sessionStored != null && sessionStored.isNotEmpty;
+
+    _igHtmlLog(
+      'consume.ready-check hasPayloadLs=$hasPayloadLs hasPayloadUrl=$hasPayloadUrl '
+      'hasSessionKey=$hasSessionKey storedSession=${sessionStored ?? "(null)"}',
+    );
+
+    if (sessionStored != sessionId) {
+      _pendingIgCheckoutSessionId = sessionId;
+      logReturn('defer_session_mismatch', hasPayloadLs: hasPayloadLs);
+      _igHtmlLog(
+        'consume.defer.session_mismatch sessionId=$sessionId '
+        'stored=${sessionStored ?? "(null)"} lid=$lid',
+      );
+      _scheduleIgHtmlConsumeRetry('session_mismatch');
+      return;
+    }
+
+    if (_igHtmlResumeHandledSessionId == sessionId) {
+      logReturn('duplicate_session_skip', hasPayloadLs: hasPayloadLs);
+      _igHtmlLog(
+          'consume.skip duplicate session=$sessionId (handled_after_confirm)');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _igStripIgParamsFromBrowserUri();
+        _igHtmlLog(
+          'consume.strip_url.after_duplicate_skip session=$sessionId',
+        );
+      });
+      return;
+    }
+
+    String? payloadRaw = hasPayloadLs ? payloadLsRaw : null;
+    var payloadSource = 'missing';
+    if (payloadRaw != null && payloadRaw.isNotEmpty) {
+      payloadSource = 'localStorage';
+    } else {
+      final fromUrl = _igHtmlDecodeCheckoutPayloadQueryParam(payloadUrlEnc);
+      if (fromUrl != null && fromUrl.isNotEmpty) {
+        payloadRaw = fromUrl;
+        payloadSource = 'url_fallback';
+      }
+    }
+
+    if (payloadRaw == null || payloadRaw.isEmpty) {
+      _igHtmlLog('payload.missing sessionId=$sessionId lid=$lid');
+      _igHtmlLog('payload.source=missing');
+      logReturn('payload_missing', hasPayloadLs: false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não conseguimos recuperar os dados preenchidos. Toque em finalizar novamente.',
+            ),
+            duration: Duration(seconds: 6),
+          ),
+        );
+      }
+      return;
+    }
+
+    _igHtmlLog('payload.source=$payloadSource');
+
+    late Map<String, dynamic> payload;
+    try {
+      final decoded = jsonDecode(payloadRaw);
+      payload = decoded is Map ? asMap(decoded) : <String, dynamic>{};
+    } catch (e) {
+      _igHtmlLog('payload.json_invalid err=$e source=$payloadSource');
+      logReturn('json_invalid', hasPayloadLs: hasPayloadLs);
+      if (mounted) {
+        _snack('Dados do checkout inválidos. Tente novamente pelo carrinho.');
+      }
+      return;
+    }
+
+    final cfgSnapshot = _catalogCheckoutCfgSnapshot;
+    final fretesRaw = parseFretes(cfgSnapshot);
+    final fretesEff = _fretesParaPreviaCart(fretesRaw);
+    final entregaRaw = asMap(payload['entrega']);
+    final normalizedEntrega = catalogIgCheckoutNormalizeEntrega(
+      entregaPayload: entregaRaw,
+      fretesCatalogo: fretesEff,
+    );
+    final formMap = _igHtmlCartFormFromPayload(
+      payload: payload,
+      normalizedEntrega: normalizedEntrega,
+      fretesCatalogo: fretesEff,
+    );
+
+    final custRaw = asMap(payload['customer']);
+    final customer = _igHtmlCustomerForResume(custRaw, normalizedEntrega);
+
+    final entregaParaPedido = Map<String, dynamic>.from(normalizedEntrega);
+    entregaParaPedido.remove('_igMatchedFreteIndex');
+
+    final pagamento = (payload['pagamento'] ?? 'PIX').toString();
+    final observacao = (payload['observacao'] ?? '').toString();
+    final cupomCodigo = payload['cupomCodigo']?.toString();
+    final cupomFreteCodigo = payload['cupomFreteCodigo']?.toString();
+    final cupomRoletaCodigo = payload['cupomRoletaCodigo']?.toString();
+    final cupomRoletaDesconto = safeDouble(payload['cupomRoletaDesconto']);
+    final premioRoletaDescricao =
+        payload['premioRoletaDescricao']?.toString();
+    final descontoCupom = safeDouble(payload['descontoCupom']);
+    var valorTotalCheckout = safeDouble(payload['valorTotalCheckout']);
+    if (valorTotalCheckout < 0.01) {
+      valorTotalCheckout = safeDouble(payload['total']);
+    }
+
+    _igHtmlConsumeInFlight = true;
+    try {
+      if (!mounted) {
+        logReturn('not_mounted_before_push', hasPayloadLs: hasPayloadLs);
+        return;
+      }
+      setState(() {
+        _cachedCatalogCartForm = Map<String, dynamic>.from(formMap);
+      });
+      SharedPreferences.getInstance().then((prefs) {
+        prefs.setString('catalog_cart_form_$lid', jsonEncode(formMap));
+      });
+
+      final lojaNome =
+          catalogHeaderStoreNameFromCfg(cfgSnapshot) ?? 'Minha Loja';
+      final whatsappVendedor = _resolveCatalogWhatsappNumber(cfgSnapshot);
+      final mercadoPagoAtivo =
+          catalogConfigMercadoPagoAtivo(cfgSnapshot);
+      final checkoutGateway = _igHtmlCheckoutGatewayFromCfg(cfgSnapshot);
+
+      _igHtmlLog('consume.confirm_push.start session=$sessionId');
+      final future = Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          fullscreenDialog: true,
+          builder: (ctx) => IgHtmlCheckoutConfirmPage(
+            lojaNome: lojaNome,
+            customer: customer,
+            entrega: entregaParaPedido,
+            pagamento: pagamento,
+            observacao: observacao,
+            cupomCodigo: cupomCodigo,
+            cupomFreteCodigo: cupomFreteCodigo,
+            cupomRoletaCodigo: cupomRoletaCodigo,
+            cupomRoletaDesconto: cupomRoletaDesconto,
+            premioRoletaDescricao: premioRoletaDescricao,
+            mercadoPagoAtivo: mercadoPagoAtivo,
+            checkoutGateway: checkoutGateway,
+            onMercadoPago: () => _igHtmlRunMercadoPagoResume(
+                  lid: lid,
+                  customer: customer,
+                  entrega: entregaParaPedido,
+                  pagamento: pagamento,
+                  observacao: observacao,
+                  cupomCodigo: cupomCodigo,
+                  cupomFreteCodigo: cupomFreteCodigo,
+                  cupomRoletaCodigo: cupomRoletaCodigo,
+                  cupomRoletaDesconto: cupomRoletaDesconto,
+                  premioRoletaDescricao: premioRoletaDescricao,
+                  descontoCupom: descontoCupom,
+                  valorTotalCheckout: valorTotalCheckout,
+                ),
+            onWhatsapp: () => _igHtmlRunWhatsappResume(
+                  lid: lid,
+                  whatsappVendedor: whatsappVendedor,
+                  customer: customer,
+                  entrega: entregaParaPedido,
+                  pagamento: pagamento,
+                  observacao: observacao,
+                  cupomCodigo: cupomCodigo,
+                  cupomFreteCodigo: cupomFreteCodigo,
+                  cupomRoletaCodigo: cupomRoletaCodigo,
+                  cupomRoletaDesconto: cupomRoletaDesconto,
+                  premioRoletaDescricao: premioRoletaDescricao,
+                  descontoCupom: descontoCupom,
+                  valorTotalCheckout: valorTotalCheckout,
+                ),
+          ),
+        ),
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _igHtmlLog('consume.confirm_push.opened session=$sessionId');
+        _igHtmlResumeHandledSessionId = sessionId;
+        _igHtmlLog('consume.handled.after_confirm_opened session=$sessionId');
+        _igStripIgParamsFromBrowserUri();
+        _igHtmlLog(
+          'consume.strip_url.after_confirm_opened session=$sessionId',
+        );
+      });
+
+      final popped = await future;
+      _igHtmlLog('consume.confirm_push.done session=$sessionId popped=$popped');
+      _pendingIgCheckoutSessionId = null;
+      _igHtmlConsumeAttempts = 0;
+      _igHtmlLog('consume.ready session=$sessionId');
+    } catch (e, st) {
+      logReturn('consume_exception', hasPayloadLs: hasPayloadLs);
+      _igHtmlLog('consume.erro $e');
+      if (kDebugMode) debugPrintStack(stackTrace: st);
+    } finally {
+      _igHtmlConsumeInFlight = false;
     }
   }
 
@@ -4972,13 +5644,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       final themeForStates = Theme.of(context);
       if (_loadingLojaId) {
         return _wrapWithCatStartDiagOverlay(
-          CatalogVitrineLoadingState(themeData: themeForStates),
+          CatalogLoadingState(themeData: themeForStates),
         );
       }
 
       if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
         return _wrapWithCatStartDiagOverlay(
-          CatalogVitrineErrorLojaState(
+          CatalogErrorLojaState(
             themeData: themeForStates,
             detailMessage: _catalogOpenFailureDetail,
             diagnosticText: _catalogTraceDiagnosticText(),
@@ -4999,8 +5671,18 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         logD('📱 [CATALOG] Renderizando loja: $_resolvedLojaId');
       }
 
+      final igAndroidLayout = CatalogIgAndroidWebview.isActive;
+      final catalogRouteLabel = kIsWeb
+          ? '${Uri.base.path}${Uri.base.hasQuery ? '?${Uri.base.query}' : ''}'
+          : 'app';
       final rendered = _wrapWithCatStartDiagOverlay(
-        Theme(
+        CatalogIgAndroidWebview.layoutHost(
+          routeLabel: catalogRouteLabel,
+          lojaId: _resolvedLojaId,
+          slug: widget.lojaId,
+          cartOpen: _igAndroidCartOpen,
+          searchHasText: _searchController.text.trim().isNotEmpty,
+          child: Theme(
           data: themeData,
           child: StreamBuilder<Map<String, dynamic>>(
             stream: _getConfigStream(lojaId),
@@ -5014,7 +5696,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     data: <String, Object?>{'loja_id': lojaId},
                   );
                 }
-                return CatalogVitrineConfigLoadingState(themeData: themeForStates);
+                return CatalogConfigLoadingState(themeData: themeForStates);
               }
               if (!cfgSnap.hasData) {
                 CatalogNormalTrace.setField('config.exists', false);
@@ -5022,13 +5704,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     'fallback.reason', 'config_stream_no_data');
                 CatalogNormalTrace.mark('config.missing_or_empty',
                     <String, Object?>{'loja_id': lojaId});
-                return CatalogVitrineConfigErrorState(themeData: themeForStates);
+                return CatalogConfigErrorState(themeData: themeForStates);
               }
               if (!_normalTraceRenderCatalogStartLogged) {
                 _normalTraceRenderCatalogStartLogged = true;
                 CatalogNormalTrace.setField('config.exists', true);
-                CatalogNormalTrace.mark(
-                    'render.catalog.start', <String, Object?>{'loja_id': lojaId});
+                CatalogNormalTrace.mark('render.catalog.start',
+                    <String, Object?>{'loja_id': lojaId});
               }
               if (!_traceConfigReadyLogged) {
                 _traceConfigReadyLogged = true;
@@ -5044,6 +5726,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
               final Map<String, dynamic> cfg =
                   (cfgSnap.data ?? {}).map((k, v) => MapEntry(k.toString(), v));
+              _catalogCheckoutCfgSnapshot =
+                  Map<String, dynamic>.from(cfg);
               _catalogUrlConfigMerge =
                   CatalogPublicUrlService.coalesceCatalogUrlConfig(
                 cfg,
@@ -5664,9 +6348,40 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       });
                     }
                     if (prodSnap.hasError) {
-                      return CatalogVitrineProductsStreamError(
-                        error: prodSnap.error,
-                        onRetry: () => _onRefreshProducts(lojaId),
+                      return Scaffold(
+                        body: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.error_outline,
+                                    size: 64, color: Colors.red.shade300),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Erro ao carregar produtos',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${prodSnap.error}',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 24),
+                                FilledButton.icon(
+                                  onPressed: () => _onRefreshProducts(lojaId),
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Tentar novamente'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       );
                     }
                     final docs = prodSnap.hasData && prodSnap.data != null
@@ -5711,9 +6426,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       if (_lastCartCleanupSig != cleanupSig) {
                         _lastCartCleanupSig = cleanupSig;
                         WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) {
-                            _limparCartDeProdutosRemovidos(produtos);
-                          }
+                          if (mounted) _limparCartDeProdutosRemovidos(produtos);
                         });
                       }
                     }
@@ -5791,55 +6504,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             s +
                             CatalogEstoqueHelper.parseCartItemQuantidade(
                                 e['quantidade']));
-                    final stickySubtotalBruto = _cart.fold<double>(0.0, (s, e) {
-                      final price = (e['preco'] as num?)?.toDouble() ?? 0.0;
-                      final qty =
-                          CatalogEstoqueHelper.parseCartItemQuantidade(
-                              e['quantidade']);
-                      return s + price * qty;
-                    });
-                    final stickySubtotalLabel =
-                        'R\$ ${stickySubtotalBruto.toStringAsFixed(2).replaceAll('.', ',')}';
-
-                    Future<void> openPublicCartSheet() => _openCartSheet(
-                          fretes: fretes,
-                          cupons: cupons,
-                          primary: primaryColor,
-                          buttonText: btnTextColor,
-                          textColor: textColor,
-                          cardColor: cardColor,
-                          checkoutCardColor: checkoutCardColor,
-                          checkoutFieldBg: checkoutFieldBg,
-                          checkoutFieldBorder: checkoutFieldBorder,
-                          checkoutFieldTextColor: checkoutFieldTextColor,
-                          checkoutLabelColor: checkoutLabelColor,
-                          checkoutTotalColor: checkoutTotalColor,
-                          productNameColor: productNameColor,
-                          productPriceColor: productPriceColor,
-                          whatsappVendedor: whatsappVendedor,
-                          lojaNome: lojaNome,
-                          paymentAsset: paymentAssets,
-                          paymentCodes:
-                              _paymentCodesParaPreviaRodape(paymentCodes),
-                          instagramUrl: instagramUrl,
-                          facebookUrl: facebookUrl,
-                          empresaRazao: empresaRazao,
-                          empresaCnpj: empresaCnpj,
-                          checkoutGateway: checkoutGateway,
-                          checkoutButtonLabel: checkoutButtonLabel,
-                          pixKey: pixKey,
-                          freightToken: freightToken,
-                          freteMelhorEnvioModoExibicao:
-                              freteMelhorEnvioModoExibicao,
-                          mercadoPagoAtivo: mercadoPagoAtivo,
-                          checkoutSummaryTokens:
-                              catalogCheckoutSummaryTokens,
-                          catalogCartUiTokens: catalogCartUiTokens,
-                          catalogFirstPurchaseCouponOffer:
-                              catalogFirstPurchaseCouponOffer,
-                          catalogProducts: produtos,
-                        );
-
                     if (!_traceEssentialActionsEnabledLogged) {
                       _traceEssentialActionsEnabledLogged = true;
                       CatalogStartupTrace.mark(
@@ -6072,8 +6736,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       }
                     }
 
-                    final w = MediaQuery.of(context).size.width;
-                    final isDesktop = w >= 1024;
+                    final w = igAndroidLayout
+                        ? CatalogIgAndroidWebview.effectiveLayoutWidth(context)
+                        : MediaQuery.sizeOf(context).width;
+                    final isDesktop =
+                        !igAndroidLayout && w >= 1024;
 
                     // Link direto: ?page=dicas abre a página de dicas ao carregar
                     if (widget.initialPage == 'dicas' && !_openedInitialPage) {
@@ -6110,6 +6777,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     }
 
                     return Scaffold(
+                      drawerEnableOpenDragGesture: !igAndroidLayout,
+                      drawerEdgeDragWidth: igAndroidLayout ? 0.0 : null,
                       // ================= DRAWER =================
                       drawer: Drawer(
                         child: SafeArea(
@@ -6712,9 +7381,26 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   color:
                                                       headerIconColor, // ✅ Usa cor do cabeçalho
                                                 ),
-                                                onPressed: () =>
-                                                    Scaffold.of(ctx)
-                                                        .openDrawer(),
+                                                onPressed: () {
+                                                  if (igAndroidLayout) {
+                                                    CatalogIgAndroidWebview
+                                                        .logLayoutDiagnostics(
+                                                      route: catalogRouteLabel,
+                                                      lojaId: lojaId,
+                                                      slug: widget.lojaId,
+                                                      layoutWidth: w,
+                                                      drawerOpen: true,
+                                                      cartOpen:
+                                                          _igAndroidCartOpen,
+                                                      searchHasText:
+                                                          _searchController
+                                                              .text
+                                                              .trim()
+                                                              .isNotEmpty,
+                                                    );
+                                                  }
+                                                  Scaffold.of(ctx).openDrawer();
+                                                },
                                               ),
                                             ),
 
@@ -7201,11 +7887,48 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       ),
 
                       // ========== FAB DO CARRINHO ==========
-                      // Mobile/tablet: CatalogStickyCartBar substitui o FAB.
+                      // Mobile: barra fixa inferior (CatalogStickyCartBar) substitui o FAB.
                       floatingActionButton: (_cart.isEmpty || !isDesktop)
                           ? null
                           : FloatingActionButton.extended(
-                              onPressed: () => openPublicCartSheet(),
+                              onPressed: () => _openCartSheet(
+                                fretes: fretes,
+                                cupons: cupons,
+                                primary: primaryColor,
+                                buttonText: btnTextColor,
+                                textColor: textColor,
+                                cardColor: cardColor,
+                                checkoutCardColor: checkoutCardColor,
+                                checkoutFieldBg: checkoutFieldBg,
+                                checkoutFieldBorder: checkoutFieldBorder,
+                                checkoutFieldTextColor: checkoutFieldTextColor,
+                                checkoutLabelColor: checkoutLabelColor,
+                                checkoutTotalColor: checkoutTotalColor,
+                                productNameColor: productNameColor,
+                                productPriceColor: productPriceColor,
+                                whatsappVendedor: whatsappVendedor,
+                                lojaNome: lojaNome,
+                                paymentAsset: paymentAssets,
+                                paymentCodes:
+                                    _paymentCodesParaPreviaRodape(paymentCodes),
+                                instagramUrl: instagramUrl,
+                                facebookUrl: facebookUrl,
+                                empresaRazao: empresaRazao,
+                                empresaCnpj: empresaCnpj,
+                                checkoutGateway: checkoutGateway,
+                                checkoutButtonLabel: checkoutButtonLabel,
+                                pixKey: pixKey,
+                                freightToken: freightToken,
+                                freteMelhorEnvioModoExibicao:
+                                    freteMelhorEnvioModoExibicao,
+                                mercadoPagoAtivo: mercadoPagoAtivo,
+                                checkoutSummaryTokens:
+                                    catalogCheckoutSummaryTokens,
+                                catalogCartUiTokens: catalogCartUiTokens,
+                                catalogFirstPurchaseCouponOffer:
+                                    catalogFirstPurchaseCouponOffer,
+                                catalogProducts: produtos,
+                              ),
                               icon: const Icon(Icons.shopping_bag_outlined),
                               label: FittedBox(
                                 fit: BoxFit.scaleDown,
@@ -7215,9 +7938,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
 // ================= CORPO =================
                       body: Stack(
+                        clipBehavior: Clip.hardEdge,
                         children: [
                           Column(
                             children: [
+                              if (igAndroidLayout)
+                                CatalogIgAndroidWebview.openInBrowserBanner(
+                                  accent: primaryColor,
+                                ),
                               if (useMinimalLayout &&
                                   _catalogExibindoTodosCategorias() &&
                                   safeBool(promoBarCfg['enabled'], false))
@@ -7244,8 +7972,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                         promoBarCfg['alignment'],
                                         TextAlign.center),
                                     bold: safeBool(promoBarCfg['bold'], true),
-                                    marqueeWhenOverflow:
-                                        safeBool(promoBarCfg['marquee'], true),
+                                    marqueeWhenOverflow: igAndroidLayout
+                                        ? false
+                                        : safeBool(
+                                            promoBarCfg['marquee'], true),
                                     onTap: () {
                                       final link = (promoBarCfg['link'] ?? '')
                                           .toString()
@@ -7376,19 +8106,19 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           if (_ordenacaoProdutos ==
                                               'preco_asc') {
                                             listaOrdenada.sort((a, b) {
-                                              final va = catalogPrecoParaOrdenacao(
-                                                  a);
-                                              final vb = catalogPrecoParaOrdenacao(
-                                                  b);
+                                              final va =
+                                                  catalogPrecoParaOrdenacao(a);
+                                              final vb =
+                                                  catalogPrecoParaOrdenacao(b);
                                               return va.compareTo(vb);
                                             });
                                           } else if (_ordenacaoProdutos ==
                                               'preco_desc') {
                                             listaOrdenada.sort((a, b) {
-                                              final va = catalogPrecoParaOrdenacao(
-                                                  a);
-                                              final vb = catalogPrecoParaOrdenacao(
-                                                  b);
+                                              final va =
+                                                  catalogPrecoParaOrdenacao(a);
+                                              final vb =
+                                                  catalogPrecoParaOrdenacao(b);
                                               return vb.compareTo(va);
                                             });
                                           } else if (_ordenacaoProdutos ==
@@ -7504,8 +8234,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           final scrollBody = CustomScrollView(
                                             controller:
                                                 _catalogScrollController,
+                                            clipBehavior: igAndroidLayout
+                                                ? Clip.hardEdge
+                                                : Clip.none,
                                             // Web: área maior fora da viewport reduz descarte/rebuild de cards ao rolar.
-                                            cacheExtent: kIsWeb ? 2400 : 800,
+                                            cacheExtent: igAndroidLayout
+                                                ? 1200
+                                                : (kIsWeb ? 2400 : 800),
                                             physics: const ClampingScrollPhysics(
                                                 parent:
                                                     AlwaysScrollableScrollPhysics()),
@@ -7870,14 +8605,28 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                 modoListagemCategoria &&
                                                         _catalogSemFiltrosAlemDeCategoria(
                                                             search)
-                                                    ? CatalogVitrineEmptyProductsSliver(
-                                                        message:
-                                                            'Nenhum produto encontrado nesta categoria.',
-                                                        textColor: textColor,
+                                                    ? SliverFillRemaining(
+                                                        hasScrollBody: false,
+                                                        child: Center(
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(24),
+                                                            child: Text(
+                                                              'Nenhum produto encontrado nesta categoria.',
+                                                              textAlign:
+                                                                  TextAlign
+                                                                      .center,
+                                                              style: TextStyle(
+                                                                color:
+                                                                    textColor,
+                                                                fontSize: 16,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
                                                       )
-                                                    : CatalogVitrineEmptyProductsSliver(
-                                                        textColor: textColor,
-                                                      )
+                                                    : const CatalogEmptyProductsState()
                                               else ...[
                                                 // Ordenação (filtros) - linha separada da paginação para evitar sobreposição
                                                 SliverToBoxAdapter(
@@ -8611,42 +9360,15 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                               ),
                             ],
                           ),
-                          if (!isDesktop && _cart.isNotEmpty)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: SafeArea(
-                                top: false,
-                                child: CatalogStickyCartBar(
-                                  itemCount: cartCount,
-                                  subtotalLabel: stickySubtotalLabel,
-                                  primaryColor: primaryColor,
-                                  buttonForegroundColor: btnTextColor,
-                                  surfaceColor: cardColor,
-                                  onOpenCart: () {
-                                    openPublicCartSheet();
-                                  },
-                                ),
-                              ),
-                            ),
                           ValueListenableBuilder<double>(
                             valueListenable: _scrollOffsetNotifier,
                             builder: (context, offset, _) {
                               if (offset < 300) return const SizedBox.shrink();
                               final primaryColor =
                                   Theme.of(context).colorScheme.primary;
-                              final mq = MediaQuery.of(context);
-                              final stickyH =
-                                  mq.padding.bottom + 52;
-                              final scrollBottom = _cart.isEmpty
-                                  ? 24.0
-                                  : (isDesktop
-                                      ? 88.0
-                                      : (24.0 + stickyH));
                               return Positioned(
                                 left: 16,
-                                bottom: scrollBottom,
+                                bottom: _cart.isEmpty ? 24 : 88,
                                 child: Material(
                                   elevation: 4,
                                   color: primaryColor.withOpacity(0.9),
@@ -8679,6 +9401,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
             },
           ),
         ),
+        ),
       );
       if (kIsWeb) {
         plat.Web.localStorageSet(
@@ -8690,8 +9413,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         final uri = Uri.base;
         CatalogNormalTrace.setField(
             'fallback.reason', 'build_catch_${e.runtimeType}');
-        CatalogNormalTrace.mark(
-            'render.catalog.exception', <String, Object?>{'error': e.toString()});
+        CatalogNormalTrace.mark('render.catalog.exception',
+            <String, Object?>{'error': e.toString()});
         final payload = <String, dynamic>{
           'buildId': const String.fromEnvironment(
             'CATALOG_BUILD_ID',
@@ -8732,7 +9455,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         parts.add('error.runtimeType: ${e.runtimeType}');
         if (_catalogTechnicalDiagEnabled) parts.add(st.toString());
         return _wrapWithCatStartDiagOverlay(
-          CatalogVitrineErrorLojaState(
+          CatalogErrorLojaState(
             themeData: Theme.of(context),
             titleOverride: 'Não foi possível exibir o catálogo.',
             detailMessage: parts.join('\n\n'),
@@ -8743,7 +9466,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       }
       if (!_catalogTechnicalDiagEnabled) {
         return _wrapWithCatStartDiagOverlay(
-          CatalogVitrineErrorLojaState(
+          CatalogErrorLojaState(
             themeData: Theme.of(context),
             detailMessage: _catalogOpenFailureDetail,
             diagnosticText: _catalogTraceDiagnosticText(),
