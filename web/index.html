@@ -388,6 +388,9 @@
     para Google antes da tela de login.
   -->
   <style>
+    html,body{margin:0;padding:0;overflow-x:hidden;max-width:100%;width:100%;}
+    flt-glass-pane,flutter-view,#flutter-view{width:100%!important;max-width:100%!important;overflow-x:hidden!important;box-sizing:border-box!important;}
+    body.mp-ig-android-webview{overflow-x:hidden!important;overscroll-behavior-x:none;}
     #initial-loader{position:fixed;inset:0;z-index:99999;background:#f0f2f5;display:flex;align-items:center;justify-content:center;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;}
     #initial-loader .loader-card{text-align:center;padding:24px;max-width:360px;}
     #initial-loader .loader-logo{display:inline-block;background:#9a4e6b;color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;font-size:1.25rem;margin-bottom:28px;letter-spacing:.03em;}
@@ -396,6 +399,45 @@
     #initial-loader .loader-spin{width:36px;height:36px;border:3px solid #ddd;border-top-color:#9a4e6b;border-radius:50%;margin:0 auto;animation:initial-loader-spin .7s linear infinite;}
     @keyframes initial-loader-spin{to{transform:rotate(360deg)}}
   </style>
+  <script>
+    (function () {
+      function isInstagramAndroid() {
+        var ua = (navigator.userAgent || '').toLowerCase();
+        if (ua.indexOf('instagram') < 0) return false;
+        if (ua.indexOf('iphone') >= 0 || ua.indexOf('ipad') >= 0 || ua.indexOf('ipod') >= 0) return false;
+        return ua.indexOf('android') >= 0;
+      }
+      if (!isInstagramAndroid()) return;
+      try { document.documentElement.classList.add('mp-ig-android-webview'); } catch (_) {}
+      try { document.body.classList.add('mp-ig-android-webview'); } catch (_) {}
+      function metrics() {
+        var de = document.documentElement;
+        var vv = window.visualViewport;
+        return {
+          tag: 'IG-ANDROID-CATALOG-BOOT',
+          userAgent: navigator.userAgent || '',
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          clientWidth: de ? de.clientWidth : null,
+          clientHeight: de ? de.clientHeight : null,
+          devicePixelRatio: window.devicePixelRatio,
+          visualViewportWidth: vv ? vv.width : null,
+          visualViewportHeight: vv ? vv.height : null,
+          route: (location.pathname || '') + (location.search || ''),
+          host: location.host || ''
+        };
+      }
+      try {
+        console.log(JSON.stringify(metrics()));
+        sessionStorage.setItem('mp_ig_android_boot_diag', JSON.stringify(metrics()));
+      } catch (_) {}
+      if (window.visualViewport && window.visualViewport.addEventListener) {
+        window.visualViewport.addEventListener('resize', function () {
+          try { console.log(JSON.stringify(metrics())); } catch (_) {}
+        });
+      }
+    })();
+  </script>
 </head>
 <body>
 

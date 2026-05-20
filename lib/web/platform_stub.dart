@@ -2,6 +2,8 @@
 // Stub para plataformas NÃO-Web (e também para o analyzer).
 // NÃO importe dart:html aqui.
 
+import 'dart:async';
+
 // Tipo público para evitar "library_private_types_in_public_api"
 class LocationStub {
   String href = '';
@@ -19,7 +21,19 @@ class Web {
   static String userAgent() => '';
 
   static bool catalogLikelyEmbeddedSocialBrowser() => false;
-  static bool catalogLikelyAndroidEmbeddedSocialBrowser() => false;
+
+  static bool isInstagramAndroidWebView() => false;
+
+  static Map<String, dynamic> catalogViewportMetrics() => <String, dynamic>{};
+
+  static void applyCatalogIgAndroidDomGuards() {}
+
+  static void consoleLog(String message) {}
+
+  static StreamSubscription<void>? listenVisualViewportResize(
+    void Function() onResize,
+  ) =>
+      null;
 
   // DOM/Janela (no-ops)
   static void scrollToTop() {}
