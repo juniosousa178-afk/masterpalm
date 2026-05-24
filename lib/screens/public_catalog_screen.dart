@@ -176,6 +176,12 @@ class PublicCatalogScreen extends StatefulWidget {
 /// Produtos por página no catálogo
 const int _produtosPorPagina = 20;
 
+/// cacheExtent do grid: Web alto demais materializa cards extras (jank em Android fraco).
+double _catalogProductsScrollCacheExtent() {
+  if (kIsWeb) return 1000;
+  return 800;
+}
+
 /// Processa docs Firestore em lista de produtos (evita bloquear UI no build).
 List<Map<String, dynamic>> _processDocsToProducts(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
@@ -723,6 +729,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   List<String> _favoritosIds = [];
   String _lastProdutosDocsSig = '';
   List<Map<String, dynamic>> _lastProdutosProcessados = const [];
+  String _catalogListaOrdenadaCacheSig = '';
+  List<Map<String, dynamic>> _catalogListaOrdenadaCache = const [];
   String _lastCartCleanupSig = '';
   String? _clienteId;
   String? _clienteEmail;
@@ -1645,6 +1653,96 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final fLo = _precoMin ?? double.negativeInfinity;
     final fHi = _precoMax ?? double.infinity;
     return lo <= fHi && hi >= fLo;
+  }
+
+
+  /// Filtro + ordenacao memoizados — evita O(n) sort a cada rebuild do StreamBuilder.
+  List<Map<String, dynamic>> _catalogListaOrdenadaMemo({
+    required List<Map<String, dynamic>> produtos,
+    required String search,
+    required String? effCatFilter,
+    required String? effSubFilter,
+  }) {
+    final sig = StringBuffer()
+      ..write(_lastProdutosDocsSig)
+      ..write('|n=${produtos.length}')
+      ..write('|s=${search.trim()}')
+      ..write('|cat=${effCatFilter ?? ''}')
+      ..write('|sub=${effSubFilter ?? ''}')
+      ..write('|ord=$_ordenacaoProdutos')
+      ..write('|pmin=$_precoMin')
+      ..write('|pmax=$_precoMax')
+      ..write('|est=$_apenasEmEstoque')
+      ..write('|tam=${_filtroVariacaoTamanho ?? ''}')
+      ..write('|cor=${_filtroVariacaoCor ?? ''}')
+      ..write('|xv=${_filtroVariacaoExtra ?? ''}');
+    final sigStr = sig.toString();
+    if (sigStr == _catalogListaOrdenadaCacheSig) {
+      return _catalogListaOrdenadaCache;
+    }
+
+    bool matchCategoriaSub(Map<String, dynamic> p) {
+      return _produtoTemCategoria(p, effCatFilter) &&
+          _produtoTemSubcategoria(p, effSubFilter);
+    }
+
+    final searchLower = search.trim().toLowerCase();
+    final listaFiltrada = produtos.where((p) {
+      final n = (p['nome'] ?? '').toString().toLowerCase();
+      final d = (p['descricao'] ?? '').toString().toLowerCase();
+      final matchText = searchLower.isEmpty
+          ? true
+          : n.contains(searchLower) || d.contains(searchLower);
+      final matchCatSub = matchCategoriaSub(p);
+      final matchPreco = _produtoIntersectsPrecoRange(p);
+      final matchEstoque = !_apenasEmEstoque ||
+          CatalogEstoqueHelper.produtoPassaFiltroApenasEmEstoque(p);
+      final matchVariacao = CatalogVariationFilter.produtoMatches(
+        p,
+        tamanho: _filtroVariacaoTamanho,
+        cor: _filtroVariacaoCor,
+        variacaoExtra: _filtroVariacaoExtra,
+      );
+      return matchText &&
+          matchCatSub &&
+          matchPreco &&
+          matchEstoque &&
+          matchVariacao;
+    }).toList();
+
+    final listaOrdenada = List<Map<String, dynamic>>.from(listaFiltrada);
+    if (_ordenacaoProdutos == 'preco_asc') {
+      listaOrdenada.sort((a, b) {
+        final va = catalogPrecoParaOrdenacao(a);
+        final vb = catalogPrecoParaOrdenacao(b);
+        return va.compareTo(vb);
+      });
+    } else if (_ordenacaoProdutos == 'preco_desc') {
+      listaOrdenada.sort((a, b) {
+        final va = catalogPrecoParaOrdenacao(a);
+        final vb = catalogPrecoParaOrdenacao(b);
+        return vb.compareTo(va);
+      });
+    } else if (_ordenacaoProdutos == 'novidade') {
+      listaOrdenada.sort((a, b) {
+        final dtA = asDateTime(a['dataCriacao']);
+        final dtB = asDateTime(b['dataCriacao']);
+        if (dtA == null && dtB == null) return 0;
+        if (dtA == null) return 1;
+        if (dtB == null) return -1;
+        return dtB.compareTo(dtA);
+      });
+    } else {
+      listaOrdenada.sort((a, b) {
+        final an = (a['nome'] ?? '').toString().toLowerCase();
+        final bn = (b['nome'] ?? '').toString().toLowerCase();
+        return an.compareTo(bn);
+      });
+    }
+
+    _catalogListaOrdenadaCacheSig = sigStr;
+    _catalogListaOrdenadaCache = listaOrdenada;
+    return listaOrdenada;
   }
 
   void _onCatalogScroll() {
@@ -5683,18 +5781,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         indicacaoRaw is Map && (indicacaoRaw['ativo'] == true);
 
                     // DEBUG: Ver se está lendo as configurações do menu
-                    logD(
-                        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    logD('📋 [MENU CONFIG] Configurações do menu:');
-                    logD('   menuRaw existe: ${menuRaw != null}');
-                    logD('   menuMap: $menuMap');
-                    logD('   Categorias: $menuShowCategorias');
-                    logD('   Entrar: $menuShowEntrar');
-                    logD('   Contato: $menuShowContato');
-                    logD('   SAC: $menuShowSac');
-                    logD('   Quem Somos: $menuShowQuemSomos');
-                    logD(
-                        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    if (kDebugMode) {
+                      logD(
+                          '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                      logD('📋 [MENU CONFIG] Configurações do menu:');
+                      logD('   menuRaw existe: ${menuRaw != null}');
+                      logD('   menuMap: $menuMap');
+                      logD('   Categorias: $menuShowCategorias');
+                      logD('   Entrar: $menuShowEntrar');
+                      logD('   Contato: $menuShowContato');
+                      logD('   SAC: $menuShowSac');
+                      logD('   Quem Somos: $menuShowQuemSomos');
+                      logD(
+                          '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    }
 
                     // Lê dados da página "Quem Somos"
                     final quemSomosRaw = cfg['quemSomos'];
@@ -7027,98 +7127,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                   .coletarExtras(
                                                       produtosParaOpcoesVariacao);
 
-                                          // 👉 aplica filtro da busca + categoria + subcategoria
-                                          final listaFiltrada =
-                                              produtos.where((p) {
-                                            final n = (p['nome'] ?? '')
-                                                .toString()
-                                                .toLowerCase();
-                                            final d = (p['descricao'] ?? '')
-                                                .toString()
-                                                .toLowerCase();
-                                            final matchText =
-                                                search.trim().isEmpty
-                                                    ? true
-                                                    : n.contains(search) ||
-                                                        d.contains(search);
-                                            final matchCatSub =
-                                                matchCategoriaSub(p);
-                                            final matchPreco =
-                                                _produtoIntersectsPrecoRange(p);
-                                            final matchEstoque =
-                                                !_apenasEmEstoque ||
-                                                    CatalogEstoqueHelper
-                                                        .produtoPassaFiltroApenasEmEstoque(
-                                                            p);
-                                            final matchVariacao =
-                                                CatalogVariationFilter
-                                                    .produtoMatches(
-                                              p,
-                                              tamanho: _filtroVariacaoTamanho,
-                                              cor: _filtroVariacaoCor,
-                                              variacaoExtra:
-                                                  _filtroVariacaoExtra,
-                                            );
-                                            return matchText &&
-                                                matchCatSub &&
-                                                matchPreco &&
-                                                matchEstoque &&
-                                                matchVariacao;
-                                          }).toList();
-
-                                          // Ordenação
                                           final listaOrdenada =
-                                              List<Map<String, dynamic>>.from(
-                                                  listaFiltrada);
-                                          if (_ordenacaoProdutos ==
-                                              'preco_asc') {
-                                            listaOrdenada.sort((a, b) {
-                                              final va = catalogPrecoParaOrdenacao(
-                                                  a);
-                                              final vb = catalogPrecoParaOrdenacao(
-                                                  b);
-                                              return va.compareTo(vb);
-                                            });
-                                          } else if (_ordenacaoProdutos ==
-                                              'preco_desc') {
-                                            listaOrdenada.sort((a, b) {
-                                              final va = catalogPrecoParaOrdenacao(
-                                                  a);
-                                              final vb = catalogPrecoParaOrdenacao(
-                                                  b);
-                                              return vb.compareTo(va);
-                                            });
-                                          } else if (_ordenacaoProdutos ==
-                                              'novidade') {
-                                            // Mais recentes primeiro (dataCriacao)
-                                            listaOrdenada.sort((a, b) {
-                                              final dtA =
-                                                  asDateTime(a['dataCriacao']);
-                                              final dtB =
-                                                  asDateTime(b['dataCriacao']);
-                                              if (dtA == null && dtB == null) {
-                                                return 0;
-                                              }
-                                              if (dtA == null) {
-                                                return 1;
-                                              }
-                                              if (dtB == null) {
-                                                return -1;
-                                              }
-                                              return dtB.compareTo(dtA);
-                                            });
-                                          } else {
-                                            // nome (alfabética)
-                                            listaOrdenada.sort((a, b) {
-                                              final an = (a['nome'] ?? '')
-                                                  .toString()
-                                                  .toLowerCase();
-                                              final bn = (b['nome'] ?? '')
-                                                  .toString()
-                                                  .toLowerCase();
-                                              return an.compareTo(bn);
-                                            });
-                                          }
+                                              _catalogListaOrdenadaMemo(
+                                            produtos: produtos,
+                                            search: search,
+                                            effCatFilter: effCatFilter,
+                                            effSubFilter: effSubFilter,
+                                          );
 
                                           // Paginação: 20 produtos por página
                                           final totalPaginas =
@@ -7202,7 +7217,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                             controller:
                                                 _catalogScrollController,
                                             // Web: área maior fora da viewport reduz descarte/rebuild de cards ao rolar.
-                                            cacheExtent: kIsWeb ? 2400 : 800,
+                                            cacheExtent: _catalogProductsScrollCacheExtent(),
                                             physics: const ClampingScrollPhysics(
                                                 parent:
                                                     AlwaysScrollableScrollPhysics()),
