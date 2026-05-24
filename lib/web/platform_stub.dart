@@ -58,6 +58,10 @@ class Web {
   /// Remove o loader estático de [web/index.html] após o primeiro frame Flutter.
   static void hideInitialCatalogLoader() {}
 
+  static void notifyCatalogShellReady() {}
+
+  static void notifyCatalogHtmlLoaderReady(String reason) {}
+
   /// Só Web: origem de `main.dart.js` e estado de SW/Cache (netTest / diagnóstico).
   static String? getMainDartJsScriptSrc() => null;
 

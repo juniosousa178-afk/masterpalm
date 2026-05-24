@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.gstatic.com">
   <!-- ?diag=1&cacheReset=1 : limpa SW, Cache API e chaves de diagnóstico antes do Flutter; redireciona com cacheResetDone=1 -->
   <script>
     (function () {
@@ -394,6 +396,7 @@
     #initial-loader .loader-text{font-size:1.15rem;font-weight:600;color:#111;margin-bottom:8px;}
     #initial-loader .loader-sub{font-size:.95rem;color:#666;line-height:1.45;margin-bottom:24px;}
     #initial-loader .loader-spin{width:36px;height:36px;border:3px solid #ddd;border-top-color:#9a4e6b;border-radius:50%;margin:0 auto;animation:initial-loader-spin .7s linear infinite;}
+    #initial-loader.mp-catalog-loader-fading{opacity:0;pointer-events:none;transition:opacity 320ms ease;}
     @keyframes initial-loader-spin{to{transform:rotate(360deg)}}
     /* Instagram Android: interstitial leve — abrir catálogo no navegador externo */
     #mp-ig-android-browser-fallback{display:none;position:fixed;inset:0;z-index:100000;background:linear-gradient(180deg,#f8f9fb 0%,#eef1f5 100%);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1a1a2e;overflow-y:auto;-webkit-overflow-scrolling:touch;}
@@ -437,6 +440,49 @@
   </div>
   <script>
     (function () {
+      window.__mpCatalogHandoffActive = false;
+      window.__mpCatalogLoaderHidden = false;
+      window.__mpCatalogShellSignaled = false;
+      window.__mpCatalogHandoffStartMs = 0;
+
+      window.__mpNotifyCatalogShellReady = function () {
+        window.__mpCatalogShellSignaled = true;
+        try {
+          if (new URL(location.href).searchParams.get('diag') === '1') {
+            localStorage.setItem(
+              'mp_catalog_shell_ready_at_ms',
+              String(Math.round(performance.now()))
+            );
+          }
+        } catch (e) {}
+      };
+
+      window.__mpCatalogReadyToShow = function (reason) {
+        if (window.__mpCatalogLoaderHidden) return;
+        if (window.__mpSkipFlutterBootstrap) return;
+        var el = document.getElementById('initial-loader');
+        if (!el) {
+          window.__mpCatalogLoaderHidden = true;
+          return;
+        }
+        window.__mpCatalogLoaderHidden = true;
+        var r = String(reason || 'unknown');
+        try {
+          if (new URL(location.href).searchParams.get('diag') === '1') {
+            localStorage.setItem('mp_catalog_loader_hide_reason', r);
+            localStorage.setItem(
+              'mp_catalog_loader_hide_at_ms',
+              String(Math.round(performance.now()))
+            );
+          }
+        } catch (e) {}
+        el.classList.add('mp-catalog-loader-fading');
+        el.style.pointerEvents = 'none';
+        setTimeout(function () {
+          if (el.parentNode) el.remove();
+        }, 340);
+      };
+
       function normHost(host) {
         host = (host || '').trim().toLowerCase();
         if (host.indexOf('www.') === 0) host = host.substring(4);
@@ -610,13 +656,16 @@
         var subEl = document.getElementById('initial-loader-sub');
         if (logoEl && subEl) {
           if (isCatalogFirstPaint()) {
-            logoEl.textContent = 'Carregando loja';
+            window.__mpCatalogHandoffActive = true;
+            window.__mpCatalogHandoffStartMs = Math.round(performance.now());
+            var slug = getSlugFromLocation();
+            logoEl.textContent = slug ? slugToStoreName(slug) : 'Catálogo';
             if (titleEl) {
-              titleEl.textContent = '';
-              titleEl.style.display = 'none';
-              titleEl.style.marginBottom = '0';
+              titleEl.style.display = '';
+              titleEl.style.marginBottom = '';
+              titleEl.textContent = 'Preparando sua loja...';
             }
-            subEl.textContent = 'Estamos preparando a loja para você.';
+            subEl.textContent = 'Estamos carregando o catálogo para você.';
           } else {
             logoEl.textContent = 'MasterPalm';
             if (titleEl) {
@@ -629,8 +678,21 @@
           }
         }
       }
+      if (window.__mpCatalogHandoffActive) {
+        setTimeout(function () {
+          if (window.__mpCatalogLoaderHidden || !window.__mpCatalogReadyToShow) return;
+          if (!window.__mpCatalogShellSignaled) return;
+          window.__mpCatalogReadyToShow('visual_timeout_shell_ready');
+        }, 4000);
+        setTimeout(function () {
+          if (!window.__mpCatalogLoaderHidden && window.__mpCatalogReadyToShow) {
+            window.__mpCatalogReadyToShow('timeout');
+          }
+        }, 15000);
+      }
     })();
     window.addEventListener('flutter-first-frame', function () {
+      if (window.__mpCatalogHandoffActive) return;
       var el = document.getElementById('initial-loader');
       if (el) el.remove();
     });

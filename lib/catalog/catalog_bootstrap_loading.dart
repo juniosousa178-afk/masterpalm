@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../core/logger.dart';
 import '../debug/bootstrap_diagnostics.dart';
 import '../debug/catalog_startup_trace.dart';
+import '../screens/public_catalog/widgets/catalog_unified_loading.dart';
 import '../themes/app_colors.dart';
 import '../web/platform_stub.dart'
     if (dart.library.html) '../web/platform_web.dart' as plat;
@@ -65,11 +66,22 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
             'Estamos preparando sua experiência MasterPalm. Em instantes, você verá tudo pronto para vender mais.';
         break;
       case WebInitialLoadingContext.catalog:
-        tituloPill = nomeLojaSafe.isNotEmpty ? nomeLojaSafe : 'Carregando loja';
-        tituloCentral =
-            nomeLojaSafe.isNotEmpty ? 'Carregando loja' : null;
-        frase = 'Estamos preparando a loja para você.';
-        break;
+        if (kIsWeb) {
+          return const Scaffold(
+            backgroundColor: Colors.transparent,
+            body: SizedBox.shrink(),
+          );
+        }
+        return Scaffold(
+          backgroundColor: const Color(0xFFF0F2F5),
+          body: SafeArea(
+            child: CatalogUnifiedLoadingView(
+              nomeLoja: nomeLoja,
+              logoUrl: logoUrl,
+              diagPhaseLabel: 'bootstrap_firebase',
+            ),
+          ),
+        );
     }
 
     Widget fallbackPill() {
@@ -232,6 +244,15 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
   String? _bootstrapTechnicalMessage;
   String? _bootstrapStack;
   bool _bootstrapRunning = false;
+  bool _bootstrapHtmlHandoffDone = false;
+
+  void _scheduleHtmlLoaderHandoff(String reason) {
+    if (!kIsWeb || _bootstrapHtmlHandoffDone) return;
+    _bootstrapHtmlHandoffDone = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      plat.Web.notifyCatalogHtmlLoaderReady(reason);
+    });
+  }
 
   void _updateNomeLoja(String? nomeLoja) {
     if (!mounted) return;
@@ -254,11 +275,6 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
     _logoUrl = widget.initialLogoUrl;
     if (kDebugMode) {
       debugPrint('[CATALOG_BOOT] first_frame_loader');
-    }
-    if (kIsWeb) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        plat.Web.hideInitialCatalogLoader();
-      });
     }
     _startBootstrap();
   }
@@ -359,6 +375,7 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
   Widget build(BuildContext context) {
     final diag = kIsWeb && Uri.base.queryParameters['diag'] == '1';
     if (_bootstrapErrorMessage != null) {
+      _scheduleHtmlLoaderHandoff('catalog_error');
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: ThemeData(

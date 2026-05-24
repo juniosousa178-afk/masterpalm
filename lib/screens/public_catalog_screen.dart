@@ -62,6 +62,7 @@ import 'public_catalog/catalog_cart_checkout_visual_config.dart';
 import 'public_catalog/widgets/catalog_banner_carousel.dart';
 import 'public_catalog/widgets/catalog_config_error_state.dart';
 import 'public_catalog/widgets/catalog_config_loading_state.dart';
+import 'public_catalog/widgets/catalog_early_shell_view.dart';
 import 'public_catalog/widgets/catalog_empty_products_state.dart';
 import 'public_catalog/widgets/catalog_error_loja_state.dart';
 import 'public_catalog/widgets/catalog_footer.dart';
@@ -689,6 +690,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _traceProductsVisibleLogged = false;
   bool _traceProductsGridFirstViewportLogged = false;
   bool _traceEssentialActionsEnabledLogged = false;
+  bool _htmlLoaderHandoffDone = false;
+  bool _traceShellFirstFrameLogged = false;
   late final bool _diagCatStartOverlayEnabled =
       kIsWeb && Uri.base.queryParameters['diag'] == '1';
 
@@ -4636,6 +4639,27 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
   }
 
+  void _scheduleHtmlLoaderHandoff(String reason) {
+    if (!kIsWeb || _htmlLoaderHandoffDone) return;
+    _htmlLoaderHandoffDone = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      plat.Web.notifyCatalogHtmlLoaderReady(reason);
+    });
+  }
+
+  void _onCatalogEarlyShellFirstFrame() {
+    if (!kIsWeb) return;
+    plat.Web.notifyCatalogShellReady();
+    _scheduleHtmlLoaderHandoff('catalog_shell_ready');
+    if (!_traceShellFirstFrameLogged) {
+      _traceShellFirstFrameLogged = true;
+      CatalogStartupTrace.mark(
+        'CAT_START.catalog_shell.first_frame',
+        data: <String, Object?>{'loja_id': _resolvedLojaId},
+      );
+    }
+  }
+
   Widget _wrapWithCatStartDiagOverlay(Widget child) {
     if (!_diagCatStartOverlayEnabled) return child;
     const trackedEvents = <String>[
@@ -4756,6 +4780,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       }
 
       if (_resolvedLojaId == null || _resolvedLojaId!.isEmpty) {
+        _scheduleHtmlLoaderHandoff('catalog_error');
         return _wrapWithCatStartDiagOverlay(
           CatalogErrorLojaState(
             themeData: themeForStates,
@@ -4793,6 +4818,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     data: <String, Object?>{'loja_id': lojaId},
                   );
                 }
+                if (kIsWeb) {
+                  return CatalogEarlyShellView(
+                    storeSlug: widget.lojaId,
+                    themeData: themeForStates,
+                    onFirstFrame: _onCatalogEarlyShellFirstFrame,
+                  );
+                }
                 return CatalogConfigLoadingState(themeData: themeForStates);
               }
               if (!cfgSnap.hasData) {
@@ -4801,7 +4833,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     'fallback.reason', 'config_stream_no_data');
                 CatalogNormalTrace.mark('config.missing_or_empty',
                     <String, Object?>{'loja_id': lojaId});
+                _scheduleHtmlLoaderHandoff('catalog_error');
                 return CatalogConfigErrorState(themeData: themeForStates);
+              }
+              if (!_htmlLoaderHandoffDone) {
+                _scheduleHtmlLoaderHandoff('catalog_config_ready');
               }
               if (!_normalTraceRenderCatalogStartLogged) {
                 _normalTraceRenderCatalogStartLogged = true;
@@ -8430,6 +8466,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         parts.add('Falha ao montar a vitrine: $e');
         parts.add('error.runtimeType: ${e.runtimeType}');
         if (_catalogTechnicalDiagEnabled) parts.add(st.toString());
+        _scheduleHtmlLoaderHandoff('catalog_error');
         return _wrapWithCatStartDiagOverlay(
           CatalogErrorLojaState(
             themeData: Theme.of(context),
@@ -8441,6 +8478,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         );
       }
       if (!_catalogTechnicalDiagEnabled) {
+        _scheduleHtmlLoaderHandoff('catalog_error');
         return _wrapWithCatStartDiagOverlay(
           CatalogErrorLojaState(
             themeData: Theme.of(context),

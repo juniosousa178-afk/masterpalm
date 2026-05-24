@@ -121,7 +121,29 @@ class Web {
     html.window.open(url, '_blank');
   }
 
-  /// Remove o overlay `#initial-loader` de [web/index.html] (backup do evento `flutter-first-frame`).
+  /// Marca que o shell Flutter do catálogo foi montado (habilita timeout visual ~4s no HTML).
+  static void notifyCatalogShellReady() {
+    try {
+      final fn = js.context['__mpNotifyCatalogShellReady'];
+      if (fn != null && fn is js.JsFunction) {
+        fn.apply([]);
+      }
+    } catch (_) {}
+  }
+
+  /// Fade-out do overlay `#initial-loader` quando o catálogo está pronto (handoff HTML→Flutter).
+  static void notifyCatalogHtmlLoaderReady(String reason) {
+    try {
+      final fn = js.context['__mpCatalogReadyToShow'];
+      if (fn != null && fn is js.JsFunction) {
+        fn.apply([reason]);
+        return;
+      }
+    } catch (_) {}
+    hideInitialCatalogLoader();
+  }
+
+  /// Remove o overlay `#initial-loader` de [web/index.html] (app admin / fallback imediato).
   static void hideInitialCatalogLoader() {
     try {
       html.document.getElementById('initial-loader')?.remove();
