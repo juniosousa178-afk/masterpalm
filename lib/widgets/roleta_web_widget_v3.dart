@@ -1,11 +1,12 @@
 // lib/widgets/roleta_web_widget_v3.dart
 
-import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../core/logger.dart';
+import '../services/roleta_catalogo_service.dart';
 import 'package:uuid/uuid.dart';
 
 /// Widget da Roleta V3 - 100% Sincronizado com RoletaSorteConfigScreen
@@ -145,8 +146,8 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
       _girando = true;
     });
 
-    // ✅ TRANSAÇÃO ATÔMICA: ler, validar ganho, atualizar (evita corrida multi-usuário)
-    final resultado = await _executarGiroRoletaTransacao();
+    // Giro seguro via Cloud Function (mantém a transação no backend).
+    final resultado = await _executarGiroRoletaRemoto();
     if (resultado == null) {
       if (mounted) setState(() => _girando = false);
       return;
@@ -155,6 +156,7 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
     final ganhou = resultado.$1;
     final premioIndex = resultado.$2;
     final premiosParaRoleta = resultado.$3;
+    final codigoCupomTemporario = resultado.$4;
 
     if (premiosParaRoleta.isEmpty) {
       if (mounted) setState(() => _girando = false);
@@ -187,9 +189,12 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
 
     setState(() => _girando = false);
 
-    // ✅ PROCESSAR RESULTADO (contadores já atualizados na transação)
+    // ✅ PROCESSAR RESULTADO (contadores já atualizados no backend)
     if (ganhou && tipoPremio != 'nenhum') {
-      _processarPremio(premio);
+      _processarPremio(
+        premio,
+        codigoCupomTemporario: codigoCupomTemporario,
+      );
     } else {
       _mostrarSemPremio();
     }
@@ -197,79 +202,78 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
     widget.onCupomGerado?.call();
   }
 
-  /// Executa giro da roleta em transação atômica (evita dois usuários ganharem simultaneamente).
-  /// Retorna (ganhou, premioIndex, listaCompletaPremios) ou null se erro.
-  Future<(bool, int, List<Map<String, dynamic>>)?> _executarGiroRoletaTransacao() async {
+  /// Executa giro seguro da roleta via Cloud Function.
+  /// Retorna (ganhou, premioIndex, listaCompletaPremios, codigoCupomTemporario) ou null se erro.
+  Future<(bool, int, List<Map<String, dynamic>>, String?)?> _executarGiroRoletaRemoto() async {
     try {
-      final docRef = FirebaseFirestore.instance
-          .collection('lojas')
-          .doc(widget.lojaId)
-          .collection('config')
-          .doc('roleta_sorte');
+      final spinRequestId = const Uuid().v4().replaceAll('-', '');
+      final resultado = await RoletaCatalogoService.girarRoleta(
+        lojaId: widget.lojaId,
+        totalCarrinho: widget.totalCarrinho,
+        spinRequestId: spinRequestId,
+      );
 
-      return await FirebaseFirestore.instance.runTransaction<(bool, int, List<Map<String, dynamic>>)>((transaction) async {
-        final snap = await transaction.get(docRef);
-        if (!snap.exists || snap.data() == null) return (false, 0, <Map<String, dynamic>>[]);
-
-        final data = snap.data()!;
-        int vendasDesdePremio = (data['vendasDesdePremio'] as num?)?.toInt() ?? 0;
-        final frequenciaPremio = (data['frequenciaPremio'] as int?) ?? 10;
-        final premiosRaw = data['premios'] as List?;
-        if (premiosRaw == null || premiosRaw.isEmpty) return (false, 0, <Map<String, dynamic>>[]);
-
-        final premios = premiosRaw.map((p) => Map<String, dynamic>.from(p as Map)).toList();
-        final premiosAtivos = premios.where((p) => p['ativo'] == true).toList();
-        if (premiosAtivos.isEmpty) return (false, 0, <Map<String, dynamic>>[]);
-
-        final ganhou = vendasDesdePremio >= frequenciaPremio - 1;
-
-        int premioIndex;
-        if (ganhou) {
-          final disponiveis = <int>[];
-          for (var i = 0; i < premios.length; i++) {
-            if (premios[i]['ativo'] != true) continue;
-            final tipo = premios[i]['tipo'] ?? '';
-            if (tipo == 'nenhum') continue;
-            final qtdMax = (premios[i]['quantidadeMaxima'] as num?)?.toInt() ?? 0;
-            final qtdUsada = (premios[i]['quantidadeUsada'] as num?)?.toInt() ?? 0;
-            if (qtdMax == 0 || qtdUsada < qtdMax) {
-              disponiveis.add(i);
-            }
-          }
-          premioIndex = disponiveis.isNotEmpty ? disponiveis.first : 0;
-          premios[premioIndex]['quantidadeUsada'] = ((premios[premioIndex]['quantidadeUsada'] as num?)?.toInt() ?? 0) + 1;
-        } else {
-          premioIndex = 0;
-          for (var i = 0; i < premios.length; i++) {
-            if ((premios[i]['tipo'] ?? '') == 'nenhum') {
-              premioIndex = i;
-              break;
-            }
-          }
-        }
-
-        final novaVendasDesdePremio = ganhou ? 0 : vendasDesdePremio + 1;
-        final totalVendas = ((data['totalVendas'] as num?)?.toInt() ?? 0) + 1;
-
-        transaction.update(docRef, {
-          'totalVendas': totalVendas,
-          'vendasDesdePremio': novaVendasDesdePremio,
-          'premios': premios,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-
+      if (!resultado.ok) {
         if (mounted) {
-          setState(() {
-            _totalVendas = totalVendas;
-            _vendasDesdePremio = novaVendasDesdePremio;
-            _premios = premios;
-          });
+          _mostrarMensagem(
+            'Roleta indisponível',
+            resultado.message ?? 'Não foi possível girar a roleta agora.',
+            Colors.orange,
+          );
         }
+        return null;
+      }
 
-        return (ganhou, premioIndex, List<Map<String, dynamic>>.from(premios));
-      });
+      if (resultado.premios.isEmpty) {
+        if (mounted) {
+          _mostrarMensagem(
+            'Roleta indisponível',
+            'A roleta está sem prêmios configurados.',
+            Colors.orange,
+          );
+        }
+        return null;
+      }
+
+      final premioIndex = (resultado.premioIndex ?? 0).clamp(
+        0,
+        resultado.premios.length - 1,
+      );
+
+      if (mounted) {
+        setState(() {
+          _totalVendas = resultado.totalVendas ?? _totalVendas;
+          _vendasDesdePremio = resultado.vendasDesdePremio ?? _vendasDesdePremio;
+          _premios = resultado.premios;
+        });
+      }
+
+      return (
+        resultado.ganhou,
+        premioIndex,
+        List<Map<String, dynamic>>.from(resultado.premios),
+        resultado.codigoCupomTemporario,
+      );
+    } on FirebaseFunctionsException catch (e, st) {
+      logE(
+        '❌ [ROLETA-V3] Erro ao chamar girarRoletaCatalogo (code=${e.code})',
+        error: e,
+        st: st,
+      );
+      logD(
+        '🎰 [ROLETA-V3] Callable girarRoletaCatalogo falhou: '
+        'code=${e.code} message=${e.message ?? ''}',
+      );
+      if (mounted) {
+        _mostrarMensagem(
+          'Erro',
+          RoletaCatalogoService.messageFromFunctionsException(e),
+          Colors.red,
+        );
+      }
+      return null;
     } catch (e, st) {
-      logE('❌ [ROLETA-V3] Erro na transação (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [ROLETA-V3] Erro ao girar roleta remotamente (type=${e.runtimeType})', error: e, st: st);
       if (mounted) {
         _mostrarMensagem('Erro', 'Não foi possível girar a roleta. Tente novamente.', Colors.red);
       }
@@ -278,7 +282,10 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
   }
 
   /// ✅ PROCESSA O PRÊMIO GANHO
-  void _processarPremio(Map<String, dynamic> premio) {
+  void _processarPremio(
+    Map<String, dynamic> premio, {
+    String? codigoCupomTemporario,
+  }) {
     final tipo = premio['tipo'] ?? '';
     final label = premio['label'] ?? '';
     final valor = (premio['valor'] as num?)?.toDouble() ?? 0.0;
@@ -309,7 +316,9 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
       widget.onCupomGeradoComDados?.call('BRINDE', 0.0);
     } else if (tipo == 'desconto') {
       // ✅ Desconto: cupom para PRÓXIMA compra com validade
-      final codigo = _gerarCodigoCupom();
+      final codigo = (codigoCupomTemporario != null && codigoCupomTemporario.isNotEmpty)
+          ? codigoCupomTemporario
+          : _gerarCodigoCupom();
       _mostrarPremioEspecial(
         titulo: '🎉 CUPOM DE DESCONTO!',
         mensagem: 'Parabéns! Você ganhou $label!\n\nCódigo: $codigo\n\nVálido para sua PRÓXIMA compra até ${_formatarData(dataExpiracao)}',

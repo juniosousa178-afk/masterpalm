@@ -101,6 +101,7 @@ import {
   sugerirPrecoCombo as aiSugerirPrecoCombo,
 } from "./src/aiLoja.js";
 import { runCatalogDomainSubmit, runCatalogDomainVerify } from "./src/catalogDomainWorkflow.js";
+import { runGirarRoletaCatalogo } from "./src/roletaCatalogo.js";
 import { createOnPrePedidoClienteEmail } from "./src/pedidoClienteStatusEmail.js";
 
 // ✅ Webhooks Canais Meta (WhatsApp, Instagram, Messenger)
@@ -4432,6 +4433,49 @@ export const catalogDomainVerifyDns = onCall(
       if (err instanceof HttpsError) throw err;
       console.error("[catalogDomainVerifyDns] error:", err);
       throw new HttpsError("internal", err?.message || "Erro ao verificar DNS.");
+    }
+  },
+);
+
+export const girarRoletaCatalogo = onCall(
+  { timeoutSeconds: 20, memory: "256MiB" },
+  async (request) => {
+    try {
+      const identifier = getCallableIdentifier(request);
+      await checkRateLimit("girarRoletaCatalogo", identifier);
+
+      const { lojaId, totalCarrinho, spinRequestId } = request.data || {};
+      const spinRequestIdNorm = String(spinRequestId || "").trim();
+      if (spinRequestIdNorm && !/^[a-zA-Z0-9_-]{8,80}$/.test(spinRequestIdNorm)) {
+        throw new HttpsError("invalid-argument", "spinRequestId inválido.");
+      }
+
+      const idemKey =
+        spinRequestIdNorm && lojaId
+          ? `${String(lojaId).trim()}:${spinRequestIdNorm}`
+          : null;
+
+      if (idemKey) {
+        const { hit, result } = await checkIdempotency("girarRoletaCatalogo", idemKey);
+        if (hit && result) {
+          return result;
+        }
+      }
+
+      const out = await runGirarRoletaCatalogo(db, {
+        lojaId,
+        totalCarrinho,
+      });
+
+      if (idemKey) {
+        await saveIdempotency("girarRoletaCatalogo", idemKey, out);
+      }
+
+      return out;
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("[girarRoletaCatalogo] error:", err);
+      throw new HttpsError("internal", err?.message || "Erro ao girar a roleta.");
     }
   },
 );

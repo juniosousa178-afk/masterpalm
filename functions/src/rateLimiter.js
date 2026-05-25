@@ -65,6 +65,7 @@ export const RATE_LIMITS = {
   // Cliente catálogo: perfil, carrinho, favoritos (uso legítimo frequente)
   getClienteCatalog: { maxPerMin: 60, windowMs: 60_000 },
   solicitarRedefinicaoSenhaCatalogo: { maxPerMin: 5, windowMs: 60_000 },
+  girarRoletaCatalogo: { maxPerMin: 12, windowMs: 60_000 },
 
   // Domínio próprio catálogo (CNAME + catalog_domains)
   catalogDomainSubmitRequest: { maxPerMin: 12, windowMs: 60_000 },
