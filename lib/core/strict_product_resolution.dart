@@ -17,6 +17,17 @@ void setStrictResolutionTestOverride(bool? value) {
   _testStrictOverride = value;
 }
 
+/// `productId` da linha de venda aponta para outro produto que o nome exibido?
+bool productIdIncoerenteComNomeExibido({
+  required String nomeProdutoResolvido,
+  required String nomeExibido,
+}) {
+  final nProd = nomeProdutoResolvido.trim().toLowerCase();
+  final nLinha = nomeExibido.trim().toLowerCase();
+  if (nProd.isEmpty || nLinha.isEmpty) return false;
+  return nProd != nLinha;
+}
+
 /// Chamar quando um produto foi resolvido por NOME (não por productId nem slug).
 /// Em produção: só loga. Em dev/homolog com [kStrictProductResolution]: loga e lança.
 void reportProductResolvedByName({

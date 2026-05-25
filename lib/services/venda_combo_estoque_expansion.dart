@@ -90,7 +90,18 @@ class VendaComboEstoqueExpansion {
           (prod) => prod.lojaId == lojaId && prod.idFirebase.trim() == pid,
         );
         if (p != null) {
-          debugPrint('[VENDA_ITEM_ID] [DUPLICAR_VENDA] Produto principal por productId | lojaId=$lojaId | productId=$pid');
+          if (productIdIncoerenteComNomeExibido(
+            nomeProdutoResolvido: p.nome,
+            nomeExibido: it.produtoNome,
+          )) {
+            debugPrint(
+              '[VENDA_ITEM_MISMATCH] productId=$pid aponta para "${p.nome}" '
+              'mas linha="${it.produtoNome}" — ignorando productId',
+            );
+            p = null;
+          } else {
+            debugPrint('[VENDA_ITEM_ID] [DUPLICAR_VENDA] Produto principal por productId | lojaId=$lojaId | productId=$pid');
+          }
         }
       }
       if (p == null) {

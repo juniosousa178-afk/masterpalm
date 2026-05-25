@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../core/combo_configuravel_resumo.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
+import '../core/strict_product_resolution.dart';
 import '../core/venda_metrics_filter.dart';
 import 'package:hive/hive.dart';
 
@@ -1263,6 +1264,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                 (p.idFirebase == productId || p.key?.toString() == productId),
             orElse: () => Produto.vazio(),
           );
+          if (prod.nome.isNotEmpty &&
+              productIdIncoerenteComNomeExibido(
+                nomeProdutoResolvido: prod.nome,
+                nomeExibido: nome,
+              )) {
+            prod = Produto.vazio();
+          }
         } catch (_) {}
       }
       if (prod.nome.isEmpty) {
@@ -1839,7 +1847,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     lojaId: lojaId,
                                     produtosFavoritos: _produtosMaisVendidos(limit: 8),
                                     precoDoProduto: _precoDoProduto,
-                                    onChanged: (nome, preco) {
+                                    onChanged: (nome, preco, productId) {
                                       setState(() {
                                         produtosSelecionados[index]['produto'] = nome;
                                         produtosSelecionados[index]['preco'] = preco;
@@ -1850,6 +1858,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         produtosSelecionados[index].remove('itensComboComSelecao');
                                         produtosSelecionados[index].remove('comboConfiguravelResumo');
                                         produtosSelecionados[index]['quantidade'] = 1;
+                                        if (productId != null && productId.isNotEmpty) {
+                                          produtosSelecionados[index]['productId'] = productId;
+                                        } else {
+                                          produtosSelecionados[index].remove('productId');
+                                        }
                                       });
                                     },
                                     onProductIsCombo: (combo) async {
@@ -1885,6 +1898,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                       setState(() {
                                         produtosSelecionados[index]['produto'] = v;
                                         final linha = produtosSelecionados[index];
+                                        final pidAtual = (linha['productId'] as String?)?.trim();
+                                        if (pidAtual != null && pidAtual.isNotEmpty) {
+                                          final pPorId = produtosDaLoja.firstWhereOrNull(
+                                            (x) => x.idFirebase.trim() == pidAtual,
+                                          );
+                                          if (pPorId != null &&
+                                              productIdIncoerenteComNomeExibido(
+                                                nomeProdutoResolvido: pPorId.nome,
+                                                nomeExibido: v,
+                                              )) {
+                                            linha.remove('productId');
+                                          }
+                                        }
                                         final p = produtosDaLoja.firstWhereOrNull(
                                           (x) => x.nome.toLowerCase() == v.trim().toLowerCase(),
                                         );
@@ -2754,7 +2780,7 @@ class _ProdutoDropdown extends StatelessWidget {
   final List<Produto> produtos;
   final String lojaId;
   final List<String> produtosFavoritos;
-  final void Function(String nome, double preco) onChanged;
+  final void Function(String nome, double preco, String? productId) onChanged;
   final Future<void> Function(Produto produto)? onProductNeedsVariation;
   final Future<void> Function(Produto combo)? onProductIsCombo;
   final void Function(String texto) onTextChanged;
@@ -2802,7 +2828,11 @@ class _ProdutoDropdown extends StatelessWidget {
         } else if ((p.usaVariacoes || p.estoquePorTamanho.isNotEmpty) && onProductNeedsVariation != null) {
           await onProductNeedsVariation!(p);
         } else {
-          onChanged(value, precoDoProduto(p));
+          onChanged(
+            value,
+            precoDoProduto(p),
+            p.idFirebase.trim().isNotEmpty ? p.idFirebase.trim() : null,
+          );
         }
       },
       fieldViewBuilder: (context, controller, focusNode, onSubmit) {
