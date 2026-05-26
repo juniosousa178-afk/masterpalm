@@ -168,18 +168,15 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
       _premioIndex = premioIndex;
     });
 
-    // ✅ Calcular ângulo para parar EXATAMENTE no prêmio sorteado (cupom, brinde, tente novamente, etc.)
-    // Fatia i no _RoletaPainter: startAngle = i * anguloPorFatia - pi/2 (topo = -pi/2).
-    // Centro da fatia premioIndex: (premioIndex + 0.5) * anguloPorFatia - pi/2.
-    // Transform.rotate(angle R) gira no sentido horário: ponto θ vai para θ - R. Queremos centro no topo:
-    // (premioIndex + 0.5) * anguloPorFatia - pi/2 - R = -pi/2  =>  R = (premioIndex + 0.5) * anguloPorFatia
-    final numFatias = premiosParaRoleta.length;
-    final anguloPorFatia = 2 * pi / numFatias;
-    final anguloParaCentroPremio = (premioIndex + 0.5) * anguloPorFatia;
-    final giros = 4 + Random().nextDouble() * 2;
+    // A fonte de verdade do setor vencedor é o prêmio retornado pela Function.
+    final giros = 4 + Random().nextInt(3);
 
     setState(() {
-      _anguloFinal = (giros * 2 * pi) + anguloParaCentroPremio;
+      _anguloFinal = calculateRoletaFinalAngle(
+        premioIndex: premioIndex,
+        totalSegmentos: premiosParaRoleta.length,
+        voltasCompletas: giros,
+      );
     });
 
     await _controller.forward(from: 0);
@@ -235,10 +232,25 @@ class _RoletaWebWidgetV3State extends State<RoletaWebWidgetV3>
         return null;
       }
 
-      final premioIndex = (resultado.premioIndex ?? 0).clamp(
-        0,
-        resultado.premios.length - 1,
+      final premioIndex = resolvePremioVisualIndex(
+        segmentos: resultado.premios,
+        premioIndex: resultado.premioIndex,
+        premio: resultado.premio,
       );
+      if (premioIndex == null) {
+        logE(
+          '❌ [ROLETA-V3] Não foi possível mapear prêmio retornado para setor visual',
+          error: resultado.premio,
+        );
+        if (mounted) {
+          _mostrarMensagem(
+            'Roleta indisponível',
+            'Não foi possível confirmar visualmente o prêmio da roleta. Tente novamente.',
+            Colors.orange,
+          );
+        }
+        return null;
+      }
 
       if (mounted) {
         setState(() {
@@ -817,7 +829,19 @@ class _RoletaPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _RoletaPainter oldDelegate) {
+    if (oldDelegate.premios.length != premios.length) return true;
+    for (var i = 0; i < premios.length; i++) {
+      final atual = premios[i];
+      final anterior = oldDelegate.premios[i];
+      if (atual['label'] != anterior['label'] ||
+          atual['tipo'] != anterior['tipo'] ||
+          atual['valor'] != anterior['valor']) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
 
 /// Painter para a seta fixa
